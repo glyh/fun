@@ -30,7 +30,7 @@ let rec token buf =
       Star ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9') ) ->
       ID (Sedlexing.Utf8.lexeme buf)
   | Plus (' ' | '\t' | '\n' | '\r') -> token buf
-  | "(*" -> skip_comment buf (Sedlexing.loc buf, [])
+  | "(*" -> skip_comment buf (Nonempty_list.init (Sedlexing.loc buf) [])
   | eof -> EOF
   | _ ->
       raise
@@ -41,9 +41,9 @@ and skip_comment buf (openings : loc Nonempty_list.t) =
   match%sedlex buf with
   | "(*" -> skip_comment buf (Nonempty_list.cons (Sedlexing.loc buf) openings)
   | "*)" -> (
-      match openings with
+      match Nonempty_list.uncons openings with
       | _, [] -> token buf
-      | _, hd :: rest -> skip_comment buf (hd, rest))
+      | _, hd :: rest -> skip_comment buf (Nonempty_list.init hd rest))
   | eof ->
       let top_opening = Nonempty_list.first openings in
       raise (UnterminatedComment { started_at = top_opening })

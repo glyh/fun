@@ -3,14 +3,7 @@ open Ast
 let parse_string s =
   let lexbuf = Sedlexing.Utf8.from_string s in
   let lexer = Sedlexing.with_tokenizer Lexer.token lexbuf in
-  let parser =
-    MenhirLib.Convert.Simplified.traditional2revised Parser.toplevel_eof
-  in
-  try parser lexer
-  with Lexer.UnexpectedToken { token; location = loc_start, loc_end } ->
-    failwith
-      (Printf.sprintf "UnexpectedToken `%s` at offset (%d, %d)." token loc_start
-         loc_end)
+  MenhirLib.Convert.Simplified.traditional2revised Parser.toplevel_eof lexer
 
 let%test "ignore single comment" =
   let input = "let x = 1 (* comment *)" in
