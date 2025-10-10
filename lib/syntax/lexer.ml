@@ -1,4 +1,5 @@
 open Parser
+open Std
 
 (* TODO: track locs in (row,col) tuple, now it's tracking byte offset *)
 type loc = int * int
@@ -29,23 +30,21 @@ let rec token buf =
       Star ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9') ) ->
       ID (Sedlexing.Utf8.lexeme buf)
   | Plus (' ' | '\t' | '\n' | '\r') -> token buf
-  | "(*" -> skip_comment buf (Sedlexing.loc buf) []
+  | "(*" -> skip_comment buf (Sedlexing.loc buf, [])
   | eof -> EOF
   | _ ->
       raise
         (UnexpectedToken
            { token = Sedlexing.Utf8.lexeme buf; location = Sedlexing.loc buf })
 
-and skip_comment buf first_opening openings =
+and skip_comment buf (openings : loc Nonempty_list.t) =
   match%sedlex buf with
-  | "(*" -> skip_comment buf first_opening (Sedlexing.loc buf :: openings)
+  | "(*" -> skip_comment buf (Nonempty_list.cons (Sedlexing.loc buf) openings)
   | "*)" -> (
       match openings with
-      | [] -> token buf
-      | _ :: popped -> skip_comment buf first_opening popped)
-  | eof -> (
-      match openings with
-      | top_opening :: _ ->
-          raise (UnterminatedComment { started_at = top_opening })
-      | [] -> raise (UnterminatedComment { started_at = first_opening }))
-  | _ -> skip_comment buf first_opening openings
+      | _, [] -> token buf
+      | _, hd :: rest -> skip_comment buf (hd, rest))
+  | eof ->
+      let top_opening = Nonempty_list.first openings in
+      raise (UnterminatedComment { started_at = top_opening })
+  | _ -> skip_comment buf openings
