@@ -32,10 +32,11 @@ module Env = struct
 
   let create () = { map = Inner.create 32; next = 0 }
 
-  let generate (env : t) ?tag () =
+  let generate env ?tag () =
     let id = env.next in
     env.next <- env.next + 1;
     Var.{ id; tag }
 
-  let find (env : t) (id : Var.t) = Inner.find_opt env.map id
+  let find env id = Inner.find_opt env.map id
+  let fold env ~f = Inner.fold f env.map
 end

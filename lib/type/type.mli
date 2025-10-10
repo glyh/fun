@@ -28,4 +28,5 @@ module Env : sig
   val create : unit -> t
   val generate : t -> ?tag:string -> unit -> Var.t
   val find : t -> Var.t -> T.t option
+  val fold : t -> f:(Var.t -> T.t -> 'acc -> 'acc) -> 'acc -> 'acc
 end
