@@ -48,9 +48,11 @@ let%test "function with untyped params" =
 let%test "function with typed params" =
   let input = "let f (x:int) (y:bool) = x" in
   let lam_y =
-    Expr.Lam (Param.{ name = "y"; type_ = Some "bool" }, Expr.Var "x")
+    Expr.Lam (Param.{ name = "y"; type_ = Some (Con "bool") }, Expr.Var "x")
   in
-  let lam_x = Expr.Lam (Param.{ name = "x"; type_ = Some "int" }, lam_y) in
+  let lam_x =
+    Expr.Lam (Param.{ name = "x"; type_ = Some (Con "int") }, lam_y)
+  in
   List.equal Binding.equal (parse_string input)
     [ { recursive = false; name = "f"; type_ = None; value = lam_x } ]
 
@@ -105,7 +107,9 @@ let%test "application left associativity" =
 let%test "function with mixed typed params" =
   let input = "let f (x:int) y = y" in
   let lam_y = Expr.Lam (Param.{ name = "y"; type_ = None }, Expr.Var "y") in
-  let lam_x = Expr.Lam (Param.{ name = "x"; type_ = Some "int" }, lam_y) in
+  let lam_x =
+    Expr.Lam (Param.{ name = "x"; type_ = Some (Con "int") }, lam_y)
+  in
   List.equal Binding.equal (parse_string input)
     [ { recursive = false; name = "f"; type_ = None; value = lam_x } ]
 
@@ -182,10 +186,73 @@ let%test "recursive function with mixed typed params" =
   let input = "let rec f (x:int) y = f y" in
   let value =
     Expr.Lam
-      ( Param.{ name = "x"; type_ = Some "int" },
+      ( Param.{ name = "x"; type_ = Some (Con "int") },
         Expr.Lam
           ( Param.{ name = "y"; type_ = None },
             Expr.Ap (Expr.Var "f", Expr.Var "y") ) )
   in
   List.equal Binding.equal (parse_string input)
     [ { recursive = true; name = "f"; type_ = None; value } ]
+
+let%test "simple annotation" =
+  let input = "let x = (1 : int)" in
+  let value = Expr.Annotated { inner = Expr.Num 1; typ = Con "int" } in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "x"; type_ = None; value } ]
+
+let%test "annotation on variable" =
+  let input = "let y = (x : bool)" in
+  let value = Expr.Annotated { inner = Expr.Var "x"; typ = Con "bool" } in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "y"; type_ = None; value } ]
+
+let%test "annotation on function application" =
+  let input = "let f = ((g x) : t)" in
+  let value =
+    Expr.Annotated
+      { inner = Expr.Ap (Expr.Var "g", Expr.Var "x"); typ = Con "t" }
+  in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "f"; type_ = None; value } ]
+
+let%test "annotation nested inside if" =
+  let input = "let x = if cond then (y : t1) else (z : t2)" in
+  let value =
+    Expr.If
+      {
+        cond = Expr.Var "cond";
+        then_ = Expr.Annotated { inner = Expr.Var "y"; typ = Con "t1" };
+        else_ = Expr.Annotated { inner = Expr.Var "z"; typ = Con "t2" };
+      }
+  in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "x"; type_ = None; value } ]
+
+let%test "annotation around lambda" =
+  let input = "let f = ((fun x -> x) : t -> t)" in
+  let inner = Expr.Lam (Param.{ name = "x"; type_ = None }, Expr.Var "x") in
+  let value = Expr.Annotated { inner; typ = Arrow (Con "t", Con "t") } in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "f"; type_ = None; value } ]
+
+let%test "annotation combined with application" =
+  let input = "let x = (f : t1 -> t2) y" in
+  let value =
+    Expr.Ap
+      ( Expr.Annotated { inner = Expr.Var "f"; typ = Arrow (Con "t1", Con "t2") },
+        Expr.Var "y" )
+  in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "x"; type_ = None; value } ]
+
+let%test "nested annotation" =
+  let input = "let x = ((1 : int) : num)" in
+  let value =
+    Expr.Annotated
+      {
+        inner = Expr.Annotated { inner = Expr.Num 1; typ = Con "int" };
+        typ = Con "num";
+      }
+  in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "x"; type_ = None; value } ]

@@ -1,13 +1,9 @@
 module Id : sig
-  type t = string [@@deriving yojson, eq]
-end
-
-module TypeAnnotated : sig
-  type t = string option [@@deriving yojson, eq]
+  type t = string [@@deriving eq]
 end
 
 module Param : sig
-  type t = { name : Id.t; type_ : TypeAnnotated.t } [@@deriving yojson, eq]
+  type t = { name : Id.t; type_ : Type.T.t option } [@@deriving eq]
 end
 
 module rec Expr : sig
@@ -19,15 +15,16 @@ module rec Expr : sig
     | Let of { binding : Binding.t; body : t }
     | If of { cond : t; then_ : t; else_ : t }
     | Lam of Param.t * t
-  [@@deriving yojson, eq]
+    | Annotated of { inner : t; typ : Type.T.t }
+  [@@deriving eq]
 end
 
 and Binding : sig
   type t = {
     recursive : bool;
     name : Id.t;
-    type_ : TypeAnnotated.t;
+    type_ : Type.T.t option;
     value : Expr.t;
   }
-  [@@deriving yojson, eq]
+  [@@deriving eq]
 end

@@ -10,6 +10,8 @@
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
 %token EOF
 
+%right ARROW
+
 %start <Binding.t list> toplevel_eof
 
 %%
@@ -17,11 +19,21 @@
 toplevel_eof:
   | bindings=separated_list(DOUBLESEMI, binding) EOF { bindings }
 
+type_:
+  | LPAREN type_ RPAREN { $2 }
+  | ID { Type.T.Con $1 }
+  | type_ ARROW type_ { Type.T.Arrow ($1, $3) }
+
+type_annotation:
+  | COLON typ=type_ {
+    typ
+  }  
+
 param:
   | name=ID {
     Param.{ name; type_ = None }
   }
-  | LPAREN name=ID COLON typ=ID RPAREN {
+  | LPAREN name=ID typ=type_annotation RPAREN {
     Param.{ name; type_ = Some typ }
   }
 
@@ -37,7 +49,11 @@ atom:
   | ID { Expr.Var $1 }
   | INT { Expr.Num $1 }
   | UNIT { Expr.Unit }
-  | LPAREN expr RPAREN { $2 }
+  | LPAREN inner=expr typ=option(type_annotation) RPAREN { 
+    match typ with
+    | None -> inner
+    | Some typ -> Expr.(Annotated { inner; typ })
+  }
 
 app:
   | atom { $1 }
