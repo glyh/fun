@@ -47,4 +47,5 @@ and skip_comment buf (openings : loc Nonempty_list.t) =
   | eof ->
       let top_opening = Nonempty_list.first openings in
       raise (UnterminatedComment { started_at = top_opening })
-  | _ -> skip_comment buf openings
+  | any -> skip_comment buf openings
+  | _ -> failwith "Reaching unreachable code path"

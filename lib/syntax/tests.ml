@@ -12,6 +12,21 @@ let parse_string s =
       (Printf.sprintf "UnexpectedToken `%s` at offset (%d, %d)." token loc_start
          loc_end)
 
+let%test "ignore single comment" =
+  let input = "let x = 1 (* comment *)" in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "x"; type_ = None; value = Expr.Num 1 } ]
+
+let%test "ignore nested comment" =
+  let input = "let x = 1 (* outer (* inner *) outer *)" in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "x"; type_ = None; value = Expr.Num 1 } ]
+
+let%test "nested comment between tokens" =
+  let input = "let (* a *) x (* b (* c *) d *) = (* e *) 1" in
+  List.equal Binding.equal (parse_string input)
+    [ { recursive = false; name = "x"; type_ = None; value = Expr.Num 1 } ]
+
 let%test "simple let binding" =
   let input = "let x = 42" in
   List.equal Binding.equal (parse_string input)
