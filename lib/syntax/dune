@@ -1,0 +1,9 @@
+(menhir
+ (modules parser))
+
+(library
+ (name syntax)
+ (libraries core menhirLib)
+ (inline_tests)
+ (preprocess
+  (pps sedlex.ppx ppx_deriving.std ppx_deriving_yojson ppx_inline_test)))
