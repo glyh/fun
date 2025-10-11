@@ -1,19 +1,19 @@
 open Syntax.Ast
 
-let parse_string s =
-  let lexbuf = Sedlexing.Utf8.from_string s in
-  let lexer = Sedlexing.with_tokenizer Syntax.Lexer.token lexbuf in
-  MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.toplevel_eof
-    lexer
-
 module Testable = struct
   let binding =
     let pp_binding ppf expr = Fmt.pf ppf "%S" (Binding.pp expr) in
     Alcotest.testable pp_binding Binding.equal
 end
 
+let parse_bindings s =
+  let lexbuf = Sedlexing.Utf8.from_string s in
+  let lexer = Sedlexing.with_tokenizer Syntax.Lexer.token lexbuf in
+  MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.toplevel_eof
+    lexer
+
 let test_syntax ?(tag = "same AST") ~source ~expected () =
-  let parsed = parse_string source in
+  let parsed = parse_bindings source in
   Alcotest.(check (list Testable.binding)) tag parsed expected
 
 let commments =

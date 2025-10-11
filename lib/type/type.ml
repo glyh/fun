@@ -41,6 +41,12 @@ module T = struct
   [@@deriving eq]
 
   let pp _ = failwith "TODO"
+
+  let equal t1 t2 =
+    match (t1, t2) with
+    | Forall (_binds1, _inner1), Forall (_binds2, _inner2) ->
+        failwith "TODO: Check alpha equivalence"
+    | _ -> equal t1 t2
 end
 
 module Builtin = struct

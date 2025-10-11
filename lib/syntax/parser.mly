@@ -13,6 +13,7 @@
 %right ARROW
 
 %start <Binding.t list> toplevel_eof
+%start <Expr.t> expr_eof
 
 %%
 
@@ -70,3 +71,6 @@ expr:
   | FUN params=list(param) ARROW body=expr {
       List.fold_right (fun param acc -> Expr.Lam (param, acc)) params body
     }
+
+expr_eof:
+  | expr EOF { $1 }
