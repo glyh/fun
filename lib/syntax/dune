@@ -4,6 +4,5 @@
 (library
  (name syntax)
  (libraries core menhirLib std type)
- (inline_tests)
  (preprocess
-  (pps sedlex.ppx ppx_deriving.std ppx_deriving_yojson ppx_inline_test)))
+  (pps sedlex.ppx ppx_deriving.std ppx_deriving_yojson)))
