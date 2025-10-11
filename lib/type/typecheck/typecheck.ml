@@ -115,11 +115,20 @@ module Inference = struct
         let x_ty, x_cons = generate_constraints env x in
         let result_ty = Type.T.Var (Type.Var.generate ()) in
         (result_ty, [ (f_ty, Type.T.Arrow (x_ty, result_ty)) ] @ f_cons @ x_cons)
-    | Expr.Let { binding = { recursive; name; type_; value }; body } ->
+    | Expr.Let
+        {
+          binding = { recursive; name; type_ = value_ty_annotated; value };
+          body;
+        } ->
         assert (recursive = false);
-        assert (type_ = None);
-        let value_ty, value_cons = generate_constraints env value in
-        let env_generalized = generalize value_cons env name value_ty in
+        let value_ty_inferred, value_cons = generate_constraints env value in
+        let all_cons =
+          match value_ty_annotated with
+          | None -> value_cons
+          | Some value_ty_annotated ->
+              (value_ty_annotated, value_ty_inferred) :: value_cons
+        in
+        let env_generalized = generalize all_cons env name value_ty_inferred in
         generate_constraints env_generalized body
     | Expr.If { cond; then_; else_ } ->
         let cond_ty, cond_cons = generate_constraints env cond in
