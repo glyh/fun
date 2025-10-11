@@ -4,6 +4,10 @@ module Param = struct
   type t = { name : Id.t; type_ : Type.T.t option } [@@deriving eq]
 end
 
+let pp_type_annotated = function
+  | None -> ""
+  | Some typ -> Printf.sprintf ": %s " (Type.T.pp typ)
+
 module rec Expr : sig
   type t =
     | Unit
@@ -15,6 +19,8 @@ module rec Expr : sig
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.T.t }
   [@@deriving eq]
+
+  val pp : t -> string
 end = struct
   type t =
     | Unit
@@ -26,6 +32,22 @@ end = struct
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.T.t }
   [@@deriving eq]
+
+  let rec pp = function
+    | Unit -> "()"
+    | Num i -> string_of_int i
+    | Var id -> id
+    | Ap (lhs, rhs) -> pp lhs ^ "(" ^ pp rhs ^ ")"
+    | Let { binding; body } ->
+        Printf.sprintf "%s in %s" (Binding.pp binding) (pp body)
+    | If { cond; then_; else_ } ->
+        Printf.sprintf "if (%s) then (%s) else (%s)" (pp cond) (pp then_)
+          (pp else_)
+    | Lam ({ name; type_ }, body) ->
+        Printf.sprintf "fun %s%s -> (%s)" name (pp_type_annotated type_)
+          (pp body)
+    | Annotated { inner; typ } ->
+        Printf.sprintf "(%s : %s)" (pp inner) (Type.T.pp typ)
 end
 
 and Binding : sig
@@ -36,6 +58,8 @@ and Binding : sig
     value : Expr.t;
   }
   [@@deriving eq]
+
+  val pp : t -> string
 end = struct
   type t = {
     recursive : bool;
@@ -44,4 +68,9 @@ end = struct
     value : Expr.t;
   }
   [@@deriving eq]
+
+  let pp { recursive; name; type_; value } =
+    let rec_str = if recursive then "rec " else "" in
+    Printf.sprintf "let %s%s %s= (%s)" rec_str name (pp_type_annotated type_)
+      (Expr.pp value)
 end

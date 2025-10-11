@@ -22,6 +22,8 @@ module T : sig
     | Con of string
     | Arrow of t * t
   [@@deriving eq]
+
+  val pp: t -> string
 end
 
 module Builtin : sig

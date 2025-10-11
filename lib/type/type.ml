@@ -39,6 +39,8 @@ module T = struct
     | Con of string
     | Arrow of t * t
   [@@deriving eq]
+
+  let pp _ = failwith "TODO"
 end
 
 module Builtin = struct

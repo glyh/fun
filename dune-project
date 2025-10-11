@@ -36,10 +36,10 @@
   (ppx_deriving_yojson
    (>= 3.9.1))
   ; Develop setup
-  (ppx_inline_test 
+  (alcotest 
    (and
     (or :with-test :with-dev-setup)
-    (>= v0.17.0)))
+    (>= 1.9.1)))
   (bisect_ppx
    (and
     (or :with-test :with-dev-setup)

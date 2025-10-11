@@ -13,6 +13,8 @@ module rec Expr : sig
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.T.t }
   [@@deriving eq]
+
+  val pp : t -> string
 end
 
 and Binding : sig
@@ -23,4 +25,6 @@ and Binding : sig
     value : Expr.t;
   }
   [@@deriving eq]
+
+  val pp : t -> string
 end
