@@ -37,6 +37,17 @@ let let_bindings =
       test_case "let shadowing" `Quick
         (test_typecheck ~source:"let x = true in let x = 1 in x"
            ~expected:Type.Builtin.i64);
+      (* test_case "simple recursive function" `Quick *)
+      (*   (test_typecheck *)
+      (*      ~source: *)
+      (*        "let rec f = fun x -> if x == 0 then 1 else x * f (x - 1) in f" *)
+      (*      ~expected:(Type.T.Arrow (Type.Builtin.i64, Type.Builtin.i64))); *)
+      (* test_case "recursive call inside body" `Quick *)
+      (*   (test_typecheck *)
+      (*      ~source: *)
+      (*        "let rec fact = fun n -> if n == 0 then 1 else n * fact (n - 1) \ *)
+      (*         in fact 5" *)
+      (*      ~expected:Type.Builtin.i64); *)
     ]
 
 let conditionals =

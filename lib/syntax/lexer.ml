@@ -21,10 +21,13 @@ let rec token buf =
   | "->" -> ARROW
   | "()" -> UNIT
   | ";;" -> DOUBLESEMI
+  | "==" -> EQ
   | "(" -> LPAREN
   | ")" -> RPAREN
   | "=" -> ASSIGN
   | ":" -> COLON
+  | "+" -> ADD
+  | "-" -> SUB
   | Plus '0' .. '9' ->
       let num = Sedlexing.Utf8.lexeme buf |> Int64.of_string in
       I64 num

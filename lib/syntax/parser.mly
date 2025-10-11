@@ -10,8 +10,12 @@
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
 %token TRUE FALSE
 %token EOF
+%token ADD SUB EQ
 
 %right ARROW
+
+%left EQ
+%left ADD SUB
 
 %start <Binding.t list> toplevel_eof
 %start <Expr.t> expr_eof
@@ -53,7 +57,41 @@ binding:
     Binding.{ name; type_ = None; value = lam_wrapped }
   }
 
-atom: 
+expr: 
+  | expr_stmt { $1 }
+    
+expr_stmt:
+  | binding=binding IN body=expr {
+    Expr.Let { binding; body }
+  }
+  | IF cond=expr THEN then_branch=expr ELSE else_branch=expr {
+      Expr.If { cond; then_ = then_branch; else_ = else_branch }
+    }
+  | FUN params=list(param) ARROW body=expr {
+      List.fold_right (fun param acc -> Expr.Lam (param, acc)) params body
+    }
+  | expr_expr { $1 }
+
+%inline bin_op:
+  | ADD { "+" }
+  | SUB { "-" }
+  | EQ { "==" }
+  
+expr_expr: 
+  | lhs=expr_expr op=bin_op rhs=expr_expr {
+    Expr.Ap(Ap(Var op, lhs), rhs)
+  }
+  | e=expr_app { e }
+
+expr_app:
+  | f=expr_primary xs=list(expr_primary) {
+    List.fold_left 
+    (fun partial arg -> Expr.Ap(partial, arg))
+    f
+    xs
+  }
+
+expr_primary: 
   | ID { Expr.Var $1 }
   | I64 { Expr.Atom (I64 $1) }
   | UNIT { Expr.Atom Unit }
@@ -64,22 +102,6 @@ atom:
     | None -> inner
     | Some typ -> Expr.(Annotated { inner; typ })
   }
-
-app:
-  | atom { $1 }
-  | app atom { Expr.Ap ($1, $2) }
-
-expr:
-  | app { $1 }
-  | binding=binding IN body=expr {
-    Expr.Let { binding; body }
-  }
-  | IF cond=expr THEN then_branch=expr ELSE else_branch=expr {
-      Expr.If { cond; then_ = then_branch; else_ = else_branch }
-    }
-  | FUN params=list(param) ARROW body=expr {
-      List.fold_right (fun param acc -> Expr.Lam (param, acc)) params body
-    }
 
 expr_eof:
   | expr EOF { $1 }

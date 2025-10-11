@@ -351,6 +351,71 @@ let annotations =
              ]);
     ]
 
+let operators =
+  Alcotest.
+    [
+      test_case "simple addition" `Quick
+        (test_syntax ~source:"let x = 1 + 2"
+           ~expected:
+             [
+               {
+                 name = "x";
+                 type_ = None;
+                 value = Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L));
+               };
+             ]);
+      test_case "subtraction" `Quick
+        (test_syntax ~source:"let x = 5 - 3"
+           ~expected:
+             [
+               {
+                 name = "x";
+                 type_ = None;
+                 value = Ap (Ap (Var "-", Atom (I64 5L)), Atom (I64 3L));
+               };
+             ]);
+      test_case "equality" `Quick
+        (test_syntax ~source:"let b = 1 == 2"
+           ~expected:
+             [
+               {
+                 name = "b";
+                 type_ = None;
+                 value = Ap (Ap (Var "==", Atom (I64 1L)), Atom (I64 2L));
+               };
+             ]);
+      test_case "operator chaining left-associative" `Quick
+        (test_syntax ~source:"let y = 1 + 2 - 3"
+           ~expected:
+             [
+               {
+                 name = "y";
+                 type_ = None;
+                 value =
+                   Ap
+                     ( Ap
+                         ( Var "-",
+                           Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L)) ),
+                       Atom (I64 3L) );
+               };
+             ]);
+      test_case "parenthesized arithmetic" `Quick
+        (test_syntax ~source:"let z = (1 + 2) == (3 - 0)"
+           ~expected:
+             [
+               {
+                 name = "z";
+                 type_ = None;
+                 value =
+                   Ap
+                     ( Ap
+                         ( Var "==",
+                           Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L)) ),
+                       Ap (Ap (Var "-", Atom (I64 3L)), Atom (I64 0L)) );
+               };
+             ]);
+    ]
+
 let () =
   Alcotest.run "Syntax"
     [
@@ -361,4 +426,5 @@ let () =
       ("lambdas", lambdas);
       ("parentheses", parentheses);
       ("annotations", annotations);
+      ("operators", operators);
     ]
