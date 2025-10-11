@@ -33,9 +33,13 @@ module Var = struct
   include T
 end
 
-exception Rank2TypeUnsupported
-exception UnusedVars of Var.Set.t
-exception MismatchForallVars of (Var.t Seq.t * Var.t Seq.t)
+module Exceptions = struct
+  exception Rank2TypeUnsupported
+  exception UnusedVars of Var.Set.t
+  exception MismatchForallVars of (Var.t Seq.t * Var.t Seq.t)
+end
+
+open Exceptions
 
 module Human = struct
   type t =

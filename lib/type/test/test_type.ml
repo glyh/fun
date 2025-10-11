@@ -15,6 +15,25 @@ let simple =
       test_case "Unit" `Quick (test_type (T.of_human (Con "Unit")) Builtin.unit);
     ]
 
+let malformed =
+  let open Type in
+  Alcotest.
+    [
+      test_case "nested forall rejected" `Quick (fun () ->
+          let rank2 =
+            T.of_human
+              (Human.Forall
+                 ( [ "a" ],
+                   Human.Arrow
+                     ( Var "a",
+                       Human.Forall ([ "b" ], Human.Arrow (Var "b", Var "b")) )
+                 ))
+          in
+          Alcotest.check_raises "reject rank-2 during equality"
+            Type.Exceptions.Rank2TypeUnsupported (fun () ->
+              ignore (T.equal rank2 rank2)));
+    ]
+
 let alpha_equivalence =
   let open Type in
   Alcotest.
@@ -42,4 +61,8 @@ let alpha_equivalence =
 
 let () =
   Alcotest.run "Type"
-    [ ("simple", simple); ("alpha_equivalence", alpha_equivalence) ]
+    [
+      ("simple", simple);
+      ("alpha_equivalence", alpha_equivalence);
+      ("malformed", malformed);
+    ]

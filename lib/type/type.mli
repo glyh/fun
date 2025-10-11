@@ -15,6 +15,12 @@ module Var : sig
   module Map : Map.S with type key = t
 end
 
+module Exceptions : sig
+  exception Rank2TypeUnsupported
+  exception UnusedVars of Var.Set.t
+  exception MismatchForallVars of (Var.t Seq.t * Var.t Seq.t)
+end
+
 module Human : sig
   type t =
     | Forall of string list * t
