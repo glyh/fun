@@ -50,4 +50,4 @@ and skip_comment buf (openings : loc Nonempty_list.t) =
       let top_opening = Nonempty_list.first openings in
       raise (UnterminatedComment { started_at = top_opening })
   | any -> skip_comment buf openings
-  | _ -> failwith "Reaching unreachable code path"
+  | _ -> raise (Exceptions.Unreachable [%here])

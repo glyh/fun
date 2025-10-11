@@ -3,7 +3,6 @@ open Syntax
 
 module Exceptions = struct
   exception UndefinedVariable of Type.Id.t
-  exception Unreachable of Lexing.position
 end
 
 open Exceptions
@@ -18,14 +17,14 @@ let rec eval env = function
   | If { cond; then_; else_ } -> (
       match eval env cond with
       | Norm (Bool b) -> eval env (if b then then_ else else_)
-      | _ -> raise (Unreachable [%here]))
+      | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Ap (f, x) -> (
       match eval env f with
       | Closure (env', param, body) ->
           let x = eval env x in
           let env'' = Type.Id.Map.add param x env' in
           eval env'' body
-      | _ -> raise (Unreachable [%here]))
+      | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Lam ({ name; _ }, body) -> Closure (env, name, body)
   | Let { binding = { recursive; name; value; _ }; body } ->
       assert (not recursive);
