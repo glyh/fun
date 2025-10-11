@@ -1,0 +1,3 @@
+(library
+ (name interp)
+ (libraries core syntax type))

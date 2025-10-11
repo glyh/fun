@@ -2,12 +2,15 @@ open Syntax.Ast
 
 (* REF: https://cs3110.github.io/textbook/chapters/interp/inference.html *)
 
-exception UndefinedVariable of Type.Id.t
-
 type type_env = Type.T.t Type.Id.Map.t
 type type_constraint = Type.T.t * Type.T.t
 
-exception UnificationFailure of type_constraint
+module Exceptions = struct
+  exception UndefinedVariable of Type.Id.t
+  exception UnificationFailure of type_constraint
+end
+
+open Exceptions
 
 module FreeVariables = struct
   let rec of_type : Type.T.t -> Type.Var.Set.t = function

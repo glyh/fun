@@ -21,6 +21,10 @@ let constants =
         (test_typecheck ~source:"42" ~expected:Type.Builtin.i64);
       test_case "unit literal" `Quick
         (test_typecheck ~source:"()" ~expected:Type.Builtin.unit);
+      test_case "true literal" `Quick
+        (test_typecheck ~source:"true" ~expected:Type.Builtin.bool);
+      test_case "false literal" `Quick
+        (test_typecheck ~source:"false" ~expected:Type.Builtin.bool);
     ]
 
 let let_bindings =
@@ -28,6 +32,29 @@ let let_bindings =
     [
       test_case "simple let" `Quick
         (test_typecheck ~source:"let x = 1 in x" ~expected:Type.Builtin.i64);
+      test_case "let bool" `Quick
+        (test_typecheck ~source:"let b = true in b" ~expected:Type.Builtin.bool);
+      test_case "let shadowing" `Quick
+        (test_typecheck ~source:"let x = true in let x = 1 in x"
+           ~expected:Type.Builtin.i64);
+    ]
+
+let conditionals =
+  Alcotest.
+    [
+      test_case "simple if" `Quick
+        (test_typecheck ~source:"if true then 1 else 2"
+           ~expected:Type.Builtin.i64);
+      test_case "if branches must match" `Quick (fun () ->
+          Alcotest.check_raises "type mismatched in AST"
+            (Typecheck.Exceptions.UnificationFailure Type.Builtin.(i64, bool))
+            (fun () ->
+              parse_expr "if true then 1 else false"
+              |> Typecheck.Inference.on_type Type.Id.Map.empty
+              |> ignore));
+      test_case "if nested" `Quick
+        (test_typecheck ~source:"if false then (if true then 1 else 2) else 3"
+           ~expected:Type.Builtin.i64);
     ]
 
 let lambdas =
@@ -39,6 +66,13 @@ let lambdas =
         (test_typecheck ~source:"fun x -> x"
            ~expected:
              (Type.T.of_human (Forall ([ "x" ], Arrow (Var "x", Var "x")))));
+      (* test_case "lambda returning bool" `Quick *)
+      (*   (test_typecheck ~source:"fun x -> true" *)
+      (*      ~expected: *)
+      (*        (Type.T.of_human (Forall ([ "x" ], Arrow (Var "x", Con "bool"))))); *)
+      test_case "apply bool function" `Quick
+        (test_typecheck ~source:"(fun b -> if b then 1 else 0) false"
+           ~expected:Type.Builtin.i64);
     ]
 
 let () =
@@ -46,5 +80,6 @@ let () =
     [
       ("constants", constants);
       ("let_bindings", let_bindings);
+      ("conditionals", conditionals);
       ("lambdas", lambdas);
     ]
