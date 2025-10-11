@@ -42,7 +42,7 @@ module Substitution = struct
   let on_sub ~(sub : t) ~(target : t) : t =
     target |> Type.Var.Map.map (on_type ~sub)
 
-  let on_constraints ~(sub : t) (cs : type_constraint list) =
+  let generate_constraints ~(sub : t) (cs : type_constraint list) =
     cs |> List.map (fun (tlhs, trhs) -> (on_type ~sub tlhs, on_type ~sub trhs))
 
   let on_env ~(sub : t) (env : type_env) = Type.Id.Map.map (on_type ~sub) env
@@ -72,7 +72,7 @@ module Unification = struct
             Type.Var.Map.add s_v s_t
               (many
                  (cs_new
-                 @ Substitution.on_constraints
+                 @ Substitution.generate_constraints
                      ~sub:(Type.Var.Map.singleton s_v s_t)
                      cs))
         | None, cs_new -> many (cs_new @ cs))
@@ -100,7 +100,7 @@ let instantiate = function
   | t -> t
 
 module Inference = struct
-  let rec on_constraints (env : type_env) (e : Expr.t) :
+  let rec generate_constraints (env : type_env) (e : Expr.t) :
       Type.T.t * type_constraint list =
     match e with
     | Atom Unit -> (Type.Builtin.unit, [])
@@ -111,20 +111,20 @@ module Inference = struct
         | None -> raise (UndefinedVariable id)
         | Some scheme -> (instantiate scheme, []))
     | Ap (f, x) ->
-        let f_ty, f_cons = on_constraints env f in
-        let x_ty, x_cons = on_constraints env x in
+        let f_ty, f_cons = generate_constraints env f in
+        let x_ty, x_cons = generate_constraints env x in
         let result_ty = Type.T.Var (Type.Var.generate ()) in
         (result_ty, [ (f_ty, Type.T.Arrow (x_ty, result_ty)) ] @ f_cons @ x_cons)
     | Expr.Let { binding = { recursive; name; type_; value }; body } ->
         assert (recursive = false);
         assert (type_ = None);
-        let value_ty, value_cons = on_constraints env value in
+        let value_ty, value_cons = generate_constraints env value in
         let env_generalized = generalize value_cons env name value_ty in
-        on_constraints env_generalized body
+        generate_constraints env_generalized body
     | Expr.If { cond; then_; else_ } ->
-        let cond_ty, cond_cons = on_constraints env cond in
-        let then_ty, then_cons = on_constraints env then_ in
-        let else_ty, else_cons = on_constraints env else_ in
+        let cond_ty, cond_cons = generate_constraints env cond in
+        let then_ty, then_cons = generate_constraints env then_ in
+        let else_ty, else_cons = generate_constraints env else_ in
         ( then_ty,
           [ (cond_ty, Type.Builtin.bool); (then_ty, else_ty) ]
           @ cond_cons @ then_cons @ else_cons )
@@ -132,12 +132,14 @@ module Inference = struct
         assert (param.type_ = None);
         let var_gen = Type.T.Var (Type.Var.generate ()) in
         let env_new = Type.Id.Map.add param.name var_gen env in
-        let body_type, constraints = on_constraints env_new body in
+        let body_type, constraints = generate_constraints env_new body in
         (Arrow (var_gen, body_type), constraints)
-    | Expr.Annotated _ -> failwith "TODO: implement type annotation"
+    | Expr.Annotated { inner; typ = annotated } ->
+        let inferred, cons = generate_constraints env inner in
+        (inferred, (inferred, annotated) :: cons)
 
-  let on_type (env : type_env) (exp : Expr.t) : Type.T.t =
-    let exp_ty, cons = on_constraints env exp in
+  let on_expr (env : type_env) (exp : Expr.t) : Type.T.t =
+    let exp_ty, cons = generate_constraints env exp in
     let sub = Unification.many cons in
     let type_sub = Substitution.on_type ~sub exp_ty in
     let rest_fvs = FreeVariables.of_type type_sub in

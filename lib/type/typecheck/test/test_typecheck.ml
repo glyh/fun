@@ -11,7 +11,7 @@ let parse_expr s =
 
 let test_typecheck ?(tag = "same type") ~source ~expected () =
   let expr = parse_expr source in
-  let inferred_type = Typecheck.Inference.on_type Type.Id.Map.empty expr in
+  let inferred_type = Typecheck.Inference.on_expr Type.Id.Map.empty expr in
   Alcotest.(check Testable.type_) tag inferred_type expected
 
 let constants =
@@ -50,7 +50,7 @@ let conditionals =
             (Typecheck.Exceptions.UnificationFailure Type.Builtin.(i64, bool))
             (fun () ->
               parse_expr "if true then 1 else false"
-              |> Typecheck.Inference.on_type Type.Id.Map.empty
+              |> Typecheck.Inference.on_expr Type.Id.Map.empty
               |> ignore));
       test_case "if nested" `Quick
         (test_typecheck ~source:"if false then (if true then 1 else 2) else 3"
