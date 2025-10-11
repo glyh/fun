@@ -75,6 +75,48 @@ let lambdas =
            ~expected:Type.Builtin.i64);
     ]
 
+let annotations =
+  Alcotest.
+    [
+      (* === Literals and simple expressions === *)
+      test_case "int annotation" `Quick
+        (test_typecheck ~source:"(1 : I64)" ~expected:Type.Builtin.i64);
+      test_case "bool annotation" `Quick
+        (test_typecheck ~source:"(true : Bool)" ~expected:Type.Builtin.bool);
+      (* test_case "redundant annotation" `Quick *)
+      (*   (test_typecheck ~source:"((1 + 1) : I64)" ~expected:Type.Builtin.i64); *)
+      (* (* === Let bindings === *) *)
+      (* test_case "let with annotation" `Quick *)
+      (*   (test_typecheck ~source:"let x : I64 = 1 in x + 2" *)
+      (*      ~expected:Type.Builtin.i64); *)
+      (* test_case "let binding with polymorphic annotation" `Quick *)
+      (*   (test_typecheck *)
+      (*      ~source:"let id : forall 'a. 'a -> 'a = fun x -> x in id 10" *)
+      (*      ~expected:Type.Builtin.i64); *)
+      (* test_case "let generalization check" `Quick *)
+      (*   (test_typecheck *)
+      (*      ~source:"let id = (fun x -> x : forall 'a. 'a -> 'a) in id true" *)
+      (*      ~expected:Type.Builtin.bool); *)
+      (* test_case "let annotation affecting inference" `Quick *)
+      (*   (test_typecheck ~source:"let f : I64 -> I64 = fun x -> x + 1 in f 10" *)
+      (*      ~expected:Type.Builtin.i64); *)
+      test_case "nested annotated expression" `Quick
+        (test_typecheck ~source:"let x = ((fun y -> y) : I64 -> I64) in x 3"
+           ~expected:Type.Builtin.i64);
+      (* === Conditionals === *)
+      test_case "if with annotated branch" `Quick
+        (test_typecheck ~source:"if true then (1 : I64) else (2 : I64)"
+           ~expected:Type.Builtin.i64);
+      (* === Mixed inference and annotation === *)
+      (* test_case "polymorphic annotation at call site" `Quick *)
+      (*   (test_typecheck *)
+      (*      ~source:"let id = fun x -> x in (id : forall 'a. 'a -> 'a) false" *)
+      (*      ~expected:Type.Builtin.bool); *)
+      (* test_case "mismatched but coerced via annotation" `Quick *)
+      (*   (test_typecheck ~source:"(fun x -> x + 1 : I64 -> I64)" *)
+      (*      ~expected:(Type.T.of_human (Arrow (Con "I64", Con "I64")))); *)
+    ]
+
 let () =
   Alcotest.run "Typecheck"
     [
@@ -82,4 +124,5 @@ let () =
       ("let_bindings", let_bindings);
       ("conditionals", conditionals);
       ("lambdas", lambdas);
+      ("annotations", annotations);
     ]
