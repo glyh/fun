@@ -66,10 +66,10 @@ let lambdas =
         (test_typecheck ~source:"fun x -> x"
            ~expected:
              (Type.T.of_human (Forall ([ "x" ], Arrow (Var "x", Var "x")))));
-      (* test_case "lambda returning bool" `Quick *)
-      (*   (test_typecheck ~source:"fun x -> true" *)
-      (*      ~expected: *)
-      (*        (Type.T.of_human (Forall ([ "x" ], Arrow (Var "x", Con "bool"))))); *)
+      test_case "lambda returning bool" `Quick
+        (test_typecheck ~source:"fun x -> true"
+           ~expected:
+             (Type.T.of_human (Forall ([ "x" ], Arrow (Var "x", Con "Bool")))));
       test_case "apply bool function" `Quick
         (test_typecheck ~source:"(fun b -> if b then 1 else 0) false"
            ~expected:Type.Builtin.i64);
