@@ -16,6 +16,8 @@ let rec token buf =
   | "then" -> THEN
   | "else" -> ELSE
   | "fun" -> FUN
+  | "true" -> TRUE
+  | "false" -> FALSE
   | "->" -> ARROW
   | "()" -> UNIT
   | ";;" -> DOUBLESEMI

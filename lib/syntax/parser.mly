@@ -8,6 +8,7 @@
 %token <int64> I64
 %token LET REC IN IF THEN ELSE FUN 
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
+%token TRUE FALSE
 %token EOF
 
 %right ARROW
@@ -50,6 +51,8 @@ atom:
   | ID { Expr.Var $1 }
   | I64 { Expr.Atom (I64 $1) }
   | UNIT { Expr.Atom Unit }
+  | TRUE { Expr.Atom (Bool true) }
+  | FALSE { Expr.Atom (Bool false) }
   | LPAREN inner=expr typ=option(type_annotation) RPAREN { 
     match typ with
     | None -> inner

@@ -9,9 +9,13 @@ let pp_type_annotated = function
   | Some typ -> Printf.sprintf ": %s " (Type.T.pp typ)
 
 module Atom = struct
-  type t = Unit | I64 of int64 [@@deriving eq]
+  type t = Unit | I64 of int64 | Bool of bool [@@deriving eq]
 
-  let pp = function Unit -> "()" | I64 i -> Int64.to_string i
+  let pp = function
+    | Unit -> "()"
+    | I64 i -> Int64.to_string i
+    | Bool true -> "true"
+    | Bool false -> "false"
 end
 
 module rec Expr : sig

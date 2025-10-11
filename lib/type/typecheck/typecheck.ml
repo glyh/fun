@@ -102,6 +102,7 @@ module Inference = struct
     match e with
     | Atom Unit -> (Type.Builtin.unit, [])
     | Atom (I64 _) -> (Type.Builtin.i64, [])
+    | Atom (Bool _) -> (Type.Builtin.bool, [])
     | Var id -> (
         match Type.Id.Map.find_opt id env with
         | None -> raise (UndefinedVariable id)

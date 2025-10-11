@@ -3,7 +3,7 @@ module Param : sig
 end
 
 module Atom : sig
-  type t = Unit | I64 of int64 [@@deriving eq]
+  type t = Unit | I64 of int64 | Bool of bool [@@deriving eq]
 
   val pp : t -> string
 end
