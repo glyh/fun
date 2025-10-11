@@ -15,6 +15,14 @@ module Var : sig
   module Map : Map.S with type key = t
 end
 
+module Human : sig
+  type t =
+    | Forall of string list * t
+    | Var of string
+    | Con of string
+    | Arrow of t * t
+end
+
 module T : sig
   type t =
     | Forall of Var.Set.t * t
@@ -24,6 +32,8 @@ module T : sig
   [@@deriving eq]
 
   val pp: t -> string
+
+  val of_human: Human.t -> t
 end
 
 module Builtin : sig

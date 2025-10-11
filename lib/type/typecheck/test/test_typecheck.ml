@@ -1,6 +1,6 @@
 module Testable = struct
   let type_ =
-    let pp_binding ppf expr = Fmt.pf ppf "%S" (Type.T.pp expr) in
+    let pp_binding ppf ty = Fmt.pf ppf "%S" (Type.T.pp ty) in
     Alcotest.testable pp_binding Type.T.equal
 end
 

@@ -34,7 +34,6 @@ module Var = struct
 end
 
 exception Rank2TypeUnsupported
-exception DanglingType of Id.t
 exception UnusedVars of Var.Set.t
 exception MismatchForallVars of (Var.t Seq.t * Var.t Seq.t)
 
@@ -71,7 +70,7 @@ module T = struct
       | Var var -> (
           match Id.Map.find_opt var ctx with
           | Some var -> Var var
-          | None -> raise (DanglingType var))
+          | None -> Var (Var.generate ~tag:var ()))
       | Con s -> Con s
       | Arrow (a, b) -> Arrow (of_human_do ctx a, of_human_do ctx b)
     in
