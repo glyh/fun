@@ -2,10 +2,15 @@ module Param : sig
   type t = { name : Type.Id.t; type_ : Type.T.t option } [@@deriving eq]
 end
 
+module Atom : sig
+  type t = Unit | I64 of int64 [@@deriving eq]
+
+  val pp : t -> string
+end
+
 module rec Expr : sig
   type t =
-    | Unit
-    | Num of int
+    | Atom of Atom.t
     | Var of Type.Id.t
     | Ap of t * t
     | Let of { binding : Binding.t; body : t }

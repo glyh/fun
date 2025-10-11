@@ -8,10 +8,15 @@ let pp_type_annotated = function
   | None -> ""
   | Some typ -> Printf.sprintf ": %s " (Type.T.pp typ)
 
+module Atom = struct
+  type t = Unit | I64 of int64 [@@deriving eq]
+
+  let pp = function Unit -> "()" | I64 i -> Int64.to_string i
+end
+
 module rec Expr : sig
   type t =
-    | Unit
-    | Num of int
+    | Atom of Atom.t
     | Var of Id.t
     | Ap of t * t
     | Let of { binding : Binding.t; body : t }
@@ -23,8 +28,7 @@ module rec Expr : sig
   val pp : t -> string
 end = struct
   type t =
-    | Unit
-    | Num of int
+    | Atom of Atom.t
     | Var of Id.t
     | Ap of t * t
     | Let of { binding : Binding.t; body : t }
@@ -34,8 +38,7 @@ end = struct
   [@@deriving eq]
 
   let rec pp = function
-    | Unit -> "()"
-    | Num i -> string_of_int i
+    | Atom a -> Atom.pp a
     | Var id -> id
     | Ap (lhs, rhs) -> pp lhs ^ "(" ^ pp rhs ^ ")"
     | Let { binding; body } ->

@@ -18,7 +18,7 @@ let constants =
   Alcotest.
     [
       test_case "single int" `Quick
-        (test_typecheck ~source:"42" ~expected:Type.Builtin.int);
+        (test_typecheck ~source:"42" ~expected:Type.Builtin.i64);
       test_case "unit literal" `Quick
         (test_typecheck ~source:"()" ~expected:Type.Builtin.unit);
     ]
@@ -27,14 +27,14 @@ let let_bindings =
   Alcotest.
     [
       test_case "simple let" `Quick
-        (test_typecheck ~source:"let x = 1 in x" ~expected:Type.Builtin.int);
+        (test_typecheck ~source:"let x = 1 in x" ~expected:Type.Builtin.i64);
     ]
 
 let lambdas =
   Alcotest.
     [
       test_case "lambda application" `Quick
-        (test_typecheck ~source:"(fun x -> x) 3" ~expected:Type.Builtin.int);
+        (test_typecheck ~source:"(fun x -> x) 3" ~expected:Type.Builtin.i64);
       test_case "identity lambda" `Quick
         (test_typecheck ~source:"fun x -> x"
            ~expected:

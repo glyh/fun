@@ -5,7 +5,7 @@
 %}
 
 %token <string> ID
-%token <int> INT
+%token <int64> I64
 %token LET REC IN IF THEN ELSE FUN 
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
 %token EOF
@@ -48,8 +48,8 @@ binding:
 
 atom: 
   | ID { Expr.Var $1 }
-  | INT { Expr.Num $1 }
-  | UNIT { Expr.Unit }
+  | I64 { Expr.Atom (I64 $1) }
+  | UNIT { Expr.Atom Unit }
   | LPAREN inner=expr typ=option(type_annotation) RPAREN { 
     match typ with
     | None -> inner

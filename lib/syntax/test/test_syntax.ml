@@ -22,15 +22,36 @@ let commments =
       test_case "single comment" `Quick
         (test_syntax ~source:"let x = 1 (* comment *)"
            ~expected:
-             [ { recursive = false; name = "x"; type_ = None; value = Num 1 } ]);
+             [
+               {
+                 recursive = false;
+                 name = "x";
+                 type_ = None;
+                 value = Atom (I64 1L);
+               };
+             ]);
       test_case "nested comment" `Quick
         (test_syntax ~source:"let x = 1 (* outer (* inner *) outer *)"
            ~expected:
-             [ { recursive = false; name = "x"; type_ = None; value = Num 1 } ]);
+             [
+               {
+                 recursive = false;
+                 name = "x";
+                 type_ = None;
+                 value = Atom (I64 1L);
+               };
+             ]);
       test_case "nested comment between tokens" `Quick
         (test_syntax ~source:"let (* a *) x (* b (* c *) d *) = (* e *) 1"
            ~expected:
-             [ { recursive = false; name = "x"; type_ = None; value = Num 1 } ]);
+             [
+               {
+                 recursive = false;
+                 name = "x";
+                 type_ = None;
+                 value = Atom (I64 1L);
+               };
+             ]);
     ]
 
 let let_bindings =
@@ -39,13 +60,30 @@ let let_bindings =
       test_case "simple let binding" `Quick
         (test_syntax ~source:"let x = 42"
            ~expected:
-             [ { recursive = false; name = "x"; type_ = None; value = Num 42 } ]);
+             [
+               {
+                 recursive = false;
+                 name = "x";
+                 type_ = None;
+                 value = Atom (I64 42L);
+               };
+             ]);
       test_case "multiple let bindings" `Quick
         (test_syntax ~source:"let x = 1;; let y = 2"
            ~expected:
              [
-               { recursive = false; name = "x"; type_ = None; value = Num 1 };
-               { recursive = false; name = "y"; type_ = None; value = Num 2 };
+               {
+                 recursive = false;
+                 name = "x";
+                 type_ = None;
+                 value = Atom (I64 1L);
+               };
+               {
+                 recursive = false;
+                 name = "y";
+                 type_ = None;
+                 value = Atom (I64 2L);
+               };
              ]);
       test_case "multiple function bindings" `Quick
         (test_syntax ~source:"let f x = x;; let g y = y"
@@ -82,7 +120,7 @@ let let_bindings =
                                recursive = false;
                                name = "y";
                                type_ = None;
-                               value = Num 1;
+                               value = Atom (I64 1L);
                              };
                            body = Var "y";
                          } );
@@ -118,14 +156,15 @@ let let_bindings =
                      ( { name = "n"; type_ = None },
                        If
                          {
-                           cond = Ap (Ap (Var "eq", Var "n"), Num 0);
-                           then_ = Num 1;
+                           cond = Ap (Ap (Var "eq", Var "n"), Atom (I64 0L));
+                           then_ = Atom (I64 1L);
                            else_ =
                              Ap
                                ( Ap (Var "mul", Var "n"),
                                  Ap
                                    ( Var "fact",
-                                     Ap (Ap (Var "sub", Var "n"), Num 1) ) );
+                                     Ap (Ap (Var "sub", Var "n"), Atom (I64 1L))
+                                   ) );
                          } );
                };
              ]);
@@ -191,7 +230,13 @@ let ifs =
                  recursive = false;
                  name = "x";
                  type_ = None;
-                 value = If { cond = Num 1; then_ = Num 2; else_ = Num 3 };
+                 value =
+                   If
+                     {
+                       cond = Atom (I64 1L);
+                       then_ = Atom (I64 2L);
+                       else_ = Atom (I64 3L);
+                     };
                };
              ]);
       test_case "nested if in else branch" `Quick
@@ -205,9 +250,15 @@ let ifs =
                  value =
                    If
                      {
-                       cond = Num 1;
-                       then_ = Num 2;
-                       else_ = If { cond = Num 3; then_ = Num 4; else_ = Num 5 };
+                       cond = Atom (I64 1L);
+                       then_ = Atom (I64 2L);
+                       else_ =
+                         If
+                           {
+                             cond = Atom (I64 3L);
+                             then_ = Atom (I64 4L);
+                             else_ = Atom (I64 5L);
+                           };
                      };
                };
              ]);
@@ -252,7 +303,14 @@ let parentheses =
       test_case "nested parentheses" `Quick
         (test_syntax ~source:"let x = (((42)))"
            ~expected:
-             [ { recursive = false; name = "x"; type_ = None; value = Num 42 } ]);
+             [
+               {
+                 recursive = false;
+                 name = "x";
+                 type_ = None;
+                 value = Atom (I64 42L);
+               };
+             ]);
     ]
 
 let annotations =
@@ -266,7 +324,7 @@ let annotations =
                  recursive = false;
                  name = "x";
                  type_ = None;
-                 value = Annotated { inner = Num 1; typ = Con "int" };
+                 value = Annotated { inner = Atom (I64 1L); typ = Con "int" };
                };
              ]);
       test_case "annotation on variable" `Quick
@@ -351,7 +409,8 @@ let annotations =
                  value =
                    Annotated
                      {
-                       inner = Annotated { inner = Num 1; typ = Con "int" };
+                       inner =
+                         Annotated { inner = Atom (I64 1L); typ = Con "int" };
                        typ = Con "num";
                      };
                };

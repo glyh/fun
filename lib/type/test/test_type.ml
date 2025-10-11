@@ -11,7 +11,7 @@ let simple =
   let open Type in
   Alcotest.
     [
-      test_case "Int" `Quick (test_type (T.of_human (Con "Int")) Builtin.int);
+      test_case "I64" `Quick (test_type (T.of_human (Con "I64")) Builtin.i64);
       test_case "Unit" `Quick (test_type (T.of_human (Con "Unit")) Builtin.unit);
     ]
 

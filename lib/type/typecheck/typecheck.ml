@@ -100,8 +100,8 @@ module Inference = struct
   let rec on_constraints (env : type_env) (e : Expr.t) :
       Type.T.t * type_constraint list =
     match e with
-    | Unit -> (Type.Builtin.unit, [])
-    | Num _ -> (Type.Builtin.int, [])
+    | Atom Unit -> (Type.Builtin.unit, [])
+    | Atom (I64 _) -> (Type.Builtin.i64, [])
     | Var id -> (
         match Type.Id.Map.find_opt id env with
         | None -> raise (UndefinedVariable id)

@@ -133,7 +133,7 @@ module Builtin = struct
   open T
 
   let unit = Con "Unit"
-  let int = Con "Int"
+  let i64 = Con "I64"
   let bool = Con "Bool"
   let char = Con "Char"
 end

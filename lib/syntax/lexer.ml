@@ -24,8 +24,8 @@ let rec token buf =
   | "=" -> ASSIGN
   | ":" -> COLON
   | Plus '0' .. '9' ->
-      let num = Sedlexing.Utf8.lexeme buf |> int_of_string in
-      INT num
+      let num = Sedlexing.Utf8.lexeme buf |> Int64.of_string in
+      I64 num
   | ( ('a' .. 'z' | 'A' .. 'Z' | '_'),
       Star ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9') ) ->
       ID (Sedlexing.Utf8.lexeme buf)

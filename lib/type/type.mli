@@ -46,7 +46,7 @@ module Builtin : sig
   open T
 
   val unit : t
-  val int : t
+  val i64 : t
   val bool : t
   val char : t
 end
