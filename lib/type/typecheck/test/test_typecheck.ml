@@ -35,6 +35,10 @@ let lambdas =
     [
       test_case "lambda application" `Quick
         (test_typecheck ~source:"(fun x -> x) 3" ~expected:Type.Builtin.int);
+      test_case "identity lambda" `Quick
+        (test_typecheck ~source:"fun x -> x"
+           ~expected:
+             (Type.T.of_human (Forall ([ "x" ], Arrow (Var "x", Var "x")))));
     ]
 
 let () =
