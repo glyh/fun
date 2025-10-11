@@ -1,9 +1,34 @@
+module Id = struct
+  module T = struct
+    type t = string [@@deriving eq, ord]
+  end
+
+  module Map = Map.Make (T)
+  include T
+end
+
 module Var = struct
   module T = struct
-    type t = { id : int; tag : string option } [@@deriving eq, ord, hash]
+    type t = { id : int; tag : string option } [@@deriving eq, ord]
+
+    let show { id; tag } =
+      match tag with
+      | Some tag -> Printf.sprintf "%s.%d" tag id
+      | None -> Printf.sprintf ".%d" id
+
+    let var_uuid = ref 0
+
+    let generate ?tag () =
+      incr var_uuid;
+      { id = !var_uuid; tag }
+
+    let inherit_ var =
+      incr var_uuid;
+      { id = !var_uuid; tag = Some (show var) }
   end
 
   module Set = Set.Make (T)
+  module Map = Map.Make (T)
   include T
 end
 
@@ -23,20 +48,4 @@ module Builtin = struct
   let int = Con "Int"
   let bool = Con "Bool"
   let char = Con "Char"
-end
-
-module Env = struct
-  module Inner = Hashtbl.Make (Var)
-
-  type t = { map : T.t Inner.t; mutable next : int }
-
-  let create () = { map = Inner.create 32; next = 0 }
-
-  let generate env ?tag () =
-    let id = env.next in
-    env.next <- env.next + 1;
-    Var.{ id; tag }
-
-  let find env id = Inner.find_opt env.map id
-  let fold env ~f = Inner.fold f env.map
 end

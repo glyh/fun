@@ -1,6 +1,4 @@
-module Id = struct
-  type t = string [@@deriving eq]
-end
+module Id = Type.Id
 
 module Param = struct
   type t = { name : Id.t; type_ : Type.T.t option } [@@deriving eq]
