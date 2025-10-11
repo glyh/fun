@@ -57,7 +57,19 @@ module T = struct
     | Arrow of t * t
   [@@deriving eq]
 
-  let pp _ = failwith "TODO: Type.T.pp"
+  let rec pp = function
+    | Forall (vars, inner) ->
+        let vars_str =
+          Var.Set.to_seq vars |> Seq.map Var.show |> List.of_seq
+          |> String.concat " "
+        in
+        vars_str ^ " . " ^ pp inner
+    | Var v -> Var.show v
+    | Con ty -> ty
+    | Arrow (a, b) -> (
+        match a with
+        | Arrow _ -> "(" ^ pp a ^ ") -> " ^ pp b
+        | _ -> pp a ^ " -> " ^ pp b)
 
   let of_human input =
     let rec of_human_do ctx = function
