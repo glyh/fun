@@ -8,6 +8,14 @@ type type_constraint = Type.T.t * Type.T.t
 module Exceptions = struct
   exception UndefinedVariable of Type.Id.t
   exception UnificationFailure of type_constraint
+
+  let () =
+    Printexc.register_printer (function
+      | UnificationFailure (t1, t2) ->
+          Some
+            (Printf.sprintf "UnificationFailure (%s, %s)" (Type.T.pp t1)
+               (Type.T.pp t2))
+      | _ -> None)
 end
 
 open Exceptions
