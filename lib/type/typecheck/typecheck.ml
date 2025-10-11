@@ -123,12 +123,7 @@ module Inference = struct
         let x_ty, x_cons = generate_constraints env x in
         let result_ty = Type.T.Var (Type.Var.generate ()) in
         (result_ty, [ (f_ty, Type.T.Arrow (x_ty, result_ty)) ] @ f_cons @ x_cons)
-    | Expr.Let
-        {
-          binding = { recursive; name; type_ = value_ty_annotated; value };
-          body;
-        } ->
-        assert (recursive = false);
+    | Let { binding = { name; type_ = value_ty_annotated; value }; body } ->
         let value_ty_inferred, value_cons = generate_constraints env value in
         let all_cons =
           match value_ty_annotated with
@@ -138,22 +133,26 @@ module Inference = struct
         in
         let env_generalized = generalize all_cons env name value_ty_inferred in
         generate_constraints env_generalized body
-    | Expr.If { cond; then_; else_ } ->
+    | If { cond; then_; else_ } ->
         let cond_ty, cond_cons = generate_constraints env cond in
         let then_ty, then_cons = generate_constraints env then_ in
         let else_ty, else_cons = generate_constraints env else_ in
         ( then_ty,
           [ (cond_ty, Type.Builtin.bool); (then_ty, else_ty) ]
           @ cond_cons @ then_cons @ else_cons )
-    | Expr.Lam (param, body) ->
+    | Lam (param, body) ->
         assert (param.type_ = None);
         let var_gen = Type.T.Var (Type.Var.generate ()) in
         let env_new = Type.Id.Map.add param.name var_gen env in
         let body_type, constraints = generate_constraints env_new body in
         (Arrow (var_gen, body_type), constraints)
-    | Expr.Annotated { inner; typ = annotated } ->
+    | Annotated { inner; typ = annotated } ->
         let inferred, cons = generate_constraints env inner in
         (inferred, (inferred, annotated) :: cons)
+    | Fix inner ->
+        let var_gen = Type.T.Var (Type.Var.generate ()) in
+        let inner_ty, cons = generate_constraints env inner in
+        (var_gen, (Arrow (var_gen, var_gen), inner_ty) :: cons)
 
   let on_expr (env : type_env) (exp : Expr.t) : Type.T.t =
     let exp_ty, cons = generate_constraints env exp in

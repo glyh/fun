@@ -21,37 +21,13 @@ let commments =
     [
       test_case "single comment" `Quick
         (test_syntax ~source:"let x = 1 (* comment *)"
-           ~expected:
-             [
-               {
-                 recursive = false;
-                 name = "x";
-                 type_ = None;
-                 value = Atom (I64 1L);
-               };
-             ]);
+           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
       test_case "nested comment" `Quick
         (test_syntax ~source:"let x = 1 (* outer (* inner *) outer *)"
-           ~expected:
-             [
-               {
-                 recursive = false;
-                 name = "x";
-                 type_ = None;
-                 value = Atom (I64 1L);
-               };
-             ]);
+           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
       test_case "nested comment between tokens" `Quick
         (test_syntax ~source:"let (* a *) x (* b (* c *) d *) = (* e *) 1"
-           ~expected:
-             [
-               {
-                 recursive = false;
-                 name = "x";
-                 type_ = None;
-                 value = Atom (I64 1L);
-               };
-             ]);
+           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
     ]
 
 let let_bindings =
@@ -59,44 +35,24 @@ let let_bindings =
     [
       test_case "simple let binding" `Quick
         (test_syntax ~source:"let x = 42"
-           ~expected:
-             [
-               {
-                 recursive = false;
-                 name = "x";
-                 type_ = None;
-                 value = Atom (I64 42L);
-               };
-             ]);
+           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 42L) } ]);
       test_case "multiple let bindings" `Quick
         (test_syntax ~source:"let x = 1;; let y = 2"
            ~expected:
              [
-               {
-                 recursive = false;
-                 name = "x";
-                 type_ = None;
-                 value = Atom (I64 1L);
-               };
-               {
-                 recursive = false;
-                 name = "y";
-                 type_ = None;
-                 value = Atom (I64 2L);
-               };
+               { name = "x"; type_ = None; value = Atom (I64 1L) };
+               { name = "y"; type_ = None; value = Atom (I64 2L) };
              ]);
       test_case "multiple function bindings" `Quick
         (test_syntax ~source:"let f x = x;; let g y = y"
            ~expected:
              [
                {
-                 recursive = false;
                  name = "f";
                  type_ = None;
                  value = Lam ({ name = "x"; type_ = None }, Var "x");
                };
                {
-                 recursive = false;
                  name = "g";
                  type_ = None;
                  value = Lam ({ name = "y"; type_ = None }, Var "y");
@@ -107,7 +63,6 @@ let let_bindings =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "f";
                  type_ = None;
                  value =
@@ -116,12 +71,7 @@ let let_bindings =
                        Let
                          {
                            binding =
-                             {
-                               recursive = false;
-                               name = "y";
-                               type_ = None;
-                               value = Atom (I64 1L);
-                             };
+                             { name = "y"; type_ = None; value = Atom (I64 1L) };
                            body = Var "y";
                          } );
                };
@@ -131,13 +81,16 @@ let let_bindings =
            ~expected:
              [
                {
-                 recursive = true;
+                 (* recursive = true; *)
                  name = "f";
                  type_ = None;
                  value =
-                   Lam
-                     ( { name = "x"; type_ = Some (Con "Int") },
-                       Lam ({ name = "y"; type_ = None }, Var "x") );
+                   Fix
+                     (Lam
+                        ( { name = "f"; type_ = None },
+                          Lam
+                            ( { name = "x"; type_ = Some (Con "Int") },
+                              Lam ({ name = "y"; type_ = None }, Var "x") ) ));
                };
              ]);
       test_case "recursive function (factorial)" `Quick
@@ -148,24 +101,28 @@ let let_bindings =
            ~expected:
              [
                {
-                 recursive = true;
                  name = "fact";
                  type_ = None;
                  value =
-                   Lam
-                     ( { name = "n"; type_ = None },
-                       If
-                         {
-                           cond = Ap (Ap (Var "eq", Var "n"), Atom (I64 0L));
-                           then_ = Atom (I64 1L);
-                           else_ =
-                             Ap
-                               ( Ap (Var "mul", Var "n"),
-                                 Ap
-                                   ( Var "fact",
-                                     Ap (Ap (Var "sub", Var "n"), Atom (I64 1L))
-                                   ) );
-                         } );
+                   Fix
+                     (Lam
+                        ( { name = "fact"; type_ = None },
+                          Lam
+                            ( { name = "n"; type_ = None },
+                              If
+                                {
+                                  cond =
+                                    Ap (Ap (Var "eq", Var "n"), Atom (I64 0L));
+                                  then_ = Atom (I64 1L);
+                                  else_ =
+                                    Ap
+                                      ( Ap (Var "mul", Var "n"),
+                                        Ap
+                                          ( Var "fact",
+                                            Ap
+                                              ( Ap (Var "sub", Var "n"),
+                                                Atom (I64 1L) ) ) );
+                                } ) ));
                };
              ]);
     ]
@@ -178,7 +135,6 @@ let applications =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value = Ap (Ap (Var "a", Var "b"), Var "c");
@@ -189,7 +145,6 @@ let applications =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value = Ap (Ap (Var "f", Var "y"), Var "z");
@@ -200,7 +155,6 @@ let applications =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value = Ap (Var "f", Ap (Var "y", Var "z"));
@@ -211,7 +165,6 @@ let applications =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value = Ap (Ap (Var "f", Var "x"), Ap (Var "g", Var "y"));
@@ -227,7 +180,6 @@ let ifs =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value =
@@ -244,7 +196,6 @@ let ifs =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value =
@@ -272,7 +223,6 @@ let lambdas =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "f";
                  type_ = None;
                  value =
@@ -286,7 +236,6 @@ let lambdas =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "f";
                  type_ = None;
                  value =
@@ -302,15 +251,7 @@ let parentheses =
     [
       test_case "nested parentheses" `Quick
         (test_syntax ~source:"let x = (((42)))"
-           ~expected:
-             [
-               {
-                 recursive = false;
-                 name = "x";
-                 type_ = None;
-                 value = Atom (I64 42L);
-               };
-             ]);
+           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 42L) } ]);
     ]
 
 let annotations =
@@ -321,7 +262,6 @@ let annotations =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value = Annotated { inner = Atom (I64 1L); typ = Con "int" };
@@ -332,7 +272,6 @@ let annotations =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "y";
                  type_ = None;
                  value = Annotated { inner = Var "x"; typ = Con "bool" };
@@ -343,7 +282,6 @@ let annotations =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "f";
                  type_ = None;
                  value =
@@ -355,7 +293,6 @@ let annotations =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value =
@@ -372,7 +309,6 @@ let annotations =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "f";
                  type_ = None;
                  value =
@@ -388,7 +324,6 @@ let annotations =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value =
@@ -403,7 +338,6 @@ let annotations =
            ~expected:
              [
                {
-                 recursive = false;
                  name = "x";
                  type_ = None;
                  value =

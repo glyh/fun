@@ -27,6 +27,7 @@ module rec Expr : sig
     | If of { cond : t; then_ : t; else_ : t }
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.T.t }
+    | Fix of t
   [@@deriving eq]
 
   val pp : t -> string
@@ -39,6 +40,7 @@ end = struct
     | If of { cond : t; then_ : t; else_ : t }
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.T.t }
+    | Fix of t
   [@@deriving eq]
 
   let rec pp = function
@@ -55,29 +57,19 @@ end = struct
           (pp body)
     | Annotated { inner; typ } ->
         Printf.sprintf "(%s : %s)" (pp inner) (Type.T.pp typ)
+    | Fix inner -> Printf.sprintf "fix (%s)" (pp inner)
 end
 
 and Binding : sig
-  type t = {
-    recursive : bool;
-    name : Id.t;
-    type_ : Type.T.t option;
-    value : Expr.t;
-  }
+  type t = { name : Id.t; type_ : Type.T.t option; value : Expr.t }
   [@@deriving eq]
 
   val pp : t -> string
 end = struct
-  type t = {
-    recursive : bool;
-    name : Id.t;
-    type_ : Type.T.t option;
-    value : Expr.t;
-  }
+  type t = { name : Id.t; type_ : Type.T.t option; value : Expr.t }
   [@@deriving eq]
 
-  let pp { recursive; name; type_; value } =
-    let rec_str = if recursive then "rec " else "" in
-    Printf.sprintf "let %s%s %s= (%s)" rec_str name (pp_type_annotated type_)
+  let pp { name; type_; value } =
+    Printf.sprintf "let %s %s= (%s)" name (pp_type_annotated type_)
       (Expr.pp value)
 end

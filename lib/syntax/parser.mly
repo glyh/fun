@@ -41,10 +41,16 @@ param:
 
 binding: 
   | LET rec_=option(REC) name=ID params=list(param) ASSIGN rhs=expr {
-    let value =
+    let lam_inner =
       List.fold_right (fun param acc -> Expr.Lam (param, acc)) params rhs
     in
-    Binding.{ recursive = Option.is_some rec_; name; type_ = None; value }
+    let lam_wrapped = 
+      if Option.is_some rec_ then
+        Expr.Fix(Lam(Param.{name; type_ = None }, lam_inner))
+      else 
+        lam_inner
+    in
+    Binding.{ name; type_ = None; value = lam_wrapped }
   }
 
 atom: 
