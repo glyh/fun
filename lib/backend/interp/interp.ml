@@ -3,10 +3,12 @@ open Syntax
 
 module Exceptions = struct
   exception UndefinedVariable of Type.Id.t
+  exception Unreachable of Lexing.position
 end
 
 open Exceptions
 
+(* NOTE: this function expects the program is type checked *)
 let rec eval env = function
   | Ast.Expr.Atom a -> Value.Norm a
   | Var x -> (
@@ -15,24 +17,18 @@ let rec eval env = function
       | Some v -> v)
   | If { cond; then_; else_ } -> (
       match eval env cond with
-      | VNum 0 -> eval env else_
-      | VNum _ -> eval env then_
-      | _ -> failwith "condition must be an integer")
-  | Ap (f, arg) -> (
+      | Norm (Bool b) -> eval env (if b then then_ else else_)
+      | _ -> raise (Unreachable [%here]))
+  | Ap (f, x) -> (
       match eval env f with
-      | VClosure (env', param, body) ->
-          let v = eval env arg in
-          let env'' = Env.add param v env' in
+      | Closure (env', param, body) ->
+          let x = eval env x in
+          let env'' = Type.Id.Map.add param x env' in
           eval env'' body
-      | _ -> failwith "application to non-function")
-  | Lam ((param, _typ), body) -> VClosure (env, param, body)
+      | _ -> raise (Unreachable [%here]))
+  | Lam ({ name; _ }, body) -> Closure (env, name, body)
   | Let { binding = { recursive; name; value; _ }; body } ->
-      if recursive then (
-        let rec_env = ref Env.empty in
-        let v = VClosure (!rec_env, name, value) in
-        rec_env := Env.add name v env;
-        eval !rec_env body)
-      else
-        let v = eval env value in
-        eval (Env.add name v env) body
+      assert (not recursive);
+      let v = eval env value in
+      eval (Type.Id.Map.add name v env) body
   | Annotated { inner; _ } -> eval env inner

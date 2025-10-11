@@ -35,6 +35,7 @@
    (>= 6.0.2))
   (ppx_deriving_yojson
    (>= 3.9.1))
+  (ppx_here (>= v0.17.0))
   ; Develop setup
   (alcotest 
    (and
