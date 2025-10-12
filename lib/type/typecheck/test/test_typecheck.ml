@@ -99,12 +99,12 @@ let annotations =
         (test_typecheck ~source:"(1 : I64)" ~expected:Type.Builtin.i64);
       test_case "bool annotation" `Quick
         (test_typecheck ~source:"(true : Bool)" ~expected:Type.Builtin.bool);
-      (* test_case "redundant annotation" `Quick *)
-      (*   (test_typecheck ~source:"((1 + 1) : I64)" ~expected:Type.Builtin.i64); *)
-      (* (* === Let bindings === *) *)
-      (* test_case "let with annotation" `Quick *)
-      (*   (test_typecheck ~source:"let x : I64 = 1 in x + 2" *)
-      (*      ~expected:Type.Builtin.i64); *)
+      test_case "redundant annotation" `Quick
+        (test_typecheck ~source:"((1 + 1) : I64)" ~expected:Type.Builtin.i64);
+      (* === Let bindings === *)
+      test_case "let with annotation" `Quick
+        (test_typecheck ~source:"let x : I64 = 1 in x + 2"
+           ~expected:Type.Builtin.i64);
       (* test_case "let binding with polymorphic annotation" `Quick *)
       (*   (test_typecheck *)
       (*      ~source:"let id : forall 'a. 'a -> 'a = fun x -> x in id 10" *)

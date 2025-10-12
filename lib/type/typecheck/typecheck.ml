@@ -108,8 +108,6 @@ module Unification = struct
 
   let many (cs : Constraint.t list) : Substitution.t =
     let rec many_do cs subs =
-      let cs_str = List.map Constraint.pp cs |> String.concat ", " in
-      Printf.printf "current constraints: %s\n" cs_str;
       match cs with
       | [] -> subs
       | c :: cs_rest ->
@@ -118,8 +116,6 @@ module Unification = struct
             match sub_opt with
             | None -> (cs_rest @ new_constraints, subs)
             | Some sub ->
-                Printf.printf "solved substitution: %s\n" (Substitution.pp sub);
-
                 ( Substitution.on_constraints ~sub cs_rest @ new_constraints,
                   sub :: subs )
           in
@@ -184,13 +180,6 @@ module Inference = struct
           :: f_cons
           @ x_cons
         in
-        let all_cons_str =
-          List.fold_left
-            (fun acc c -> Printf.sprintf "%s, %s" acc (Constraint.pp c))
-            "" all_cons
-        in
-        Printf.printf "%s : %s under %s\n" (Expr.pp e) (Type.T.pp result_ty)
-          all_cons_str;
         (result_ty, all_cons)
     | Let { binding = { name; type_ = value_ty_annotated; value }; body } ->
         let value_ty_inferred, value_cons = generate_constraints env value in
@@ -201,16 +190,7 @@ module Inference = struct
               { lhs = value_ty_annotated; rhs = value_ty_inferred }
               :: value_cons
         in
-        let all_cons_str =
-          List.fold_left
-            (fun acc c -> Printf.sprintf "%s, %s" acc (Constraint.pp c))
-            "" all_cons
-        in
-        Printf.printf "let ty:%s all_cons: %s\n"
-          (Type.T.pp value_ty_inferred)
-          all_cons_str;
         let env_generalized = generalize all_cons env name value_ty_inferred in
-        Printf.printf "generalized env: %s\n" (TypeEnv.pp env_generalized);
         generate_constraints env_generalized body
     | If { cond; then_; else_ } ->
         let cond_ty, cond_cons = generate_constraints env cond in
@@ -239,13 +219,6 @@ module Inference = struct
 
   let on_expr (env : TypeEnv.t) (exp : Expr.t) : Type.T.t =
     let exp_ty, cons = generate_constraints env exp in
-    let all_cons_str =
-      List.fold_left
-        (fun acc c -> Printf.sprintf "%s, %s" acc (Constraint.pp c))
-        "" cons
-    in
-    Printf.printf "Ty: %s\nAll cons: %s\n" (Type.T.pp exp_ty) all_cons_str;
-    flush Out_channel.stdout;
     let sub = Unification.many cons in
     let type_sub = Substitution.on_type ~sub exp_ty in
     let rest_fvs = FreeVariables.of_type type_sub in
