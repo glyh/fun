@@ -113,9 +113,9 @@ let annotations =
       (*   (test_typecheck *)
       (*      ~source:"let id = (fun x -> x : forall 'a. 'a -> 'a) in id true" *)
       (*      ~expected:Type.Builtin.bool); *)
-      (* test_case "let annotation affecting inference" `Quick *)
-      (*   (test_typecheck ~source:"let f : I64 -> I64 = fun x -> x + 1 in f 10" *)
-      (*      ~expected:Type.Builtin.i64); *)
+      test_case "let annotation affecting inference" `Quick
+        (test_typecheck ~source:"let f : I64 -> I64 = fun x -> x + 1 in f 10"
+           ~expected:Type.Builtin.i64);
       test_case "nested annotated expression" `Quick
         (test_typecheck ~source:"let x = ((fun y -> y) : I64 -> I64) in x 3"
            ~expected:Type.Builtin.i64);
@@ -128,9 +128,9 @@ let annotations =
       (*   (test_typecheck *)
       (*      ~source:"let id = fun x -> x in (id : forall 'a. 'a -> 'a) false" *)
       (*      ~expected:Type.Builtin.bool); *)
-      (* test_case "mismatched but coerced via annotation" `Quick *)
-      (*   (test_typecheck ~source:"(fun x -> x + 1 : I64 -> I64)" *)
-      (*      ~expected:(Type.T.of_human (Arrow (Con "I64", Con "I64")))); *)
+      test_case "mismatched but coerced via annotation" `Quick
+        (test_typecheck ~source:"(fun x -> x + 1 : I64 -> I64)"
+           ~expected:(Type.T.of_human (Arrow (Con "I64", Con "I64"))));
     ]
 
 let () =
