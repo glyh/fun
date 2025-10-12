@@ -45,7 +45,7 @@ end = struct
 
   let rec pp = function
     | Atom a -> Atom.pp a
-    | Var id -> id
+    | Var id -> Type.Id.pp id
     | Ap (lhs, rhs) -> pp lhs ^ "(" ^ pp rhs ^ ")"
     | Let { binding; body } ->
         Printf.sprintf "%s in %s" (Binding.pp binding) (pp body)
@@ -53,8 +53,8 @@ end = struct
         Printf.sprintf "if (%s) then (%s) else (%s)" (pp cond) (pp then_)
           (pp else_)
     | Lam ({ name; type_ }, body) ->
-        Printf.sprintf "fun %s%s -> (%s)" name (pp_type_annotated type_)
-          (pp body)
+        Printf.sprintf "fun %s%s -> (%s)" (Type.Id.pp name)
+          (pp_type_annotated type_) (pp body)
     | Annotated { inner; typ } ->
         Printf.sprintf "(%s : %s)" (pp inner) (Type.T.pp typ)
     | Fix inner -> Printf.sprintf "fix (%s)" (pp inner)
@@ -70,6 +70,6 @@ end = struct
   [@@deriving eq]
 
   let pp { name; type_; value } =
-    Printf.sprintf "let %s %s= (%s)" name (pp_type_annotated type_)
+    Printf.sprintf "let %s %s= (%s)" (Type.Id.pp name) (pp_type_annotated type_)
       (Expr.pp value)
 end

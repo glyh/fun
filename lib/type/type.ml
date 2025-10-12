@@ -1,6 +1,11 @@
+open Ppx_hash_lib.Std.Hash.Builtin
+
 module Id = struct
   module T = struct
     type t = string [@@deriving eq, ord]
+
+    let all_symbols = String.for_all (String.contains "+-*/=<>!@#$%^&|~")
+    let pp s = if all_symbols s then "`" ^ s ^ "`" else s
   end
 
   module Map = Map.Make (T)
@@ -11,10 +16,10 @@ module Var = struct
   module T = struct
     type t = { id : int; tag : string option } [@@deriving eq, ord, hash]
 
-    let show { id; tag } =
+    let pp { id; tag } =
       match tag with
-      | Some tag -> Printf.sprintf "%s.%d" tag id
-      | None -> Printf.sprintf ".%d" id
+      | Some tag -> Printf.sprintf "%s_%d" tag id
+      | None -> Printf.sprintf "_%d" id
 
     let var_uuid = ref 0
 
@@ -24,7 +29,7 @@ module Var = struct
 
     let inherit_ var =
       incr var_uuid;
-      { id = !var_uuid; tag = Some (show var) }
+      { id = !var_uuid; tag = Some (pp var) }
   end
 
   module Set = Set.Make (T)
@@ -53,18 +58,18 @@ module T = struct
   type t =
     | Forall of Var.Set.t * t
     | Var of Var.t
-    | Con of string
+    | Con of Id.t
     | Arrow of t * t
   [@@deriving eq]
 
   let rec pp = function
     | Forall (vars, inner) ->
         let vars_str =
-          Var.Set.to_seq vars |> Seq.map Var.show |> List.of_seq
+          Var.Set.to_seq vars |> Seq.map Var.pp |> List.of_seq
           |> String.concat " "
         in
         vars_str ^ " . " ^ pp inner
-    | Var v -> Var.show v
+    | Var v -> Var.pp v
     | Con ty -> ty
     | Arrow (a, b) -> (
         match a with

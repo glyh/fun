@@ -2,4 +2,4 @@
  (name typecheck)
  (libraries type syntax)
  (preprocess
-  (pps ppx_deriving.std ppx_deriving.ord ppx_deriving_hash ppx_deriving_yojson)))
+  (pps ppx_deriving.std ppx_deriving.ord ppx_hash ppx_deriving_yojson ppx_here)))

@@ -4,18 +4,19 @@
 
 %}
 
-%token <string> ID
+%token <Type.Id.t> ID
 %token <int64> I64
 %token LET REC IN IF THEN ELSE FUN 
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
 %token TRUE FALSE
 %token EOF
-%token ADD SUB EQ
+%token ADD SUB MUL EQ
 
 %right ARROW
 
 %left EQ
 %left ADD SUB
+%left MUL
 
 %start <Binding.t list> toplevel_eof
 %start <Expr.t> expr_eof
@@ -67,7 +68,7 @@ expr_stmt:
   | IF cond=expr THEN then_branch=expr ELSE else_branch=expr {
       Expr.If { cond; then_ = then_branch; else_ = else_branch }
     }
-  | FUN params=list(param) ARROW body=expr {
+  | FUN params=nonempty_list(param) ARROW body=expr {
       List.fold_right (fun param acc -> Expr.Lam (param, acc)) params body
     }
   | expr_expr { $1 }
@@ -75,6 +76,7 @@ expr_stmt:
 %inline bin_op:
   | ADD { "+" }
   | SUB { "-" }
+  | MUL { "*" }
   | EQ { "==" }
   
 expr_expr: 

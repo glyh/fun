@@ -26,8 +26,8 @@ let rec eval env = function
           eval env'' body
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Lam ({ name; _ }, body) -> Closure (env, name, body)
-  | Let { binding = { recursive; name; value; _ }; body } ->
-      assert (not recursive);
+  | Let { binding = { name; value; _ }; body } ->
       let v = eval env value in
       eval (Type.Id.Map.add name v env) body
   | Annotated { inner; _ } -> eval env inner
+  | Fix _ -> failwith "Unimplemented"

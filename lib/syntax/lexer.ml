@@ -7,6 +7,14 @@ type loc = int * int
 exception UnexpectedToken of { token : string; location : loc }
 exception UnterminatedComment of { started_at : loc }
 
+let () =
+  Printexc.register_printer (function
+    | UnexpectedToken { token; location = start, end_ } ->
+        Some
+          (Printf.sprintf "UnexpectedToken {token = `%s`, location = (%d, %d)}"
+             token start end_)
+    | _ -> None)
+
 let rec token buf =
   match%sedlex buf with
   | "let" -> LET
@@ -28,6 +36,7 @@ let rec token buf =
   | ":" -> COLON
   | "+" -> ADD
   | "-" -> SUB
+  | "*" -> MUL
   | Plus '0' .. '9' ->
       let num = Sedlexing.Utf8.lexeme buf |> Int64.of_string in
       I64 num

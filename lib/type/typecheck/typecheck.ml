@@ -2,19 +2,44 @@ open Syntax.Ast
 
 (* REF: https://cs3110.github.io/textbook/chapters/interp/inference.html *)
 
-type type_env = Type.T.t Type.Id.Map.t
-type type_constraint = Type.T.t * Type.T.t
+module TypeEnv = struct
+  type t = Type.T.t Type.Id.Map.t
+
+  let default =
+    Type.Id.Map.of_list
+      Type.Builtin.
+        [
+          ( "==",
+            Type.T.of_human
+              (Forall ([ "x" ], Arrow (Var "x", Arrow (Var "x", Con "Bool"))))
+          );
+          ("+", Type.T.Arrow (i64, Arrow (i64, i64)));
+          ("-", Type.T.Arrow (i64, Arrow (i64, i64)));
+          ("*", Type.T.Arrow (i64, Arrow (i64, i64)));
+        ]
+
+  let pp env =
+    Type.Id.Map.to_list env
+    |> List.map (fun (id, ty) ->
+           Printf.sprintf "%s: %s" (Type.Id.pp id) (Type.T.pp ty))
+    |> String.concat ", " |> Printf.sprintf "{ %s } "
+end
+
+module Constraint = struct
+  type t = { lhs : Type.T.t; rhs : Type.T.t }
+
+  let pp { lhs; rhs } =
+    Printf.sprintf "[%s = %s]" (Type.T.pp lhs) (Type.T.pp rhs)
+end
 
 module Exceptions = struct
   exception UndefinedVariable of Type.Id.t
-  exception UnificationFailure of type_constraint
+  exception UnificationFailure of Constraint.t
 
   let () =
     Printexc.register_printer (function
-      | UnificationFailure (t1, t2) ->
-          Some
-            (Printf.sprintf "UnificationFailure (%s, %s)" (Type.T.pp t1)
-               (Type.T.pp t2))
+      | UnificationFailure c ->
+          Some (Printf.sprintf "UnificationFailure (%s)" (Constraint.pp c))
       | _ -> None)
 end
 
@@ -27,7 +52,7 @@ module FreeVariables = struct
     | Arrow (lhs, rhs) -> Type.Var.Set.union (of_type lhs) (of_type rhs)
     | Type.T.Con _ -> Type.Var.Set.empty
 
-  let of_env (env : type_env) : Type.Var.Set.t =
+  let of_env (env : TypeEnv.t) : Type.Var.Set.t =
     Type.Id.Map.fold
       (fun _ v acc -> Type.Var.Set.union acc (of_type v))
       env Type.Var.Set.empty
@@ -38,6 +63,12 @@ module Substitution = struct
 
   let empty = Type.Var.Map.empty
 
+  let pp sub =
+    Type.Var.Map.to_list sub
+    |> List.map (fun (var, ty) ->
+           Printf.sprintf "%s -> %s" (Type.Var.pp var) (Type.T.pp ty))
+    |> String.concat ", " |> Printf.sprintf "{ %s } "
+
   let rec on_type ~(sub : t) (ty : Type.T.t) =
     let recurse = on_type ~sub in
     match ty with
@@ -47,46 +78,72 @@ module Substitution = struct
     | Arrow (lhs, rhs) -> Arrow (recurse lhs, recurse rhs)
     | Con _ as default -> default
 
-  let on_sub ~(sub : t) ~(target : t) : t =
-    target |> Type.Var.Map.map (on_type ~sub)
+  let on_sub ~(src : t) (dest : t) : t =
+    Type.Var.Map.map (on_type ~sub:src) dest
 
-  let generate_constraints ~(sub : t) (cs : type_constraint list) =
-    cs |> List.map (fun (tlhs, trhs) -> (on_type ~sub tlhs, on_type ~sub trhs))
+  let on_constraints ~(sub : t) (cs : Constraint.t list) =
+    List.map
+      (fun Constraint.{ lhs; rhs } ->
+        Constraint.{ lhs = on_type ~sub lhs; rhs = on_type ~sub rhs })
+      cs
 
-  let on_env ~(sub : t) (env : type_env) = Type.Id.Map.map (on_type ~sub) env
+  let on_env ~(sub : t) (env : TypeEnv.t) = Type.Id.Map.map (on_type ~sub) env
 end
 
 module Unification = struct
-  let rec one (c : type_constraint) :
-      (Type.Var.t * Type.T.t) option * type_constraint list =
+  let one (c : Constraint.t) : Substitution.t option * Constraint.t list =
     match c with
-    | lhs, rhs when Type.T.equal lhs rhs -> (None, [])
-    | Forall (vs1, inner1), Forall (vs2, inner2) ->
-        if Type.Var.Set.equal vs1 vs2 then one (inner1, inner2)
-        else raise (UnificationFailure c)
-    | Var v, ty | ty, Var v ->
-        let fvs_rhs = FreeVariables.of_type ty in
-        if Type.Var.Set.mem v fvs_rhs then raise (UnificationFailure c)
-        else (Some (v, ty), [])
-    | Arrow (l1, l2), Arrow (r1, r2) -> (None, [ (l1, r1); (l2, r2) ])
+    | { lhs; rhs } when Type.T.equal lhs rhs -> (None, [])
+    | { lhs = Forall _; rhs = Forall _ } ->
+        failwith
+          "Should not unify two forall types directly as we don't support \
+           rank2 types, yet."
+    | { lhs = Var v; rhs = ty } | { lhs = ty; rhs = Var v } ->
+        let fvs_ty = FreeVariables.of_type ty in
+        if Type.Var.Set.mem v fvs_ty then raise (UnificationFailure c)
+        else (Some (Type.Var.Map.singleton v ty), [])
+    | { lhs = Arrow (l1, l2); rhs = Arrow (r1, r2) } ->
+        (None, [ { lhs = l1; rhs = r1 }; { lhs = l2; rhs = r2 } ])
     | _ -> raise (UnificationFailure c)
 
-  let rec many (cs : type_constraint list) : Substitution.t =
-    match cs with
-    | [] -> Substitution.empty
-    | c :: cs -> (
-        match one c with
-        | Some (s_v, s_t), cs_new ->
-            Type.Var.Map.add s_v s_t
-              (many
-                 (cs_new
-                 @ Substitution.generate_constraints
-                     ~sub:(Type.Var.Map.singleton s_v s_t)
-                     cs))
-        | None, cs_new -> many (cs_new @ cs))
+  let many (cs : Constraint.t list) : Substitution.t =
+    let rec many_do cs subs =
+      let cs_str = List.map Constraint.pp cs |> String.concat ", " in
+      Printf.printf "current constraints: %s\n" cs_str;
+      match cs with
+      | [] -> subs
+      | c :: cs_rest ->
+          let sub_opt, new_constraints = one c in
+          let cs_next, result_next =
+            match sub_opt with
+            | None -> (cs_rest @ new_constraints, subs)
+            | Some sub ->
+                Printf.printf "solved substitution: %s\n" (Substitution.pp sub);
+
+                ( Substitution.on_constraints ~sub cs_rest @ new_constraints,
+                  sub :: subs )
+          in
+          many_do cs_next result_next
+    in
+    let rec collect_subs_do result subs =
+      match subs with
+      | [] -> result
+      | sub :: subs_rest ->
+          let subs_rest_fixed =
+            List.map (Substitution.on_sub ~src:sub) subs_rest
+          in
+          let result =
+            Type.Var.Map.union
+              (fun _ _ _ -> raise (Std.Exceptions.Unreachable [%here]))
+              result sub
+          in
+          collect_subs_do result subs_rest_fixed
+    in
+
+    many_do cs [] |> collect_subs_do Type.Var.Map.empty
 end
 
-let generalize (cs : type_constraint list) (env : type_env) (var : Type.Id.t)
+let generalize (cs : Constraint.t list) (env : TypeEnv.t) (var : Type.Id.t)
     (ty : Type.T.t) =
   let sub_solved = Unification.many cs in
   let env_new = Substitution.on_env ~sub:sub_solved env in
@@ -108,8 +165,8 @@ let instantiate = function
   | t -> t
 
 module Inference = struct
-  let rec generate_constraints (env : type_env) (e : Expr.t) :
-      Type.T.t * type_constraint list =
+  let rec generate_constraints (env : TypeEnv.t) (e : Expr.t) :
+      Type.T.t * Constraint.t list =
     match e with
     | Atom Unit -> (Type.Builtin.unit, [])
     | Atom (I64 _) -> (Type.Builtin.i64, [])
@@ -122,24 +179,48 @@ module Inference = struct
         let f_ty, f_cons = generate_constraints env f in
         let x_ty, x_cons = generate_constraints env x in
         let result_ty = Type.T.Var (Type.Var.generate ()) in
-        (result_ty, [ (f_ty, Type.T.Arrow (x_ty, result_ty)) ] @ f_cons @ x_cons)
+        let all_cons =
+          Constraint.{ lhs = f_ty; rhs = Type.T.Arrow (x_ty, result_ty) }
+          :: f_cons
+          @ x_cons
+        in
+        let all_cons_str =
+          List.fold_left
+            (fun acc c -> Printf.sprintf "%s, %s" acc (Constraint.pp c))
+            "" all_cons
+        in
+        Printf.printf "%s : %s under %s\n" (Expr.pp e) (Type.T.pp result_ty)
+          all_cons_str;
+        (result_ty, all_cons)
     | Let { binding = { name; type_ = value_ty_annotated; value }; body } ->
         let value_ty_inferred, value_cons = generate_constraints env value in
         let all_cons =
           match value_ty_annotated with
           | None -> value_cons
           | Some value_ty_annotated ->
-              (value_ty_annotated, value_ty_inferred) :: value_cons
+              { lhs = value_ty_annotated; rhs = value_ty_inferred }
+              :: value_cons
         in
+        let all_cons_str =
+          List.fold_left
+            (fun acc c -> Printf.sprintf "%s, %s" acc (Constraint.pp c))
+            "" all_cons
+        in
+        Printf.printf "let ty:%s all_cons: %s\n"
+          (Type.T.pp value_ty_inferred)
+          all_cons_str;
         let env_generalized = generalize all_cons env name value_ty_inferred in
+        Printf.printf "generalized env: %s\n" (TypeEnv.pp env_generalized);
         generate_constraints env_generalized body
     | If { cond; then_; else_ } ->
         let cond_ty, cond_cons = generate_constraints env cond in
         let then_ty, then_cons = generate_constraints env then_ in
         let else_ty, else_cons = generate_constraints env else_ in
         ( then_ty,
-          [ (cond_ty, Type.Builtin.bool); (then_ty, else_ty) ]
-          @ cond_cons @ then_cons @ else_cons )
+          Constraint.{ lhs = cond_ty; rhs = Type.Builtin.bool }
+          :: { lhs = then_ty; rhs = else_ty }
+          :: cond_cons
+          @ then_cons @ else_cons )
     | Lam (param, body) ->
         assert (param.type_ = None);
         let var_gen = Type.T.Var (Type.Var.generate ()) in
@@ -148,14 +229,23 @@ module Inference = struct
         (Arrow (var_gen, body_type), constraints)
     | Annotated { inner; typ = annotated } ->
         let inferred, cons = generate_constraints env inner in
-        (inferred, (inferred, annotated) :: cons)
+        (inferred, Constraint.{ lhs = inferred; rhs = annotated } :: cons)
     | Fix inner ->
-        let var_gen = Type.T.Var (Type.Var.generate ()) in
+        (* fix: (a -> b) -> b *)
+        let a = Type.T.Var (Type.Var.generate ()) in
+        let b = Type.T.Var (Type.Var.generate ()) in
         let inner_ty, cons = generate_constraints env inner in
-        (var_gen, (Arrow (var_gen, var_gen), inner_ty) :: cons)
+        (b, Constraint.{ lhs = Arrow (a, b); rhs = inner_ty } :: cons)
 
-  let on_expr (env : type_env) (exp : Expr.t) : Type.T.t =
+  let on_expr (env : TypeEnv.t) (exp : Expr.t) : Type.T.t =
     let exp_ty, cons = generate_constraints env exp in
+    let all_cons_str =
+      List.fold_left
+        (fun acc c -> Printf.sprintf "%s, %s" acc (Constraint.pp c))
+        "" cons
+    in
+    Printf.printf "Ty: %s\nAll cons: %s\n" (Type.T.pp exp_ty) all_cons_str;
+    flush Out_channel.stdout;
     let sub = Unification.many cons in
     let type_sub = Substitution.on_type ~sub exp_ty in
     let rest_fvs = FreeVariables.of_type type_sub in

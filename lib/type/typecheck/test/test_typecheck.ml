@@ -11,8 +11,11 @@ let parse_expr s =
 
 let test_typecheck ?(tag = "same type") ~source ~expected () =
   let expr = parse_expr source in
-  let inferred_type = Typecheck.Inference.on_expr Type.Id.Map.empty expr in
-  Alcotest.(check Testable.type_) tag inferred_type expected
+  prerr_endline (Syntax.Ast.Expr.pp expr);
+  let inferred_type =
+    Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr
+  in
+  Alcotest.(check Testable.type_) tag expected inferred_type
 
 let constants =
   Alcotest.
@@ -37,17 +40,17 @@ let let_bindings =
       test_case "let shadowing" `Quick
         (test_typecheck ~source:"let x = true in let x = 1 in x"
            ~expected:Type.Builtin.i64);
-      (* test_case "simple recursive function" `Quick *)
-      (*   (test_typecheck *)
-      (*      ~source: *)
-      (*        "let rec f = fun x -> if x == 0 then 1 else x * f (x - 1) in f" *)
-      (*      ~expected:(Type.T.Arrow (Type.Builtin.i64, Type.Builtin.i64))); *)
-      (* test_case "recursive call inside body" `Quick *)
-      (*   (test_typecheck *)
-      (*      ~source: *)
-      (*        "let rec fact = fun n -> if n == 0 then 1 else n * fact (n - 1) \ *)
-      (*         in fact 5" *)
-      (*      ~expected:Type.Builtin.i64); *)
+      test_case "simple recursive function" `Quick
+        (test_typecheck
+           ~source:
+             "let rec f = fun x -> if x == 0 then 1 else x * f (x - 1) in f"
+           ~expected:(Type.T.Arrow (Type.Builtin.i64, Type.Builtin.i64)));
+      test_case "recursive call inside body" `Quick
+        (test_typecheck
+           ~source:
+             "let rec fact = fun n -> if n == 0 then 1 else n * fact (n - 1) \
+              in fact 5"
+           ~expected:Type.Builtin.i64);
     ]
 
 let conditionals =
@@ -58,10 +61,12 @@ let conditionals =
            ~expected:Type.Builtin.i64);
       test_case "if branches must match" `Quick (fun () ->
           Alcotest.check_raises "type mismatched in AST"
-            (Typecheck.Exceptions.UnificationFailure Type.Builtin.(i64, bool))
+            Typecheck.(
+              Exceptions.UnificationFailure
+                Type.Builtin.(Constraint.{ lhs = i64; rhs = bool }))
             (fun () ->
               parse_expr "if true then 1 else false"
-              |> Typecheck.Inference.on_expr Type.Id.Map.empty
+              |> Typecheck.Inference.on_expr Typecheck.TypeEnv.default
               |> ignore));
       test_case "if nested" `Quick
         (test_typecheck ~source:"if false then (if true then 1 else 2) else 3"
