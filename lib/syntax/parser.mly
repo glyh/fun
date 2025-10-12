@@ -45,7 +45,7 @@ param:
   }
 
 binding: 
-  | LET rec_=option(REC) name=ID params=list(param) ASSIGN rhs=expr {
+  | LET rec_=option(REC) name=ID params=list(param) bind_annotation=option(type_annotation) ASSIGN rhs=expr {
     let lam_inner =
       List.fold_right (fun param acc -> Expr.Lam (param, acc)) params rhs
     in
@@ -55,7 +55,12 @@ binding:
       else 
         lam_inner
     in
-    Binding.{ name; type_ = None; value = lam_wrapped }
+    let lam_wrapped_annotated = 
+      match bind_annotation with
+      | None -> lam_wrapped
+      | Some typ -> Expr.Annotated { inner = lam_wrapped; typ }
+    in
+    Binding.{ name; type_ = None; value = lam_wrapped_annotated }
   }
 
 expr: 
@@ -102,7 +107,7 @@ expr_primary:
   | LPAREN inner=expr typ=option(type_annotation) RPAREN { 
     match typ with
     | None -> inner
-    | Some typ -> Expr.(Annotated { inner; typ })
+    | Some typ -> Expr.Annotated { inner; typ }
   }
 
 expr_eof:
