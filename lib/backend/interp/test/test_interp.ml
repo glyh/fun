@@ -43,6 +43,13 @@ let recursion =
               (n-2) in fib 6"
            ~expected:(Interp.Model.Value.Norm (Syntax.Ast.Atom.I64 8L))
            ~typ:Type.Builtin.i64);
+      test_case "apply twice" `Quick
+        (test_eval
+           ~source:
+             "let twice = fun f -> fun x -> f (f x) in let inc = fun n -> n + \
+              1 in twice inc 3"
+           ~expected:(Interp.Model.Value.Norm (Syntax.Ast.Atom.I64 5L))
+           ~typ:Type.Builtin.i64);
     ]
 
 let () = Alcotest.run "Interp" [ ("recursion", recursion) ]
