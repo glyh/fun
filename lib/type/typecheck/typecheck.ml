@@ -13,6 +13,10 @@ module TypeEnv = struct
             Type.T.of_human
               (Forall ([ "x" ], Arrow (Var "x", Arrow (Var "x", Con "Bool"))))
           );
+          (">", Type.T.Arrow (i64, Arrow (i64, bool)));
+          (">=", Type.T.Arrow (i64, Arrow (i64, bool)));
+          ("<", Type.T.Arrow (i64, Arrow (i64, bool)));
+          ("<=", Type.T.Arrow (i64, Arrow (i64, bool)));
           ("+", Type.T.Arrow (i64, Arrow (i64, i64)));
           ("-", Type.T.Arrow (i64, Arrow (i64, i64)));
           ("*", Type.T.Arrow (i64, Arrow (i64, i64)));

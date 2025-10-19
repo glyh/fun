@@ -36,6 +36,13 @@ let recursion =
               in fact 5"
            ~expected:(Interp.Model.Value.Norm (Syntax.Ast.Atom.I64 120L))
            ~typ:Type.Builtin.i64);
+      test_case "fib 6" `Quick
+        (test_eval
+           ~source:
+             "let rec fib = fun n -> if n <= 1 then n else fib (n-1) + fib \
+              (n-2) in fib 6"
+           ~expected:(Interp.Model.Value.Norm (Syntax.Ast.Atom.I64 8L))
+           ~typ:Type.Builtin.i64);
     ]
 
 let () = Alcotest.run "Interp" [ ("recursion", recursion) ]

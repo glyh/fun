@@ -30,6 +30,10 @@ let rec token buf =
   | "()" -> UNIT
   | ";;" -> DOUBLESEMI
   | "==" -> EQ
+  | ">=" -> GE
+  | "<=" -> LE
+  | ">" -> GT
+  | "<" -> LT
   | "(" -> LPAREN
   | ")" -> RPAREN
   | "=" -> ASSIGN

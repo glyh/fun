@@ -10,11 +10,12 @@
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
 %token TRUE FALSE
 %token EOF
-%token ADD SUB MUL EQ
+%token EQ GE LE GT LT
+%token ADD SUB MUL
 
 %right ARROW
 
-%left EQ
+%left EQ GE LE GT LT
 %left ADD SUB
 %left MUL
 
@@ -83,6 +84,10 @@ expr_stmt:
   | SUB { "-" }
   | MUL { "*" }
   | EQ { "==" }
+  | GE { ">=" }
+  | LE { "<=" }
+  | GT { ">" }
+  | LT { "<" }
   
 expr_expr: 
   | lhs=expr_expr op=bin_op rhs=expr_expr {
