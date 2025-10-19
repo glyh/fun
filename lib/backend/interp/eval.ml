@@ -7,6 +7,41 @@ end
 
 open Exceptions
 
+let default_env =
+  Type.Id.Map.of_list
+    [
+      ( "==",
+        Value.Closure
+          (fun lhs -> Closure (fun rhs -> Norm (Bool (Value.equal lhs rhs)))) );
+      ( "+",
+        Value.Closure
+          (fun lhs ->
+            Closure
+              (fun rhs ->
+                match ((lhs : Value.t), rhs) with
+                | Norm (I64 lhs), Norm (I64 rhs) ->
+                    Norm (I64 (Int64.add lhs rhs))
+                | _ -> raise (Std.Exceptions.Unreachable [%here]))) );
+      ( "-",
+        Value.Closure
+          (fun lhs ->
+            Closure
+              (fun rhs ->
+                match ((lhs : Value.t), rhs) with
+                | Norm (I64 lhs), Norm (I64 rhs) ->
+                    Norm (I64 (Int64.sub lhs rhs))
+                | _ -> raise (Std.Exceptions.Unreachable [%here]))) );
+      ( "*",
+        Value.Closure
+          (fun lhs ->
+            Closure
+              (fun rhs ->
+                match ((lhs : Value.t), rhs) with
+                | Norm (I64 lhs), Norm (I64 rhs) ->
+                    Norm (I64 (Int64.mul lhs rhs))
+                | _ -> raise (Std.Exceptions.Unreachable [%here]))) );
+    ]
+
 (* NOTE: this function expects the program is typechecked *)
 let rec eval env = function
   | Ast.Expr.Atom a -> Value.Norm a
