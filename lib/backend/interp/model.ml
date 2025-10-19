@@ -7,7 +7,7 @@ end = struct
 end
 
 and Value : sig
-  type t = Norm of Ast.Atom.t | Closure of Env.t * Type.Id.t * Ast.Expr.t
+  type t = Norm of Ast.Atom.t | Closure of (t -> t)
 end = struct
-  type t = Norm of Ast.Atom.t | Closure of Env.t * Type.Id.t * Ast.Expr.t
+  type t = Norm of Ast.Atom.t | Closure of (t -> t)
 end

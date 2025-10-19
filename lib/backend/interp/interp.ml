@@ -7,7 +7,7 @@ end
 
 open Exceptions
 
-(* NOTE: this function expects the program is type checked *)
+(* NOTE: this function expects the program is typechecked *)
 let rec eval env = function
   | Ast.Expr.Atom a -> Value.Norm a
   | Var x -> (
@@ -20,14 +20,26 @@ let rec eval env = function
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Ap (f, x) -> (
       match eval env f with
-      | Closure (env', param, body) ->
-          let x = eval env x in
-          let env'' = Type.Id.Map.add param x env' in
-          eval env'' body
+      | Closure f -> f (eval env x)
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
-  | Lam ({ name; _ }, body) -> Closure (env, name, body)
+  | Lam ({ name = param; _ }, body) ->
+      Closure
+        (fun arg ->
+          let env = Type.Id.Map.add param arg env in
+          eval env body)
   | Let { binding = { name; value; _ }; body } ->
       let v = eval env value in
       eval (Type.Id.Map.add name v env) body
   | Annotated { inner; _ } -> eval env inner
-  | Fix _ -> failwith "Unimplemented"
+  | Fix f -> (
+      (* Fix(f) = f Fix(f) *)
+      match eval env f with
+      | Closure f ->
+          let rec fix_f arg =
+            let f_on_fix_f = f (Closure fix_f) in
+            match f_on_fix_f with
+            | Closure f_on_fix_f -> f_on_fix_f arg
+            | _ -> raise (Std.Exceptions.Unreachable [%here])
+          in
+          Closure fix_f
+      | _ -> raise (Std.Exceptions.Unreachable [%here]))
