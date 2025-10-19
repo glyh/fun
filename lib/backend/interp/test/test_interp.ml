@@ -17,7 +17,7 @@ let typecheck expr = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr
 
 let eval expr =
   let result_ty = typecheck expr in
-  let result = Interp.Eval.(eval default_env expr) in
+  let result = Interp.(Eval.eval Env.default expr) in
   (result, result_ty)
 
 let test_eval ?(tag = "evaluated as expected") ~source ~expected ~typ () =

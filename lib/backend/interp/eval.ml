@@ -7,39 +7,6 @@ end
 
 open Exceptions
 
-let i64_op op =
-  Value.Closure
-    (fun lhs ->
-      Closure
-        (fun rhs ->
-          match ((lhs : Value.t), rhs) with
-          | Norm (I64 lhs), Norm (I64 rhs) -> Norm (I64 (op lhs rhs))
-          | _ -> raise (Std.Exceptions.Unreachable [%here])))
-
-let i64_cmp op =
-  Value.Closure
-    (fun lhs ->
-      Closure
-        (fun rhs ->
-          match ((lhs : Value.t), rhs) with
-          | Norm (I64 lhs), Norm (I64 rhs) -> Norm (Bool (op lhs rhs))
-          | _ -> raise (Std.Exceptions.Unreachable [%here])))
-
-let default_env =
-  Type.Id.Map.of_list
-    [
-      ( "==",
-        Value.Closure
-          (fun lhs -> Closure (fun rhs -> Norm (Bool (Value.equal lhs rhs)))) );
-      (">", i64_cmp (fun lhs rhs -> Int64.compare lhs rhs > 0));
-      ("<", i64_cmp (fun lhs rhs -> Int64.compare lhs rhs < 0));
-      (">=", i64_cmp (fun lhs rhs -> Int64.compare lhs rhs >= 0));
-      ("<=", i64_cmp (fun lhs rhs -> Int64.compare lhs rhs <= 0));
-      ("+", i64_op Int64.add);
-      ("-", i64_op Int64.sub);
-      ("*", i64_op Int64.mul);
-    ]
-
 (* NOTE: this function expects the program is typechecked *)
 let rec eval env = function
   | Ast.Expr.Atom a -> Value.Norm a
