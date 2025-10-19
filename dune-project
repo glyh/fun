@@ -5,7 +5,7 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github glyh/fun))
 
 (authors "Yihang Liu")
 
@@ -28,17 +28,21 @@
   ; Library dependencies
   (core
    (>= v0.17.1))
+  (linenoise
+   (>= 1.5.1))
   menhir
-  (sedlex
-   (>= 3.4))
   (ppx_deriving
    (>= 6.0.2))
   (ppx_deriving_yojson
    (>= 3.9.1))
-  (ppx_here (>= v0.17.0))
-  (ppx_hash (>= v0.17.0))
+  (ppx_here
+   (>= v0.17.0))
+  (ppx_hash
+   (>= v0.17.0))
+  (sedlex
+   (>= 3.4))
   ; Develop setup
-  (alcotest 
+  (alcotest
    (and
     (or :with-test :with-dev-setup)
     (>= 1.9.1)))

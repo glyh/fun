@@ -1,4 +1,5 @@
 (library
  (name interp)
  (libraries core syntax type)
- (preprocess (pps ppx_here)))
+ (preprocess
+  (pps ppx_here)))
