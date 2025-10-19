@@ -20,11 +20,10 @@ let eval expr =
   let result = Interp.(Eval.eval Env.default expr) in
   (result, result_ty)
 
-let test_eval ?(tag = "evaluated as expected") ~source ~expected ~typ () =
-  let result = parse_expr source |> eval in
-  Alcotest.check
-    (Alcotest.pair Testable.value Testable.type_)
-    tag result (expected, typ)
+let test_eval ~source ~expected ~typ () =
+  let out, out_typ = parse_expr source |> eval in
+  Alcotest.check Testable.value "evaluate as expected" expected out;
+  Alcotest.check Testable.type_ "typecheck as expected" typ out_typ
 
 let higher_order =
   Alcotest.
