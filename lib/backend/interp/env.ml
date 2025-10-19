@@ -17,9 +17,7 @@ let i64_cmp op =
 let default =
   Type.Id.Map.of_list
     [
-      ( "==",
-        Value.Closure
-          (fun lhs -> Closure (fun rhs -> Norm (Bool (Value.equal lhs rhs)))) );
+      ("==", fn2 (fun lhs rhs -> Norm (Bool (Value.equal lhs rhs))));
       (">", i64_cmp (fun lhs rhs -> Int64.compare lhs rhs > 0));
       ("<", i64_cmp (fun lhs rhs -> Int64.compare lhs rhs < 0));
       (">=", i64_cmp (fun lhs rhs -> Int64.compare lhs rhs >= 0));
