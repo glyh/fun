@@ -27,7 +27,7 @@ let rec eval env = function
         (fun arg ->
           let env = Type.Id.Map.add param arg env in
           eval env body)
-  | Let { binding = { name; value; _ }; body } ->
+  | Let { binding = Value { name; value; _ }; body } ->
       let v = eval env value in
       eval (Type.Id.Map.add name v env) body
   | Annotated { inner; _ } -> eval env inner

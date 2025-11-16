@@ -21,13 +21,16 @@ let commments =
     [
       test_case "single comment" `Quick
         (test_syntax ~source:"let x = 1 (* comment *)"
-           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
+           ~expected:
+             [ Value { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
       test_case "nested comment" `Quick
         (test_syntax ~source:"let x = 1 (* outer (* inner *) outer *)"
-           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
+           ~expected:
+             [ Value { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
       test_case "nested comment between tokens" `Quick
         (test_syntax ~source:"let (* a *) x (* b (* c *) d *) = (* e *) 1"
-           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
+           ~expected:
+             [ Value { name = "x"; type_ = None; value = Atom (I64 1L) } ]);
     ]
 
 let let_bindings =
@@ -35,63 +38,73 @@ let let_bindings =
     [
       test_case "simple let binding" `Quick
         (test_syntax ~source:"let x = 42"
-           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 42L) } ]);
+           ~expected:
+             [ Value { name = "x"; type_ = None; value = Atom (I64 42L) } ]);
       test_case "multiple let bindings" `Quick
         (test_syntax ~source:"let x = 1;; let y = 2"
            ~expected:
              [
-               { name = "x"; type_ = None; value = Atom (I64 1L) };
-               { name = "y"; type_ = None; value = Atom (I64 2L) };
+               Value { name = "x"; type_ = None; value = Atom (I64 1L) };
+               Value { name = "y"; type_ = None; value = Atom (I64 2L) };
              ]);
       test_case "multiple function bindings" `Quick
         (test_syntax ~source:"let f x = x;; let g y = y"
            ~expected:
              [
-               {
-                 name = "f";
-                 type_ = None;
-                 value = Lam ({ name = "x"; type_ = None }, Var "x");
-               };
-               {
-                 name = "g";
-                 type_ = None;
-                 value = Lam ({ name = "y"; type_ = None }, Var "y");
-               };
+               Value
+                 {
+                   name = "f";
+                   type_ = None;
+                   value = Lam ({ name = "x"; type_ = None }, Var "x");
+                 };
+               Value
+                 {
+                   name = "g";
+                   type_ = None;
+                   value = Lam ({ name = "y"; type_ = None }, Var "y");
+                 };
              ]);
       test_case "nested let inside function body" `Quick
         (test_syntax ~source:"let f x = let y = 1 in y"
            ~expected:
              [
-               {
-                 name = "f";
-                 type_ = None;
-                 value =
-                   Lam
-                     ( { name = "x"; type_ = None },
-                       Let
-                         {
-                           binding =
-                             { name = "y"; type_ = None; value = Atom (I64 1L) };
-                           body = Var "y";
-                         } );
-               };
+               Value
+                 {
+                   name = "f";
+                   type_ = None;
+                   value =
+                     Lam
+                       ( { name = "x"; type_ = None },
+                         Let
+                           {
+                             binding =
+                               Value
+                                 {
+                                   name = "y";
+                                   type_ = None;
+                                   value = Atom (I64 1L);
+                                 };
+                             body = Var "y";
+                           } );
+                 };
              ]);
       test_case "recursive function with a mix of typed & untyped params" `Quick
         (test_syntax ~source:"let rec f (x: Int) y = x"
            ~expected:
              [
-               {
-                 (* recursive = true; *)
-                 name = "f";
-                 type_ = None;
-                 value =
-                   Fix
-                     (Lam
-                        ( { name = "f"; type_ = None },
-                          Lam
-                            ( { name = "x"; type_ = Some (Con "Int") },
-                              Lam ({ name = "y"; type_ = None }, Var "x") ) ));
-               };
+               Value
+                 {
+                   (* recursive = true; *)
+                   name = "f";
+                   type_ = None;
+                   value =
+                     Fix
+                       (Lam
+                          ( { name = "f"; type_ = None },
+                            Lam
+                              ( { name = "x"; type_ = Some (Con "Int") },
+                                Lam ({ name = "y"; type_ = None }, Var "x") ) ));
+                 };
              ]);
       test_case "recursive function (factorial)" `Quick
         (test_syntax
@@ -100,30 +113,31 @@ let let_bindings =
               1))"
            ~expected:
              [
-               {
-                 name = "fact";
-                 type_ = None;
-                 value =
-                   Fix
-                     (Lam
-                        ( { name = "fact"; type_ = None },
-                          Lam
-                            ( { name = "n"; type_ = None },
-                              If
-                                {
-                                  cond =
-                                    Ap (Ap (Var "eq", Var "n"), Atom (I64 0L));
-                                  then_ = Atom (I64 1L);
-                                  else_ =
-                                    Ap
-                                      ( Ap (Var "mul", Var "n"),
-                                        Ap
-                                          ( Var "fact",
-                                            Ap
-                                              ( Ap (Var "sub", Var "n"),
-                                                Atom (I64 1L) ) ) );
-                                } ) ));
-               };
+               Value
+                 {
+                   name = "fact";
+                   type_ = None;
+                   value =
+                     Fix
+                       (Lam
+                          ( { name = "fact"; type_ = None },
+                            Lam
+                              ( { name = "n"; type_ = None },
+                                If
+                                  {
+                                    cond =
+                                      Ap (Ap (Var "eq", Var "n"), Atom (I64 0L));
+                                    then_ = Atom (I64 1L);
+                                    else_ =
+                                      Ap
+                                        ( Ap (Var "mul", Var "n"),
+                                          Ap
+                                            ( Var "fact",
+                                              Ap
+                                                ( Ap (Var "sub", Var "n"),
+                                                  Atom (I64 1L) ) ) );
+                                  } ) ));
+                 };
              ]);
     ]
 
@@ -134,41 +148,45 @@ let applications =
         (test_syntax ~source:"let x = a b c"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value = Ap (Ap (Var "a", Var "b"), Var "c");
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value = Ap (Ap (Var "a", Var "b"), Var "c");
+                 };
              ]);
       test_case "application with parentheses on left" `Quick
         (test_syntax ~source:"let x = (f y) z"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value = Ap (Ap (Var "f", Var "y"), Var "z");
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value = Ap (Ap (Var "f", Var "y"), Var "z");
+                 };
              ]);
       test_case "application with parentheses on right" `Quick
         (test_syntax ~source:"let x = f (y z)"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value = Ap (Var "f", Ap (Var "y", Var "z"));
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value = Ap (Var "f", Ap (Var "y", Var "z"));
+                 };
              ]);
       test_case "application of function call result" `Quick
         (test_syntax ~source:"let x = (f x) (g y)"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value = Ap (Ap (Var "f", Var "x"), Ap (Var "g", Var "y"));
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value = Ap (Ap (Var "f", Var "x"), Ap (Var "g", Var "y"));
+                 };
              ]);
     ]
 
@@ -179,39 +197,41 @@ let ifs =
         (test_syntax ~source:"let x = if 1 then 2 else 3"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value =
-                   If
-                     {
-                       cond = Atom (I64 1L);
-                       then_ = Atom (I64 2L);
-                       else_ = Atom (I64 3L);
-                     };
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value =
+                     If
+                       {
+                         cond = Atom (I64 1L);
+                         then_ = Atom (I64 2L);
+                         else_ = Atom (I64 3L);
+                       };
+                 };
              ]);
       test_case "nested if in else branch" `Quick
         (test_syntax ~source:"let x = if 1 then 2 else if 3 then 4 else 5"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value =
-                   If
-                     {
-                       cond = Atom (I64 1L);
-                       then_ = Atom (I64 2L);
-                       else_ =
-                         If
-                           {
-                             cond = Atom (I64 3L);
-                             then_ = Atom (I64 4L);
-                             else_ = Atom (I64 5L);
-                           };
-                     };
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value =
+                     If
+                       {
+                         cond = Atom (I64 1L);
+                         then_ = Atom (I64 2L);
+                         else_ =
+                           If
+                             {
+                               cond = Atom (I64 3L);
+                               then_ = Atom (I64 4L);
+                               else_ = Atom (I64 5L);
+                             };
+                       };
+                 };
              ]);
     ]
 
@@ -222,27 +242,29 @@ let lambdas =
         (test_syntax ~source:"let f = fun x -> fun y -> x"
            ~expected:
              [
-               {
-                 name = "f";
-                 type_ = None;
-                 value =
-                   Lam
-                     ( { name = "x"; type_ = None },
-                       Lam ({ name = "y"; type_ = None }, Var "x") );
-               };
+               Value
+                 {
+                   name = "f";
+                   type_ = None;
+                   value =
+                     Lam
+                       ( { name = "x"; type_ = None },
+                         Lam ({ name = "y"; type_ = None }, Var "x") );
+                 };
              ]);
       test_case "function returning function" `Quick
         (test_syntax ~source:"let f x = fun y -> y"
            ~expected:
              [
-               {
-                 name = "f";
-                 type_ = None;
-                 value =
-                   Lam
-                     ( { name = "x"; type_ = None },
-                       Lam ({ name = "y"; type_ = None }, Var "y") );
-               };
+               Value
+                 {
+                   name = "f";
+                   type_ = None;
+                   value =
+                     Lam
+                       ( { name = "x"; type_ = None },
+                         Lam ({ name = "y"; type_ = None }, Var "y") );
+                 };
              ]);
     ]
 
@@ -251,7 +273,8 @@ let parentheses =
     [
       test_case "nested parentheses" `Quick
         (test_syntax ~source:"let x = (((42)))"
-           ~expected:[ { name = "x"; type_ = None; value = Atom (I64 42L) } ]);
+           ~expected:
+             [ Value { name = "x"; type_ = None; value = Atom (I64 42L) } ]);
     ]
 
 let annotations =
@@ -261,93 +284,100 @@ let annotations =
         (test_syntax ~source:"let x = (1 : int)"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value = Annotated { inner = Atom (I64 1L); typ = Con "int" };
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value = Annotated { inner = Atom (I64 1L); typ = Con "int" };
+                 };
              ]);
       test_case "annotation on variable" `Quick
         (test_syntax ~source:"let y = (x : bool)"
            ~expected:
              [
-               {
-                 name = "y";
-                 type_ = None;
-                 value = Annotated { inner = Var "x"; typ = Con "bool" };
-               };
+               Value
+                 {
+                   name = "y";
+                   type_ = None;
+                   value = Annotated { inner = Var "x"; typ = Con "bool" };
+                 };
              ]);
       test_case "annotation on function application" `Quick
         (test_syntax ~source:"let f = ((g x) : t)"
            ~expected:
              [
-               {
-                 name = "f";
-                 type_ = None;
-                 value =
-                   Annotated { inner = Ap (Var "g", Var "x"); typ = Con "t" };
-               };
+               Value
+                 {
+                   name = "f";
+                   type_ = None;
+                   value =
+                     Annotated { inner = Ap (Var "g", Var "x"); typ = Con "t" };
+                 };
              ]);
       test_case "annotation nested inside if" `Quick
         (test_syntax ~source:"let x = if cond then (y : t1) else (z : t2)"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value =
-                   If
-                     {
-                       cond = Var "cond";
-                       then_ = Annotated { inner = Var "y"; typ = Con "t1" };
-                       else_ = Annotated { inner = Var "z"; typ = Con "t2" };
-                     };
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value =
+                     If
+                       {
+                         cond = Var "cond";
+                         then_ = Annotated { inner = Var "y"; typ = Con "t1" };
+                         else_ = Annotated { inner = Var "z"; typ = Con "t2" };
+                       };
+                 };
              ]);
       test_case "annotation around lambda" `Quick
         (test_syntax ~source:"let f = ((fun x -> x) : t -> t)"
            ~expected:
              [
-               {
-                 name = "f";
-                 type_ = None;
-                 value =
-                   Annotated
-                     {
-                       inner = Lam ({ name = "x"; type_ = None }, Var "x");
-                       typ = Arrow (Con "t", Con "t");
-                     };
-               };
+               Value
+                 {
+                   name = "f";
+                   type_ = None;
+                   value =
+                     Annotated
+                       {
+                         inner = Lam ({ name = "x"; type_ = None }, Var "x");
+                         typ = Arrow (Con "t", Con "t");
+                       };
+                 };
              ]);
       test_case "annotation combined with application" `Quick
         (test_syntax ~source:"let x = (f : t1 -> t2) y"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value =
-                   Ap
-                     ( Annotated
-                         { inner = Var "f"; typ = Arrow (Con "t1", Con "t2") },
-                       Var "y" );
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value =
+                     Ap
+                       ( Annotated
+                           { inner = Var "f"; typ = Arrow (Con "t1", Con "t2") },
+                         Var "y" );
+                 };
              ]);
       test_case "nested annotation" `Quick
         (test_syntax ~source:"let x = ((1 : int) : num)"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value =
-                   Annotated
-                     {
-                       inner =
-                         Annotated { inner = Atom (I64 1L); typ = Con "int" };
-                       typ = Con "num";
-                     };
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value =
+                     Annotated
+                       {
+                         inner =
+                           Annotated { inner = Atom (I64 1L); typ = Con "int" };
+                         typ = Con "num";
+                       };
+                 };
              ]);
     ]
 
@@ -358,61 +388,66 @@ let operators =
         (test_syntax ~source:"let x = 1 + 2"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value = Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L));
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value = Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L));
+                 };
              ]);
       test_case "subtraction" `Quick
         (test_syntax ~source:"let x = 5 - 3"
            ~expected:
              [
-               {
-                 name = "x";
-                 type_ = None;
-                 value = Ap (Ap (Var "-", Atom (I64 5L)), Atom (I64 3L));
-               };
+               Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value = Ap (Ap (Var "-", Atom (I64 5L)), Atom (I64 3L));
+                 };
              ]);
       test_case "equality" `Quick
         (test_syntax ~source:"let b = 1 == 2"
            ~expected:
              [
-               {
-                 name = "b";
-                 type_ = None;
-                 value = Ap (Ap (Var "==", Atom (I64 1L)), Atom (I64 2L));
-               };
+               Value
+                 {
+                   name = "b";
+                   type_ = None;
+                   value = Ap (Ap (Var "==", Atom (I64 1L)), Atom (I64 2L));
+                 };
              ]);
       test_case "operator chaining left-associative" `Quick
         (test_syntax ~source:"let y = 1 + 2 - 3"
            ~expected:
              [
-               {
-                 name = "y";
-                 type_ = None;
-                 value =
-                   Ap
-                     ( Ap
-                         ( Var "-",
-                           Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L)) ),
-                       Atom (I64 3L) );
-               };
+               Value
+                 {
+                   name = "y";
+                   type_ = None;
+                   value =
+                     Ap
+                       ( Ap
+                           ( Var "-",
+                             Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L)) ),
+                         Atom (I64 3L) );
+                 };
              ]);
       test_case "parenthesized arithmetic" `Quick
         (test_syntax ~source:"let z = (1 + 2) == (3 - 0)"
            ~expected:
              [
-               {
-                 name = "z";
-                 type_ = None;
-                 value =
-                   Ap
-                     ( Ap
-                         ( Var "==",
-                           Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L)) ),
-                       Ap (Ap (Var "-", Atom (I64 3L)), Atom (I64 0L)) );
-               };
+               Value
+                 {
+                   name = "z";
+                   type_ = None;
+                   value =
+                     Ap
+                       ( Ap
+                           ( Var "==",
+                             Ap (Ap (Var "+", Atom (I64 1L)), Atom (I64 2L)) ),
+                         Ap (Ap (Var "-", Atom (I64 3L)), Atom (I64 0L)) );
+                 };
              ]);
     ]
 

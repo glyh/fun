@@ -24,7 +24,8 @@ module rec Expr : sig
 end
 
 and Binding : sig
-  type t = { name : Type.Id.t; type_ : Type.T.t option; value : Expr.t }
+  type t =
+    | Value of { name : Type.Id.t; type_ : Type.T.t option; value : Expr.t }
   [@@deriving eq]
 
   val pp : t -> string

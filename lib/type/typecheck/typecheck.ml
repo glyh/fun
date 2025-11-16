@@ -185,7 +185,8 @@ module Inference = struct
           @ x_cons
         in
         (result_ty, all_cons)
-    | Let { binding = { name; type_ = value_ty_annotated; value }; body } ->
+    | Let { binding = Value { name; type_ = value_ty_annotated; value }; body }
+      ->
         let value_ty_inferred, value_cons = generate_constraints env value in
         let all_cons =
           match value_ty_annotated with

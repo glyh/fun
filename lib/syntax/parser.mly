@@ -61,7 +61,7 @@ binding:
       | None -> lam_wrapped
       | Some typ -> Expr.Annotated { inner = lam_wrapped; typ }
     in
-    Binding.{ name; type_ = None; value = lam_wrapped_annotated }
+    Binding.Value { name; type_ = None; value = lam_wrapped_annotated }
   }
 
 expr: 

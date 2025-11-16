@@ -61,15 +61,15 @@ end = struct
 end
 
 and Binding : sig
-  type t = { name : Id.t; type_ : Type.T.t option; value : Expr.t }
+  type t = Value of { name : Id.t; type_ : Type.T.t option; value : Expr.t }
   [@@deriving eq]
 
   val pp : t -> string
 end = struct
-  type t = { name : Id.t; type_ : Type.T.t option; value : Expr.t }
+  type t = Value of { name : Id.t; type_ : Type.T.t option; value : Expr.t }
   [@@deriving eq]
 
-  let pp { name; type_; value } =
+  let pp (Value { name; type_; value }) =
     Printf.sprintf "let %s %s= (%s)" (Type.Id.pp name) (pp_type_annotated type_)
       (Expr.pp value)
 end
