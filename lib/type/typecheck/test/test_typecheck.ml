@@ -85,7 +85,8 @@ let lambdas =
       test_case "lambda returning bool" `Quick
         (test_typecheck ~source:"fun x -> true"
            ~expected:
-             (Type.T.of_human (Forall ([ "x" ], Arrow (Var "x", Con "Bool")))));
+             (Type.T.of_human
+                (Forall ([ "x" ], Arrow (Var "x", Con ("Bool", []))))));
       test_case "apply bool function" `Quick
         (test_typecheck ~source:"(fun b -> if b then 1 else 0) false"
            ~expected:Type.Builtin.i64);
@@ -130,7 +131,8 @@ let annotations =
       (*      ~expected:Type.Builtin.bool); *)
       test_case "mismatched but coerced via annotation" `Quick
         (test_typecheck ~source:"(fun x -> x + 1 : I64 -> I64)"
-           ~expected:(Type.T.of_human (Arrow (Con "I64", Con "I64"))));
+           ~expected:
+             (Type.T.of_human (Arrow (Con ("I64", []), Con ("I64", [])))));
     ]
 
 let () =

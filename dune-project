@@ -26,8 +26,6 @@
   (ocaml
    (>= 5.3))
   ; Library dependencies
-  (core
-   (>= v0.17.1))
   (linenoise
    (>= 1.5.1))
   menhir
@@ -36,9 +34,9 @@
   (ppx_deriving_yojson
    (>= 3.9.1))
   (ppx_here
-   (>= v0.17.0))
+   (>= v0.17))
   (ppx_hash
-   (>= v0.17.0))
+   (>= v0.17))
   (sedlex
    (>= 3.4))
   ; Develop setup

@@ -12,13 +12,12 @@ bug-reports: "https://github.com/glyh/fun/issues"
 depends: [
   "dune" {>= "3.19"}
   "ocaml" {>= "5.3"}
-  "core" {>= "v0.17.1"}
   "linenoise" {>= "1.5.1"}
   "menhir"
   "ppx_deriving" {>= "6.0.2"}
   "ppx_deriving_yojson" {>= "3.9.1"}
-  "ppx_here" {>= "v0.17.0"}
-  "ppx_hash" {>= "v0.17.0"}
+  "ppx_here" {>= "v0.17"}
+  "ppx_hash" {>= "v0.17"}
   "sedlex" {>= "3.4"}
   "alcotest" {(with-test | with-dev-setup) & >= "1.9.1"}
   "bisect_ppx" {(with-test | with-dev-setup) & >= "2.8.3"}

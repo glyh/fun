@@ -50,15 +50,25 @@ module Human = struct
   type t =
     | Forall of string list * t
     | Var of string
-    | Con of string
+    | Con of Id.t * t list
     | Arrow of t * t
+end
+
+module Con = struct
+  type t = { id : int; name : string; arity : int } [@@deriving eq]
+
+  let create =
+    let cnt = ref 0 in
+    fun name arity ->
+      cnt := !cnt + 1;
+      { id = !cnt; name; arity }
 end
 
 module T = struct
   type t =
     | Forall of Var.Set.t * t
     | Var of Var.t
-    | Con of Id.t
+    | Con of string * t list
     | Arrow of t * t
   [@@deriving eq]
 
@@ -70,7 +80,8 @@ module T = struct
         in
         vars_str ^ " . " ^ pp inner
     | Var v -> Var.pp v
-    | Con ty -> ty
+    | Con (ty, []) -> ty
+    | Con (ty, args) -> ty ^ "[" ^ (List.map pp args |> String.concat ",") ^ "]"
     | Arrow (a, b) -> (
         match a with
         | Arrow _ -> "(" ^ pp a ^ ") -> " ^ pp b
@@ -92,7 +103,7 @@ module T = struct
           match Id.Map.find_opt var ctx with
           | Some var -> Var var
           | None -> Var (Var.generate ~tag:var ()))
-      | Con s -> Con s
+      | Con (s, args) -> Con (s, List.map (of_human_do ctx) args)
       | Arrow (a, b) -> Arrow (of_human_do ctx a, of_human_do ctx b)
     in
     of_human_do Id.Map.empty input
@@ -122,13 +133,14 @@ module T = struct
     ordered
 
   let rec map_equal ~mapping ~from to_ =
+    let recur from to_ = map_equal ~mapping ~from to_ in
     match (from, to_) with
     | Forall _, _ | _, Forall _ -> raise Rank2TypeUnsupported
     | Var from, Var to_ ->
         Var.Map.find_opt from mapping |> Option.equal Var.equal (Some to_)
-    | Con lhs, Con rhs -> String.equal lhs rhs
-    | Arrow (a1, b1), Arrow (a2, b2) ->
-        map_equal ~mapping ~from:a1 a2 && map_equal ~mapping ~from:b1 b2
+    | Con (tycon1, ty_args1), Con (tycon2, ty_args2) ->
+        String.equal tycon1 tycon2 && List.equal recur ty_args1 ty_args2
+    | Arrow (a1, b1), Arrow (a2, b2) -> recur a1 a2 && recur b1 b2
     | _ -> false
 
   let equal t1 t2 =
@@ -144,13 +156,13 @@ module T = struct
         (* Dangling type variables can't be considered equal *)
         false
     | _ -> equal t1 t2
+
+  let con_0 name = Con (name, [])
 end
 
 module Builtin = struct
-  open T
-
-  let unit = Con "Unit"
-  let i64 = Con "I64"
-  let bool = Con "Bool"
-  let char = Con "Char"
+  let unit = T.con_0 "Unit"
+  let i64 = T.con_0 "I64"
+  let bool = T.con_0 "Bool"
+  let char = T.con_0 "Char"
 end

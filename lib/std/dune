@@ -1,3 +1,2 @@
 (library
- (name std)
- (libraries core))
+ (name std))

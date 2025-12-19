@@ -11,7 +11,8 @@ module TypeEnv = struct
         [
           ( "==",
             Type.T.of_human
-              (Forall ([ "x" ], Arrow (Var "x", Arrow (Var "x", Con "Bool"))))
+              (Forall
+                 ([ "x" ], Arrow (Var "x", Arrow (Var "x", Con ("Bool", [])))))
           );
           (">", Type.T.Arrow (i64, Arrow (i64, bool)));
           (">=", Type.T.Arrow (i64, Arrow (i64, bool)));
@@ -25,7 +26,7 @@ module TypeEnv = struct
   let pp env =
     Type.Id.Map.to_list env
     |> List.map (fun (id, ty) ->
-           Printf.sprintf "%s: %s" (Type.Id.pp id) (Type.T.pp ty))
+        Printf.sprintf "%s: %s" (Type.Id.pp id) (Type.T.pp ty))
     |> String.concat ", " |> Printf.sprintf "{ %s } "
 end
 
@@ -70,7 +71,7 @@ module Substitution = struct
   let pp sub =
     Type.Var.Map.to_list sub
     |> List.map (fun (var, ty) ->
-           Printf.sprintf "%s -> %s" (Type.Var.pp var) (Type.T.pp ty))
+        Printf.sprintf "%s -> %s" (Type.Var.pp var) (Type.T.pp ty))
     |> String.concat ", " |> Printf.sprintf "{ %s } "
 
   let rec on_type ~(sub : t) (ty : Type.T.t) =

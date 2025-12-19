@@ -27,21 +27,28 @@ module Human : sig
   type t =
     | Forall of string list * t
     | Var of string
-    | Con of string
+    | Con of Id.t * t list
     | Arrow of t * t
+end
+
+module Con : sig
+  type t [@@deriving eq]
+  val create : string -> int -> t
 end
 
 module T : sig
   type t =
     | Forall of Var.Set.t * t
     | Var of Var.t
-    | Con of Id.t
+    | Con of string * t list
     | Arrow of t * t
   [@@deriving eq]
 
   val pp: t -> string
 
   val of_human: Human.t -> t
+
+  val con_0 : string -> t
 end
 
 module Builtin : sig

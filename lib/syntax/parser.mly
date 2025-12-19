@@ -8,6 +8,7 @@
 %token <int64> I64
 %token LET REC IN IF THEN ELSE FUN 
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
+%token LBRACKET RBRACKET COMMA
 %token TRUE FALSE
 %token EOF
 %token EQ GE LE GT LT
@@ -29,7 +30,8 @@ toplevel_eof:
 
 type_:
   | LPAREN type_ RPAREN { $2 }
-  | ID { Type.T.Con $1 }
+  | ID { Type.T.Con ($1, []) }
+  | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.T.Con (name, args) }
   | type_ ARROW type_ { Type.T.Arrow ($1, $3) }
 
 type_annotation:

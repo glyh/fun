@@ -102,7 +102,7 @@ let let_bindings =
                        (Lam
                           ( { name = "f"; type_ = None },
                             Lam
-                              ( { name = "x"; type_ = Some (Con "Int") },
+                              ( { name = "x"; type_ = Some (Type.T.con_0 "Int") },
                                 Lam ({ name = "y"; type_ = None }, Var "x") ) ));
                  };
              ]);
@@ -288,7 +288,9 @@ let annotations =
                  {
                    name = "x";
                    type_ = None;
-                   value = Annotated { inner = Atom (I64 1L); typ = Con "int" };
+                   value =
+                     Annotated
+                       { inner = Atom (I64 1L); typ = Type.T.con_0 "int" };
                  };
              ]);
       test_case "annotation on variable" `Quick
@@ -299,7 +301,8 @@ let annotations =
                  {
                    name = "y";
                    type_ = None;
-                   value = Annotated { inner = Var "x"; typ = Con "bool" };
+                   value =
+                     Annotated { inner = Var "x"; typ = Type.T.con_0 "bool" };
                  };
              ]);
       test_case "annotation on function application" `Quick
@@ -311,7 +314,8 @@ let annotations =
                    name = "f";
                    type_ = None;
                    value =
-                     Annotated { inner = Ap (Var "g", Var "x"); typ = Con "t" };
+                     Annotated
+                       { inner = Ap (Var "g", Var "x"); typ = Type.T.con_0 "t" };
                  };
              ]);
       test_case "annotation nested inside if" `Quick
@@ -326,8 +330,12 @@ let annotations =
                      If
                        {
                          cond = Var "cond";
-                         then_ = Annotated { inner = Var "y"; typ = Con "t1" };
-                         else_ = Annotated { inner = Var "z"; typ = Con "t2" };
+                         then_ =
+                           Annotated
+                             { inner = Var "y"; typ = Type.T.con_0 "t1" };
+                         else_ =
+                           Annotated
+                             { inner = Var "z"; typ = Type.T.con_0 "t2" };
                        };
                  };
              ]);
@@ -343,7 +351,7 @@ let annotations =
                      Annotated
                        {
                          inner = Lam ({ name = "x"; type_ = None }, Var "x");
-                         typ = Arrow (Con "t", Con "t");
+                         typ = Arrow (Type.T.con_0 "t", Type.T.con_0 "t");
                        };
                  };
              ]);
@@ -358,7 +366,10 @@ let annotations =
                    value =
                      Ap
                        ( Annotated
-                           { inner = Var "f"; typ = Arrow (Con "t1", Con "t2") },
+                           {
+                             inner = Var "f";
+                             typ = Arrow (Type.T.con_0 "t1", Type.T.con_0 "t2");
+                           },
                          Var "y" );
                  };
              ]);
@@ -374,8 +385,9 @@ let annotations =
                      Annotated
                        {
                          inner =
-                           Annotated { inner = Atom (I64 1L); typ = Con "int" };
-                         typ = Con "num";
+                           Annotated
+                             { inner = Atom (I64 1L); typ = Type.T.con_0 "int" };
+                         typ = Type.T.con_0 "num";
                        };
                  };
              ]);
