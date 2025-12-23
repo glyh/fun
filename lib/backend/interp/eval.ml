@@ -30,6 +30,22 @@ let rec eval env = function
   | Let { binding = Value { name; value; _ }; body } ->
       let v = eval env value in
       eval (Type.Id.Map.add name v env) body
+  | Let { binding = TypeDecl { rhs; _ }; body } ->
+      let env_new =
+        Std.Nonempty_list.to_list rhs
+        |> List.fold_left
+             (fun env (tag, type_body_opt) ->
+               match type_body_opt with
+               | None ->
+                   Type.Id.Map.add tag (Value.Tagged { tag; inner = None }) env
+               | Some _ ->
+                   Type.Id.Map.add tag
+                     (Value.Closure
+                        (fun inner -> Value.Tagged { tag; inner = Some inner }))
+                     env)
+             env
+      in
+      eval env_new body
   | Annotated { inner; _ } -> eval env inner
   | Fix f -> (
       (* Fix(f) = f Fix(f) *)

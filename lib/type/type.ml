@@ -5,7 +5,7 @@ module Id = struct
     type t = string [@@deriving eq, ord]
 
     let all_symbols = String.for_all (String.contains "+-*/=<>!@#$%^&|~")
-    let pp s = if all_symbols s then "`" ^ s ^ "`" else s
+    let pp s = "'" ^ if all_symbols s then "`" ^ s ^ "`" else s
   end
 
   module Map = Map.Make (T)
@@ -18,8 +18,8 @@ module Var = struct
 
     let pp { id; tag } =
       match tag with
-      | Some tag -> Printf.sprintf "%s_%d" tag id
-      | None -> Printf.sprintf "_%d" id
+      | Some tag -> Printf.sprintf "'%s_%d" tag id
+      | None -> Printf.sprintf "'_%d" id
 
     let var_uuid = ref 0
 
@@ -52,16 +52,20 @@ module Human = struct
     | Var of string
     | Con of Id.t * t list
     | Arrow of t * t
-end
+  [@@deriving eq]
 
-module Con = struct
-  type t = { id : int; name : string; arity : int } [@@deriving eq]
+  let rec pp = function
+    | Forall (vars, inner) ->
+        Printf.sprintf "'%s . %s" (String.concat " " vars) (pp inner)
+    | Var v -> "'" ^ v
+    | Con (ty, []) -> ty
+    | Con (ty, args) -> ty ^ "[" ^ (List.map pp args |> String.concat ",") ^ "]"
+    | Arrow (a, b) -> (
+        match a with
+        | Arrow _ -> "(" ^ pp a ^ ") -> " ^ pp b
+        | _ -> pp a ^ " -> " ^ pp b)
 
-  let create =
-    let cnt = ref 0 in
-    fun name arity ->
-      cnt := !cnt + 1;
-      { id = !cnt; name; arity }
+  let con_0 name = Con (name, [])
 end
 
 module T = struct
@@ -121,7 +125,7 @@ module T = struct
           if Var.Hashtbl.find_opt vars_to_slash var |> Option.is_some then
             Var.Hashtbl.remove vars_to_slash var;
           Queue.add var q
-      | Con _ -> ()
+      | Con (_, vars) -> List.iter order_vars_do vars
       | Arrow (a, b) ->
           order_vars_do a;
           order_vars_do b

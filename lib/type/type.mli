@@ -29,11 +29,11 @@ module Human : sig
     | Var of string
     | Con of Id.t * t list
     | Arrow of t * t
-end
+    [@@deriving eq]
 
-module Con : sig
-  type t [@@deriving eq]
-  val create : string -> int -> t
+  val pp: t -> string
+
+  val con_0 : string -> t
 end
 
 module T : sig

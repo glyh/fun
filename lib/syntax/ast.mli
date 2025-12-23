@@ -1,5 +1,5 @@
 module Param : sig
-  type t = { name : Type.Id.t; type_ : Type.T.t option } [@@deriving eq]
+  type t = { name : Type.Id.t; type_ : Type.Human.t option } [@@deriving eq]
 end
 
 module Atom : sig
@@ -16,7 +16,7 @@ module rec Expr : sig
     | Let of { binding : Binding.t; body : t }
     | If of { cond : t; then_ : t; else_ : t }
     | Lam of Param.t * t
-    | Annotated of { inner : t; typ : Type.T.t }
+    | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
   [@@deriving eq]
 
@@ -25,7 +25,12 @@ end
 
 and Binding : sig
   type t =
-    | Value of { name : Type.Id.t; type_ : Type.T.t option; value : Expr.t }
+    | Value of { name : Type.Id.t; type_ : Type.Human.t option; value : Expr.t }
+    | TypeDecl of {
+        name : string;
+        args : string list;
+        rhs : (string * Type.Human.t option) Std.Nonempty_list.t;
+      }
   [@@deriving eq]
 
   val pp : t -> string

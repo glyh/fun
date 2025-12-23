@@ -5,9 +5,10 @@
 %}
 
 %token <Type.Id.t> ID
+%token <Type.Id.t> TY_VAR
 %token <int64> I64
-%token LET REC IN IF THEN ELSE FUN 
-%token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT
+%token LET REC IN IF THEN ELSE FUN TYPE
+%token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
 %token LBRACKET RBRACKET COMMA
 %token TRUE FALSE
 %token EOF
@@ -30,9 +31,10 @@ toplevel_eof:
 
 type_:
   | LPAREN type_ RPAREN { $2 }
-  | ID { Type.T.Con ($1, []) }
-  | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.T.Con (name, args) }
-  | type_ ARROW type_ { Type.T.Arrow ($1, $3) }
+  | ID { Type.Human.Con ($1, []) }
+  | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.Human.Con (name, args) }
+  | type_ ARROW type_ { Type.Human.Arrow ($1, $3) }
+  | TY_VAR { Type.Human.Var $1 }
 
 type_annotation:
   | COLON typ=type_ {
@@ -45,6 +47,22 @@ param:
   }
   | LPAREN name=ID typ=type_annotation RPAREN {
     Param.{ name; type_ = Some typ }
+  }
+
+type_with_opt_args:
+  | name=ID {
+    (name, [])
+  }
+  | name=ID LBRACKET args=separated_nonempty_list(COMMA, TY_VAR) RBRACKET {
+    (name, args)
+  }
+
+type_rhs:
+  | rhs_tag=ID rhs=option(type_) {
+    Std.Nonempty_list.init (rhs_tag, rhs)  []
+  }
+  | rhs_tag=ID rhs=option(type_) PIPE rest=type_rhs {
+    Std.Nonempty_list.cons (rhs_tag, rhs) rest
   }
 
 binding: 
@@ -64,6 +82,10 @@ binding:
       | Some typ -> Expr.Annotated { inner = lam_wrapped; typ }
     in
     Binding.Value { name; type_ = None; value = lam_wrapped_annotated }
+  }
+  | TYPE type_and_args=type_with_opt_args ASSIGN rhs=type_rhs {
+    let (name, args) = type_and_args in
+    Binding.TypeDecl { name; args; rhs }
   }
 
 expr: 

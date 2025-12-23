@@ -15,6 +15,11 @@ let () =
              token start end_)
     | _ -> None)
 
+let id =
+  [%sedlex.regexp?
+    ( ('a' .. 'z' | 'A' .. 'Z' | '_'),
+      Star ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9') )]
+
 let rec token buf =
   match%sedlex buf with
   | "let" -> LET
@@ -26,6 +31,7 @@ let rec token buf =
   | "fun" -> FUN
   | "true" -> TRUE
   | "false" -> FALSE
+  | "type" -> TYPE
   | "->" -> ARROW
   | "()" -> UNIT
   | ";;" -> DOUBLESEMI
@@ -36,17 +42,22 @@ let rec token buf =
   | "<" -> LT
   | "(" -> LPAREN
   | ")" -> RPAREN
+  | "[" -> LBRACKET
+  | "]" -> RBRACKET
   | "=" -> ASSIGN
   | ":" -> COLON
   | "+" -> ADD
   | "-" -> SUB
   | "*" -> MUL
+  | "|" -> PIPE
+  | "," -> COMMA
   | Plus '0' .. '9' ->
       let num = Sedlexing.Utf8.lexeme buf |> Int64.of_string in
       I64 num
-  | ( ('a' .. 'z' | 'A' .. 'Z' | '_'),
-      Star ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9') ) ->
-      ID (Sedlexing.Utf8.lexeme buf)
+  | "'", id ->
+      let drop_first s = String.sub s 1 (String.length s - 1) in
+      TY_VAR (Sedlexing.Utf8.lexeme buf |> drop_first)
+  | id -> ID (Sedlexing.Utf8.lexeme buf)
   | Plus (' ' | '\t' | '\n' | '\r') -> token buf
   | "(*" -> skip_comment buf (Nonempty_list.init (Sedlexing.loc buf) [])
   | eof -> EOF

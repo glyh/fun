@@ -3,8 +3,6 @@
  (libraries type syntax)
  (preprocess
   (pps
-   ppx_deriving.std
-   ppx_deriving.ord
    ppx_deriving_yojson
    ppx_hash
    ppx_here)))

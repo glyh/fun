@@ -2,4 +2,4 @@
  (name type)
  (libraries core std)
  (preprocess
-  (pps ppx_deriving.std ppx_deriving.ord ppx_deriving_yojson ppx_hash)))
+  (pps ppx_deriving.std ppx_deriving.ord ppx_hash ppx_deriving_yojson)))

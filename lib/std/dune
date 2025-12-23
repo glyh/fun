@@ -1,2 +1,4 @@
 (library
- (name std))
+ (name std)
+ (preprocess
+  (pps ppx_deriving.std)))

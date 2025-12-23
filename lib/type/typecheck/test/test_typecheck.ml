@@ -15,6 +15,7 @@ let test_typecheck ?(tag = "same type") ~source ~expected () =
   let inferred_type =
     Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr
   in
+  Printf.printf "%s vs %s\n" (Type.T.pp inferred_type) (Type.T.pp expected);
   Alcotest.(check Testable.type_) tag expected inferred_type
 
 let constants =
@@ -135,6 +136,45 @@ let annotations =
              (Type.T.of_human (Arrow (Con ("I64", []), Con ("I64", [])))));
     ]
 
+let adts =
+  Alcotest.
+    [
+      test_case "constructor application is monomorphic" `Quick
+        (test_typecheck ~source:"type option['a] = Some 'a | None in Some 1"
+           ~expected:(Type.T.Con ("option", [ Type.Builtin.i64 ])));
+      test_case "constructor polymorphism" `Quick
+        (test_typecheck
+           ~source:
+             "type option['a] = Some 'a | None in let x = Some 1 in let y = \
+              Some true in y"
+           ~expected:(Type.T.Con ("option", [ Type.Builtin.bool ])));
+      test_case "result Ok" `Quick
+        (test_typecheck ~source:" type result['a, 'b] = Ok 'a | Err 'b in Ok 1"
+           ~expected:
+             (Type.T.of_human
+                Type.Human.(
+                  Forall
+                    ( [ "a" ],
+                      Con ("result", [ Type.Human.con_0 "I64"; Var "a" ]) ))));
+      test_case "nullary constructor" `Quick
+        (test_typecheck
+           ~source:"type option['a] = Some 'a | None in None\n     "
+           ~expected:
+             (Type.T.of_human
+                Type.Human.(Forall ([ "a" ], Con ("option", [ Var "a" ])))));
+      test_case "if with ADT branches" `Quick
+        (test_typecheck
+           ~source:
+             "type result['a, 'b] = Ok 'a | Err 'b in if true then Ok 1 else \
+              Err ()"
+           ~expected:(Type.T.Con ("result", Type.Builtin.[ i64; unit ])));
+      test_case "let-bound constructor result is generalized" `Quick
+        (test_typecheck
+           ~source:
+             "type option['a] = Some 'a | None in let x = Some 1 in x\n     "
+           ~expected:(Type.T.Con ("option", [ Type.Builtin.i64 ])));
+    ]
+
 let () =
   Alcotest.run "Typecheck"
     [
@@ -143,4 +183,5 @@ let () =
       ("conditionals", conditionals);
       ("lambdas", lambdas);
       ("annotations", annotations);
+      ("adts", adts);
     ]

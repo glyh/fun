@@ -102,7 +102,10 @@ let let_bindings =
                        (Lam
                           ( { name = "f"; type_ = None },
                             Lam
-                              ( { name = "x"; type_ = Some (Type.T.con_0 "Int") },
+                              ( {
+                                  name = "x";
+                                  type_ = Some (Type.Human.con_0 "Int");
+                                },
                                 Lam ({ name = "y"; type_ = None }, Var "x") ) ));
                  };
              ]);
@@ -290,7 +293,7 @@ let annotations =
                    type_ = None;
                    value =
                      Annotated
-                       { inner = Atom (I64 1L); typ = Type.T.con_0 "int" };
+                       { inner = Atom (I64 1L); typ = Type.Human.con_0 "int" };
                  };
              ]);
       test_case "annotation on variable" `Quick
@@ -302,7 +305,8 @@ let annotations =
                    name = "y";
                    type_ = None;
                    value =
-                     Annotated { inner = Var "x"; typ = Type.T.con_0 "bool" };
+                     Annotated
+                       { inner = Var "x"; typ = Type.Human.con_0 "bool" };
                  };
              ]);
       test_case "annotation on function application" `Quick
@@ -315,7 +319,10 @@ let annotations =
                    type_ = None;
                    value =
                      Annotated
-                       { inner = Ap (Var "g", Var "x"); typ = Type.T.con_0 "t" };
+                       {
+                         inner = Ap (Var "g", Var "x");
+                         typ = Type.Human.con_0 "t";
+                       };
                  };
              ]);
       test_case "annotation nested inside if" `Quick
@@ -332,10 +339,10 @@ let annotations =
                          cond = Var "cond";
                          then_ =
                            Annotated
-                             { inner = Var "y"; typ = Type.T.con_0 "t1" };
+                             { inner = Var "y"; typ = Type.Human.con_0 "t1" };
                          else_ =
                            Annotated
-                             { inner = Var "z"; typ = Type.T.con_0 "t2" };
+                             { inner = Var "z"; typ = Type.Human.con_0 "t2" };
                        };
                  };
              ]);
@@ -351,7 +358,7 @@ let annotations =
                      Annotated
                        {
                          inner = Lam ({ name = "x"; type_ = None }, Var "x");
-                         typ = Arrow (Type.T.con_0 "t", Type.T.con_0 "t");
+                         typ = Arrow (Type.Human.con_0 "t", Type.Human.con_0 "t");
                        };
                  };
              ]);
@@ -368,7 +375,9 @@ let annotations =
                        ( Annotated
                            {
                              inner = Var "f";
-                             typ = Arrow (Type.T.con_0 "t1", Type.T.con_0 "t2");
+                             typ =
+                               Arrow
+                                 (Type.Human.con_0 "t1", Type.Human.con_0 "t2");
                            },
                          Var "y" );
                  };
@@ -386,8 +395,11 @@ let annotations =
                        {
                          inner =
                            Annotated
-                             { inner = Atom (I64 1L); typ = Type.T.con_0 "int" };
-                         typ = Type.T.con_0 "num";
+                             {
+                               inner = Atom (I64 1L);
+                               typ = Type.Human.con_0 "int";
+                             };
+                         typ = Type.Human.con_0 "num";
                        };
                  };
              ]);
@@ -463,6 +475,98 @@ let operators =
              ]);
     ]
 
+let types =
+  Alcotest.
+    [
+      test_case "simple type declaration" `Quick
+        (test_syntax ~source:"type option = Some Int | None"
+           ~expected:
+             [
+               Binding.TypeDecl
+                 {
+                   name = "option";
+                   args = [];
+                   rhs =
+                     Std.Nonempty_list.init
+                       ("Some", Some (Type.Human.con_0 "Int"))
+                       [ ("None", None) ];
+                 };
+             ]);
+      test_case "type declaration with type parameters" `Quick
+        (test_syntax ~source:"type result['a, 'b] = Ok 'a | Err 'b"
+           ~expected:
+             [
+               Binding.TypeDecl
+                 {
+                   name = "result";
+                   args = [ "a"; "b" ];
+                   rhs =
+                     Std.Nonempty_list.init
+                       ("Ok", Some (Type.Human.Var "a"))
+                       [ ("Err", Some (Type.Human.Var "b")) ];
+                 };
+             ]);
+      test_case "annotated expression with parameterized type" `Quick
+        (test_syntax ~source:"let x : option[Int] = y"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value =
+                     Expr.Annotated
+                       {
+                         inner = Expr.Var "y";
+                         typ = Con ("option", [ Con ("Int", []) ]);
+                       };
+                 };
+             ]);
+      test_case "nested parameterized types" `Quick
+        (test_syntax ~source:"let x : result[Int, option[Bool]] = v"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "x";
+                   type_ = None;
+                   value =
+                     Expr.Annotated
+                       {
+                         inner = Expr.Var "v";
+                         typ =
+                           Con
+                             ( "result",
+                               [
+                                 Con ("Int", []);
+                                 Con ("option", [ Con ("Bool", []) ]);
+                               ] );
+                       };
+                 };
+             ]);
+      test_case "arrow with parameterized types" `Quick
+        (test_syntax ~source:"let f : option[Int] -> result[Int, Bool] = f"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "f";
+                   type_ = None;
+                   value =
+                     Expr.Annotated
+                       {
+                         inner = Expr.Var "f";
+                         typ =
+                           Arrow
+                             ( Con ("option", [ Con ("Int", []) ]),
+                               Con
+                                 ( "result",
+                                   [ Con ("Int", []); Con ("Bool", []) ] ) );
+                       };
+                 };
+             ]);
+    ]
+
 let () =
   Alcotest.run "Syntax"
     [
@@ -474,4 +578,5 @@ let () =
       ("parentheses", parentheses);
       ("annotations", annotations);
       ("operators", operators);
+      ("types", types);
     ]

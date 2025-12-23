@@ -37,9 +37,18 @@ module Constraint = struct
     Printf.sprintf "[%s = %s]" (Type.T.pp lhs) (Type.T.pp rhs)
 end
 
+module StrSet = Set.Make (String)
+
 module Exceptions = struct
   exception UndefinedVariable of Type.Id.t
   exception UnificationFailure of Constraint.t
+
+  exception
+    EscapedTypeVarInTypeDefinition of {
+      name : string;
+      tag : string;
+      free_variables : StrSet.t;
+    }
 
   let () =
     Printexc.register_printer (function
@@ -55,7 +64,18 @@ module FreeVariables = struct
     | Forall (vars, inner) -> Type.Var.Set.diff (of_type inner) vars
     | Var v -> Type.Var.Set.singleton v
     | Arrow (lhs, rhs) -> Type.Var.Set.union (of_type lhs) (of_type rhs)
-    | Type.T.Con _ -> Type.Var.Set.empty
+    | Con (_, inners) ->
+        List.map of_type inners
+        |> List.fold_left Type.Var.Set.union Type.Var.Set.empty
+
+  let rec of_type_human : Type.Human.t -> StrSet.t = function
+    | Forall (vars, inner) ->
+        StrSet.diff (of_type_human inner) (StrSet.of_list vars)
+    | Var v -> StrSet.singleton v
+    | Arrow (lhs, rhs) -> StrSet.union (of_type_human lhs) (of_type_human rhs)
+    | Con (_, inners) ->
+        List.map of_type_human inners
+        |> List.fold_left StrSet.union StrSet.empty
 
   let of_env (env : TypeEnv.t) : Type.Var.Set.t =
     Type.Id.Map.fold
@@ -81,7 +101,7 @@ module Substitution = struct
     | Var v ->
         Type.Var.Map.find_opt v sub |> Option.value ~default:(Type.T.Var v)
     | Arrow (lhs, rhs) -> Arrow (recurse lhs, recurse rhs)
-    | Con _ as default -> default
+    | Con (tag, inner) -> Con (tag, List.map recurse inner)
 
   let on_sub ~(src : t) (dest : t) : t =
     Type.Var.Map.map (on_type ~sub:src) dest
@@ -109,6 +129,11 @@ module Unification = struct
         else (Some (Type.Var.Map.singleton v ty), [])
     | { lhs = Arrow (l1, l2); rhs = Arrow (r1, r2) } ->
         (None, [ { lhs = l1; rhs = r1 }; { lhs = l2; rhs = r2 } ])
+    | { lhs = Con (name1, args1); rhs = Con (name2, args2) }
+      when String.equal name1 name2 -> (
+        try
+          (None, List.map2 (fun lhs rhs -> Constraint.{ lhs; rhs }) args1 args2)
+        with Invalid_argument _ -> raise (UnificationFailure c))
     | _ -> raise (UnificationFailure c)
 
   let many (cs : Constraint.t list) : Substitution.t =
@@ -193,11 +218,45 @@ module Inference = struct
           match value_ty_annotated with
           | None -> value_cons
           | Some value_ty_annotated ->
-              { lhs = value_ty_annotated; rhs = value_ty_inferred }
+              {
+                lhs = Type.T.of_human value_ty_annotated;
+                rhs = value_ty_inferred;
+              }
               :: value_cons
         in
         let env_generalized = generalize all_cons env name value_ty_inferred in
         generate_constraints env_generalized body
+    | Let { binding = TypeDecl { name; args; rhs }; body } ->
+        let tycon_fvs = StrSet.of_list args in
+        let adt_type =
+          Type.Human.(Con (name, args |> List.map (fun arg -> Var arg)))
+        in
+        let env_new =
+          Std.Nonempty_list.to_list rhs
+          |> List.fold_left
+               (fun env (tag, type_body_opt) ->
+                 let tag_type =
+                   match type_body_opt with
+                   | Some type_body ->
+                       let referred_fvs =
+                         FreeVariables.of_type_human type_body
+                       in
+                       if not @@ StrSet.subset referred_fvs tycon_fvs then
+                         raise
+                           (EscapedTypeVarInTypeDefinition
+                              {
+                                name;
+                                tag;
+                                free_variables =
+                                  StrSet.diff referred_fvs tycon_fvs;
+                              });
+                       Type.Human.(Forall (args, Arrow (type_body, adt_type)))
+                   | None -> Forall (args, adt_type)
+                 in
+                 Type.Id.Map.add tag (Type.T.of_human tag_type) env)
+               env
+        in
+        generate_constraints env_new body
     | If { cond; then_; else_ } ->
         let cond_ty, cond_cons = generate_constraints env cond in
         let then_ty, then_cons = generate_constraints env then_ in
@@ -215,7 +274,9 @@ module Inference = struct
         (Arrow (var_gen, body_type), constraints)
     | Annotated { inner; typ = annotated } ->
         let inferred, cons = generate_constraints env inner in
-        (inferred, Constraint.{ lhs = inferred; rhs = annotated } :: cons)
+        ( inferred,
+          Constraint.{ lhs = inferred; rhs = Type.T.of_human annotated } :: cons
+        )
     | Fix inner ->
         (* fix: (a -> b) -> b *)
         let a = Type.T.Var (Type.Var.generate ()) in
