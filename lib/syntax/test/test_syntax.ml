@@ -104,7 +104,7 @@ let let_bindings =
                             Lam
                               ( {
                                   name = "x";
-                                  type_ = Some (Type.Human.con_0 "Int");
+                                  type_ = Some (Type.Generic.con_0 "Int");
                                 },
                                 Lam ({ name = "y"; type_ = None }, Var "x") ) ));
                  };
@@ -293,7 +293,7 @@ let annotations =
                    type_ = None;
                    value =
                      Annotated
-                       { inner = Atom (I64 1L); typ = Type.Human.con_0 "int" };
+                       { inner = Atom (I64 1L); typ = Type.Generic.con_0 "int" };
                  };
              ]);
       test_case "annotation on variable" `Quick
@@ -306,7 +306,7 @@ let annotations =
                    type_ = None;
                    value =
                      Annotated
-                       { inner = Var "x"; typ = Type.Human.con_0 "bool" };
+                       { inner = Var "x"; typ = Type.Generic.con_0 "bool" };
                  };
              ]);
       test_case "annotation on function application" `Quick
@@ -321,7 +321,7 @@ let annotations =
                      Annotated
                        {
                          inner = Ap (Var "g", Var "x");
-                         typ = Type.Human.con_0 "t";
+                         typ = Type.Generic.con_0 "t";
                        };
                  };
              ]);
@@ -339,10 +339,10 @@ let annotations =
                          cond = Var "cond";
                          then_ =
                            Annotated
-                             { inner = Var "y"; typ = Type.Human.con_0 "t1" };
+                             { inner = Var "y"; typ = Type.Generic.con_0 "t1" };
                          else_ =
                            Annotated
-                             { inner = Var "z"; typ = Type.Human.con_0 "t2" };
+                             { inner = Var "z"; typ = Type.Generic.con_0 "t2" };
                        };
                  };
              ]);
@@ -358,7 +358,8 @@ let annotations =
                      Annotated
                        {
                          inner = Lam ({ name = "x"; type_ = None }, Var "x");
-                         typ = Arrow (Type.Human.con_0 "t", Type.Human.con_0 "t");
+                         typ =
+                           Arrow (Type.Generic.con_0 "t", Type.Generic.con_0 "t");
                        };
                  };
              ]);
@@ -377,7 +378,8 @@ let annotations =
                              inner = Var "f";
                              typ =
                                Arrow
-                                 (Type.Human.con_0 "t1", Type.Human.con_0 "t2");
+                                 ( Type.Generic.con_0 "t1",
+                                   Type.Generic.con_0 "t2" );
                            },
                          Var "y" );
                  };
@@ -397,9 +399,9 @@ let annotations =
                            Annotated
                              {
                                inner = Atom (I64 1L);
-                               typ = Type.Human.con_0 "int";
+                               typ = Type.Generic.con_0 "int";
                              };
-                         typ = Type.Human.con_0 "num";
+                         typ = Type.Generic.con_0 "num";
                        };
                  };
              ]);
@@ -488,7 +490,7 @@ let types =
                    args = [];
                    rhs =
                      Std.Nonempty_list.init
-                       ("Some", Some (Type.Human.con_0 "Int"))
+                       ("Some", Some (Type.Generic.con_0 "Int"))
                        [ ("None", None) ];
                  };
              ]);
@@ -502,8 +504,8 @@ let types =
                    args = [ "a"; "b" ];
                    rhs =
                      Std.Nonempty_list.init
-                       ("Ok", Some (Type.Human.Var "a"))
-                       [ ("Err", Some (Type.Human.Var "b")) ];
+                       ("Ok", Some (Type.Generic.Var "a"))
+                       [ ("Err", Some (Type.Generic.Var "b")) ];
                  };
              ]);
       test_case "annotated expression with parameterized type" `Quick

@@ -7,20 +7,20 @@ module TypeEnv = struct
 
   let default =
     Type.Id.Map.of_list
-      Type.Builtin.
+      Type.Generic.
         [
           ( "==",
             Type.T.of_human
               (Forall
                  ([ "x" ], Arrow (Var "x", Arrow (Var "x", Con ("Bool", [])))))
           );
-          (">", Type.T.Arrow (i64, Arrow (i64, bool)));
-          (">=", Type.T.Arrow (i64, Arrow (i64, bool)));
-          ("<", Type.T.Arrow (i64, Arrow (i64, bool)));
-          ("<=", Type.T.Arrow (i64, Arrow (i64, bool)));
-          ("+", Type.T.Arrow (i64, Arrow (i64, i64)));
-          ("-", Type.T.Arrow (i64, Arrow (i64, i64)));
-          ("*", Type.T.Arrow (i64, Arrow (i64, i64)));
+          (">", Arrow (i64, Arrow (i64, bool)));
+          (">=", Arrow (i64, Arrow (i64, bool)));
+          ("<", Arrow (i64, Arrow (i64, bool)));
+          ("<=", Arrow (i64, Arrow (i64, bool)));
+          ("+", Arrow (i64, Arrow (i64, i64)));
+          ("-", Arrow (i64, Arrow (i64, i64)));
+          ("*", Arrow (i64, Arrow (i64, i64)));
         ]
 
   let pp env =
@@ -63,7 +63,8 @@ module FreeVariables = struct
   let rec of_type : Type.T.t -> Type.Var.Set.t = function
     | Forall (vars, inner) -> Type.Var.Set.diff (of_type inner) vars
     | Var v -> Type.Var.Set.singleton v
-    | Arrow (lhs, rhs) -> Type.Var.Set.union (of_type lhs) (of_type rhs)
+    | Arrow (lhs, rhs) | Prod (lhs, rhs) ->
+        Type.Var.Set.union (of_type lhs) (of_type rhs)
     | Con (_, inners) ->
         List.map of_type inners
         |> List.fold_left Type.Var.Set.union Type.Var.Set.empty
@@ -72,7 +73,8 @@ module FreeVariables = struct
     | Forall (vars, inner) ->
         StrSet.diff (of_type_human inner) (StrSet.of_list vars)
     | Var v -> StrSet.singleton v
-    | Arrow (lhs, rhs) -> StrSet.union (of_type_human lhs) (of_type_human rhs)
+    | Arrow (lhs, rhs) | Prod (lhs, rhs) ->
+        StrSet.union (of_type_human lhs) (of_type_human rhs)
     | Con (_, inners) ->
         List.map of_type_human inners
         |> List.fold_left StrSet.union StrSet.empty
@@ -97,10 +99,12 @@ module Substitution = struct
   let rec on_type ~(sub : t) (ty : Type.T.t) =
     let recurse = on_type ~sub in
     match ty with
-    | Type.T.Forall (vs, inner) -> Type.T.Forall (vs, recurse inner)
+    | Type.Generic.Forall (vs, inner) -> Type.Generic.Forall (vs, recurse inner)
     | Var v ->
-        Type.Var.Map.find_opt v sub |> Option.value ~default:(Type.T.Var v)
+        Type.Var.Map.find_opt v sub
+        |> Option.value ~default:(Type.Generic.Var v)
     | Arrow (lhs, rhs) -> Arrow (recurse lhs, recurse rhs)
+    | Prod (lhs, rhs) -> Prod (recurse lhs, recurse rhs)
     | Con (tag, inner) -> Con (tag, List.map recurse inner)
 
   let on_sub ~(src : t) (dest : t) : t =
@@ -177,14 +181,14 @@ let generalize (cs : Constraint.t list) (env : TypeEnv.t) (var : Type.Id.t)
   let ty_new = Substitution.on_type ~sub:sub_solved ty in
   let fv_ty_new = FreeVariables.of_type ty_new in
   let vars_to_generalize = Type.Var.Set.diff fv_ty_new fv_env_new in
-  let ty_generalized = Type.T.Forall (vars_to_generalize, ty_new) in
+  let ty_generalized = Type.Generic.Forall (vars_to_generalize, ty_new) in
   Type.Id.Map.add var ty_generalized env_new
 
 let instantiate = function
-  | Type.T.Forall (vars, inner) ->
+  | Type.Generic.Forall (vars, inner) ->
       let sub =
         Type.Var.Set.to_seq vars
-        |> Seq.map (fun v -> (v, Type.T.Var (Type.Var.inherit_ v)))
+        |> Seq.map (fun v -> (v, Type.Generic.Var (Type.Var.inherit_ v)))
         |> Type.Var.Map.of_seq
       in
       Substitution.on_type ~sub inner
@@ -194,9 +198,9 @@ module Inference = struct
   let rec generate_constraints (env : TypeEnv.t) (e : Expr.t) :
       Type.T.t * Constraint.t list =
     match e with
-    | Atom Unit -> (Type.Builtin.unit, [])
-    | Atom (I64 _) -> (Type.Builtin.i64, [])
-    | Atom (Bool _) -> (Type.Builtin.bool, [])
+    | Atom Unit -> (Type.Generic.unit, [])
+    | Atom (I64 _) -> (Type.Generic.i64, [])
+    | Atom (Bool _) -> (Type.Generic.bool, [])
     | Var id -> (
         match Type.Id.Map.find_opt id env with
         | None -> raise (UndefinedVariable id)
@@ -204,9 +208,9 @@ module Inference = struct
     | Ap (f, x) ->
         let f_ty, f_cons = generate_constraints env f in
         let x_ty, x_cons = generate_constraints env x in
-        let result_ty = Type.T.Var (Type.Var.generate ()) in
+        let result_ty = Type.Generic.Var (Type.Var.generate ()) in
         let all_cons =
-          Constraint.{ lhs = f_ty; rhs = Type.T.Arrow (x_ty, result_ty) }
+          Constraint.{ lhs = f_ty; rhs = Type.Generic.Arrow (x_ty, result_ty) }
           :: f_cons
           @ x_cons
         in
@@ -229,7 +233,7 @@ module Inference = struct
     | Let { binding = TypeDecl { name; args; rhs }; body } ->
         let tycon_fvs = StrSet.of_list args in
         let adt_type =
-          Type.Human.(Con (name, args |> List.map (fun arg -> Var arg)))
+          Type.Generic.(Con (name, args |> List.map (fun arg -> Var arg)))
         in
         let env_new =
           Std.Nonempty_list.to_list rhs
@@ -250,7 +254,7 @@ module Inference = struct
                                 free_variables =
                                   StrSet.diff referred_fvs tycon_fvs;
                               });
-                       Type.Human.(Forall (args, Arrow (type_body, adt_type)))
+                       Type.Generic.(Forall (args, Arrow (type_body, adt_type)))
                    | None -> Forall (args, adt_type)
                  in
                  Type.Id.Map.add tag (Type.T.of_human tag_type) env)
@@ -262,13 +266,13 @@ module Inference = struct
         let then_ty, then_cons = generate_constraints env then_ in
         let else_ty, else_cons = generate_constraints env else_ in
         ( then_ty,
-          Constraint.{ lhs = cond_ty; rhs = Type.Builtin.bool }
+          Constraint.{ lhs = cond_ty; rhs = Type.Generic.bool }
           :: { lhs = then_ty; rhs = else_ty }
           :: cond_cons
           @ then_cons @ else_cons )
     | Lam (param, body) ->
         assert (param.type_ = None);
-        let var_gen = Type.T.Var (Type.Var.generate ()) in
+        let var_gen = Type.Generic.Var (Type.Var.generate ()) in
         let env_new = Type.Id.Map.add param.name var_gen env in
         let body_type, constraints = generate_constraints env_new body in
         (Arrow (var_gen, body_type), constraints)
@@ -279,8 +283,8 @@ module Inference = struct
         )
     | Fix inner ->
         (* fix: (a -> b) -> b *)
-        let a = Type.T.Var (Type.Var.generate ()) in
-        let b = Type.T.Var (Type.Var.generate ()) in
+        let a = Type.Generic.Var (Type.Var.generate ()) in
+        let b = Type.Generic.Var (Type.Var.generate ()) in
         let inner_ty, cons = generate_constraints env inner in
         (b, Constraint.{ lhs = Arrow (a, b); rhs = inner_ty } :: cons)
 

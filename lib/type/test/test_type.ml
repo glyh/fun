@@ -12,9 +12,9 @@ let simple =
   Alcotest.
     [
       test_case "I64" `Quick
-        (test_type (T.of_human (Con ("I64", []))) Builtin.i64);
+        (test_type (T.of_human (Con ("I64", []))) Generic.i64);
       test_case "Unit" `Quick
-        (test_type (T.of_human (Con ("Unit", []))) Builtin.unit);
+        (test_type (T.of_human (Con ("Unit", []))) Generic.unit);
     ]
 
 let malformed =
@@ -24,12 +24,11 @@ let malformed =
       test_case "nested forall rejected" `Quick (fun () ->
           let rank2 =
             T.of_human
-              (Human.Forall
-                 ( [ "a" ],
-                   Human.Arrow
-                     ( Var "a",
-                       Human.Forall ([ "b" ], Human.Arrow (Var "b", Var "b")) )
-                 ))
+              Generic.(
+                Forall
+                  ( [ "a" ],
+                    Arrow (Var "a", Forall ([ "b" ], Arrow (Var "b", Var "b")))
+                  ))
           in
           Alcotest.check_raises "reject rank-2 during equality"
             Type.Exceptions.Rank2TypeUnsupported (fun () ->
@@ -42,21 +41,21 @@ let alpha_equivalence =
     [
       test_case "forall a. a -> a ≡ forall b. b -> b" `Quick
         (test_type
-           (T.of_human (Human.Forall ([ "a" ], Human.Arrow (Var "a", Var "a"))))
-           (T.of_human (Human.Forall ([ "b" ], Human.Arrow (Var "b", Var "b")))));
+           (T.of_human Generic.(Forall ([ "a" ], Arrow (Var "a", Var "a"))))
+           (T.of_human Generic.(Forall ([ "b" ], Arrow (Var "b", Var "b")))));
       test_case "forall a b. a -> b ≡ forall x y. x -> y" `Quick
         (test_type
            (T.of_human
-              (Human.Forall ([ "a"; "b" ], Human.Arrow (Var "a", Var "b"))))
+              Generic.(Forall ([ "a"; "b" ], Arrow (Var "a", Var "b"))))
            (T.of_human
-              (Human.Forall ([ "x"; "y" ], Human.Arrow (Var "x", Var "y")))));
+              Generic.(Forall ([ "x"; "y" ], Arrow (Var "x", Var "y")))));
       test_case "forall a. a -> a ≠ forall a. a -> b (not alpha-equivalent)"
         `Quick (fun () ->
           let t1 =
-            T.of_human (Human.Forall ([ "a" ], Human.Arrow (Var "a", Var "a")))
+            T.of_human Generic.(Forall ([ "a" ], Arrow (Var "a", Var "a")))
           in
           let t2 =
-            T.of_human (Human.Forall ([ "a" ], Human.Arrow (Var "a", Var "b")))
+            T.of_human Generic.(Forall ([ "a" ], Arrow (Var "a", Var "b")))
           in
           Alcotest.check (Alcotest.neg Testable.type_) "different" t1 t2);
     ]

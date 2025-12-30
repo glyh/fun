@@ -31,10 +31,10 @@ toplevel_eof:
 
 type_:
   | LPAREN type_ RPAREN { $2 }
-  | ID { Type.Human.Con ($1, []) }
-  | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.Human.Con (name, args) }
-  | type_ ARROW type_ { Type.Human.Arrow ($1, $3) }
-  | TY_VAR { Type.Human.Var $1 }
+  | ID { Type.Generic.Con ($1, []) }
+  | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.Generic.Con (name, args) }
+  | type_ ARROW type_ { Type.Generic.Arrow ($1, $3) }
+  | TY_VAR { Type.Generic.Var $1 }
 
 type_annotation:
   | COLON typ=type_ {
