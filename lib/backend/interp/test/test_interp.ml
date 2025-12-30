@@ -56,6 +56,35 @@ let recursion =
            ~typ:Type.Generic.i64);
     ]
 
+let lists =
+  Alcotest.
+    [
+      (let rec odds n =
+         if n > 9L then Interp.Model.Value.Tagged { tag = "Nil"; inner = None }
+         else
+           Interp.Model.Value.Tagged
+             {
+               tag = "Cons";
+               inner = Some (Prod (Atom (I64 n), odds Int64.(add n 2L)));
+             }
+       in
+       test_case "odd list 1..9 (recursive)" `Quick
+         (test_eval
+            ~source:
+              {|
+type List = Nil | Cons I64 * List in
+let rec odds =
+ fun n ->
+   if n > 9 then Nil
+   else Cons(n, odds (n + 2))
+in odds 1
+|}
+            ~expected:(odds 1L)
+            ~typ:Type.Generic.(con_0 "List")));
+    ]
+
 let () =
   Alcotest.run "Interp"
-    [ ("higher_order", higher_order); ("recursion", recursion) ]
+    [
+      ("higher_order", higher_order); ("recursion", recursion); ("lists", lists);
+    ]
