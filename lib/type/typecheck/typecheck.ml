@@ -287,6 +287,10 @@ module Inference = struct
         let b = Type.Generic.Var (Type.Var.generate ()) in
         let inner_ty, cons = generate_constraints env inner in
         (b, Constraint.{ lhs = Arrow (a, b); rhs = inner_ty } :: cons)
+    | Prod (lhs, rhs) ->
+        let lhs_ty, cons = generate_constraints env lhs in
+        let rhs_ty, cons' = generate_constraints env rhs in
+        (Prod (lhs_ty, rhs_ty), cons @ cons')
 
   let on_expr (env : TypeEnv.t) (exp : Expr.t) : Type.T.t =
     let exp_ty, cons = generate_constraints env exp in

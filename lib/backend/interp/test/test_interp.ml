@@ -33,7 +33,7 @@ let higher_order =
            ~source:
              "let twice = fun f -> fun x -> f (f x) in let inc = fun n -> n + \
               1 in twice inc 3"
-           ~expected:(Interp.Model.Value.Norm (Syntax.Ast.Atom.I64 5L))
+           ~expected:(Interp.Model.Value.Atom (Syntax.Ast.Atom.I64 5L))
            ~typ:Type.Generic.i64);
     ]
 
@@ -45,14 +45,14 @@ let recursion =
            ~source:
              "let rec fact = fun n -> if n == 0 then 1 else n * fact (n - 1) \
               in fact 5"
-           ~expected:(Interp.Model.Value.Norm (Syntax.Ast.Atom.I64 120L))
+           ~expected:(Interp.Model.Value.Atom (Syntax.Ast.Atom.I64 120L))
            ~typ:Type.Generic.i64);
       test_case "fib 6" `Quick
         (test_eval
            ~source:
              "let rec fib = fun n -> if n <= 1 then n else fib (n-1) + fib \
               (n-2) in fib 6"
-           ~expected:(Interp.Model.Value.Norm (Syntax.Ast.Atom.I64 8L))
+           ~expected:(Interp.Model.Value.Atom (Syntax.Ast.Atom.I64 8L))
            ~typ:Type.Generic.i64);
     ]
 

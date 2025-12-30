@@ -123,16 +123,25 @@ expr_app:
     xs
   }
 
+expr_with_opt_annotation:
+  | inner=expr typ=option(type_annotation) { 
+    match typ with
+    | None -> inner
+    | Some typ -> Expr.Annotated { inner ; typ }
+  }
+
 expr_primary: 
   | ID { Expr.Var $1 }
   | I64 { Expr.Atom (I64 $1) }
   | UNIT { Expr.Atom Unit }
   | TRUE { Expr.Atom (Bool true) }
   | FALSE { Expr.Atom (Bool false) }
-  | LPAREN inner=expr typ=option(type_annotation) RPAREN { 
-    match typ with
-    | None -> inner
-    | Some typ -> Expr.Annotated { inner; typ }
+  | LPAREN maybe_tuple=separated_nonempty_list(COMMA, expr_with_opt_annotation) RPAREN { 
+    match maybe_tuple with
+    | [non_tuple] -> non_tuple 
+    | element0 :: rest -> 
+        List.fold_left (fun acc ele -> Expr.Prod (acc, ele)) element0 rest
+    | [] -> failwith "Unreachable: tuple has only 1 element!" 
   }
 
 expr_eof:

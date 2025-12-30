@@ -28,6 +28,7 @@ module rec Expr : sig
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
+    | Prod of t * t
   [@@deriving eq]
 
   val pp : t -> string
@@ -41,6 +42,7 @@ end = struct
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
+    | Prod of t * t
   [@@deriving eq]
 
   let rec pp = function
@@ -58,6 +60,7 @@ end = struct
     | Annotated { inner; typ } ->
         Printf.sprintf "(%s : %s)" (pp inner) (Type.Human.pp typ)
     | Fix inner -> Printf.sprintf "fix (%s)" (pp inner)
+    | Prod (lhs, rhs) -> "(" ^ pp lhs ^ ", " ^ pp rhs ^ ")"
 end
 
 and Binding : sig

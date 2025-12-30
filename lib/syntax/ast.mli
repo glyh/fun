@@ -18,6 +18,7 @@ module rec Expr : sig
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
+    | Prod of t * t
   [@@deriving eq]
 
   val pp : t -> string

@@ -9,14 +9,14 @@ open Exceptions
 
 (* NOTE: this function expects the program is typechecked *)
 let rec eval env = function
-  | Ast.Expr.Atom a -> Value.Norm a
+  | Ast.Expr.Atom a -> Value.Atom a
   | Var x -> (
       match Type.Id.Map.find_opt x env with
       | None -> raise (UndefinedVariable x)
       | Some v -> v)
   | If { cond; then_; else_ } -> (
       match eval env cond with
-      | Norm (Bool b) -> eval env (if b then then_ else else_)
+      | Atom (Bool b) -> eval env (if b then then_ else else_)
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Ap (f, x) -> (
       match eval env f with
@@ -59,3 +59,4 @@ let rec eval env = function
           in
           Closure fix_f
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
+  | Prod (lhs, rhs) -> Value.Prod (eval env lhs, eval env rhs)
