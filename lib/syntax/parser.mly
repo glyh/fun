@@ -138,10 +138,9 @@ expr_primary:
   | FALSE { Expr.Atom (Bool false) }
   | LPAREN maybe_tuple=separated_nonempty_list(COMMA, expr_with_opt_annotation) RPAREN { 
     match maybe_tuple with
-    | [non_tuple] -> non_tuple 
     | element0 :: rest -> 
         List.fold_left (fun acc ele -> Expr.Prod (acc, ele)) element0 rest
-    | [] -> failwith "Unreachable: tuple has only 1 element!" 
+    | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!" 
   }
 
 expr_eof:
