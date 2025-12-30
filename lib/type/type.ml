@@ -50,7 +50,7 @@ module Precedence = struct
   (* Assumption: in the same precedence level, associativity is always same *)
   let of_tag = function
     | `Forall -> (30, `Left)
-    | `Prod -> (20, `Right)
+    | `Prod -> (20, `Left)
     | `Arrow -> (10, `Right)
     | `Var | `Con -> (0, `Left)
 

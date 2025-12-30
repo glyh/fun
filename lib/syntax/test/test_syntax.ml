@@ -515,13 +515,8 @@ let types =
                Binding.Value
                  {
                    name = "x";
-                   type_ = None;
-                   value =
-                     Expr.Annotated
-                       {
-                         inner = Expr.Var "y";
-                         typ = Con ("option", [ Con ("Int", []) ]);
-                       };
+                   type_ = Some (Con ("option", [ Con ("Int", []) ]));
+                   value = Expr.Var "y";
                  };
              ]);
       test_case "nested parameterized types" `Quick
@@ -531,19 +526,15 @@ let types =
                Binding.Value
                  {
                    name = "x";
-                   type_ = None;
-                   value =
-                     Expr.Annotated
-                       {
-                         inner = Expr.Var "v";
-                         typ =
-                           Con
-                             ( "result",
-                               [
-                                 Con ("Int", []);
-                                 Con ("option", [ Con ("Bool", []) ]);
-                               ] );
-                       };
+                   type_ =
+                     Some
+                       (Con
+                          ( "result",
+                            [
+                              Con ("Int", []);
+                              Con ("option", [ Con ("Bool", []) ]);
+                            ] ));
+                   value = Expr.Var "v";
                  };
              ]);
       test_case "arrow with parameterized types" `Quick
@@ -553,18 +544,90 @@ let types =
                Binding.Value
                  {
                    name = "f";
-                   type_ = None;
-                   value =
-                     Expr.Annotated
-                       {
-                         inner = Expr.Var "f";
-                         typ =
-                           Arrow
-                             ( Con ("option", [ Con ("Int", []) ]),
-                               Con
-                                 ( "result",
-                                   [ Con ("Int", []); Con ("Bool", []) ] ) );
-                       };
+                   type_ =
+                     Some
+                       (Arrow
+                          ( Con ("option", [ Con ("Int", []) ]),
+                            Con ("result", [ Con ("Int", []); Con ("Bool", []) ])
+                          ));
+                   value = Expr.Var "f";
+                 };
+             ]);
+      test_case "left-associative product" `Quick
+        (test_syntax ~source:"let x : Int * Bool * String = v"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "x";
+                   type_ =
+                     Some
+                       (Prod
+                          ( Prod (Con ("Int", []), Con ("Bool", [])),
+                            Con ("String", []) ));
+                   value = Expr.Var "v";
+                 };
+             ]);
+      test_case "product with arrow" `Quick
+        (test_syntax ~source:"let f : Int * Bool -> String = v"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "f";
+                   type_ =
+                     Some
+                       (Arrow
+                          ( Prod (Con ("Int", []), Con ("Bool", [])),
+                            Con ("String", []) ));
+                   value = Expr.Var "v";
+                 };
+             ]);
+      test_case "product with parameterized type" `Quick
+        (test_syntax ~source:"let x : Int * option[Bool] = v"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "x";
+                   type_ =
+                     Some
+                       (Prod
+                          (Con ("Int", []), Con ("option", [ Con ("Bool", []) ])));
+                   value = Expr.Var "v";
+                 };
+             ]);
+      test_case "nested products and arrows" `Quick
+        (test_syntax ~source:"let f : ('a * 'b) -> 'c * 'd = v"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "f";
+                   type_ =
+                     Some
+                       (Arrow (Prod (Var "a", Var "b"), Prod (Var "c", Var "d")));
+                   value = Expr.Var "v";
+                 };
+             ]);
+      test_case "complex type" `Quick
+        (test_syntax
+           ~source:"let x : result[Int, Bool] * option[String] -> 'a = v"
+           ~expected:
+             [
+               Binding.Value
+                 {
+                   name = "x";
+                   type_ =
+                     Some
+                       (Arrow
+                          ( Prod
+                              ( Con
+                                  ( "result",
+                                    [ Con ("Int", []); Con ("Bool", []) ] ),
+                                Con ("option", [ Con ("String", []) ]) ),
+                            Var "a" ));
+                   value = Expr.Var "v";
                  };
              ]);
     ]

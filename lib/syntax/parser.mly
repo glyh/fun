@@ -34,6 +34,7 @@ type_:
   | ID { Type.Generic.Con ($1, []) }
   | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.Generic.Con (name, args) }
   | type_ ARROW type_ { Type.Generic.Arrow ($1, $3) }
+  | type_ MUL type_ { Type.Generic.Prod ($1, $3) }
   | TY_VAR { Type.Generic.Var $1 }
 
 type_annotation:
@@ -76,12 +77,7 @@ binding:
       else 
         lam_inner
     in
-    let lam_wrapped_annotated = 
-      match bind_annotation with
-      | None -> lam_wrapped
-      | Some typ -> Expr.Annotated { inner = lam_wrapped; typ }
-    in
-    Binding.Value { name; type_ = None; value = lam_wrapped_annotated }
+    Binding.Value { name; type_ = bind_annotation; value = lam_wrapped }
   }
   | TYPE type_and_args=type_with_opt_args ASSIGN rhs=type_rhs {
     let (name, args) = type_and_args in
