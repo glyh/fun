@@ -131,7 +131,8 @@ module Unification = struct
         let fvs_ty = FreeVariables.of_type ty in
         if Type.Var.Set.mem v fvs_ty then raise (UnificationFailure c)
         else (Some (Type.Var.Map.singleton v ty), [])
-    | { lhs = Arrow (l1, l2); rhs = Arrow (r1, r2) } ->
+    | { lhs = Arrow (l1, l2); rhs = Arrow (r1, r2) }
+    | { lhs = Prod (l1, l2); rhs = Prod (r1, r2) } ->
         (None, [ { lhs = l1; rhs = r1 }; { lhs = l2; rhs = r2 } ])
     | { lhs = Con (name1, args1); rhs = Con (name2, args2) }
       when String.equal name1 name2 -> (
