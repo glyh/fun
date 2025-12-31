@@ -38,6 +38,9 @@ module Generic : sig
   val i64 : _ t
   val bool : _ t
   val char : _ t
+
+  val (=>) : 'var_set -> ('a, 'var_set) t -> ('a, 'var_set) t 
+  val (^->) : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t 
 end
 
 module Human : sig

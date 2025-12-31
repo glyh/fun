@@ -32,6 +32,8 @@ let rec token buf =
   | "true" -> TRUE
   | "false" -> FALSE
   | "type" -> TYPE
+  | "match" -> MATCH
+  | "end" -> END
   | "->" -> ARROW
   | "()" -> UNIT
   | ";;" -> DOUBLESEMI
@@ -51,6 +53,7 @@ let rec token buf =
   | "*" -> MUL
   | "|" -> PIPE
   | "," -> COMMA
+  | "_" -> UNDERSCORE
   | Plus '0' .. '9' ->
       let num = Sedlexing.Utf8.lexeme buf |> Int64.of_string in
       I64 num

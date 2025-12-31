@@ -8,6 +8,19 @@ module Atom : sig
   val pp : t -> string
 end
 
+module Pattern : sig
+  type t =
+    | Bind of Type.Id.t
+    | Just of Atom.t
+    | Prod of t * t
+    | Tagged of Type.Id.t * t option
+    | Union of t * t
+    | Any
+  [@@deriving eq]
+
+  val pp : t -> string
+end
+
 module rec Expr : sig
   type t =
     | Atom of Atom.t
@@ -19,6 +32,7 @@ module rec Expr : sig
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
     | Prod of t * t
+    | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
   [@@deriving eq]
 
   val pp : t -> string

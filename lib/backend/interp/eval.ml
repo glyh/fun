@@ -7,7 +7,25 @@ end
 
 open Exceptions
 
-(* NOTE: this function expects the program is typechecked *)
+(* NOTE: this backend expects the program is properly-typed *)
+
+let rec pattern_matches (pat : Ast.Pattern.t) (v : Value.t) env =
+  match (pat, v) with
+  | Bind id, v -> Some (Type.Id.Map.add id v env)
+  | Just expected, Atom actual when Ast.Atom.equal expected actual -> Some env
+  | Prod (p1, p2), Prod (v1, v2) ->
+      Option.bind (pattern_matches p1 v1 env) (pattern_matches p2 v2)
+  | Tagged (tag_expected, None), Tagged { tag = tag_actual; inner = None }
+    when String.equal tag_expected tag_actual ->
+      Some env
+  | Tagged (tag_expected, Some p), Tagged { tag = tag_actual; inner = Some v }
+    when String.equal tag_expected tag_actual ->
+      pattern_matches p v env
+  | Union (p1, p2), v ->
+      List.find_map (fun p -> pattern_matches p v env) [ p1; p2 ]
+  | Any, _ -> Some env
+  | _ -> None
+
 let rec eval env = function
   | Ast.Expr.Atom a -> Value.Atom a
   | Var x -> (
@@ -60,3 +78,15 @@ let rec eval env = function
           Closure fix_f
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Prod (lhs, rhs) -> Value.Prod (eval env lhs, eval env rhs)
+  | Match { matched; branches } -> (
+      let matched = eval env matched in
+      let result =
+        Std.Nonempty_list.to_list branches
+        |> List.find_map (fun (pat, body) ->
+            match pattern_matches pat matched env with
+            | None -> None
+            | Some env' -> Some (eval env' body))
+      in
+      match result with
+      | None -> raise (Std.Exceptions.Unreachable [%here])
+      | Some v -> v)

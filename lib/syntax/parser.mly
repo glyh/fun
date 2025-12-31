@@ -7,16 +7,19 @@
 %token <Type.Id.t> ID
 %token <Type.Id.t> TY_VAR
 %token <int64> I64
-%token LET REC IN IF THEN ELSE FUN TYPE
+%token LET REC IN IF THEN ELSE FUN TYPE MATCH END
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
 %token LBRACKET RBRACKET COMMA
 %token TRUE FALSE
 %token EOF
 %token EQ GE LE GT LT
 %token ADD SUB MUL
+%token UNDERSCORE
+
 
 %right ARROW
 
+%left PIPE
 %left EQ GE LE GT LT
 %left ADD SUB
 %left MUL
@@ -84,9 +87,24 @@ binding:
     Binding.TypeDecl { name; args; rhs }
   }
 
+atom: 
+  | I64 { Atom.I64 $1 }
+  | UNIT { Atom.Unit }
+  | TRUE { Atom.Bool true }
+  | FALSE { Atom.Bool false }
+
+pattern:
+  | id=ID { Pattern.Bind id }
+  | atom { Pattern.Just $1 }
+  | pattern MUL pattern { Pattern.Prod ($1, $3) }
+  | id=ID LPAREN RPAREN { Pattern.Tagged (id, None) }
+  | id=ID LPAREN p=pattern RPAREN { Pattern.Tagged (id, Some p) }
+  | pattern PIPE pattern { Pattern.Union ($1, $3) }
+  | UNDERSCORE { Pattern.Any }
+
 expr: 
   | expr_stmt { $1 }
-    
+
 expr_stmt:
   | binding=binding IN body=expr {
     Expr.Let { binding; body }
@@ -97,7 +115,19 @@ expr_stmt:
   | FUN params=nonempty_list(param) ARROW body=expr {
       List.fold_right (fun param acc -> Expr.Lam (param, acc)) params body
     }
+  | MATCH matched=expr_expr branches=nonempty_list(match_branch) END {
+    let branches = 
+      match branches with
+      | [] -> failwith "Unreachable: nonempty list returns empty in expr_stmt > match!" 
+      | hd :: rest -> Std.Nonempty_list.init hd rest
+    in Expr.Match { matched; branches }
+  }
   | expr_expr { $1 }
+
+match_branch:
+  | PIPE pat=pattern ARROW body=expr {
+    (pat, body)
+  }
 
 %inline bin_op:
   | ADD { "+" }
@@ -131,11 +161,8 @@ expr_with_opt_annotation:
   }
 
 expr_primary: 
+  | atom { Expr.Atom $1 }
   | ID { Expr.Var $1 }
-  | I64 { Expr.Atom (I64 $1) }
-  | UNIT { Expr.Atom Unit }
-  | TRUE { Expr.Atom (Bool true) }
-  | FALSE { Expr.Atom (Bool false) }
   | LPAREN maybe_tuple=separated_nonempty_list(COMMA, expr_with_opt_annotation) RPAREN { 
     match maybe_tuple with
     | element0 :: rest -> 

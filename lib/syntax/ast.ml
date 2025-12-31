@@ -18,6 +18,26 @@ module Atom = struct
     | Bool false -> "false"
 end
 
+module Pattern = struct
+  type t =
+    | Bind of Id.t
+    | Just of Atom.t
+    | Prod of t * t
+    | Tagged of Id.t * t option
+    | Union of t * t
+    | Any
+  [@@deriving eq]
+
+  let rec pp = function
+    | Bind id -> Id.pp id
+    | Just a -> Atom.pp a
+    | Prod (lhs, rhs) -> "(" ^ pp lhs ^ ", " ^ pp rhs ^ ")"
+    | Tagged (tag, None) -> tag
+    | Tagged (tag, Some inner) -> tag ^ " " ^ pp inner
+    | Union (lhs, rhs) -> pp lhs ^ " | " ^ pp rhs
+    | Any -> "_"
+end
+
 module rec Expr : sig
   type t =
     | Atom of Atom.t
@@ -29,6 +49,7 @@ module rec Expr : sig
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
     | Prod of t * t
+    | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
   [@@deriving eq]
 
   val pp : t -> string
@@ -43,6 +64,7 @@ end = struct
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
     | Prod of t * t
+    | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
   [@@deriving eq]
 
   let rec pp = function
@@ -61,6 +83,14 @@ end = struct
         Printf.sprintf "(%s : %s)" (pp inner) (Type.Human.pp typ)
     | Fix inner -> Printf.sprintf "fix (%s)" (pp inner)
     | Prod (lhs, rhs) -> "(" ^ pp lhs ^ ", " ^ pp rhs ^ ")"
+    | Match { matched; branches } ->
+        let branches_pp =
+          Std.Nonempty_list.to_list branches
+          |> List.map (fun (pat, body) ->
+              Printf.sprintf "| %s -> %s" (Pattern.pp pat) (pp body))
+          |> String.concat ""
+        in
+        "match " ^ pp matched ^ branches_pp ^ "end"
 end
 
 and Binding : sig

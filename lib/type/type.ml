@@ -109,6 +109,8 @@ module Generic = struct
   let i64 = con_0 "I64"
   let bool = con_0 "Bool"
   let char = con_0 "Char"
+  let ( => ) = fun vars inner -> Forall (vars, inner)
+  let ( ^-> ) = fun lhs rhs -> Arrow (lhs, rhs)
 end
 
 module Human = struct

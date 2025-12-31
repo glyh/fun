@@ -9,18 +9,14 @@ module TypeEnv = struct
     Type.Id.Map.of_list
       Type.Generic.
         [
-          ( "==",
-            Type.T.of_human
-              (Forall
-                 ([ "x" ], Arrow (Var "x", Arrow (Var "x", Con ("Bool", [])))))
-          );
-          (">", Arrow (i64, Arrow (i64, bool)));
-          (">=", Arrow (i64, Arrow (i64, bool)));
-          ("<", Arrow (i64, Arrow (i64, bool)));
-          ("<=", Arrow (i64, Arrow (i64, bool)));
-          ("+", Arrow (i64, Arrow (i64, i64)));
-          ("-", Arrow (i64, Arrow (i64, i64)));
-          ("*", Arrow (i64, Arrow (i64, i64)));
+          ("==", Type.T.of_human ([ "x" ] => Var "x" ^-> Var "x" ^-> bool));
+          (">", i64 ^-> i64 ^-> bool);
+          (">=", i64 ^-> i64 ^-> bool);
+          ("<", i64 ^-> i64 ^-> bool);
+          ("<=", i64 ^-> i64 ^-> bool);
+          ("+", i64 ^-> i64 ^-> i64);
+          ("-", i64 ^-> i64 ^-> i64);
+          ("*", i64 ^-> i64 ^-> i64);
         ]
 
   let pp env =
@@ -49,6 +45,12 @@ module Exceptions = struct
       tag : string;
       free_variables : StrSet.t;
     }
+
+  exception
+    DuplicatedBindingInPatternProd of { pat : Pattern.t; binding : string }
+
+  exception NoSuchTypeConstructor of { pat : Pattern.t; tag : string }
+  exception BindingMismatchOnUnion of { pat1 : Pattern.t; pat2 : Pattern.t }
 
   let () =
     Printexc.register_printer (function
@@ -97,13 +99,12 @@ module Substitution = struct
     |> String.concat ", " |> Printf.sprintf "{ %s } "
 
   let rec on_type ~(sub : t) (ty : Type.T.t) =
+    let open Type.Generic in
     let recurse = on_type ~sub in
     match ty with
-    | Type.Generic.Forall (vs, inner) -> Type.Generic.Forall (vs, recurse inner)
-    | Var v ->
-        Type.Var.Map.find_opt v sub
-        |> Option.value ~default:(Type.Generic.Var v)
-    | Arrow (lhs, rhs) -> Arrow (recurse lhs, recurse rhs)
+    | Forall (vs, inner) -> vs => recurse inner
+    | Var v -> Type.Var.Map.find_opt v sub |> Option.value ~default:(Var v)
+    | Arrow (lhs, rhs) -> recurse lhs ^-> recurse rhs
     | Prod (lhs, rhs) -> Prod (recurse lhs, recurse rhs)
     | Con (tag, inner) -> Con (tag, List.map recurse inner)
 
@@ -196,19 +197,86 @@ let instantiate = function
   | t -> t
 
 module Inference = struct
-  let rec generate_constraints (env : TypeEnv.t) (e : Expr.t) :
+  let of_atom = function
+    | Atom.Unit -> Type.Generic.unit
+    | I64 _ -> Type.Generic.i64
+    | Bool _ -> Type.Generic.bool
+
+  let rec constraints_from_pattern (env : TypeEnv.t) (pat : Pattern.t) :
+      Type.T.t * TypeEnv.t * Constraint.t list =
+    let open Type.Generic in
+    let gen_var () = Var (Type.Var.generate ()) in
+    match pat with
+    | Bind id ->
+        let id_ty = gen_var () in
+        (id_ty, Type.Id.Map.of_list [ (id, id_ty) ], [])
+    | Just a -> (of_atom a, Type.Id.Map.empty, [])
+    | Any -> (gen_var (), Type.Id.Map.empty, [])
+    | Prod (fst, snd) ->
+        let prod_pat_union =
+          Type.Id.Map.union (fun binding _ _ ->
+              raise (DuplicatedBindingInPatternProd { pat; binding }))
+        in
+        let fst_ty, fst_extras, fst_cons = constraints_from_pattern env fst in
+        let snd_ty, snd_extras, snd_cons = constraints_from_pattern env snd in
+        ( Prod (fst_ty, snd_ty),
+          prod_pat_union fst_extras snd_extras,
+          fst_cons @ snd_cons )
+    | Tagged (tag, inner) -> (
+        let tag_ty =
+          match Type.Id.Map.find_opt tag env with
+          | None -> raise (NoSuchTypeConstructor { tag; pat })
+          | Some tag_ty -> tag_ty
+        in
+        match inner with
+        | None -> (tag_ty, Type.Id.Map.empty, [])
+        | Some inner ->
+            let inner_ty, inner_extras, inner_cons =
+              constraints_from_pattern env inner
+            in
+            let outer_ty = gen_var () in
+            ( outer_ty,
+              inner_extras,
+              Constraint.{ lhs = tag_ty; rhs = inner_ty ^-> outer_ty }
+              :: inner_cons ))
+    | Union (lhs, rhs) -> (
+        let lhs_ty, lhs_extras, lhs_cons = constraints_from_pattern env lhs in
+        let rhs_ty, rhs_extras, rhs_cons = constraints_from_pattern env rhs in
+        let sort_bindings bindings =
+          Type.Id.Map.to_list bindings
+          |> List.sort (fun (lhs_key, _) (rhs_key, _) ->
+              String.compare lhs_key rhs_key)
+        in
+        let lhs_bindings = sort_bindings lhs_extras in
+        let rhs_bindings = sort_bindings rhs_extras in
+        let exn_to_throw = BindingMismatchOnUnion { pat1 = lhs; pat2 = rhs } in
+        try
+          let both_bindings = List.combine lhs_bindings rhs_bindings in
+          let cons_on_bindings =
+            List.map
+              (fun ((lhs_name, lhs_ty), (rhs_name, rhs_ty)) ->
+                if String.equal lhs_name rhs_name then
+                  Constraint.{ lhs = lhs_ty; rhs = rhs_ty }
+                else raise exn_to_throw)
+              both_bindings
+          in
+          ( lhs_ty,
+            lhs_extras,
+            (Constraint.{ lhs = lhs_ty; rhs = rhs_ty } :: cons_on_bindings)
+            @ lhs_cons @ rhs_cons )
+        with Invalid_argument _ -> raise exn_to_throw)
+
+  let rec constraints_from_expr (env : TypeEnv.t) (e : Expr.t) :
       Type.T.t * Constraint.t list =
     match e with
-    | Atom Unit -> (Type.Generic.unit, [])
-    | Atom (I64 _) -> (Type.Generic.i64, [])
-    | Atom (Bool _) -> (Type.Generic.bool, [])
+    | Atom a -> (of_atom a, [])
     | Var id -> (
         match Type.Id.Map.find_opt id env with
         | None -> raise (UndefinedVariable id)
         | Some scheme -> (instantiate scheme, []))
     | Ap (f, x) ->
-        let f_ty, f_cons = generate_constraints env f in
-        let x_ty, x_cons = generate_constraints env x in
+        let f_ty, f_cons = constraints_from_expr env f in
+        let x_ty, x_cons = constraints_from_expr env x in
         let result_ty = Type.Generic.Var (Type.Var.generate ()) in
         let all_cons =
           Constraint.{ lhs = f_ty; rhs = Type.Generic.Arrow (x_ty, result_ty) }
@@ -218,7 +286,7 @@ module Inference = struct
         (result_ty, all_cons)
     | Let { binding = Value { name; type_ = value_ty_annotated; value }; body }
       ->
-        let value_ty_inferred, value_cons = generate_constraints env value in
+        let value_ty_inferred, value_cons = constraints_from_expr env value in
         let all_cons =
           match value_ty_annotated with
           | None -> value_cons
@@ -230,11 +298,14 @@ module Inference = struct
               :: value_cons
         in
         let env_generalized = generalize all_cons env name value_ty_inferred in
-        generate_constraints env_generalized body
+        constraints_from_expr env_generalized body
     | Let { binding = TypeDecl { name; args; rhs }; body } ->
         let tycon_fvs = StrSet.of_list args in
         let adt_type =
           Type.Generic.(Con (name, args |> List.map (fun arg -> Var arg)))
+        in
+        let wrap_forall inner =
+          match args with [] -> inner | args -> Type.Generic.(args => inner)
         in
         let env_new =
           Std.Nonempty_list.to_list rhs
@@ -255,17 +326,19 @@ module Inference = struct
                                 free_variables =
                                   StrSet.diff referred_fvs tycon_fvs;
                               });
-                       Type.Generic.(Forall (args, Arrow (type_body, adt_type)))
-                   | None -> Forall (args, adt_type)
+                       Type.Generic.(type_body ^-> adt_type)
+                   | None -> adt_type
                  in
-                 Type.Id.Map.add tag (Type.T.of_human tag_type) env)
+                 Type.Id.Map.add tag
+                   (Type.T.of_human (wrap_forall tag_type))
+                   env)
                env
         in
-        generate_constraints env_new body
+        constraints_from_expr env_new body
     | If { cond; then_; else_ } ->
-        let cond_ty, cond_cons = generate_constraints env cond in
-        let then_ty, then_cons = generate_constraints env then_ in
-        let else_ty, else_cons = generate_constraints env else_ in
+        let cond_ty, cond_cons = constraints_from_expr env cond in
+        let then_ty, then_cons = constraints_from_expr env then_ in
+        let else_ty, else_cons = constraints_from_expr env else_ in
         ( then_ty,
           Constraint.{ lhs = cond_ty; rhs = Type.Generic.bool }
           :: { lhs = then_ty; rhs = else_ty }
@@ -275,10 +348,10 @@ module Inference = struct
         assert (param.type_ = None);
         let var_gen = Type.Generic.Var (Type.Var.generate ()) in
         let env_new = Type.Id.Map.add param.name var_gen env in
-        let body_type, constraints = generate_constraints env_new body in
+        let body_type, constraints = constraints_from_expr env_new body in
         (Arrow (var_gen, body_type), constraints)
     | Annotated { inner; typ = annotated } ->
-        let inferred, cons = generate_constraints env inner in
+        let inferred, cons = constraints_from_expr env inner in
         ( inferred,
           Constraint.{ lhs = inferred; rhs = Type.T.of_human annotated } :: cons
         )
@@ -286,15 +359,48 @@ module Inference = struct
         (* fix: (a -> b) -> b *)
         let a = Type.Generic.Var (Type.Var.generate ()) in
         let b = Type.Generic.Var (Type.Var.generate ()) in
-        let inner_ty, cons = generate_constraints env inner in
+        let inner_ty, cons = constraints_from_expr env inner in
         (b, Constraint.{ lhs = Arrow (a, b); rhs = inner_ty } :: cons)
     | Prod (lhs, rhs) ->
-        let lhs_ty, cons = generate_constraints env lhs in
-        let rhs_ty, cons' = generate_constraints env rhs in
+        let lhs_ty, cons = constraints_from_expr env lhs in
+        let rhs_ty, cons' = constraints_from_expr env rhs in
         (Prod (lhs_ty, rhs_ty), cons @ cons')
+    | Match { matched; branches } ->
+        let env_with_extra ~here extras =
+          Type.Id.Map.union
+            (fun _ _ _ -> raise (Std.Exceptions.Unreachable here))
+            extras env
+        in
+        let matched_ty, matched_cons = constraints_from_expr env matched in
+        let (pat_1, body_1), branch_rest = Std.Nonempty_list.uncons branches in
+        let pat_1_ty, body_1_env_extra, pat_1_cons =
+          constraints_from_pattern env pat_1
+        in
+        let body_1_env = env_with_extra ~here:[%here] body_1_env_extra in
+        let body_1_ty, body_1_cons = constraints_from_expr body_1_env body_1 in
+        let rest_cons =
+          List.map
+            (fun (pat_i, body_i) ->
+              let pat_i_ty, body_i_env_extra, pat_i_cons =
+                constraints_from_pattern env pat_i
+              in
+              let body_i_env = env_with_extra ~here:[%here] body_i_env_extra in
+              let body_i_ty, body_i_cons =
+                constraints_from_expr body_i_env body_i
+              in
+              Constraint.{ lhs = pat_i_ty; rhs = matched_ty }
+              :: Constraint.{ lhs = body_i_ty; rhs = body_1_ty }
+              :: pat_i_cons
+              @ body_i_cons)
+            branch_rest
+          |> List.flatten
+        in
+        ( body_1_ty,
+          (Constraint.{ lhs = pat_1_ty; rhs = matched_ty } :: matched_cons)
+          @ pat_1_cons @ body_1_cons @ rest_cons )
 
   let on_expr (env : TypeEnv.t) (exp : Expr.t) : Type.T.t =
-    let exp_ty, cons = generate_constraints env exp in
+    let exp_ty, cons = constraints_from_expr env exp in
     let sub = Unification.many cons in
     let type_sub = Substitution.on_type ~sub exp_ty in
     let rest_fvs = FreeVariables.of_type type_sub in
