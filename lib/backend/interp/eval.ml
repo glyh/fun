@@ -13,8 +13,15 @@ let rec pattern_matches (pat : Ast.Pattern.t) (v : Value.t) env =
   match (pat, v) with
   | Bind id, v -> Some (Type.Id.Map.add id v env)
   | Just expected, Atom actual when Ast.Atom.equal expected actual -> Some env
-  | Prod (p1, p2), Prod (v1, v2) ->
-      Option.bind (pattern_matches p1 v1 env) (pattern_matches p2 v2)
+  | Prod p_elems, Prod v_elems -> (
+      try
+        List.fold_left2
+          (fun acc_env p v ->
+            Option.bind acc_env (pattern_matches p v))
+          (Some env)
+          (Std.Nonempty_list.to_list p_elems)
+          (Std.Nonempty_list.to_list v_elems)
+      with Invalid_argument _ -> None)
   | Tagged (tag_expected, None), Tagged { tag = tag_actual; inner = None }
     when String.equal tag_expected tag_actual ->
       Some env
@@ -77,7 +84,7 @@ let rec eval env = function
           in
           Closure fix_f
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
-  | Prod (lhs, rhs) -> Value.Prod (eval env lhs, eval env rhs)
+  | Prod elements -> Value.Prod (Std.Nonempty_list.map (eval env) elements)
   | Match { matched; branches } -> (
       let matched = eval env matched in
       let result =

@@ -11,7 +11,7 @@ and Value : sig
     | Atom of Ast.Atom.t
     | Closure of (t -> t)
     | Tagged of { tag : string; inner : t option }
-    | Prod of t * t
+    | Prod of t Std.Nonempty_list.t
 
   exception CantCompare of (t * t)
 
@@ -22,7 +22,7 @@ end = struct
     | Atom of Ast.Atom.t
     | Closure of (t -> t)
     | Tagged of { tag : string; inner : t option }
-    | Prod of t * t
+    | Prod of t Std.Nonempty_list.t
 
   exception CantCompare of (t * t)
 
@@ -35,7 +35,7 @@ end = struct
     | ( Tagged { tag = lhs_tag; inner = Some lhs },
         Tagged { tag = rhs_tag; inner = Some rhs } ) ->
         String.equal lhs_tag rhs_tag && equal lhs rhs
-    | Prod (lhs1, lhs2), Prod (rhs1, rhs2) -> equal lhs1 rhs1 && equal lhs2 rhs2
+    | Prod elems1, Prod elems2 -> Std.Nonempty_list.equal equal elems1 elems2
     | lhs, rhs -> raise (CantCompare (lhs, rhs))
 
   let rec pp = function
@@ -44,5 +44,7 @@ end = struct
     | Tagged { tag; inner = None } -> tag
     | Tagged { tag; inner = Some inner } ->
         Printf.sprintf "%s (%s)" tag @@ pp inner
-    | Prod (lhs, rhs) -> Printf.sprintf "(%s, %s)" (pp lhs) (pp rhs)
+    | Prod elems ->
+        Std.Nonempty_list.(map pp elems |> to_list)
+        |> String.concat ", " |> Printf.sprintf "(%s)"
 end

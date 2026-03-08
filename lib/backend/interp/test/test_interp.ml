@@ -1,11 +1,13 @@
+open Interp.Model
+
 module Testable = struct
   let type_ =
     let pp_type ppf ty = Fmt.pf ppf "%S" (Type.T.pp ty) in
     Alcotest.testable pp_type Type.T.equal
 
   let value =
-    let pp_value ppf ty = Fmt.pf ppf "%S" (Interp.Model.Value.pp ty) in
-    Alcotest.testable pp_value Interp.Model.Value.equal
+    let pp_value ppf ty = Fmt.pf ppf "%S" (Value.pp ty) in
+    Alcotest.testable pp_value Value.equal
 end
 
 let parse_expr s =
@@ -33,8 +35,7 @@ let higher_order =
            ~source:
              "let twice = fun f -> fun x -> f (f x) in let inc = fun n -> n + \
               1 in twice inc 3"
-           ~expected:(Interp.Model.Value.Atom (Syntax.Ast.Atom.I64 5L))
-           ~typ:Type.Generic.i64);
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 5L)) ~typ:Type.Generic.i64);
     ]
 
 let recursion =
@@ -45,34 +46,37 @@ let recursion =
            ~source:
              "let rec fact = fun n -> if n == 0 then 1 else n * fact (n - 1) \
               in fact 5"
-           ~expected:(Interp.Model.Value.Atom (Syntax.Ast.Atom.I64 120L))
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 120L))
            ~typ:Type.Generic.i64);
       test_case "fib 6" `Quick
         (test_eval
            ~source:
              "let rec fib = fun n -> if n <= 1 then n else fib (n-1) + fib \
               (n-2) in fib 6"
-           ~expected:(Interp.Model.Value.Atom (Syntax.Ast.Atom.I64 8L))
-           ~typ:Type.Generic.i64);
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 8L)) ~typ:Type.Generic.i64);
     ]
 
 let lists =
   Alcotest.
     [
       (let rec odds n =
-         if n > 9L then Interp.Model.Value.Tagged { tag = "Nil"; inner = None }
+         if n > 9L then Value.Tagged { tag = "Nil"; inner = None }
          else
-           Interp.Model.Value.Tagged
+           Value.Tagged
              {
                tag = "Cons";
-               inner = Some (Prod (Atom (I64 n), odds Int64.(add n 2L)));
+               inner =
+                 Some
+                   (Prod
+                      (Std.Nonempty_list.init (Value.Atom (I64 n))
+                         [ odds Int64.(add n 2L) ]));
              }
        in
        test_case "odd list 1..9 (recursive)" `Quick
          (test_eval
             ~source:
               {|
-type List = Nil | Cons I64 * List in
+type List = Nil | Cons (I64, List) in
 let rec odds =
  fun n ->
    if n > 9 then Nil

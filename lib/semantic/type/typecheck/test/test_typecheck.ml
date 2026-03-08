@@ -177,14 +177,14 @@ let tuples =
     [
       test_case "simple tuple" `Quick
         (test_typecheck ~source:"(1, 2)"
-           ~expected:Type.Generic.(Prod (i64, i64)));
+           ~expected:Type.Generic.(Prod (Std.Nonempty_list.init i64 [i64])));
       test_case "triple tuple" `Quick
         (test_typecheck ~source:"(1, 2, 3)"
-           ~expected:Type.Generic.(Prod (Prod (i64, i64), i64)));
+           ~expected:Type.Generic.(Prod (Std.Nonempty_list.init i64 [i64; i64])));
       test_case "cons list" `Quick
         (test_typecheck
            ~source:
-             "type list['a] = Nil | Cons 'a * list['a] in Cons (1, Cons (2, \
+             "type list['a] = Nil | Cons ('a, list['a]) in Cons (1, Cons (2, \
               Nil))"
            ~expected:Type.Generic.(Con ("list", [ i64 ])));
     ]

@@ -1,4 +1,5 @@
 open Syntax.Ast
+open Type.Generic
 
 module Testable = struct
   let binding =
@@ -554,7 +555,7 @@ let types =
                  };
              ]);
       test_case "left-associative product" `Quick
-        (test_syntax ~source:"let x : Int * Bool * String = v"
+        (test_syntax ~source:"let x : (Int, Bool, String) = v"
            ~expected:
              [
                Binding.Value
@@ -563,13 +564,12 @@ let types =
                    type_ =
                      Some
                        (Prod
-                          ( Prod (Con ("Int", []), Con ("Bool", [])),
-                            Con ("String", []) ));
+                          (Std.Nonempty_list.init (Con ("Int", [])) [Con ("Bool", []); Con ("String", [])]));
                    value = Expr.Var "v";
                  };
              ]);
       test_case "product with arrow" `Quick
-        (test_syntax ~source:"let f : Int * Bool -> String = v"
+        (test_syntax ~source:"let f : (Int, Bool) -> String = v"
            ~expected:
              [
                Binding.Value
@@ -578,13 +578,13 @@ let types =
                    type_ =
                      Some
                        (Arrow
-                          ( Prod (Con ("Int", []), Con ("Bool", [])),
+                          ( Prod (Std.Nonempty_list.init (Con ("Int", [])) [Con ("Bool", [])]),
                             Con ("String", []) ));
                    value = Expr.Var "v";
                  };
              ]);
       test_case "product with parameterized type" `Quick
-        (test_syntax ~source:"let x : Int * option[Bool] = v"
+        (test_syntax ~source:"let x : (Int, option[Bool]) = v"
            ~expected:
              [
                Binding.Value
@@ -593,12 +593,12 @@ let types =
                    type_ =
                      Some
                        (Prod
-                          (Con ("Int", []), Con ("option", [ Con ("Bool", []) ])));
+                          (Std.Nonempty_list.init (Con ("Int", [])) [Con ("option", [ Con ("Bool", []) ])]));
                    value = Expr.Var "v";
                  };
              ]);
       test_case "nested products and arrows" `Quick
-        (test_syntax ~source:"let f : ('a * 'b) -> 'c * 'd = v"
+        (test_syntax ~source:"let f : ('a, 'b) -> ('c, 'd) = v"
            ~expected:
              [
                Binding.Value
@@ -606,13 +606,13 @@ let types =
                    name = "f";
                    type_ =
                      Some
-                       (Arrow (Prod (Var "a", Var "b"), Prod (Var "c", Var "d")));
+                       (Arrow (Prod (Std.Nonempty_list.init (Var "a") [Var "b"]), Prod (Std.Nonempty_list.init (Var "c") [Var "d"])));
                    value = Expr.Var "v";
                  };
              ]);
       test_case "complex type" `Quick
         (test_syntax
-           ~source:"let x : result[Int, Bool] * option[String] -> 'a = v"
+           ~source:"let x : (result[Int, Bool], option[String]) -> 'a = v"
            ~expected:
              [
                Binding.Value
@@ -622,10 +622,10 @@ let types =
                      Some
                        (Arrow
                           ( Prod
-                              ( Con
+                              ( Std.Nonempty_list.init (Con
                                   ( "result",
-                                    [ Con ("Int", []); Con ("Bool", []) ] ),
-                                Con ("option", [ Con ("String", []) ]) ),
+                                    [ Con ("Int", []); Con ("Bool", []) ] ))
+                                [Con ("option", [ Con ("String", []) ])] ),
                             Var "a" ));
                    value = Expr.Var "v";
                  };

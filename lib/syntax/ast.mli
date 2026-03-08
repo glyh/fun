@@ -12,7 +12,7 @@ module Pattern : sig
   type t =
     | Bind of Type.Id.t
     | Just of Atom.t
-    | Prod of t * t
+    | Prod of t Std.Nonempty_list.t
     | Tagged of Type.Id.t * t option
     | Union of t * t
     | Any
@@ -31,7 +31,7 @@ module rec Expr : sig
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
-    | Prod of t * t
+    | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
   [@@deriving eq]
 

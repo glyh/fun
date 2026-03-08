@@ -33,11 +33,17 @@ toplevel_eof:
   | bindings=separated_list(DOUBLESEMI, binding) EOF { bindings }
 
 type_:
-  | LPAREN type_ RPAREN { $2 }
   | ID { Type.Generic.Con ($1, []) }
   | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.Generic.Con (name, args) }
   | type_ ARROW type_ { Type.Generic.Arrow ($1, $3) }
-  | type_ MUL type_ { Type.Generic.Prod ($1, $3) }
+  | LPAREN maybe_tuple=separated_nonempty_list(COMMA, type_) RPAREN { 
+    match maybe_tuple with
+    | [ element0 ] -> 
+        element0
+    | element0 :: rest -> 
+        Type.Generic.Prod (Std.Nonempty_list.init element0 rest)
+    | [] -> failwith "Unreachable: nonempty list returns empty in type_!" 
+  }
   | TY_VAR { Type.Generic.Var $1 }
 
 type_annotation:
@@ -96,7 +102,14 @@ atom:
 pattern:
   | id=ID { Pattern.Bind id }
   | atom { Pattern.Just $1 }
-  | pattern MUL pattern { Pattern.Prod ($1, $3) }
+  | LPAREN maybe_tuple=separated_nonempty_list(COMMA, pattern) RPAREN {
+    match maybe_tuple with
+    | [ element0 ] -> 
+        element0
+    | element0 :: rest -> 
+        Pattern.Prod (Std.Nonempty_list.init element0 rest)
+    | [] -> failwith "Unreachable: nonempty list returns empty in pattern!" 
+  }
   | id=ID LPAREN RPAREN { Pattern.Tagged (id, None) }
   | id=ID LPAREN p=pattern RPAREN { Pattern.Tagged (id, Some p) }
   | pattern PIPE pattern { Pattern.Union ($1, $3) }
@@ -165,8 +178,10 @@ expr_primary:
   | ID { Expr.Var $1 }
   | LPAREN maybe_tuple=separated_nonempty_list(COMMA, expr_with_opt_annotation) RPAREN { 
     match maybe_tuple with
+    | [ element0 ] -> 
+        element0
     | element0 :: rest -> 
-        List.fold_left (fun acc ele -> Expr.Prod (acc, ele)) element0 rest
+        Expr.Prod (Std.Nonempty_list.init element0 rest)
     | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!" 
   }
 

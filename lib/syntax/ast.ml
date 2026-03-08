@@ -22,7 +22,7 @@ module Pattern = struct
   type t =
     | Bind of Id.t
     | Just of Atom.t
-    | Prod of t * t
+    | Prod of t Std.Nonempty_list.t
     | Tagged of Id.t * t option
     | Union of t * t
     | Any
@@ -31,7 +31,9 @@ module Pattern = struct
   let rec pp = function
     | Bind id -> Id.pp id
     | Just a -> Atom.pp a
-    | Prod (lhs, rhs) -> "(" ^ pp lhs ^ ", " ^ pp rhs ^ ")"
+    | Prod elements ->
+        Std.Nonempty_list.(map pp elements |> to_list)
+        |> String.concat ", " |> Printf.sprintf "(%s)"
     | Tagged (tag, None) -> tag
     | Tagged (tag, Some inner) -> tag ^ " " ^ pp inner
     | Union (lhs, rhs) -> pp lhs ^ " | " ^ pp rhs
@@ -48,7 +50,7 @@ module rec Expr : sig
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
-    | Prod of t * t
+    | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
   [@@deriving eq]
 
@@ -63,7 +65,7 @@ end = struct
     | Lam of Param.t * t
     | Annotated of { inner : t; typ : Type.Human.t }
     | Fix of t
-    | Prod of t * t
+    | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
   [@@deriving eq]
 
@@ -82,7 +84,9 @@ end = struct
     | Annotated { inner; typ } ->
         Printf.sprintf "(%s : %s)" (pp inner) (Type.Human.pp typ)
     | Fix inner -> Printf.sprintf "fix (%s)" (pp inner)
-    | Prod (lhs, rhs) -> "(" ^ pp lhs ^ ", " ^ pp rhs ^ ")"
+    | Prod elements ->
+        Std.Nonempty_list.(map pp elements |> to_list)
+        |> String.concat ", " |> Printf.sprintf "(%s)"
     | Match { matched; branches } ->
         let branches_pp =
           Std.Nonempty_list.to_list branches

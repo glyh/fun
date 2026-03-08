@@ -28,7 +28,7 @@ module Generic : sig
     | Forall of 'var_set * ('var, 'var_set) t
     | Var of 'var
     | Con of Id.t * ('var, 'var_set) t list
-    | Prod of ('var, 'var_set) t * ('var, 'var_set) t
+    | Prod of ('var, 'var_set) t Std.Nonempty_list.t
     | Arrow of ('var, 'var_set) t * ('var, 'var_set) t
   [@@deriving eq]
 

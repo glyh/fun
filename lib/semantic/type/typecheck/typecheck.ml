@@ -65,8 +65,11 @@ module FreeVariables = struct
   let rec of_type : Type.T.t -> Type.Var.Set.t = function
     | Forall (vars, inner) -> Type.Var.Set.diff (of_type inner) vars
     | Var v -> Type.Var.Set.singleton v
-    | Arrow (lhs, rhs) | Prod (lhs, rhs) ->
-        Type.Var.Set.union (of_type lhs) (of_type rhs)
+    | Arrow (lhs, rhs) -> Type.Var.Set.union (of_type lhs) (of_type rhs)
+    | Prod elements ->
+        Std.Nonempty_list.to_list elements
+        |> List.map of_type
+        |> List.fold_left Type.Var.Set.union Type.Var.Set.empty
     | Con (_, inners) ->
         List.map of_type inners
         |> List.fold_left Type.Var.Set.union Type.Var.Set.empty
@@ -75,8 +78,11 @@ module FreeVariables = struct
     | Forall (vars, inner) ->
         StrSet.diff (of_type_human inner) (StrSet.of_list vars)
     | Var v -> StrSet.singleton v
-    | Arrow (lhs, rhs) | Prod (lhs, rhs) ->
-        StrSet.union (of_type_human lhs) (of_type_human rhs)
+    | Arrow (lhs, rhs) -> StrSet.union (of_type_human lhs) (of_type_human rhs)
+    | Prod elements ->
+        Std.Nonempty_list.to_list elements
+        |> List.map of_type_human
+        |> List.fold_left StrSet.union StrSet.empty
     | Con (_, inners) ->
         List.map of_type_human inners
         |> List.fold_left StrSet.union StrSet.empty
@@ -105,7 +111,7 @@ module Substitution = struct
     | Forall (vs, inner) -> vs => recurse inner
     | Var v -> Type.Var.Map.find_opt v sub |> Option.value ~default:(Var v)
     | Arrow (lhs, rhs) -> recurse lhs ^-> recurse rhs
-    | Prod (lhs, rhs) -> Prod (recurse lhs, recurse rhs)
+    | Prod elements -> Prod (Std.Nonempty_list.map recurse elements)
     | Con (tag, inner) -> Con (tag, List.map recurse inner)
 
   let on_sub ~(src : t) (dest : t) : t =
@@ -132,9 +138,16 @@ module Unification = struct
         let fvs_ty = FreeVariables.of_type ty in
         if Type.Var.Set.mem v fvs_ty then raise (UnificationFailure c)
         else (Some (Type.Var.Map.singleton v ty), [])
-    | { lhs = Arrow (l1, l2); rhs = Arrow (r1, r2) }
-    | { lhs = Prod (l1, l2); rhs = Prod (r1, r2) } ->
+    | { lhs = Arrow (l1, l2); rhs = Arrow (r1, r2) } ->
         (None, [ { lhs = l1; rhs = r1 }; { lhs = l2; rhs = r2 } ])
+    | { lhs = Prod elems1; rhs = Prod elems2 } -> (
+        try
+          ( None,
+            List.map2
+              (fun lhs rhs -> Constraint.{ lhs; rhs })
+              (Std.Nonempty_list.to_list elems1)
+              (Std.Nonempty_list.to_list elems2) )
+        with Invalid_argument _ -> raise (UnificationFailure c))
     | { lhs = Con (name1, args1); rhs = Con (name2, args2) }
       when String.equal name1 name2 -> (
         try
@@ -212,16 +225,26 @@ module Inference = struct
         (id_ty, Type.Id.Map.of_list [ (id, id_ty) ], [])
     | Just a -> (of_atom a, Type.Id.Map.empty, [])
     | Any -> (gen_var (), Type.Id.Map.empty, [])
-    | Prod (fst, snd) ->
+    | Prod elements ->
         let prod_pat_union =
           Type.Id.Map.union (fun binding _ _ ->
               raise (DuplicatedBindingInPatternProd { pat; binding }))
         in
-        let fst_ty, fst_extras, fst_cons = constraints_from_pattern env fst in
-        let snd_ty, snd_extras, snd_cons = constraints_from_pattern env snd in
-        ( Prod (fst_ty, snd_ty),
-          prod_pat_union fst_extras snd_extras,
-          fst_cons @ snd_cons )
+        let mapped =
+          Std.Nonempty_list.map (constraints_from_pattern env) elements
+        in
+        let tys = Std.Nonempty_list.map (fun (ty, _, _) -> ty) mapped in
+        let extras =
+          Std.Nonempty_list.to_list mapped
+          |> List.map (fun (_, ext, _) -> ext)
+          |> List.fold_left prod_pat_union Type.Id.Map.empty
+        in
+        let cons =
+          Std.Nonempty_list.to_list mapped
+          |> List.map (fun (_, _, cons) -> cons)
+          |> List.concat
+        in
+        (Prod tys, extras, cons)
     | Tagged (tag, inner) -> (
         let tag_ty =
           match Type.Id.Map.find_opt tag env with
@@ -361,10 +384,15 @@ module Inference = struct
         let b = Type.Generic.Var (Type.Var.generate ()) in
         let inner_ty, cons = constraints_from_expr env inner in
         (b, Constraint.{ lhs = Arrow (a, b); rhs = inner_ty } :: cons)
-    | Prod (lhs, rhs) ->
-        let lhs_ty, cons = constraints_from_expr env lhs in
-        let rhs_ty, cons' = constraints_from_expr env rhs in
-        (Prod (lhs_ty, rhs_ty), cons @ cons')
+    | Prod elements ->
+        let mapped =
+          Std.Nonempty_list.map (constraints_from_expr env) elements
+        in
+        let tys = Std.Nonempty_list.map fst mapped in
+        let cons =
+          Std.Nonempty_list.to_list mapped |> List.map snd |> List.concat
+        in
+        (Prod tys, cons)
     | Match { matched; branches } ->
         let env_with_extra ~here extras =
           Type.Id.Map.union

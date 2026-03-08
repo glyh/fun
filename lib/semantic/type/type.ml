@@ -70,7 +70,7 @@ module Generic = struct
     | Forall of 'var_set * ('var, 'var_set) t
     | Var of 'var
     | Con of Id.t * ('var, 'var_set) t list
-    | Prod of ('var, 'var_set) t * ('var, 'var_set) t
+    | Prod of ('var, 'var_set) t Std.Nonempty_list.t
     | Arrow of ('var, 'var_set) t * ('var, 'var_set) t
   [@@deriving eq]
 
@@ -97,7 +97,9 @@ module Generic = struct
             ^ (List.map (pp_at Precedence.base) args |> String.concat ",")
             ^ "]"
         | Arrow (a, b) -> pp_at my_left a ^ " -> " ^ pp_at my_right b
-        | Prod (a, b) -> pp_at my_left a ^ " * " ^ pp_at my_right b
+        | Prod elements ->
+            Std.Nonempty_list.(map (pp_at Precedence.base) elements |> to_list)
+            |> String.concat ", " |> Printf.sprintf "(%s)"
       in
       if Precedence.should_add_paren ~ctx ~my then "(" ^ unparened ^ ")"
       else unparened
@@ -144,7 +146,7 @@ module T = struct
           | None -> Var (Var.generate ~tag:var ()))
       | Con (s, args) -> Con (s, List.map (of_human_do ctx) args)
       | Arrow (a, b) -> Arrow (of_human_do ctx a, of_human_do ctx b)
-      | Prod (a, b) -> Prod (of_human_do ctx a, of_human_do ctx b)
+      | Prod elements -> Prod (Std.Nonempty_list.map (of_human_do ctx) elements)
     in
     of_human_do Id.Map.empty input
 
@@ -162,7 +164,8 @@ module T = struct
             Var.Hashtbl.remove vars_to_slash var;
           Queue.add var q
       | Con (_, vars) -> List.iter order_vars_do vars
-      | Arrow (a, b) | Prod (a, b) ->
+      | Prod elements -> Std.Nonempty_list.iter order_vars_do elements
+      | Arrow (a, b) ->
           order_vars_do a;
           order_vars_do b
     in
@@ -180,8 +183,9 @@ module T = struct
         Var.Map.find_opt from mapping |> Option.equal Var.equal (Some to_)
     | Con (tycon1, ty_args1), Con (tycon2, ty_args2) ->
         String.equal tycon1 tycon2 && List.equal recur ty_args1 ty_args2
-    | Arrow (a1, b1), Arrow (a2, b2) | Prod (a1, b1), Prod (a2, b2) ->
-        recur a1 a2 && recur b1 b2
+    | Prod elements1, Prod elements2 ->
+        Std.Nonempty_list.equal recur elements1 elements2
+    | Arrow (a1, b1), Arrow (a2, b2) -> recur a1 a2 && recur b1 b2
     | _ -> false
 
   let equal t1 t2 =
