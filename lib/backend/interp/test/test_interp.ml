@@ -15,12 +15,10 @@ let parse_expr s =
   let lexer = Sedlexing.with_tokenizer Syntax.Lexer.token lexbuf in
   MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.expr_eof lexer
 
-let typecheck expr = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr
-
 let eval expr =
-  let result_ty = typecheck expr in
-  let result = Interp.(Eval.eval Env.default expr) in
-  (result, result_ty)
+  let typed = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr in
+  let result = Interp.(Eval.eval Env.default typed) in
+  (result, typed.Typed_ir.Expr.type_)
 
 let test_eval ~source ~expected ~typ () =
   let out, out_typ = parse_expr source |> eval in

@@ -9,8 +9,8 @@ open Exceptions
 
 (* NOTE: this backend expects the program is properly-typed *)
 
-let rec pattern_matches (pat : Ast.Pattern.t) (v : Value.t) env =
-  match (pat, v) with
+let rec pattern_matches (pat : Typed_ir.Pattern.t) (v : Value.t) env =
+  match (pat.node, v) with
   | Bind id, v -> Some (Type.Id.Map.add id v env)
   | Just expected, Atom actual when Ast.Atom.equal expected actual -> Some env
   | Prod p_elems, Prod v_elems -> (
@@ -33,8 +33,9 @@ let rec pattern_matches (pat : Ast.Pattern.t) (v : Value.t) env =
   | Any, _ -> Some env
   | _ -> None
 
-let rec eval env = function
-  | Ast.Expr.Atom a -> Value.Atom a
+let rec eval env (e : Typed_ir.Expr.t) =
+  match e.node with
+  | Atom a -> Value.Atom a
   | Var x -> (
       match Type.Id.Map.find_opt x env with
       | None -> raise (UndefinedVariable x)
@@ -47,12 +48,12 @@ let rec eval env = function
       match eval env f with
       | Closure f -> f (eval env x)
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
-  | Lam ({ name = param; _ }, body) ->
+  | Lam { param; body; _ } ->
       Closure
         (fun arg ->
           let env = Type.Id.Map.add param arg env in
           eval env body)
-  | Let { binding = Value { name; value; _ }; body } ->
+  | Let { binding = Value { name; value }; body } ->
       let v = eval env value in
       eval (Type.Id.Map.add name v env) body
   | Let { binding = TypeDecl { rhs; _ }; body } ->
@@ -71,7 +72,6 @@ let rec eval env = function
              env
       in
       eval env_new body
-  | Annotated { inner; _ } -> eval env inner
   | Fix f -> (
       (* Fix(f) = f Fix(f) *)
       match eval env f with

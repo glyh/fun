@@ -1,4 +1,4 @@
 (executable
  (public_name fun)
  (name main)
- (libraries linenoise interp menhirLib syntax sedlex type typecheck))
+ (libraries linenoise interp menhirLib syntax sedlex type typecheck typed_ir))

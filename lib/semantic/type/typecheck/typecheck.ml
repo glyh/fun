@@ -197,7 +197,7 @@ let generalize (cs : Constraint.t list) (env : TypeEnv.t) (var : Type.Id.t)
   let fv_ty_new = FreeVariables.of_type ty_new in
   let vars_to_generalize = Type.Var.Set.diff fv_ty_new fv_env_new in
   let ty_generalized = Type.Generic.Forall (vars_to_generalize, ty_new) in
-  Type.Id.Map.add var ty_generalized env_new
+  (sub_solved, Type.Id.Map.add var ty_generalized env_new)
 
 let instantiate = function
   | Type.Generic.Forall (vars, inner) ->
@@ -216,15 +216,16 @@ module Inference = struct
     | Bool _ -> Type.Generic.bool
 
   let rec constraints_from_pattern (env : TypeEnv.t) (pat : Pattern.t) :
-      Type.T.t * TypeEnv.t * Constraint.t list =
+      Typed_ir.Pattern.t * TypeEnv.t * Constraint.t list =
     let open Type.Generic in
     let gen_var () = Var (Type.Var.generate ()) in
+    let mk node type_ : Typed_ir.Pattern.t = { node; type_ } in
     match pat with
     | Bind id ->
         let id_ty = gen_var () in
-        (id_ty, Type.Id.Map.of_list [ (id, id_ty) ], [])
-    | Just a -> (of_atom a, Type.Id.Map.empty, [])
-    | Any -> (gen_var (), Type.Id.Map.empty, [])
+        (mk (Bind id) id_ty, Type.Id.Map.of_list [ (id, id_ty) ], [])
+    | Just a -> (mk (Just a) (of_atom a), Type.Id.Map.empty, [])
+    | Any -> (mk Any (gen_var ()), Type.Id.Map.empty, [])
     | Prod elements ->
         let prod_pat_union =
           Type.Id.Map.union (fun binding _ _ ->
@@ -233,7 +234,14 @@ module Inference = struct
         let mapped =
           Std.Nonempty_list.map (constraints_from_pattern env) elements
         in
-        let tys = Std.Nonempty_list.map (fun (ty, _, _) -> ty) mapped in
+        let typed_pats =
+          Std.Nonempty_list.map (fun (tp, _, _) -> tp) mapped
+        in
+        let tys =
+          Std.Nonempty_list.map
+            (fun ((tp : Typed_ir.Pattern.t), _, _) -> tp.type_)
+            mapped
+        in
         let extras =
           Std.Nonempty_list.to_list mapped
           |> List.map (fun (_, ext, _) -> ext)
@@ -244,7 +252,7 @@ module Inference = struct
           |> List.map (fun (_, _, cons) -> cons)
           |> List.concat
         in
-        (Prod tys, extras, cons)
+        (mk (Prod typed_pats) (Prod tys), extras, cons)
     | Tagged (tag, inner) -> (
         let tag_ty =
           match Type.Id.Map.find_opt tag env with
@@ -252,19 +260,23 @@ module Inference = struct
           | Some tag_ty -> tag_ty
         in
         match inner with
-        | None -> (tag_ty, Type.Id.Map.empty, [])
+        | None -> (mk (Tagged (tag, None)) tag_ty, Type.Id.Map.empty, [])
         | Some inner ->
-            let inner_ty, inner_extras, inner_cons =
+            let typed_inner, inner_extras, inner_cons =
               constraints_from_pattern env inner
             in
             let outer_ty = gen_var () in
-            ( outer_ty,
+            ( mk (Tagged (tag, Some typed_inner)) outer_ty,
               inner_extras,
-              Constraint.{ lhs = tag_ty; rhs = inner_ty ^-> outer_ty }
+              Constraint.{ lhs = tag_ty; rhs = typed_inner.type_ ^-> outer_ty }
               :: inner_cons ))
     | Union (lhs, rhs) -> (
-        let lhs_ty, lhs_extras, lhs_cons = constraints_from_pattern env lhs in
-        let rhs_ty, rhs_extras, rhs_cons = constraints_from_pattern env rhs in
+        let typed_lhs, lhs_extras, lhs_cons =
+          constraints_from_pattern env lhs
+        in
+        let typed_rhs, rhs_extras, rhs_cons =
+          constraints_from_pattern env rhs
+        in
         let sort_bindings bindings =
           Type.Id.Map.to_list bindings
           |> List.sort (fun (lhs_key, _) (rhs_key, _) ->
@@ -283,45 +295,70 @@ module Inference = struct
                 else raise exn_to_throw)
               both_bindings
           in
-          ( lhs_ty,
+          ( mk (Union (typed_lhs, typed_rhs)) typed_lhs.type_,
             lhs_extras,
-            (Constraint.{ lhs = lhs_ty; rhs = rhs_ty } :: cons_on_bindings)
+            (Constraint.{ lhs = typed_lhs.type_; rhs = typed_rhs.type_ }
+            :: cons_on_bindings)
             @ lhs_cons @ rhs_cons )
         with Invalid_argument _ -> raise exn_to_throw)
 
   let rec constraints_from_expr (env : TypeEnv.t) (e : Expr.t) :
-      Type.T.t * Constraint.t list =
+      Typed_ir.Expr.t * Constraint.t list =
+    let mk node type_ : Typed_ir.Expr.t = { node; type_ } in
     match e with
-    | Atom a -> (of_atom a, [])
+    | Atom a -> (mk (Atom a) (of_atom a), [])
     | Var id -> (
         match Type.Id.Map.find_opt id env with
         | None -> raise (UndefinedVariable id)
-        | Some scheme -> (instantiate scheme, []))
+        | Some scheme ->
+            let ty = instantiate scheme in
+            (mk (Var id) ty, []))
     | Ap (f, x) ->
-        let f_ty, f_cons = constraints_from_expr env f in
-        let x_ty, x_cons = constraints_from_expr env x in
+        let typed_f, f_cons = constraints_from_expr env f in
+        let typed_x, x_cons = constraints_from_expr env x in
         let result_ty = Type.Generic.Var (Type.Var.generate ()) in
         let all_cons =
-          Constraint.{ lhs = f_ty; rhs = Type.Generic.Arrow (x_ty, result_ty) }
+          Constraint.
+            {
+              lhs = typed_f.type_;
+              rhs = Type.Generic.Arrow (typed_x.type_, result_ty);
+            }
           :: f_cons
           @ x_cons
         in
-        (result_ty, all_cons)
+        (mk (Ap (typed_f, typed_x)) result_ty, all_cons)
     | Let { binding = Value { name; type_ = value_ty_annotated; value }; body }
       ->
-        let value_ty_inferred, value_cons = constraints_from_expr env value in
+        let typed_value, value_cons = constraints_from_expr env value in
         let all_cons =
           match value_ty_annotated with
           | None -> value_cons
           | Some value_ty_annotated ->
               {
                 lhs = Type.T.of_human value_ty_annotated;
-                rhs = value_ty_inferred;
+                rhs = typed_value.type_;
               }
               :: value_cons
         in
-        let env_generalized = generalize all_cons env name value_ty_inferred in
-        constraints_from_expr env_generalized body
+        let sub_inner, env_generalized =
+          generalize all_cons env name typed_value.type_
+        in
+        let typed_value_resolved =
+          Typed_ir.map_types_expr
+            ~f:(Substitution.on_type ~sub:sub_inner)
+            typed_value
+        in
+        let typed_body, body_cons =
+          constraints_from_expr env_generalized body
+        in
+        ( mk
+            (Let
+               {
+                 binding = Value { name; value = typed_value_resolved };
+                 body = typed_body;
+               })
+            typed_body.type_,
+          body_cons )
     | Let { binding = TypeDecl { name; args; rhs }; body } ->
         let tycon_fvs = StrSet.of_list args in
         let adt_type =
@@ -357,81 +394,123 @@ module Inference = struct
                    env)
                env
         in
-        constraints_from_expr env_new body
+        let typed_body, body_cons = constraints_from_expr env_new body in
+        ( mk
+            (Let
+               { binding = TypeDecl { name; args; rhs }; body = typed_body })
+            typed_body.type_,
+          body_cons )
     | If { cond; then_; else_ } ->
-        let cond_ty, cond_cons = constraints_from_expr env cond in
-        let then_ty, then_cons = constraints_from_expr env then_ in
-        let else_ty, else_cons = constraints_from_expr env else_ in
-        ( then_ty,
-          Constraint.{ lhs = cond_ty; rhs = Type.Generic.bool }
-          :: { lhs = then_ty; rhs = else_ty }
+        let typed_cond, cond_cons = constraints_from_expr env cond in
+        let typed_then, then_cons = constraints_from_expr env then_ in
+        let typed_else, else_cons = constraints_from_expr env else_ in
+        ( mk
+            (If
+               {
+                 cond = typed_cond;
+                 then_ = typed_then;
+                 else_ = typed_else;
+               })
+            typed_then.type_,
+          Constraint.{ lhs = typed_cond.type_; rhs = Type.Generic.bool }
+          :: { lhs = typed_then.type_; rhs = typed_else.type_ }
           :: cond_cons
           @ then_cons @ else_cons )
     | Lam (param, body) ->
         assert (param.type_ = None);
         let var_gen = Type.Generic.Var (Type.Var.generate ()) in
         let env_new = Type.Id.Map.add param.name var_gen env in
-        let body_type, constraints = constraints_from_expr env_new body in
-        (Arrow (var_gen, body_type), constraints)
+        let typed_body, constraints = constraints_from_expr env_new body in
+        ( mk
+            (Lam { param = param.name; param_type = var_gen; body = typed_body })
+            (Arrow (var_gen, typed_body.type_)),
+          constraints )
     | Annotated { inner; typ = annotated } ->
-        let inferred, cons = constraints_from_expr env inner in
-        ( inferred,
-          Constraint.{ lhs = inferred; rhs = Type.T.of_human annotated } :: cons
-        )
+        let typed_inner, cons = constraints_from_expr env inner in
+        ( typed_inner,
+          Constraint.{ lhs = typed_inner.type_; rhs = Type.T.of_human annotated }
+          :: cons )
     | Fix inner ->
         (* fix: (a -> b) -> b *)
         let a = Type.Generic.Var (Type.Var.generate ()) in
         let b = Type.Generic.Var (Type.Var.generate ()) in
-        let inner_ty, cons = constraints_from_expr env inner in
-        (b, Constraint.{ lhs = Arrow (a, b); rhs = inner_ty } :: cons)
+        let typed_inner, cons = constraints_from_expr env inner in
+        ( mk (Fix typed_inner) b,
+          Constraint.{ lhs = Arrow (a, b); rhs = typed_inner.type_ } :: cons )
     | Prod elements ->
         let mapped =
           Std.Nonempty_list.map (constraints_from_expr env) elements
         in
-        let tys = Std.Nonempty_list.map fst mapped in
+        let typed_elems =
+          Std.Nonempty_list.map fst mapped
+        in
+        let tys =
+          Std.Nonempty_list.map (fun ((e : Typed_ir.Expr.t), _) -> e.type_) mapped
+        in
         let cons =
           Std.Nonempty_list.to_list mapped |> List.map snd |> List.concat
         in
-        (Prod tys, cons)
+        (mk (Prod typed_elems) (Prod tys), cons)
     | Match { matched; branches } ->
         let env_with_extra ~here extras =
           Type.Id.Map.union
             (fun _ _ _ -> raise (Std.Exceptions.Unreachable here))
             extras env
         in
-        let matched_ty, matched_cons = constraints_from_expr env matched in
+        let typed_matched, matched_cons = constraints_from_expr env matched in
         let (pat_1, body_1), branch_rest = Std.Nonempty_list.uncons branches in
-        let pat_1_ty, body_1_env_extra, pat_1_cons =
+        let typed_pat_1, body_1_env_extra, pat_1_cons =
           constraints_from_pattern env pat_1
         in
         let body_1_env = env_with_extra ~here:[%here] body_1_env_extra in
-        let body_1_ty, body_1_cons = constraints_from_expr body_1_env body_1 in
-        let rest_cons =
+        let typed_body_1, body_1_cons =
+          constraints_from_expr body_1_env body_1
+        in
+        let typed_rest_branches, rest_cons =
           List.map
             (fun (pat_i, body_i) ->
-              let pat_i_ty, body_i_env_extra, pat_i_cons =
+              let typed_pat_i, body_i_env_extra, pat_i_cons =
                 constraints_from_pattern env pat_i
               in
-              let body_i_env = env_with_extra ~here:[%here] body_i_env_extra in
-              let body_i_ty, body_i_cons =
+              let body_i_env =
+                env_with_extra ~here:[%here] body_i_env_extra
+              in
+              let typed_body_i, body_i_cons =
                 constraints_from_expr body_i_env body_i
               in
-              Constraint.{ lhs = pat_i_ty; rhs = matched_ty }
-              :: Constraint.{ lhs = body_i_ty; rhs = body_1_ty }
-              :: pat_i_cons
-              @ body_i_cons)
+              let cons =
+                Constraint.{ lhs = typed_pat_i.type_; rhs = typed_matched.type_ }
+                :: Constraint.
+                     { lhs = typed_body_i.type_; rhs = typed_body_1.type_ }
+                :: pat_i_cons
+                @ body_i_cons
+              in
+              ((typed_pat_i, typed_body_i), cons))
             branch_rest
-          |> List.flatten
+          |> List.split
         in
-        ( body_1_ty,
-          (Constraint.{ lhs = pat_1_ty; rhs = matched_ty } :: matched_cons)
-          @ pat_1_cons @ body_1_cons @ rest_cons )
+        let all_rest_cons = List.flatten rest_cons in
+        let typed_branches =
+          Std.Nonempty_list.init
+            (typed_pat_1, typed_body_1)
+            typed_rest_branches
+        in
+        ( mk
+            (Match { matched = typed_matched; branches = typed_branches })
+            typed_body_1.type_,
+          (Constraint.
+             { lhs = typed_pat_1.type_; rhs = typed_matched.type_ }
+          :: matched_cons)
+          @ pat_1_cons @ body_1_cons @ all_rest_cons )
 
-  let on_expr (env : TypeEnv.t) (exp : Expr.t) : Type.T.t =
-    let exp_ty, cons = constraints_from_expr env exp in
+  let on_expr (env : TypeEnv.t) (exp : Expr.t) : Typed_ir.Expr.t =
+    let typed_skeleton, cons = constraints_from_expr env exp in
     let sub = Unification.many cons in
-    let type_sub = Substitution.on_type ~sub exp_ty in
-    let rest_fvs = FreeVariables.of_type type_sub in
-    if Type.Var.Set.is_empty rest_fvs then type_sub
-    else Forall (rest_fvs, type_sub)
+    let typed_resolved =
+      Typed_ir.map_types_expr ~f:(Substitution.on_type ~sub) typed_skeleton
+    in
+    let top_type = typed_resolved.type_ in
+    let rest_fvs = FreeVariables.of_type top_type in
+    if Type.Var.Set.is_empty rest_fvs then typed_resolved
+    else { typed_resolved with type_ = Forall (rest_fvs, top_type) }
 end
