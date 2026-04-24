@@ -1,5 +1,5 @@
 module Id : sig
-  type t = string [@@deriving eq]
+  type t = string [@@deriving eq, hash]
   val pp: t -> string
   module Map : Map.S with type key = t
 end

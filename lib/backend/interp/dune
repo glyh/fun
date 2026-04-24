@@ -1,5 +1,5 @@
 (library
  (name interp)
- (libraries core syntax type typed_ir)
+ (libraries core syntax type typed_ir match)
  (preprocess
   (pps ppx_here)))

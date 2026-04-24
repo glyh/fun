@@ -5,4 +5,4 @@
  (name syntax)
  (libraries core menhirLib std type)
  (preprocess
-  (pps sedlex.ppx ppx_deriving.std ppx_deriving_yojson ppx_here)))
+  (pps sedlex.ppx ppx_deriving.std ppx_deriving_yojson ppx_hash ppx_here)))

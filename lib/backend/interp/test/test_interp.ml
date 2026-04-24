@@ -85,8 +85,61 @@ in odds 1
             ~typ:Type.Generic.(con_0 "List")));
     ]
 
+let matches =
+  Alcotest.
+    [
+      test_case "literal switch" `Quick
+        (test_eval
+           ~source:
+             {|match 1
+| 0 -> 10
+| 1 -> 11
+| _ -> 0
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 11L))
+           ~typ:Type.Generic.i64);
+      test_case "tuple projection" `Quick
+        (test_eval
+           ~source:
+             {|match (1, 2)
+| (x, y) -> x + y
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 3L))
+           ~typ:Type.Generic.i64);
+      test_case "tagged constructor with payload" `Quick
+        (test_eval
+           ~source:
+             {|type wrapper = W I64 in
+match W 41
+| W(x) -> x + 1
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "union pattern dispatch" `Quick
+        (test_eval
+           ~source:
+             {|match 1
+| 0 | 1 -> 42
+| _ -> 0
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "first branch wins" `Quick
+        (test_eval
+           ~source:
+             {|match 1
+| _ -> 0
+| 1 -> 1
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 0L))
+           ~typ:Type.Generic.i64);
+    ]
+
 let () =
   Alcotest.run "Interp"
     [
-      ("higher_order", higher_order); ("recursion", recursion); ("lists", lists);
+      ("higher_order", higher_order);
+      ("recursion", recursion);
+      ("lists", lists);
+      ("matches", matches);
     ]

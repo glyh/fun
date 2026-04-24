@@ -2,7 +2,7 @@ open Ppx_hash_lib.Std.Hash.Builtin
 
 module Id = struct
   module T = struct
-    type t = string [@@deriving eq, ord]
+    type t = string [@@deriving eq, ord, hash]
 
     let all_symbols = String.for_all (String.contains "+-*/=<>!@#$%^&|~")
     let pp s = "'" ^ if all_symbols s then "`" ^ s ^ "`" else s

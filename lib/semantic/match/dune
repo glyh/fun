@@ -1,0 +1,5 @@
+(library
+ (name match)
+ (libraries core std syntax type typed_ir)
+ (preprocess
+  (pps ppx_deriving.std ppx_hash ppx_here)))

@@ -9,7 +9,9 @@ let pp_type_annotated = function
   | Some typ -> Printf.sprintf ": %s " (Type.Human.pp typ)
 
 module Atom = struct
-  type t = Unit | I64 of int64 | Bool of bool [@@deriving eq]
+  open Ppx_hash_lib.Std.Hash.Builtin
+
+  type t = Unit | I64 of int64 | Bool of bool [@@deriving eq, hash]
 
   let pp = function
     | Unit -> "()"
