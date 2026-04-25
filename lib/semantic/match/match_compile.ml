@@ -4,8 +4,8 @@ module Col = Matrix.Col
 
 (* preprocess list of patterns at a given occurrence into a pattern matrix.
    [branches] provides the branch index for each row. *)
-let preprocess (base : Occurence.t) (branches : Branch.t list)
-    (ps : Matrix.Entry.t list) : Matrix.t =
+let preprocess (base : Occurence.t)
+    (pattern_and_branches : (Matrix.Entry.t * Branch.t) list) : Matrix.t =
   let seen = OT.create 10 in
   let header = Row.create () in
   let occurrences_of (p : Matrix.Entry.t) =
@@ -27,20 +27,22 @@ let preprocess (base : Occurence.t) (branches : Branch.t list)
     end;
     map
   in
-  let occs : Typed_ir.Pattern.t OT.t list = List.map occurrences_of ps in
+  let occ_and_branches : (Typed_ir.Pattern.t OT.t * Branch.t) list =
+    List.map
+      (fun (pat, branch) -> (occurrences_of pat, branch))
+      pattern_and_branches
+  in
   let matrix = Matrix.create header in
-  List.iter2
-    (fun map branch ->
+  List.iter
+    (fun (map, branch) ->
       let row =
         Row.map
           ~f:(fun o ->
-            match OT.find_opt map o with
-            | Some p -> p
-            | _ -> Matrix.Entry.default)
+            OT.find_opt map o |> Option.value ~default:Matrix.Entry.default)
           header
       in
       Matrix.add_row matrix row branch)
-    occs branches;
+    occ_and_branches;
   matrix
 
 type refutability =
@@ -63,9 +65,7 @@ let classify (p : Typed_ir.Pattern.t) : refutability =
 let find_refutable ps =
   Dynarray.fold_left
     (fun acc p ->
-      match acc with
-      | (Destruct | Switch) as r -> r
-      | Irrefutable -> classify p)
+      match acc with (Destruct | Switch) as r -> r | Irrefutable -> classify p)
     Irrefutable ps
 
 (* Unwraps the payload of a constructor pattern. If it's not a constructor
@@ -96,43 +96,34 @@ let specialize_column (m : Matrix.t) pred ~unwrap_with =
       | _ -> ())
     m.rows;
   let kept_rows = Dynarray.to_list kept in
-  let branches = List.map (fun (_, b, _, _) -> b) kept_rows in
-  let remainders = List.map (fun (_, _, r, _) -> r) kept_rows in
-  let bindings_list = List.map (fun (_, _, _, bs) -> bs) kept_rows in
-  let remaining_header =
-    let h = Row.copy m.header in
-    ignore (Row.dequeue h);
-    h
-  in
+  let remaining_header = Row.copy_dequeue m.header in
   match unwrap_with with
   | None ->
-      let m' = Matrix.create (Row.copy remaining_header) in
-      List.iter2
-        (fun (branch, bs) rem ->
+      let m' = Matrix.create remaining_header in
+      List.iter
+        (fun (_, branch, rem, bindings) ->
           Matrix.add_row m' rem branch;
           (* add_row creates empty bindings; seed with accumulated ones *)
           let rd = Col.get m'.rows (Col.length m'.rows - 1) in
-          Dynarray.append_seq rd.bindings (Dynarray.to_seq bs))
-        (List.combine branches bindings_list)
-        remainders;
+          Dynarray.append_seq rd.bindings (Dynarray.to_seq bindings))
+        kept_rows;
       m'
   | Some unwrap_fn ->
-      let pats = List.map (fun (e, _, _, _) -> unwrap_fn e) kept_rows in
-      let occ : Occurence.t =
-        {
-          path = Unwrap col0_occ;
-          type_ = (List.hd pats).Typed_ir.Pattern.type_;
-        }
+      let pattern_and_branches =
+        List.map (fun (e, b, _, _) -> (unwrap_fn e, b)) kept_rows
       in
-      let m' = preprocess occ branches pats in
+      let pat_1, _ = List.hd pattern_and_branches in
+      let occ : Occurence.t =
+        { path = Unwrap col0_occ; type_ = pat_1.Typed_ir.Pattern.type_ }
+      in
+      let m' = preprocess occ pattern_and_branches in
       Row.iter ~f:(Row.enqueue m'.header) remaining_header;
       let m'_rows = Col.to_list m'.rows in
       List.iter2
-        (fun (rd : Matrix.row_data) (rem, bs) ->
+        (fun (rd : Matrix.row_data) (_, _, rem, bs) ->
           Row.iter ~f:(Row.enqueue rd.entries) rem;
           Dynarray.append_seq rd.bindings (Dynarray.to_seq bs))
-        m'_rows
-        (List.combine remainders bindings_list);
+        m'_rows kept_rows;
       m'
 
 (* Specializes the matrix for a specific constructor (Destruct case).
@@ -259,20 +250,39 @@ let collect_leaf_bindings (matrix : Matrix.t) =
       | _ -> ());
   Dynarray.to_list bindings
 
-(* Compile a list of typed patterns into a decision tree (Maranget's algorithm).
-   [arities]: type name → number of constructors (for signature completeness).
-   [base]: occurrence representing the scrutinee.
-   [branches]: branch index for each pattern arm.
-   [ps]: one typed pattern per arm. *)
-let compile ~arities base (branches : Branch.t list)
-    (ps : Typed_ir.Pattern.t list) =
+type type_defs =
+  (Type.Id.t * Type.Human.t option) Std.Nonempty_list.t Type.Id.Map.t
+
+exception Non_exhaustive of Missing_pat.t
+
+let () =
+  Printexc.register_printer (function
+    | Non_exhaustive mp ->
+        Some ("Non_exhaustive: " ^ Missing_pat.pp mp)
+    | _ -> None)
+
+let lookup_type_def (defs : type_defs) (tn : Type.Id.t) =
+  match Type.Id.Map.find_opt tn defs with
+  | Some rhs -> rhs
+  | None -> raise (Std.Exceptions.Unreachable [%here])
+
+let ctor_has_payload (defs : type_defs) (tn : Type.Id.t) (ctor : string) =
+  let rhs = lookup_type_def defs tn in
+  match
+    List.find_opt (fun (c, _) -> String.equal c ctor)
+      (Std.Nonempty_list.to_list rhs)
+  with
+  | Some (_, Some _) -> true
+  | _ -> false
+
+let compile ~type_defs (scrutinee : Typed_ir.Expr.t)
+    (pattern_and_branches : (Typed_ir.Pattern.t * Branch.t) list) =
   let module DT = Decision_tree in
   let module DTB = DT.Make () in
-  let initial = preprocess base branches ps in
+  let base = Occurence.{ path = Base; type_ = scrutinee.type_ } in
+  let initial = preprocess base pattern_and_branches in
   let rec go (matrix : Matrix.t) : DT.t =
-    assert (
-      (not (Matrix.is_empty matrix))
-      || failwith "empty matrix: non-exhaustive patterns");
+    if Matrix.is_empty matrix then raise (Non_exhaustive Wildcard);
     if
       Row.for_all (Col.get matrix.rows 0).entries ~f:(fun p ->
           match classify p with Irrefutable -> true | _ -> false)
@@ -296,16 +306,60 @@ let compile ~arities base (branches : Branch.t list)
           | Irrefutable -> raise (Std.Exceptions.Unreachable [%here])
           | Destruct ->
               let tags = collect_tags first in
+              let missing_from_branches = ref [] in
               let cases =
-                List.map
+                List.filter_map
                   (fun tag ->
-                    (tag, go (specialize_destruct matrix (admits tag))))
+                    match go (specialize_destruct matrix (admits tag)) with
+                    | dt -> Some (tag, dt)
+                    | exception Non_exhaustive inner ->
+                        let wrapped =
+                          match inner with
+                          | Wildcard -> None
+                          | _ -> Some inner
+                        in
+                        missing_from_branches :=
+                          (tag, wrapped) :: !missing_from_branches;
+                        None)
                   tags
               in
+              let tn = type_name occ.type_ in
+              let all_ctors =
+                Std.Nonempty_list.to_list (lookup_type_def type_defs tn)
+                |> List.map fst
+              in
+              let missing_ctors =
+                List.filter (fun c -> not (List.mem c tags)) all_ctors
+              in
+              let missing_leaf =
+                if missing_ctors = [] then []
+                else
+                  let default_matrix =
+                    specialize_column matrix is_any ~unwrap_with:None
+                  in
+                  if Matrix.is_empty default_matrix then
+                    List.map
+                      (fun c ->
+                        ( c,
+                          if ctor_has_payload type_defs tn c then
+                            Some Missing_pat.Wildcard
+                          else None ))
+                      missing_ctors
+                  else []
+              in
+              let all_missing =
+                List.rev_append !missing_from_branches missing_leaf
+              in
+              (match all_missing with
+              | x :: xs ->
+                  raise
+                    (Non_exhaustive
+                       (Many (Std.Nonempty_list.init x xs)))
+              | [] -> ());
               let default =
-                let tn = type_name occ.type_ in
-                if List.length tags < arities tn then
-                  Some (go (specialize_column matrix is_any ~unwrap_with:None))
+                if missing_ctors <> [] then
+                  Some
+                    (go (specialize_column matrix is_any ~unwrap_with:None))
                 else None
               in
               DTB.get (DT.Destruct { occurence = occ; cases; default })

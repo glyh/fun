@@ -3,14 +3,21 @@
    with a branch index and accumulated variable bindings. The header tracks
    which occurrence each column corresponds to. *)
 
-module Row = Core.Queue
+module Row = struct
+  include Core.Queue
+
+  let copy_dequeue r =
+    let r = copy r in
+    ignore (dequeue r);
+    r
+end
+
 module Col = Dynarray
 
 module Entry = struct
   type t = Typed_ir.Pattern.t
 
-  let default : t =
-    { node = Any; type_ = Type.Generic.con_0 "Don't care" }
+  let default : t = { node = Any; type_ = Type.Generic.con_0 "Don't care" }
 end
 
 type binding = Type.Id.t * Occurence.t
@@ -41,9 +48,7 @@ let get_column (m : t) i =
 let find_column (m : t) ~f =
   let len = Row.length m.header in
   let rec go i =
-    if i >= len then None
-    else if f (get_column m i) then Some i
-    else go (i + 1)
+    if i >= len then None else if f (get_column m i) then Some i else go (i + 1)
   in
   go 0
 

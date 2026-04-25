@@ -9,28 +9,24 @@ open Exceptions
 
 (* NOTE: this backend expects the program is properly-typed *)
 
-type context = { arities : (Type.Id.t * int) list }
+type context = {
+  type_defs :
+    (Type.Id.t * Type.Human.t option) Std.Nonempty_list.t Type.Id.Map.t;
+}
 
-let default_context = { arities = [] }
-
-let arity_of (ctx : context) (type_name : Type.Id.t) =
-  match List.assoc_opt type_name ctx.arities with
-  | Some count -> count
-  | None -> raise (Std.Exceptions.Unreachable [%here])
+let default_context = { type_defs = Type.Id.Map.empty }
 
 let with_type_decl (ctx : context) (name : Type.Id.t)
     (rhs : (Type.Id.t * Type.Human.t option) Std.Nonempty_list.t) =
-  {
-    arities =
-      (name, List.length (Std.Nonempty_list.to_list rhs)) :: ctx.arities;
-  }
+  { type_defs = Type.Id.Map.add name rhs ctx.type_defs }
 
 let nth_nonempty (xs : 'a Std.Nonempty_list.t) i =
   List.nth_opt (Std.Nonempty_list.to_list xs) i
 
-let rec resolve_occurrence (root : Value.t) (o : Match.Occurence.t) : Value.t option =
+let rec resolve_occurrence (root : Value.t) (o : Match.Occurence.t) :
+    Value.t option =
   match o.path with
-  | Match.Occurence.Base _ -> Some root
+  | Match.Occurence.Base -> Some root
   | Project { base; index } ->
       Option.bind (resolve_occurrence root base) (fun v ->
           match v with
@@ -49,8 +45,7 @@ let extend_env_with_bindings env root bindings =
           Option.map
             (fun v -> Type.Id.Map.add name v env')
             (resolve_occurrence root occ)))
-    (Some env)
-    bindings
+    (Some env) bindings
 
 let branch_body_exn branches = function
   | Match.Branch.Block i -> (
@@ -69,7 +64,7 @@ let rec eval_tree (ctx : context) env (root : Value.t) branches
         | None -> raise (Std.Exceptions.Unreachable [%here])
       in
       eval_with_context ctx env' body
-  | Destruct { occurence; cases; default } ->
+  | Destruct { occurence; cases; default } -> (
       let next =
         match resolve_occurrence root occurence with
         | Some (Tagged { tag; _ }) -> (
@@ -78,9 +73,9 @@ let rec eval_tree (ctx : context) env (root : Value.t) branches
             | None -> default)
         | _ -> default
       in
-      (match next with
-       | Some tree -> eval_tree ctx env root branches tree
-       | None -> raise (Std.Exceptions.Unreachable [%here]))
+      match next with
+      | Some tree -> eval_tree ctx env root branches tree
+      | None -> raise (Std.Exceptions.Unreachable [%here]))
   | Switch { occurence; cases; default } ->
       let next =
         match resolve_occurrence root occurence with
@@ -154,18 +149,14 @@ and eval_with_context (ctx : context) env (e : Typed_ir.Expr.t) =
   | Match { matched; branches } ->
       let matched_value = eval_with_context ctx env matched in
       let branch_list = Std.Nonempty_list.to_list branches in
-      let patterns = List.map fst branch_list in
-      let branch_ids = List.mapi (fun i _ -> Match.Branch.Block i) branch_list in
-      let base =
-        {
-          Match.Occurence.path = Match.Occurence.Base "__match";
-          type_ = matched.type_;
-        }
+      let pattern_and_branches =
+        List.mapi (fun i (pat, _) -> (pat, Match.Branch.Block i)) branch_list
       in
+
       let tree =
-        Match.Match_compile.compile ~arities:(arity_of ctx) base branch_ids patterns
+        Match.Match_compile.compile ~type_defs:ctx.type_defs matched
+          pattern_and_branches
       in
       eval_tree ctx env matched_value branch_list tree
 
-and eval env (e : Typed_ir.Expr.t) =
-  eval_with_context default_context env e
+and eval env (e : Typed_ir.Expr.t) = eval_with_context default_context env e

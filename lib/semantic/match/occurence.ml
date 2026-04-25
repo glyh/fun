@@ -3,13 +3,13 @@ open Ppx_hash_lib.Std.Hash.Builtin
 type t = { path : path; type_ : Type.T.t [@hash.ignore] } [@@deriving hash]
 
 and path =
-  | Base of Type.Id.t
+  | Base
   | Project of { base : t; index : int }
   | Unwrap of t
 
 let rec equal o o' =
   match (o, o') with
-  | { path = Base id1; _ }, { path = Base id2; _ } -> Type.Id.equal id1 id2
+  | { path = Base; _ }, { path = Base; _ } -> true
   | ( { path = Project { base = base1; index = index1 }; _ },
       { path = Project { base = base2; index = index2 }; _ } )
     when index1 == index2 ->

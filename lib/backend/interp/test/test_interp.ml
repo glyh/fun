@@ -135,11 +135,76 @@ end|}
            ~typ:Type.Generic.i64);
     ]
 
+let test_non_exhaustive ~source ~expected () =
+  let missing_pat =
+    let pp ppf p = Fmt.pf ppf "%s" (Match.Missing_pat.pp p) in
+    Alcotest.testable pp Match.Missing_pat.equal
+  in
+  match parse_expr source |> eval with
+  | _ -> Alcotest.fail "expected Non_exhaustive but evaluation succeeded"
+  | exception Match.Match_compile.Non_exhaustive actual ->
+      Alcotest.check missing_pat "missing pattern" expected actual
+
+let exhaustiveness =
+  let open Match.Missing_pat in
+  let nel x xs = Std.Nonempty_list.init x xs in
+  let many xs = Many (nel (List.hd xs) (List.tl xs)) in
+  Alcotest.
+    [
+      test_case "exhaustiveness: deeply nested" `Quick
+        (test_non_exhaustive
+           ~source:
+             {|type c = X I64 | Y I64 in
+type b = P c | Q c in
+type a = M b | N b in
+match M (P (X 1))
+| M(P(X(x))) -> x
+end|}
+           ~expected:
+             (many
+                [ ( "M",
+                    Some
+                      (many
+                         [ ("P", Some (many [ ("Y", Some Wildcard) ]));
+                           ("Q", Some Wildcard) ]) );
+                  ("N", Some Wildcard) ]));
+      test_case "exhaustiveness: multiple branches partially covered" `Quick
+        (test_non_exhaustive
+           ~source:
+             {|type inner = X I64 | Y I64 in
+type outer = A inner | B inner in
+match A (X 1)
+| A(X(x)) -> x
+| B(X(x)) -> x
+end|}
+           ~expected:
+             (many
+                [ ("B", Some (many [ ("Y", Some Wildcard) ]));
+                  ("A", Some (many [ ("Y", Some Wildcard) ])) ]));
+      test_case "exhaustiveness: partial with three constructors" `Quick
+        (test_non_exhaustive
+           ~source:
+             {|type abc = A I64 | B I64 | C I64 in
+match A 1
+| A(x) -> x
+| B(x) -> x
+end|}
+           ~expected:(many [ ("C", Some Wildcard) ]));
+      test_case "exhaustiveness: union pattern" `Quick
+        (test_non_exhaustive
+           ~source:
+             {|type abc = A I64 | B I64 | C I64 in
+match A 1
+| A(x) | B(x) -> x
+end|}
+           ~expected:(many [ ("C", Some Wildcard) ]));
+    ]
+
 let () =
   Alcotest.run "Interp"
     [
       ("higher_order", higher_order);
       ("recursion", recursion);
       ("lists", lists);
-      ("matches", matches);
+      ("matches", matches @ exhaustiveness);
     ]
