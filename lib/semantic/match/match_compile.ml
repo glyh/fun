@@ -23,7 +23,7 @@ let preprocess (base : Occurence.t)
               { path = Project { base; index }; type_ = sub_pat.type_ }
               sub_pat)
           sub_pats
-    | Record fields ->
+    | Record { fields; partial = _ } ->
         Std.Nonempty_list.iter
           (fun (name, sub_pat_opt) ->
             let sub_pat : Typed_ir.Pattern.t =

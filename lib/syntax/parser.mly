@@ -2,6 +2,10 @@
   [@@@coverage exclude_file]
   open Ast
 
+  type record_pat_entry =
+    | Pat_field of string * Pattern.t option
+    | Pat_wildcard
+
 %}
 
 %token <Type.Id.t> ID
@@ -131,15 +135,25 @@ pattern:
   | id=ID LPAREN p=pattern RPAREN { Pattern.Tagged (id, Some p) }
   | pattern PIPE pattern { Pattern.Union ($1, $3) }
   | UNDERSCORE { Pattern.Any }
-  | LBRACE fields=separated_nonempty_list(SEMI, record_pat_field) RBRACE {
+  | LBRACE entries=separated_nonempty_list(SEMI, record_pat_entry) RBRACE {
+    let rec split_entries = function
+      | [] -> ([], false)
+      | [Pat_wildcard] -> ([], true)
+      | Pat_wildcard :: _ -> failwith "Wildcard '_' must be the last entry in a record pattern"
+      | Pat_field (name, pat) :: rest ->
+          let (fields, partial) = split_entries rest in
+          ((name, pat) :: fields, partial)
+    in
+    let (fields, partial) = split_entries entries in
     match fields with
-    | [] -> failwith "Unreachable: nonempty list returns empty in pattern!"
-    | hd :: rest -> Pattern.Record (Std.Nonempty_list.init hd rest)
+    | [] -> failwith "Record pattern must have at least one named field"
+    | hd :: rest -> Pattern.Record { fields = Std.Nonempty_list.init hd rest; partial }
   }
 
-record_pat_field:
-  | name=ID { (name, None) }
-  | name=ID ASSIGN p=pattern { (name, Some p) }
+record_pat_entry:
+  | name=ID { Pat_field (name, None) }
+  | name=ID ASSIGN p=pattern { Pat_field (name, Some p) }
+  | UNDERSCORE { Pat_wildcard }
 
 expr: 
   | expr_stmt { $1 }

@@ -54,6 +54,12 @@ module Exceptions = struct
   exception UnknownRecordField of string
   exception NoSuchRecordType of string
 
+  exception
+    IncompleteRecordPattern of {
+      record_type : string;
+      missing : string list;
+    }
+
   let () =
     Printexc.register_printer (function
       | UnificationFailure c ->
@@ -374,7 +380,7 @@ module Inference = struct
             :: cons_on_bindings
             @ lhs_cons @ rhs_cons )
         with Invalid_argument _ -> raise exn_to_throw)
-    | Record fields ->
+    | Record { fields; partial } ->
         let record_pat_union =
           Type.Id.Map.union (fun binding _ _ ->
               raise (DuplicatedBindingInPatternProd { pat; binding }))
@@ -393,6 +399,23 @@ module Inference = struct
         let fresh_args, lookup_field =
           RecordDefs.instantiate_def record_def
         in
+        if not partial then begin
+          let pat_field_names =
+            Std.Nonempty_list.to_list fields |> List.map fst |> StrSet.of_list
+          in
+          let def_field_names =
+            Std.Nonempty_list.to_list record_def.fields
+            |> List.map fst |> StrSet.of_list
+          in
+          let missing = StrSet.diff def_field_names pat_field_names in
+          if not (StrSet.is_empty missing) then
+            raise
+              (IncompleteRecordPattern
+                 {
+                   record_type = record_type_name;
+                   missing = StrSet.elements missing;
+                 })
+        end;
         let record_ty = Type.Generic.Con (record_type_name, fresh_args) in
         let mapped =
           Std.Nonempty_list.map
@@ -427,7 +450,7 @@ module Inference = struct
           Std.Nonempty_list.to_list mapped
           |> List.concat_map (fun (_, _, cs) -> cs)
         in
-        (mk (Record typed_fields) record_ty, extras, cons)
+        (mk (Record { fields = typed_fields; partial }) record_ty, extras, cons)
 
   let rec constraints_from_expr (env : TypeEnv.t) (record_defs : RecordDefs.t)
       (e : Expr.t) : Typed_ir.Expr.t * Constraint.t list * RecordDefs.t =

@@ -270,6 +270,35 @@ end|}
 if {x = 1; y = 2} == {y = 2; x = 1} then 1 else 0|}
            ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
            ~typ:Type.Generic.i64);
+      test_case "record pattern with rename and shorthand" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+match {x = 10; y = 20}
+| {x = wow; y} -> wow + y
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 30L))
+           ~typ:Type.Generic.i64);
+      test_case "partial record pattern" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+match {x = 3; y = 4}
+| {x; _} -> x
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 3L))
+           ~typ:Type.Generic.i64);
+      test_case "record pattern with literal in field" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+match {x = 1; y = 99}
+| {x = 0; y} -> y
+| {x = 1; y} -> y + 1
+| {x; y} -> 0
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 100L))
+           ~typ:Type.Generic.i64);
     ]
 
 let () =

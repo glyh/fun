@@ -16,7 +16,7 @@ module Pattern : sig
     | Tagged of Type.Id.t * t option
     | Union of t * t
     | Any
-    | Record of (string * t option) Std.Nonempty_list.t
+    | Record of { fields : (string * t option) Std.Nonempty_list.t; partial : bool }
   [@@deriving eq]
 
   val pp : t -> string

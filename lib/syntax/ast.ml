@@ -33,7 +33,7 @@ module Pattern = struct
     | Tagged of Id.t * t option
     | Union of t * t
     | Any
-    | Record of (string * t option) Std.Nonempty_list.t
+    | Record of { fields : (string * t option) Std.Nonempty_list.t; partial : bool }
   [@@deriving eq]
 
   let rec pp = function
@@ -46,15 +46,18 @@ module Pattern = struct
     | Tagged (tag, Some inner) -> tag ^ " " ^ pp inner
     | Union (lhs, rhs) -> pp lhs ^ " | " ^ pp rhs
     | Any -> "_"
-    | Record fields ->
-        Std.Nonempty_list.(
-          map
-            (function
-              | name, None -> name
-              | name, Some pat -> name ^ " = " ^ pp pat)
-            fields
-          |> to_list)
-        |> String.concat "; " |> Printf.sprintf "{%s}"
+    | Record { fields; partial } ->
+        let field_strs =
+          Std.Nonempty_list.(
+            map
+              (function
+                | name, None -> name
+                | name, Some pat -> name ^ " = " ^ pp pat)
+              fields
+            |> to_list)
+        in
+        let all = if partial then field_strs @ [ "_" ] else field_strs in
+        all |> String.concat "; " |> Printf.sprintf "{%s}"
 end
 
 type field_accessor = string [@@deriving eq]
