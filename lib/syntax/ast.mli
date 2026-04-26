@@ -8,12 +8,16 @@ module Atom : sig
   val pp : t -> string
 end
 
+module ModulePath : sig
+  val pp : string list -> string
+end
+
 module Pattern : sig
   type t =
     | Bind of Type.Id.t
     | Just of Atom.t
     | Prod of t Std.Nonempty_list.t
-    | Tagged of Type.Id.t * t option
+    | Tagged of string list * Type.Id.t * t option
     | Union of t * t
     | Any
     | Record of { fields : (string * t option) Std.Nonempty_list.t; partial : bool }
@@ -23,6 +27,8 @@ module Pattern : sig
 end
 
 type field_accessor = string [@@deriving eq]
+
+type visibility = Public | Private [@@deriving eq]
 
 type type_rhs =
   | Adt of (string * Type.Human.t option) Std.Nonempty_list.t
@@ -43,6 +49,8 @@ module rec Expr : sig
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
     | Record of (field_accessor * t) Std.Nonempty_list.t
     | FieldAccess of t * field_accessor
+    | StructDef of Struct_def.t list
+    | Import of string
   [@@deriving eq]
 
   val pp : t -> string
@@ -59,4 +67,8 @@ and Binding : sig
   [@@deriving eq]
 
   val pp : t -> string
+end
+
+and Struct_def : sig
+  type t = { vis : visibility; binding : Binding.t } [@@deriving eq]
 end

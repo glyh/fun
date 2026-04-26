@@ -12,7 +12,7 @@ let parse_expr s =
 let test_typecheck ?(tag = "same type") ~source ~expected () =
   let expr = parse_expr source in
   prerr_endline (Syntax.Ast.Expr.pp expr);
-  let typed = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr in
+  let typed, _type_defs = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr in
   let inferred_type = typed.Typed_ir.Expr.type_ in
   Printf.printf "%s vs %s\n" (Type.T.pp inferred_type) (Type.T.pp expected);
   Alcotest.(check Testable.type_) tag expected inferred_type
@@ -67,7 +67,7 @@ let conditionals =
             (fun () ->
               parse_expr "if true then 1 else false"
               |> Typecheck.Inference.on_expr Typecheck.TypeEnv.default
-              |> (ignore : Typed_ir.Expr.t -> unit)));
+              |> (ignore : Typed_ir.Expr.t * Type.TypeDefs.t -> unit)));
       test_case "if nested" `Quick
         (test_typecheck ~source:"if false then (if true then 1 else 2) else 3"
            ~expected:Type.Generic.i64);
@@ -86,7 +86,7 @@ let lambdas =
         (test_typecheck ~source:"fun x -> true"
            ~expected:
              (Type.T.of_human
-                (Forall ([ "x" ], Arrow (Var "x", Con ("Bool", []))))));
+                (Forall ([ "x" ], Arrow (Var "x", Con (Type.TypeId.make "Bool", []))))));
       test_case "apply bool function" `Quick
         (test_typecheck ~source:"(fun b -> if b then 1 else 0) false"
            ~expected:Type.Generic.i64);
@@ -132,7 +132,7 @@ let annotations =
       test_case "mismatched but coerced via annotation" `Quick
         (test_typecheck ~source:"(fun x -> x + 1 : I64 -> I64)"
            ~expected:
-             (Type.T.of_human (Arrow (Con ("I64", []), Con ("I64", [])))));
+             (Type.T.of_human (Arrow (Con (Type.TypeId.make "I64", []), Con (Type.TypeId.make "I64", [])))));
     ]
 
 let adts =
@@ -140,35 +140,35 @@ let adts =
     [
       test_case "constructor application is monomorphic" `Quick
         (test_typecheck ~source:"type option['a] = Some 'a | None in Some 1"
-           ~expected:Type.Generic.(Con ("option", [ i64 ])));
+           ~expected:Type.Generic.(Con (Type.TypeId.make "option", [ i64 ])));
       test_case "constructor polymorphism" `Quick
         (test_typecheck
            ~source:
              "type option['a] = Some 'a | None in let x = Some 1 in let y = \
               Some true in y"
-           ~expected:Type.Generic.(Con ("option", [ bool ])));
+           ~expected:Type.Generic.(Con (Type.TypeId.make "option", [ bool ])));
       test_case "result Ok" `Quick
         (test_typecheck ~source:" type result['a, 'b] = Ok 'a | Err 'b in Ok 1"
            ~expected:
              (Type.T.of_human
                 Type.Generic.(
-                  Forall ([ "a" ], Con ("result", [ con_0 "I64"; Var "a" ])))));
+                  Forall ([ "a" ], Con (Type.TypeId.make "result", [ con_0 "I64"; Var "a" ])))));
       test_case "nullary constructor" `Quick
         (test_typecheck
            ~source:"type option['a] = Some 'a | None in None\n     "
            ~expected:
-             (Type.T.of_human (Forall ([ "a" ], Con ("option", [ Var "a" ])))));
+             (Type.T.of_human (Forall ([ "a" ], Con (Type.TypeId.make "option", [ Var "a" ])))));
       test_case "if with ADT branches" `Quick
         (test_typecheck
            ~source:
              "type result['a, 'b] = Ok 'a | Err 'b in if true then Ok 1 else \
               Err ()"
-           ~expected:Type.Generic.(Con ("result", [ i64; unit ])));
+           ~expected:Type.Generic.(Con (Type.TypeId.make "result", [ i64; unit ])));
       test_case "let-bound constructor result is generalized" `Quick
         (test_typecheck
            ~source:
              "type option['a] = Some 'a | None in let x = Some 1 in x\n     "
-           ~expected:Type.Generic.(Con ("option", [ i64 ])));
+           ~expected:Type.Generic.(Con (Type.TypeId.make "option", [ i64 ])));
     ]
 
 let tuples =
@@ -185,7 +185,7 @@ let tuples =
            ~source:
              "type list['a] = Nil | Cons ('a, list['a]) in Cons (1, Cons (2, \
               Nil))"
-           ~expected:Type.Generic.(Con ("list", [ i64 ])));
+           ~expected:Type.Generic.(Con (Type.TypeId.make "list", [ i64 ])));
     ]
 
 let records =
@@ -202,7 +202,7 @@ let records =
       test_case "polymorphic record" `Quick
         (test_typecheck
            ~source:"type pair['a, 'b] = {fst: 'a; snd: 'b} in {fst = 1; snd = true}"
-           ~expected:Type.Generic.(Con ("pair", [ i64; bool ])));
+           ~expected:Type.Generic.(Con (Type.TypeId.make "pair", [ i64; bool ])));
       test_case "polymorphic record field access" `Quick
         (test_typecheck
            ~source:"type pair['a, 'b] = {fst: 'a; snd: 'b} in let p = {fst = 1; snd = true} in p.snd"

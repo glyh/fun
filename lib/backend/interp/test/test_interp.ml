@@ -16,8 +16,8 @@ let parse_expr s =
   MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.expr_eof lexer
 
 let eval expr =
-  let typed = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr in
-  let result = Interp.(Eval.eval Env.default typed) in
+  let typed, type_defs = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr in
+  let result = Interp.(Eval.eval ~type_defs Env.default typed) in
   (result, typed.Typed_ir.Expr.type_)
 
 let test_eval ~source ~expected ~typ () =
@@ -301,6 +301,101 @@ end|}
            ~typ:Type.Generic.i64);
     ]
 
+let structs =
+  Alcotest.
+    [
+      test_case "struct with pub value, field access" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct pub let x = 42 end in M.x|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "struct private helper, pub uses it" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct
+                 let secret = 10
+                 pub let x = secret + 1
+               end in M.x|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 11L))
+           ~typ:Type.Generic.i64);
+      test_case "struct with pub function" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct
+                 let helper = fun x -> x * 2
+                 pub let double = helper
+               end in M.double 21|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "struct with multiple pub members" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct
+                 pub let a = 1
+                 pub let b = 2
+               end in M.a + M.b|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 3L))
+           ~typ:Type.Generic.i64);
+      test_case "empty struct" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct end in 42|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "struct with pub type, qualified constructor" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct
+                 pub type color = Red | Green | Blue
+               end in
+               match M.Red
+               | M.Red -> 1
+               | M.Green -> 2
+               | M.Blue -> 3
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+      test_case "struct with pub type, constructor with payload" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct
+                 pub type wrapper = W I64
+               end in
+               match M.W 42
+               | M.W(x) -> x
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "nested struct, qualified constructor" `Quick
+        (test_eval
+           ~source:
+             {|let A = struct
+                 pub let B = struct
+                   pub type t = X I64
+                 end
+               end in
+               match A.B.X 7
+               | A.B.X(n) -> n
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 7L))
+           ~typ:Type.Generic.i64);
+      test_case "struct alias, qualified constructor" `Quick
+        (test_eval
+           ~source:
+             {|let M = struct
+                 pub type color = Red | Green | Blue
+               end in
+               let N = M in
+               match N.Red
+               | N.Red -> 1
+               | N.Green -> 2
+               | N.Blue -> 3
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+    ]
+
 let () =
   Alcotest.run "Interp"
     [
@@ -309,4 +404,5 @@ let () =
       ("lists", lists);
       ("matches", matches @ exhaustiveness);
       ("records", records);
+      ("structs", structs);
     ]

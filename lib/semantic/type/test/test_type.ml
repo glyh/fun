@@ -12,9 +12,9 @@ let simple =
   Alcotest.
     [
       test_case "I64" `Quick
-        (test_type (T.of_human (Con ("I64", []))) Generic.i64);
+        (test_type (T.of_human (Generic.con_0 "I64")) Generic.i64);
       test_case "Unit" `Quick
-        (test_type (T.of_human (Con ("Unit", []))) Generic.unit);
+        (test_type (T.of_human (Generic.con_0 "Unit")) Generic.unit);
     ]
 
 let malformed =

@@ -25,12 +25,16 @@ type type_rhs =
   | Record of (string * Type.Human.t) Std.Nonempty_list.t
 [@@deriving eq]
 
+module ModulePath = struct
+  let pp = String.concat "."
+end
+
 module Pattern = struct
   type t =
     | Bind of Id.t
     | Just of Atom.t
     | Prod of t Std.Nonempty_list.t
-    | Tagged of Id.t * t option
+    | Tagged of string list * Id.t * t option
     | Union of t * t
     | Any
     | Record of { fields : (string * t option) Std.Nonempty_list.t; partial : bool }
@@ -42,8 +46,11 @@ module Pattern = struct
     | Prod elements ->
         Std.Nonempty_list.(map pp elements |> to_list)
         |> String.concat ", " |> Printf.sprintf "(%s)"
-    | Tagged (tag, None) -> tag
-    | Tagged (tag, Some inner) -> tag ^ " " ^ pp inner
+    | Tagged ([], tag, None) -> tag
+    | Tagged ([], tag, Some inner) -> tag ^ " " ^ pp inner
+    | Tagged (path, tag, None) -> ModulePath.pp path ^ "." ^ tag
+    | Tagged (path, tag, Some inner) ->
+        ModulePath.pp path ^ "." ^ tag ^ " " ^ pp inner
     | Union (lhs, rhs) -> pp lhs ^ " | " ^ pp rhs
     | Any -> "_"
     | Record { fields; partial } ->
@@ -62,6 +69,8 @@ end
 
 type field_accessor = string [@@deriving eq]
 
+type visibility = Public | Private [@@deriving eq]
+
 module rec Expr : sig
   type t =
     | Atom of Atom.t
@@ -76,6 +85,8 @@ module rec Expr : sig
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
     | Record of (field_accessor * t) Std.Nonempty_list.t
     | FieldAccess of t * field_accessor
+    | StructDef of Struct_def.t list
+    | Import of string
   [@@deriving eq]
 
   val pp : t -> string
@@ -93,6 +104,8 @@ end = struct
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
     | Record of (field_accessor * t) Std.Nonempty_list.t
     | FieldAccess of t * field_accessor
+    | StructDef of Struct_def.t list
+    | Import of string
   [@@deriving eq]
 
   let rec pp = function
@@ -127,6 +140,17 @@ end = struct
           |> to_list)
         |> String.concat "; " |> Printf.sprintf "{%s}"
     | FieldAccess (expr, field) -> pp expr ^ "." ^ field
+    | StructDef defs ->
+        let defs_pp =
+          List.map
+            (fun (d : Struct_def.t) ->
+              let prefix = match d.vis with Public -> "pub " | Private -> "" in
+              prefix ^ Binding.pp d.binding)
+            defs
+          |> String.concat " "
+        in
+        "struct " ^ defs_pp ^ " end"
+    | Import path -> Printf.sprintf "import %S" path
 end
 
 and Binding : sig
@@ -180,4 +204,10 @@ end = struct
               |> String.concat "; " |> Printf.sprintf "{%s}"
         in
         Printf.sprintf "type %s%s = %s" (Type.Id.pp name) ty_args rhs_pp
+end
+
+and Struct_def : sig
+  type t = { vis : visibility; binding : Binding.t } [@@deriving eq]
+end = struct
+  type t = { vis : visibility; binding : Binding.t } [@@deriving eq]
 end

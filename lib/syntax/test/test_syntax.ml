@@ -1,5 +1,6 @@
 open Syntax.Ast
 open Type.Generic
+let tyid = Type.TypeId.make
 
 module Testable = struct
   let binding =
@@ -516,7 +517,7 @@ let types =
                Binding.Value
                  {
                    name = "x";
-                   type_ = Some (Con ("option", [ Con ("Int", []) ]));
+                   type_ = Some (Con (tyid "option", [ Con (tyid "Int", []) ]));
                    value = Expr.Var "y";
                  };
              ]);
@@ -530,10 +531,10 @@ let types =
                    type_ =
                      Some
                        (Con
-                          ( "result",
+                          ( tyid "result",
                             [
-                              Con ("Int", []);
-                              Con ("option", [ Con ("Bool", []) ]);
+                              Con (tyid "Int", []);
+                              Con (tyid "option", [ Con (tyid "Bool", []) ]);
                             ] ));
                    value = Expr.Var "v";
                  };
@@ -548,8 +549,8 @@ let types =
                    type_ =
                      Some
                        (Arrow
-                          ( Con ("option", [ Con ("Int", []) ]),
-                            Con ("result", [ Con ("Int", []); Con ("Bool", []) ])
+                          ( Con (tyid "option", [ Con (tyid "Int", []) ]),
+                            Con (tyid "result", [ Con (tyid "Int", []); Con (tyid "Bool", []) ])
                           ));
                    value = Expr.Var "f";
                  };
@@ -564,7 +565,7 @@ let types =
                    type_ =
                      Some
                        (Prod
-                          (Std.Nonempty_list.init (Con ("Int", [])) [Con ("Bool", []); Con ("String", [])]));
+                          (Std.Nonempty_list.init (Con (tyid "Int", [])) [Con (tyid "Bool", []); Con (tyid "String", [])]));
                    value = Expr.Var "v";
                  };
              ]);
@@ -578,8 +579,8 @@ let types =
                    type_ =
                      Some
                        (Arrow
-                          ( Prod (Std.Nonempty_list.init (Con ("Int", [])) [Con ("Bool", [])]),
-                            Con ("String", []) ));
+                          ( Prod (Std.Nonempty_list.init (Con (tyid "Int", [])) [Con (tyid "Bool", [])]),
+                            Con (tyid "String", []) ));
                    value = Expr.Var "v";
                  };
              ]);
@@ -593,7 +594,7 @@ let types =
                    type_ =
                      Some
                        (Prod
-                          (Std.Nonempty_list.init (Con ("Int", [])) [Con ("option", [ Con ("Bool", []) ])]));
+                          (Std.Nonempty_list.init (Con (tyid "Int", [])) [Con (tyid "option", [ Con (tyid "Bool", []) ])]));
                    value = Expr.Var "v";
                  };
              ]);
@@ -623,13 +624,146 @@ let types =
                        (Arrow
                           ( Prod
                               ( Std.Nonempty_list.init (Con
-                                  ( "result",
-                                    [ Con ("Int", []); Con ("Bool", []) ] ))
-                                [Con ("option", [ Con ("String", []) ])] ),
+                                  ( tyid "result",
+                                    [ Con (tyid "Int", []); Con (tyid "Bool", []) ] ))
+                                [Con (tyid "option", [ Con (tyid "String", []) ])] ),
                             Var "a" ));
                    value = Expr.Var "v";
                  };
              ]);
+    ]
+
+let struct_defs =
+  Alcotest.
+    [
+      test_case "struct with pub let" `Quick
+        (test_syntax ~source:"let M = struct pub let x = 1 end"
+           ~expected:
+             [
+               Value
+                 {
+                   name = "M";
+                   type_ = None;
+                   value =
+                     StructDef
+                       [
+                         {
+                           vis = Public;
+                           binding =
+                             Value
+                               { name = "x"; type_ = None; value = Atom (I64 1L) };
+                         };
+                       ];
+                 };
+             ]);
+      test_case "struct with private and pub" `Quick
+        (test_syntax ~source:"let M = struct let x = 1 pub let y = 2 end"
+           ~expected:
+             [
+               Value
+                 {
+                   name = "M";
+                   type_ = None;
+                   value =
+                     StructDef
+                       [
+                         {
+                           vis = Private;
+                           binding =
+                             Value
+                               { name = "x"; type_ = None; value = Atom (I64 1L) };
+                         };
+                         {
+                           vis = Public;
+                           binding =
+                             Value
+                               { name = "y"; type_ = None; value = Atom (I64 2L) };
+                         };
+                       ];
+                 };
+             ]);
+      test_case "struct with pub type" `Quick
+        (test_syntax ~source:"let M = struct pub type t = A | B end"
+           ~expected:
+             [
+               Value
+                 {
+                   name = "M";
+                   type_ = None;
+                   value =
+                     StructDef
+                       [
+                         {
+                           vis = Public;
+                           binding =
+                             TypeDecl
+                               {
+                                 name = "t";
+                                 args = [];
+                                 rhs =
+                                   Adt
+                                     (Std.Nonempty_list.init ("A", None)
+                                        [ ("B", None) ]);
+                               };
+                         };
+                       ];
+                 };
+             ]);
+      test_case "import expression" `Quick
+        (test_syntax ~source:{|let M = import "vec2"|}
+           ~expected:
+             [
+               Value
+                 {
+                   name = "M";
+                   type_ = None;
+                   value = Import "vec2";
+                 };
+             ]);
+    ]
+
+let parse_expr s =
+  let lexbuf = Sedlexing.Utf8.from_string s in
+  let lexer = Sedlexing.with_tokenizer Syntax.Lexer.token lexbuf in
+  MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.expr_eof lexer
+
+module Testable_expr = struct
+  let expr =
+    let pp_expr ppf e = Fmt.pf ppf "%S" (Expr.pp e) in
+    Alcotest.testable pp_expr Expr.equal
+end
+
+let test_expr ?(tag = "same AST") ~source ~expected () =
+  let parsed = parse_expr source in
+  Alcotest.(check Testable_expr.expr) tag parsed expected
+
+let qualified_patterns =
+  Alcotest.
+    [
+      test_case "M.Red in pattern" `Quick
+        (test_expr
+           ~source:{|match x | M.Red -> 1 end|}
+           ~expected:
+             (Match
+                {
+                  matched = Var "x";
+                  branches =
+                    Std.Nonempty_list.init
+                      (Pattern.Tagged (["M"], "Red", None), Expr.Atom (I64 1L))
+                      [];
+                }));
+      test_case "A.B.C.Red(x) in pattern" `Quick
+        (test_expr
+           ~source:{|match x | A.B.C.Red(y) -> y end|}
+           ~expected:
+             (Match
+                {
+                  matched = Var "x";
+                  branches =
+                    Std.Nonempty_list.init
+                      (Pattern.Tagged (["A"; "B"; "C"], "Red", Some (Bind "y")), Expr.Var "y")
+                      [];
+                }));
     ]
 
 let () =
@@ -644,4 +778,6 @@ let () =
       ("annotations", annotations);
       ("operators", operators);
       ("types", types);
+      ("struct_defs", struct_defs);
+      ("qualified_patterns", qualified_patterns);
     ]

@@ -12,6 +12,22 @@ module Id = struct
   include T
 end
 
+module TypeId = struct
+  module T = struct
+    type t = { path : string list; name : string } [@@deriving eq, ord]
+
+    let pp { path; name } =
+      match path with
+      | [] -> name
+      | _ -> String.concat "." path ^ "." ^ name
+
+    let make name = { path = []; name }
+  end
+
+  module Map = Map.Make (T)
+  include T
+end
+
 module Var = struct
   module T = struct
     type t = { id : int; tag : string option } [@@deriving eq, ord, hash]
@@ -52,7 +68,7 @@ module Precedence = struct
     | `Forall -> (30, `Left)
     | `Prod -> (20, `Left)
     | `Arrow -> (10, `Right)
-    | `Var | `Con -> (0, `Left)
+    | `Var | `Con | `Struct -> (0, `Left)
 
   let base = (-1, `Left)
 
@@ -69,9 +85,10 @@ module Generic = struct
   type ('var, 'var_set) t =
     | Forall of 'var_set * ('var, 'var_set) t
     | Var of 'var
-    | Con of Id.t * ('var, 'var_set) t list
+    | Con of TypeId.t * ('var, 'var_set) t list
     | Prod of ('var, 'var_set) t Std.Nonempty_list.t
     | Arrow of ('var, 'var_set) t * ('var, 'var_set) t
+    | Struct of (string * ('var, 'var_set) t) list
   [@@deriving eq]
 
   let to_tag = function
@@ -80,6 +97,7 @@ module Generic = struct
     | Con _ -> `Con
     | Prod _ -> `Prod
     | Arrow _ -> `Arrow
+    | Struct _ -> `Struct
 
   let pp ~pp_var ~pp_var_set =
     let rec pp_at ctx ty =
@@ -91,22 +109,27 @@ module Generic = struct
         | Forall (vars, inner) ->
             Printf.sprintf "'%s . %s" (pp_var_set vars) (pp_at my inner)
         | Var v -> "'" ^ pp_var v
-        | Con (ty, []) -> ty
+        | Con (ty, []) -> TypeId.pp ty
         | Con (ty, args) ->
-            ty ^ "["
+            TypeId.pp ty ^ "["
             ^ (List.map (pp_at Precedence.base) args |> String.concat ",")
             ^ "]"
         | Arrow (a, b) -> pp_at my_left a ^ " -> " ^ pp_at my_right b
         | Prod elements ->
             Std.Nonempty_list.(map (pp_at Precedence.base) elements |> to_list)
             |> String.concat ", " |> Printf.sprintf "(%s)"
+        | Struct fields ->
+            List.map
+              (fun (name, ty) -> name ^ ": " ^ pp_at Precedence.base ty)
+              fields
+            |> String.concat "; " |> Printf.sprintf "struct {%s}"
       in
       if Precedence.should_add_paren ~ctx ~my then "(" ^ unparened ^ ")"
       else unparened
     in
     pp_at Precedence.base
 
-  let con_0 name = Con (name, [])
+  let con_0 name = Con (TypeId.make name, [])
   let unit = con_0 "Unit"
   let i64 = con_0 "I64"
   let bool = con_0 "Bool"
@@ -147,6 +170,8 @@ module T = struct
       | Con (s, args) -> Con (s, List.map (of_human_do ctx) args)
       | Arrow (a, b) -> Arrow (of_human_do ctx a, of_human_do ctx b)
       | Prod elements -> Prod (Std.Nonempty_list.map (of_human_do ctx) elements)
+      | Struct fields ->
+          Struct (List.map (fun (n, t) -> (n, of_human_do ctx t)) fields)
     in
     of_human_do Id.Map.empty input
 
@@ -165,6 +190,7 @@ module T = struct
           Queue.add var q
       | Con (_, vars) -> List.iter order_vars_do vars
       | Prod elements -> Std.Nonempty_list.iter order_vars_do elements
+      | Struct fields -> List.iter (fun (_, t) -> order_vars_do t) fields
       | Arrow (a, b) ->
           order_vars_do a;
           order_vars_do b
@@ -182,9 +208,13 @@ module T = struct
     | Var from, Var to_ ->
         Var.Map.find_opt from mapping |> Option.equal Var.equal (Some to_)
     | Con (tycon1, ty_args1), Con (tycon2, ty_args2) ->
-        String.equal tycon1 tycon2 && List.equal recur ty_args1 ty_args2
+        TypeId.equal tycon1 tycon2 && List.equal recur ty_args1 ty_args2
     | Prod elements1, Prod elements2 ->
         Std.Nonempty_list.equal recur elements1 elements2
+    | Struct fields1, Struct fields2 ->
+        List.equal
+          (fun (n1, t1) (n2, t2) -> String.equal n1 n2 && recur t1 t2)
+          fields1 fields2
     | Arrow (a1, b1), Arrow (a2, b2) -> recur a1 a2 && recur b1 b2
     | _ -> false
 
@@ -201,4 +231,10 @@ module T = struct
         (* Dangling type variables can't be considered equal *)
         false
     | _ -> equal t1 t2
+end
+
+module TypeDefs = struct
+  type t = (Id.t * Human.t option) Std.Nonempty_list.t TypeId.Map.t
+
+  let empty = TypeId.Map.empty
 end

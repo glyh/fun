@@ -11,8 +11,8 @@ let interactive_pipeline source =
     MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.expr_eof
       lexer
   in
-  let typed = Typecheck.Inference.on_expr Typecheck.TypeEnv.default parsed in
-  let result = Interp.(Eval.eval Env.default typed) in
+  let typed, type_defs = Typecheck.Inference.on_expr Typecheck.TypeEnv.default parsed in
+  let result = Interp.(Eval.eval ~type_defs Env.default typed) in
   Printf.printf "%s: %s\n"
     (Interp.Model.Value.pp result)
     (Type.T.pp typed.Typed_ir.Expr.type_);

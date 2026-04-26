@@ -34,6 +34,9 @@ let rec token buf =
   | "type" -> TYPE
   | "match" -> MATCH
   | "end" -> END
+  | "pub" -> PUB
+  | "import" -> IMPORT
+  | "struct" -> STRUCT
   | "->" -> ARROW
   | "()" -> UNIT
   | ";;" -> DOUBLESEMI
@@ -65,6 +68,7 @@ let rec token buf =
       let drop_first s = String.sub s 1 (String.length s - 1) in
       TY_VAR (Sedlexing.Utf8.lexeme buf |> drop_first)
   | id -> ID (Sedlexing.Utf8.lexeme buf)
+  | '"' -> read_string buf (Buffer.create 16)
   | Plus (' ' | '\t' | '\n' | '\r') -> token buf
   | "(*" -> skip_comment buf (Nonempty_list.init (Sedlexing.loc buf) [])
   | eof -> EOF
@@ -84,4 +88,14 @@ and skip_comment buf (openings : loc Nonempty_list.t) =
       let top_opening = Nonempty_list.first openings in
       raise (UnterminatedComment { started_at = top_opening })
   | any -> skip_comment buf openings
+  | _ -> raise (Exceptions.Unreachable [%here])
+
+and read_string buf acc =
+  match%sedlex buf with
+  | '"' -> STRING (Buffer.contents acc)
+  | '\\', '"' -> Buffer.add_char acc '"'; read_string buf acc
+  | '\\', 'n' -> Buffer.add_char acc '\n'; read_string buf acc
+  | '\\', '\\' -> Buffer.add_char acc '\\'; read_string buf acc
+  | eof -> raise (UnexpectedToken { token = "unterminated string"; location = Sedlexing.loc buf })
+  | any -> Buffer.add_string acc (Sedlexing.Utf8.lexeme buf); read_string buf acc
   | _ -> raise (Exceptions.Unreachable [%here])

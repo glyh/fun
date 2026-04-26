@@ -13,6 +13,7 @@ and Value : sig
     | Tagged of { tag : string; inner : t option }
     | Prod of t Std.Nonempty_list.t
     | Record of (string * t) list
+    | Struct of (string * t) list
 
   exception CantCompare of (t * t)
 
@@ -25,6 +26,7 @@ end = struct
     | Tagged of { tag : string; inner : t option }
     | Prod of t Std.Nonempty_list.t
     | Record of (string * t) list
+    | Struct of (string * t) list
 
   exception CantCompare of (t * t)
 
@@ -45,6 +47,10 @@ end = struct
         List.equal
           (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && equal v1 v2)
           (order_kvs f1) (order_kvs f2)
+    | Struct f1, Struct f2 ->
+        List.equal
+          (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && equal v1 v2)
+          f1 f2
     | lhs, rhs -> raise (CantCompare (lhs, rhs))
 
   let rec pp = function
@@ -59,4 +65,7 @@ end = struct
     | Record fields ->
         List.map (fun (n, v) -> Printf.sprintf "%s = %s" n (pp v)) fields
         |> String.concat "; " |> Printf.sprintf "{%s}"
+    | Struct fields ->
+        List.map (fun (n, v) -> Printf.sprintf "%s = %s" n (pp v)) fields
+        |> String.concat "; " |> Printf.sprintf "struct {%s}"
 end

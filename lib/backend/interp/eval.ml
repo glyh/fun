@@ -7,19 +7,6 @@ end
 
 open Exceptions
 
-(* NOTE: this backend expects the program is properly-typed *)
-
-type context = {
-  type_defs :
-    (Type.Id.t * Type.Human.t option) Std.Nonempty_list.t Type.Id.Map.t;
-}
-
-let default_context = { type_defs = Type.Id.Map.empty }
-
-let with_type_decl (ctx : context) (name : Type.Id.t)
-    (rhs : (Type.Id.t * Type.Human.t option) Std.Nonempty_list.t) =
-  { type_defs = Type.Id.Map.add name rhs ctx.type_defs }
-
 let nth_nonempty (xs : 'a Std.Nonempty_list.t) i =
   List.nth_opt (Std.Nonempty_list.to_list xs) i
 
@@ -52,13 +39,13 @@ let branch_body_exn branches = function
       | Some (_, body) -> body
       | None -> raise (Std.Exceptions.Unreachable [%here]))
 
-let rec eval_tree (ctx : context) env (root : Value.t) branches
+let rec eval_tree ~type_defs env (root : Value.t) branches
     (tree : Match.Decision_tree.t) : Value.t =
   match tree.content with
   | Leaf { branch; bindings } ->
       let body = branch_body_exn branches branch in
       let env' = extend_env_with_bindings env root bindings in
-      eval_with_context ctx env' body
+      eval ~type_defs env' body
   | Destruct { occurence; cases; default } ->
       let next =
         match resolve_occurrence root occurence with
@@ -68,7 +55,7 @@ let rec eval_tree (ctx : context) env (root : Value.t) branches
             | None -> default)
         | _ -> default
       in
-      eval_tree ctx env root branches next
+      eval_tree ~type_defs env root branches next
   | Switch { occurence; cases; default } ->
       let next =
         match resolve_occurrence root occurence with
@@ -83,9 +70,9 @@ let rec eval_tree (ctx : context) env (root : Value.t) branches
             | None -> default)
         | _ -> default
       in
-      eval_tree ctx env root branches next
+      eval_tree ~type_defs env root branches next
 
-and eval_with_context (ctx : context) env (e : Typed_ir.Expr.t) =
+and eval ~type_defs env (e : Typed_ir.Expr.t) =
   match e.node with
   | Atom a -> Value.Atom a
   | Var x -> (
@@ -93,22 +80,24 @@ and eval_with_context (ctx : context) env (e : Typed_ir.Expr.t) =
       | None -> raise (UndefinedVariable x)
       | Some v -> v)
   | If { cond; then_; else_ } -> (
-      match eval_with_context ctx env cond with
-      | Atom (Bool b) -> eval_with_context ctx env (if b then then_ else else_)
+      match eval ~type_defs env cond with
+      | Atom (Bool b) -> eval ~type_defs env (if b then then_ else else_)
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Ap (f, x) -> (
-      match eval_with_context ctx env f with
-      | Closure f -> f (eval_with_context ctx env x)
+      match eval ~type_defs env f with
+      | Closure f ->
+          let x_val = eval ~type_defs env x in
+          f x_val
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Lam { param; body; _ } ->
       Closure
         (fun arg ->
           let env = Type.Id.Map.add param arg env in
-          eval_with_context ctx env body)
+          eval ~type_defs env body)
   | Let { binding = Value { name; value }; body } ->
-      let v = eval_with_context ctx env value in
-      eval_with_context ctx (Type.Id.Map.add name v env) body
-  | Let { binding = TypeDecl { name; rhs; _ }; body } -> (
+      let v = eval ~type_defs env value in
+      eval ~type_defs (Type.Id.Map.add name v env) body
+  | Let { binding = TypeDecl { rhs; _ }; body } -> (
       match rhs with
       | Adt ctors ->
           let env_new =
@@ -128,12 +117,10 @@ and eval_with_context (ctx : context) env (e : Typed_ir.Expr.t) =
                          env)
                  env
           in
-          let ctx_new = with_type_decl ctx name ctors in
-          eval_with_context ctx_new env_new body
-      | Record _ -> eval_with_context ctx env body)
+          eval ~type_defs env_new body
+      | Record _ -> eval ~type_defs env body)
   | Fix f -> (
-      (* Fix(f) = f Fix(f) *)
-      match eval_with_context ctx env f with
+      match eval ~type_defs env f with
       | Closure f ->
           let rec fix_f arg =
             let f_on_fix_f = f (Closure fix_f) in
@@ -144,29 +131,62 @@ and eval_with_context (ctx : context) env (e : Typed_ir.Expr.t) =
           Closure fix_f
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Prod elements ->
-      Value.Prod (Std.Nonempty_list.map (eval_with_context ctx env) elements)
+      Value.Prod (Std.Nonempty_list.map (eval ~type_defs env) elements)
   | Record fields ->
       Value.Record
         (Std.Nonempty_list.to_list fields
-        |> List.map (fun (name, e) -> (name, eval_with_context ctx env e)))
+        |> List.map (fun (name, e) -> (name, eval ~type_defs env e)))
   | FieldAccess (inner, field) -> (
-      match eval_with_context ctx env inner with
-      | Record fields -> (
+      match eval ~type_defs env inner with
+      | (Record fields | Struct fields) -> (
           match List.assoc_opt field fields with
           | Some v -> v
           | None -> raise (Std.Exceptions.Unreachable [%here]))
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
+  | StructDef { members; pub_names } ->
+      let env' =
+        List.fold_left
+          (fun env (b : Typed_ir.Binding.t) ->
+            match b with
+            | Value { name; value } ->
+                let v = eval ~type_defs env value in
+                Type.Id.Map.add name v env
+            | TypeDecl { rhs = Adt ctors; _ } ->
+                Std.Nonempty_list.to_list ctors
+                |> List.fold_left
+                     (fun env (tag, type_body_opt) ->
+                       match type_body_opt with
+                       | None ->
+                           Type.Id.Map.add tag
+                             (Value.Tagged { tag; inner = None })
+                             env
+                       | Some _ ->
+                           Type.Id.Map.add tag
+                             (Value.Closure
+                                (fun inner ->
+                                  Value.Tagged { tag; inner = Some inner }))
+                             env)
+                     env
+            | TypeDecl { rhs = Record _; _ } -> env)
+          env members
+      in
+      let pub_values =
+        List.filter_map
+          (fun name ->
+            match Type.Id.Map.find_opt name env' with
+            | Some v -> Some (name, v)
+            | None -> None)
+          pub_names
+      in
+      Value.Struct pub_values
   | Match { matched; branches } ->
-      let matched_value = eval_with_context ctx env matched in
+      let matched_value = eval ~type_defs env matched in
       let branch_list = Std.Nonempty_list.to_list branches in
       let pattern_and_branches =
         List.mapi (fun i (pat, _) -> (pat, Match.Branch.Block i)) branch_list
       in
-
       let tree =
-        Match.Match_compile.compile ~type_defs:ctx.type_defs matched
+        Match.Match_compile.compile ~type_defs matched
           pattern_and_branches
       in
-      eval_tree ctx env matched_value branch_list tree
-
-and eval env (e : Typed_ir.Expr.t) = eval_with_context default_context env e
+      eval_tree ~type_defs env matched_value branch_list tree

@@ -4,6 +4,13 @@ module Id : sig
   module Map : Map.S with type key = t
 end
 
+module TypeId : sig
+  type t = { path : string list; name : string } [@@deriving eq]
+  val pp : t -> string
+  val make : string -> t
+  module Map : Map.S with type key = t
+end
+
 module Var : sig
   (* NOTE: Abstract the implementation ensuring no one can duplicate it *)
   type t [@@deriving eq]
@@ -27,9 +34,10 @@ module Generic : sig
   type ('var, 'var_set) t =
     | Forall of 'var_set * ('var, 'var_set) t
     | Var of 'var
-    | Con of Id.t * ('var, 'var_set) t list
+    | Con of TypeId.t * ('var, 'var_set) t list
     | Prod of ('var, 'var_set) t Std.Nonempty_list.t
     | Arrow of ('var, 'var_set) t * ('var, 'var_set) t
+    | Struct of (string * ('var, 'var_set) t) list
   [@@deriving eq]
 
   val con_0 : string -> _ t
@@ -56,5 +64,11 @@ module T : sig
   val pp: t -> string
 
   val of_human: Human.t -> t
+end
+
+module TypeDefs : sig
+  type t = (Id.t * Human.t option) Std.Nonempty_list.t TypeId.Map.t
+
+  val empty : t
 end
 

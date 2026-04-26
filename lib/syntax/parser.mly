@@ -11,7 +11,8 @@
 %token <Type.Id.t> ID
 %token <Type.Id.t> TY_VAR
 %token <int64> I64
-%token LET REC IN IF THEN ELSE FUN TYPE MATCH END
+%token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT
+%token <string> STRING
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
 %token LBRACKET RBRACKET COMMA
 %token LBRACE RBRACE SEMI DOT
@@ -31,6 +32,7 @@
 
 %start <Binding.t list> toplevel_eof
 %start <Expr.t> expr_eof
+%start <Struct_def.t list> module_eof
 
 %%
 
@@ -38,8 +40,8 @@ toplevel_eof:
   | bindings=separated_list(DOUBLESEMI, binding) EOF { bindings }
 
 type_:
-  | ID { Type.Generic.Con ($1, []) }
-  | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.Generic.Con (name, args) }
+  | ID { Type.Generic.Con (Type.TypeId.make $1, []) }
+  | name=ID LBRACKET args=separated_nonempty_list(COMMA, type_) RBRACKET { Type.Generic.Con (Type.TypeId.make name, args) }
   | type_ ARROW type_ { Type.Generic.Arrow ($1, $3) }
   | LPAREN maybe_tuple=separated_nonempty_list(COMMA, type_) RPAREN { 
     match maybe_tuple with
@@ -131,8 +133,14 @@ pattern:
         Pattern.Prod (Std.Nonempty_list.init element0 rest)
     | [] -> failwith "Unreachable: nonempty list returns empty in pattern!"
   }
-  | id=ID LPAREN RPAREN { Pattern.Tagged (id, None) }
-  | id=ID LPAREN p=pattern RPAREN { Pattern.Tagged (id, Some p) }
+  | id=ID LPAREN RPAREN { Pattern.Tagged ([], id, None) }
+  | id=ID LPAREN p=pattern RPAREN { Pattern.Tagged ([], id, Some p) }
+  | qid=dotted_ids {
+    let path, tag = qid in
+    Pattern.Tagged (path, tag, None) }
+  | qid=dotted_ids LPAREN p=pattern RPAREN {
+    let path, tag = qid in
+    Pattern.Tagged (path, tag, Some p) }
   | pattern PIPE pattern { Pattern.Union ($1, $3) }
   | UNDERSCORE { Pattern.Any }
   | LBRACE entries=separated_nonempty_list(SEMI, record_pat_entry) RBRACE {
@@ -149,6 +157,10 @@ pattern:
     | [] -> failwith "Record pattern must have at least one named field"
     | hd :: rest -> Pattern.Record { fields = Std.Nonempty_list.init hd rest; partial }
   }
+
+dotted_ids:
+  | a=ID DOT b=ID { ([a], b) }
+  | rest=dotted_ids DOT b=ID { let (path, prev) = rest in (path @ [prev], b) }
 
 record_pat_entry:
   | name=ID { Pat_field (name, None) }
@@ -233,9 +245,18 @@ expr_primary:
     | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!"
     | hd :: rest -> Expr.Record (Std.Nonempty_list.init hd rest)
   }
+  | STRUCT defs=list(struct_def) END { Expr.StructDef defs }
+  | IMPORT path=STRING { Expr.Import path }
 
 record_expr_field:
   | name=ID ASSIGN value=expr { (name, value) }
+
+struct_def:
+  | PUB b=binding { Ast.Struct_def.{ vis = Public; binding = b } }
+  | b=binding { Ast.Struct_def.{ vis = Private; binding = b } }
+
+module_eof:
+  | defs=list(struct_def) EOF { defs }
 
 expr_eof:
   | expr EOF { $1 }

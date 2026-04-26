@@ -176,7 +176,7 @@ let admits tag (p : Typed_ir.Pattern.t) =
   | _ -> false
 
 let type_name (t : Type.T.t) =
-  match t with Con (name, _) -> name | _ -> failwith "Not a valid type!"
+  match t with Con (id, _) -> id | _ -> failwith "Not a valid type!"
 
 let find_refutable_column (m : Matrix.t) =
   match
@@ -258,8 +258,7 @@ let collect_leaf_bindings (matrix : Matrix.t) =
       | _ -> ());
   Dynarray.to_list bindings
 
-type type_defs =
-  (Type.Id.t * Type.Human.t option) Std.Nonempty_list.t Type.Id.Map.t
+type type_defs = Type.TypeDefs.t
 
 exception Non_exhaustive of Missing_pat.t
 
@@ -268,12 +267,12 @@ let () =
     | Non_exhaustive mp -> Some ("Non_exhaustive: " ^ Missing_pat.pp mp)
     | _ -> None)
 
-let lookup_type_def (defs : type_defs) (tn : Type.Id.t) =
-  match Type.Id.Map.find_opt tn defs with
+let lookup_type_def (defs : type_defs) (tn : Type.TypeId.t) =
+  match Type.TypeId.Map.find_opt tn defs with
   | Some rhs -> rhs
   | None -> raise (Std.Exceptions.Unreachable [%here])
 
-let ctor_has_payload (defs : type_defs) (tn : Type.Id.t) (ctor : string) =
+let ctor_has_payload (defs : type_defs) (tn : Type.TypeId.t) (ctor : string) =
   let rhs = lookup_type_def defs tn in
   match
     List.find_opt
