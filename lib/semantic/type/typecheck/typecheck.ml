@@ -495,13 +495,13 @@ module Inference = struct
         in
         (mk (Record { fields = typed_fields; partial }) record_ty, extras, cons)
 
-  let rec constraints_from_expr ~scope (env : TypeEnv.t) (record_defs : RecordDefs.t)
+  let rec constraints_from_expr ~scope ~loader (env : TypeEnv.t) (record_defs : RecordDefs.t)
       (type_defs : Type.TypeDefs.t) (e : Expr.t) :
       Typed_ir.Expr.t * Constraint.t list * RecordDefs.t * Type.TypeDefs.t =
     let open Type.Generic in
     let gen_var () = Var (Type.Var.generate ()) in
     let mk node type_ : Typed_ir.Expr.t = { node; type_ } in
-    let recurse env e = constraints_from_expr ~scope env record_defs type_defs e in
+    let recurse env e = constraints_from_expr ~scope ~loader env record_defs type_defs e in
     match e with
     | Atom a -> (mk (Atom a) (of_atom a), [], record_defs, type_defs)
     | Var id -> (
@@ -525,7 +525,7 @@ module Inference = struct
       ->
         let value_scope = match value with StructDef _ -> scope @ [name] | _ -> scope in
         let typed_value, value_cons, record_defs, type_defs =
-          constraints_from_expr ~scope:value_scope env record_defs type_defs value in
+          constraints_from_expr ~scope:value_scope ~loader env record_defs type_defs value in
         let all_cons =
           match value_ty_annotated with
           | None -> value_cons
@@ -545,7 +545,7 @@ module Inference = struct
             typed_value
         in
         let typed_body, body_cons, record_defs, type_defs =
-          constraints_from_expr ~scope env_generalized record_defs type_defs body
+          constraints_from_expr ~scope ~loader env_generalized record_defs type_defs body
         in
         ( mk
             (Let
@@ -611,7 +611,7 @@ module Inference = struct
               (env, RecordDefs.register name args fields record_defs, type_defs)
         in
         let typed_body, body_cons, record_defs_final, type_defs =
-          constraints_from_expr ~scope env_new record_defs_new type_defs body
+          constraints_from_expr ~scope ~loader env_new record_defs_new type_defs body
         in
         ( mk
             (Let { binding = TypeDecl { name; args; rhs }; body = typed_body })
@@ -739,7 +739,7 @@ module Inference = struct
           | Value { name; type_ = value_ty_annotated; value } ->
               let value_scope = match value with StructDef _ -> scope @ [name] | _ -> scope in
               let typed_value, value_cons, record_defs, type_defs =
-                constraints_from_expr ~scope:value_scope env record_defs type_defs value
+                constraints_from_expr ~scope:value_scope ~loader env record_defs type_defs value
               in
               let all_cons =
                 match value_ty_annotated with
@@ -847,7 +847,16 @@ module Inference = struct
           all_cons,
           final_record_defs,
           final_type_defs )
-    | Import _ -> failwith "Import not yet implemented"
+    | Import path ->
+        let loader = match loader with
+          | Some l -> l
+          | None -> failwith "Import requires a loader"
+        in
+        let typed_import, imported_type_defs = loader path in
+        let type_defs =
+          Type.TypeId.Map.union (fun _ _ b -> Some b) type_defs imported_type_defs
+        in
+        (typed_import, [], record_defs, type_defs)
     | Match { matched; branches } ->
         let env_with_extra ~here extras =
           Type.Id.Map.union
@@ -894,9 +903,9 @@ module Inference = struct
           record_defs,
           type_defs )
 
-  let on_expr (env : TypeEnv.t) (exp : Expr.t) : Typed_ir.Expr.t * Type.TypeDefs.t =
+  let on_expr ?loader (env : TypeEnv.t) (exp : Expr.t) : Typed_ir.Expr.t * Type.TypeDefs.t =
     let typed_skeleton, cons, _, type_defs =
-      constraints_from_expr ~scope:[] env RecordDefs.empty Type.TypeDefs.empty exp
+      constraints_from_expr ~scope:[] ~loader env RecordDefs.empty Type.TypeDefs.empty exp
     in
     let sub = Unification.many cons in
     let typed_resolved =

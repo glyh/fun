@@ -396,6 +396,73 @@ let structs =
            ~typ:Type.Generic.i64);
     ]
 
+let make_loader base_dir =
+  Loader.create ~base_dir
+    ~typecheck_fn:(fun ?loader expr ->
+      Typecheck.Inference.on_expr ?loader Typecheck.TypeEnv.default expr)
+
+let with_modules modules f =
+  let dir = Filename.temp_dir "fun_test" "" in
+  List.iter
+    (fun (name, source) ->
+      let path = Filename.concat dir (name ^ ".fun") in
+      Out_channel.with_open_text path (fun oc -> output_string oc source))
+    modules;
+  let loader = make_loader dir in
+  f ~loader
+
+let eval_with_loader ~loader source =
+  let expr = parse_expr source in
+  let typed, type_defs =
+    Typecheck.Inference.on_expr ~loader Typecheck.TypeEnv.default expr
+  in
+  let result = Interp.(Eval.eval ~type_defs Env.default typed) in
+  (result, typed.Typed_ir.Expr.type_)
+
+let imports =
+  Alcotest.
+    [
+      test_case "basic import, pub value" `Quick (fun () ->
+        with_modules
+          [ ("math", "pub let double x = x + x") ]
+          (fun ~loader ->
+            let result, _typ = eval_with_loader ~loader
+              {|let M = import "math" in M.double 5|}
+            in
+            Alcotest.check Testable.value "10" (Value.Atom (Syntax.Ast.Atom.I64 10L)) result));
+      test_case "import with ADT, pattern match" `Quick (fun () ->
+        with_modules
+          [ ("color", "pub type color = Red | Green | Blue") ]
+          (fun ~loader ->
+            let result, _typ = eval_with_loader ~loader
+              {|let C = import "color" in
+                match C.Red
+                | C.Red -> 1
+                | C.Green -> 2
+                | C.Blue -> 3
+                end|}
+            in
+            Alcotest.check Testable.value "1" (Value.Atom (Syntax.Ast.Atom.I64 1L)) result));
+      test_case "nested import" `Quick (fun () ->
+        with_modules
+          [ ("base", "pub let x = 42");
+            ("wrapper", {|pub let M = import "base"|}) ]
+          (fun ~loader ->
+            let result, _typ = eval_with_loader ~loader
+              {|let W = import "wrapper" in W.M.x|}
+            in
+            Alcotest.check Testable.value "42" (Value.Atom (Syntax.Ast.Atom.I64 42L)) result));
+      test_case "circular import detected" `Quick (fun () ->
+        with_modules
+          [ ("a", {|pub let x = import "b"|});
+            ("b", {|pub let y = import "a"|}) ]
+          (fun ~loader ->
+            Alcotest.check_raises "circular"
+              (Loader.CircularImport "a")
+              (fun () ->
+                ignore (eval_with_loader ~loader {|import "a"|}))))
+    ]
+
 let () =
   Alcotest.run "Interp"
     [
@@ -405,4 +472,5 @@ let () =
       ("matches", matches @ exhaustiveness);
       ("records", records);
       ("structs", structs);
+      ("imports", imports);
     ]

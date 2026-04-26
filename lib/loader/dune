@@ -1,0 +1,3 @@
+(library
+ (name loader)
+ (libraries syntax sedlex menhirLib type typed_ir))
