@@ -6,6 +6,7 @@ and path =
   | Base
   | Project of { base : t; index : int }
   | Unwrap of t
+  | Field of { base : t; name : string }
 
 let rec equal o o' =
   match (o, o') with
@@ -16,4 +17,8 @@ let rec equal o o' =
       equal base1 base2
   | { path = Unwrap outer1; _ }, { path = Unwrap outer2; _ } ->
       equal outer1 outer2
+  | ( { path = Field { base = base1; name = name1 }; _ },
+      { path = Field { base = base2; name = name2 }; _ } )
+    when String.equal name1 name2 ->
+      equal base1 base2
   | _ -> false

@@ -490,9 +490,9 @@ let types =
                    name = "option";
                    args = [];
                    rhs =
-                     Std.Nonempty_list.init
+                     Adt (Std.Nonempty_list.init
                        ("Some", Some (Type.Generic.con_0 "Int"))
-                       [ ("None", None) ];
+                       [ ("None", None) ]);
                  };
              ]);
       test_case "type declaration with type parameters" `Quick
@@ -504,9 +504,9 @@ let types =
                    name = "result";
                    args = [ "a"; "b" ];
                    rhs =
-                     Std.Nonempty_list.init
+                     Adt (Std.Nonempty_list.init
                        ("Ok", Some (Type.Generic.Var "a"))
-                       [ ("Err", Some (Type.Generic.Var "b")) ];
+                       [ ("Err", Some (Type.Generic.Var "b")) ]);
                  };
              ]);
       test_case "annotated expression with parameterized type" `Quick

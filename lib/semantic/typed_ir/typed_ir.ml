@@ -10,6 +10,7 @@ module rec Pattern : sig
     | Tagged of Type.Id.t * t option
     | Union of t * t
     | Any
+    | Record of (string * t option) Std.Nonempty_list.t
 end = struct
   type t = { node : node; type_ : Type.T.t }
 
@@ -20,6 +21,7 @@ end = struct
     | Tagged of Type.Id.t * t option
     | Union of t * t
     | Any
+    | Record of (string * t option) Std.Nonempty_list.t
 end
 
 and Expr : sig
@@ -38,6 +40,8 @@ and Expr : sig
         matched : t;
         branches : (Pattern.t * t) Std.Nonempty_list.t;
       }
+    | Record of (string * t) Std.Nonempty_list.t
+    | FieldAccess of t * string
 end = struct
   type t = { node : node; type_ : Type.T.t }
 
@@ -54,6 +58,8 @@ end = struct
         matched : t;
         branches : (Pattern.t * t) Std.Nonempty_list.t;
       }
+    | Record of (string * t) Std.Nonempty_list.t
+    | FieldAccess of t * string
 end
 
 and Binding : sig
@@ -62,7 +68,7 @@ and Binding : sig
     | TypeDecl of {
         name : string;
         args : string list;
-        rhs : (string * Type.Human.t option) Std.Nonempty_list.t;
+        rhs : Syntax.Ast.type_rhs;
       }
 end = struct
   type t =
@@ -70,7 +76,7 @@ end = struct
     | TypeDecl of {
         name : string;
         args : string list;
-        rhs : (string * Type.Human.t option) Std.Nonempty_list.t;
+        rhs : Syntax.Ast.type_rhs;
       }
 end
 
@@ -85,6 +91,12 @@ let rec map_types_pattern ~(f : Type.T.t -> Type.T.t) (p : Pattern.t) :
         Tagged (tag, Option.map (map_types_pattern ~f) inner)
     | Union (lhs, rhs) ->
         Union (map_types_pattern ~f lhs, map_types_pattern ~f rhs)
+    | Record fields ->
+        Record
+          (Std.Nonempty_list.map
+             (fun (name, inner) ->
+               (name, Option.map (map_types_pattern ~f) inner))
+             fields)
   in
   { node; type_ = f p.type_ }
 
@@ -112,6 +124,9 @@ let rec map_types_expr ~(f : Type.T.t -> Type.T.t) (e : Expr.t) : Expr.t =
                 (fun (pat, body) -> (map_p pat, map_e body))
                 branches;
           }
+    | Record fields ->
+        Record (Std.Nonempty_list.map (fun (n, e) -> (n, map_e e)) fields)
+    | FieldAccess (inner, field) -> FieldAccess (map_e inner, field)
   in
   { node; type_ = f e.type_ }
 

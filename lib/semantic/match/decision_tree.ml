@@ -7,7 +7,7 @@ and content =
   | Destruct of {
       occurence : Occurence.t;
       cases : (Type.Id.t * t) list;
-      default : t option;
+      default : t;
     }
   | Switch of {
       occurence : Occurence.t;
@@ -31,10 +31,9 @@ let rec equal lhs rhs =
     ->
       Occurence.equal o1 o2
       && List.equal
-           (fun (tag1, t1) (tag2, t2) ->
-             String.equal tag1 tag2 && equal t1 t2)
+           (fun (tag1, t1) (tag2, t2) -> String.equal tag1 tag2 && equal t1 t2)
            c1 c2
-      && Option.equal equal d1 d2
+      && equal d1 d2
   | ( { content = Switch { occurence = o1; cases = c1; default = d1 }; _ },
       { content = Switch { occurence = o2; cases = c2; default = d2 }; _ } ) ->
       Occurence.equal o1 o2

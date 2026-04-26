@@ -20,6 +20,11 @@ module Atom = struct
     | Bool false -> "false"
 end
 
+type type_rhs =
+  | Adt of (string * Type.Human.t option) Std.Nonempty_list.t
+  | Record of (string * Type.Human.t) Std.Nonempty_list.t
+[@@deriving eq]
+
 module Pattern = struct
   type t =
     | Bind of Id.t
@@ -28,6 +33,7 @@ module Pattern = struct
     | Tagged of Id.t * t option
     | Union of t * t
     | Any
+    | Record of (string * t option) Std.Nonempty_list.t
   [@@deriving eq]
 
   let rec pp = function
@@ -40,7 +46,18 @@ module Pattern = struct
     | Tagged (tag, Some inner) -> tag ^ " " ^ pp inner
     | Union (lhs, rhs) -> pp lhs ^ " | " ^ pp rhs
     | Any -> "_"
+    | Record fields ->
+        Std.Nonempty_list.(
+          map
+            (function
+              | name, None -> name
+              | name, Some pat -> name ^ " = " ^ pp pat)
+            fields
+          |> to_list)
+        |> String.concat "; " |> Printf.sprintf "{%s}"
 end
+
+type field_accessor = string [@@deriving eq]
 
 module rec Expr : sig
   type t =
@@ -54,6 +71,8 @@ module rec Expr : sig
     | Fix of t
     | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
+    | Record of (field_accessor * t) Std.Nonempty_list.t
+    | FieldAccess of t * field_accessor
   [@@deriving eq]
 
   val pp : t -> string
@@ -69,6 +88,8 @@ end = struct
     | Fix of t
     | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
+    | Record of (field_accessor * t) Std.Nonempty_list.t
+    | FieldAccess of t * field_accessor
   [@@deriving eq]
 
   let rec pp = function
@@ -97,6 +118,12 @@ end = struct
           |> String.concat ""
         in
         "match " ^ pp matched ^ branches_pp ^ "end"
+    | Record fields ->
+        Std.Nonempty_list.(
+          map (fun (name, value) -> name ^ " = " ^ pp value) fields
+          |> to_list)
+        |> String.concat "; " |> Printf.sprintf "{%s}"
+    | FieldAccess (expr, field) -> pp expr ^ "." ^ field
 end
 
 and Binding : sig
@@ -105,7 +132,7 @@ and Binding : sig
     | TypeDecl of {
         name : string;
         args : string list;
-        rhs : (string * Type.Human.t option) Std.Nonempty_list.t;
+        rhs : type_rhs;
       }
   [@@deriving eq]
 
@@ -116,7 +143,7 @@ end = struct
     | TypeDecl of {
         name : string;
         args : string list;
-        rhs : (string * Type.Human.t option) Std.Nonempty_list.t;
+        rhs : type_rhs;
       }
   [@@deriving eq]
 
@@ -130,16 +157,24 @@ end = struct
           | [] -> ""
           | args -> "[" ^ String.concat ", " args ^ "]"
         in
-        let ty_constitutions =
-          Std.Nonempty_list.(
-            map
-              (function
-                | tag, Some ty -> tag ^ " " ^ Type.Human.pp ty
-                | tag, None -> tag)
-              rhs
-            |> to_list)
-          |> String.concat " | "
+        let rhs_pp =
+          match rhs with
+          | Adt ctors ->
+              Std.Nonempty_list.(
+                map
+                  (function
+                    | tag, Some ty -> tag ^ " " ^ Type.Human.pp ty
+                    | tag, None -> tag)
+                  ctors
+                |> to_list)
+              |> String.concat " | "
+          | Record fields ->
+              Std.Nonempty_list.(
+                map
+                  (fun (name, ty) -> name ^ ": " ^ Type.Human.pp ty)
+                  fields
+                |> to_list)
+              |> String.concat "; " |> Printf.sprintf "{%s}"
         in
-        Printf.sprintf "type %s%s = %s" (Type.Id.pp name) ty_args
-          ty_constitutions
+        Printf.sprintf "type %s%s = %s" (Type.Id.pp name) ty_args rhs_pp
 end

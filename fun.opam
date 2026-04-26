@@ -19,6 +19,7 @@ depends: [
   "ppx_here" {>= "v0.17"}
   "ppx_hash" {>= "v0.17"}
   "sedlex" {>= "3.4"}
+  "ppx_let" {>= "v0.17"}
   "alcotest" {(with-test | with-dev-setup) & >= "1.9.1"}
   "bisect_ppx" {(with-test | with-dev-setup) & >= "2.8.3"}
   "ocamlformat" {with-dev-setup & >= "0.27.0"}

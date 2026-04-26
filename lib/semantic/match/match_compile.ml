@@ -23,6 +23,16 @@ let preprocess (base : Occurence.t)
               { path = Project { base; index }; type_ = sub_pat.type_ }
               sub_pat)
           sub_pats
+    | Record fields ->
+        Std.Nonempty_list.iter
+          (fun (name, sub_pat_opt) ->
+            let sub_pat : Typed_ir.Pattern.t =
+              Option.value ~default:Matrix.Entry.default sub_pat_opt
+            in
+            add_occurence
+              { path = Field { base; name }; type_ = sub_pat.type_ }
+              sub_pat)
+          fields
     | _ -> add_occurence base p
     end;
     map
@@ -54,12 +64,10 @@ let classify (p : Typed_ir.Pattern.t) : refutability =
   match p.node with
   | Tagged _ -> Destruct
   | Just _ -> Switch
-  | Prod _ ->
-      (* tuples can't appear at toplevel in matrix because preprocess
-         unpacks them *)
+  | Prod _ | Record _ ->
+      (* NOTE: these should be unpacked by the algorithm already *)
       raise (Std.Exceptions.Unreachable [%here])
-  | Union _ ->
-      Destruct (* not irrefutable; expanded lazily before specialization *)
+  | Union _ -> Destruct
   | Bind _ | Any -> Irrefutable
 
 let find_refutable ps =
@@ -257,8 +265,7 @@ exception Non_exhaustive of Missing_pat.t
 
 let () =
   Printexc.register_printer (function
-    | Non_exhaustive mp ->
-        Some ("Non_exhaustive: " ^ Missing_pat.pp mp)
+    | Non_exhaustive mp -> Some ("Non_exhaustive: " ^ Missing_pat.pp mp)
     | _ -> None)
 
 let lookup_type_def (defs : type_defs) (tn : Type.Id.t) =
@@ -269,7 +276,8 @@ let lookup_type_def (defs : type_defs) (tn : Type.Id.t) =
 let ctor_has_payload (defs : type_defs) (tn : Type.Id.t) (ctor : string) =
   let rhs = lookup_type_def defs tn in
   match
-    List.find_opt (fun (c, _) -> String.equal c ctor)
+    List.find_opt
+      (fun (c, _) -> String.equal c ctor)
       (Std.Nonempty_list.to_list rhs)
   with
   | Some (_, Some _) -> true
@@ -314,9 +322,7 @@ let compile ~type_defs (scrutinee : Typed_ir.Expr.t)
                     | dt -> Some (tag, dt)
                     | exception Non_exhaustive inner ->
                         let wrapped =
-                          match inner with
-                          | Wildcard -> None
-                          | _ -> Some inner
+                          match inner with Wildcard -> None | _ -> Some inner
                         in
                         missing_from_branches :=
                           (tag, wrapped) :: !missing_from_branches;
@@ -352,15 +358,15 @@ let compile ~type_defs (scrutinee : Typed_ir.Expr.t)
               in
               (match all_missing with
               | x :: xs ->
-                  raise
-                    (Non_exhaustive
-                       (Many (Std.Nonempty_list.init x xs)))
+                  raise (Non_exhaustive (Many (Std.Nonempty_list.init x xs)))
               | [] -> ());
-              let default =
+              let cases, default =
                 if missing_ctors <> [] then
-                  Some
-                    (go (specialize_column matrix is_any ~unwrap_with:None))
-                else None
+                  (cases, go (specialize_column matrix is_any ~unwrap_with:None))
+                else
+                  match List.rev cases with
+                  | [] -> raise (Std.Exceptions.Unreachable [%here])
+                  | (_, body) :: but_last_rev -> (List.rev but_last_rev, body)
               in
               DTB.get (DT.Destruct { occurence = occ; cases; default })
           | Switch ->

@@ -200,6 +200,78 @@ end|}
            ~expected:(many [ ("C", Some Wildcard) ]));
     ]
 
+let records =
+  Alcotest.
+    [
+      test_case "record construction and field access" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+let p = {x = 10; y = 20} in p.x + p.y|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 30L))
+           ~typ:Type.Generic.i64);
+      test_case "record pattern matching" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+match {x = 3; y = 4}
+| {x; y} -> x * y
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 12L))
+           ~typ:Type.Generic.i64);
+      test_case "record in ADT payload" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+type shape = Circle I64 | Rect point in
+match Rect {x = 3; y = 4}
+| Circle(r) -> r
+| Rect(p) -> p.x + p.y
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 7L))
+           ~typ:Type.Generic.i64);
+      test_case "polymorphic record field access" `Quick
+        (test_eval
+           ~source:
+             {|type pair['a, 'b] = {fst: 'a; snd: 'b} in
+let p = {fst = 1; snd = true} in
+if p.snd then p.fst else 0|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+      test_case "polymorphic record at multiple instantiations" `Quick
+        (test_eval
+           ~source:
+             {|type pair['a, 'b] = {fst: 'a; snd: 'b} in
+let p1 = {fst = 10; snd = 20} in
+let p2 = {fst = true; snd = 3} in
+if p2.fst then p1.fst + p2.snd else 0|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 13L))
+           ~typ:Type.Generic.i64);
+      test_case "record field order doesn't matter in construction" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+let p = {y = 20; x = 10} in p.x + p.y|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 30L))
+           ~typ:Type.Generic.i64);
+      test_case "record field order doesn't matter in pattern" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+match {x = 3; y = 4}
+| {y; x} -> x * y
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 12L))
+           ~typ:Type.Generic.i64);
+      test_case "record field order doesn't matter in equality" `Quick
+        (test_eval
+           ~source:
+             {|type point = {x: I64; y: I64} in
+if {x = 1; y = 2} == {y = 2; x = 1} then 1 else 0|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+    ]
+
 let () =
   Alcotest.run "Interp"
     [
@@ -207,4 +279,5 @@ let () =
       ("recursion", recursion);
       ("lists", lists);
       ("matches", matches @ exhaustiveness);
+      ("records", records);
     ]

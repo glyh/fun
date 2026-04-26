@@ -12,6 +12,7 @@ and Value : sig
     | Closure of (t -> t)
     | Tagged of { tag : string; inner : t option }
     | Prod of t Std.Nonempty_list.t
+    | Record of (string * t) list
 
   exception CantCompare of (t * t)
 
@@ -23,6 +24,7 @@ end = struct
     | Closure of (t -> t)
     | Tagged of { tag : string; inner : t option }
     | Prod of t Std.Nonempty_list.t
+    | Record of (string * t) list
 
   exception CantCompare of (t * t)
 
@@ -36,6 +38,13 @@ end = struct
         Tagged { tag = rhs_tag; inner = Some rhs } ) ->
         String.equal lhs_tag rhs_tag && equal lhs rhs
     | Prod elems1, Prod elems2 -> Std.Nonempty_list.equal equal elems1 elems2
+    | Record f1, Record f2 ->
+        let order_kvs =
+          List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2)
+        in
+        List.equal
+          (fun (k1, v1) (k2, v2) -> String.equal k1 k2 && equal v1 v2)
+          (order_kvs f1) (order_kvs f2)
     | lhs, rhs -> raise (CantCompare (lhs, rhs))
 
   let rec pp = function
@@ -47,4 +56,7 @@ end = struct
     | Prod elems ->
         Std.Nonempty_list.(map pp elems |> to_list)
         |> String.concat ", " |> Printf.sprintf "(%s)"
+    | Record fields ->
+        List.map (fun (n, v) -> Printf.sprintf "%s = %s" n (pp v)) fields
+        |> String.concat "; " |> Printf.sprintf "{%s}"
 end

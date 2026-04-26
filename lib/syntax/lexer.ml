@@ -54,6 +54,10 @@ let rec token buf =
   | "|" -> PIPE
   | "," -> COMMA
   | "_" -> UNDERSCORE
+  | "{" -> LBRACE
+  | "}" -> RBRACE
+  | ";" -> SEMI
+  | "." -> DOT
   | Plus '0' .. '9' ->
       let num = Sedlexing.Utf8.lexeme buf |> Int64.of_string in
       I64 num

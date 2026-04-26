@@ -10,6 +10,7 @@
 %token LET REC IN IF THEN ELSE FUN TYPE MATCH END
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
 %token LBRACKET RBRACKET COMMA
+%token LBRACE RBRACE SEMI DOT
 %token TRUE FALSE
 %token EOF
 %token EQ GE LE GT LT
@@ -69,11 +70,27 @@ type_with_opt_args:
 
 type_rhs:
   | rhs_tag=ID rhs=option(type_) {
+    Ast.Adt (Std.Nonempty_list.init (rhs_tag, rhs)  [])
+  }
+  | rhs_tag=ID rhs=option(type_) PIPE rest=adt_rhs {
+    Ast.Adt (Std.Nonempty_list.cons (rhs_tag, rhs) rest)
+  }
+  | LBRACE fields=separated_nonempty_list(SEMI, record_field_decl) RBRACE {
+    match fields with
+    | [] -> failwith "Unreachable: nonempty list returns empty in type_rhs!"
+    | hd :: rest -> Ast.Record (Std.Nonempty_list.init hd rest)
+  }
+
+adt_rhs:
+  | rhs_tag=ID rhs=option(type_) {
     Std.Nonempty_list.init (rhs_tag, rhs)  []
   }
-  | rhs_tag=ID rhs=option(type_) PIPE rest=type_rhs {
+  | rhs_tag=ID rhs=option(type_) PIPE rest=adt_rhs {
     Std.Nonempty_list.cons (rhs_tag, rhs) rest
   }
+
+record_field_decl:
+  | name=ID COLON typ=type_ { (name, typ) }
 
 binding: 
   | LET rec_=option(REC) name=ID params=list(param) bind_annotation=option(type_annotation) ASSIGN rhs=expr {
@@ -104,16 +121,25 @@ pattern:
   | atom { Pattern.Just $1 }
   | LPAREN maybe_tuple=separated_nonempty_list(COMMA, pattern) RPAREN {
     match maybe_tuple with
-    | [ element0 ] -> 
+    | [ element0 ] ->
         element0
-    | element0 :: rest -> 
+    | element0 :: rest ->
         Pattern.Prod (Std.Nonempty_list.init element0 rest)
-    | [] -> failwith "Unreachable: nonempty list returns empty in pattern!" 
+    | [] -> failwith "Unreachable: nonempty list returns empty in pattern!"
   }
   | id=ID LPAREN RPAREN { Pattern.Tagged (id, None) }
   | id=ID LPAREN p=pattern RPAREN { Pattern.Tagged (id, Some p) }
   | pattern PIPE pattern { Pattern.Union ($1, $3) }
   | UNDERSCORE { Pattern.Any }
+  | LBRACE fields=separated_nonempty_list(SEMI, record_pat_field) RBRACE {
+    match fields with
+    | [] -> failwith "Unreachable: nonempty list returns empty in pattern!"
+    | hd :: rest -> Pattern.Record (Std.Nonempty_list.init hd rest)
+  }
+
+record_pat_field:
+  | name=ID { (name, None) }
+  | name=ID ASSIGN p=pattern { (name, Some p) }
 
 expr: 
   | expr_stmt { $1 }
@@ -159,12 +185,16 @@ expr_expr:
   | e=expr_app { e }
 
 expr_app:
-  | f=expr_primary xs=list(expr_primary) {
-    List.fold_left 
+  | f=expr_postfix xs=list(expr_postfix) {
+    List.fold_left
     (fun partial arg -> Expr.Ap(partial, arg))
     f
     xs
   }
+
+expr_postfix:
+  | expr_primary { $1 }
+  | expr_postfix DOT field=ID { Expr.FieldAccess ($1, field) }
 
 expr_with_opt_annotation:
   | inner=expr typ=option(type_annotation) { 
@@ -173,17 +203,25 @@ expr_with_opt_annotation:
     | Some typ -> Expr.Annotated { inner ; typ }
   }
 
-expr_primary: 
+expr_primary:
   | atom { Expr.Atom $1 }
   | ID { Expr.Var $1 }
-  | LPAREN maybe_tuple=separated_nonempty_list(COMMA, expr_with_opt_annotation) RPAREN { 
+  | LPAREN maybe_tuple=separated_nonempty_list(COMMA, expr_with_opt_annotation) RPAREN {
     match maybe_tuple with
-    | [ element0 ] -> 
+    | [ element0 ] ->
         element0
-    | element0 :: rest -> 
+    | element0 :: rest ->
         Expr.Prod (Std.Nonempty_list.init element0 rest)
-    | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!" 
+    | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!"
   }
+  | LBRACE fields=separated_nonempty_list(SEMI, record_expr_field) RBRACE {
+    match fields with
+    | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!"
+    | hd :: rest -> Expr.Record (Std.Nonempty_list.init hd rest)
+  }
+
+record_expr_field:
+  | name=ID ASSIGN value=expr { (name, value) }
 
 expr_eof:
   | expr EOF { $1 }

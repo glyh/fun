@@ -27,25 +27,24 @@ let rec resolve_occurrence (root : Value.t) (o : Match.Occurence.t) :
     Value.t option =
   match o.path with
   | Match.Occurence.Base -> Some root
-  | Project { base; index } ->
-      Option.bind (resolve_occurrence root base) (fun v ->
-          match v with
-          | Prod elements -> nth_nonempty elements index
-          | _ -> None)
-  | Unwrap outer ->
-      Option.bind (resolve_occurrence root outer) (fun v ->
-          match v with
-          | Tagged { inner = Some inner; _ } -> Some inner
-          | _ -> None)
+  | Project { base; _ } | Unwrap base | Field { base; _ } -> (
+      let%bind.Core.Option base = resolve_occurrence root base in
+      match (base, o.path) with
+      | Prod elements, Project { index; _ } -> nth_nonempty elements index
+      | Tagged { inner = Some inner; _ }, Unwrap _ -> Some inner
+      | Record fields, Field { name; _ } -> List.assoc_opt name fields
+      | _ -> None)
 
 let extend_env_with_bindings env root bindings =
   List.fold_left
-    (fun acc (name, occ) ->
-      Option.bind acc (fun env' ->
-          Option.map
-            (fun v -> Type.Id.Map.add name v env')
-            (resolve_occurrence root occ)))
-    (Some env) bindings
+    (fun env (name, occ) ->
+      let resolved =
+        match resolve_occurrence root occ with
+        | Some resolved -> resolved
+        | None -> raise (Std.Exceptions.Unreachable [%here])
+      in
+      Type.Id.Map.add name resolved env)
+    env bindings
 
 let branch_body_exn branches = function
   | Match.Branch.Block i -> (
@@ -58,24 +57,18 @@ let rec eval_tree (ctx : context) env (root : Value.t) branches
   match tree.content with
   | Leaf { branch; bindings } ->
       let body = branch_body_exn branches branch in
-      let env' =
-        match extend_env_with_bindings env root bindings with
-        | Some env' -> env'
-        | None -> raise (Std.Exceptions.Unreachable [%here])
-      in
+      let env' = extend_env_with_bindings env root bindings in
       eval_with_context ctx env' body
-  | Destruct { occurence; cases; default } -> (
+  | Destruct { occurence; cases; default } ->
       let next =
         match resolve_occurrence root occurence with
         | Some (Tagged { tag; _ }) -> (
             match List.assoc_opt tag cases with
-            | Some tree -> Some tree
+            | Some tree -> tree
             | None -> default)
         | _ -> default
       in
-      match next with
-      | Some tree -> eval_tree ctx env root branches tree
-      | None -> raise (Std.Exceptions.Unreachable [%here]))
+      eval_tree ctx env root branches next
   | Switch { occurence; cases; default } ->
       let next =
         match resolve_occurrence root occurence with
@@ -115,23 +108,29 @@ and eval_with_context (ctx : context) env (e : Typed_ir.Expr.t) =
   | Let { binding = Value { name; value }; body } ->
       let v = eval_with_context ctx env value in
       eval_with_context ctx (Type.Id.Map.add name v env) body
-  | Let { binding = TypeDecl { name; rhs; _ }; body } ->
-      let env_new =
-        Std.Nonempty_list.to_list rhs
-        |> List.fold_left
-             (fun env (tag, type_body_opt) ->
-               match type_body_opt with
-               | None ->
-                   Type.Id.Map.add tag (Value.Tagged { tag; inner = None }) env
-               | Some _ ->
-                   Type.Id.Map.add tag
-                     (Value.Closure
-                        (fun inner -> Value.Tagged { tag; inner = Some inner }))
-                     env)
-             env
-      in
-      let ctx_new = with_type_decl ctx name rhs in
-      eval_with_context ctx_new env_new body
+  | Let { binding = TypeDecl { name; rhs; _ }; body } -> (
+      match rhs with
+      | Adt ctors ->
+          let env_new =
+            Std.Nonempty_list.to_list ctors
+            |> List.fold_left
+                 (fun env (tag, type_body_opt) ->
+                   match type_body_opt with
+                   | None ->
+                       Type.Id.Map.add tag
+                         (Value.Tagged { tag; inner = None })
+                         env
+                   | Some _ ->
+                       Type.Id.Map.add tag
+                         (Value.Closure
+                            (fun inner ->
+                              Value.Tagged { tag; inner = Some inner }))
+                         env)
+                 env
+          in
+          let ctx_new = with_type_decl ctx name ctors in
+          eval_with_context ctx_new env_new body
+      | Record _ -> eval_with_context ctx env body)
   | Fix f -> (
       (* Fix(f) = f Fix(f) *)
       match eval_with_context ctx env f with
@@ -146,6 +145,17 @@ and eval_with_context (ctx : context) env (e : Typed_ir.Expr.t) =
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Prod elements ->
       Value.Prod (Std.Nonempty_list.map (eval_with_context ctx env) elements)
+  | Record fields ->
+      Value.Record
+        (Std.Nonempty_list.to_list fields
+        |> List.map (fun (name, e) -> (name, eval_with_context ctx env e)))
+  | FieldAccess (inner, field) -> (
+      match eval_with_context ctx env inner with
+      | Record fields -> (
+          match List.assoc_opt field fields with
+          | Some v -> v
+          | None -> raise (Std.Exceptions.Unreachable [%here]))
+      | _ -> raise (Std.Exceptions.Unreachable [%here]))
   | Match { matched; branches } ->
       let matched_value = eval_with_context ctx env matched in
       let branch_list = Std.Nonempty_list.to_list branches in

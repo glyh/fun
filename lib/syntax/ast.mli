@@ -16,10 +16,18 @@ module Pattern : sig
     | Tagged of Type.Id.t * t option
     | Union of t * t
     | Any
+    | Record of (string * t option) Std.Nonempty_list.t
   [@@deriving eq]
 
   val pp : t -> string
 end
+
+type field_accessor = string [@@deriving eq]
+
+type type_rhs =
+  | Adt of (string * Type.Human.t option) Std.Nonempty_list.t
+  | Record of (string * Type.Human.t) Std.Nonempty_list.t
+[@@deriving eq]
 
 module rec Expr : sig
   type t =
@@ -33,6 +41,8 @@ module rec Expr : sig
     | Fix of t
     | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
+    | Record of (field_accessor * t) Std.Nonempty_list.t
+    | FieldAccess of t * field_accessor
   [@@deriving eq]
 
   val pp : t -> string
@@ -44,7 +54,7 @@ and Binding : sig
     | TypeDecl of {
         name : string;
         args : string list;
-        rhs : (string * Type.Human.t option) Std.Nonempty_list.t;
+        rhs : type_rhs;
       }
   [@@deriving eq]
 
