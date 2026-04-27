@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this
 
-`fun` is a programming language compiler/interpreter written in OCaml 5.3. It features Hindley-Milner type inference, algebraic data types, records, and Maranget-style pattern match compilation with exhaustiveness checking.
+`fun` is a programming language compiler/interpreter written in OCaml 5.3. It features Hindley-Milner type inference, a struct-based module system (inspired by Zig), Maranget-style pattern match compilation with exhaustiveness checking, and file imports.
 
 ## Build commands
 
@@ -33,23 +33,44 @@ dune exec lib/backend/interp/test/test_interp.exe -- test 'matches' -e 'literal 
 Source string
   → Lexer (sedlex)
   → Parser (menhir)
-  → Syntax.Ast.Expr.t           (untyped AST)
-  → Typecheck.Inference.on_expr (constraint-based HM inference)
-  → Typed_ir.Expr.t             (every node annotated with Type.T.t)
-  → Interp.Eval.eval            (tree-walking interpreter)
+  → Syntax.Ast.Expr.t              (untyped AST, may contain TypeDecl)
+  → Syntax.Desugar.expr
+  → Syntax.Desugared_ast.Expr.t    (TypeDecl eliminated — only Value/Open/Export bindings)
+  → Typecheck.Inference.on_expr    (constraint-based HM inference)
+  → Typed_ir.Expr.t                (every node annotated with Type.T.t)
+  → Interp.Eval.eval               (tree-walking interpreter)
 ```
 
-Match expressions are compiled lazily during evaluation: `Eval.eval` calls `Match_compile.compile` to build a decision tree, then interprets it against the scrutinee.
+The desugar pass rewrites `type T = ...` into `let T = struct ... end` + `open T`. Callers must call `Desugar.expr` before passing to the typechecker. Match expressions are compiled lazily during evaluation: `Eval.eval` calls `Match_compile.compile` to build a decision tree, then interprets it against the scrutinee.
 
 ## Type system architecture
 
 `Type.Generic` is parameterized over variable representation:
-- `Type.Human.t` — source-level types with string variables, used in parser output
-- `Type.T.t` — internal types with unique integer-tagged `Var.t`, used everywhere after typechecking
+- `Type.Human.t` — source-level types with string variables, used in parser output and AST
+- `Type.T.t` — internal types with unique integer-tagged `Var.t`, used after typechecking
 
 `Type.T.of_human` converts between the two. `Type.T.equal` handles alpha-equivalence for `Forall` types.
 
-Type inference in `typecheck.ml` generates constraints from expressions, solves via unification, and generalizes let-bindings. Record types are tracked in `RecordDefs` with lookup by field name or type name.
+Type inference in `typecheck.ml` generates constraints from `Desugared_ast.Expr.t`, solves via unification, and generalizes let-bindings. Record types are tracked in `RecordDefs` with lookup by field name or type name (used for field access inference).
+
+`self` is encoded as a sentinel `Con({path=[]; name="self"}, [])` in `Human.t`. The typechecker's `resolve_self ~nominal` substitutes it with the actual nominal type before processing.
+
+## Module system
+
+`struct ... end` is the universal construct for records, ADTs, modules, and namespaces. A struct body is one of three forms:
+- `Fields` — record type (`x: I64; y: I64;`)
+- `Variants` — ADT (`| Some 'a | None`)
+- `Namespace` — pure namespace (only `let`/`type`/`open` members)
+
+`type T = ...` desugars into `let T = struct ... end` + `open T` (or `export T` for pub types inside structs). The `Desugared_ast` has no `TypeDecl` — only `Value | Open | Export` bindings.
+
+`open Name` brings struct members into scope privately. `export Name` does the same but re-exports them publicly. Inside structs, `open`/`export` control whether opened names leak to the parent's public interface.
+
+## Key IR types
+
+- `Typed_ir.Binding.t` = `Value | Open | Export` (no TypeDecl)
+- `Typed_ir.Expr.StructDef` carries `body : Ast.struct_body`, `members : Binding.t list`, `pub_names : string list`
+- `Value.t` uses `Struct of (string * t) list` for both records and structs (unified)
 
 ## Pattern match compilation
 
@@ -67,16 +88,21 @@ std
   ← type
      ← syntax, typed_ir
         ← typecheck, match
-           ← interp
+           ← interp, loader
 ```
 
 ## Language syntax notes
 
 - Type parameters: `'a` syntax. Parameterized types use square brackets: `option['a]`, `list['a]`
-- ADTs: `type option['a] = Some 'a | None`
-- Records: `type point = {x: I64; y: I64}`, constructed as `{x = 1; y = 2}`, accessed as `expr.field`
-- Record patterns: strict `{x; y}` or partial `{x; _}`
+- ADTs: `type option['a] = Some 'a | None` (desugars to struct internally)
+- Records: `type point = {x: I64; y: I64}`, constructed as `point {x = 1; y = 2}`, accessed as `expr.field`
+- Record patterns: strict `point {x; y}` or partial `point {x; _}` (type name required)
+- Structs: `let M = struct ... end`, parameterized `struct['a] ... end`
+- `self` keyword in type positions refers to the enclosing type (recursive types)
+- `open M in expr` / `open M` inside structs; `export M` inside structs for re-export
+- Nullary constructors in patterns require parens: `Red()` is a constructor, `Red` is a variable binding
 - Match: `match expr | pat -> body | pat -> body end`
 - `let rec` desugars to `Fix(Lam(name, body))`
 - Comments: `(* ... *)` with nesting
 - Built-in types: `I64`, `Bool`, `Unit`, `Char`
+- File imports: `import "path"` resolves to `./path.fun`, cached and circular-import-safe
