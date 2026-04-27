@@ -193,19 +193,19 @@ let records =
     [
       test_case "record construction" `Quick
         (test_typecheck
-           ~source:"type point = {x: I64; y: I64} in {x = 1; y = 2}"
+           ~source:"type point = {x: I64; y: I64} in point {x = 1; y = 2}"
            ~expected:Type.Generic.(con_0 "point"));
       test_case "record field access" `Quick
         (test_typecheck
-           ~source:"type point = {x: I64; y: I64} in let p = {x = 1; y = 2} in p.x"
+           ~source:"type point = {x: I64; y: I64} in let p = point {x = 1; y = 2} in p.x"
            ~expected:Type.Generic.i64);
       test_case "polymorphic record" `Quick
         (test_typecheck
-           ~source:"type pair['a, 'b] = {fst: 'a; snd: 'b} in {fst = 1; snd = true}"
+           ~source:"type pair['a, 'b] = {fst: 'a; snd: 'b} in pair {fst = 1; snd = true}"
            ~expected:Type.Generic.(Con (Type.TypeId.make "pair", [ i64; bool ])));
       test_case "polymorphic record field access" `Quick
         (test_typecheck
-           ~source:"type pair['a, 'b] = {fst: 'a; snd: 'b} in let p = {fst = 1; snd = true} in p.snd"
+           ~source:"type pair['a, 'b] = {fst: 'a; snd: 'b} in let p = pair {fst = 1; snd = true} in p.snd"
            ~expected:Type.Generic.bool);
     ]
 

@@ -423,16 +423,19 @@ module Inference = struct
             :: cons_on_bindings
             @ lhs_cons @ rhs_cons )
         with Invalid_argument _ -> raise exn_to_throw)
-    | Record { fields; partial } ->
+    | RecordConstruct { path; name; fields; partial } ->
         let record_pat_union =
           Type.Id.Map.union (fun binding _ _ ->
               raise (DuplicatedBindingInPatternProd { pat; binding }))
         in
-        let first_field_name = fst (Std.Nonempty_list.first fields) in
         let record_type_name =
-          match RecordDefs.find_by_field first_field_name record_defs with
-          | Some name -> name
-          | None -> raise (UnknownRecordField first_field_name)
+          match path with
+          | [] -> name
+          | _ ->
+              let struct_fields = resolve_module_path env path in
+              match List.assoc_opt name struct_fields with
+              | Some _ -> name
+              | None -> raise (NoSuchRecordType name)
         in
         let record_def =
           match RecordDefs.find_by_name record_type_name record_defs with
@@ -673,12 +676,15 @@ module Inference = struct
           |> List.concat_map (fun (_, cs, _, _) -> cs)
         in
         (mk (Prod typed_elems) (Prod tys), cons, record_defs, type_defs)
-    | Record fields ->
-        let first_field_name = fst (Std.Nonempty_list.first fields) in
+    | RecordConstruct { path; name; fields } ->
         let record_type_name =
-          match RecordDefs.find_by_field first_field_name record_defs with
-          | Some name -> name
-          | None -> raise (UnknownRecordField first_field_name)
+          match path with
+          | [] -> name
+          | _ ->
+              let struct_fields = resolve_module_path env path in
+              match List.assoc_opt name struct_fields with
+              | Some _ -> name
+              | None -> raise (NoSuchRecordType name)
         in
         let record_def =
           match RecordDefs.find_by_name record_type_name record_defs with

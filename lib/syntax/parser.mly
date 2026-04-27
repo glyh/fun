@@ -143,7 +143,7 @@ pattern:
     Pattern.Tagged (path, tag, Some p) }
   | pattern PIPE pattern { Pattern.Union ($1, $3) }
   | UNDERSCORE { Pattern.Any }
-  | LBRACE entries=separated_nonempty_list(SEMI, record_pat_entry) RBRACE {
+  | name=ID LBRACE entries=separated_nonempty_list(SEMI, record_pat_entry) RBRACE {
     let rec split_entries = function
       | [] -> ([], false)
       | [Pat_wildcard] -> ([], true)
@@ -155,7 +155,22 @@ pattern:
     let (fields, partial) = split_entries entries in
     match fields with
     | [] -> failwith "Record pattern must have at least one named field"
-    | hd :: rest -> Pattern.Record { fields = Std.Nonempty_list.init hd rest; partial }
+    | hd :: rest -> Pattern.RecordConstruct { path = []; name; fields = Std.Nonempty_list.init hd rest; partial }
+  }
+  | qid=dotted_ids LBRACE entries=separated_nonempty_list(SEMI, record_pat_entry) RBRACE {
+    let rec split_entries = function
+      | [] -> ([], false)
+      | [Pat_wildcard] -> ([], true)
+      | Pat_wildcard :: _ -> failwith "Wildcard '_' must be the last entry in a record pattern"
+      | Pat_field (name, pat) :: rest ->
+          let (fields, partial) = split_entries rest in
+          ((name, pat) :: fields, partial)
+    in
+    let (path, name) = qid in
+    let (fields, partial) = split_entries entries in
+    match fields with
+    | [] -> failwith "Record pattern must have at least one named field"
+    | hd :: rest -> Pattern.RecordConstruct { path; name; fields = Std.Nonempty_list.init hd rest; partial }
   }
 
 dotted_ids:
@@ -221,6 +236,18 @@ expr_app:
 expr_postfix:
   | expr_primary { $1 }
   | expr_postfix DOT field=ID { Expr.FieldAccess ($1, field) }
+  | expr_postfix DOT name=ID LBRACE fields=separated_nonempty_list(SEMI, record_expr_field) RBRACE {
+    let rec collect_path acc expr =
+      match expr with
+      | Expr.FieldAccess (inner, seg) -> collect_path (seg :: acc) inner
+      | Expr.Var root -> root :: acc
+      | _ -> failwith "Qualified record construction requires a module path"
+    in
+    let path = collect_path [] $1 in
+    match fields with
+    | [] -> failwith "Unreachable: nonempty list returns empty in expr_postfix!"
+    | hd :: rest -> Expr.RecordConstruct { path; name; fields = Std.Nonempty_list.init hd rest }
+  }
 
 expr_with_opt_annotation:
   | inner=expr typ=option(type_annotation) { 
@@ -240,10 +267,10 @@ expr_primary:
         Expr.Prod (Std.Nonempty_list.init element0 rest)
     | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!"
   }
-  | LBRACE fields=separated_nonempty_list(SEMI, record_expr_field) RBRACE {
+  | name=ID LBRACE fields=separated_nonempty_list(SEMI, record_expr_field) RBRACE {
     match fields with
     | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!"
-    | hd :: rest -> Expr.Record (Std.Nonempty_list.init hd rest)
+    | hd :: rest -> Expr.RecordConstruct { path = []; name; fields = Std.Nonempty_list.init hd rest }
   }
   | STRUCT defs=list(struct_def) END { Expr.StructDef defs }
   | IMPORT path=STRING { Expr.Import path }

@@ -37,7 +37,12 @@ module Pattern = struct
     | Tagged of string list * Id.t * t option
     | Union of t * t
     | Any
-    | Record of { fields : (string * t option) Std.Nonempty_list.t; partial : bool }
+    | RecordConstruct of {
+        path : string list;
+        name : string;
+        fields : (string * t option) Std.Nonempty_list.t;
+        partial : bool;
+      }
   [@@deriving eq]
 
   let rec pp = function
@@ -53,7 +58,8 @@ module Pattern = struct
         ModulePath.pp path ^ "." ^ tag ^ " " ^ pp inner
     | Union (lhs, rhs) -> pp lhs ^ " | " ^ pp rhs
     | Any -> "_"
-    | Record { fields; partial } ->
+    | RecordConstruct { path; name; fields; partial } ->
+        let prefix = match path with [] -> name | _ -> ModulePath.pp path ^ "." ^ name in
         let field_strs =
           Std.Nonempty_list.(
             map
@@ -64,7 +70,7 @@ module Pattern = struct
             |> to_list)
         in
         let all = if partial then field_strs @ [ "_" ] else field_strs in
-        all |> String.concat "; " |> Printf.sprintf "{%s}"
+        prefix ^ " " ^ (all |> String.concat "; " |> Printf.sprintf "{%s}")
 end
 
 type field_accessor = string [@@deriving eq]
@@ -83,7 +89,11 @@ module rec Expr : sig
     | Fix of t
     | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
-    | Record of (field_accessor * t) Std.Nonempty_list.t
+    | RecordConstruct of {
+        path : string list;
+        name : string;
+        fields : (field_accessor * t) Std.Nonempty_list.t;
+      }
     | FieldAccess of t * field_accessor
     | StructDef of Struct_def.t list
     | Import of string
@@ -102,7 +112,11 @@ end = struct
     | Fix of t
     | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
-    | Record of (field_accessor * t) Std.Nonempty_list.t
+    | RecordConstruct of {
+        path : string list;
+        name : string;
+        fields : (field_accessor * t) Std.Nonempty_list.t;
+      }
     | FieldAccess of t * field_accessor
     | StructDef of Struct_def.t list
     | Import of string
@@ -134,11 +148,13 @@ end = struct
           |> String.concat ""
         in
         "match " ^ pp matched ^ branches_pp ^ "end"
-    | Record fields ->
-        Std.Nonempty_list.(
+    | RecordConstruct { path; name; fields } ->
+        let prefix = match path with [] -> name | _ -> ModulePath.pp path ^ "." ^ name in
+        prefix ^ " " ^
+        (Std.Nonempty_list.(
           map (fun (name, value) -> name ^ " = " ^ pp value) fields
           |> to_list)
-        |> String.concat "; " |> Printf.sprintf "{%s}"
+        |> String.concat "; " |> Printf.sprintf "{%s}")
     | FieldAccess (expr, field) -> pp expr ^ "." ^ field
     | StructDef defs ->
         let defs_pp =

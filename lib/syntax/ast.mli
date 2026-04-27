@@ -20,7 +20,12 @@ module Pattern : sig
     | Tagged of string list * Type.Id.t * t option
     | Union of t * t
     | Any
-    | Record of { fields : (string * t option) Std.Nonempty_list.t; partial : bool }
+    | RecordConstruct of {
+        path : string list;
+        name : string;
+        fields : (string * t option) Std.Nonempty_list.t;
+        partial : bool;
+      }
   [@@deriving eq]
 
   val pp : t -> string
@@ -47,7 +52,11 @@ module rec Expr : sig
     | Fix of t
     | Prod of t Std.Nonempty_list.t
     | Match of { matched : t; branches : (Pattern.t * t) Std.Nonempty_list.t }
-    | Record of (field_accessor * t) Std.Nonempty_list.t
+    | RecordConstruct of {
+        path : string list;
+        name : string;
+        fields : (field_accessor * t) Std.Nonempty_list.t;
+      }
     | FieldAccess of t * field_accessor
     | StructDef of Struct_def.t list
     | Import of string
