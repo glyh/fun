@@ -58,7 +58,11 @@ module rec Expr : sig
         fields : (field_accessor * t) Std.Nonempty_list.t;
       }
     | FieldAccess of t * field_accessor
-    | StructDef of Struct_def.t list
+    | StructDef of {
+        args : string list;
+        fields : (string * Type.Human.t) list;
+        members : Struct_def.t list;
+      }
     | Import of string
   [@@deriving eq]
 

@@ -646,6 +646,7 @@ let struct_defs =
                    type_ = None;
                    value =
                      StructDef
+                       { args = []; fields = []; members =
                        [
                          {
                            vis = Public;
@@ -653,7 +654,7 @@ let struct_defs =
                              Value
                                { name = "x"; type_ = None; value = Atom (I64 1L) };
                          };
-                       ];
+                       ] };
                  };
              ]);
       test_case "struct with private and pub" `Quick
@@ -666,6 +667,7 @@ let struct_defs =
                    type_ = None;
                    value =
                      StructDef
+                       { args = []; fields = []; members =
                        [
                          {
                            vis = Private;
@@ -679,7 +681,7 @@ let struct_defs =
                              Value
                                { name = "y"; type_ = None; value = Atom (I64 2L) };
                          };
-                       ];
+                       ] };
                  };
              ]);
       test_case "struct with pub type" `Quick
@@ -692,6 +694,7 @@ let struct_defs =
                    type_ = None;
                    value =
                      StructDef
+                       { args = []; fields = []; members =
                        [
                          {
                            vis = Public;
@@ -706,7 +709,7 @@ let struct_defs =
                                         [ ("B", None) ]);
                                };
                          };
-                       ];
+                       ] };
                  };
              ]);
       test_case "import expression" `Quick
@@ -718,6 +721,40 @@ let struct_defs =
                    name = "M";
                    type_ = None;
                    value = Import "vec2";
+                 };
+             ]);
+      test_case "struct with fields" `Quick
+        (test_syntax
+           ~source:{|let Point = struct x: I64; y: I64; end|}
+           ~expected:
+             [
+               Value
+                 {
+                   name = "Point";
+                   type_ = None;
+                   value =
+                     StructDef
+                       { args = [];
+                         fields = [("x", Type.Generic.Con (Type.TypeId.make "I64", []));
+                                   ("y", Type.Generic.Con (Type.TypeId.make "I64", []))];
+                         members = [] };
+                 };
+             ]);
+      test_case "parameterized struct with fields" `Quick
+        (test_syntax
+           ~source:{|let Pair = struct['a, 'b] fst: 'a; snd: 'b; end|}
+           ~expected:
+             [
+               Value
+                 {
+                   name = "Pair";
+                   type_ = None;
+                   value =
+                     StructDef
+                       { args = ["a"; "b"];
+                         fields = [("fst", Type.Generic.Var "a");
+                                   ("snd", Type.Generic.Var "b")];
+                         members = [] };
                  };
              ]);
     ]

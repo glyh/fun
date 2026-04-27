@@ -32,7 +32,7 @@
 
 %start <Binding.t list> toplevel_eof
 %start <Expr.t> expr_eof
-%start <Struct_def.t list> module_eof
+%start <string list * (string * Type.Human.t) list * Struct_def.t list> module_eof
 
 %%
 
@@ -272,18 +272,23 @@ expr_primary:
     | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!"
     | hd :: rest -> Expr.RecordConstruct { path = []; name; fields = Std.Nonempty_list.init hd rest }
   }
-  | STRUCT defs=list(struct_def) END { Expr.StructDef defs }
+  | STRUCT args=option(delimited(LBRACKET, separated_nonempty_list(COMMA, TY_VAR), RBRACKET)) fields=list(struct_field_decl) defs=list(struct_def) END {
+    Expr.StructDef { args = (match args with None -> [] | Some a -> a); fields; members = defs }
+  }
   | IMPORT path=STRING { Expr.Import path }
 
 record_expr_field:
   | name=ID ASSIGN value=expr { (name, value) }
+
+struct_field_decl:
+  | name=ID COLON typ=type_ SEMI { (name, typ) }
 
 struct_def:
   | PUB b=binding { Ast.Struct_def.{ vis = Public; binding = b } }
   | b=binding { Ast.Struct_def.{ vis = Private; binding = b } }
 
 module_eof:
-  | defs=list(struct_def) EOF { defs }
+  | defs=list(struct_def) EOF { ([], [], defs) }
 
 expr_eof:
   | expr EOF { $1 }

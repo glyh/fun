@@ -23,8 +23,8 @@ let create ~base_dir ~(typecheck_fn : ?loader:t -> Syntax.Ast.Expr.t -> result) 
         if not (Sys.file_exists resolved) then raise (ImportNotFound path);
         Hashtbl.replace cache resolved In_progress;
         let source = In_channel.with_open_text resolved In_channel.input_all in
-        let defs = parse_module source in
-        let expr = Syntax.Ast.Expr.StructDef defs in
+        let (args, fields, defs) = parse_module source in
+        let expr = Syntax.Ast.Expr.StructDef { args; fields; members = defs } in
         let result = typecheck_fn ~loader expr in
         Hashtbl.replace cache resolved (Done result);
         result

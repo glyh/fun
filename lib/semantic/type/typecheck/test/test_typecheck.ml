@@ -209,6 +209,23 @@ let records =
            ~expected:Type.Generic.bool);
     ]
 
+let struct_fields =
+  Alcotest.
+    [
+      test_case "struct field construction" `Quick
+        (test_typecheck
+           ~source:"let Point = struct x: I64; y: I64; end in Point {x = 1; y = 2}"
+           ~expected:Type.Generic.(con_0 "Point"));
+      test_case "struct field access" `Quick
+        (test_typecheck
+           ~source:"let Point = struct x: I64; y: I64; end in let p = Point {x = 1; y = 2} in p.x"
+           ~expected:Type.Generic.i64);
+      test_case "parameterized struct fields" `Quick
+        (test_typecheck
+           ~source:"let Pair = struct['a, 'b] fst: 'a; snd: 'b; end in Pair {fst = 1; snd = true}"
+           ~expected:Type.Generic.(Con (Type.TypeId.make "Pair", [ i64; bool ])));
+    ]
+
 let () =
   Alcotest.run "Typecheck"
     [
@@ -220,4 +237,5 @@ let () =
       ("adts", adts);
       ("tuples", tuples);
       ("records", records);
+      ("struct_fields", struct_fields);
     ]

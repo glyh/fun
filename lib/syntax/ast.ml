@@ -95,7 +95,11 @@ module rec Expr : sig
         fields : (field_accessor * t) Std.Nonempty_list.t;
       }
     | FieldAccess of t * field_accessor
-    | StructDef of Struct_def.t list
+    | StructDef of {
+        args : string list;
+        fields : (string * Type.Human.t) list;
+        members : Struct_def.t list;
+      }
     | Import of string
   [@@deriving eq]
 
@@ -118,7 +122,11 @@ end = struct
         fields : (field_accessor * t) Std.Nonempty_list.t;
       }
     | FieldAccess of t * field_accessor
-    | StructDef of Struct_def.t list
+    | StructDef of {
+        args : string list;
+        fields : (string * Type.Human.t) list;
+        members : Struct_def.t list;
+      }
     | Import of string
   [@@deriving eq]
 
@@ -156,16 +164,24 @@ end = struct
           |> to_list)
         |> String.concat "; " |> Printf.sprintf "{%s}")
     | FieldAccess (expr, field) -> pp expr ^ "." ^ field
-    | StructDef defs ->
+    | StructDef { args; fields; members } ->
+        let args_pp = match args with
+          | [] -> ""
+          | a -> "[" ^ String.concat ", " a ^ "]"
+        in
+        let fields_pp =
+          List.map (fun (name, ty) -> name ^ ": " ^ Type.Human.pp ty ^ ";") fields
+          |> String.concat " "
+        in
         let defs_pp =
           List.map
             (fun (d : Struct_def.t) ->
               let prefix = match d.vis with Public -> "pub " | Private -> "" in
               prefix ^ Binding.pp d.binding)
-            defs
+            members
           |> String.concat " "
         in
-        "struct " ^ defs_pp ^ " end"
+        "struct" ^ args_pp ^ " " ^ fields_pp ^ defs_pp ^ " end"
     | Import path -> Printf.sprintf "import %S" path
 end
 

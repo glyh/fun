@@ -526,7 +526,7 @@ module Inference = struct
         (mk (Ap (typed_f, typed_x)) result_ty, all_cons, record_defs, type_defs)
     | Let { binding = Value { name; type_ = value_ty_annotated; value }; body }
       ->
-        let value_scope = match value with StructDef _ -> scope @ [name] | _ -> scope in
+        let value_scope = match value with StructDef { members = _; _ } -> scope @ [name] | _ -> scope in
         let typed_value, value_cons, record_defs, type_defs =
           constraints_from_expr ~scope:value_scope ~loader env record_defs type_defs value in
         let all_cons =
@@ -739,11 +739,32 @@ module Inference = struct
                Constraint.{ lhs = typed_inner.type_; rhs = record_ty } :: inner_cons,
                record_defs,
                type_defs ))
-    | StructDef defs ->
+    | StructDef { args = struct_args; fields = struct_fields; members = defs } ->
+        let record_defs =
+          match struct_fields with
+          | [] -> record_defs
+          | hd :: rest ->
+              let struct_name = match List.rev scope with
+                | name :: _ -> name
+                | [] -> failwith "Struct with fields must be bound to a name"
+              in
+              let tycon_fvs = StrSet.of_list struct_args in
+              let fields_nel = Std.Nonempty_list.init hd rest in
+              Std.Nonempty_list.iter
+                (fun (_, field_ty) ->
+                  let referred_fvs = FreeVariables.of_type_human field_ty in
+                  if not @@ StrSet.subset referred_fvs tycon_fvs then
+                    raise
+                      (EscapedTypeVarInTypeDefinition
+                         { name = struct_name; tag = struct_name;
+                           free_variables = StrSet.diff referred_fvs tycon_fvs }))
+                fields_nel;
+              RecordDefs.register struct_name struct_args fields_nel record_defs
+        in
         let process_binding env record_defs type_defs (b : Syntax.Ast.Binding.t) =
           match b with
           | Value { name; type_ = value_ty_annotated; value } ->
-              let value_scope = match value with StructDef _ -> scope @ [name] | _ -> scope in
+              let value_scope = match value with StructDef { members = _; _ } -> scope @ [name] | _ -> scope in
               let typed_value, value_cons, record_defs, type_defs =
                 constraints_from_expr ~scope:value_scope ~loader env record_defs type_defs value
               in

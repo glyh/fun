@@ -396,6 +396,55 @@ let structs =
            ~typ:Type.Generic.i64);
     ]
 
+let struct_fields =
+  Alcotest.
+    [
+      test_case "struct with fields, construction and access" `Quick
+        (test_eval
+           ~source:
+             {|let Point = struct
+                 x: I64;
+                 y: I64;
+               end in
+               let p = Point {x = 10; y = 20} in p.x + p.y|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 30L))
+           ~typ:Type.Generic.i64);
+      test_case "struct with fields and pub let" `Quick
+        (test_eval
+           ~source:
+             {|let Point = struct
+                 x: I64;
+                 y: I64;
+                 pub let origin = Point {x = 0; y = 0}
+               end in
+               Point.origin.x|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 0L))
+           ~typ:Type.Generic.i64);
+      test_case "parameterized struct with fields" `Quick
+        (test_eval
+           ~source:
+             {|let Pair = struct['a, 'b]
+                 fst: 'a;
+                 snd: 'b;
+               end in
+               let p = Pair {fst = 1; snd = true} in
+               if p.snd then p.fst else 0|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+      test_case "struct fields pattern matching" `Quick
+        (test_eval
+           ~source:
+             {|let Point = struct
+                 x: I64;
+                 y: I64;
+               end in
+               match Point {x = 3; y = 4}
+               | Point {x; y} -> x * y
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 12L))
+           ~typ:Type.Generic.i64);
+    ]
+
 let make_loader base_dir =
   Loader.create ~base_dir
     ~typecheck_fn:(fun ?loader expr ->
@@ -472,5 +521,6 @@ let () =
       ("matches", matches @ exhaustiveness);
       ("records", records);
       ("structs", structs);
+      ("struct_fields", struct_fields);
       ("imports", imports);
     ]
