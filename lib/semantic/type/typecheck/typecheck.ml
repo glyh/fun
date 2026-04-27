@@ -60,6 +60,8 @@ module Exceptions = struct
       missing : string list;
     }
 
+  exception TypeMismatch of { expected : string; got : string }
+
   let () =
     Printexc.register_printer (function
       | UnificationFailure c ->
@@ -633,6 +635,22 @@ module Inference = struct
           body_cons,
           record_defs_final,
           type_defs )
+    | Let { binding = Open name; body } ->
+        let struct_ty = match Type.Id.Map.find_opt name env with
+          | Some ty -> ty
+          | None -> raise (UndefinedVariable name)
+        in
+        let struct_ty = instantiate struct_ty in
+        let members = match struct_ty with
+          | Struct fields -> fields
+          | _ -> raise (Exceptions.TypeMismatch { expected = "Struct"; got = Type.T.pp struct_ty })
+        in
+        let env_new = List.fold_left (fun env (name, ty) -> Type.Id.Map.add name ty env) env members in
+        let typed_body, body_cons, record_defs, type_defs =
+          constraints_from_expr ~scope ~loader env_new record_defs type_defs body
+        in
+        (mk (Let { binding = Open name; body = typed_body }) typed_body.type_,
+          body_cons, record_defs, type_defs)
     | If { cond; then_; else_ } ->
         let typed_cond, cond_cons, _, _ = recurse env cond in
         let typed_then, then_cons, _, _ = recurse env then_ in
@@ -834,7 +852,7 @@ module Inference = struct
                 Typed_ir.Binding.Value { name; value = typed_value_resolved }
               in
               let resolved_ty = Substitution.on_type ~sub:sub_inner typed_value.type_ in
-              (typed_binding, [ (name, resolved_ty) ], env_generalized, record_defs, type_defs, [])
+              (Some typed_binding, [ (name, resolved_ty) ], env_generalized, record_defs, type_defs, [])
           | TypeDecl { name; args; rhs } ->
               let tycon_fvs = StrSet.of_list args in
               let type_id = Type.TypeId.{ path = scope; name } in
@@ -896,7 +914,19 @@ module Inference = struct
               let typed_binding =
                 Typed_ir.Binding.TypeDecl { name; args; rhs }
               in
-              (typed_binding, ctor_exports, env_new, record_defs_new, type_defs, [])
+              (Some typed_binding, ctor_exports, env_new, record_defs_new, type_defs, [])
+          | Open name ->
+              let struct_ty = match Type.Id.Map.find_opt name env with
+                | Some ty -> ty
+                | None -> raise (UndefinedVariable name)
+              in
+              let struct_ty = instantiate struct_ty in
+              let members = match struct_ty with
+                | Struct fields -> fields
+                | _ -> raise (TypeMismatch { expected = "Struct"; got = Type.T.pp struct_ty })
+              in
+              let env_new = List.fold_left (fun env (n, ty) -> Type.Id.Map.add n ty env) env members in
+              (None, [], env_new, record_defs, type_defs, [])
         in
         let env =
           List.fold_left (fun env (tag, ty) -> Type.Id.Map.add tag ty env) env variant_exports
@@ -913,7 +943,7 @@ module Inference = struct
         let _final_env, final_record_defs, final_type_defs, typed_members_rev, pub_types_rev, all_cons =
           List.fold_left
             (fun (env, rd, td, members, pub_types, cons) (sd : Syntax.Ast.Struct_def.t) ->
-              let typed_b, exports, env', rd', td', new_cons =
+              let typed_b_opt, exports, env', rd', td', new_cons =
                 process_binding env rd td sd.binding
               in
               let pub_types' =
@@ -921,7 +951,8 @@ module Inference = struct
                 | Public -> List.rev_append exports pub_types
                 | Private -> pub_types
               in
-              (env', rd', td', typed_b :: members, pub_types', new_cons @ cons))
+              let members' = match typed_b_opt with Some b -> b :: members | None -> members in
+              (env', rd', td', members', pub_types', new_cons @ cons))
             (env, record_defs, type_defs, [], variant_exports, [])
             defs
         in

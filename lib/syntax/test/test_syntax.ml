@@ -862,6 +862,36 @@ let qualified_patterns =
                 }));
     ]
 
+let open_tests =
+  Alcotest.
+    [
+      test_case "open M in expr" `Quick
+        (test_expr
+           ~source:{|open M in x|}
+           ~expected:
+             (Let { binding = Open "M"; body = Var "x" }));
+      test_case "open inside struct" `Quick
+        (test_syntax
+           ~source:{|let S = struct open M pub let x = 1 end|}
+           ~expected:
+             [
+               Value
+                 {
+                   name = "S";
+                   type_ = None;
+                   value =
+                     StructDef
+                       { args = [];
+                         body = Namespace;
+                         members = [
+                           { vis = Private; binding = Open "M" };
+                           { vis = Public;
+                             binding = Value { name = "x"; type_ = None; value = Atom (I64 1L) } }
+                         ] };
+                 };
+             ]);
+    ]
+
 let () =
   Alcotest.run "Syntax"
     [
@@ -876,4 +906,5 @@ let () =
       ("types", types);
       ("struct_defs", struct_defs);
       ("qualified_patterns", qualified_patterns);
+      ("open", open_tests);
     ]

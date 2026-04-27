@@ -211,6 +211,7 @@ and Binding : sig
         args : string list;
         rhs : type_rhs;
       }
+    | Open of string
   [@@deriving eq]
 
   val pp : t -> string
@@ -222,6 +223,7 @@ end = struct
         args : string list;
         rhs : type_rhs;
       }
+    | Open of string
   [@@deriving eq]
 
   let pp = function
@@ -254,6 +256,7 @@ end = struct
               |> String.concat "; " |> Printf.sprintf "{%s}"
         in
         Printf.sprintf "type %s%s = %s" (Type.Id.pp name) ty_args rhs_pp
+    | Open name -> Printf.sprintf "open %s" name
 end
 
 and Struct_def : sig

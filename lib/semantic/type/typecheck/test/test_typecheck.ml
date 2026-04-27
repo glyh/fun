@@ -243,6 +243,19 @@ let struct_variants =
            ~expected:Type.Generic.(Con (Type.TypeId.make "List", [ i64 ])));
     ]
 
+let open_tests =
+  Alcotest.
+    [
+      test_case "open struct with values" `Quick
+        (test_typecheck
+           ~source:"let M = struct pub let x = 42 end in open M in x"
+           ~expected:Type.Generic.i64);
+      test_case "open struct with variants" `Quick
+        (test_typecheck
+           ~source:"let Color = struct | Red | Green | Blue end in open Color in Red"
+           ~expected:Type.Generic.(Con (Type.TypeId.make "Color", [])));
+    ]
+
 let () =
   Alcotest.run "Typecheck"
     [
@@ -256,4 +269,5 @@ let () =
       ("records", records);
       ("struct_fields", struct_fields);
       ("struct_variants", struct_variants);
+      ("open", open_tests);
     ]

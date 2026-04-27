@@ -119,6 +119,14 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
           in
           eval ~type_defs env_new body
       | Record _ -> eval ~type_defs env body)
+  | Let { binding = Open name; body } ->
+      let struct_val = Type.Id.Map.find name env in
+      let members = match struct_val with
+        | Value.Struct fields -> fields
+        | _ -> raise (Std.Exceptions.Unreachable [%here])
+      in
+      let env' = List.fold_left (fun env (n, v) -> Type.Id.Map.add n v env) env members in
+      eval ~type_defs env' body
   | Fix f -> (
       match eval ~type_defs env f with
       | Closure f ->
@@ -167,7 +175,14 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
                                   Value.Tagged { tag; inner = Some inner }))
                              env)
                      env
-            | TypeDecl { rhs = Record _; _ } -> env)
+            | TypeDecl { rhs = Record _; _ } -> env
+            | Open name ->
+                let struct_val = Type.Id.Map.find name env in
+                let members = match struct_val with
+                  | Value.Struct fields -> fields
+                  | _ -> raise (Std.Exceptions.Unreachable [%here])
+                in
+                List.fold_left (fun env (n, v) -> Type.Id.Map.add n v env) env members)
           env members
       in
       let pub_values =

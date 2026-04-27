@@ -11,7 +11,7 @@
 %token <Type.Id.t> ID
 %token <Type.Id.t> TY_VAR
 %token <int64> I64
-%token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT SELF
+%token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT SELF OPEN
 %token <string> STRING
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
 %token LBRACKET RBRACKET COMMA
@@ -135,6 +135,7 @@ pattern:
     | [] -> failwith "Unreachable: nonempty list returns empty in pattern!"
   }
   | id=ID LPAREN RPAREN { Pattern.Tagged ([], id, None) }
+  | id=ID UNIT { Pattern.Tagged ([], id, None) }
   | id=ID LPAREN p=pattern RPAREN { Pattern.Tagged ([], id, Some p) }
   | qid=dotted_ids {
     let path, tag = qid in
@@ -189,6 +190,9 @@ expr:
 expr_stmt:
   | binding=binding IN body=expr {
     Expr.Let { binding; body }
+  }
+  | OPEN name=ID IN body=expr {
+    Expr.Let { binding = Open name; body }
   }
   | IF cond=expr THEN then_branch=expr ELSE else_branch=expr {
       Expr.If { cond; then_ = then_branch; else_ = else_branch }
@@ -300,6 +304,7 @@ struct_body_with_defs:
 struct_def:
   | PUB b=binding { Ast.Struct_def.{ vis = Public; binding = b } }
   | b=binding { Ast.Struct_def.{ vis = Private; binding = b } }
+  | OPEN name=ID { Ast.Struct_def.{ vis = Private; binding = Open name } }
 
 module_eof:
   | body=struct_body_with_defs EOF { let (body, defs) = body in ([], body, defs) }

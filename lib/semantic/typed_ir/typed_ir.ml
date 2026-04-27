@@ -72,6 +72,7 @@ and Binding : sig
         args : string list;
         rhs : Syntax.Ast.type_rhs;
       }
+    | Open of string
 end = struct
   type t =
     | Value of { name : Type.Id.t; value : Expr.t }
@@ -80,6 +81,7 @@ end = struct
         args : string list;
         rhs : Syntax.Ast.type_rhs;
       }
+    | Open of string
 end
 
 let rec map_types_pattern ~(f : Type.T.t -> Type.T.t) (p : Pattern.t) :
@@ -140,4 +142,4 @@ let rec map_types_expr ~(f : Type.T.t -> Type.T.t) (e : Expr.t) : Expr.t =
 and map_types_binding ~(f : Type.T.t -> Type.T.t) (b : Binding.t) : Binding.t =
   match b with
   | Value { name; value } -> Value { name; value = map_types_expr ~f value }
-  | TypeDecl _ -> b
+  | TypeDecl _ | Open _ -> b

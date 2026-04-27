@@ -581,6 +581,35 @@ let imports =
                 ignore (eval_with_loader ~loader {|import "a"|}))))
     ]
 
+let open_tests =
+  Alcotest.
+    [
+      test_case "open struct values" `Quick
+        (test_eval
+           ~source:{|let M = struct pub let x = 42 pub let y = 10 end in open M in x + y|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 52L))
+           ~typ:Type.Generic.i64);
+      test_case "open struct variants in pattern" `Quick
+        (test_eval
+           ~source:
+             {|let Color = struct | Red | Green | Blue end in
+               open Color in
+               match Red | Red() -> 1 | Green() -> 2 | Blue() -> 3 end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+      test_case "open inside struct" `Quick
+        (test_eval
+           ~source:
+             {|let Color = struct | Red | Green | Blue end in
+               let Ext = struct
+                 open Color
+                 pub let is_red c = match c | Red() -> true | Green() -> false | Blue() -> false end
+               end in
+               Ext.is_red Color.Red|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.Bool true))
+           ~typ:Type.Generic.bool);
+    ]
+
 let () =
   Alcotest.run "Interp"
     [
@@ -592,5 +621,6 @@ let () =
       ("structs", structs);
       ("struct_fields", struct_fields);
       ("struct_variants", struct_variants);
+      ("open", open_tests);
       ("imports", imports);
     ]

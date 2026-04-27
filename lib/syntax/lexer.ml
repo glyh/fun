@@ -38,6 +38,7 @@ let rec token buf =
   | "import" -> IMPORT
   | "struct" -> STRUCT
   | "self" -> SELF
+  | "open" -> OPEN
   | "->" -> ARROW
   | "()" -> UNIT
   | ";;" -> DOUBLESEMI

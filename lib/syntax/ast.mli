@@ -83,6 +83,7 @@ and Binding : sig
         args : string list;
         rhs : type_rhs;
       }
+    | Open of string
   [@@deriving eq]
 
   val pp : t -> string
