@@ -40,6 +40,12 @@ type type_rhs =
   | Record of (string * Type.Human.t) Std.Nonempty_list.t
 [@@deriving eq]
 
+type struct_body =
+  | Fields of (string * Type.Human.t) Std.Nonempty_list.t
+  | Variants of (string * Type.Human.t option) Std.Nonempty_list.t
+  | Namespace
+[@@deriving eq]
+
 module rec Expr : sig
   type t =
     | Atom of Atom.t
@@ -60,7 +66,7 @@ module rec Expr : sig
     | FieldAccess of t * field_accessor
     | StructDef of {
         args : string list;
-        fields : (string * Type.Human.t) list;
+        body : struct_body;
         members : Struct_def.t list;
       }
     | Import of string

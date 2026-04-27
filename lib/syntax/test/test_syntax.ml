@@ -646,7 +646,7 @@ let struct_defs =
                    type_ = None;
                    value =
                      StructDef
-                       { args = []; fields = []; members =
+                       { args = []; body = Namespace; members =
                        [
                          {
                            vis = Public;
@@ -667,7 +667,7 @@ let struct_defs =
                    type_ = None;
                    value =
                      StructDef
-                       { args = []; fields = []; members =
+                       { args = []; body = Namespace; members =
                        [
                          {
                            vis = Private;
@@ -694,7 +694,7 @@ let struct_defs =
                    type_ = None;
                    value =
                      StructDef
-                       { args = []; fields = []; members =
+                       { args = []; body = Namespace; members =
                        [
                          {
                            vis = Public;
@@ -735,8 +735,9 @@ let struct_defs =
                    value =
                      StructDef
                        { args = [];
-                         fields = [("x", Type.Generic.Con (Type.TypeId.make "I64", []));
-                                   ("y", Type.Generic.Con (Type.TypeId.make "I64", []))];
+                         body = Fields (Std.Nonempty_list.init
+                           ("x", Type.Generic.Con (Type.TypeId.make "I64", []))
+                           [("y", Type.Generic.Con (Type.TypeId.make "I64", []))]);
                          members = [] };
                  };
              ]);
@@ -752,8 +753,66 @@ let struct_defs =
                    value =
                      StructDef
                        { args = ["a"; "b"];
-                         fields = [("fst", Type.Generic.Var "a");
-                                   ("snd", Type.Generic.Var "b")];
+                         body = Fields (Std.Nonempty_list.init
+                           ("fst", Type.Generic.Var "a")
+                           [("snd", Type.Generic.Var "b")]);
+                         members = [] };
+                 };
+             ]);
+      test_case "struct with variants" `Quick
+        (test_syntax
+           ~source:{|let Color = struct | Red | Green | Blue end|}
+           ~expected:
+             [
+               Value
+                 {
+                   name = "Color";
+                   type_ = None;
+                   value =
+                     StructDef
+                       { args = [];
+                         body = Variants (Std.Nonempty_list.init
+                           ("Red", None)
+                           [("Green", None); ("Blue", None)]);
+                         members = [] };
+                 };
+             ]);
+      test_case "struct with variants and pub let" `Quick
+        (test_syntax
+           ~source:{|let Color = struct | Red | Green; pub let x = 1 end|}
+           ~expected:
+             [
+               Value
+                 {
+                   name = "Color";
+                   type_ = None;
+                   value =
+                     StructDef
+                       { args = [];
+                         body = Variants (Std.Nonempty_list.init
+                           ("Red", None)
+                           [("Green", None)]);
+                         members = [
+                           { vis = Public;
+                             binding = Value { name = "x"; type_ = None; value = Atom (I64 1L) } }
+                         ] };
+                 };
+             ]);
+      test_case "struct with self in variant payload" `Quick
+        (test_syntax
+           ~source:{|let List = struct['a] | Cons ('a, self) | Nil end|}
+           ~expected:
+             [
+               Value
+                 {
+                   name = "List";
+                   type_ = None;
+                   value =
+                     StructDef
+                       { args = ["a"];
+                         body = Variants (Std.Nonempty_list.init
+                           ("Cons", Some (Prod (Std.Nonempty_list.init (Var "a") [Con (Type.TypeId.{ path = []; name = "self" }, [])])))
+                           [("Nil", None)]);
                          members = [] };
                  };
              ]);

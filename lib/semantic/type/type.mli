@@ -47,8 +47,10 @@ module Generic : sig
   val bool : _ t
   val char : _ t
 
-  val (=>) : 'var_set -> ('a, 'var_set) t -> ('a, 'var_set) t 
-  val (^->) : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t 
+  val (=>) : 'var_set -> ('a, 'var_set) t -> ('a, 'var_set) t
+  val (^->) : ('a, 'b) t -> ('a, 'b) t -> ('a, 'b) t
+  val self_sentinel : TypeId.t
+  val self : _ t
 end
 
 module Human : sig

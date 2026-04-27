@@ -11,7 +11,7 @@
 %token <Type.Id.t> ID
 %token <Type.Id.t> TY_VAR
 %token <int64> I64
-%token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT
+%token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT SELF
 %token <string> STRING
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
 %token LBRACKET RBRACKET COMMA
@@ -32,7 +32,7 @@
 
 %start <Binding.t list> toplevel_eof
 %start <Expr.t> expr_eof
-%start <string list * (string * Type.Human.t) list * Struct_def.t list> module_eof
+%start <string list * Ast.struct_body * Struct_def.t list> module_eof
 
 %%
 
@@ -52,6 +52,7 @@ type_:
     | [] -> failwith "Unreachable: nonempty list returns empty in type_!" 
   }
   | TY_VAR { Type.Generic.Var $1 }
+  | SELF { Type.Generic.self }
 
 type_annotation:
   | COLON typ=type_ {
@@ -272,8 +273,9 @@ expr_primary:
     | [] -> failwith "Unreachable: nonempty list returns empty in expr_primary!"
     | hd :: rest -> Expr.RecordConstruct { path = []; name; fields = Std.Nonempty_list.init hd rest }
   }
-  | STRUCT args=option(delimited(LBRACKET, separated_nonempty_list(COMMA, TY_VAR), RBRACKET)) fields=list(struct_field_decl) defs=list(struct_def) END {
-    Expr.StructDef { args = (match args with None -> [] | Some a -> a); fields; members = defs }
+  | STRUCT args=option(delimited(LBRACKET, separated_nonempty_list(COMMA, TY_VAR), RBRACKET)) body=struct_body_with_defs END {
+    let (body, defs) = body in
+    Expr.StructDef { args = (match args with None -> [] | Some a -> a); body; members = defs }
   }
   | IMPORT path=STRING { Expr.Import path }
 
@@ -283,12 +285,24 @@ record_expr_field:
 struct_field_decl:
   | name=ID COLON typ=type_ SEMI { (name, typ) }
 
+struct_variant:
+  | PIPE tag=ID payload=option(type_) { (tag, payload) }
+
+%inline nonempty_to_nel(X):
+  | xs=nonempty_list(X) { match xs with hd :: rest -> Std.Nonempty_list.init hd rest | [] -> failwith "unreachable" }
+
+struct_body_with_defs:
+  | defs=list(struct_def) { (Ast.Namespace, defs) }
+  | fields=nonempty_to_nel(struct_field_decl) defs=list(struct_def) { (Ast.Fields fields, defs) }
+  | variants=nonempty_to_nel(struct_variant) { (Ast.Variants variants, []) }
+  | variants=nonempty_to_nel(struct_variant) SEMI defs=nonempty_list(struct_def) { (Ast.Variants variants, defs) }
+
 struct_def:
   | PUB b=binding { Ast.Struct_def.{ vis = Public; binding = b } }
   | b=binding { Ast.Struct_def.{ vis = Private; binding = b } }
 
 module_eof:
-  | defs=list(struct_def) EOF { ([], [], defs) }
+  | body=struct_body_with_defs EOF { let (body, defs) = body in ([], body, defs) }
 
 expr_eof:
   | expr EOF { $1 }

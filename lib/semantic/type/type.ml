@@ -136,6 +136,8 @@ module Generic = struct
   let char = con_0 "Char"
   let ( => ) = fun vars inner -> Forall (vars, inner)
   let ( ^-> ) = fun lhs rhs -> Arrow (lhs, rhs)
+  let self_sentinel = TypeId.{ path = []; name = "self" }
+  let self = Con (self_sentinel, [])
 end
 
 module Human = struct

@@ -309,6 +309,15 @@ module Inference = struct
     | I64 _ -> Type.Generic.i64
     | Bool _ -> Type.Generic.bool
 
+  let rec resolve_self ~nominal : Type.Human.t -> Type.Human.t = function
+    | Con (id, []) when Type.TypeId.equal id Type.Generic.self_sentinel -> nominal
+    | Con (id, args) -> Con (id, List.map (resolve_self ~nominal) args)
+    | Arrow (a, b) -> Arrow (resolve_self ~nominal a, resolve_self ~nominal b)
+    | Prod elements -> Prod (Std.Nonempty_list.map (resolve_self ~nominal) elements)
+    | Forall (vars, inner) -> Forall (vars, resolve_self ~nominal inner)
+    | Struct fields -> Struct (List.map (fun (n, t) -> (n, resolve_self ~nominal t)) fields)
+    | (Var _ as t) -> t
+
   let resolve_module_path (env : TypeEnv.t) (path : string list) :
       (string * Type.T.t) list =
     let as_struct = function
@@ -570,6 +579,7 @@ module Inference = struct
         let env_new, record_defs_new, type_defs =
           match rhs with
           | Adt ctors ->
+              let ctors = Std.Nonempty_list.map (fun (tag, payload) -> (tag, Option.map (resolve_self ~nominal:adt_type) payload)) ctors in
               let env' =
                 Std.Nonempty_list.to_list ctors
                 |> List.fold_left
@@ -599,6 +609,7 @@ module Inference = struct
               in
               (env', record_defs, Type.TypeId.Map.add type_id ctors type_defs)
           | Record fields ->
+              let fields = Std.Nonempty_list.map (fun (n, ty) -> (n, resolve_self ~nominal:adt_type ty)) fields in
               Std.Nonempty_list.iter
                 (fun (_, field_ty) ->
                   let referred_fvs = FreeVariables.of_type_human field_ty in
@@ -714,6 +725,7 @@ module Inference = struct
          | Struct fields -> (
              match List.assoc_opt field fields with
              | Some field_ty ->
+                 let field_ty = instantiate field_ty in
                  ( mk (FieldAccess (typed_inner, field)) field_ty,
                    inner_cons,
                    record_defs,
@@ -739,17 +751,19 @@ module Inference = struct
                Constraint.{ lhs = typed_inner.type_; rhs = record_ty } :: inner_cons,
                record_defs,
                type_defs ))
-    | StructDef { args = struct_args; fields = struct_fields; members = defs } ->
-        let record_defs =
-          match struct_fields with
-          | [] -> record_defs
-          | hd :: rest ->
+    | StructDef { args = struct_args; body = struct_body; members = defs } ->
+        let record_defs, type_defs, variant_exports =
+          match struct_body with
+          | Namespace -> (record_defs, type_defs, [])
+          | Fields fields ->
               let struct_name = match List.rev scope with
                 | name :: _ -> name
                 | [] -> failwith "Struct with fields must be bound to a name"
               in
               let tycon_fvs = StrSet.of_list struct_args in
-              let fields_nel = Std.Nonempty_list.init hd rest in
+              let type_id = Type.TypeId.{ path = (match List.rev scope with _ :: rev_parent -> List.rev rev_parent | [] -> []); name = struct_name } in
+              let nominal = Type.Generic.Con (type_id, struct_args |> List.map (fun arg -> Type.Generic.Var arg)) in
+              let fields = Std.Nonempty_list.map (fun (n, ty) -> (n, resolve_self ~nominal ty)) fields in
               Std.Nonempty_list.iter
                 (fun (_, field_ty) ->
                   let referred_fvs = FreeVariables.of_type_human field_ty in
@@ -758,8 +772,41 @@ module Inference = struct
                       (EscapedTypeVarInTypeDefinition
                          { name = struct_name; tag = struct_name;
                            free_variables = StrSet.diff referred_fvs tycon_fvs }))
-                fields_nel;
-              RecordDefs.register struct_name struct_args fields_nel record_defs
+                fields;
+              (RecordDefs.register struct_name struct_args fields record_defs, type_defs, [])
+          | Variants ctors ->
+              let struct_name = match List.rev scope with
+                | name :: _ -> name
+                | [] -> failwith "Struct with variants must be bound to a name"
+              in
+              let tycon_fvs = StrSet.of_list struct_args in
+              let type_id = Type.TypeId.{ path = (match List.rev scope with _ :: rev_parent -> List.rev rev_parent | [] -> []); name = struct_name } in
+              let adt_type = Con (type_id, struct_args |> List.map (fun arg -> Var arg)) in
+              let ctors = Std.Nonempty_list.map (fun (tag, payload) -> (tag, Option.map (resolve_self ~nominal:adt_type) payload)) ctors in
+              let wrap_forall inner =
+                match struct_args with [] -> inner | args -> args => inner
+              in
+              let ctor_list = Std.Nonempty_list.to_list ctors in
+              let env_additions =
+                List.map
+                  (fun (tag, type_body_opt) ->
+                    let tag_type =
+                      match type_body_opt with
+                      | Some type_body ->
+                          let referred_fvs = FreeVariables.of_type_human type_body in
+                          if not @@ StrSet.subset referred_fvs tycon_fvs then
+                            raise
+                              (EscapedTypeVarInTypeDefinition
+                                 { name = struct_name; tag;
+                                   free_variables = StrSet.diff referred_fvs tycon_fvs });
+                          type_body ^-> adt_type
+                      | None -> adt_type
+                    in
+                    (tag, Type.T.of_human (wrap_forall tag_type)))
+                  ctor_list
+              in
+              let type_defs = Type.TypeId.Map.add type_id ctors type_defs in
+              (record_defs, type_defs, env_additions)
         in
         let process_binding env record_defs type_defs (b : Syntax.Ast.Binding.t) =
           match b with
@@ -851,6 +898,18 @@ module Inference = struct
               in
               (typed_binding, ctor_exports, env_new, record_defs_new, type_defs, [])
         in
+        let env =
+          List.fold_left (fun env (tag, ty) -> Type.Id.Map.add tag ty env) env variant_exports
+        in
+        let env = match struct_body with
+          | Variants _ ->
+              let struct_name = match List.rev scope with name :: _ -> name | [] -> failwith "unreachable" in
+              let preliminary_struct_ty =
+                Type.Generic.Struct (variant_exports |> List.sort (fun (a, _) (b, _) -> String.compare a b))
+              in
+              Type.Id.Map.add struct_name preliminary_struct_ty env
+          | _ -> env
+        in
         let _final_env, final_record_defs, final_type_defs, typed_members_rev, pub_types_rev, all_cons =
           List.fold_left
             (fun (env, rd, td, members, pub_types, cons) (sd : Syntax.Ast.Struct_def.t) ->
@@ -863,10 +922,21 @@ module Inference = struct
                 | Private -> pub_types
               in
               (env', rd', td', typed_b :: members, pub_types', new_cons @ cons))
-            (env, record_defs, type_defs, [], [], [])
+            (env, record_defs, type_defs, [], variant_exports, [])
             defs
         in
         let typed_members = List.rev typed_members_rev in
+        let typed_members = match struct_body with
+          | Variants ctors ->
+              let struct_name = match List.rev scope with name :: _ -> name | [] -> failwith "unreachable" in
+              let synth_binding = Typed_ir.Binding.TypeDecl {
+                name = struct_name;
+                args = struct_args;
+                rhs = Syntax.Ast.Adt ctors;
+              } in
+              synth_binding :: typed_members
+          | _ -> typed_members
+        in
         let pub_types = List.rev pub_types_rev |> List.sort (fun (a, _) (b, _) -> String.compare a b) in
         let pub_names = List.map fst pub_types in
         let struct_ty = Struct pub_types in

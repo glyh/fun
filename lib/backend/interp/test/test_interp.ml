@@ -445,6 +445,75 @@ let struct_fields =
            ~typ:Type.Generic.i64);
     ]
 
+let struct_variants =
+  Alcotest.
+    [
+      test_case "struct with variants, construction and match" `Quick
+        (test_eval
+           ~source:
+             {|let Color = struct
+                 | Red
+                 | Green
+                 | Blue
+               end in
+               match Color.Red
+               | Color.Red -> 1
+               | Color.Green -> 2
+               | Color.Blue -> 3
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+      test_case "struct variant with payload" `Quick
+        (test_eval
+           ~source:
+             {|let Wrapper = struct
+                 | W I64
+               end in
+               match Wrapper.W 42
+               | Wrapper.W(x) -> x
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "parameterized struct variants" `Quick
+        (test_eval
+           ~source:
+             {|let Option = struct['a]
+                 | Some 'a
+                 | None
+               end in
+               match Option.Some 42
+               | Option.Some(x) -> x
+               | Option.None -> 0
+               end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 42L))
+           ~typ:Type.Generic.i64);
+      test_case "struct variants with pub let" `Quick
+        (test_eval
+           ~source:
+             {|let Option = struct['a]
+                 | Some 'a
+                 | None;
+                 pub let is_some x = match x | Option.Some(_) -> true | Option.None -> false end
+               end in
+               if Option.is_some (Option.Some 1) then 1 else 0|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 1L))
+           ~typ:Type.Generic.i64);
+      test_case "self keyword for recursive struct" `Quick
+        (test_eval
+           ~source:
+             {|let List = struct['a]
+                 | Cons ('a, self)
+                 | Nil
+               end in
+               let rec sum xs = match xs
+                 | List.Cons((x, rest)) -> x + sum rest
+                 | List.Nil -> 0
+               end in
+               sum (List.Cons (1, List.Cons (2, List.Cons (3, List.Nil))))|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 6L))
+           ~typ:Type.Generic.i64);
+    ]
+
 let make_loader base_dir =
   Loader.create ~base_dir
     ~typecheck_fn:(fun ?loader expr ->
@@ -522,5 +591,6 @@ let () =
       ("records", records);
       ("structs", structs);
       ("struct_fields", struct_fields);
+      ("struct_variants", struct_variants);
       ("imports", imports);
     ]

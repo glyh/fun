@@ -77,6 +77,12 @@ type field_accessor = string [@@deriving eq]
 
 type visibility = Public | Private [@@deriving eq]
 
+type struct_body =
+  | Fields of (string * Type.Human.t) Std.Nonempty_list.t
+  | Variants of (string * Type.Human.t option) Std.Nonempty_list.t
+  | Namespace
+[@@deriving eq]
+
 module rec Expr : sig
   type t =
     | Atom of Atom.t
@@ -97,7 +103,7 @@ module rec Expr : sig
     | FieldAccess of t * field_accessor
     | StructDef of {
         args : string list;
-        fields : (string * Type.Human.t) list;
+        body : struct_body;
         members : Struct_def.t list;
       }
     | Import of string
@@ -124,7 +130,7 @@ end = struct
     | FieldAccess of t * field_accessor
     | StructDef of {
         args : string list;
-        fields : (string * Type.Human.t) list;
+        body : struct_body;
         members : Struct_def.t list;
       }
     | Import of string
@@ -164,14 +170,26 @@ end = struct
           |> to_list)
         |> String.concat "; " |> Printf.sprintf "{%s}")
     | FieldAccess (expr, field) -> pp expr ^ "." ^ field
-    | StructDef { args; fields; members } ->
+    | StructDef { args; body; members } ->
         let args_pp = match args with
           | [] -> ""
           | a -> "[" ^ String.concat ", " a ^ "]"
         in
-        let fields_pp =
-          List.map (fun (name, ty) -> name ^ ": " ^ Type.Human.pp ty ^ ";") fields
-          |> String.concat " "
+        let body_pp = match body with
+          | Fields fields ->
+              Std.Nonempty_list.to_list fields
+              |> List.map (fun (name, ty) -> name ^ ": " ^ Type.Human.pp ty ^ ";")
+              |> String.concat " "
+          | Variants variants ->
+              let vs = Std.Nonempty_list.to_list variants
+              |> List.map (fun (tag, payload) ->
+                  match payload with
+                  | Some ty -> "| " ^ tag ^ " " ^ Type.Human.pp ty
+                  | None -> "| " ^ tag)
+              |> String.concat " "
+              in
+              if members <> [] then vs ^ ";" else vs
+          | Namespace -> ""
         in
         let defs_pp =
           List.map
@@ -181,7 +199,7 @@ end = struct
             members
           |> String.concat " "
         in
-        "struct" ^ args_pp ^ " " ^ fields_pp ^ defs_pp ^ " end"
+        "struct" ^ args_pp ^ " " ^ body_pp ^ " " ^ defs_pp ^ " end"
     | Import path -> Printf.sprintf "import %S" path
 end
 

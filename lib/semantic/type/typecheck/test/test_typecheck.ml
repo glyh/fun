@@ -226,6 +226,23 @@ let struct_fields =
            ~expected:Type.Generic.(Con (Type.TypeId.make "Pair", [ i64; bool ])));
     ]
 
+let struct_variants =
+  Alcotest.
+    [
+      test_case "struct variant construction" `Quick
+        (test_typecheck
+           ~source:"let Color = struct | Red | Green | Blue end in Color.Red"
+           ~expected:Type.Generic.(con_0 "Color"));
+      test_case "parameterized struct variant" `Quick
+        (test_typecheck
+           ~source:"let Option = struct['a] | Some 'a | None end in Option.Some 42"
+           ~expected:Type.Generic.(Con (Type.TypeId.make "Option", [ i64 ])));
+      test_case "self in struct variant" `Quick
+        (test_typecheck
+           ~source:"let List = struct['a] | Cons ('a, self) | Nil end in List.Cons (1, List.Nil)"
+           ~expected:Type.Generic.(Con (Type.TypeId.make "List", [ i64 ])));
+    ]
+
 let () =
   Alcotest.run "Typecheck"
     [
@@ -238,4 +255,5 @@ let () =
       ("tuples", tuples);
       ("records", records);
       ("struct_fields", struct_fields);
+      ("struct_variants", struct_variants);
     ]
