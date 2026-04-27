@@ -19,7 +19,7 @@ let rec resolve_occurrence (root : Value.t) (o : Match.Occurence.t) :
       match (base, o.path) with
       | Prod elements, Project { index; _ } -> nth_nonempty elements index
       | Tagged { inner = Some inner; _ }, Unwrap _ -> Some inner
-      | Record fields, Field { name; _ } -> List.assoc_opt name fields
+      | Struct fields, Field { name; _ } -> List.assoc_opt name fields
       | _ -> None)
 
 let extend_env_with_bindings env root bindings =
@@ -97,28 +97,6 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
   | Let { binding = Value { name; value }; body } ->
       let v = eval ~type_defs env value in
       eval ~type_defs (Type.Id.Map.add name v env) body
-  | Let { binding = TypeDecl { rhs; _ }; body } -> (
-      match rhs with
-      | Adt ctors ->
-          let env_new =
-            Std.Nonempty_list.to_list ctors
-            |> List.fold_left
-                 (fun env (tag, type_body_opt) ->
-                   match type_body_opt with
-                   | None ->
-                       Type.Id.Map.add tag
-                         (Value.Tagged { tag; inner = None })
-                         env
-                   | Some _ ->
-                       Type.Id.Map.add tag
-                         (Value.Closure
-                            (fun inner ->
-                              Value.Tagged { tag; inner = Some inner }))
-                         env)
-                 env
-          in
-          eval ~type_defs env_new body
-      | Record _ -> eval ~type_defs env body)
   | Let { binding = Open name; body }
   | Let { binding = Export name; body } ->
       let struct_val = Type.Id.Map.find name env in
@@ -142,17 +120,38 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
   | Prod elements ->
       Value.Prod (Std.Nonempty_list.map (eval ~type_defs env) elements)
   | Record fields ->
-      Value.Record
+      Value.Struct
         (Std.Nonempty_list.to_list fields
         |> List.map (fun (name, e) -> (name, eval ~type_defs env e)))
   | FieldAccess (inner, field) -> (
       match eval ~type_defs env inner with
-      | (Record fields | Struct fields) -> (
+      | Struct fields -> (
           match List.assoc_opt field fields with
           | Some v -> v
           | None -> raise (Std.Exceptions.Unreachable [%here]))
       | _ -> raise (Std.Exceptions.Unreachable [%here]))
-  | StructDef { members; pub_names } ->
+  | StructDef { body; members; pub_names } ->
+      let register_variants env =
+        match body with
+        | Syntax.Ast.Variants ctors ->
+            Std.Nonempty_list.to_list ctors
+            |> List.fold_left
+                 (fun env (tag, type_body_opt) ->
+                   match type_body_opt with
+                   | None ->
+                       Type.Id.Map.add tag
+                         (Value.Tagged { tag; inner = None })
+                         env
+                   | Some _ ->
+                       Type.Id.Map.add tag
+                         (Value.Closure
+                            (fun inner ->
+                              Value.Tagged { tag; inner = Some inner }))
+                         env)
+                 env
+        | _ -> env
+      in
+      let env' = register_variants env in
       let env' =
         List.fold_left
           (fun env (b : Typed_ir.Binding.t) ->
@@ -160,23 +159,6 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
             | Value { name; value } ->
                 let v = eval ~type_defs env value in
                 Type.Id.Map.add name v env
-            | TypeDecl { rhs = Adt ctors; _ } ->
-                Std.Nonempty_list.to_list ctors
-                |> List.fold_left
-                     (fun env (tag, type_body_opt) ->
-                       match type_body_opt with
-                       | None ->
-                           Type.Id.Map.add tag
-                             (Value.Tagged { tag; inner = None })
-                             env
-                       | Some _ ->
-                           Type.Id.Map.add tag
-                             (Value.Closure
-                                (fun inner ->
-                                  Value.Tagged { tag; inner = Some inner }))
-                             env)
-                     env
-            | TypeDecl { rhs = Record _; _ } -> env
             | Open name | Export name ->
                 let struct_val = Type.Id.Map.find name env in
                 let members = match struct_val with
@@ -184,7 +166,7 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
                   | _ -> raise (Std.Exceptions.Unreachable [%here])
                 in
                 List.fold_left (fun env (n, v) -> Type.Id.Map.add n v env) env members)
-          env members
+          env' members
       in
       let pub_values =
         List.filter_map

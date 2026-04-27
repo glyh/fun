@@ -848,21 +848,10 @@ module Inference = struct
             defs
         in
         let typed_members = List.rev typed_members_rev in
-        let typed_members = match struct_body with
-          | Variants ctors ->
-              let struct_name = match List.rev scope with name :: _ -> name | [] -> failwith "unreachable" in
-              let synth_binding = Typed_ir.Binding.TypeDecl {
-                name = struct_name;
-                args = struct_args;
-                rhs = Syntax.Ast.Adt ctors;
-              } in
-              synth_binding :: typed_members
-          | _ -> typed_members
-        in
         let pub_types = List.rev pub_types_rev |> List.sort (fun (a, _) (b, _) -> String.compare a b) in
         let pub_names = List.map fst pub_types in
         let struct_ty = Struct pub_types in
-        ( mk (StructDef { members = typed_members; pub_names }) struct_ty,
+        ( mk (StructDef { body = struct_body; members = typed_members; pub_names }) struct_ty,
           all_cons,
           final_record_defs,
           final_type_defs )

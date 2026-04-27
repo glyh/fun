@@ -42,7 +42,11 @@ and Expr : sig
       }
     | Record of (string * t) Std.Nonempty_list.t
     | FieldAccess of t * string
-    | StructDef of { members : Binding.t list; pub_names : string list }
+    | StructDef of {
+        body : Syntax.Ast.struct_body;
+        members : Binding.t list;
+        pub_names : string list;
+      }
 end = struct
   type t = { node : node; type_ : Type.T.t }
 
@@ -61,27 +65,21 @@ end = struct
       }
     | Record of (string * t) Std.Nonempty_list.t
     | FieldAccess of t * string
-    | StructDef of { members : Binding.t list; pub_names : string list }
+    | StructDef of {
+        body : Syntax.Ast.struct_body;
+        members : Binding.t list;
+        pub_names : string list;
+      }
 end
 
 and Binding : sig
   type t =
     | Value of { name : Type.Id.t; value : Expr.t }
-    | TypeDecl of {
-        name : string;
-        args : string list;
-        rhs : Syntax.Ast.type_rhs;
-      }
     | Open of string
     | Export of string
 end = struct
   type t =
     | Value of { name : Type.Id.t; value : Expr.t }
-    | TypeDecl of {
-        name : string;
-        args : string list;
-        rhs : Syntax.Ast.type_rhs;
-      }
     | Open of string
     | Export of string
 end
@@ -135,13 +133,13 @@ let rec map_types_expr ~(f : Type.T.t -> Type.T.t) (e : Expr.t) : Expr.t =
     | Record fields ->
         Record (Std.Nonempty_list.map (fun (n, e) -> (n, map_e e)) fields)
     | FieldAccess (inner, field) -> FieldAccess (map_e inner, field)
-    | StructDef { members; pub_names } ->
+    | StructDef { body; members; pub_names } ->
         StructDef
-          { members = List.map (map_types_binding ~f) members; pub_names }
+          { body; members = List.map (map_types_binding ~f) members; pub_names }
   in
   { node; type_ = f e.type_ }
 
 and map_types_binding ~(f : Type.T.t -> Type.T.t) (b : Binding.t) : Binding.t =
   match b with
   | Value { name; value } -> Value { name; value = map_types_expr ~f value }
-  | TypeDecl _ | Open _ | Export _ -> b
+  | Open _ | Export _ -> b
