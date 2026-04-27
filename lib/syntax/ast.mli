@@ -84,6 +84,7 @@ and Binding : sig
         rhs : type_rhs;
       }
     | Open of string
+    | Export of string
   [@@deriving eq]
 
   val pp : t -> string

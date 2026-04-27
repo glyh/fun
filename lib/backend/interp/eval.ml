@@ -119,7 +119,8 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
           in
           eval ~type_defs env_new body
       | Record _ -> eval ~type_defs env body)
-  | Let { binding = Open name; body } ->
+  | Let { binding = Open name; body }
+  | Let { binding = Export name; body } ->
       let struct_val = Type.Id.Map.find name env in
       let members = match struct_val with
         | Value.Struct fields -> fields
@@ -176,7 +177,7 @@ and eval ~type_defs env (e : Typed_ir.Expr.t) =
                              env)
                      env
             | TypeDecl { rhs = Record _; _ } -> env
-            | Open name ->
+            | Open name | Export name ->
                 let struct_val = Type.Id.Map.find name env in
                 let members = match struct_val with
                   | Value.Struct fields -> fields

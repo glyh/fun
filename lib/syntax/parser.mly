@@ -11,7 +11,7 @@
 %token <Type.Id.t> ID
 %token <Type.Id.t> TY_VAR
 %token <int64> I64
-%token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT SELF OPEN
+%token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT SELF OPEN EXPORT
 %token <string> STRING
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
 %token LBRACKET RBRACKET COMMA
@@ -305,6 +305,7 @@ struct_def:
   | PUB b=binding { Ast.Struct_def.{ vis = Public; binding = b } }
   | b=binding { Ast.Struct_def.{ vis = Private; binding = b } }
   | OPEN name=ID { Ast.Struct_def.{ vis = Private; binding = Open name } }
+  | EXPORT name=ID { Ast.Struct_def.{ vis = Private; binding = Export name } }
 
 module_eof:
   | body=struct_body_with_defs EOF { let (body, defs) = body in ([], body, defs) }

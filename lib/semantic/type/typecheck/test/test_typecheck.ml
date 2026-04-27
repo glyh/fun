@@ -12,7 +12,7 @@ let parse_expr s =
 let test_typecheck ?(tag = "same type") ~source ~expected () =
   let expr = parse_expr source in
   prerr_endline (Syntax.Ast.Expr.pp expr);
-  let typed, _type_defs = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr in
+  let typed, _type_defs = Typecheck.Inference.on_expr Typecheck.TypeEnv.default (Syntax.Desugar.expr expr) in
   let inferred_type = typed.Typed_ir.Expr.type_ in
   Printf.printf "%s vs %s\n" (Type.T.pp inferred_type) (Type.T.pp expected);
   Alcotest.(check Testable.type_) tag expected inferred_type
@@ -66,6 +66,7 @@ let conditionals =
                 Type.Generic.(Constraint.{ lhs = i64; rhs = bool }))
             (fun () ->
               parse_expr "if true then 1 else false"
+              |> Syntax.Desugar.expr
               |> Typecheck.Inference.on_expr Typecheck.TypeEnv.default
               |> (ignore : Typed_ir.Expr.t * Type.TypeDefs.t -> unit)));
       test_case "if nested" `Quick

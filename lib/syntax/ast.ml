@@ -212,6 +212,7 @@ and Binding : sig
         rhs : type_rhs;
       }
     | Open of string
+    | Export of string
   [@@deriving eq]
 
   val pp : t -> string
@@ -224,6 +225,7 @@ end = struct
         rhs : type_rhs;
       }
     | Open of string
+    | Export of string
   [@@deriving eq]
 
   let pp = function
@@ -257,6 +259,7 @@ end = struct
         in
         Printf.sprintf "type %s%s = %s" (Type.Id.pp name) ty_args rhs_pp
     | Open name -> Printf.sprintf "open %s" name
+    | Export name -> Printf.sprintf "export %s" name
 end
 
 and Struct_def : sig

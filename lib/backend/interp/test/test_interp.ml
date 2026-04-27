@@ -16,7 +16,7 @@ let parse_expr s =
   MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.expr_eof lexer
 
 let eval expr =
-  let typed, type_defs = Typecheck.Inference.on_expr Typecheck.TypeEnv.default expr in
+  let typed, type_defs = Typecheck.Inference.on_expr Typecheck.TypeEnv.default (Syntax.Desugar.expr expr) in
   let result = Interp.(Eval.eval ~type_defs Env.default typed) in
   (result, typed.Typed_ir.Expr.type_)
 
@@ -517,7 +517,7 @@ let struct_variants =
 let make_loader base_dir =
   Loader.create ~base_dir
     ~typecheck_fn:(fun ?loader expr ->
-      Typecheck.Inference.on_expr ?loader Typecheck.TypeEnv.default expr)
+      Typecheck.Inference.on_expr ?loader Typecheck.TypeEnv.default (Syntax.Desugar.expr expr))
 
 let with_modules modules f =
   let dir = Filename.temp_dir "fun_test" "" in
@@ -532,7 +532,7 @@ let with_modules modules f =
 let eval_with_loader ~loader source =
   let expr = parse_expr source in
   let typed, type_defs =
-    Typecheck.Inference.on_expr ~loader Typecheck.TypeEnv.default expr
+    Typecheck.Inference.on_expr ~loader Typecheck.TypeEnv.default (Syntax.Desugar.expr expr)
   in
   let result = Interp.(Eval.eval ~type_defs Env.default typed) in
   (result, typed.Typed_ir.Expr.type_)

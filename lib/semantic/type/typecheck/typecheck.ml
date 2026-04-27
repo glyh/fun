@@ -1,4 +1,5 @@
 open Syntax.Ast
+module D = Syntax.Desugared_ast
 
 (* REF: https://cs3110.github.io/textbook/chapters/interp/inference.html *)
 
@@ -510,7 +511,7 @@ module Inference = struct
         (mk (Record { fields = typed_fields; partial }) record_ty, extras, cons)
 
   let rec constraints_from_expr ~scope ~loader (env : TypeEnv.t) (record_defs : RecordDefs.t)
-      (type_defs : Type.TypeDefs.t) (e : Expr.t) :
+      (type_defs : Type.TypeDefs.t) (e : D.Expr.t) :
       Typed_ir.Expr.t * Constraint.t list * RecordDefs.t * Type.TypeDefs.t =
     let open Type.Generic in
     let gen_var () = Var (Type.Var.generate ()) in
@@ -571,71 +572,8 @@ module Inference = struct
           body_cons,
           record_defs,
           type_defs )
-    | Let { binding = TypeDecl { name; args; rhs }; body } ->
-        let tycon_fvs = StrSet.of_list args in
-        let type_id = Type.TypeId.{ path = scope; name } in
-        let adt_type = Con (type_id, args |> List.map (fun arg -> Var arg)) in
-        let wrap_forall inner =
-          match args with [] -> inner | args -> args => inner
-        in
-        let env_new, record_defs_new, type_defs =
-          match rhs with
-          | Adt ctors ->
-              let ctors = Std.Nonempty_list.map (fun (tag, payload) -> (tag, Option.map (resolve_self ~nominal:adt_type) payload)) ctors in
-              let env' =
-                Std.Nonempty_list.to_list ctors
-                |> List.fold_left
-                     (fun env (tag, type_body_opt) ->
-                       let tag_type =
-                         match type_body_opt with
-                         | Some type_body ->
-                             let referred_fvs =
-                               FreeVariables.of_type_human type_body
-                             in
-                             if not @@ StrSet.subset referred_fvs tycon_fvs then
-                               raise
-                                 (EscapedTypeVarInTypeDefinition
-                                    {
-                                      name;
-                                      tag;
-                                      free_variables =
-                                        StrSet.diff referred_fvs tycon_fvs;
-                                    });
-                             type_body ^-> adt_type
-                         | None -> adt_type
-                       in
-                       Type.Id.Map.add tag
-                         (Type.T.of_human (wrap_forall tag_type))
-                         env)
-                     env
-              in
-              (env', record_defs, Type.TypeId.Map.add type_id ctors type_defs)
-          | Record fields ->
-              let fields = Std.Nonempty_list.map (fun (n, ty) -> (n, resolve_self ~nominal:adt_type ty)) fields in
-              Std.Nonempty_list.iter
-                (fun (_, field_ty) ->
-                  let referred_fvs = FreeVariables.of_type_human field_ty in
-                  if not @@ StrSet.subset referred_fvs tycon_fvs then
-                    raise
-                      (EscapedTypeVarInTypeDefinition
-                         {
-                           name;
-                           tag = name;
-                           free_variables = StrSet.diff referred_fvs tycon_fvs;
-                         }))
-                fields;
-              (env, RecordDefs.register name args fields record_defs, type_defs)
-        in
-        let typed_body, body_cons, record_defs_final, type_defs =
-          constraints_from_expr ~scope ~loader env_new record_defs_new type_defs body
-        in
-        ( mk
-            (Let { binding = TypeDecl { name; args; rhs }; body = typed_body })
-            typed_body.type_,
-          body_cons,
-          record_defs_final,
-          type_defs )
-    | Let { binding = Open name; body } ->
+    | Let { binding = Open name; body }
+    | Let { binding = Export name; body } ->
         let struct_ty = match Type.Id.Map.find_opt name env with
           | Some ty -> ty
           | None -> raise (UndefinedVariable name)
@@ -826,7 +764,7 @@ module Inference = struct
               let type_defs = Type.TypeId.Map.add type_id ctors type_defs in
               (record_defs, type_defs, env_additions)
         in
-        let process_binding env record_defs type_defs (b : Syntax.Ast.Binding.t) =
+        let process_binding env record_defs type_defs (b : D.Binding.t) =
           match b with
           | Value { name; type_ = value_ty_annotated; value } ->
               let value_scope = match value with StructDef { members = _; _ } -> scope @ [name] | _ -> scope in
@@ -853,68 +791,6 @@ module Inference = struct
               in
               let resolved_ty = Substitution.on_type ~sub:sub_inner typed_value.type_ in
               (Some typed_binding, [ (name, resolved_ty) ], env_generalized, record_defs, type_defs, [])
-          | TypeDecl { name; args; rhs } ->
-              let tycon_fvs = StrSet.of_list args in
-              let type_id = Type.TypeId.{ path = scope; name } in
-              let adt_type = Con (type_id, args |> List.map (fun arg -> Var arg)) in
-              let wrap_forall inner =
-                match args with [] -> inner | args -> args => inner
-              in
-              let env_new, record_defs_new, type_defs, ctor_exports =
-                match rhs with
-                | Adt ctors ->
-                    let ctor_list = Std.Nonempty_list.to_list ctors in
-                    let env' =
-                      List.fold_left
-                        (fun env (tag, type_body_opt) ->
-                          let tag_type =
-                            match type_body_opt with
-                            | Some type_body ->
-                                let referred_fvs =
-                                  FreeVariables.of_type_human type_body
-                                in
-                                if not @@ StrSet.subset referred_fvs tycon_fvs then
-                                  raise
-                                    (EscapedTypeVarInTypeDefinition
-                                       { name; tag;
-                                         free_variables =
-                                           StrSet.diff referred_fvs tycon_fvs });
-                                type_body ^-> adt_type
-                            | None -> adt_type
-                          in
-                          Type.Id.Map.add tag
-                            (Type.T.of_human (wrap_forall tag_type))
-                            env)
-                        env ctor_list
-                    in
-                    let exports =
-                      List.map
-                        (fun (tag, type_body_opt) ->
-                          let tag_type =
-                            match type_body_opt with
-                            | Some type_body -> type_body ^-> adt_type
-                            | None -> adt_type
-                          in
-                          (tag, Type.T.of_human (wrap_forall tag_type)))
-                        ctor_list
-                    in
-                    (env', record_defs, Type.TypeId.Map.add type_id ctors type_defs, exports)
-                | Record fields ->
-                    Std.Nonempty_list.iter
-                      (fun (_, field_ty) ->
-                        let referred_fvs = FreeVariables.of_type_human field_ty in
-                        if not @@ StrSet.subset referred_fvs tycon_fvs then
-                          raise
-                            (EscapedTypeVarInTypeDefinition
-                               { name; tag = name;
-                                 free_variables = StrSet.diff referred_fvs tycon_fvs }))
-                      fields;
-                    (env, RecordDefs.register name args fields record_defs, type_defs, [])
-              in
-              let typed_binding =
-                Typed_ir.Binding.TypeDecl { name; args; rhs }
-              in
-              (Some typed_binding, ctor_exports, env_new, record_defs_new, type_defs, [])
           | Open name ->
               let struct_ty = match Type.Id.Map.find_opt name env with
                 | Some ty -> ty
@@ -927,6 +803,18 @@ module Inference = struct
               in
               let env_new = List.fold_left (fun env (n, ty) -> Type.Id.Map.add n ty env) env members in
               (None, [], env_new, record_defs, type_defs, [])
+          | Export name ->
+              let struct_ty = match Type.Id.Map.find_opt name env with
+                | Some ty -> ty
+                | None -> raise (UndefinedVariable name)
+              in
+              let struct_ty = instantiate struct_ty in
+              let members = match struct_ty with
+                | Struct fields -> fields
+                | _ -> raise (TypeMismatch { expected = "Struct"; got = Type.T.pp struct_ty })
+              in
+              let env_new = List.fold_left (fun env (n, ty) -> Type.Id.Map.add n ty env) env members in
+              (Some (Export name), members, env_new, record_defs, type_defs, [])
         in
         let env =
           List.fold_left (fun env (tag, ty) -> Type.Id.Map.add tag ty env) env variant_exports
@@ -942,14 +830,17 @@ module Inference = struct
         in
         let _final_env, final_record_defs, final_type_defs, typed_members_rev, pub_types_rev, all_cons =
           List.fold_left
-            (fun (env, rd, td, members, pub_types, cons) (sd : Syntax.Ast.Struct_def.t) ->
+            (fun (env, rd, td, members, pub_types, cons) (sd : D.Struct_def.t) ->
               let typed_b_opt, exports, env', rd', td', new_cons =
                 process_binding env rd td sd.binding
               in
               let pub_types' =
-                match sd.vis with
-                | Public -> List.rev_append exports pub_types
-                | Private -> pub_types
+                match sd.binding with
+                | Export _ -> List.rev_append exports pub_types
+                | _ ->
+                  match sd.vis with
+                  | Public -> List.rev_append exports pub_types
+                  | Private -> pub_types
               in
               let members' = match typed_b_opt with Some b -> b :: members | None -> members in
               (env', rd', td', members', pub_types', new_cons @ cons))
@@ -1031,7 +922,7 @@ module Inference = struct
           record_defs,
           type_defs )
 
-  let on_expr ?loader (env : TypeEnv.t) (exp : Expr.t) : Typed_ir.Expr.t * Type.TypeDefs.t =
+  let on_expr ?loader (env : TypeEnv.t) (exp : D.Expr.t) : Typed_ir.Expr.t * Type.TypeDefs.t =
     let typed_skeleton, cons, _, type_defs =
       constraints_from_expr ~scope:[] ~loader env RecordDefs.empty Type.TypeDefs.empty exp
     in
