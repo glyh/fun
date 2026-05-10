@@ -99,45 +99,45 @@ let prims =
   ]
   |> NameMap.of_list
 
-(** Bidirectional type inference: given a surface expression, produce an
-    (possibly extended) context, a core term, and its type. *)
-let rec infer (ctx : Ctx.t) (expr : Surface.t) : Ctx.t * term * value =
+(** Bidirectional type inference: given a surface expression, produce a
+    core term and its type. *)
+let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   match expr with
-  | Atom (I64 n) -> (ctx, Atom (I64 n), VAtomTy TI64)
-  | Atom (Bool b) -> (ctx, Atom (Bool b), VAtomTy TBool)
-  | Atom Unit -> (ctx, Atom Unit, VAtomTy TUnit)
+  | Atom (I64 n) -> (Atom (I64 n), VAtomTy TI64)
+  | Atom (Bool b) -> (Atom (Bool b), VAtomTy TBool)
+  | Atom Unit -> (Atom Unit, VAtomTy TUnit)
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
-      (ctx, Var ix, ty)
+      (Var ix, ty)
   | Ap (f, a) -> infer_ap ctx f a
   | Let { name; type_; value; body } -> infer_let ctx name type_ value body
   | If { cond; then_; else_ } -> infer_if ctx cond then_ else_
   | Lam (param, body) -> infer_lam ctx param body
   | Annotated { inner; typ } ->
-      let _ctx, ty_core, ty_ty = infer ctx typ in
+      let ty_core, ty_ty = infer ctx typ in
       Ctx.unify ctx ty_ty VU;
       let ty_val = Ctx.eval ctx ty_core in
-      let _, core = check ctx inner ty_val in
-      (ctx, core, ty_val)
+      let core = check ctx inner ty_val in
+      (core, ty_val)
   | Prod elems ->
-      let cores_tys = List.map (fun e -> let _, c, t = infer ctx e in (c, t)) elems in
+      let cores_tys = List.map (infer ctx) elems in
       let cores = List.map fst cores_tys in
       let tys = List.map snd cores_tys in
-      (ctx, Prod cores, VProdTy tys)
+      (Prod cores, VProdTy tys)
   | Arrow (a, b) ->
-      let _, a_core, a_ty = infer ctx a in
+      let a_core, a_ty = infer ctx a in
       Ctx.unify ctx a_ty VU;
       let a_val = Ctx.eval ctx a_core in
       let ctx' = Ctx.bind ctx "_" a_val in
-      let _, b_core, b_ty = infer ctx' b in
+      let b_core, b_ty = infer ctx' b in
       Ctx.unify ctx' b_ty VU;
-      (ctx, Pi (a_core, b_core), VU)
+      (Pi (a_core, b_core), VU)
   | FieldAccess (e, name) ->
-      let _, e_core, e_ty = infer ctx e in
+      let e_core, e_ty = infer ctx e in
       (match Nbe.force ctx.metas e_ty with
       | VStruct { fields; _ } ->
           (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
-          | Some (_, _, field_ty) -> (ctx, Dot (e_core, name), field_ty)
+          | Some (_, _, field_ty) -> (Dot (e_core, name), field_ty)
           | None -> raise (ElabError (UnboundVariable name)))
       | VFlex _ | VRigid _ | VNeutral _ ->
           let result_ty = Ctx.raw_meta ctx in
@@ -145,28 +145,28 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : Ctx.t * term * value =
             VStruct { fields = [ (name, Field, result_ty) ]; partial = true }
           in
           Ctx.unify ctx e_ty constraint_ty;
-          (ctx, Dot (e_core, name), result_ty)
+          (Dot (e_core, name), result_ty)
       | _ -> raise (ElabError ApplyingNonFunction))
   | Proj (e, i) ->
-      let _, e_core, e_ty = infer ctx e in
+      let e_core, e_ty = infer ctx e in
       (match Nbe.force ctx.metas e_ty with
       | VProdTy tys ->
           if i < 0 || i >= List.length tys then
             raise (ElabError TupleLengthMismatch);
-          (ctx, Proj (e_core, i), List.nth tys i)
+          (Proj (e_core, i), List.nth tys i)
       | _ -> raise (ElabError ApplyingNonFunction))
   | Struct { con_fields; bindings } ->
       let con_cores =
         List.map (fun (name, ty_expr) ->
-          let _, ty_core, ty_ty = infer ctx ty_expr in
+          let ty_core, ty_ty = infer ctx ty_expr in
           Ctx.unify ctx ty_ty VU;
           (name, ty_core, Ctx.eval ctx ty_core))
         con_fields
       in
       let rec go ctx (acc_binds, acc_fields) = function
-        | [] -> ctx, (List.rev acc_binds, List.rev acc_fields)
+        | [] -> (List.rev acc_binds, List.rev acc_fields)
         | Surface.LetBinding { name; value; public } :: rest ->
-            let ctx, val_core, val_ty = infer ctx value in
+            let val_core, val_ty = infer ctx value in
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
             let ctx' = Ctx.define ctx name val_ty val_val in
@@ -178,7 +178,6 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : Ctx.t * term * value =
         | Surface.TypeBinding { name; ctors; public } :: rest ->
             let nominal = VNominal { id = NominalId.fresh (); name; constructors = ctors } in
             let kind = if public then Public else Private in
-            (* Bind constructors + type name in context *)
             let ctx =
               List.fold_left
                 (fun ctx ctor_name ->
@@ -187,13 +186,11 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : Ctx.t * term * value =
                 ctx ctors
             in
             let ctx = Ctx.define ctx name VU nominal in
-            (* Pre-computed constructor values for the evaluator *)
             let ctor_values =
               List.map (fun c ->
                 (c, VCon { name = c; spine = []; nominal }))
               ctors
             in
-            (* Struct type fields: Color : VU, constructors : nominal *)
             let type_fields =
               (name, kind, VU)
               :: List.map (fun c -> (c, kind, nominal)) ctors
@@ -203,13 +200,13 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : Ctx.t * term * value =
                type_fields @ acc_fields)
               rest
       in
-      let _ctx, (core_bindings, extra_fields) = go ctx ([], []) bindings in
+      let core_bindings, extra_fields = go ctx ([], []) bindings in
       let result_con_fields = List.map (fun (n, c, _) -> (n, c)) con_cores in
       let type_fields =
         List.map (fun (n, _, ty) -> (n, Field, ty)) con_cores
         @ extra_fields
       in
-      (ctx, Struct { con_fields = result_con_fields; bindings = core_bindings; partial = false },
+      (Struct { con_fields = result_con_fields; bindings = core_bindings; partial = false },
        VStruct { fields = type_fields; partial = false })
   | Open (name, body) ->
       let ix, ty = Ctx.lookup ctx name in
@@ -221,8 +218,8 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : Ctx.t * term * value =
                 if k = Public then Ctx.define c fname fty fty else c)
               ctx fields
           in
-          let _, body_core, body_ty = infer ctx' body in
-          (ctx, Open (Var ix, body_core), body_ty)
+          let body_core, body_ty = infer ctx' body in
+          (Open (Var ix, body_core), body_ty)
       | _ -> raise (ElabError (UnboundVariable name (* not a struct *))))
   | TypeDef (name, ctors, body) ->
       let nominal = VNominal { id = NominalId.fresh (); name; constructors = ctors } in
@@ -234,22 +231,21 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : Ctx.t * term * value =
           ctx ctors
       in
       let body_ctx = Ctx.define body_ctx name VU nominal in
-      let _, body_core, body_ty = infer body_ctx body in
-      (ctx, body_core, body_ty)
+      infer body_ctx body
 
 (** Application inference. *)
-and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : Ctx.t * term * value =
-  let ctx, f_core, f_ty = infer ctx f in
+and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
+  let f_core, f_ty = infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in
   match f_ty with
   | VPi { domain = a_ty; codomain = b_clo; _ } ->
-      let a_core = check ctx a a_ty |> snd in
+      let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
-      (ctx, Ap (f_core, a_core), ret_ty)
+      (Ap (f_core, a_core), ret_ty)
   | VFlex _ | VRigid _ | VNeutral _ ->
       let a_ty = Ctx.raw_meta ctx in
-      let a_core = check ctx a a_ty |> snd in
+      let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
       let ret_meta = Ctx.raw_meta (Ctx.bind ctx "_" a_ty) in
       let expected_f_ty =
@@ -263,94 +259,93 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : Ctx.t * term * valu
           { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta }
           a_val
       in
-      (ctx, Ap (f_core, a_core), ret_ty)
+      (Ap (f_core, a_core), ret_ty)
   | _ -> raise (ElabError ApplyingNonFunction)
 
 (** Let inference. *)
 and infer_let (ctx : Ctx.t) (name : string) (type_ : Surface.t option)
-    (value : Surface.t) (body : Surface.t) : Ctx.t * term * value =
-  let ctx, val_core, val_ty =
+    (value : Surface.t) (body : Surface.t) : term * value =
+  let val_core, val_ty =
     match type_ with
     | Some ty_expr ->
-        let _, ty_core, ty_ty = infer ctx ty_expr in
+        let ty_core, ty_ty = infer ctx ty_expr in
         Ctx.unify ctx ty_ty VU;
         let ty_val = Ctx.eval ctx ty_core in
-        let _, core = check ctx value ty_val in
-        (ctx, core, ty_val)
+        let core = check ctx value ty_val in
+        (core, ty_val)
     | None -> infer ctx value
   in
   let val_val = Ctx.eval ctx val_core in
   let ty_term = Ctx.quote ctx val_ty in
   let ctx' = Ctx.define ctx name val_ty val_val in
-  let _, body_core, body_ty = infer ctx' body in
-  (ctx, Let (ty_term, val_core, body_core), body_ty)
+  let body_core, body_ty = infer ctx' body in
+  (Let (ty_term, val_core, body_core), body_ty)
 
 (** If inference. *)
 and infer_if (ctx : Ctx.t) (cond : Surface.t) (then_ : Surface.t)
-    (else_ : Surface.t) : Ctx.t * term * value =
-  let _, cond_core = check ctx cond (VAtomTy TBool) in
-  let _, then_core, then_ty = infer ctx then_ in
-  let _, else_core = check ctx else_ then_ty in
-  (ctx, If (cond_core, then_core, else_core), then_ty)
+    (else_ : Surface.t) : term * value =
+  let cond_core = check ctx cond (VAtomTy TBool) in
+  let then_core, then_ty = infer ctx then_ in
+  let else_core = check ctx else_ then_ty in
+  (If (cond_core, then_core, else_core), then_ty)
 
 (** Lambda inference. *)
 and infer_lam (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
-    Ctx.t * term * value =
+    term * value =
   let a_ty =
     match param.type_ with
     | Some ty_expr ->
-        let _, ty_core, ty_ty = infer ctx ty_expr in
+        let ty_core, ty_ty = infer ctx ty_expr in
         Ctx.unify ctx ty_ty VU;
         Ctx.eval ctx ty_core
     | None ->
         Ctx.raw_meta ctx
   in
   let ctx' = Ctx.bind ctx param.name a_ty in
-  let _, body_core, body_ty = infer ctx' body in
+  let body_core, body_ty = infer ctx' body in
   let body_ty_term = Ctx.quote ctx' body_ty in
   let pi_ty = VPi { domain = a_ty; codomain = { env = ctx.env; body = body_ty_term } } in
-  (ctx, Lam body_core, pi_ty)
+  (Lam body_core, pi_ty)
 
-(** Bidirectional checking. Returns the (possibly extended) context
-    and the checked term. *)
-and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : Ctx.t * term =
+(** Bidirectional checking: verify [expr] against an [expected] type. *)
+and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
   let expected = Nbe.force ctx.metas expected in
   match (expr, expected) with
   | Lam (param, body), VPi { domain = a_ty; codomain = b_clo; _ } ->
       let ctx' = Ctx.bind ctx param.name a_ty in
       let b_ty = Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] }) in
-      let _, body_core = check ctx' body b_ty in
-      (ctx, Lam body_core)
+      let body_core = check ctx' body b_ty in
+      Lam body_core
   | If { cond; then_; else_ }, _ ->
-      let cond_core = check ctx cond (VAtomTy TBool) |> snd in
-      let _, then_core = check ctx then_ expected in
-      let _, else_core = check ctx else_ expected in
-      (ctx, If (cond_core, then_core, else_core))
+      let cond_core = check ctx cond (VAtomTy TBool) in
+      let then_core = check ctx then_ expected in
+      let else_core = check ctx else_ expected in
+      If (cond_core, then_core, else_core)
   | Prod elems, VProdTy tys ->
       if List.length elems <> List.length tys then
         raise (ElabError TupleLengthMismatch);
-      let cores = List.map2 (fun e t -> check ctx e t |> snd) elems tys in
-      (ctx, Prod cores)
+      let cores = List.map2 (check ctx) elems tys in
+      Prod cores
   | Let { name; type_; value; body }, _ ->
-      let ctx, val_core, val_ty =
+      let val_core, val_ty =
         match type_ with
         | Some ty_expr ->
-            let _, ty_core, ty_ty = infer ctx ty_expr in
+            let ty_core, ty_ty = infer ctx ty_expr in
             Ctx.unify ctx ty_ty VU;
             let ty_val = Ctx.eval ctx ty_core in
-            let core = check ctx value ty_val |> snd in
-            (ctx, core, ty_val)
+            let core = check ctx value ty_val in
+            (core, ty_val)
         | None -> infer ctx value
       in
       let val_val = Ctx.eval ctx val_core in
       let ty_term = Ctx.quote ctx val_ty in
       let ctx' = Ctx.define ctx name val_ty val_val in
-      let _, body_core = check ctx' body expected in
-      (ctx, Let (ty_term, val_core, body_core))
+      let body_core = check ctx' body expected in
+      Let (ty_term, val_core, body_core)
   | _ ->
-      let ctx, core, inferred = infer ctx expr in
+      let core, inferred = infer ctx expr in
       Ctx.unify ctx expected inferred;
-      (ctx, core)
+      core
 
 (** Build the initial elaboration context with built-in types ([I64],
     [Bool], [Unit], [Char], [Type]) and primitive operators. *)
@@ -370,5 +365,4 @@ let init_ctx () : Ctx.t =
 (** Entry point: elaborate a surface expression in the initial context. *)
 let on_expr (expr : Surface.t) : term * value =
   let ctx = init_ctx () in
-  let _, core, ty = infer ctx expr in
-  (core, ty)
+  infer ctx expr
