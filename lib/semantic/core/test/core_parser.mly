@@ -55,6 +55,7 @@ expr_app:
 
 expr_proj:
   | e = expr_proj; DOT; i = INT { Proj (e, Int64.to_int i) }
+  | e = expr_proj; DOT; name = ID { FieldAccess (e, name) }
   | e = expr_primary { e }
 
 expr_primary:

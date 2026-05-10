@@ -132,7 +132,8 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         | FIf { then_; else_ } ->
             If (acc, go d (Nbe.eval mc then_.env then_.body),
                      go d (Nbe.eval mc else_.env else_.body))
-        | FProj i -> Proj (acc, i))
+        | FProj i -> Proj (acc, i)
+        | FDot name -> Dot (acc, name))
       head frames
   in
   go depth v
@@ -261,6 +262,8 @@ and unify_frames (mc : MetaContext.t) (depth : lvl) (fs1 : frame list)
         (Nbe.eval mc e2.env e2.body);
       unify_frames mc depth rest1 rest2
   | FProj i1 :: rest1, FProj i2 :: rest2 when i1 = i2 ->
+      unify_frames mc depth rest1 rest2
+  | FDot n1 :: rest1, FDot n2 :: rest2 when String.equal n1 n2 ->
       unify_frames mc depth rest1 rest2
   | _ ->
       (* FApp vs FIf, or FIf branches differ — frame stacks don't match

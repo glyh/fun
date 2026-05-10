@@ -53,6 +53,13 @@ let test_eval_proj () =
   let v = eval mc [] t in
   match v with VAtom (I64 n) -> Alcotest.(check int64) "proj0" 42L n | _ -> Alcotest.fail "expected VAtom"
 
+let test_eval_dot () =
+  let mc = mc () in
+  let s = Struct [ ("x", Atom (I64 99L)); ("y", Atom (Bool true)) ] in
+  let t = Dot (s, "x") in
+  let v = eval mc [] t in
+  match v with VAtom (I64 n) -> Alcotest.(check int64) "dot" 99L n | _ -> Alcotest.fail "expected VAtom"
+
 let test_eval_pi () =
   let mc = mc () in
   let t = Pi (AtomTy TI64, AtomTy TBool) in
@@ -271,6 +278,7 @@ let () =
           Alcotest.test_case "if false" `Quick test_eval_if_false;
           Alcotest.test_case "prod" `Quick test_eval_prod;
           Alcotest.test_case "proj" `Quick test_eval_proj;
+          Alcotest.test_case "dot" `Quick test_eval_dot;
           Alcotest.test_case "pi" `Quick test_eval_pi;
         ] );
       ( "quote",

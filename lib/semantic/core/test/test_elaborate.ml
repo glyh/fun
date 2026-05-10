@@ -153,6 +153,20 @@ let structs =
       (check_type
          "let x = true in let S = struct let x = 42 end in open S in x"
          (AtomTy TI64));
+    Alcotest.test_case "field access" `Quick
+      (check_type
+         "let S = struct let x = 42 end in S.x"
+         (AtomTy TI64));
+    Alcotest.test_case "field access boolean" `Quick
+      (check_type
+         "let S = struct let x = 1; let y = true end in S.y"
+         (AtomTy TBool));
+    Alcotest.test_case "nested field access" `Quick
+      (check_type
+         "let Outer = struct let Inner = struct let val = 42 end end in Outer.Inner.val"
+         (AtomTy TI64));
+    Alcotest.test_case "field not found" `Quick
+      (elab_fail "let S = struct let x = 1 end in S.y");
   ]
 
 let tuple_proj =

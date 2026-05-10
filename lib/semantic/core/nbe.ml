@@ -50,6 +50,26 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
           let frames = List.map (fun v -> FApp v) sp in
           VNeutral { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FProj i ] } }
       | _ -> raise (EvalError "projection of non-product"))
+  | Dot (e, name) ->
+      let vs = eval mc env e in
+      (match vs with
+      | VStruct { fields } ->
+          (match List.assoc_opt name fields with
+          | Some v -> v
+          | None -> raise (EvalError "field not found"))
+      | VNeutral { neutral; _ } ->
+          VNeutral
+            { ty = VU;
+              neutral = { neutral with frames = neutral.frames @ [ FDot name ] } }
+      | VFlex { id; spine = sp } ->
+          let frames = List.map (fun v -> FApp v) sp in
+          VNeutral
+            { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FDot name ] } }
+      | VRigid { lvl; spine = sp } ->
+          let frames = List.map (fun v -> FApp v) sp in
+          VNeutral
+            { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FDot name ] } }
+      | _ -> raise (EvalError "field access on non-struct"))
   | Open (s, body) ->
       let vs = eval mc env s in
       (match vs with
@@ -192,7 +212,8 @@ and quote_frames (mc : MetaContext.t) (depth : lvl) (head : term)
             ( acc,
               quote mc depth (eval mc then_.env then_.body),
               quote mc depth (eval mc else_.env else_.body) )
-      | FProj i -> Proj (acc, i))
+      | FProj i -> Proj (acc, i)
+      | FDot name -> Dot (acc, name))
     head frames
 
 let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
@@ -268,4 +289,6 @@ and conv_frames (mc : MetaContext.t) (depth : lvl) (fs1 : frame list)
       && conv_frames mc depth rest1 rest2
   | FProj i1 :: rest1, FProj i2 :: rest2 ->
       i1 = i2 && conv_frames mc depth rest1 rest2
+  | FDot n1 :: rest1, FDot n2 :: rest2 ->
+      String.equal n1 n2 && conv_frames mc depth rest1 rest2
   | _ -> false

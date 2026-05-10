@@ -135,6 +135,14 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let b_core, b_ty = infer ctx' b in
       Ctx.unify ctx' b_ty VU;
       (Pi (a_core, b_core), VU)
+  | FieldAccess (e, name) ->
+      let e_core, e_ty = infer ctx e in
+      (match Nbe.force ctx.metas e_ty with
+      | VStruct { fields } ->
+          (match List.assoc_opt name fields with
+          | Some field_ty -> (Dot (e_core, name), field_ty)
+          | None -> raise (ElabError (UnboundVariable name)))
+      | _ -> raise (ElabError ApplyingNonFunction))
   | Proj (e, i) ->
       let e_core, e_ty = infer ctx e in
       (match Nbe.force ctx.metas e_ty with

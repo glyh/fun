@@ -21,6 +21,7 @@ type term =
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
   | Fix of term
   | Proj of term * int             (* positional tuple projection: e.0 *)
+  | Dot of term * string           (* named struct field access: e.field *)
   | Struct of (string * term) list
   | Open of term * term            (* open S in body — evaluator extends env with struct fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
@@ -121,6 +122,7 @@ and frame =
   | FApp of value
   | FIf of { then_ : closure; else_ : closure }
   | FProj of int
+  | FDot of string
 
 and closure = { env : env; body : term }
 
