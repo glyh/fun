@@ -155,6 +155,22 @@ let structs =
          (AtomTy TI64));
   ]
 
+let tuple_proj =
+  [
+    Alcotest.test_case "proj first" `Quick
+      (check_type "(1, true).0" (AtomTy TI64));
+    Alcotest.test_case "proj second" `Quick
+      (check_type "(1, true).1" (AtomTy TBool));
+    Alcotest.test_case "proj triple" `Quick
+      (check_type "(1, 2, 3).2" (AtomTy TI64));
+    Alcotest.test_case "proj chain" `Quick
+      (check_type "((1, true), 42).0.1" (AtomTy TBool));
+    Alcotest.test_case "proj from let" `Quick
+      (check_type "let p = (1, true) in p.0" (AtomTy TI64));
+    Alcotest.test_case "proj type error" `Quick
+      (elab_fail "42.0");
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
@@ -168,4 +184,5 @@ let () =
       ("dependent", dependent);
       ("meta_solving", meta_solving);
       ("structs", structs);
+      ("tuple_proj", tuple_proj);
     ]

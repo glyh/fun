@@ -8,7 +8,7 @@ open Core_tt.Surface
 %token LET IN FUN IF THEN ELSE
 %token STRUCT END OPEN
 %token ARROW COLON EQUALS SEMI
-%token LPAREN RPAREN COMMA
+%token LPAREN RPAREN COMMA DOT
 %token <string> OP
 %token EOF
 
@@ -50,7 +50,11 @@ expr_binop:
   | e = expr_app { e }
 
 expr_app:
-  | f = expr_app; a = expr_primary { Ap (f, a) }
+  | f = expr_app; a = expr_proj { Ap (f, a) }
+  | e = expr_proj { e }
+
+expr_proj:
+  | e = expr_proj; DOT; i = INT { Proj (e, Int64.to_int i) }
   | e = expr_primary { e }
 
 expr_primary:

@@ -135,6 +135,14 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let b_core, b_ty = infer ctx' b in
       Ctx.unify ctx' b_ty VU;
       (Pi (a_core, b_core), VU)
+  | Proj (e, i) ->
+      let e_core, e_ty = infer ctx e in
+      (match Nbe.force ctx.metas e_ty with
+      | VProdTy tys ->
+          if i < 0 || i >= List.length tys then
+            raise (ElabError TupleLengthMismatch);
+          (Proj (e_core, i), List.nth tys i)
+      | _ -> raise (ElabError ApplyingNonFunction))
   | Struct bindings ->
       let rec go ctx acc fields =
         match fields with

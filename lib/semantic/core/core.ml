@@ -20,6 +20,7 @@ type term =
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
   | Fix of term
+  | Proj of term * int             (* positional tuple projection: e.0 *)
   | Struct of (string * term) list
   | Open of term * term            (* open S in body — evaluator extends env with struct fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)

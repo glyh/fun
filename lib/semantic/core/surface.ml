@@ -11,5 +11,6 @@ and t =
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | Arrow of t * t
+  | Proj of t * int
   | Struct of struct_binding list
   | Open of string * t

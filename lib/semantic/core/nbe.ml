@@ -35,12 +35,25 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
             go (vdef :: env) ((name, vdef) :: acc) rest
       in
       go env [] bindings
+  | Proj (e, i) ->
+      let vs = eval mc env e in
+      (match vs with
+      | VProd elems -> List.nth elems i
+      | VNeutral { neutral; _ } ->
+          VNeutral
+            { ty = VU;
+              neutral = { neutral with frames = neutral.frames @ [ FProj i ] } }
+      | VFlex { id; spine = sp } ->
+          let frames = List.map (fun v -> FApp v) sp in
+          VNeutral { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FProj i ] } }
+      | VRigid { lvl; spine = sp } ->
+          let frames = List.map (fun v -> FApp v) sp in
+          VNeutral { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FProj i ] } }
+      | _ -> raise (EvalError "projection of non-product"))
   | Open (s, body) ->
       let vs = eval mc env s in
       (match vs with
       | VStruct { fields } ->
-          (* Push each field left-to-right; last field ends up at Var 0,
-             matching the elaborator's ctx.define order. *)
           let env' = List.fold_left (fun e (_, v) -> v :: e) env fields in
           eval mc env' body
       | _ -> raise (EvalError "open of non-struct"))
@@ -179,7 +192,7 @@ and quote_frames (mc : MetaContext.t) (depth : lvl) (head : term)
             ( acc,
               quote mc depth (eval mc then_.env then_.body),
               quote mc depth (eval mc else_.env else_.body) )
-      | FProj _ -> failwith "quote: FProj not yet implemented")
+      | FProj i -> Proj (acc, i))
     head frames
 
 let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool

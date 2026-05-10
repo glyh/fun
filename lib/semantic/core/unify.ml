@@ -132,7 +132,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         | FIf { then_; else_ } ->
             If (acc, go d (Nbe.eval mc then_.env then_.body),
                      go d (Nbe.eval mc else_.env else_.body))
-        | FProj _ -> failwith "unify: FProj not yet implemented")
+        | FProj i -> Proj (acc, i))
       head frames
   in
   go depth v

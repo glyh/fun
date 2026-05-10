@@ -35,6 +35,7 @@ let rec token buf =
   | ")" -> RPAREN
   | "=" -> EQUALS
   | ":" -> COLON
+  | "." -> DOT
   | "," -> COMMA
   | ";" -> SEMI
   | Plus '0' .. '9' ->
