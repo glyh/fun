@@ -1,5 +1,13 @@
 # Roadmap
 
+## Design Philosophy
+
+Consistency > Flexibility > Correctness.
+
+- **Consistency**: one construct for many roles (struct = record/ADT/module/namespace), types are values (no separate type language), DT to unify modules into dependent records.
+- **Flexibility**: willing to sacrifice theoretical properties (parametricity, free theorems) for practical power. Type-case on open `Type` is acceptable. Engineering lang, not proof lang.
+- **Correctness**: still valued (real type system, bidirectional checking, unification) but serves the other two rather than constraining them. Runtime asserts over heavy type-level encoding when the gain is marginal.
+
 ## Dependent Types
 
 Most disruptive change — collapses the type/value boundary. Requires bidirectional
@@ -14,6 +22,11 @@ top of DT covers the same use case (implicit dispatch via scoped instance search
 Needs row-polymorphic effect annotations on function types (`Arrow(a, eff, b)`).
 Implement via own VM rather than OCaml's effect system — the point is to learn the
 continuation machinery.
+
+## Type-Case / Pattern Matching on Types
+
+Direct matching on `Type` values — enables generic programming, type-driven dispatch,
+comptime-style reflection (like Zig). Parametricity is explicitly traded for flexibility.
 
 ## VM Backend
 
@@ -44,6 +57,10 @@ Uniform function call syntax.
 ## Native Bindings
 
 FFI for calling into native code from `fun`.
+
+## Macros
+
+User-defined syntax extensions. Design TBD.
 
 ## Zig Rewrite + Syntax Redesign
 
