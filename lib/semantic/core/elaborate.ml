@@ -138,10 +138,19 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | FieldAccess (e, name) ->
       let e_core, e_ty = infer ctx e in
       (match Nbe.force ctx.metas e_ty with
-      | VStruct { fields } ->
-          (match List.assoc_opt name fields with
-          | Some field_ty -> (Dot (e_core, name), field_ty)
+      | VStruct { fields; _ } ->
+          (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
+          | Some (_, _, field_ty) -> (Dot (e_core, name), field_ty)
           | None -> raise (ElabError (UnboundVariable name)))
+      | VFlex _ | VRigid _ | VNeutral _ ->
+          (* stuck type: raw meta (no Bound capture) for partial constraint *)
+          let raw_id = MetaContext.fresh ctx.metas in
+          let result_ty = VFlex { id = raw_id; spine = [] } in
+          let constraint_ty =
+            VStruct { fields = [ (name, Field, result_ty) ]; partial = true }
+          in
+          Ctx.unify ctx e_ty constraint_ty;
+          (Dot (e_core, name), result_ty)
       | _ -> raise (ElabError ApplyingNonFunction))
   | Proj (e, i) ->
       let e_core, e_ty = infer ctx e in
@@ -151,29 +160,42 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             raise (ElabError TupleLengthMismatch);
           (Proj (e_core, i), List.nth tys i)
       | _ -> raise (ElabError ApplyingNonFunction))
-  | Struct bindings ->
-      let rec go ctx acc fields =
-        match fields with
-        | [] ->
-            let core_fields = List.rev acc in
-            let elem_cores = List.map (fun (n, c, _) -> (n, c)) core_fields in
-            let elem_val_tys = List.map (fun (n, _, t) -> (n, t)) core_fields in
-            (Struct elem_cores, VStruct { fields = elem_val_tys })
-        | { Surface.name; value } :: rest ->
+  | Struct { con_fields; bindings } ->
+      let con_cores =
+        List.map (fun (name, ty_expr) ->
+          let ty_core, ty_ty = infer ctx ty_expr in
+          Ctx.unify ctx ty_ty VU;
+          (name, ty_core, Ctx.eval ctx ty_core))
+        con_fields
+      in
+      (* bindings: sequential, each sees previous lets only (not fields) *)
+      let rec go ctx acc = function
+        | [] -> List.rev acc
+        | { Surface.name; value; public } :: rest ->
             let val_core, val_ty = infer ctx value in
             let val_val = Ctx.eval ctx val_core in
+            let kind = if public then Public else Private in
             let ctx' = Ctx.define ctx name val_ty val_val in
-            go ctx' ((name, val_core, val_ty) :: acc) rest
+            go ctx' ((name, kind, val_core, val_ty) :: acc) rest
       in
-      go ctx [] bindings
+      let core_bindings = go ctx [] bindings in
+      let result_con_fields = List.map (fun (n, c, _) -> (n, c)) con_cores in
+      let result_bindings = List.map (fun (n, k, c, _) -> (n, k, c)) core_bindings in
+      let type_fields =
+        List.map (fun (n, _, ty) -> (n, Field, ty)) con_cores
+        @ List.filter_map (fun (n, k, _, ty) ->
+            if k = Public then Some (n, Public, ty) else None) core_bindings
+      in
+      (Struct { con_fields = result_con_fields; bindings = result_bindings; partial = false },
+       VStruct { fields = type_fields; partial = false })
   | Open (name, body) ->
       let ix, ty = Ctx.lookup ctx name in
       (match Nbe.force ctx.metas ty with
-      | VStruct { fields } ->
+      | VStruct { fields; _ } ->
           let ctx' =
             List.fold_left
-              (fun c (fname, fty) ->
-                Ctx.define c fname fty fty (* with Type : Type, types are values *))
+              (fun c (fname, k, fty) ->
+                if k = Public then Ctx.define c fname fty fty else c)
               ctx fields
           in
           let body_core, body_ty = infer ctx' body in

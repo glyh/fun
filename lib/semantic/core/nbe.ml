@@ -26,15 +26,21 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       eval_if mc env vc then_ else_
   | Prod elems -> VProd (List.map (eval mc env) elems)
   | ProdTy elems -> VProdTy (List.map (eval mc env) elems)
-  | Struct bindings ->
-      let rec go env acc fields =
-        match fields with
-        | [] -> VStruct { fields = List.rev acc }
-        | (name, def) :: rest ->
-            let vdef = eval mc env def in
-            go (vdef :: env) ((name, vdef) :: acc) rest
+  | Struct { con_fields; bindings; partial } ->
+      (* con_fields: all at same scope, no sequential dependency *)
+      let con_vals =
+        List.map (fun (name, ty) -> (name, Field, eval mc env ty)) con_fields
       in
-      go env [] bindings
+      let env = List.fold_left (fun e (_, _, v) -> v :: e) env con_vals in
+      (* bindings: sequential, interleaved Public and Private *)
+      let rec eval_binds env acc = function
+        | [] -> env, List.rev acc
+        | (name, kind, def) :: rest ->
+            let vdef = eval mc env def in
+            eval_binds (vdef :: env) ((name, kind, vdef) :: acc) rest
+      in
+      let _env, bind_vals = eval_binds env [] bindings in
+      VStruct { fields = con_vals @ bind_vals; partial }
   | Proj (e, i) ->
       let vs = eval mc env e in
       (match vs with
@@ -53,9 +59,10 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
   | Dot (e, name) ->
       let vs = eval mc env e in
       (match vs with
-      | VStruct { fields } ->
-          (match List.assoc_opt name fields with
-          | Some v -> v
+      | VStruct { fields; _ } ->
+          (* Dot: all non-Private fields accessible *)
+          (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
+          | Some (_, _, v) -> v
           | None -> raise (EvalError "field not found"))
       | VNeutral { neutral; _ } ->
           VNeutral
@@ -73,8 +80,10 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
   | Open (s, body) ->
       let vs = eval mc env s in
       (match vs with
-      | VStruct { fields } ->
-          let env' = List.fold_left (fun e (_, v) -> v :: e) env fields in
+      | VStruct { fields; _ } ->
+          (* Open: only Public (pub-let) fields *)
+          let vals = List.filter_map (fun (_, k, v) -> if k = Public then Some v else None) fields in
+          let env' = List.fold_left (fun e v -> v :: e) env vals in
           eval mc env' body
       | _ -> raise (EvalError "open of non-struct"))
   | Fix body -> VFix { body = { env; body } }
@@ -181,8 +190,19 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VFix { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       Fix (quote mc (depth + 1) (closure_apply mc clo var))
-  | VStruct { fields } ->
-      Struct (List.map (fun (n, v) -> (n, quote mc depth v)) fields)
+  | VStruct { fields; partial } ->
+      let con_fields =
+        List.filter_map (fun (n, k, v) ->
+          if k = Field then Some (n, quote mc depth v) else None) fields
+      in
+      let bindings =
+        List.filter_map (fun (n, k, v) ->
+          match k with
+          | Public -> Some (n, Public, quote mc depth v)
+          | Private -> Some (n, Private, quote mc depth v)
+          | _ -> None) fields
+      in
+      Struct { con_fields; bindings; partial }
   | VNeutral { neutral = neu; _ } -> quote_neutral mc depth neu
   | VFlex { id; spine = sp } -> quote_spine mc depth (Meta id) sp
   | VRigid { lvl = l; spine = sp } ->
@@ -254,11 +274,14 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       conv mc (depth + 1)
         (closure_apply mc clo1 var)
         (closure_apply mc clo2 var)
-  | VStruct { fields = fs1 }, VStruct { fields = fs2 } ->
-      List.length fs1 = List.length fs2
+  | VStruct { fields = fs1; _ }, VStruct { fields = fs2; _ } ->
+      let visible fs = List.filter (fun (_, k, _) -> k <> Private) fs in
+      let vs1 = visible fs1 and vs2 = visible fs2 in
+      List.length vs1 = List.length vs2
       && List.for_all2
-           (fun (n1, v1) (n2, v2) -> String.equal n1 n2 && conv mc depth v1 v2)
-           fs1 fs2
+           (fun (n1, k1, v1) (n2, k2, v2) ->
+             String.equal n1 n2 && k1 = k2 && conv mc depth v1 v2)
+           vs1 vs2
   | _ -> false
 
 and conv_spine (mc : MetaContext.t) (depth : lvl) (sp1 : spine) (sp2 : spine) :

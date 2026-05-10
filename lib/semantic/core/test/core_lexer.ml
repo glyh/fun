@@ -13,6 +13,7 @@ let rec token buf =
   | "if" -> IF
   | "then" -> THEN
   | "else" -> ELSE
+  | "pub" -> PUB
   | "struct" -> STRUCT
   | "end" -> END
   | "open" -> OPEN

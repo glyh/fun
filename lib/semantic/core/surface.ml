@@ -1,5 +1,5 @@
 type param = { name : string; type_ : t option }
-and struct_binding = { name : string; value : t }
+and struct_binding = { name : string; value : t; public : bool }
 
 and t =
   | Atom of Syntax.Ast.Atom.t
@@ -13,5 +13,8 @@ and t =
   | Arrow of t * t
   | FieldAccess of t * string
   | Proj of t * int
-  | Struct of struct_binding list
+  | Struct of {
+      con_fields : (string * t) list;
+      bindings : struct_binding list;
+    }
   | Open of string * t

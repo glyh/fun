@@ -7,6 +7,8 @@ type atom_ty = TI64 | TBool | TUnit | TChar [@@deriving eq]
    InsertedMeta uses this to know which scope vars to abstract over. *)
 type bd = Bound | Defined
 
+type struct_field_kind = Field | Public | Private
+
 type term =
   | Var of ix
   | Lam of term
@@ -22,7 +24,14 @@ type term =
   | Fix of term
   | Proj of term * int             (* positional tuple projection: e.0 *)
   | Dot of term * string           (* named struct field access: e.field *)
-  | Struct of (string * term) list
+  | Struct of {
+      con_fields : (string * term) list;
+      bindings : (string * struct_field_kind * term) list;
+      partial : bool;
+    }
+      (** [con_fields] = field type declarations; [bindings] = ordered
+          let-bindings tagged [Computed]/[Private]. [partial] = width-subtyped
+          constraint (only from rename, never from elaboration). *)
   | Open of term * term            (* open S in body — evaluator extends env with struct fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
   | Meta of meta_id
@@ -72,10 +81,15 @@ and value =
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)
   | VFix of { body : closure }
-  | VStruct of { fields : (string * value) list }
-      (** Namespace struct: ordered field name→value bindings. Struct
-          values contain terms; struct types contain types (which are
-          themselves values under [Type : Type]). *)
+  | VStruct of {
+      fields : (string * struct_field_kind * value) list;
+      partial : bool;
+    }
+      (** Struct value/type. [fields] carry a [struct_field_kind]:
+          [Constructor] = must be provided at construction,
+          [Computed] = in type but forbidden at construction,
+          [Private] = invisible outside.  [partial] = width-subtyped
+          (matches any struct with at least these fields). *)
   | VNeutral of { ty : value; neutral : neutral }
       (** Stuck computation with a primitive or a variable/metavariable wrapped in
           elimination frames ([FIf], [FProj]). Unification decomposes these:

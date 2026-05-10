@@ -55,7 +55,9 @@ let test_eval_proj () =
 
 let test_eval_dot () =
   let mc = mc () in
-  let s = Struct [ ("x", Atom (I64 99L)); ("y", Atom (Bool true)) ] in
+  let s = Struct { con_fields = [];
+                   bindings = [ ("x", Public, Atom (I64 99L)); ("y", Public, Atom (Bool true)) ];
+                   partial = false } in
   let t = Dot (s, "x") in
   let v = eval mc [] t in
   match v with VAtom (I64 n) -> Alcotest.(check int64) "dot" 99L n | _ -> Alcotest.fail "expected VAtom"

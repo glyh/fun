@@ -140,33 +140,45 @@ let structs =
       (elab_ok "struct end");
     Alcotest.test_case "open struct" `Quick
       (check_type
-         "let S = struct let x = 42 end in open S in x"
+         "let S = struct pub let x = 42 end in open S in x"
          (AtomTy TI64));
-    Alcotest.test_case "struct with two fields" `Quick
+    Alcotest.test_case "struct with pub fields" `Quick
       (elab_ok
-         "let S = struct let x = 1; let y = true end in open S in if y then x else 0");
+         "let S = struct pub let x = 1; pub let y = true end in open S in if y then x else 0");
     Alcotest.test_case "nested struct open" `Quick
       (check_type
-         "let Outer = struct let Inner = struct let val = 42 end end in open Outer in open Inner in val"
+         "let Outer = struct pub let Inner = struct pub let val = 42 end end in open Outer in open Inner in val"
          (AtomTy TI64));
-    Alcotest.test_case "struct field shadows" `Quick
-      (check_type
-         "let x = true in let S = struct let x = 42 end in open S in x"
-         (AtomTy TI64));
+    Alcotest.test_case "open only imports pub" `Quick
+      (elab_fail
+         "let S = struct let x = 42 end in open S in x");
     Alcotest.test_case "field access" `Quick
       (check_type
-         "let S = struct let x = 42 end in S.x"
+         "let S = struct pub let x = 42 end in S.x"
          (AtomTy TI64));
     Alcotest.test_case "field access boolean" `Quick
       (check_type
-         "let S = struct let x = 1; let y = true end in S.y"
+         "let S = struct pub let x = 1; pub let y = true end in S.y"
          (AtomTy TBool));
     Alcotest.test_case "nested field access" `Quick
       (check_type
-         "let Outer = struct let Inner = struct let val = 42 end end in Outer.Inner.val"
+         "let Outer = struct pub let Inner = struct pub let val = 42 end end in Outer.Inner.val"
          (AtomTy TI64));
     Alcotest.test_case "field not found" `Quick
-      (elab_fail "let S = struct let x = 1 end in S.y");
+      (elab_fail "let S = struct pub let x = 1 end in S.y");
+    Alcotest.test_case "private not accessible" `Quick
+      (elab_fail "let S = struct let x = 42 end in S.x");
+    Alcotest.test_case "field decls" `Quick
+      (elab_ok "struct x: I64; y: Bool; end");
+    Alcotest.test_case "field decls with pub binding" `Quick
+      (elab_ok "struct x: I64; pub let fourty_two = 42 end");
+    Alcotest.test_case "pass struct through function" `Quick
+      (elab_ok
+         "let S = struct pub let x = 42 end in (fun s -> s.x) S");
+    Alcotest.test_case "private used by pub" `Quick
+      (check_type
+         "let S = struct let helper = 42; pub let x = helper end in S.x"
+         (AtomTy TI64));
   ]
 
 let tuple_proj =

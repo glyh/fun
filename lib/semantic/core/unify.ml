@@ -99,8 +99,19 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VAtomTy t -> AtomTy t
     | VProd elems -> Prod (List.map (go d) elems)
     | VProdTy elems -> ProdTy (List.map (go d) elems)
-    | VStruct { fields } ->
-        Struct (List.map (fun (n, v) -> (n, go d v)) fields)
+    | VStruct { fields; partial } ->
+        let con_fields =
+          List.filter_map (fun (n, k, v) ->
+            if k = Field then Some (n, go d v) else None) fields
+        in
+        let bindings =
+          List.filter_map (fun (n, k, v) ->
+            match k with
+            | Public -> Some (n, Public, go d v)
+            | Private -> Some (n, Private, go d v)
+            | _ -> None) fields
+        in
+        Struct { con_fields; bindings; partial }
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
@@ -193,14 +204,31 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
            make a 2-tuple equal to a 3-tuple. *)
         raise (UnifyError TupleLengthMismatch);
       List.iter2 (unify mc depth) elems1 elems2
-  | VStruct { fields = fs1 }, VStruct { fields = fs2 } ->
-      if List.length fs1 <> List.length fs2 then
-        raise (UnifyError TupleLengthMismatch);
-      List.iter2
-        (fun (n1, v1) (n2, v2) ->
-          if not (String.equal n1 n2) then raise (UnifyError StructFieldMismatch);
-          unify mc depth v1 v2)
-        fs1 fs2
+  | VStruct { fields = fs1; partial = p1 }, VStruct { fields = fs2; partial = p2 } ->
+      let visible fs = List.filter (fun (_, k, _) -> k <> Private) fs in
+      let vs1 = visible fs1 and vs2 = visible fs2 in
+      if (not p1) && (not p2) then begin
+        (* Both concrete: strict equality *)
+        if List.length vs1 <> List.length vs2 then
+          raise (UnifyError TupleLengthMismatch);
+        List.iter2
+          (fun (n1, k1, v1) (n2, k2, v2) ->
+            if not (String.equal n1 n2) then raise (UnifyError StructFieldMismatch);
+            if k1 <> k2 then raise (UnifyError StructFieldMismatch);
+            unify mc depth v1 v2)
+          vs1 vs2
+      end else
+        (* At least one partial: smaller constrains larger *)
+        let small, large = if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
+        List.iter
+          (fun (name, kind, ty) ->
+            match List.find_opt (fun (n, k, _) ->
+              String.equal n name && (k = kind || kind = Field && k = Public || kind = Public && k = Field))
+              large
+            with
+            | Some (_, _, large_ty) -> unify mc depth ty large_ty
+            | None -> raise (UnifyError StructFieldMismatch))
+          small
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->
