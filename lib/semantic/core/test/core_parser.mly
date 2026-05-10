@@ -6,9 +6,9 @@ open Core_tt.Surface
 %token <string> ID
 %token TRUE FALSE UNIT
 %token LET IN FUN IF THEN ELSE
-%token STRUCT END OPEN PUB
+%token STRUCT END OPEN PUB TYPE
 %token ARROW COLON EQUALS SEMI
-%token LPAREN RPAREN COMMA DOT
+%token LPAREN RPAREN COMMA DOT BAR
 %token <string> OP
 %token EOF
 
@@ -28,6 +28,8 @@ expr:
     { If { cond; then_; else_ } }
   | STRUCT; flds = list(struct_field_decl); bnds = separated_list(SEMI, struct_binding); END
     { Struct { con_fields = flds; bindings = bnds } }
+  | TYPE; name = ID; EQUALS; ctors = separated_nonempty_list(BAR, ID); IN; body = expr
+    { TypeDef (name, ctors, body) }
   | OPEN; name = ID; IN; body = expr
     { Open (name, body) }
   | e = expr_arrow { e }
@@ -36,8 +38,12 @@ struct_field_decl:
   | name = ID; COLON; ty = expr; SEMI { (name, ty) }
 
 struct_binding:
-  | PUB; LET; name = ID; EQUALS; value = expr { { name; value; public = true } }
-  | LET; name = ID; EQUALS; value = expr { { name; value; public = false } }
+  | PUB; LET; name = ID; EQUALS; value = expr { LetBinding { name; value; public = true } }
+  | LET; name = ID; EQUALS; value = expr { LetBinding { name; value; public = false } }
+  | PUB; TYPE; name = ID; EQUALS; ctors = separated_nonempty_list(BAR, ID)
+    { TypeBinding { name; ctors; public = true } }
+  | TYPE; name = ID; EQUALS; ctors = separated_nonempty_list(BAR, ID)
+    { TypeBinding { name; ctors; public = false } }
 
 expr_arrow:
   | dom = expr_binop; ARROW; cod = expr_arrow { Arrow (dom, cod) }

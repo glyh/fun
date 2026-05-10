@@ -1,6 +1,7 @@
 type ix = int (* de Bruijn index: distance to binder *)
 type lvl = int (* de Bruijn level: distance from outermost scope *)
 type meta_id = int
+type nominal_id = int (* unique identity for each nominal type definition *)
 type atom_ty = TI64 | TBool | TUnit | TChar [@@deriving eq]
 
 (* Bound = introduced by lambda/pi, Defined = introduced by let.
@@ -26,14 +27,16 @@ type term =
   | Dot of term * string           (* named struct field access: e.field *)
   | Struct of {
       con_fields : (string * term) list;
-      bindings : (string * struct_field_kind * term) list;
+      bindings : struct_binding_term list;
       partial : bool;
     }
-      (** [con_fields] = field type declarations; [bindings] = ordered
-          let-bindings tagged [Computed]/[Private]. [partial] = width-subtyped
-          constraint (only from rename, never from elaboration). *)
   | Open of term * term            (* open S in body — evaluator extends env with struct fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
+  | Con of string
+      (** Residual constructor/type reference in quoted output. Created when
+          [quote] hits a [VCon] or [VNominal]. [eval] scans the environment
+          by name for a matching VCon or VNominal. Like [Meta], never
+          produced by the elaborator. *)
   | Meta of meta_id
       (** Residual metavariable in quoted output. Created when [quote] hits an
           unsolved [VFlex]. Used as the head of stuck neutrals
@@ -48,9 +51,15 @@ type term =
           unknown values. This keeps unification solutions minimal and avoids
           spurious occurs-check failures. *)
 
+and struct_binding_term =
+  | LetBind of string * struct_field_kind * term
+  | TypeBind of string * struct_field_kind * value * (string * value) list
+      (** name, kind, nominal_value, [(ctor_name, ctor_value)].
+          Evaluator stores values directly without routing through [eval]. *)
+
 (* Semantic domain — de Bruijn levels for variables *)
 
-type env = value list (* head = most recently bound *)
+and env = value list (* head = most recently bound *)
 
 (*
    Notation used in the [value] constructor comments:
@@ -90,6 +99,18 @@ and value =
           [Computed] = in type but forbidden at construction,
           [Private] = invisible outside.  [partial] = width-subtyped
           (matches any struct with at least these fields). *)
+  | VNominal of { id : nominal_id; name : string; constructors : string list }
+      (** Nominal ADT type. Unifies by [id] equality — two nominal types
+          are equal only if they come from the same definition site.
+          [name] is for display; [constructors] is the set of nullary
+          constructor names. Created by [type Color = Red | Green | Blue]. *)
+  | VCon of { name : string; spine : value list; nominal : value }
+      (** Fully saturated constructor value. [name] is the constructor tag,
+          [spine] collects type+value arguments in application order
+          ([spine = []] for nullary constructors like [Red]),
+          [nominal] is the fully-applied nominal type this constructor
+          belongs to. Pattern matching (Phase 5) dispatches on [name] and
+          binds [spine] elements to sub-patterns. *)
   | VNeutral of { ty : value; neutral : neutral }
       (** Stuck computation with a primitive or a variable/metavariable wrapped in
           elimination frames ([FIf], [FProj]). Unification decomposes these:
@@ -156,4 +177,18 @@ module MetaContext = struct
 
   let lookup (mc : t) (id : meta_id) : entry =
     Dynarray.get mc id
+end
+
+(** Global counter for fresh nominal type identities.
+    Each [type Foo = ...] definition gets a unique [nominal_id].
+    Equality of nominal types compares by id, not by name —
+    two separately-defined types with the same name are distinct. *)
+module NominalId : sig
+  val fresh : unit -> nominal_id
+end = struct
+  let counter = ref 0
+  let fresh () =
+    let id = !counter in
+    incr counter;
+    id
 end

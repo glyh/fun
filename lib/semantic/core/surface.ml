@@ -1,5 +1,7 @@
 type param = { name : string; type_ : t option }
-and struct_binding = { name : string; value : t; public : bool }
+and struct_binding =
+  | LetBinding of { name : string; value : t; public : bool }
+  | TypeBinding of { name : string; ctors : string list; public : bool }
 
 and t =
   | Atom of Syntax.Ast.Atom.t
@@ -18,3 +20,4 @@ and t =
       bindings : struct_binding list;
     }
   | Open of string * t
+  | TypeDef of string * string list * t  (* type name + constructor names + body *)

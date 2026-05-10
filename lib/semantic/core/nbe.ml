@@ -32,12 +32,17 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
         List.map (fun (name, ty) -> (name, Field, eval mc env ty)) con_fields
       in
       let env = List.fold_left (fun e (_, _, v) -> v :: e) env con_vals in
-      (* bindings: sequential, interleaved Public and Private *)
+      (* bindings: sequential, TypeBind stores values directly *)
       let rec eval_binds env acc = function
         | [] -> env, List.rev acc
-        | (name, kind, def) :: rest ->
+        | LetBind (name, kind, def) :: rest ->
             let vdef = eval mc env def in
             eval_binds (vdef :: env) ((name, kind, vdef) :: acc) rest
+        | TypeBind (name, kind, nominal, ctors) :: rest ->
+            let ctor_vals = List.map (fun (n, v) -> (n, kind, v)) ctors in
+            let env = List.fold_left (fun e (_, _, v) -> v :: e) env ctor_vals in
+            let env = nominal :: env in
+            eval_binds env ((name, kind, nominal) :: ctor_vals @ acc) rest
       in
       let _env, bind_vals = eval_binds env [] bindings in
       VStruct { fields = con_vals @ bind_vals; partial }
@@ -87,6 +92,7 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
           eval mc env' body
       | _ -> raise (EvalError "open of non-struct"))
   | Fix body -> VFix { body = { env; body } }
+  | Con name -> eval_con env name
   | Prim name ->
       VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } }
   | Meta id -> eval_meta mc id
@@ -161,6 +167,17 @@ and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
   in
   go base (List.rev env) (List.rev bds)
 
+(* Scan the environment for a VCon or VNominal with the given name.
+   Head = most-recently-bound, so first match wins (correct shadowing). *)
+and eval_con (env : env) (name : string) : value =
+  let rec go = function
+    | [] -> raise (EvalError ("unbound constructor/type: " ^ name))
+    | VCon c :: _ when String.equal c.name name -> VCon c
+    | VNominal n :: _ when String.equal n.name name -> VNominal n
+    | _ :: rest -> go rest
+  in
+  go env
+
 and force (mc : MetaContext.t) (v : value) : value =
   match v with
   | VFlex { id; spine = sp } -> (
@@ -198,11 +215,14 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
       let bindings =
         List.filter_map (fun (n, k, v) ->
           match k with
-          | Public -> Some (n, Public, quote mc depth v)
-          | Private -> Some (n, Private, quote mc depth v)
+          | Public -> Some (LetBind (n, Public, quote mc depth v))
+          | Private -> Some (LetBind (n, Private, quote mc depth v))
           | _ -> None) fields
       in
       Struct { con_fields; bindings; partial }
+  | VNominal n -> Con n.name
+  | VCon { name; spine; _ } ->
+      quote_spine mc depth (Con name) spine
   | VNeutral { neutral = neu; _ } -> quote_neutral mc depth neu
   | VFlex { id; spine = sp } -> quote_spine mc depth (Meta id) sp
   | VRigid { lvl = l; spine = sp } ->
@@ -282,6 +302,12 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
            (fun (n1, k1, v1) (n2, k2, v2) ->
              String.equal n1 n2 && k1 = k2 && conv mc depth v1 v2)
            vs1 vs2
+  | VNominal n1, VNominal n2 ->
+      n1.id = n2.id
+  | VCon c1, VCon c2 ->
+      String.equal c1.name c2.name
+      && List.length c1.spine = List.length c2.spine
+      && List.for_all2 (conv mc depth) c1.spine c2.spine
   | _ -> false
 
 and conv_spine (mc : MetaContext.t) (depth : lvl) (sp1 : spine) (sp2 : spine) :

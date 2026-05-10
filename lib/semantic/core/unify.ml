@@ -12,6 +12,7 @@ type unify_error =
   | NeutralHeadMismatch
   | FrameMismatch
   | StructFieldMismatch
+  | NominalMismatch of string * string
 
 exception UnifyError of unify_error
 
@@ -107,11 +108,13 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         let bindings =
           List.filter_map (fun (n, k, v) ->
             match k with
-            | Public -> Some (n, Public, go d v)
-            | Private -> Some (n, Private, go d v)
+            | Public -> Some (LetBind (n, Public, go d v))
+            | Private -> Some (LetBind (n, Private, go d v))
             | _ -> None) fields
         in
         Struct { con_fields; bindings; partial }
+    | VNominal n -> Con n.name
+    | VCon { name; spine; _ } -> go_spine d (Con name) spine
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
@@ -229,6 +232,9 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
             | Some (_, _, large_ty) -> unify mc depth ty large_ty
             | None -> raise (UnifyError StructFieldMismatch))
           small
+  | VNominal n1, VNominal n2 ->
+      if n1.id <> n2.id then
+        raise (UnifyError (NominalMismatch (n1.name, n2.name)))
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->

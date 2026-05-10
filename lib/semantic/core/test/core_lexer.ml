@@ -17,6 +17,7 @@ let rec token buf =
   | "struct" -> STRUCT
   | "end" -> END
   | "open" -> OPEN
+  | "type" -> TYPE
   | "true" -> TRUE
   | "false" -> FALSE
   | "->" -> ARROW
@@ -39,6 +40,7 @@ let rec token buf =
   | "." -> DOT
   | "," -> COMMA
   | ";" -> SEMI
+  | "|" -> BAR
   | Plus '0' .. '9' ->
       INT (Sedlexing.Utf8.lexeme buf |> Int64.of_string)
   | id -> ID (Sedlexing.Utf8.lexeme buf)

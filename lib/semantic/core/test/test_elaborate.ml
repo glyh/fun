@@ -22,7 +22,9 @@ let () =
           | SpineLengthMismatch -> "SpineLengthMismatch"
           | NeutralHeadMismatch -> "NeutralHeadMismatch"
           | FrameMismatch -> "FrameMismatch"
-          | StructFieldMismatch -> "StructFieldMismatch"))
+          | StructFieldMismatch -> "StructFieldMismatch"
+          | NominalMismatch (n1, n2) ->
+              Printf.sprintf "NominalMismatch(%s, %s)" n1 n2))
     | _ -> None)
 
 let parse_expr s =
@@ -242,6 +244,98 @@ let tuple_proj =
       (elab_fail "42.0");
   ]
 
+let adts =
+  [
+    Alcotest.test_case "constructor type" `Quick (fun () ->
+      let _core, ty = elab "type Color = Red | Green | Blue in Red" in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Color") then
+            Alcotest.fail "constructor should have type Color"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "multiple constructors" `Quick (fun () ->
+      (* All constructors of the same ADT have the same nominal type *)
+      let _core, ty =
+        elab "type Color = Red | Green | Blue in \
+              let _ : Color = Red in \
+              let _ : Color = Green in Color"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VU -> ()  (* Color : Type *)
+      | _ -> Alcotest.fail "Color should have type VU");
+    Alcotest.test_case "shadowing" `Quick (fun () ->
+      let _core, ty =
+        elab
+          "type A = X | Y in \
+           type B = X | Z in X"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "B") then
+            Alcotest.fail "shadowed X should have type B (most recent)"
+      | _ -> Alcotest.fail "expected nominal");
+    Alcotest.test_case "undefined constructor" `Quick
+      (elab_fail "type Color = Red | Green in Blue");
+    Alcotest.test_case "type Color accessible in body" `Quick (fun () ->
+      let _core, ty = elab "type Color = Red | Green | Blue in Color" in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VU -> ()  (* Color : Type *)
+      | _ -> Alcotest.fail "Color should have type VU (Type)");
+    Alcotest.test_case "pub type inside struct" `Quick (fun () ->
+      let _core, ty =
+        elab
+          "let S = struct \
+           pub type Color = Red | Green | Blue \
+           end in S.Color"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VU -> ()  (* Color : Type *)
+      | _ -> Alcotest.fail "S.Color should have type VU (Type)");
+    Alcotest.test_case "pub type ctor via dot" `Quick (fun () ->
+      let _core, ty =
+        elab
+          "let S = struct \
+           pub type Color = Red | Green | Blue \
+           end in S.Red"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Color") then
+            Alcotest.fail "S.Red should have nominal type Color"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "private type not visible via dot" `Quick
+      (elab_fail
+         "let S = struct \
+          type Color = Red | Green | Blue \
+          end in S.Red");
+    Alcotest.test_case "private type visible to later binding" `Quick (fun () ->
+      let _core, ty =
+        elab
+          "let S = struct \
+           type Color = Red | Green | Blue; \
+           pub let default = Red \
+           end in S.default"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Color") then
+            Alcotest.fail "private type should be usable inside struct"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "two structs, distinct nominal ids" `Quick (fun () ->
+      let _core, _ty =
+        elab
+          "let S = struct pub type Color = Red | Green end in \
+           let T = struct pub type Color = Blue end in \
+           let _ : S.Color = S.Red in ()"
+      in
+      ());
+    Alcotest.test_case "distinct nominal ids don't unify" `Quick
+      (elab_fail
+         "let S = struct pub type Color = Red | Green end in \
+          let T = struct pub type Color = Blue end in \
+          let _ : T.Color = S.Red in ()");
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
@@ -257,4 +351,5 @@ let () =
       ("structs", structs);
       ("functors", functors);
       ("tuple_proj", tuple_proj);
+      ("adts", adts);
     ]

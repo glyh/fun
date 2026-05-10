@@ -56,7 +56,7 @@ let test_eval_proj () =
 let test_eval_dot () =
   let mc = mc () in
   let s = Struct { con_fields = [];
-                   bindings = [ ("x", Public, Atom (I64 99L)); ("y", Public, Atom (Bool true)) ];
+                   bindings = [ LetBind ("x", Public, Atom (I64 99L)); LetBind ("y", Public, Atom (Bool true)) ];
                    partial = false } in
   let t = Dot (s, "x") in
   let v = eval mc [] t in
