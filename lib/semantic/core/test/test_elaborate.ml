@@ -1,6 +1,30 @@
 open Core_tt.Core
 open Core_tt
 
+let () =
+  Printexc.register_printer (function
+    | Elaborate.ElabError e ->
+        let open Elaborate in
+        Some (Printf.sprintf "ElabError(%s)" (match e with
+          | UnboundVariable n -> "UnboundVariable \"" ^ n ^ "\""
+          | ApplyingNonFunction -> "ApplyingNonFunction"
+          | TupleLengthMismatch -> "TupleLengthMismatch"))
+    | Unify.UnifyError e ->
+        let open Unify in
+        Some (Printf.sprintf "UnifyError(%s)" (match e with
+          | NonLinearSpine -> "NonLinearSpine"
+          | NonVariableInSpine -> "NonVariableInSpine"
+          | VarNotInSpine l -> Printf.sprintf "VarNotInSpine %d" l
+          | NeutralVarNotInSpine l -> Printf.sprintf "NeutralVarNotInSpine %d" l
+          | OccursCheck -> "OccursCheck"
+          | CannotUnify -> "CannotUnify"
+          | TupleLengthMismatch -> "TupleLengthMismatch"
+          | SpineLengthMismatch -> "SpineLengthMismatch"
+          | NeutralHeadMismatch -> "NeutralHeadMismatch"
+          | FrameMismatch -> "FrameMismatch"
+          | StructFieldMismatch -> "StructFieldMismatch"))
+    | _ -> None)
+
 let parse_expr s =
   let lexbuf = Sedlexing.Utf8.from_string s in
   let lexer = Sedlexing.with_tokenizer Core_lexer.token lexbuf in
@@ -181,6 +205,27 @@ let structs =
          (AtomTy TI64));
   ]
 
+let functors =
+  [
+    Alcotest.test_case "identity functor" `Quick
+      (check_type
+         "let Double = fun M -> struct pub let doubled = M.x + M.x end in (Double (struct pub let x = 21 end)).doubled"
+         (AtomTy TI64));
+    Alcotest.test_case "functor pass through" `Quick
+      (elab_ok
+         "let F = fun M -> struct pub let y = M.x end in let A = struct pub let x = 1 end in let B = F A in B.y");
+    Alcotest.test_case "functor with private helper" `Quick
+      (check_type
+         "let F = fun M -> struct let tmp = M.x; pub let y = tmp + 1 end in (F (struct pub let x = 1 end)).y"
+         (AtomTy TI64));
+    Alcotest.test_case "compose functors" `Quick
+      (elab_ok
+         "let F = fun M -> struct pub let a = M.x end in let G = fun N -> struct pub let b = N.a end in (G (F (struct pub let x = 1 end))).b");
+    Alcotest.test_case "higher order functor" `Quick
+      (elab_ok
+         "let Apply = fun F -> fun M -> F M in Apply (fun M -> struct pub let z = M.x end) (struct pub let x = 1 end)");
+  ]
+
 let tuple_proj =
   [
     Alcotest.test_case "proj first" `Quick
@@ -210,5 +255,6 @@ let () =
       ("dependent", dependent);
       ("meta_solving", meta_solving);
       ("structs", structs);
+      ("functors", functors);
       ("tuple_proj", tuple_proj);
     ]

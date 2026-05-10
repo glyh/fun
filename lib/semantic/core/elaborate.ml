@@ -65,10 +65,8 @@ module Ctx = struct
     let id = MetaContext.fresh ctx.metas in
     InsertedMeta (id, ctx.bds)
 
-  (** [fresh_meta] followed by immediate evaluation to a [VFlex] value. *)
-  let fresh_meta_val (ctx : t) : value =
-    let t = fresh_meta ctx in
-    Nbe.eval ctx.metas ctx.env t
+  let raw_meta (ctx : t) : value =
+    VFlex { id = MetaContext.fresh ctx.metas; spine = [] }
 
   let eval (ctx : t) (t : term) : value = Nbe.eval ctx.metas ctx.env t
   let quote (ctx : t) (v : value) : term = Nbe.quote ctx.metas ctx.lvl v
@@ -144,8 +142,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           | None -> raise (ElabError (UnboundVariable name)))
       | VFlex _ | VRigid _ | VNeutral _ ->
           (* stuck type: raw meta (no Bound capture) for partial constraint *)
-          let raw_id = MetaContext.fresh ctx.metas in
-          let result_ty = VFlex { id = raw_id; spine = [] } in
+          let result_ty = Ctx.raw_meta ctx in
           let constraint_ty =
             VStruct { fields = [ (name, Field, result_ty) ]; partial = true }
           in
@@ -217,10 +214,11 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
       (Ap (f_core, a_core), ret_ty)
   | VFlex _ | VRigid _ | VNeutral _ ->
-      let a_ty = Ctx.fresh_meta_val ctx in
+      (* raw metas: no Bound capture, safe for pattern unification *)
+      let a_ty = Ctx.raw_meta ctx in
       let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
-      let ret_meta = Ctx.fresh_meta_val (Ctx.bind ctx "_" a_ty) in
+      let ret_meta = Ctx.raw_meta (Ctx.bind ctx "_" a_ty) in
       let expected_f_ty =
         VPi
           { domain = a_ty;
@@ -275,7 +273,8 @@ and infer_lam (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
         let ty_core, ty_ty = infer ctx ty_expr in
         Ctx.unify ctx ty_ty VU;
         Ctx.eval ctx ty_core
-    | None -> Ctx.fresh_meta_val ctx
+    | None ->
+        Ctx.raw_meta ctx
   in
   let ctx' = Ctx.bind ctx param.name a_ty in
   let body_core, body_ty = infer ctx' body in
