@@ -13,6 +13,9 @@ let rec token buf =
   | "if" -> IF
   | "then" -> THEN
   | "else" -> ELSE
+  | "struct" -> STRUCT
+  | "end" -> END
+  | "open" -> OPEN
   | "true" -> TRUE
   | "false" -> FALSE
   | "->" -> ARROW
@@ -33,6 +36,7 @@ let rec token buf =
   | "=" -> EQUALS
   | ":" -> COLON
   | "," -> COMMA
+  | ";" -> SEMI
   | Plus '0' .. '9' ->
       INT (Sedlexing.Utf8.lexeme buf |> Int64.of_string)
   | id -> ID (Sedlexing.Utf8.lexeme buf)

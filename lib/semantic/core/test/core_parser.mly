@@ -6,7 +6,8 @@ open Core_tt.Surface
 %token <string> ID
 %token TRUE FALSE UNIT
 %token LET IN FUN IF THEN ELSE
-%token ARROW COLON EQUALS
+%token STRUCT END OPEN
+%token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA
 %token <string> OP
 %token EOF
@@ -25,7 +26,19 @@ expr:
     { List.fold_right (fun p acc -> Lam (p, acc)) ps body }
   | IF; cond = expr; THEN; then_ = expr; ELSE; else_ = expr
     { If { cond; then_; else_ } }
+  | STRUCT; bindings = struct_bindings; END
+    { Struct bindings }
+  | OPEN; name = ID; IN; body = expr
+    { Open (name, body) }
   | e = expr_arrow { e }
+
+struct_bindings:
+  | b = struct_binding; SEMI; rest = struct_bindings { b :: rest }
+  | b = struct_binding { [b] }
+  | { [] }
+
+struct_binding:
+  | LET; name = ID; EQUALS; value = expr { { name; value } }
 
 expr_arrow:
   | dom = expr_binop; ARROW; cod = expr_arrow { Arrow (dom, cod) }

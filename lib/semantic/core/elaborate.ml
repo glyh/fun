@@ -135,6 +135,34 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let b_core, b_ty = infer ctx' b in
       Ctx.unify ctx' b_ty VU;
       (Pi (a_core, b_core), VU)
+  | Struct bindings ->
+      let rec go ctx acc fields =
+        match fields with
+        | [] ->
+            let core_fields = List.rev acc in
+            let elem_cores = List.map (fun (n, c, _) -> (n, c)) core_fields in
+            let elem_val_tys = List.map (fun (n, _, t) -> (n, t)) core_fields in
+            (Struct elem_cores, VStruct { fields = elem_val_tys })
+        | { Surface.name; value } :: rest ->
+            let val_core, val_ty = infer ctx value in
+            let val_val = Ctx.eval ctx val_core in
+            let ctx' = Ctx.define ctx name val_ty val_val in
+            go ctx' ((name, val_core, val_ty) :: acc) rest
+      in
+      go ctx [] bindings
+  | Open (name, body) ->
+      let ix, ty = Ctx.lookup ctx name in
+      (match Nbe.force ctx.metas ty with
+      | VStruct { fields } ->
+          let ctx' =
+            List.fold_left
+              (fun c (fname, fty) ->
+                Ctx.define c fname fty fty (* with Type : Type, types are values *))
+              ctx fields
+          in
+          let body_core, body_ty = infer ctx' body in
+          (Open (Var ix, body_core), body_ty)
+      | _ -> raise (ElabError (UnboundVariable name (* not a struct *))))
 
 (** Application inference.  Two cases:
      - [f]'s type is known [VPi]: check [a] against the domain, compute

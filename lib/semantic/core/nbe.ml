@@ -26,6 +26,24 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       eval_if mc env vc then_ else_
   | Prod elems -> VProd (List.map (eval mc env) elems)
   | ProdTy elems -> VProdTy (List.map (eval mc env) elems)
+  | Struct bindings ->
+      let rec go env acc fields =
+        match fields with
+        | [] -> VStruct { fields = List.rev acc }
+        | (name, def) :: rest ->
+            let vdef = eval mc env def in
+            go (vdef :: env) ((name, vdef) :: acc) rest
+      in
+      go env [] bindings
+  | Open (s, body) ->
+      let vs = eval mc env s in
+      (match vs with
+      | VStruct { fields } ->
+          (* Push each field left-to-right; last field ends up at Var 0,
+             matching the elaborator's ctx.define order. *)
+          let env' = List.fold_left (fun e (_, v) -> v :: e) env fields in
+          eval mc env' body
+      | _ -> raise (EvalError "open of non-struct"))
   | Fix body -> VFix { body = { env; body } }
   | Prim name ->
       VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } }
@@ -130,6 +148,8 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VFix { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       Fix (quote mc (depth + 1) (closure_apply mc clo var))
+  | VStruct { fields } ->
+      Struct (List.map (fun (n, v) -> (n, quote mc depth v)) fields)
   | VNeutral { neutral = neu; _ } -> quote_neutral mc depth neu
   | VFlex { id; spine = sp } -> quote_spine mc depth (Meta id) sp
   | VRigid { lvl = l; spine = sp } ->
@@ -200,6 +220,11 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       conv mc (depth + 1)
         (closure_apply mc clo1 var)
         (closure_apply mc clo2 var)
+  | VStruct { fields = fs1 }, VStruct { fields = fs2 } ->
+      List.length fs1 = List.length fs2
+      && List.for_all2
+           (fun (n1, v1) (n2, v2) -> String.equal n1 n2 && conv mc depth v1 v2)
+           fs1 fs2
   | _ -> false
 
 and conv_spine (mc : MetaContext.t) (depth : lvl) (sp1 : spine) (sp2 : spine) :

@@ -1,4 +1,5 @@
 type param = { name : string; type_ : t option }
+and struct_binding = { name : string; value : t }
 
 and t =
   | Atom of Syntax.Ast.Atom.t
@@ -10,3 +11,5 @@ and t =
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | Arrow of t * t
+  | Struct of struct_binding list
+  | Open of string * t

@@ -11,6 +11,7 @@ type unify_error =
   | SpineLengthMismatch
   | NeutralHeadMismatch
   | FrameMismatch
+  | StructFieldMismatch
 
 exception UnifyError of unify_error
 
@@ -98,6 +99,8 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VAtomTy t -> AtomTy t
     | VProd elems -> Prod (List.map (go d) elems)
     | VProdTy elems -> ProdTy (List.map (go d) elems)
+    | VStruct { fields } ->
+        Struct (List.map (fun (n, v) -> (n, go d v)) fields)
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
@@ -189,6 +192,14 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
            make a 2-tuple equal to a 3-tuple. *)
         raise (UnifyError TupleLengthMismatch);
       List.iter2 (unify mc depth) elems1 elems2
+  | VStruct { fields = fs1 }, VStruct { fields = fs2 } ->
+      if List.length fs1 <> List.length fs2 then
+        raise (UnifyError TupleLengthMismatch);
+      List.iter2
+        (fun (n1, v1) (n2, v2) ->
+          if not (String.equal n1 n2) then raise (UnifyError StructFieldMismatch);
+          unify mc depth v1 v2)
+        fs1 fs2
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->

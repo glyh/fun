@@ -20,6 +20,8 @@ type term =
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
   | Fix of term
+  | Struct of (string * term) list
+  | Open of term * term            (* open S in body — evaluator extends env with struct fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
   | Meta of meta_id
       (** Residual metavariable in quoted output. Created when [quote] hits an
@@ -68,6 +70,10 @@ and value =
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)
   | VFix of { body : closure }
+  | VStruct of { fields : (string * value) list }
+      (** Namespace struct: ordered field name→value bindings. Struct
+          values contain terms; struct types contain types (which are
+          themselves values under [Type : Type]). *)
   | VNeutral of { ty : value; neutral : neutral }
       (** Stuck computation with a primitive or a variable/metavariable wrapped in
           elimination frames ([FIf], [FProj]). Unification decomposes these:

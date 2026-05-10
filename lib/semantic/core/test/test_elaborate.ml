@@ -134,6 +134,27 @@ let meta_solving =
          (Pi (AtomTy TI64, AtomTy TI64)));
   ]
 
+let structs =
+  [
+    Alcotest.test_case "empty struct" `Quick
+      (elab_ok "struct end");
+    Alcotest.test_case "open struct" `Quick
+      (check_type
+         "let S = struct let x = 42 end in open S in x"
+         (AtomTy TI64));
+    Alcotest.test_case "struct with two fields" `Quick
+      (elab_ok
+         "let S = struct let x = 1; let y = true end in open S in if y then x else 0");
+    Alcotest.test_case "nested struct open" `Quick
+      (check_type
+         "let Outer = struct let Inner = struct let val = 42 end end in open Outer in open Inner in val"
+         (AtomTy TI64));
+    Alcotest.test_case "struct field shadows" `Quick
+      (check_type
+         "let x = true in let S = struct let x = 42 end in open S in x"
+         (AtomTy TI64));
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
@@ -146,4 +167,5 @@ let () =
       ("operators", operators);
       ("dependent", dependent);
       ("meta_solving", meta_solving);
+      ("structs", structs);
     ]
