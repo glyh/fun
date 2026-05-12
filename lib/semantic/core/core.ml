@@ -65,6 +65,21 @@ type term =
           [Defined] ones), so the solver only abstracts over variables with
           unknown values. This keeps unification solutions minimal and avoids
           spurious occurs-check failures. *)
+  | Match of term * (core_pat * term) list
+      (** Pattern matching. Scrutinee + branches. Each branch binds variables
+          from the pattern — de Bruijn indices in the body count from the
+          innermost pattern binding outward. *)
+
+and core_pat =
+  | CPatCon of string * int * core_pat list
+      (** Constructor pattern. [name] is the constructor tag, [num_type_params]
+          is how many leading spine elements are type args (skipped during
+          matching), [sub_pats] bind the payload elements. *)
+  | CPatWild
+      (** Wildcard — matches anything, binds nothing. *)
+  | CPatBind
+      (** Variable binding — matches anything, binds the matched value.
+          No name needed — binding is by de Bruijn index. *)
 
 and struct_binding_term =
   | LetBind of string * struct_field_kind * term
@@ -178,6 +193,11 @@ and frame =
   | FIf of { then_ : closure; else_ : closure }
   | FProj of int
   | FDot of string
+  | FMatch of (core_pat * closure) list
+      (** Match frame: scrutinee is stuck, branches are closures.
+          Each closure's env captures the context at the match site;
+          the body is the branch term (with pattern bindings as extra
+          de Bruijn indices). *)
 
 and closure = { env : env; body : term }
 

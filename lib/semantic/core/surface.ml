@@ -32,3 +32,9 @@ and t =
       ctors : (string * t option) list;  (* (ctor_name, payload_type option) *)
       body : t;
     }
+  | Match of t * (pat * t) list  (* match scrutinee | pat -> body ... end *)
+
+and pat =
+  | PatCon of string * pat list   (* Constructor(sub, patterns) *)
+  | PatWild                       (* _ *)
+  | PatBind of string             (* variable binding *)

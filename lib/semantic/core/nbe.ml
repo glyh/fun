@@ -113,6 +113,9 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } }
   | Meta id -> eval_meta mc id
   | InsertedMeta (id, bds) -> eval_inserted_meta mc env id bds
+  | Match (scrut, branches) ->
+      let vs = eval mc env scrut in
+      eval_match mc env vs branches
 
 and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
   match vf with
@@ -194,6 +197,61 @@ and eval_con (env : env) (name : string) : value =
   in
   go env
 
+(* Pattern matching: dispatch on the scrutinee value. For a VCon, find the
+   matching branch by constructor name and bind payload elements via sub-patterns.
+   For a stuck scrutinee, accumulate an FMatch frame. *)
+and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
+    (branches : (core_pat * term) list) : value =
+  let scrutinee = force mc scrutinee in
+  match scrutinee with
+  | VCon { name; spine; nominal = _ } ->
+      let rec try_branch = function
+        | [] -> raise (EvalError ("no matching branch for constructor: " ^ name))
+        | (CPatCon (cname, num_type_params, sub_pats), body) :: rest ->
+            if String.equal cname name then begin
+              let payload = List.drop num_type_params spine in
+              let env' = bind_pats mc env sub_pats payload in
+              eval mc env' body
+            end else
+              try_branch rest
+        | (CPatWild, body) :: _ -> eval mc env body
+        | (CPatBind, body) :: _ -> eval mc (scrutinee :: env) body
+      in
+      try_branch branches
+  | _ ->
+      let head, base_frames = stuck_head_frames scrutinee in
+      VNeutral
+        { ty = VU;
+          neutral = { head; frames = base_frames @ [ FMatch
+              (List.map (fun (p, body) -> (p, { env; body })) branches) ] } }
+
+(* Bind pattern variables: match sub-patterns against payload values.
+   Recursively handles nested constructor patterns. *)
+and bind_pats (mc : MetaContext.t) (env : env) (pats : core_pat list)
+    (vals : value list) : env =
+  match (pats, vals) with
+  | [], [] -> env
+  | CPatWild :: ps, _ :: vs -> bind_pats mc env ps vs
+  | CPatBind :: ps, v :: vs -> bind_pats mc (v :: env) ps vs
+  | CPatCon (name, num_type_params, sub_pats) :: ps, v :: vs ->
+      (match force mc v with
+      | VCon { name = cname; spine; _ } when String.equal cname name ->
+          let payload = List.drop num_type_params spine in
+          let env = bind_pats mc env sub_pats payload in
+          bind_pats mc env ps vs
+      | _ -> raise (EvalError "nested constructor pattern mismatch"))
+  | _ -> raise (EvalError "pattern/payload arity mismatch")
+
+and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
+  match (p1, p2) with
+  | CPatWild, CPatWild -> true
+  | CPatBind, CPatBind -> true
+  | CPatCon (n1, a1, ps1), CPatCon (n2, a2, ps2) ->
+      String.equal n1 n2 && a1 = a2
+      && List.length ps1 = List.length ps2
+      && List.for_all2 conv_pat ps1 ps2
+  | _ -> false
+
 and force (mc : MetaContext.t) (v : value) : value =
   match v with
   | VFlex { id; spine = sp } -> (
@@ -269,7 +327,13 @@ and quote_frames (mc : MetaContext.t) (depth : lvl) (head : term)
               quote mc depth (eval mc then_.env then_.body),
               quote mc depth (eval mc else_.env else_.body) )
       | FProj i -> Proj (acc, i)
-      | FDot name -> Dot (acc, name))
+      | FDot name -> Dot (acc, name)
+      | FMatch branches ->
+          Match
+            ( acc,
+              List.map
+                (fun (p, clo) -> (p, quote mc depth (eval mc clo.env clo.body)))
+                branches ))
     head frames
 
 let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
@@ -358,4 +422,14 @@ and conv_frames (mc : MetaContext.t) (depth : lvl) (fs1 : frame list)
       i1 = i2 && conv_frames mc depth rest1 rest2
   | FDot n1 :: rest1, FDot n2 :: rest2 ->
       String.equal n1 n2 && conv_frames mc depth rest1 rest2
+  | FMatch bs1 :: rest1, FMatch bs2 :: rest2 ->
+      List.length bs1 = List.length bs2
+      && List.for_all2
+           (fun (p1, c1) (p2, c2) ->
+             conv_pat p1 p2
+             && conv mc depth
+                  (eval mc c1.env c1.body)
+                  (eval mc c2.env c2.body))
+           bs1 bs2
+      && conv_frames mc depth rest1 rest2
   | _ -> false

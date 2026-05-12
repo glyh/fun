@@ -5,7 +5,7 @@ open Core_tt.Surface
 %token <int64> INT
 %token <string> ID
 %token TRUE FALSE UNIT
-%token LET IN FUN IF THEN ELSE
+%token LET IN FUN IF THEN ELSE MATCH WITH
 %token STRUCT END OPEN PUB TYPE
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
@@ -33,7 +33,20 @@ expr:
     { TypeDef { name; params; ctors; body } }
   | OPEN; name = ID; IN; body = expr
     { Open (name, body) }
+  | MATCH; scrut = expr_app; WITH; brs = separated_nonempty_list(BAR, branch); END
+    { Match (scrut, brs) }
   | e = expr_arrow { e }
+
+branch:
+  | p = pat; ARROW; body = expr_arrow { (p, body) }
+
+pat:
+  | name = ID; LPAREN; sub = separated_nonempty_list(COMMA, pat); RPAREN
+    { PatCon (name, sub) }
+  | name = ID
+    { if String.equal name "_" then PatWild
+      else if Char.uppercase_ascii name.[0] = name.[0] then PatCon (name, [])
+      else PatBind name }
 
 struct_field_decl:
   | name = ID; COLON; ty = expr; SEMI { (name, ty) }

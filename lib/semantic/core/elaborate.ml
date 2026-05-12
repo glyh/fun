@@ -4,6 +4,9 @@ type elab_error =
   | UnboundVariable of string
   | ApplyingNonFunction
   | TupleLengthMismatch
+  | NotANominalType
+  | UnknownConstructor of string
+  | PatternArityMismatch
 
 exception ElabError of elab_error
 
@@ -257,6 +260,43 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           body_ctx ctors (List.map snd elaborated_ctors)
       in
       infer body_ctx body
+  | Match (scrutinee, branches) ->
+      let scrut_core, scrut_ty = infer ctx scrutinee in
+      (match Nbe.force ctx.metas scrut_ty with
+      | VNominal _ ->
+          let ret_ty = Ctx.raw_meta ctx in
+          let branches' =
+            List.map (fun (pat, body) ->
+              let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
+              let body_core = check ctx' body ret_ty in
+              (core_pat, body_core))
+              branches
+          in
+          (Match (scrut_core, branches'), ret_ty)
+      | _ -> raise (ElabError NotANominalType))
+
+(** Elaborate a surface pattern against a scrutinee type, producing a core
+    pattern and extending the context with bound pattern variables. *)
+and elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
+    : core_pat * Ctx.t =
+  match pat with
+  | PatWild -> (CPatWild, ctx)
+  | PatBind name -> (CPatBind, Ctx.bind ctx name scrutinee_ty)
+  | PatCon (name, sub_pats) ->
+      (match Nbe.force ctx.metas scrutinee_ty with
+      | VNominal n ->
+          (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
+          | Some (_, payload_opt) ->
+              let num_type_params = List.length n.params in
+              (match (sub_pats, payload_opt) with
+              | [], None -> (CPatCon (name, num_type_params, []), ctx)
+              | [sub_pat], Some payload_ty ->
+                  let core_sub, ctx' = elaborate_pat ctx sub_pat payload_ty in
+                  (CPatCon (name, num_type_params, [core_sub]), ctx')
+              | _ ->
+                  raise (ElabError PatternArityMismatch))
+          | None -> raise (ElabError (UnknownConstructor name)))
+      | _ -> raise (ElabError NotANominalType))
 
 (** Application inference. *)
 and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
@@ -408,6 +448,19 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let ctx' = Ctx.define ctx name val_ty val_val in
       let body_core = check ctx' body expected in
       Let (ty_term, val_core, body_core)
+  | Match (scrutinee, branches), _ ->
+      let scrut_core, scrut_ty = infer ctx scrutinee in
+      (match Nbe.force ctx.metas scrut_ty with
+      | VNominal _ ->
+          let branches' =
+            List.map (fun (pat, body) ->
+              let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
+              let body_core = check ctx' body expected in
+              (core_pat, body_core))
+              branches
+          in
+          Match (scrut_core, branches')
+      | _ -> raise (ElabError NotANominalType))
   | _ ->
       let core, inferred = infer ctx expr in
       Ctx.unify ctx expected inferred;

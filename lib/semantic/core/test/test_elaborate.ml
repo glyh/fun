@@ -8,7 +8,10 @@ let () =
         Some (Printf.sprintf "ElabError(%s)" (match e with
           | UnboundVariable n -> "UnboundVariable \"" ^ n ^ "\""
           | ApplyingNonFunction -> "ApplyingNonFunction"
-          | TupleLengthMismatch -> "TupleLengthMismatch"))
+          | TupleLengthMismatch -> "TupleLengthMismatch"
+          | NotANominalType -> "NotANominalType"
+          | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
+          | PatternArityMismatch -> "PatternArityMismatch"))
     | Unify.UnifyError e ->
         let open Unify in
         Some (Printf.sprintf "UnifyError(%s)" (match e with
@@ -405,6 +408,39 @@ let adts =
           let _ : Option Bool = x in ()");
   ]
 
+let match_tests =
+  [
+    Alcotest.test_case "simple match nullary" `Quick
+      (check_type
+        "type Color = Red | Green | Blue in \
+         (match Red with Red -> 1 | Green -> 2 | Blue -> 3 end : I64)"
+        (AtomTy TI64));
+    Alcotest.test_case "match with payload" `Quick
+      (check_type
+        "type Option a = Some a | None in \
+         (match Some I64 42 with Some(x) -> x | None -> 0 end : I64)"
+        (AtomTy TI64));
+    Alcotest.test_case "match with wildcard" `Quick
+      (check_type
+        "type Color = Red | Green | Blue in \
+         (match Red with Red -> 1 | _ -> 0 end : I64)"
+        (AtomTy TI64));
+    Alcotest.test_case "match bind variable" `Quick
+      (check_type
+        "type Color = Red | Green in \
+         (match Red with x -> 1 end : I64)"
+        (AtomTy TI64));
+    Alcotest.test_case "match non ADT fails" `Quick
+      (elab_fail "match 42 with _ -> 0 end");
+    Alcotest.test_case "match unknown constructor" `Quick
+      (elab_fail "type Color = Red in match Red with Blue -> 0 end");
+    Alcotest.test_case "match payload arity mismatch" `Quick
+      (elab_fail "type Option a = Some a | None in \
+                  match Some I64 42 with Some -> 0 | None -> 0 end");
+    Alcotest.test_case "match wrong scrutinee type" `Quick
+      (elab_fail "type Color = Red | Green in match 42 with Red -> 1 end");
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
@@ -421,4 +457,5 @@ let () =
       ("functors", functors);
       ("tuple_proj", tuple_proj);
       ("adts", adts);
+      ("match", match_tests);
     ]
