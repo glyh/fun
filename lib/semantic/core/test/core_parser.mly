@@ -28,8 +28,9 @@ expr:
     { If { cond; then_; else_ } }
   | STRUCT; flds = list(struct_field_decl); bnds = separated_list(SEMI, struct_binding); END
     { Struct { con_fields = flds; bindings = bnds } }
-  | TYPE; name = ID; EQUALS; ctors = separated_nonempty_list(BAR, ID); IN; body = expr
-    { TypeDef (name, ctors, body) }
+  | TYPE; name = ID; params = list(ID); EQUALS;
+    ctors = separated_nonempty_list(BAR, ctor_decl); IN; body = expr
+    { TypeDef { name; params; ctors; body } }
   | OPEN; name = ID; IN; body = expr
     { Open (name, body) }
   | e = expr_arrow { e }
@@ -40,10 +41,15 @@ struct_field_decl:
 struct_binding:
   | PUB; LET; name = ID; EQUALS; value = expr { LetBinding { name; value; public = true } }
   | LET; name = ID; EQUALS; value = expr { LetBinding { name; value; public = false } }
-  | PUB; TYPE; name = ID; EQUALS; ctors = separated_nonempty_list(BAR, ID)
-    { TypeBinding { name; ctors; public = true } }
-  | TYPE; name = ID; EQUALS; ctors = separated_nonempty_list(BAR, ID)
-    { TypeBinding { name; ctors; public = false } }
+  | PUB; TYPE; name = ID; params = list(ID); EQUALS;
+    ctors = separated_nonempty_list(BAR, ctor_decl)
+    { TypeBinding { name; params; ctors; public = true } }
+  | TYPE; name = ID; params = list(ID); EQUALS;
+    ctors = separated_nonempty_list(BAR, ctor_decl)
+    { TypeBinding { name; params; ctors; public = false } }
+
+ctor_decl:
+  | name = ID; payload = option(expr) { (name, payload) }
 
 expr_arrow:
   | dom = expr_binop; ARROW; cod = expr_arrow { Arrow (dom, cod) }

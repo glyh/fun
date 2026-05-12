@@ -42,7 +42,7 @@ module Renaming = struct
           match v with
           | VRigid { lvl = l; spine = [] } ->
               let ren = go (i + 1) rest in
-              if List.exists (fun (_, l') -> l = l') ren then
+              if List.exists (fun (l', _) -> l = l') ren then
                 (* ?M[x, x] — same variable appears twice in the spine.
                    Multiple solutions exist (e.g. λa b. a vs λa b. b),
                    no unique most-general answer. *)
@@ -234,12 +234,18 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
           small
   | VNominal n1, VNominal n2 ->
       if n1.id <> n2.id then
-        raise (UnifyError (NominalMismatch (n1.name, n2.name)))
+        raise (UnifyError (NominalMismatch (n1.name, n2.name)));
+      if List.length n1.params <> List.length n2.params then
+        raise (UnifyError (NominalMismatch (n1.name, n2.name)));
+      List.iter2 (unify mc depth) n1.params n2.params
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->
       unify_spine mc depth sp1 sp2
   | VFlex { id; spine = sp }, v | v, VFlex { id; spine = sp } -> solve mc id sp v
+  | VCon c1, VCon c2 ->
+      if not (String.equal c1.name c2.name) then raise (UnifyError CannotUnify);
+      unify_spine mc depth c1.spine c2.spine
   | VNeutral { neutral = n1; _ }, VNeutral { neutral = n2; _ } -> unify_neutral mc depth n1 n2
   | VFix { body = clo1; _ }, VFix { body = clo2; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in

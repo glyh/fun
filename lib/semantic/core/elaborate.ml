@@ -175,25 +175,27 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (LetBind (name, kind, val_core) :: acc_binds,
                field @ acc_fields)
               rest
-        | Surface.TypeBinding { name; ctors; public } :: rest ->
-            let nominal = VNominal { id = NominalId.fresh (); name; constructors = ctors } in
+        | Surface.TypeBinding { name; params = _; ctors; public } :: rest ->
+            let ctor_names = List.map fst ctors in
+            let ctors' = List.map (fun c -> (c, None)) ctor_names in
+            let nominal = VNominal { id = NominalId.fresh (); name; params = []; constructors = ctors' } in
             let kind = if public then Public else Private in
             let ctx =
               List.fold_left
                 (fun ctx ctor_name ->
                   Ctx.define ctx ctor_name nominal
                     (VCon { name = ctor_name; spine = []; nominal }))
-                ctx ctors
+                ctx ctor_names
             in
             let ctx = Ctx.define ctx name VU nominal in
             let ctor_values =
               List.map (fun c ->
                 (c, VCon { name = c; spine = []; nominal }))
-              ctors
+              ctor_names
             in
             let type_fields =
               (name, kind, VU)
-              :: List.map (fun c -> (c, kind, nominal)) ctors
+              :: List.map (fun c -> (c, kind, nominal)) ctor_names
             in
             go ctx
               (TypeBind (name, kind, nominal, ctor_values) :: acc_binds,
@@ -221,16 +223,39 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           let body_core, body_ty = infer ctx' body in
           (Open (Var ix, body_core), body_ty)
       | _ -> raise (ElabError (UnboundVariable name (* not a struct *))))
-  | TypeDef (name, ctors, body) ->
-      let nominal = VNominal { id = NominalId.fresh (); name; constructors = ctors } in
+  | TypeDef { name; params; ctors; body } ->
+      (* Create fresh metas for type params and bind them *)
+      let param_metas = List.map (fun _ -> Ctx.raw_meta ctx) params in
       let body_ctx =
-        List.fold_left
-          (fun ctx ctor_name ->
-            Ctx.define ctx ctor_name nominal
-              (VCon { name = ctor_name; spine = []; nominal }))
-          ctx ctors
+        List.fold_left2
+          (fun ctx param_name meta_val ->
+            Ctx.define ctx param_name VU meta_val)
+          ctx params param_metas
       in
+      (* Elaborate constructor payload types in body_ctx *)
+      let elaborated_ctors =
+        List.map (fun (cname, payload_opt) ->
+          match payload_opt with
+          | None -> (cname, None)
+          | Some payload_expr ->
+              (* Elaborate payload type in body_ctx (params + type name in scope) *)
+              let payload_core, payload_ty = infer body_ctx payload_expr in
+              Ctx.unify body_ctx payload_ty VU;
+              (cname, Some (Ctx.eval body_ctx payload_core)))
+        ctors
+      in
+      let nominal = VNominal { id = NominalId.fresh (); name; params = param_metas; constructors = elaborated_ctors } in
+      (* Bind type name first so NomRef in constructors can find it *)
       let body_ctx = Ctx.define body_ctx name VU nominal in
+      let env = body_ctx.env in
+      let body_ctx =
+        List.fold_left2
+          (fun ctx (cname, _payload_surface) payload_val_opt ->
+            let ctor_val, ctor_ty =
+              build_ctor body_ctx.metas env name cname param_metas payload_val_opt in
+            Ctx.define ctx cname ctor_ty ctor_val)
+          body_ctx ctors (List.map snd elaborated_ctors)
+      in
       infer body_ctx body
 
 (** Application inference. *)
@@ -288,6 +313,47 @@ and infer_if (ctx : Ctx.t) (cond : Surface.t) (then_ : Surface.t)
   let then_core, then_ty = infer ctx then_ in
   let else_core = check ctx else_ then_ty in
   (If (cond_core, then_core, else_core), then_ty)
+
+(** Build a constructor's VLam chain + VPi type from type params and optional payload. *)
+and build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_name : string)
+    (param_metas : value list) (payload_val_opt : value option)
+    : value * value =
+  let num_params = List.length param_metas in
+  let has_payload = Option.is_some payload_val_opt in
+  let total_args = num_params + (if has_payload then 1 else 0) in
+  (* Build spine Var terms: outer params first (higher ix), payload last (ix=0) *)
+  let param_vars = List.mapi (fun i _ -> Var (total_args - 1 - i)) param_metas in
+  let payload_var = if has_payload then [ Var 0 ] else [] in
+  let all_spine_vars = param_vars @ payload_var in
+  (* Innermost body: Ctor *)
+  let body_term =
+    Ctor { name = ctor_name; spine = all_spine_vars;
+           nominal_name; nominal_spine = param_vars }
+  in
+  (* Wrap in Lam for payload, then Lam for each type param *)
+  let core_term =
+    let with_payload = if has_payload then Lam body_term else body_term in
+    List.fold_right (fun _ acc -> Lam acc) param_metas with_payload
+  in
+  let ctor_val = Nbe.eval mc env core_term in
+  (* Build Pi type: payload VPi has the actual domain, type params are VPi{U, ...}. *)
+  let ret_type =
+    let nom_param_vars =
+      List.mapi (fun i _ -> Var (num_params - i + if has_payload then 0 else -1)) param_metas
+    in
+    let ret_term = NomRef (nominal_name, nom_param_vars) in
+    let inner_val : value =
+      match payload_val_opt with
+      | Some p -> VPi { domain = p; codomain = { env; body = ret_term } }
+      | None -> Nbe.eval mc env ret_term
+    in
+    let depth = List.length env in
+    List.fold_right
+      (fun _ acc ->
+        VPi { domain = VU; codomain = { env; body = Nbe.quote mc depth acc } })
+      param_metas inner_val
+  in
+  (ctor_val, ret_type)
 
 (** Lambda inference. *)
 and infer_lam (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :

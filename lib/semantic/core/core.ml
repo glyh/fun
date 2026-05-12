@@ -37,6 +37,21 @@ type term =
           [quote] hits a [VCon] or [VNominal]. [eval] scans the environment
           by name for a matching VCon or VNominal. Like [Meta], never
           produced by the elaborator. *)
+  | NomRef of string * term list
+      (** Applied nominal type reference. [eval] scans the environment for
+          a [VNominal] template with this name, evaluates the param terms,
+          and returns [VNominal] with those params. Used in constructor Pi
+          types to express e.g. [Option a] where [a] is a de Bruijn var. *)
+  | Ctor of {
+      name : string;
+      spine : term list;           (* type args then payload args *)
+      nominal_name : string;       (* VNominal template name, looked up in env *)
+      nominal_spine : term list;   (* type args for the nominal's params *)
+    }
+      (** Constructor value term. [eval] evaluates spine terms to values,
+          looks up [nominal_name] in env for the VNominal template, applies
+          [nominal_spine] as params, and constructs [VCon]. Used only inside
+          constructor lambda chains; never in surface syntax. *)
   | Meta of meta_id
       (** Residual metavariable in quoted output. Created when [quote] hits an
           unsolved [VFlex]. Used as the head of stuck neutrals
@@ -99,11 +114,16 @@ and value =
           [Computed] = in type but forbidden at construction,
           [Private] = invisible outside.  [partial] = width-subtyped
           (matches any struct with at least these fields). *)
-  | VNominal of { id : nominal_id; name : string; constructors : string list }
-      (** Nominal ADT type. Unifies by [id] equality — two nominal types
-          are equal only if they come from the same definition site.
-          [name] is for display; [constructors] is the set of nullary
-          constructor names. Created by [type Color = Red | Green | Blue]. *)
+  | VNominal of {
+      id : nominal_id;
+      name : string;
+      params : value list;
+      constructors : (string * value option) list;
+          (** (ctor_name, payload_type option). [None] = nullary. *)
+    }
+      (** Nominal ADT type. Unifies by [id] equality. [params] are the
+          applied type arguments, e.g. [Option I64] has params = [VAtomTy TI64].
+          [constructors] maps each constructor name to its optional payload type. *)
   | VCon of { name : string; spine : value list; nominal : value }
       (** Fully saturated constructor value. [name] is the constructor tag,
           [spine] collects type+value arguments in application order

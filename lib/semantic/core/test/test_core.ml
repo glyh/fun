@@ -260,6 +260,21 @@ let test_unify_occurs_check () =
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected occurs check error"
 
+let test_unify_nonlinear_spine () =
+  let mc = mc () in
+  let id = MetaContext.fresh mc in
+  (* ?M[#2, #2] — same variable at level 2 appears twice in the spine.
+     Pattern unification should reject this as NonLinearSpine. *)
+  let v1 = VFlex { id; spine = [
+    VRigid { lvl = 2; spine = [] };
+    VRigid { lvl = 2; spine = [] }
+  ]} in
+  let v2 = VAtomTy TI64 in
+  match unify mc 3 v1 v2 with
+  | exception UnifyError NonLinearSpine -> ()
+  | exception UnifyError _ -> Alcotest.fail "wrong unify error (expected NonLinearSpine)"
+  | () -> Alcotest.fail "expected NonLinearSpine but solved silently"
+
 let test_unify_mismatch () =
   let mc = mc () in
   let v1 = VAtomTy TI64 in
@@ -267,6 +282,15 @@ let test_unify_mismatch () =
   match unify mc 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected unify error"
+
+let test_unify_nominal_params () =
+  let mc = mc () in
+  (* Two VNominals with same id but different params should NOT unify *)
+  let nom1 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TI64 ]; constructors = [] } in
+  let nom2 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TBool ]; constructors = [] } in
+  match unify mc 0 nom1 nom2 with
+  | exception UnifyError _ -> ()
+  | () -> Alcotest.fail "expected unify error for different nominal params"
 
 let () =
   Alcotest.run "core"
@@ -317,6 +341,8 @@ let () =
           Alcotest.test_case "rename fst" `Quick test_unify_rename_fst;
           Alcotest.test_case "rename snd" `Quick test_unify_rename_snd;
           Alcotest.test_case "occurs check" `Quick test_unify_occurs_check;
+          Alcotest.test_case "nonlinear spine" `Quick test_unify_nonlinear_spine;
+          Alcotest.test_case "nominal params" `Quick test_unify_nominal_params;
           Alcotest.test_case "mismatch" `Quick test_unify_mismatch;
         ] );
     ]

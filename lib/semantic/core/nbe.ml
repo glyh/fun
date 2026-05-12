@@ -93,6 +93,22 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       | _ -> raise (EvalError "open of non-struct"))
   | Fix body -> VFix { body = { env; body } }
   | Con name -> eval_con env name
+  | NomRef (name, params) ->
+      (match eval_con env name with
+      | VNominal n ->
+          let param_vals = List.map (eval mc env) params in
+          VNominal { n with params = param_vals }
+      | _ -> raise (EvalError ("NomRef is not VNominal: " ^ name)))
+  | Ctor { name; spine; nominal_name; nominal_spine } ->
+      let spine_vals = List.map (eval mc env) spine in
+      let nom_spine_vals = List.map (eval mc env) nominal_spine in
+      (match eval_con env nominal_name with
+      | VNominal n ->
+          VCon
+            { name;
+              spine = spine_vals;
+              nominal = VNominal { n with params = nom_spine_vals } }
+      | _ -> raise (EvalError ("Ctor nominal is not VNominal: " ^ nominal_name)))
   | Prim name ->
       VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } }
   | Meta id -> eval_meta mc id
@@ -304,6 +320,8 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
            vs1 vs2
   | VNominal n1, VNominal n2 ->
       n1.id = n2.id
+      && List.length n1.params = List.length n2.params
+      && List.for_all2 (conv mc depth) n1.params n2.params
   | VCon c1, VCon c2 ->
       String.equal c1.name c2.name
       && List.length c1.spine = List.length c2.spine

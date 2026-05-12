@@ -334,6 +334,75 @@ let adts =
          "let S = struct pub type Color = Red | Green end in \
           let T = struct pub type Color = Blue end in \
           let _ : T.Color = S.Red in ()");
+    Alcotest.test_case "parameterized ADT with payload" `Quick (fun () ->
+      let _core, ty =
+        elab "type Option a = Some a | None in Some I64 42"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Option") then
+            Alcotest.fail "expected Option nominal"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "nullary pctor has nominal type" `Quick (fun () ->
+      let _core, ty =
+        elab "type Option a = Some a | None in None I64"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Option") then
+            Alcotest.fail "None I64 should have type Option I64"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "ctor partial application" `Quick (fun () ->
+      let _core, ty =
+        elab "type Option a = Some a | None in Some I64"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VPi _ -> ()  (* Some I64 : I64 -> Option I64 *)
+      | _ -> Alcotest.fail "Some I64 should be a function type");
+    Alcotest.test_case "multiple type params" `Quick (fun () ->
+      let _core, ty =
+        elab "type Result a e = Ok a | Err e in Ok I64 Bool 42"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Result") then
+            Alcotest.fail "Ok I64 Bool 42 should have type Result I64 Bool"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "ctor via let binding" `Quick (fun () ->
+      let _core, ty =
+        elab "type Option a = Some a | None in \
+              let f = Some in f I64 42"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Option") then
+            Alcotest.fail "expected Option nominal via let-bound ctor"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "ctor passed through let" `Quick (fun () ->
+      let _core, ty =
+        elab "type Option a = Some a | None in \
+              let f = Some I64 in f 42"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "Option") then
+            Alcotest.fail "expected Option via let-bound partial ctor"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "two pctor adts, distinct types" `Quick (fun () ->
+      let _core, ty =
+        elab "type A a = X a | Y in \
+              type B a = X a | Z in X I64 42"
+      in
+      match Nbe.force (MetaContext.create ()) ty with
+      | VNominal n ->
+          if not (String.equal n.name "B") then
+            Alcotest.fail "shadowed X should have type B"
+      | _ -> Alcotest.fail "expected nominal type");
+    Alcotest.test_case "distinct param instantiations don't unify" `Quick
+      (elab_fail
+         "type Option a = Some a | None in \
+          let x : Option I64 = Some I64 42 in \
+          let _ : Option Bool = x in ()");
   ]
 
 let () =
