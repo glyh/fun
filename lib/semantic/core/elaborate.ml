@@ -407,6 +407,56 @@ and infer_ap_implicit (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * val
       (Ap (f_core, Implicit, a_core), ret_ty)
   | _ -> raise (ElabError ApplyingNonFunction)
 
+(** Generalize a let-bound value's type: if the value is a syntactic lambda
+    and its type contains unsolved metas, abstract those metas into implicit
+    VPi layers. At each use site, Phase 6's insert_implicits auto-instantiates
+    with fresh metas. *)
+and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
+  (* Only generalize simple single-binder lambdas at the top level.
+     Multi-binder or nested lambdas would have their de Bruijn levels
+     shifted by outer binders, breaking VRigid level assignments. *)
+  let has_bound = List.exists (fun bd -> bd = Bound) ctx.bds in
+  let eligible = match val_core with
+    | Lam body when not has_bound ->
+        begin match body with Lam _ -> false | _ -> true end
+    | _ -> false
+  in
+  if not eligible then (val_core, val_ty)
+  else begin
+    let seen = ref [] in
+    let add id = if not (List.mem id !seen) then seen := id :: !seen in
+    let rec collect v =
+      match Nbe.force ctx.metas v with
+      | VFlex { id; spine = [] } ->
+          (match MetaContext.lookup ctx.metas id with Unsolved -> add id | Solved _ -> ())
+      | VFlex { spine; _ } -> List.iter collect spine
+      | VPi { domain = a; _ } -> collect a
+      | VU | VAtom _ | VAtomTy _ | VRigid _ | VProd _ | VProdTy _ -> ()
+      | _ -> ()
+    in
+    collect val_ty;
+    let unsolved = List.rev !seen in
+    let n = List.length unsolved in
+    if n = 0 then (val_core, val_ty)
+    else begin
+      (* Solve innermost meta to highest level (deepest), outermost to ctx.lvl.
+         All VPis are quoted at depth ctx.lvl + n so VRigid{lvl} → Var(ix) works. *)
+      List.iteri (fun i meta_id ->
+        MetaContext.solve ctx.metas meta_id
+          (VRigid { lvl = ctx.lvl + n - 1 - i; spine = [] })
+      ) unsolved;
+      let gen_val = List.fold_left (fun acc _ -> Lam acc) val_core unsolved in
+      let qdepth = ctx.lvl + n in
+      let gen_ty_val =
+        List.fold_right (fun _ acc ->
+          VPi { explicitness = Implicit; domain = VU;
+                codomain = { env = ctx.env; body = Nbe.quote ctx.metas qdepth acc } })
+          unsolved val_ty
+      in
+      (gen_val, gen_ty_val)
+    end
+  end
+
 (** Let inference. *)
 and infer_let (ctx : Ctx.t) (name : string) (type_ : Surface.t option)
     (value : Surface.t) (body : Surface.t) : term * value =
@@ -420,11 +470,12 @@ and infer_let (ctx : Ctx.t) (name : string) (type_ : Surface.t option)
         (core, ty_val)
     | None -> infer ctx value
   in
-  let val_val = Ctx.eval ctx val_core in
-  let ty_term = Ctx.quote ctx val_ty in
-  let ctx' = Ctx.define ctx name val_ty val_val in
+  let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
+  let val_val = Ctx.eval ctx gen_val_core in
+  let ty_term = Ctx.quote ctx gen_val_ty in
+  let ctx' = Ctx.define ctx name gen_val_ty val_val in
   let body_core, body_ty = infer ctx' body in
-  (Let (ty_term, val_core, body_core), body_ty)
+  (Let (ty_term, gen_val_core, body_core), body_ty)
 
 (** If inference. *)
 and infer_if (ctx : Ctx.t) (cond : Surface.t) (then_ : Surface.t)
@@ -523,11 +574,12 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
             (core, ty_val)
         | None -> infer ctx value
       in
-      let val_val = Ctx.eval ctx val_core in
-      let ty_term = Ctx.quote ctx val_ty in
-      let ctx' = Ctx.define ctx name val_ty val_val in
+      let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
+      let val_val = Ctx.eval ctx gen_val_core in
+      let ty_term = Ctx.quote ctx gen_val_ty in
+      let ctx' = Ctx.define ctx name gen_val_ty val_val in
       let body_core = check ctx' body expected in
-      Let (ty_term, val_core, body_core)
+      Let (ty_term, gen_val_core, body_core)
   | Match (scrutinee, branches), _ ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
       (match Nbe.force ctx.metas scrut_ty with

@@ -455,6 +455,10 @@ let implicit_args =
     Alcotest.test_case "partial app implicit" `Quick (fun () ->
       ignore (elab "type Option a = Some a | None in \
                     (Some {I64} : I64 -> Option I64)"));
+    Alcotest.test_case "polymorphic identity" `Quick (fun () ->
+      ignore (elab "let id = fun x -> x in \
+                    let _ : I64 = id 42 in \
+                    let _ : Bool = id true in ()"));
   ]
 
 let () =
