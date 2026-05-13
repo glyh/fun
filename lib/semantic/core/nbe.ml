@@ -93,15 +93,11 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       | _ -> raise (EvalError "open of non-struct"))
   | Fix body -> VFix { body = { env; body } }
   | Con name -> eval_con env name
-  | NomLit (id, name, ctors) ->
-      VNominal { id; name; params = []; constructors = ctors }
-  | ConLit (name, nominal) ->
-      VCon { name; spine = []; nominal }
   | NomRef (name, params) ->
       (match eval_con env name with
-      | VNominal n ->
+      | VNominal _ as nom ->
           let param_vals = List.map (eval mc env) params in
-          VNominal { n with params = param_vals }
+          List.fold_left (fun acc v -> apply mc acc v) nom param_vals
       | _ -> raise (EvalError ("NomRef is not VNominal: " ^ name)))
   | Ctor { name; spine; nominal_name; nominal_spine } ->
       let spine_vals = List.map (eval mc env) spine in

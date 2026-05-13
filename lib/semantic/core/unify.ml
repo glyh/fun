@@ -116,11 +116,11 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VNominal n ->
         let params_terms = List.map (go d) n.params in
         List.fold_left (fun acc t -> Ap (acc, Explicit, t))
-          (NomLit (n.id, n.name, n.constructors)) params_terms
-    | VCon { name; spine; nominal } ->
+          (Con n.name) params_terms
+    | VCon { name; spine; _ } ->
         let spine_terms = List.map (go d) spine in
         List.fold_left (fun acc t -> Ap (acc, Explicit, t))
-          (ConLit (name, nominal)) spine_terms
+          (Con name) spine_terms
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
@@ -173,19 +173,14 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
        that point into the solution lambda chain.
     3. [wrap] the renamed RHS in lambdas (one per spine argument).
     4. Evaluate the result at depth 0 and install it as the solution. *)
-let solve (mc : MetaContext.t) (id : meta_id) (sp : spine) (rhs : value) : unit =
+let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : value) : unit =
   match sp with
   | [] ->
-      (* Empty spine: no renaming needed. Just do occurs check and solve directly.
-         This avoids the rename→eval round-trip which fails for values containing
-         names that require env lookup (VNominal, VCon). *)
       let rec occurs_check v =
-        match v with
+        match Nbe.force mc v with
         | VFlex { id = id'; spine } ->
             if id' = id then raise (UnifyError OccursCheck);
-            (match MetaContext.lookup mc id' with
-            | Solved sv -> occurs_check sv; List.iter occurs_check spine
-            | Unsolved -> List.iter occurs_check spine)
+            List.iter occurs_check spine
         | VPi { domain = a; _ } -> occurs_check a
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
         | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> occurs_check v) fields
@@ -204,7 +199,7 @@ let solve (mc : MetaContext.t) (id : meta_id) (sp : spine) (rhs : value) : unit 
       let sp_len = List.length sp in
       let rhs_term = rename mc id sp_len ren rhs in
       let solution = Renaming.wrap ren rhs_term in
-      let v = Nbe.eval mc [] solution in
+      let v = Nbe.eval mc env solution in
       MetaContext.solve mc id v
 
 (** Structural unification of two semantic values. Dispatches by constructor:
@@ -219,7 +214,7 @@ let solve (mc : MetaContext.t) (id : meta_id) (sp : spine) (rhs : value) : unit 
      - VFlex vs anything → [solve] the metavariable.
      - VNeutral → decompose head + frames.
      - Otherwise → [CannotUnify]. *)
-let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : unit =
+let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : value) : unit =
   let v1 = Nbe.force mc v1 in
   let v2 = Nbe.force mc v2 in
   match (v1, v2) with
@@ -229,40 +224,36 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
   | ( VPi { explicitness = e1; domain = a1; codomain = clo1 },
       VPi { explicitness = e2; domain = a2; codomain = clo2 } )
     when e1 = e2 ->
-      unify mc depth a1 a2;
+      unify mc env depth a1 a2;
       let var = VRigid { lvl = depth; spine = [] } in
-      unify mc (depth + 1)
+      unify mc env (depth + 1)
         (Nbe.closure_apply mc clo1 var)
         (Nbe.closure_apply mc clo2 var)
   | VLam { body = clo1; _ }, VLam { body = clo2; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
-      unify mc (depth + 1)
+      unify mc env (depth + 1)
         (Nbe.closure_apply mc clo1 var)
         (Nbe.closure_apply mc clo2 var)
   | VLam { body = clo; _ }, v | v, VLam { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
-      unify mc (depth + 1) (Nbe.closure_apply mc clo var) (Nbe.apply mc v var)
+      unify mc env (depth + 1) (Nbe.closure_apply mc clo var) (Nbe.apply mc v var)
   | VProd elems1, VProd elems2 | VProdTy elems1, VProdTy elems2 ->
       if List.length elems1 <> List.length elems2 then
-        (* (a, b) vs (a, b, c) — different arities; no substitution can
-           make a 2-tuple equal to a 3-tuple. *)
         raise (UnifyError TupleLengthMismatch);
-      List.iter2 (unify mc depth) elems1 elems2
+      List.iter2 (unify mc env depth) elems1 elems2
   | VStruct { fields = fs1; partial = p1 }, VStruct { fields = fs2; partial = p2 } ->
       let visible fs = List.filter (fun (_, k, _) -> k <> Private) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
       if (not p1) && (not p2) then begin
-        (* Both concrete: strict equality *)
         if List.length vs1 <> List.length vs2 then
           raise (UnifyError TupleLengthMismatch);
         List.iter2
           (fun (n1, k1, v1) (n2, k2, v2) ->
             if not (String.equal n1 n2) then raise (UnifyError StructFieldMismatch);
             if k1 <> k2 then raise (UnifyError StructFieldMismatch);
-            unify mc depth v1 v2)
+            unify mc env depth v1 v2)
           vs1 vs2
       end else
-        (* At least one partial: smaller constrains larger *)
         let small, large = if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
         List.iter
           (fun (name, kind, ty) ->
@@ -270,7 +261,7 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
               String.equal n name && (k = kind || kind = Field && k = Public || kind = Public && k = Field))
               large
             with
-            | Some (_, _, large_ty) -> unify mc depth ty large_ty
+            | Some (_, _, large_ty) -> unify mc env depth ty large_ty
             | None -> raise (UnifyError StructFieldMismatch))
           small
   | VNominal n1, VNominal n2 ->
@@ -278,86 +269,79 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
         raise (UnifyError (NominalMismatch (n1.name, n2.name)));
       if List.length n1.params <> List.length n2.params then
         raise (UnifyError (NominalMismatch (n1.name, n2.name)));
-      List.iter2 (unify mc depth) n1.params n2.params
+      List.iter2 (unify mc env depth) n1.params n2.params
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
-      unify_spine mc depth sp1 sp2
+      unify_spine mc env depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->
-      unify_spine mc depth sp1 sp2
-  | VFlex { id; spine = sp }, v | v, VFlex { id; spine = sp } -> solve mc id sp v
+      unify_spine mc env depth sp1 sp2
+  | VFlex { id; spine = sp }, v | v, VFlex { id; spine = sp } -> solve mc env id sp v
   | VCon c1, VCon c2 ->
       if not (String.equal c1.name c2.name) then raise (UnifyError CannotUnify);
-      unify_spine mc depth c1.spine c2.spine
-  | VNeutral { neutral = n1; _ }, VNeutral { neutral = n2; _ } -> unify_neutral mc depth n1 n2
+      unify_spine mc env depth c1.spine c2.spine
+  | VNeutral { neutral = n1; _ }, VNeutral { neutral = n2; _ } -> unify_neutral mc env depth n1 n2
   | VFix { body = clo1; _ }, VFix { body = clo2; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
-      unify mc (depth + 1)
+      unify mc env (depth + 1)
         (Nbe.closure_apply mc clo1 var)
         (Nbe.closure_apply mc clo2 var)
   | _ ->
-      (* Mismatched head constructors, e.g. VU vs VAtom, or VAtomTy TI64
-         vs VAtomTy TBool. No possible substitution can make these equal. *)
       raise
         (UnifyError CannotUnify)
 
 (** Unify two argument lists pointwise. Both spines must have the same
     length — a variable with different arities can't be unified. *)
-and unify_spine (mc : MetaContext.t) (depth : lvl) (sp1 : spine) (sp2 : spine) :
+and unify_spine (mc : MetaContext.t) (env : env) (depth : lvl) (sp1 : spine) (sp2 : spine) :
     unit =
   if List.length sp1 <> List.length sp2 then
-    (* #0[5] vs #0[5, true] — same variable, different number of arguments. *)
     raise (UnifyError SpineLengthMismatch);
-  List.iter2 (unify mc depth) sp1 sp2
+  List.iter2 (unify mc env depth) sp1 sp2
 
 (** Unify two stuck computations. First check the heads match (same
     variable level, same metavariable id, or same primitive name),
     then recurse on the frames. *)
-and unify_neutral (mc : MetaContext.t) (depth : lvl) (n1 : neutral) (n2 : neutral) :
+and unify_neutral (mc : MetaContext.t) (env : env) (depth : lvl) (n1 : neutral) (n2 : neutral) :
     unit =
   (match (n1.head, n2.head) with
   | HVar l1, HVar l2 when l1 = l2 -> ()
   | HMeta id1, HMeta id2 when id1 = id2 -> ()
   | HPrim n1, HPrim n2 when String.equal n1 n2 -> ()
   | _ ->
-      (* + vs ==, or HVar 0 vs HVar 1 — different primitives or different
-         variable levels. *)
       raise (UnifyError NeutralHeadMismatch));
-  unify_frames mc depth n1.frames n2.frames
+  unify_frames mc env depth n1.frames n2.frames
 
 (** Unify two frame stacks element-wise. FApp frames unify their arguments;
     FIf frames unify the then-branches and else-branches (via [eval] to
     unfold closures); FProj frames unify the projection index. *)
-and unify_frames (mc : MetaContext.t) (depth : lvl) (fs1 : frame list)
+and unify_frames (mc : MetaContext.t) (env : env) (depth : lvl) (fs1 : frame list)
     (fs2 : frame list) : unit =
   match (fs1, fs2) with
   | [], [] -> ()
   | FApp v1 :: rest1, FApp v2 :: rest2 ->
-      unify mc depth v1 v2;
-      unify_frames mc depth rest1 rest2
+      unify mc env depth v1 v2;
+      unify_frames mc env depth rest1 rest2
   | FIf { then_ = t1; else_ = e1 } :: rest1, FIf { then_ = t2; else_ = e2 } :: rest2
     ->
-      unify mc depth
+      unify mc env depth
         (Nbe.eval mc t1.env t1.body)
         (Nbe.eval mc t2.env t2.body);
-      unify mc depth
+      unify mc env depth
         (Nbe.eval mc e1.env e1.body)
         (Nbe.eval mc e2.env e2.body);
-      unify_frames mc depth rest1 rest2
+      unify_frames mc env depth rest1 rest2
   | FProj i1 :: rest1, FProj i2 :: rest2 when i1 = i2 ->
-      unify_frames mc depth rest1 rest2
+      unify_frames mc env depth rest1 rest2
   | FDot n1 :: rest1, FDot n2 :: rest2 when String.equal n1 n2 ->
-      unify_frames mc depth rest1 rest2
+      unify_frames mc env depth rest1 rest2
   | FMatch bs1 :: rest1, FMatch bs2 :: rest2 ->
       if List.length bs1 <> List.length bs2 then
         raise (UnifyError FrameMismatch);
       List.iter2
         (fun (p1, c1) (p2, c2) ->
           if not (Nbe.conv_pat p1 p2) then raise (UnifyError FrameMismatch);
-          unify mc depth
+          unify mc env depth
             (Nbe.eval mc c1.env c1.body)
             (Nbe.eval mc c2.env c2.body))
         bs1 bs2;
-      unify_frames mc depth rest1 rest2
+      unify_frames mc env depth rest1 rest2
   | _ ->
-      (* FApp vs FIf, or FIf branches differ — frame stacks don't match
-         structurally. *)
       raise (UnifyError FrameMismatch)

@@ -172,7 +172,7 @@ let test_unify_simple () =
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [] } in
   let v2 = VAtomTy TI64 in
-  unify mc 0 v1 v2;
+  unify mc [] 0 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected TI64"
 
@@ -181,7 +181,7 @@ let test_unify_pi () =
   let id = MetaContext.fresh mc in
   let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
   let v2 = VPi { explicitness = Explicit; domain = VAtomTy TI64; codomain = { env = []; body = AtomTy TBool } } in
-  unify mc 0 v1 v2;
+  unify mc [] 0 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected TI64 in pi domain"
 
@@ -190,7 +190,7 @@ let test_unify_spine () =
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] } ] } in
   let v2 = VAtomTy TI64 in
-  unify mc 1 v1 v2;
+  unify mc [] 1 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = clo; _ } ->
@@ -204,7 +204,7 @@ let test_unify_rename_id () =
   (* ?M[x] = x  →  solution should be λx0. x0 (identity) *)
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] } ] } in
   let v2 = VRigid { lvl = 0; spine = [] } in
-  unify mc 1 v1 v2;
+  unify mc [] 1 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = clo; _ } ->
@@ -219,7 +219,7 @@ let test_unify_rename_fst () =
   (* ?M[x, y] = x  →  solution should be λx0. λx1. x0 (project first) *)
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] }; VRigid { lvl = 1; spine = [] } ] } in
   let v2 = VRigid { lvl = 0; spine = [] } in
-  unify mc 2 v1 v2;
+  unify mc [] 2 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = outer_clo; _ } -> (
@@ -238,7 +238,7 @@ let test_unify_rename_snd () =
   (* ?M[x, y] = y  →  solution should be λx0. λx1. x1 (project second) *)
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] }; VRigid { lvl = 1; spine = [] } ] } in
   let v2 = VRigid { lvl = 1; spine = [] } in
-  unify mc 2 v1 v2;
+  unify mc [] 2 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = outer_clo; _ } -> (
@@ -256,7 +256,7 @@ let test_unify_occurs_check () =
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [] } in
   let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
-  match unify mc 0 v1 v2 with
+  match unify mc [] 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected occurs check error"
 
@@ -270,7 +270,7 @@ let test_unify_nonlinear_spine () =
     VRigid { lvl = 2; spine = [] }
   ]} in
   let v2 = VAtomTy TI64 in
-  match unify mc 3 v1 v2 with
+  match unify mc [] 3 v1 v2 with
   | exception UnifyError NonLinearSpine -> ()
   | exception UnifyError _ -> Alcotest.fail "wrong unify error (expected NonLinearSpine)"
   | () -> Alcotest.fail "expected NonLinearSpine but solved silently"
@@ -279,7 +279,7 @@ let test_unify_mismatch () =
   let mc = mc () in
   let v1 = VAtomTy TI64 in
   let v2 = VAtomTy TBool in
-  match unify mc 0 v1 v2 with
+  match unify mc [] 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected unify error"
 
@@ -288,7 +288,7 @@ let test_unify_nominal_params () =
   (* Two VNominals with same id but different params should NOT unify *)
   let nom1 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TI64 ]; constructors = [] } in
   let nom2 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TBool ]; constructors = [] } in
-  match unify mc 0 nom1 nom2 with
+  match unify mc [] 0 nom1 nom2 with
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different nominal params"
 

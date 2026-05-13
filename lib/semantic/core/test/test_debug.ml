@@ -7,12 +7,13 @@ let parse_expr s =
 
 let () =
   let source = "type Option a = Some a | None in \
-                fun x -> match x with Some(y) -> Some(Some(y)) | None -> None end" in
+                fun x -> match x with Some(y) -> Some(y) | None -> None end" in
   let expr = parse_expr source in
   let ctx = Elaborate.init_ctx () in
   (try
     ignore (Elaborate.infer ctx expr);
     Printf.printf "OK\n"
   with e ->
-    Printf.printf "FAIL: %s\n" (Printexc.to_string e));
+    Printf.printf "FAIL: %s\n" (Printexc.to_string e);
+    Printexc.print_backtrace stdout);
   Debug.dump_metas ctx.metas

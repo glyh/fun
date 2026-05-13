@@ -79,7 +79,7 @@ module Ctx = struct
   let quote (ctx : t) (v : value) : term = Nbe.quote ctx.metas ctx.lvl v
 
   let unify (ctx : t) (v1 : value) (v2 : value) : unit =
-    Unify.unify ctx.metas ctx.lvl v1 v2
+    Unify.unify ctx.metas ctx.env ctx.lvl v1 v2
 end
 
 (** Build a closed [VPi] value (for primitive types). *)
@@ -252,7 +252,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (cname, Some (Ctx.eval body_ctx payload_core)))
         ctors
       in
-      let nominal = VNominal { id = NominalId.fresh (); name; params = param_metas; constructors = elaborated_ctors } in
+      let nominal = VNominal { id = NominalId.fresh (); name; params = []; constructors = elaborated_ctors } in
       let num_params = List.length param_metas in
       (* For parameterized types, build an Explicit VPi chain so Option I64 works.
          For nullary types, just bind with VU as before. *)
