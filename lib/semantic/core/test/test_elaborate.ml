@@ -472,6 +472,14 @@ let implicit_args =
         ignore (elab
           "type Option a = Some a | None in \
            fun x -> match x with Some(y) -> Some(Some(y)) | None -> None end"));
+    Alcotest.test_case "match same nominal at different instantiations" `Quick
+      (fun () ->
+        ignore (elab
+          "type Option a = Some a | None in \
+           let f = fun x -> match x with Some(y) -> y | None -> 0 end in \
+           let g = fun x -> match x with Some(y) -> y | None -> true end in \
+           let _ : I64 = f (Some 1) in \
+           let _ : Bool = g (Some true) in ()"));
   ]
 
 let () =

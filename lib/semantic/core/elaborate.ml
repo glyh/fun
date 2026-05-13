@@ -232,45 +232,46 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           (Open (Var ix, body_core), body_ty)
       | _ -> raise (ElabError (UnboundVariable name (* not a struct *))))
   | TypeDef { name; params; ctors; body } ->
-      (* Create fresh metas for type params and bind them *)
-      let param_metas = List.map (fun _ -> Ctx.raw_meta ctx) params in
-      let body_ctx =
-        List.fold_left2
-          (fun ctx param_name meta_val ->
-            Ctx.define ctx param_name VU meta_val)
-          ctx params param_metas
+      let num_params = List.length params in
+      (* Bind type params as rigid variables (locally abstract types) *)
+      let param_ctx =
+        List.fold_left
+          (fun ctx param_name ->
+            Ctx.define ctx param_name VU (VRigid { lvl = ctx.lvl; spine = [] }))
+          ctx params
       in
-      (* Elaborate constructor payload types in body_ctx *)
+      (* Elaborate constructor payload types with rigid params in scope.
+         Store as closures: env = outer ctx.env, body = payload term
+         with Var 0..n-1 referencing params. *)
       let elaborated_ctors =
         List.map (fun (cname, payload_opt) ->
           match payload_opt with
           | None -> (cname, None)
           | Some payload_expr ->
-              (* Elaborate payload type in body_ctx (params + type name in scope) *)
-              let payload_core, payload_ty = infer body_ctx payload_expr in
-              Ctx.unify body_ctx payload_ty VU;
-              (cname, Some (Ctx.eval body_ctx payload_core)))
+              let payload_core, payload_ty = infer param_ctx payload_expr in
+              Ctx.unify param_ctx payload_ty VU;
+              let payload_term = payload_core in
+              (cname, Some { env = ctx.env; body = payload_term }))
         ctors
       in
       let nominal = VNominal { id = NominalId.fresh (); name; params = []; constructors = elaborated_ctors } in
-      let num_params = List.length param_metas in
       (* For parameterized types, build an Explicit VPi chain so Option I64 works.
          For nullary types, just bind with VU as before. *)
       let body_ctx =
         if num_params = 0 then
-          Ctx.define body_ctx name VU nominal
+          Ctx.define param_ctx name VU nominal
         else begin
           (* Push VNominal first so NomRef evaluation can find it *)
-          let body_ctx = { body_ctx with
-            env = nominal :: body_ctx.env;
-            types = VU :: body_ctx.types;
-            lvl = body_ctx.lvl + 1;
-            bds = Defined :: body_ctx.bds
+          let body_ctx = { param_ctx with
+            env = nominal :: param_ctx.env;
+            types = VU :: param_ctx.types;
+            lvl = param_ctx.lvl + 1;
+            bds = Defined :: param_ctx.bds
           } in
-          let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) param_metas in
+          let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
           let type_body_term = NomRef (name, type_var_terms) in
           let type_core_term =
-            List.fold_right (fun _ acc -> Lam acc) param_metas type_body_term
+            List.fold_right (fun _ acc -> Lam acc) params type_body_term
           in
           let type_val = Nbe.eval body_ctx.metas body_ctx.env type_core_term in
           let type_ty =
@@ -279,7 +280,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (fun _ acc ->
                 VPi { explicitness = Explicit; domain = VU;
                       codomain = { env = body_ctx.env; body = Nbe.quote body_ctx.metas depth acc } })
-              param_metas VU
+              params VU
           in
           Ctx.define body_ctx name type_ty type_val
         end
@@ -287,9 +288,9 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let env = body_ctx.env in
       let body_ctx =
         List.fold_left2
-          (fun ctx (cname, _payload_surface) payload_val_opt ->
+          (fun ctx (cname, _payload_surface) payload_clo_opt ->
             let ctor_val, ctor_ty =
-              build_ctor body_ctx.metas env name cname param_metas payload_val_opt in
+              build_ctor body_ctx.metas env name cname num_params payload_clo_opt in
             Ctx.define ctx cname ctor_ty ctor_val)
           body_ctx ctors (List.map snd elaborated_ctors)
       in
@@ -357,7 +358,9 @@ and elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
               let num_type_params = List.length n.params in
               (match (sub_pats, payload_opt) with
               | [], None -> (CPatCon (name, num_type_params, []), ctx)
-              | [sub_pat], Some payload_ty ->
+              | [sub_pat], Some payload_clo ->
+                  let payload_ty =
+                    Nbe.eval ctx.metas (List.rev n.params @ payload_clo.env) payload_clo.body in
                   let core_sub, ctx' = elaborate_pat ctx sub_pat payload_ty in
                   (CPatCon (name, num_type_params, [core_sub]), ctx')
               | _ ->
@@ -518,14 +521,15 @@ and infer_if (ctx : Ctx.t) (cond : Surface.t) (then_ : Surface.t)
   let else_core = check ctx else_ then_ty in
   (If (cond_core, then_core, else_core), then_ty)
 
-(** Build a constructor's VLam chain + VPi type from type params and optional payload. *)
+(** Build a constructor's VLam chain + VPi type from type params and optional payload.
+    [payload_clo_opt] is a closure whose body is the payload type term with
+    de Bruijn indices 0..num_params-1 referencing type params. *)
 and build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_name : string)
-    (param_metas : value list) (payload_val_opt : value option)
+    (num_params : int) (payload_clo_opt : closure option)
     : value * value =
-  let num_params = List.length param_metas in
-  let has_payload = Option.is_some payload_val_opt in
+  let has_payload = Option.is_some payload_clo_opt in
   let total_args = num_params + (if has_payload then 1 else 0) in
-  let param_vars = List.mapi (fun i _ -> Var (total_args - 1 - i)) param_metas in
+  let param_vars = List.init num_params (fun i -> Var (total_args - 1 - i)) in
   let payload_var = if has_payload then [ Var 0 ] else [] in
   let all_spine_vars = param_vars @ payload_var in
   let body_term =
@@ -534,41 +538,36 @@ and build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_na
   in
   let core_term =
     let with_payload = if has_payload then Lam body_term else body_term in
-    List.fold_right (fun _ acc -> Lam acc) param_metas with_payload
+    let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in
+    wrap num_params with_payload
   in
   let ctor_val = Nbe.eval mc env core_term in
-  (* Build the Pi type as a term with proper de Bruijn indices.
-     Structure: Pi(Impl, U, ... Pi(Impl, U, Pi(Expl, payload, NomRef(...))))
-     or without payload: Pi(Impl, U, ... Pi(Impl, U, NomRef(...)))
-
-     To quote the payload type correctly, temporarily solve param metas to
-     VRigid at levels that will produce the right Var indices when quoted. *)
   let depth = List.length env in
   let type_term =
     let nom_ret_vars =
       if has_payload then
-        List.mapi (fun i _ -> Var (num_params - i)) param_metas
+        List.init num_params (fun i -> Var (num_params - i))
       else
-        List.mapi (fun i _ -> Var (num_params - 1 - i)) param_metas
+        List.init num_params (fun i -> Var (num_params - 1 - i))
     in
     let ret_term = NomRef (nominal_name, nom_ret_vars) in
-    match payload_val_opt with
-    | Some payload_val ->
-        (* Temporarily solve param metas to VRigid so quoting produces Var refs.
-           Inside the implicit Pi chain (depth num_params), param i is at level depth+i.
-           We quote at depth+num_params (inside all implicit binders). *)
-        let meta_ids = List.map (fun m ->
-          match m with VFlex { id; _ } -> id | _ -> -1) param_metas in
-        List.iteri (fun i id ->
-          MetaContext.solve mc id (VRigid { lvl = depth + i; spine = [] }))
-          meta_ids;
+    match payload_clo_opt with
+    | Some payload_clo ->
+        (* The payload closure body has indices relative to [payload_clo.env]
+           with num_params extra bindings prepended. Inside the implicit Pi chain,
+           param i is at level depth+i. Evaluate with rigid vars to get the
+           payload value, then quote at the right depth. *)
+        let param_rigids = List.init num_params (fun i ->
+          VRigid { lvl = depth + i; spine = [] }) in
+        let payload_val =
+          Nbe.eval mc (List.rev param_rigids @ payload_clo.env) payload_clo.body in
         let payload_term = Nbe.quote mc (depth + num_params) payload_val in
-        (* Restore metas to unsolved *)
-        List.iter (fun id -> Dynarray.set mc id MetaContext.Unsolved) meta_ids;
         let inner = Pi (Explicit, payload_term, ret_term) in
-        List.fold_right (fun _ acc -> Pi (Implicit, U, acc)) param_metas inner
+        let rec wrap_pi n t = if n = 0 then t else wrap_pi (n - 1) (Pi (Implicit, U, t)) in
+        wrap_pi num_params inner
     | None ->
-        List.fold_right (fun _ acc -> Pi (Implicit, U, acc)) param_metas ret_term
+        let rec wrap_pi n t = if n = 0 then t else wrap_pi (n - 1) (Pi (Implicit, U, t)) in
+        wrap_pi num_params ret_term
   in
   let ret_type = Nbe.eval mc env type_term in
   (ctor_val, ret_type)

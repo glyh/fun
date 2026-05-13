@@ -135,12 +135,16 @@ and value =
       id : nominal_id;
       name : string;
       params : value list;
-      constructors : (string * value option) list;
-          (** (ctor_name, payload_type option). [None] = nullary. *)
+      constructors : (string * closure option) list;
+          (** (ctor_name, payload_type_closure option). [None] = nullary.
+              The closure's env is the definition env (without type params);
+              its body is the payload type term with de Bruijn indices 0..n-1
+              referencing the type params. Instantiate by evaluating with
+              [List.rev actual_params @ clo.env]. *)
     }
       (** Nominal ADT type. Unifies by [id] equality. [params] are the
           applied type arguments, e.g. [Option I64] has params = [VAtomTy TI64].
-          [constructors] maps each constructor name to its optional payload type. *)
+          [constructors] maps each constructor name to its payload type closure. *)
   | VCon of { name : string; spine : value list; nominal : value }
       (** Fully saturated constructor value. [name] is the constructor tag,
           [spine] collects type+value arguments in application order
