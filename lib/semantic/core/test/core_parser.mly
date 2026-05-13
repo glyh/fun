@@ -9,6 +9,7 @@ open Core_tt.Surface
 %token STRUCT END OPEN PUB TYPE
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
+%token LBRACE RBRACE
 %token <string> OP
 %token EOF
 
@@ -65,16 +66,18 @@ ctor_decl:
   | name = ID; payload = option(expr) { (name, payload) }
 
 expr_arrow:
-  | dom = expr_binop; ARROW; cod = expr_arrow { Arrow (dom, cod) }
+  | LBRACE; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, dom, cod) }
+  | dom = expr_binop; ARROW; cod = expr_arrow { Arrow (Explicit, dom, cod) }
   | e = expr_binop { e }
 
 expr_binop:
   | lhs = expr_binop; op = OP; rhs = expr_app
-    { Ap (Ap (Var op, lhs), rhs) }
+    { Ap (Ap (Var op, Explicit, lhs), Explicit, rhs) }
   | e = expr_app { e }
 
 expr_app:
-  | f = expr_app; a = expr_proj { Ap (f, a) }
+  | f = expr_app; LBRACE; a = expr_proj; RBRACE { Ap (f, Implicit, a) }
+  | f = expr_app; a = expr_proj { Ap (f, Explicit, a) }
   | e = expr_proj { e }
 
 expr_proj:

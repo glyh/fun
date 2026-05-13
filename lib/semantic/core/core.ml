@@ -10,12 +10,14 @@ type bd = Bound | Defined
 
 type struct_field_kind = Field | Public | Private
 
+type explicitness = Implicit | Explicit
+
 type term =
   | Var of ix
   | Lam of term
-  | Ap of term * term
+  | Ap of term * explicitness * term
   | Let of term * term * term   (* let _ : A = def in body *)
-  | Pi of term * term           (* (x : A) -> B, x bound in B *)
+  | Pi of explicitness * term * term  (* (x : A) -> B or {x : A} -> B *)
   | U (* Type : Type *)
   | Atom of Syntax.Ast.Atom.t
   | AtomTy of atom_ty
@@ -113,7 +115,7 @@ and env = value list (* head = most recently bound *)
 
 and value =
   | VLam of { body : closure }
-  | VPi of { domain : value; codomain : closure }
+  | VPi of { explicitness : explicitness; domain : value; codomain : closure }
   | VU
   | VAtom of Syntax.Ast.Atom.t
   | VAtomTy of atom_ty

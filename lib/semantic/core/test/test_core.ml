@@ -17,7 +17,7 @@ let test_eval_atom () =
 let test_eval_lam_ap () =
   let mc = mc () in
   let id = Lam (Var 0) in
-  let t = Ap (id, Atom (I64 7L)) in
+  let t = Ap (id, Explicit, Atom (I64 7L)) in
   let v = eval mc [] t in
   match v with VAtom (I64 n) -> Alcotest.(check int64) "applied" 7L n | _ -> Alcotest.fail "expected VAtom"
 
@@ -64,7 +64,7 @@ let test_eval_dot () =
 
 let test_eval_pi () =
   let mc = mc () in
-  let t = Pi (AtomTy TI64, AtomTy TBool) in
+  let t = Pi (Explicit, AtomTy TI64, AtomTy TBool) in
   let v = eval mc [] t in
   match v with
   | VPi { domain = VAtomTy TI64; _ } -> ()
@@ -86,28 +86,28 @@ let test_quote_lam () =
 
 let test_quote_pi () =
   let mc = mc () in
-  let t = Pi (U, Pi (Var 0, Var 1)) in
+  let t = Pi (Explicit, U, Pi (Explicit, Var 0, Var 1)) in
   let v = eval mc [] t in
   let t' = quote mc 0 v in
   Alcotest.(check bool) "round-trip pi" true (term_eq mc 0 t t')
 
 let test_conv_beta () =
   let mc = mc () in
-  let t1 = Ap (Lam (Var 0), AtomTy TI64) in
+  let t1 = Ap (Lam (Var 0), Explicit, AtomTy TI64) in
   let t2 = AtomTy TI64 in
   Alcotest.(check bool) "beta conv" true (term_eq mc 0 t1 t2)
 
 let test_conv_eta () =
   let mc = mc () in
-  let f = Lam (Ap (Var 1, Var 0)) in
+  let f = Lam (Ap (Var 1, Explicit, Var 0)) in
   let v_f = eval mc [ VRigid { lvl = 0; spine = [] } ] f in
   let v_g = VRigid { lvl = 0; spine = [] } in
   Alcotest.(check bool) "eta conv" true (conv mc 1 v_f v_g)
 
 let test_conv_pi () =
   let mc = mc () in
-  let t1 = Pi (U, Pi (Var 0, Var 1)) in
-  let t2 = Pi (U, Pi (Var 0, Var 1)) in
+  let t1 = Pi (Explicit, U, Pi (Explicit, Var 0, Var 1)) in
+  let t2 = Pi (Explicit, U, Pi (Explicit, Var 0, Var 1)) in
   Alcotest.(check bool) "alpha-equiv pi" true (term_eq mc 0 t1 t2)
 
 let test_conv_not_equal () =
@@ -124,7 +124,7 @@ let test_neutral_var () =
 let test_neutral_ap () =
   let mc = mc () in
   let env = [ VRigid { lvl = 0; spine = [] } ] in
-  let v = eval mc env (Ap (Var 0, Atom (I64 1L))) in
+  let v = eval mc env (Ap (Var 0, Explicit, Atom (I64 1L))) in
   match v with
   | VNeutral { neutral = { head = HVar 0; frames = [ FApp (VAtom (I64 1L)) ] }; _ } -> ()
   | VRigid { lvl = 0; spine = [ VAtom (I64 1L) ] } -> ()
@@ -179,8 +179,8 @@ let test_unify_simple () =
 let test_unify_pi () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  let v1 = VPi { domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
-  let v2 = VPi { domain = VAtomTy TI64; codomain = { env = []; body = AtomTy TBool } } in
+  let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
+  let v2 = VPi { explicitness = Explicit; domain = VAtomTy TI64; codomain = { env = []; body = AtomTy TBool } } in
   unify mc 0 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected TI64 in pi domain"
@@ -255,7 +255,7 @@ let test_unify_occurs_check () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [] } in
-  let v2 = VPi { domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
+  let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
   match unify mc 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected occurs check error"

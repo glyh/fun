@@ -92,9 +92,9 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VLam { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Lam (go (d + 1) (Nbe.closure_apply mc clo var))
-    | VPi { domain = a; codomain = clo; _ } ->
+    | VPi { explicitness = expl; domain = a; codomain = clo } ->
         let var = VRigid { lvl = d; spine = [] } in
-        Pi (go d a, go (d + 1) (Nbe.closure_apply mc clo var))
+        Pi (expl, go d a, go (d + 1) (Nbe.closure_apply mc clo var))
     | VU -> U
     | VAtom a -> Atom a
     | VAtomTy t -> AtomTy t
@@ -120,7 +120,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
     | VNeutral { neutral = neu; _ } -> go_neutral d neu
   and go_spine (d : lvl) (head : term) (sp : spine) : term =
-    List.fold_left (fun acc v -> Ap (acc, go d v)) head sp
+    List.fold_left (fun acc v -> Ap (acc, Explicit, go d v)) head sp
   and go_neutral (d : lvl) (neu : neutral) : term =
     let head =
       match neu.head with
@@ -142,7 +142,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     List.fold_left
       (fun acc frame ->
         match frame with
-        | FApp v -> Ap (acc, go d v)
+        | FApp v -> Ap (acc, Explicit, go d v)
         | FIf { then_; else_ } ->
             If (acc, go d (Nbe.eval mc then_.env then_.body),
                      go d (Nbe.eval mc else_.env else_.body))
@@ -194,7 +194,9 @@ let rec unify (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : uni
   | VU, VU -> ()
   | VAtom a1, VAtom a2 when Syntax.Ast.Atom.equal a1 a2 -> ()
   | VAtomTy t1, VAtomTy t2 when equal_atom_ty t1 t2 -> ()
-  | VPi { domain = a1; codomain = clo1; _ }, VPi { domain = a2; codomain = clo2; _ } ->
+  | ( VPi { explicitness = e1; domain = a1; codomain = clo1 },
+      VPi { explicitness = e2; domain = a2; codomain = clo2 } )
+    when e1 = e2 ->
       unify mc depth a1 a2;
       let var = VRigid { lvl = depth; spine = [] } in
       unify mc (depth + 1)

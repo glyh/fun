@@ -35,6 +35,8 @@ let rec token buf =
   | "*" -> OP "*"
   | "/" -> OP "/"
   | "%" -> OP "%"
+  | "{" -> LBRACE
+  | "}" -> RBRACE
   | "(" -> LPAREN
   | ")" -> RPAREN
   | "=" -> EQUALS

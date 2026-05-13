@@ -1,5 +1,9 @@
 open Core
 
+(* Surface.explicitness and Core.explicitness are separate types with the same
+   constructor names. This helper maps between them. *)
+let expl_of_surface = function Surface.Explicit -> Explicit | Surface.Implicit -> Implicit
+
 type elab_error =
   | UnboundVariable of string
   | ApplyingNonFunction
@@ -79,9 +83,9 @@ module Ctx = struct
 end
 
 (** Build a closed [VPi] value (for primitive types). *)
-let ( ^-> ) = fun lhs rhs -> VPi { domain = lhs; codomain = { env = []; body = rhs } }
+let ( ^-> ) = fun lhs rhs -> VPi { explicitness = Explicit; domain = lhs; codomain = { env = []; body = rhs } }
 (** Build a [Pi] term (for primitive type schemas). *)
-let ( ^->> ) = fun lhs rhs -> Pi (lhs, rhs)
+let ( ^->> ) = fun lhs rhs -> Pi (Explicit, lhs, rhs)
 
 let prims =
   let arithemetic = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TI64 in
@@ -112,7 +116,8 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
       (Var ix, ty)
-  | Ap (f, a) -> infer_ap ctx f a
+  | Ap (f, Surface.Explicit, a) -> infer_ap ctx f a
+  | Ap (f, Surface.Implicit, a) -> infer_ap_implicit ctx f a
   | Let { name; type_; value; body } -> infer_let ctx name type_ value body
   | If { cond; then_; else_ } -> infer_if ctx cond then_ else_
   | Lam (param, body) -> infer_lam ctx param body
@@ -127,14 +132,14 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let cores = List.map fst cores_tys in
       let tys = List.map snd cores_tys in
       (Prod cores, VProdTy tys)
-  | Arrow (a, b) ->
+  | Arrow (expl, a, b) ->
       let a_core, a_ty = infer ctx a in
       Ctx.unify ctx a_ty VU;
       let a_val = Ctx.eval ctx a_core in
       let ctx' = Ctx.bind ctx "_" a_val in
       let b_core, b_ty = infer ctx' b in
       Ctx.unify ctx' b_ty VU;
-      (Pi (a_core, b_core), VU)
+      (Pi (expl_of_surface expl, a_core, b_core), VU)
   | FieldAccess (e, name) ->
       let e_core, e_ty = infer ctx e in
       (match Nbe.force ctx.metas e_ty with
@@ -248,8 +253,37 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
         ctors
       in
       let nominal = VNominal { id = NominalId.fresh (); name; params = param_metas; constructors = elaborated_ctors } in
-      (* Bind type name first so NomRef in constructors can find it *)
-      let body_ctx = Ctx.define body_ctx name VU nominal in
+      let num_params = List.length param_metas in
+      (* For parameterized types, build an Explicit VPi chain so Option I64 works.
+         For nullary types, just bind with VU as before. *)
+      let body_ctx =
+        if num_params = 0 then
+          Ctx.define body_ctx name VU nominal
+        else begin
+          (* Push VNominal first so NomRef evaluation can find it *)
+          let body_ctx = { body_ctx with
+            env = nominal :: body_ctx.env;
+            types = VU :: body_ctx.types;
+            lvl = body_ctx.lvl + 1;
+            bds = Defined :: body_ctx.bds
+          } in
+          let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) param_metas in
+          let type_body_term = NomRef (name, type_var_terms) in
+          let type_core_term =
+            List.fold_right (fun _ acc -> Lam acc) param_metas type_body_term
+          in
+          let type_val = Nbe.eval body_ctx.metas body_ctx.env type_core_term in
+          let type_ty =
+            let depth = List.length body_ctx.env in
+            List.fold_right
+              (fun _ acc ->
+                VPi { explicitness = Explicit; domain = VU;
+                      codomain = { env = body_ctx.env; body = Nbe.quote body_ctx.metas depth acc } })
+              param_metas VU
+          in
+          Ctx.define body_ctx name type_ty type_val
+        end
+      in
       let env = body_ctx.env in
       let body_ctx =
         List.fold_left2
@@ -298,16 +332,29 @@ and elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
           | None -> raise (ElabError (UnknownConstructor name)))
       | _ -> raise (ElabError NotANominalType))
 
-(** Application inference. *)
+(** Application inference.
+    Loops to insert fresh metas for implicit VPi domains before consuming
+    the user's explicit argument. *)
 and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
   let f_core, f_ty = infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in
+  (* Insert metas for leading implicit VPi layers *)
+  let rec insert_implicits f_core f_ty =
+    match f_ty with
+    | VPi { explicitness = Implicit; domain = _; codomain = b_clo } ->
+        let meta_core = Ctx.fresh_meta ctx in
+        let meta_val = Ctx.eval ctx meta_core in
+        let ret_ty = Nbe.closure_apply ctx.metas b_clo meta_val in
+        insert_implicits (Ap (f_core, Implicit, meta_core)) ret_ty
+    | _ -> (f_core, f_ty)
+  in
+  let f_core, f_ty = insert_implicits f_core f_ty in
   match f_ty with
-  | VPi { domain = a_ty; codomain = b_clo; _ } ->
+  | VPi { explicitness = Explicit; domain = a_ty; codomain = b_clo } ->
       let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
-      (Ap (f_core, a_core), ret_ty)
+      (Ap (f_core, Explicit, a_core), ret_ty)
   | VFlex _ | VRigid _ | VNeutral _ ->
       let a_ty = Ctx.raw_meta ctx in
       let a_core = check ctx a a_ty in
@@ -315,7 +362,8 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
       let ret_meta = Ctx.raw_meta (Ctx.bind ctx "_" a_ty) in
       let expected_f_ty =
         VPi
-          { domain = a_ty;
+          { explicitness = Explicit;
+            domain = a_ty;
             codomain = { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta } }
       in
       Ctx.unify ctx f_ty expected_f_ty;
@@ -324,7 +372,39 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
           { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta }
           a_val
       in
-      (Ap (f_core, a_core), ret_ty)
+      (Ap (f_core, Explicit, a_core), ret_ty)
+  | _ -> raise (ElabError ApplyingNonFunction)
+
+(** Explicit implicit application ([f {arg}]). *)
+and infer_ap_implicit (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
+  let f_core, f_ty = infer ctx f in
+  let f_ty = Nbe.force ctx.metas f_ty in
+  match f_ty with
+  | VPi { explicitness = Implicit; domain = a_ty; codomain = b_clo } ->
+      let a_core = check ctx a a_ty in
+      let a_val = Ctx.eval ctx a_core in
+      let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
+      (Ap (f_core, Implicit, a_core), ret_ty)
+  | VPi { explicitness = Explicit; _ } ->
+      raise (ElabError ApplyingNonFunction)
+  | VFlex _ | VRigid _ | VNeutral _ ->
+      let a_ty = Ctx.raw_meta ctx in
+      let a_core = check ctx a a_ty in
+      let a_val = Ctx.eval ctx a_core in
+      let ret_meta = Ctx.raw_meta (Ctx.bind ctx "_" a_ty) in
+      let expected_f_ty =
+        VPi
+          { explicitness = Implicit;
+            domain = a_ty;
+            codomain = { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta } }
+      in
+      Ctx.unify ctx f_ty expected_f_ty;
+      let ret_ty =
+        Nbe.closure_apply ctx.metas
+          { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta }
+          a_val
+      in
+      (Ap (f_core, Implicit, a_core), ret_ty)
   | _ -> raise (ElabError ApplyingNonFunction)
 
 (** Let inference. *)
@@ -384,13 +464,13 @@ and build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_na
     let ret_term = NomRef (nominal_name, nom_param_vars) in
     let inner_val : value =
       match payload_val_opt with
-      | Some p -> VPi { domain = p; codomain = { env; body = ret_term } }
+      | Some p -> VPi { explicitness = Explicit; domain = p; codomain = { env; body = ret_term } }
       | None -> Nbe.eval mc env ret_term
     in
     let depth = List.length env in
     List.fold_right
       (fun _ acc ->
-        VPi { domain = VU; codomain = { env; body = Nbe.quote mc depth acc } })
+        VPi { explicitness = Implicit; domain = VU; codomain = { env; body = Nbe.quote mc depth acc } })
       param_metas inner_val
   in
   (ctor_val, ret_type)
@@ -410,14 +490,14 @@ and infer_lam (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
   let ctx' = Ctx.bind ctx param.name a_ty in
   let body_core, body_ty = infer ctx' body in
   let body_ty_term = Ctx.quote ctx' body_ty in
-  let pi_ty = VPi { domain = a_ty; codomain = { env = ctx.env; body = body_ty_term } } in
+  let pi_ty = VPi { explicitness = Explicit; domain = a_ty; codomain = { env = ctx.env; body = body_ty_term } } in
   (Lam body_core, pi_ty)
 
 (** Bidirectional checking: verify [expr] against an [expected] type. *)
 and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
   let expected = Nbe.force ctx.metas expected in
   match (expr, expected) with
-  | Lam (param, body), VPi { domain = a_ty; codomain = b_clo; _ } ->
+  | Lam (param, body), VPi { explicitness = _; domain = a_ty; codomain = b_clo } ->
       let ctx' = Ctx.bind ctx param.name a_ty in
       let b_ty = Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] }) in
       let body_core = check ctx' body b_ty in
@@ -463,6 +543,16 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       | _ -> raise (ElabError NotANominalType))
   | _ ->
       let core, inferred = infer ctx expr in
+      let rec wrap_implicits core ty =
+        match Nbe.force ctx.metas ty with
+        | VPi { explicitness = Implicit; codomain = b_clo; _ } ->
+            let meta_core = Ctx.fresh_meta ctx in
+            let meta_val = Ctx.eval ctx meta_core in
+            let ret_ty = Nbe.closure_apply ctx.metas b_clo meta_val in
+            wrap_implicits (Ap (core, Implicit, meta_core)) ret_ty
+        | _ -> (core, ty)
+      in
+      let core, inferred = wrap_implicits core inferred in
       Ctx.unify ctx expected inferred;
       core
 

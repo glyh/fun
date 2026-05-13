@@ -9,15 +9,15 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
   match t with
   | Var ix -> List.nth env ix
   | Lam body -> VLam { body = { env; body } }
-  | Ap (f, a) ->
+  | Ap (f, _, a) ->
       let vf = eval mc env f in
       let va = eval mc env a in
       apply mc vf va
   | Let (_, def, body) ->
       let vdef = eval mc env def in
       eval mc (vdef :: env) body
-  | Pi (a, b) ->
-      VPi { domain = eval mc env a; codomain = { env; body = b } }
+  | Pi (expl, a, b) ->
+      VPi { explicitness = expl; domain = eval mc env a; codomain = { env; body = b } }
   | U -> VU
   | Atom a -> VAtom a
   | AtomTy t -> VAtomTy t
@@ -134,6 +134,7 @@ and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
         }
   | VFlex { id; spine = sp } -> VFlex { id; spine = sp @ [ va ] }
   | VRigid { lvl; spine = sp } -> VRigid { lvl; spine = sp @ [ va ] }
+  | VNominal n -> VNominal { n with params = n.params @ [ va ] }
   | _ -> raise (EvalError "applying non-function")
 
 and apply_ty (mc : MetaContext.t) (ty : value) (va : value) : value =
@@ -270,9 +271,9 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VLam { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       Lam (quote mc (depth + 1) (closure_apply mc clo var))
-  | VPi { domain = a; codomain = clo; _ } ->
+  | VPi { explicitness = expl; domain = a; codomain = clo } ->
       let var = VRigid { lvl = depth; spine = [] } in
-      Pi (quote mc depth a, quote mc (depth + 1) (closure_apply mc clo var))
+      Pi (expl, quote mc depth a, quote mc (depth + 1) (closure_apply mc clo var))
   | VU -> U
   | VAtom a -> Atom a
   | VAtomTy t -> AtomTy t
@@ -313,14 +314,14 @@ and quote_neutral (mc : MetaContext.t) (depth : lvl) (neu : neutral) : term =
 
 and quote_spine (mc : MetaContext.t) (depth : lvl) (head : term) (sp : spine) :
     term =
-  List.fold_left (fun acc v -> Ap (acc, quote mc depth v)) head sp
+  List.fold_left (fun acc v -> Ap (acc, Explicit, quote mc depth v)) head sp
 
 and quote_frames (mc : MetaContext.t) (depth : lvl) (head : term)
     (frames : frame list) : term =
   List.fold_left
     (fun acc frame ->
       match frame with
-      | FApp v -> Ap (acc, quote mc depth v)
+      | FApp v -> Ap (acc, Explicit, quote mc depth v)
       | FIf { then_; else_ } ->
           If
             ( acc,
@@ -344,8 +345,9 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
   | VU, VU -> true
   | VAtom a1, VAtom a2 -> Syntax.Ast.Atom.equal a1 a2
   | VAtomTy t1, VAtomTy t2 -> equal_atom_ty t1 t2
-  | ( VPi { domain = a1; codomain = clo1; _ },
-      VPi { domain = a2; codomain = clo2; _ } ) ->
+  | ( VPi { explicitness = e1; domain = a1; codomain = clo1 },
+      VPi { explicitness = e2; domain = a2; codomain = clo2 } )
+    when e1 = e2 ->
       conv mc depth a1 a2
       &&
       let var = VRigid { lvl = depth; spine = [] } in

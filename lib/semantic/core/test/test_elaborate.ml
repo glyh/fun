@@ -88,10 +88,10 @@ let lambdas =
       (check_type "((fun x -> x) : I64 -> I64) 42" (AtomTy TI64));
     Alcotest.test_case "annotated identity" `Quick
       (check_type "(fun x -> x : I64 -> I64)"
-         (Pi (AtomTy TI64, AtomTy TI64)));
+         (Pi (Explicit, AtomTy TI64, AtomTy TI64)));
     Alcotest.test_case "bool function" `Quick
       (check_type "(fun x -> x : Bool -> Bool)"
-         (Pi (AtomTy TBool, AtomTy TBool)));
+         (Pi (Explicit, AtomTy TBool, AtomTy TBool)));
   ]
 
 let annotations =
@@ -160,7 +160,7 @@ let meta_solving =
       (check_type "let f : I64 -> I64 = fun x -> x in f 42" (AtomTy TI64));
     Alcotest.test_case "infer lambda param from body" `Quick
       (check_type "(fun x -> x + 1 : I64 -> I64)"
-         (Pi (AtomTy TI64, AtomTy TI64)));
+         (Pi (Explicit, AtomTy TI64, AtomTy TI64)));
   ]
 
 let structs =
@@ -339,7 +339,7 @@ let adts =
           let _ : T.Color = S.Red in ()");
     Alcotest.test_case "parameterized ADT with payload" `Quick (fun () ->
       let _core, ty =
-        elab "type Option a = Some a | None in Some I64 42"
+        elab "type Option a = Some a | None in Some {I64} 42"
       in
       match Nbe.force (MetaContext.create ()) ty with
       | VNominal n ->
@@ -348,7 +348,7 @@ let adts =
       | _ -> Alcotest.fail "expected nominal type");
     Alcotest.test_case "nullary pctor has nominal type" `Quick (fun () ->
       let _core, ty =
-        elab "type Option a = Some a | None in None I64"
+        elab "type Option a = Some a | None in None {I64}"
       in
       match Nbe.force (MetaContext.create ()) ty with
       | VNominal n ->
@@ -357,24 +357,24 @@ let adts =
       | _ -> Alcotest.fail "expected nominal type");
     Alcotest.test_case "ctor partial application" `Quick (fun () ->
       let _core, ty =
-        elab "type Option a = Some a | None in Some I64"
+        elab "type Option a = Some a | None in Some {I64}"
       in
       match Nbe.force (MetaContext.create ()) ty with
-      | VPi _ -> ()  (* Some I64 : I64 -> Option I64 *)
-      | _ -> Alcotest.fail "Some I64 should be a function type");
+      | VPi _ -> ()  (* Some {I64} : I64 -> Option I64 *)
+      | _ -> Alcotest.fail "Some {I64} should be a function type");
     Alcotest.test_case "multiple type params" `Quick (fun () ->
       let _core, ty =
-        elab "type Result a e = Ok a | Err e in Ok I64 Bool 42"
+        elab "type Result a e = Ok a | Err e in Ok {I64} {Bool} 42"
       in
       match Nbe.force (MetaContext.create ()) ty with
       | VNominal n ->
           if not (String.equal n.name "Result") then
-            Alcotest.fail "Ok I64 Bool 42 should have type Result I64 Bool"
+            Alcotest.fail "Ok {I64} {Bool} 42 should have type Result I64 Bool"
       | _ -> Alcotest.fail "expected nominal type");
     Alcotest.test_case "ctor via let binding" `Quick (fun () ->
       let _core, ty =
         elab "type Option a = Some a | None in \
-              let f = Some in f I64 42"
+              let f = Some in f {I64} 42"
       in
       match Nbe.force (MetaContext.create ()) ty with
       | VNominal n ->
@@ -384,7 +384,7 @@ let adts =
     Alcotest.test_case "ctor passed through let" `Quick (fun () ->
       let _core, ty =
         elab "type Option a = Some a | None in \
-              let f = Some I64 in f 42"
+              let f = Some {I64} in f 42"
       in
       match Nbe.force (MetaContext.create ()) ty with
       | VNominal n ->
@@ -394,7 +394,7 @@ let adts =
     Alcotest.test_case "two pctor adts, distinct types" `Quick (fun () ->
       let _core, ty =
         elab "type A a = X a | Y in \
-              type B a = X a | Z in X I64 42"
+              type B a = X a | Z in X {I64} 42"
       in
       match Nbe.force (MetaContext.create ()) ty with
       | VNominal n ->
@@ -404,7 +404,7 @@ let adts =
     Alcotest.test_case "distinct param instantiations don't unify" `Quick
       (elab_fail
          "type Option a = Some a | None in \
-          let x : Option I64 = Some I64 42 in \
+          let x : Option I64 = Some {I64} 42 in \
           let _ : Option Bool = x in ()");
   ]
 
@@ -418,7 +418,7 @@ let match_tests =
     Alcotest.test_case "match with payload" `Quick
       (check_type
         "type Option a = Some a | None in \
-         (match Some I64 42 with Some(x) -> x | None -> 0 end : I64)"
+         (match Some {I64} 42 with Some(x) -> x | None -> 0 end : I64)"
         (AtomTy TI64));
     Alcotest.test_case "match with wildcard" `Quick
       (check_type
@@ -441,6 +441,22 @@ let match_tests =
       (elab_fail "type Color = Red | Green in match 42 with Red -> 1 end");
   ]
 
+let implicit_args =
+  [
+    Alcotest.test_case "implicit inference Some 42" `Quick (fun () ->
+      ignore (elab "type Option a = Some a | None in \
+                    (Some 42 : Option I64)"));
+    Alcotest.test_case "explicit implicit Some {I64} 42" `Quick (fun () ->
+      ignore (elab "type Option a = Some a | None in \
+                    (Some {I64} 42 : Option I64)"));
+    Alcotest.test_case "nilary implicit None" `Quick (fun () ->
+      ignore (elab "type Option a = Some a | None in \
+                    (None : Option I64)"));
+    Alcotest.test_case "partial app implicit" `Quick (fun () ->
+      ignore (elab "type Option a = Some a | None in \
+                    (Some {I64} : I64 -> Option I64)"));
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
@@ -458,4 +474,5 @@ let () =
       ("tuple_proj", tuple_proj);
       ("adts", adts);
       ("match", match_tests);
+      ("implicit_args", implicit_args);
     ]
