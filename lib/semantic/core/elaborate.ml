@@ -296,18 +296,50 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       infer body_ctx body
   | Match (scrutinee, branches) ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
-      (match Nbe.force ctx.metas scrut_ty with
-      | VNominal _ ->
-          let ret_ty = Ctx.raw_meta ctx in
-          let branches' =
-            List.map (fun (pat, body) ->
-              let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
-              let body_core = check ctx' body ret_ty in
-              (core_pat, body_core))
-              branches
-          in
-          (Match (scrut_core, branches'), ret_ty)
-      | _ -> raise (ElabError NotANominalType))
+      let scrut_ty =
+        let ty = Nbe.force ctx.metas scrut_ty in
+        match ty with
+        | VNominal _ -> ty
+        | _ ->
+            (* Pattern-directed inference: find a constructor in the patterns,
+               extract its nominal type, unify scrutinee with it *)
+            let rec find_ctor = function
+              | [] -> raise (ElabError NotANominalType)
+              | (Surface.PatCon (name, _), _) :: _ ->
+                  let _, ctor_ty = Ctx.lookup ctx name in
+                  let rec follow ty =
+                    match Nbe.force ctx.metas ty with
+                    | VPi { codomain = b_clo; _ } ->
+                        follow (Nbe.closure_apply ctx.metas b_clo
+                                  (VRigid { lvl = ctx.lvl; spine = [] }))
+                    | VNominal n ->
+                        (n.id, n.name, List.length n.params, n.constructors)
+                    | _ -> raise (ElabError NotANominalType)
+                  in
+                  let (nid, nname, nparams, ctors) = follow ctor_ty in
+                  let fresh_params = List.init nparams (fun _ -> Ctx.raw_meta ctx) in
+                  let target = VNominal {
+                    id = nid; name = nname; params = fresh_params;
+                    constructors = ctors
+                  } in
+                  (match ty with
+                  | VFlex { id; spine = [] } ->
+                      MetaContext.solve ctx.metas id target
+                  | _ -> Ctx.unify ctx ty target);
+                  Nbe.force ctx.metas ty
+              | _ :: rest -> find_ctor rest
+            in
+            find_ctor branches
+      in
+      let ret_ty = Ctx.raw_meta ctx in
+      let branches' =
+        List.map (fun (pat, body) ->
+          let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
+          let body_core = check ctx' body ret_ty in
+          (core_pat, body_core))
+          branches
+      in
+      (Match (scrut_core, branches'), ret_ty)
 
 (** Elaborate a surface pattern against a scrutinee type, producing a core
     pattern and extending the context with bound pattern variables. *)
@@ -582,17 +614,47 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       Let (ty_term, gen_val_core, body_core)
   | Match (scrutinee, branches), _ ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
-      (match Nbe.force ctx.metas scrut_ty with
-      | VNominal _ ->
-          let branches' =
-            List.map (fun (pat, body) ->
-              let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
-              let body_core = check ctx' body expected in
-              (core_pat, body_core))
-              branches
-          in
-          Match (scrut_core, branches')
-      | _ -> raise (ElabError NotANominalType))
+      let scrut_ty =
+        let ty = Nbe.force ctx.metas scrut_ty in
+        match ty with
+        | VNominal _ -> ty
+        | _ ->
+            let rec find_ctor = function
+              | [] -> raise (ElabError NotANominalType)
+              | (Surface.PatCon (name, _), _) :: _ ->
+                  let _, ctor_ty = Ctx.lookup ctx name in
+                  let rec follow ty =
+                    match Nbe.force ctx.metas ty with
+                    | VPi { codomain = b_clo; _ } ->
+                        follow (Nbe.closure_apply ctx.metas b_clo
+                                  (VRigid { lvl = ctx.lvl; spine = [] }))
+                    | VNominal n ->
+                        (n.id, n.name, List.length n.params, n.constructors)
+                    | _ -> raise (ElabError NotANominalType)
+                  in
+                  let (nid, nname, nparams, ctors) = follow ctor_ty in
+                  let fresh_params = List.init nparams (fun _ -> Ctx.raw_meta ctx) in
+                  let target = VNominal {
+                    id = nid; name = nname; params = fresh_params;
+                    constructors = ctors
+                  } in
+                  (match ty with
+                  | VFlex { id; spine = [] } ->
+                      MetaContext.solve ctx.metas id target
+                  | _ -> Ctx.unify ctx ty target);
+                  Nbe.force ctx.metas ty
+              | _ :: rest -> find_ctor rest
+            in
+            find_ctor branches
+      in
+      let branches' =
+        List.map (fun (pat, body) ->
+          let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
+          let body_core = check ctx' body expected in
+          (core_pat, body_core))
+          branches
+      in
+      Match (scrut_core, branches')
   | _ ->
       let core, inferred = infer ctx expr in
       let rec wrap_implicits core ty =
