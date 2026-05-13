@@ -482,6 +482,22 @@ let implicit_args =
            let _ : Bool = g (Some true) in ()"));
   ]
 
+let let_rec =
+  [
+    Alcotest.test_case "recursive function annotated" `Quick
+      (check_type
+         "let rec f : I64 -> I64 = fun n -> if n == 0 then 0 else n + f (n - 1) in f 5"
+         (AtomTy TI64));
+    Alcotest.test_case "recursive identity" `Quick
+      (check_type
+         "let rec f : I64 -> I64 = fun n -> if n == 0 then n else f (n - 1) in f"
+         (Pi (Explicit, AtomTy TI64, AtomTy TI64)));
+    Alcotest.test_case "recursive bool" `Quick
+      (check_type
+         "let rec f : I64 -> Bool = fun n -> if n == 0 then true else f (n - 1) in f 3"
+         (AtomTy TBool));
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
@@ -500,4 +516,5 @@ let () =
       ("adts", adts);
       ("match", match_tests);
       ("implicit_args", implicit_args);
+      ("let_rec", let_rec);
     ]

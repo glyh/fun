@@ -118,7 +118,8 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       (Var ix, ty)
   | Ap (f, Surface.Explicit, a) -> infer_ap ctx f a
   | Ap (f, Surface.Implicit, a) -> infer_ap_implicit ctx f a
-  | Let { name; type_; value; body } -> infer_let ctx name type_ value body
+  | Let { name; type_; value; body; recursive } ->
+      infer_let ctx name type_ value body recursive
   | If { cond; then_; else_ } -> infer_if ctx cond then_ else_
   | Lam (param, body) -> infer_lam ctx param body
   | Annotated { inner; typ } ->
@@ -495,23 +496,42 @@ and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
 
 (** Let inference. *)
 and infer_let (ctx : Ctx.t) (name : string) (type_ : Surface.t option)
-    (value : Surface.t) (body : Surface.t) : term * value =
-  let val_core, val_ty =
-    match type_ with
-    | Some ty_expr ->
-        let ty_core, ty_ty = infer ctx ty_expr in
-        Ctx.unify ctx ty_ty VU;
-        let ty_val = Ctx.eval ctx ty_core in
-        let core = check ctx value ty_val in
-        (core, ty_val)
-    | None -> infer ctx value
-  in
-  let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
-  let val_val = Ctx.eval ctx gen_val_core in
-  let ty_term = Ctx.quote ctx gen_val_ty in
-  let ctx' = Ctx.define ctx name gen_val_ty val_val in
-  let body_core, body_ty = infer ctx' body in
-  (Let (ty_term, gen_val_core, body_core), body_ty)
+    (value : Surface.t) (body : Surface.t) (recursive : bool) : term * value =
+  if recursive then begin
+    let rec_ty =
+      match type_ with
+      | Some ty_expr ->
+          let ty_core, ty_ty = infer ctx ty_expr in
+          Ctx.unify ctx ty_ty VU;
+          Ctx.eval ctx ty_core
+      | None -> Ctx.raw_meta ctx
+    in
+    let ctx_with_self = Ctx.bind ctx name rec_ty in
+    let val_core = check ctx_with_self value rec_ty in
+    let fix_core = Fix val_core in
+    let fix_val = Ctx.eval ctx fix_core in
+    let ty_term = Ctx.quote ctx rec_ty in
+    let ctx' = Ctx.define ctx name rec_ty fix_val in
+    let body_core, body_ty = infer ctx' body in
+    (Let (ty_term, fix_core, body_core), body_ty)
+  end else begin
+    let val_core, val_ty =
+      match type_ with
+      | Some ty_expr ->
+          let ty_core, ty_ty = infer ctx ty_expr in
+          Ctx.unify ctx ty_ty VU;
+          let ty_val = Ctx.eval ctx ty_core in
+          let core = check ctx value ty_val in
+          (core, ty_val)
+      | None -> infer ctx value
+    in
+    let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
+    let val_val = Ctx.eval ctx gen_val_core in
+    let ty_term = Ctx.quote ctx gen_val_ty in
+    let ctx' = Ctx.define ctx name gen_val_ty val_val in
+    let body_core, body_ty = infer ctx' body in
+    (Let (ty_term, gen_val_core, body_core), body_ty)
+  end
 
 (** If inference. *)
 and infer_if (ctx : Ctx.t) (cond : Surface.t) (then_ : Surface.t)
@@ -609,23 +629,42 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
         raise (ElabError TupleLengthMismatch);
       let cores = List.map2 (check ctx) elems tys in
       Prod cores
-  | Let { name; type_; value; body }, _ ->
-      let val_core, val_ty =
-        match type_ with
-        | Some ty_expr ->
-            let ty_core, ty_ty = infer ctx ty_expr in
-            Ctx.unify ctx ty_ty VU;
-            let ty_val = Ctx.eval ctx ty_core in
-            let core = check ctx value ty_val in
-            (core, ty_val)
-        | None -> infer ctx value
-      in
-      let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
-      let val_val = Ctx.eval ctx gen_val_core in
-      let ty_term = Ctx.quote ctx gen_val_ty in
-      let ctx' = Ctx.define ctx name gen_val_ty val_val in
-      let body_core = check ctx' body expected in
-      Let (ty_term, gen_val_core, body_core)
+  | Let { name; type_; value; body; recursive }, _ ->
+      if recursive then begin
+        let rec_ty =
+          match type_ with
+          | Some ty_expr ->
+              let ty_core, ty_ty = infer ctx ty_expr in
+              Ctx.unify ctx ty_ty VU;
+              Ctx.eval ctx ty_core
+          | None -> Ctx.raw_meta ctx
+        in
+        let ctx_with_self = Ctx.bind ctx name rec_ty in
+        let val_core = check ctx_with_self value rec_ty in
+        let fix_core = Fix val_core in
+        let fix_val = Ctx.eval ctx fix_core in
+        let ty_term = Ctx.quote ctx rec_ty in
+        let ctx' = Ctx.define ctx name rec_ty fix_val in
+        let body_core = check ctx' body expected in
+        Let (ty_term, fix_core, body_core)
+      end else begin
+        let val_core, val_ty =
+          match type_ with
+          | Some ty_expr ->
+              let ty_core, ty_ty = infer ctx ty_expr in
+              Ctx.unify ctx ty_ty VU;
+              let ty_val = Ctx.eval ctx ty_core in
+              let core = check ctx value ty_val in
+              (core, ty_val)
+          | None -> infer ctx value
+        in
+        let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
+        let val_val = Ctx.eval ctx gen_val_core in
+        let ty_term = Ctx.quote ctx gen_val_ty in
+        let ctx' = Ctx.define ctx name gen_val_ty val_val in
+        let body_core = check ctx' body expected in
+        Let (ty_term, gen_val_core, body_core)
+      end
   | Match (scrutinee, branches), _ ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
       let scrut_ty =

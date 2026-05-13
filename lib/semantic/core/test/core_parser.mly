@@ -5,7 +5,7 @@ open Core_tt.Surface
 %token <int64> INT
 %token <string> ID
 %token TRUE FALSE UNIT
-%token LET IN FUN IF THEN ELSE MATCH WITH
+%token LET REC IN FUN IF THEN ELSE MATCH WITH
 %token STRUCT END OPEN PUB TYPE
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
@@ -22,7 +22,9 @@ expr_eof:
 
 expr:
   | LET; name = ID; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
-    { Let { name; type_ = ty; value; body } }
+    { Let { name; type_ = ty; value; body; recursive = false } }
+  | LET; REC; name = ID; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
+    { Let { name; type_ = ty; value; body; recursive = true } }
   | FUN; ps = nonempty_list(param); ARROW; body = expr
     { List.fold_right (fun p acc -> Lam (p, acc)) ps body }
   | IF; cond = expr; THEN; then_ = expr; ELSE; else_ = expr

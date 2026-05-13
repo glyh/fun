@@ -8,6 +8,7 @@ let id =
 let rec token buf =
   match%sedlex buf with
   | "let" -> LET
+  | "rec" -> REC
   | "in" -> IN
   | "fun" -> FUN
   | "if" -> IF

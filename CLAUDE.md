@@ -27,6 +27,13 @@ Run a single test case (Alcotest syntax):
 dune exec lib/backend/interp/test/test_interp.exe -- test 'matches' -e 'literal switch'
 ```
 
+Core type theory tests (separate prototype):
+```sh
+dune exec lib/semantic/core/test/test_elaborate.exe
+dune exec lib/semantic/core/test/test_core.exe
+dune exec lib/semantic/core/test/test_debug.exe
+```
+
 ## Compilation pipeline
 
 ```
@@ -81,6 +88,19 @@ Type inference in `typecheck.ml` generates constraints from `Desugared_ast.Expr.
 - `missing_pat.ml` — structured missing pattern diagnostics for exhaustiveness errors
 - Union patterns (`|`) are expanded into multiple matrix rows
 
+## Dependent type theory prototype (`core_tt`)
+
+`lib/semantic/core/` is a standalone prototype for the planned DT migration. It has its own surface syntax (`surface.ml`), core terms (`core.ml`), NbE evaluator (`nbe.ml`), elaborator with implicit argument insertion (`elaborate.ml`), and higher-order unification with metavariables (`unify.ml`). It depends on `std` and `syntax` (for `Ast.Atom.t`) but is not wired into the main compilation pipeline yet.
+
+Key differences from the HM pipeline:
+- Uses de Bruijn indices/levels instead of named `Var.t`
+- Type : Type (no universe hierarchy yet)
+- Implicit arguments (`{x : A} -> B`) with insertion via `InsertedMeta`
+- Nominal types with constructors (`VNominal`, `VCon`) and pattern matching
+- Structs with `open` scoping and partial application
+
+The test suite has its own parser (`core_parser.mly` / `core_lexer.ml`) for writing test expressions in a concise syntax.
+
 ## Library dependency graph
 
 ```
@@ -89,6 +109,9 @@ std
      ← syntax, typed_ir
         ← typecheck, match
            ← interp, loader
+
+std, syntax
+  ← core_tt (standalone prototype, not connected to main pipeline)
 ```
 
 ## Language syntax notes

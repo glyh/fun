@@ -16,7 +16,7 @@ and t =
   | Var of string
   | Ap of t * explicitness * t
   | Lam of param * t
-  | Let of { name : string; type_ : t option; value : t; body : t }
+  | Let of { name : string; type_ : t option; value : t; body : t; recursive : bool }
   | If of { cond : t; then_ : t; else_ : t }
   | Annotated of { inner : t; typ : t }
   | Prod of t list
