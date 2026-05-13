@@ -459,6 +459,10 @@ let implicit_args =
       ignore (elab "let id = fun x -> x in \
                     let _ : I64 = id 42 in \
                     let _ : Bool = id true in ()"));
+    Alcotest.test_case "match on unknown scrutinee type fails" `Quick
+      (elab_fail
+         "type Option a = Some a | None in \
+          fun x -> match x with Some(y) -> y | None -> 0 end");
   ]
 
 let () =
