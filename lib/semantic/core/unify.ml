@@ -113,8 +113,14 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             | _ -> None) fields
         in
         Struct { con_fields; bindings; partial }
-    | VNominal n -> Con n.name
-    | VCon { name; spine; _ } -> go_spine d (Con name) spine
+    | VNominal n ->
+        let params_terms = List.map (go d) n.params in
+        List.fold_left (fun acc t -> Ap (acc, Explicit, t))
+          (NomLit (n.id, n.name, n.constructors)) params_terms
+    | VCon { name; spine; nominal } ->
+        let spine_terms = List.map (go d) spine in
+        List.fold_left (fun acc t -> Ap (acc, Explicit, t))
+          (ConLit (name, nominal)) spine_terms
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
@@ -168,12 +174,38 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     3. [wrap] the renamed RHS in lambdas (one per spine argument).
     4. Evaluate the result at depth 0 and install it as the solution. *)
 let solve (mc : MetaContext.t) (id : meta_id) (sp : spine) (rhs : value) : unit =
-  let ren = Renaming.of_spine sp in
-  let sp_len = List.length sp in
-  let rhs_term = rename mc id sp_len ren rhs in
-  let solution = Renaming.wrap ren rhs_term in
-  let v = Nbe.eval mc [] solution in
-  MetaContext.solve mc id v
+  match sp with
+  | [] ->
+      (* Empty spine: no renaming needed. Just do occurs check and solve directly.
+         This avoids the rename→eval round-trip which fails for values containing
+         names that require env lookup (VNominal, VCon). *)
+      let rec occurs_check v =
+        match v with
+        | VFlex { id = id'; spine } ->
+            if id' = id then raise (UnifyError OccursCheck);
+            (match MetaContext.lookup mc id' with
+            | Solved sv -> occurs_check sv; List.iter occurs_check spine
+            | Unsolved -> List.iter occurs_check spine)
+        | VPi { domain = a; _ } -> occurs_check a
+        | VProd elems | VProdTy elems -> List.iter occurs_check elems
+        | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> occurs_check v) fields
+        | VNominal n -> List.iter occurs_check n.params
+        | VCon { spine; nominal; _ } -> List.iter occurs_check spine; occurs_check nominal
+        | VNeutral { neutral = { frames; _ }; _ } ->
+            List.iter (fun f -> match f with
+              | FApp v -> occurs_check v
+              | _ -> ()) frames
+        | VU | VAtom _ | VAtomTy _ | VRigid _ | VLam _ | VFix _ -> ()
+      in
+      occurs_check rhs;
+      MetaContext.solve mc id rhs
+  | _ ->
+      let ren = Renaming.of_spine sp in
+      let sp_len = List.length sp in
+      let rhs_term = rename mc id sp_len ren rhs in
+      let solution = Renaming.wrap ren rhs_term in
+      let v = Nbe.eval mc [] solution in
+      MetaContext.solve mc id v
 
 (** Structural unification of two semantic values. Dispatches by constructor:
 

@@ -310,8 +310,9 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
                   let rec follow ty =
                     match Nbe.force ctx.metas ty with
                     | VPi { codomain = b_clo; _ } ->
-                        follow (Nbe.closure_apply ctx.metas b_clo
-                                  (VRigid { lvl = ctx.lvl; spine = [] }))
+                        follow
+                          (Nbe.closure_apply ctx.metas b_clo
+                             (VRigid { lvl = ctx.lvl; spine = [] }))
                     | VNominal n ->
                         (n.id, n.name, List.length n.params, n.constructors)
                     | _ -> raise (ElabError NotANominalType)
@@ -524,38 +525,52 @@ and build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_na
   let num_params = List.length param_metas in
   let has_payload = Option.is_some payload_val_opt in
   let total_args = num_params + (if has_payload then 1 else 0) in
-  (* Build spine Var terms: outer params first (higher ix), payload last (ix=0) *)
   let param_vars = List.mapi (fun i _ -> Var (total_args - 1 - i)) param_metas in
   let payload_var = if has_payload then [ Var 0 ] else [] in
   let all_spine_vars = param_vars @ payload_var in
-  (* Innermost body: Ctor *)
   let body_term =
     Ctor { name = ctor_name; spine = all_spine_vars;
            nominal_name; nominal_spine = param_vars }
   in
-  (* Wrap in Lam for payload, then Lam for each type param *)
   let core_term =
     let with_payload = if has_payload then Lam body_term else body_term in
     List.fold_right (fun _ acc -> Lam acc) param_metas with_payload
   in
   let ctor_val = Nbe.eval mc env core_term in
-  (* Build Pi type: payload VPi has the actual domain, type params are VPi{U, ...}. *)
-  let ret_type =
-    let nom_param_vars =
-      List.mapi (fun i _ -> Var (num_params - i + if has_payload then 0 else -1)) param_metas
+  (* Build the Pi type as a term with proper de Bruijn indices.
+     Structure: Pi(Impl, U, ... Pi(Impl, U, Pi(Expl, payload, NomRef(...))))
+     or without payload: Pi(Impl, U, ... Pi(Impl, U, NomRef(...)))
+
+     To quote the payload type correctly, temporarily solve param metas to
+     VRigid at levels that will produce the right Var indices when quoted. *)
+  let depth = List.length env in
+  let type_term =
+    let nom_ret_vars =
+      if has_payload then
+        List.mapi (fun i _ -> Var (num_params - i)) param_metas
+      else
+        List.mapi (fun i _ -> Var (num_params - 1 - i)) param_metas
     in
-    let ret_term = NomRef (nominal_name, nom_param_vars) in
-    let inner_val : value =
-      match payload_val_opt with
-      | Some p -> VPi { explicitness = Explicit; domain = p; codomain = { env; body = ret_term } }
-      | None -> Nbe.eval mc env ret_term
-    in
-    let depth = List.length env in
-    List.fold_right
-      (fun _ acc ->
-        VPi { explicitness = Implicit; domain = VU; codomain = { env; body = Nbe.quote mc depth acc } })
-      param_metas inner_val
+    let ret_term = NomRef (nominal_name, nom_ret_vars) in
+    match payload_val_opt with
+    | Some payload_val ->
+        (* Temporarily solve param metas to VRigid so quoting produces Var refs.
+           Inside the implicit Pi chain (depth num_params), param i is at level depth+i.
+           We quote at depth+num_params (inside all implicit binders). *)
+        let meta_ids = List.map (fun m ->
+          match m with VFlex { id; _ } -> id | _ -> -1) param_metas in
+        List.iteri (fun i id ->
+          MetaContext.solve mc id (VRigid { lvl = depth + i; spine = [] }))
+          meta_ids;
+        let payload_term = Nbe.quote mc (depth + num_params) payload_val in
+        (* Restore metas to unsolved *)
+        List.iter (fun id -> Dynarray.set mc id MetaContext.Unsolved) meta_ids;
+        let inner = Pi (Explicit, payload_term, ret_term) in
+        List.fold_right (fun _ acc -> Pi (Implicit, U, acc)) param_metas inner
+    | None ->
+        List.fold_right (fun _ acc -> Pi (Implicit, U, acc)) param_metas ret_term
   in
+  let ret_type = Nbe.eval mc env type_term in
   (ctor_val, ret_type)
 
 (** Lambda inference. *)
@@ -626,8 +641,9 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                   let rec follow ty =
                     match Nbe.force ctx.metas ty with
                     | VPi { codomain = b_clo; _ } ->
-                        follow (Nbe.closure_apply ctx.metas b_clo
-                                  (VRigid { lvl = ctx.lvl; spine = [] }))
+                        follow
+                          (Nbe.closure_apply ctx.metas b_clo
+                             (VRigid { lvl = ctx.lvl; spine = [] }))
                     | VNominal n ->
                         (n.id, n.name, List.length n.params, n.constructors)
                     | _ -> raise (ElabError NotANominalType)

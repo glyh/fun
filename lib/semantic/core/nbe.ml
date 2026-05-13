@@ -93,6 +93,10 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       | _ -> raise (EvalError "open of non-struct"))
   | Fix body -> VFix { body = { env; body } }
   | Con name -> eval_con env name
+  | NomLit (id, name, ctors) ->
+      VNominal { id; name; params = []; constructors = ctors }
+  | ConLit (name, nominal) ->
+      VCon { name; spine = []; nominal }
   | NomRef (name, params) ->
       (match eval_con env name with
       | VNominal n ->
@@ -135,6 +139,7 @@ and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
   | VFlex { id; spine = sp } -> VFlex { id; spine = sp @ [ va ] }
   | VRigid { lvl; spine = sp } -> VRigid { lvl; spine = sp @ [ va ] }
   | VNominal n -> VNominal { n with params = n.params @ [ va ] }
+  | VCon c -> VCon { c with spine = c.spine @ [ va ] }
   | _ -> raise (EvalError "applying non-function")
 
 and apply_ty (mc : MetaContext.t) (ty : value) (va : value) : value =
@@ -262,42 +267,6 @@ and force (mc : MetaContext.t) (v : value) : value =
           force mc applied
       | Unsolved -> VFlex { id; spine = sp })
   | _ -> v
-
-(* Collect ids of unsolved VFlex metavariables in a value.
-   Used by generalization to find which metas need Pi/Lam wrapping. *)
-let collect_unsolved (mc : MetaContext.t) (v : value) : meta_id list =
-  let seen = ref [] in
-  let rec go v =
-    match force mc v with
-    | VFlex { id; spine = sp } ->
-        (match MetaContext.lookup mc id with
-        | Unsolved -> if not (List.mem id !seen) then seen := id :: !seen
-        | Solved _ -> ());
-        List.iter go sp
-    | VLam { body = clo } ->
-        let var = VRigid { lvl = -1; spine = [] } in
-        go (closure_apply mc clo var)
-    | VPi { domain = a; codomain = clo; _ } ->
-        go a;
-        let var = VRigid { lvl = -1; spine = [] } in
-        go (closure_apply mc clo var)
-    | VProd elems | VProdTy elems -> List.iter go elems
-    | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> go v) fields
-    | VNominal n -> List.iter go n.params
-    | VCon { spine; nominal; _ } -> List.iter go spine; go nominal
-    | VFix { body = clo } ->
-        let var = VRigid { lvl = -1; spine = [] } in
-        go (closure_apply mc clo var)
-    | VNeutral { neutral = { frames; _ }; _ } -> List.iter go_frame frames
-    | VU | VAtom _ | VAtomTy _ | VRigid _ -> ()
-  and go_frame f = match f with
-    | FApp v -> go v
-    | FIf { then_; else_ } -> go (eval mc then_.env then_.body); go (eval mc else_.env else_.body)
-    | FMatch bs -> List.iter (fun (_, clo) -> go (eval mc clo.env clo.body)) bs
-    | FProj _ | FDot _ -> ()
-  in
-  go v;
-  List.rev !seen
 
 let lvl_to_ix (depth : lvl) (l : lvl) : ix = depth - l - 1
 

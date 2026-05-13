@@ -463,6 +463,15 @@ let implicit_args =
       ignore (elab
         "type Option a = Some a | None in \
          fun x -> match x with Some(y) -> y | None -> 0 end"));
+    Alcotest.test_case "match with identity ctor in branch" `Quick (fun () ->
+      ignore (elab
+        "type Option a = Some a | None in \
+         fun x -> match x with Some(y) -> Some(y) | None -> None end"));
+    Alcotest.test_case "match with nested ctor, should be polymorphic" `Quick
+      (fun () ->
+        ignore (elab
+          "type Option a = Some a | None in \
+           fun x -> match x with Some(y) -> Some(Some(y)) | None -> None end"));
   ]
 
 let () =

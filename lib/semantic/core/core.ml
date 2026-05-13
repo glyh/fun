@@ -39,6 +39,13 @@ type term =
           [quote] hits a [VCon] or [VNominal]. [eval] scans the environment
           by name for a matching VCon or VNominal. Like [Meta], never
           produced by the elaborator. *)
+  | NomLit of nominal_id * string * (string * value option) list
+      (** Literal nominal type embedding. Evaluates directly to [VNominal]
+          without env lookup. Used by [rename] in unification to avoid the
+          [Con(name)] → [eval_con] path that fails in empty env. *)
+  | ConLit of string * value
+      (** Literal constructor embedding. Evaluates directly to [VCon] with
+          the given nominal. Used by [rename] for the same reason as NomLit. *)
   | NomRef of string * term list
       (** Applied nominal type reference. [eval] scans the environment for
           a [VNominal] template with this name, evaluates the param terms,
