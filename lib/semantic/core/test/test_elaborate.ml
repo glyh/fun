@@ -37,7 +37,8 @@ let parse_expr s =
 
 let elab source =
   let expr = parse_expr source in
-  Elaborate.on_expr expr
+  let ctx = Elaborate.init_ctx () in
+  Elaborate.on_expr ctx expr
 
 let check_type source expected () =
   let _core, ty = elab source in

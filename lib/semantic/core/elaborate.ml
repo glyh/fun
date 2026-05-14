@@ -80,6 +80,9 @@ module Ctx = struct
 
   let unify (ctx : t) (v1 : value) (v2 : value) : unit =
     Unify.unify ctx.metas ctx.env ctx.lvl v1 v2
+
+  let conv (ctx : t) (v1 : value) (v2 : value) : bool =
+    Nbe.conv ctx.metas ctx.lvl v1 v2
 end
 
 (** Build a closed [VPi] value (for primitive types). *)
@@ -739,7 +742,6 @@ let init_ctx () : Ctx.t =
       Ctx.define ctx name ty (VNeutral { ty; neutral = { head = HPrim name; frames = [] } }))
     prims ctx
 
-(** Entry point: elaborate a surface expression in the initial context. *)
-let on_expr (expr : Surface.t) : term * value =
-  let ctx = init_ctx () in
+(** Entry point: elaborate a surface expression in the given context. *)
+let on_expr (ctx : Ctx.t) (expr : Surface.t) : term * value =
   infer ctx expr

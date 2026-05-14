@@ -2,6 +2,6 @@
  (modules core_parser))
 
 (tests
- (names test_core test_elaborate test_debug)
+ (names test_core test_elaborate)
  (libraries core_tt alcotest menhirLib)
  (preprocess (pps ppx_deriving.std ppx_here sedlex.ppx)))

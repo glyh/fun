@@ -121,10 +121,9 @@ and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
   match vf with
   | VLam { body = clo; _ } -> eval mc (va :: clo.env) clo.body
   | VFix { body = clo; _ } ->
-      let rec fix_val =
-        lazy (eval mc (Lazy.force fix_val :: clo.env) clo.body)
-      in
-      apply mc (Lazy.force fix_val) va
+      let self = VFix { body = clo } in
+      let unfolded = eval mc (self :: clo.env) clo.body in
+      apply mc unfolded va
   | VNeutral { ty; neutral = neu } ->
       let cod = apply_ty mc ty va in
       VNeutral

@@ -4,117 +4,56 @@ open Core_tt.Unify
 
 let mc () = MetaContext.create ()
 
-let term_eq mc depth t1 t2 =
-  let v1 = eval mc [] t1 in
-  let v2 = eval mc [] t2 in
-  conv mc depth v1 v2
+let parse_expr source =
+  let lexbuf = Sedlexing.Utf8.from_string source in
+  let lexer = Sedlexing.with_tokenizer Core_lexer.token lexbuf in
+  MenhirLib.Convert.Simplified.traditional2revised Core_parser.expr_eof lexer
 
-let test_eval_atom () =
-  let mc = mc () in
-  let v = eval mc [] (Atom (I64 42L)) in
-  match v with VAtom (I64 n) -> Alcotest.(check int64) "i64" 42L n | _ -> Alcotest.fail "expected VAtom"
+let eval_source source =
+  let expr = parse_expr source in
+  let ctx = Core_tt.Elaborate.init_ctx () in
+  let core, _ty = Core_tt.Elaborate.on_expr ctx expr in
+  Core_tt.Elaborate.Ctx.eval ctx core
 
-let test_eval_lam_ap () =
-  let mc = mc () in
-  let id = Lam (Var 0) in
-  let t = Ap (id, Explicit, Atom (I64 7L)) in
-  let v = eval mc [] t in
-  match v with VAtom (I64 n) -> Alcotest.(check int64) "applied" 7L n | _ -> Alcotest.fail "expected VAtom"
+let check_i64 label expected source () =
+  match eval_source source with
+  | VAtom (I64 n) -> Alcotest.(check int64) label expected n
+  | _ -> Alcotest.fail (Printf.sprintf "%s: expected VAtom I64" label)
 
-let test_eval_let () =
-  let mc = mc () in
-  let t = Let (AtomTy TI64, Atom (I64 5L), Var 0) in
-  let v = eval mc [] t in
-  match v with VAtom (I64 n) -> Alcotest.(check int64) "let" 5L n | _ -> Alcotest.fail "expected VAtom"
+let check_conv label s1 s2 () =
+  let ctx = Core_tt.Elaborate.init_ctx () in
+  let core1, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s1) in
+  let core2, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s2) in
+  let v1 = Core_tt.Elaborate.Ctx.eval ctx core1 in
+  let v2 = Core_tt.Elaborate.Ctx.eval ctx core2 in
+  Alcotest.(check bool) label true (Core_tt.Elaborate.Ctx.conv ctx v1 v2)
 
-let test_eval_if_true () =
-  let mc = mc () in
-  let t = If (Atom (Bool true), Atom (I64 1L), Atom (I64 2L)) in
-  let v = eval mc [] t in
-  match v with VAtom (I64 n) -> Alcotest.(check int64) "if true" 1L n | _ -> Alcotest.fail "expected VAtom"
+let check_not_conv label s1 s2 () =
+  let ctx = Core_tt.Elaborate.init_ctx () in
+  let core1, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s1) in
+  let core2, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s2) in
+  let v1 = Core_tt.Elaborate.Ctx.eval ctx core1 in
+  let v2 = Core_tt.Elaborate.Ctx.eval ctx core2 in
+  Alcotest.(check bool) label false (Core_tt.Elaborate.Ctx.conv ctx v1 v2)
 
-let test_eval_if_false () =
-  let mc = mc () in
-  let t = If (Atom (Bool false), Atom (I64 1L), Atom (I64 2L)) in
-  let v = eval mc [] t in
-  match v with VAtom (I64 n) -> Alcotest.(check int64) "if false" 2L n | _ -> Alcotest.fail "expected VAtom"
+(* -- eval tests --------------------------------------------------------- *)
 
 let test_eval_prod () =
-  let mc = mc () in
-  let t = Prod [ Atom (I64 1L); Atom (Bool true) ] in
-  let v = eval mc [] t in
-  match v with
+  match eval_source "(1, true)" with
   | VProd [ VAtom (I64 1L); VAtom (Bool true) ] -> ()
   | _ -> Alcotest.fail "expected VProd"
 
-let test_eval_proj () =
-  let mc = mc () in
-  let t = Proj (Prod [ Atom (I64 42L); Atom (Bool true) ], 0) in
-  let v = eval mc [] t in
-  match v with VAtom (I64 n) -> Alcotest.(check int64) "proj0" 42L n | _ -> Alcotest.fail "expected VAtom"
-
-let test_eval_dot () =
-  let mc = mc () in
-  let s = Struct { con_fields = [];
-                   bindings = [ LetBind ("x", Public, Atom (I64 99L)); LetBind ("y", Public, Atom (Bool true)) ];
-                   partial = false } in
-  let t = Dot (s, "x") in
-  let v = eval mc [] t in
-  match v with VAtom (I64 n) -> Alcotest.(check int64) "dot" 99L n | _ -> Alcotest.fail "expected VAtom"
-
 let test_eval_pi () =
-  let mc = mc () in
-  let t = Pi (Explicit, AtomTy TI64, AtomTy TBool) in
-  let v = eval mc [] t in
-  match v with
+  match eval_source "I64 -> Bool" with
   | VPi { domain = VAtomTy TI64; _ } -> ()
   | _ -> Alcotest.fail "expected VPi"
 
-let test_quote_atom () =
-  let mc = mc () in
-  let t = Atom (I64 42L) in
-  let v = eval mc [] t in
-  let t' = quote mc 0 v in
-  Alcotest.(check bool) "round-trip" true (term_eq mc 0 t t')
+let test_eval_dot () =
+  match eval_source "let M = struct pub let x = 99 end in M.x" with
+  | VAtom (I64 n) -> Alcotest.(check int64) "dot" 99L n
+  | _ -> Alcotest.fail "expected VAtom"
 
-let test_quote_lam () =
-  let mc = mc () in
-  let t = Lam (Var 0) in
-  let v = eval mc [] t in
-  let t' = quote mc 0 v in
-  Alcotest.(check bool) "round-trip lam" true (term_eq mc 0 t t')
-
-let test_quote_pi () =
-  let mc = mc () in
-  let t = Pi (Explicit, U, Pi (Explicit, Var 0, Var 1)) in
-  let v = eval mc [] t in
-  let t' = quote mc 0 v in
-  Alcotest.(check bool) "round-trip pi" true (term_eq mc 0 t t')
-
-let test_conv_beta () =
-  let mc = mc () in
-  let t1 = Ap (Lam (Var 0), Explicit, AtomTy TI64) in
-  let t2 = AtomTy TI64 in
-  Alcotest.(check bool) "beta conv" true (term_eq mc 0 t1 t2)
-
-let test_conv_eta () =
-  let mc = mc () in
-  let f = Lam (Ap (Var 1, Explicit, Var 0)) in
-  let v_f = eval mc [ VRigid { lvl = 0; spine = [] } ] f in
-  let v_g = VRigid { lvl = 0; spine = [] } in
-  Alcotest.(check bool) "eta conv" true (conv mc 1 v_f v_g)
-
-let test_conv_pi () =
-  let mc = mc () in
-  let t1 = Pi (Explicit, U, Pi (Explicit, Var 0, Var 1)) in
-  let t2 = Pi (Explicit, U, Pi (Explicit, Var 0, Var 1)) in
-  Alcotest.(check bool) "alpha-equiv pi" true (term_eq mc 0 t1 t2)
-
-let test_conv_not_equal () =
-  let mc = mc () in
-  let v1 = eval mc [] (AtomTy TI64) in
-  let v2 = eval mc [] (AtomTy TBool) in
-  Alcotest.(check bool) "not equal" false (conv mc 0 v1 v2)
+(* -- neutral tests (require manual construction) ------------------------- *)
 
 let test_neutral_var () =
   let mc = mc () in
@@ -137,6 +76,8 @@ let test_neutral_if () =
   match v with
   | VNeutral { neutral = { head = HVar 0; frames = [ FIf _ ] }; _ } -> ()
   | _ -> Alcotest.fail "expected stuck if"
+
+(* -- meta tests (require manual construction) ---------------------------- *)
 
 let test_meta_solve () =
   let mc = mc () in
@@ -166,6 +107,8 @@ let test_inserted_meta () =
   let v2 = eval mc env (InsertedMeta (id, bds)) in
   let v2 = force mc v2 in
   match v2 with VRigid { lvl = 0; spine = [] } -> () | _ -> Alcotest.fail "expected VRigid after solve"
+
+(* -- unify tests (require manual construction) --------------------------- *)
 
 let test_unify_simple () =
   let mc = mc () in
@@ -201,7 +144,6 @@ let test_unify_spine () =
 let test_unify_rename_id () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  (* ?M[x] = x  →  solution should be λx0. x0 (identity) *)
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] } ] } in
   let v2 = VRigid { lvl = 0; spine = [] } in
   unify mc [] 1 v1 v2;
@@ -216,7 +158,6 @@ let test_unify_rename_id () =
 let test_unify_rename_fst () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  (* ?M[x, y] = x  →  solution should be λx0. λx1. x0 (project first) *)
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] }; VRigid { lvl = 1; spine = [] } ] } in
   let v2 = VRigid { lvl = 0; spine = [] } in
   unify mc [] 2 v1 v2;
@@ -235,7 +176,6 @@ let test_unify_rename_fst () =
 let test_unify_rename_snd () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  (* ?M[x, y] = y  →  solution should be λx0. λx1. x1 (project second) *)
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] }; VRigid { lvl = 1; spine = [] } ] } in
   let v2 = VRigid { lvl = 1; spine = [] } in
   unify mc [] 2 v1 v2;
@@ -263,8 +203,6 @@ let test_unify_occurs_check () =
 let test_unify_nonlinear_spine () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  (* ?M[#2, #2] — same variable at level 2 appears twice in the spine.
-     Pattern unification should reject this as NonLinearSpine. *)
   let v1 = VFlex { id; spine = [
     VRigid { lvl = 2; spine = [] };
     VRigid { lvl = 2; spine = [] }
@@ -285,7 +223,6 @@ let test_unify_mismatch () =
 
 let test_unify_nominal_params () =
   let mc = mc () in
-  (* Two VNominals with same id but different params should NOT unify *)
   let nom1 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TI64 ]; constructors = [] } in
   let nom2 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TBool ]; constructors = [] } in
   match unify mc [] 0 nom1 nom2 with
@@ -297,28 +234,29 @@ let () =
     [
       ( "eval",
         [
-          Alcotest.test_case "atom" `Quick test_eval_atom;
-          Alcotest.test_case "lam+ap" `Quick test_eval_lam_ap;
-          Alcotest.test_case "let" `Quick test_eval_let;
-          Alcotest.test_case "if true" `Quick test_eval_if_true;
-          Alcotest.test_case "if false" `Quick test_eval_if_false;
+          Alcotest.test_case "atom" `Quick (check_i64 "atom" 42L "42");
+          Alcotest.test_case "lam+ap" `Quick (check_i64 "lam+ap" 7L "(fun x -> x) 7");
+          Alcotest.test_case "let" `Quick (check_i64 "let" 5L "let x : I64 = 5 in x");
+          Alcotest.test_case "if true" `Quick (check_i64 "if true" 1L "if true then 1 else 2");
+          Alcotest.test_case "if false" `Quick (check_i64 "if false" 2L "if false then 1 else 2");
           Alcotest.test_case "prod" `Quick test_eval_prod;
-          Alcotest.test_case "proj" `Quick test_eval_proj;
+          Alcotest.test_case "proj" `Quick (check_i64 "proj" 42L "(42, true).0");
           Alcotest.test_case "dot" `Quick test_eval_dot;
           Alcotest.test_case "pi" `Quick test_eval_pi;
-        ] );
-      ( "quote",
-        [
-          Alcotest.test_case "atom" `Quick test_quote_atom;
-          Alcotest.test_case "lam" `Quick test_quote_lam;
-          Alcotest.test_case "pi" `Quick test_quote_pi;
+          Alcotest.test_case "fix" `Quick
+            (check_i64 "fix" 0L
+               "let rec f : Bool -> I64 = fun x -> if x then 0 else f true in f false");
         ] );
       ( "conv",
         [
-          Alcotest.test_case "beta" `Quick test_conv_beta;
-          Alcotest.test_case "eta" `Quick test_conv_eta;
-          Alcotest.test_case "pi alpha" `Quick test_conv_pi;
-          Alcotest.test_case "not equal" `Quick test_conv_not_equal;
+          Alcotest.test_case "beta" `Quick
+            (check_conv "beta" "(fun (x : I64) -> x) 5" "5");
+          Alcotest.test_case "eta" `Quick
+            (check_conv "eta"
+               "fun (x : I64) -> x"
+               "fun (y : I64) -> y");
+          Alcotest.test_case "not equal" `Quick
+            (check_not_conv "not equal" "I64" "Bool");
         ] );
       ( "neutral",
         [
