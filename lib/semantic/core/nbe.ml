@@ -2,6 +2,42 @@ open Core
 
 exception EvalError of string
 
+module Prim = struct
+  open Syntax.Ast.Atom
+
+  type reducer = t list -> t option
+
+  let i64_binop (f : int64 -> int64 -> int64) : reducer = function
+    | [ I64 a; I64 b ] -> Some (I64 (f a b))
+    | _ -> None
+
+  let i64_cmp (f : int64 -> int64 -> bool) : reducer = function
+    | [ I64 a; I64 b ] -> Some (Bool (f a b))
+    | _ -> None
+
+  let bool_unop (f : bool -> bool) : reducer = function
+    | [ Bool b ] -> Some (Bool (f b))
+    | _ -> None
+end
+
+let prim_table : (string, Prim.reducer) Hashtbl.t =
+  let open Prim in
+  [
+    "+",  i64_binop Int64.add;
+    "-",  i64_binop Int64.sub;
+    "*",  i64_binop Int64.mul;
+    "/",  i64_binop Int64.div;
+    "%",  i64_binop Int64.rem;
+    "==", i64_cmp Int64.equal;
+    "!=", i64_cmp (fun a b -> not (Int64.equal a b));
+    "<",  i64_cmp (fun a b -> Int64.compare a b < 0);
+    ">",  i64_cmp (fun a b -> Int64.compare a b > 0);
+    "<=", i64_cmp (fun a b -> Int64.compare a b <= 0);
+    ">=", i64_cmp (fun a b -> Int64.compare a b >= 0);
+    "not", bool_unop not;
+  ]
+  |> List.to_seq |> Hashtbl.of_seq
+
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
 
@@ -120,31 +156,12 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
 and try_prim_reduce (head : head) (frames : frame list) : value option =
   match head with
   | HPrim name -> (
-      match (name, frames) with
-      | "+", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (I64 (Int64.add a b)))
-      | "-", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (I64 (Int64.sub a b)))
-      | "*", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (I64 (Int64.mul a b)))
-      | "/", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (I64 (Int64.div a b)))
-      | "%", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (I64 (Int64.rem a b)))
-      | "==", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (Bool (Int64.equal a b)))
-      | "!=", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (Bool (not (Int64.equal a b))))
-      | "<", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (Bool (Int64.compare a b < 0)))
-      | ">", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (Bool (Int64.compare a b > 0)))
-      | "<=", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (Bool (Int64.compare a b <= 0)))
-      | ">=", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
-          Some (VAtom (Bool (Int64.compare a b >= 0)))
-      | "not", [ FApp (VAtom (Bool b)) ] -> Some (VAtom (Bool (not b)))
-      | _ -> None)
+      let atoms = List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames in
+      if List.length atoms <> List.length frames then None
+      else
+        match Hashtbl.find_opt prim_table name with
+        | Some f -> Option.map (fun a -> VAtom a) (f atoms)
+        | None -> None)
   | _ -> None
 
 and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
