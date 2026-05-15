@@ -117,6 +117,36 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       let vs = eval mc env scrut in
       eval_match mc env vs branches
 
+and try_prim_reduce (head : head) (frames : frame list) : value option =
+  match head with
+  | HPrim name -> (
+      match (name, frames) with
+      | "+", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (I64 (Int64.add a b)))
+      | "-", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (I64 (Int64.sub a b)))
+      | "*", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (I64 (Int64.mul a b)))
+      | "/", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (I64 (Int64.div a b)))
+      | "%", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (I64 (Int64.rem a b)))
+      | "==", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (Bool (Int64.equal a b)))
+      | "!=", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (Bool (not (Int64.equal a b))))
+      | "<", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (Bool (Int64.compare a b < 0)))
+      | ">", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (Bool (Int64.compare a b > 0)))
+      | "<=", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (Bool (Int64.compare a b <= 0)))
+      | ">=", [ FApp (VAtom (I64 a)); FApp (VAtom (I64 b)) ] ->
+          Some (VAtom (Bool (Int64.compare a b >= 0)))
+      | "not", [ FApp (VAtom (Bool b)) ] -> Some (VAtom (Bool (not b)))
+      | _ -> None)
+  | _ -> None
+
 and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
   match vf with
   | VLam { body = clo; _ } -> eval mc (va :: clo.env) clo.body
@@ -126,11 +156,11 @@ and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
       apply mc unfolded va
   | VNeutral { ty; neutral = neu } ->
       let cod = apply_ty mc ty va in
-      VNeutral
-        {
-          ty = cod;
-          neutral = { head = neu.head; frames = neu.frames @ [ FApp va ] };
-        }
+      let frames = neu.frames @ [ FApp va ] in
+      (match try_prim_reduce neu.head frames with
+      | Some v -> v
+      | None ->
+          VNeutral { ty = cod; neutral = { head = neu.head; frames } })
   | VFlex { id; spine = sp } -> VFlex { id; spine = sp @ [ va ] }
   | VRigid { lvl; spine = sp } -> VRigid { lvl; spine = sp @ [ va ] }
   | VNominal n -> VNominal { n with params = n.params @ [ va ] }

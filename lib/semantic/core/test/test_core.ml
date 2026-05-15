@@ -246,6 +246,15 @@ let () =
           Alcotest.test_case "fix" `Quick
             (check_i64 "fix" 0L
                "let rec f : Bool -> I64 = fun x -> if x then 0 else f true in f false");
+          Alcotest.test_case "rec sum" `Quick
+            (check_i64 "rec sum" 15L
+               "let rec sum : I64 -> I64 = fun n -> if n == 0 then 0 else sum (n - 1) + n in sum 5");
+          Alcotest.test_case "rec count" `Quick
+            (check_i64 "rec count" 5L
+               "let rec f : I64 -> I64 = fun n -> if n == 5 then 5 else f (n + 1) in f 0");
+          Alcotest.test_case "rec not" `Quick
+            (check_i64 "rec not" 0L
+               "let rec f : Bool -> I64 = fun x -> if x then 0 else f (not x) in f false");
         ] );
       ( "conv",
         [
