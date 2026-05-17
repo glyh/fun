@@ -11,7 +11,8 @@ let () =
           | TupleLengthMismatch -> "TupleLengthMismatch"
           | NotANominalType -> "NotANominalType"
           | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
-          | PatternArityMismatch -> "PatternArityMismatch"))
+          | PatternArityMismatch -> "PatternArityMismatch"
+          | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""))
     | Unify.UnifyError e ->
         let open Unify in
         Some (Printf.sprintf "UnifyError(%s)" (match e with
@@ -440,6 +441,22 @@ let match_tests =
                   match Some I64 42 with Some -> 0 | None -> 0 end");
     Alcotest.test_case "match wrong scrutinee type" `Quick
       (elab_fail "type Color = Red | Green in match 42 with Red -> 1 end");
+    Alcotest.test_case "non-exhaustive missing ctor" `Quick
+      (elab_fail "type Color = Red | Green | Blue in \
+                  match Red with Red -> 1 | Green -> 2 end");
+    Alcotest.test_case "non-exhaustive single ctor" `Quick
+      (elab_fail "type Option a = Some a | None in \
+                  match Some 42 with Some(x) -> x end");
+    Alcotest.test_case "exhaustive with wildcard" `Quick
+      (check_type
+        "type Color = Red | Green | Blue in \
+         (match Red with Red -> 1 | _ -> 0 end : I64)"
+        (AtomTy TI64));
+    Alcotest.test_case "exhaustive all ctors" `Quick
+      (check_type
+        "type Color = Red | Green | Blue in \
+         (match Red with Red -> 1 | Green -> 2 | Blue -> 3 end : I64)"
+        (AtomTy TI64));
   ]
 
 let implicit_args =

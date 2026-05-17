@@ -149,6 +149,53 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } }
   | Meta id -> eval_meta mc id
   | InsertedMeta (id, bds) -> eval_inserted_meta mc env id bds
+  | NominalDef { name; num_params; ctors; body } ->
+      let elaborated_ctors =
+        List.map (fun (cname, payload_opt) ->
+          (cname, Option.map (fun t -> { env; body = t }) payload_opt))
+        ctors
+      in
+      let nominal = VNominal {
+        id = NominalId.fresh (); name; params = [];
+        constructors = elaborated_ctors
+      } in
+      (* Add dummy entries for type params (body expects them in scope) *)
+      let depth = List.length env in
+      let env =
+        let rec add_params env i =
+          if i >= num_params then env
+          else add_params (VRigid { lvl = depth + i; spine = [] } :: env) (i + 1)
+        in
+        add_params env 0
+      in
+      (* Push the nominal template (used by NomRef/eval_con) *)
+      let env = nominal :: env in
+      (* For parameterized types, elaborator also pushes a type-name binding *)
+      let env =
+        if num_params > 0 then nominal :: env
+        else env
+      in
+      let env =
+        List.fold_left (fun env (cname, payload_clo_opt) ->
+          let has_payload = Option.is_some payload_clo_opt in
+          let total_args = num_params + (if has_payload then 1 else 0) in
+          if total_args = 0 then
+            VCon { name = cname; spine = []; nominal } :: env
+          else
+            let ctor_body =
+              let param_vars = List.init num_params (fun i ->
+                Var (total_args - 1 - i)) in
+              let payload_var = if has_payload then [ Var 0 ] else [] in
+              Ctor { name = cname; spine = param_vars @ payload_var;
+                     nominal_name = name;
+                     nominal_spine = param_vars }
+            in
+            let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in
+            let ctor_term = wrap total_args ctor_body in
+            eval mc env ctor_term :: env)
+        env elaborated_ctors
+      in
+      eval mc env body
   | Match (scrut, branches) ->
       let vs = eval mc env scrut in
       eval_match mc env vs branches
@@ -245,27 +292,17 @@ and eval_con (env : env) (name : string) : value =
   in
   go env
 
-(* Pattern matching: dispatch on the scrutinee value. For a VCon, find the
-   matching branch by constructor name and bind payload elements via sub-patterns.
+(* Pattern matching: compile to decision tree, then interpret.
    For a stuck scrutinee, accumulate an FMatch frame. *)
 and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
   let scrutinee = force mc scrutinee in
   match scrutinee with
-  | VCon { name; spine; nominal = _ } ->
-      let rec try_branch = function
-        | [] -> raise (EvalError ("no matching branch for constructor: " ^ name))
-        | (CPatCon (cname, num_type_params, sub_pats), body) :: rest ->
-            if String.equal cname name then begin
-              let payload = List.drop num_type_params spine in
-              let env' = bind_pats mc env sub_pats payload in
-              eval mc env' body
-            end else
-              try_branch rest
-        | (CPatWild, body) :: _ -> eval mc env body
-        | (CPatBind, body) :: _ -> eval mc (scrutinee :: env) body
-      in
-      try_branch branches
+  | VCon { nominal; _ } ->
+      let constructors = nominal_constructors mc nominal in
+      let pats = List.map fst branches in
+      let dt = Core_match_compile.compile ~constructors pats in
+      eval_decision_tree mc env scrutinee branches dt
   | _ ->
       let head, base_frames = stuck_head_frames scrutinee in
       VNeutral
@@ -273,22 +310,60 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
           neutral = { head; frames = base_frames @ [ FMatch
               (List.map (fun (p, body) -> (p, { env; body })) branches) ] } }
 
-(* Bind pattern variables: match sub-patterns against payload values.
-   Recursively handles nested constructor patterns. *)
-and bind_pats (mc : MetaContext.t) (env : env) (pats : core_pat list)
-    (vals : value list) : env =
-  match (pats, vals) with
-  | [], [] -> env
-  | CPatWild :: ps, _ :: vs -> bind_pats mc env ps vs
-  | CPatBind :: ps, v :: vs -> bind_pats mc (v :: env) ps vs
-  | CPatCon (name, num_type_params, sub_pats) :: ps, v :: vs ->
-      (match force mc v with
-      | VCon { name = cname; spine; _ } when String.equal cname name ->
-          let payload = List.drop num_type_params spine in
-          let env = bind_pats mc env sub_pats payload in
-          bind_pats mc env ps vs
-      | _ -> raise (EvalError "nested constructor pattern mismatch"))
-  | _ -> raise (EvalError "pattern/payload arity mismatch")
+and nominal_constructors (mc : MetaContext.t) (nom : value) :
+    (string * int * bool) list =
+  match force mc nom with
+  | VNominal { params; constructors; _ } ->
+      let ntp = List.length params in
+      List.map (fun (name, payload) -> (name, ntp, Option.is_some payload))
+        constructors
+  | _ -> raise (EvalError "match scrutinee type is not a nominal")
+
+and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
+    (branches : (core_pat * term) list)
+    (dt : Core_decision_tree.t) : value =
+  match dt.content with
+  | Leaf { branch; bindings } ->
+      let env' =
+        List.fold_left
+          (fun e occ -> resolve_occurrence mc root occ :: e)
+          env bindings
+      in
+      let _, body = List.nth branches branch in
+      eval mc env' body
+  | Destruct { occurrence; cases; default } ->
+      let v = resolve_occurrence mc root occurrence |> force mc in
+      (match v with
+      | VCon { name; _ } -> (
+          match
+            List.find_opt (fun (cn, _, _) -> String.equal cn name) cases
+          with
+          | Some (_, _, sub) ->
+              eval_decision_tree mc env root branches sub
+          | None -> (
+              match default with
+              | Some d -> eval_decision_tree mc env root branches d
+              | None -> raise (EvalError "non-exhaustive match at runtime")))
+      | _ -> raise (EvalError "match on non-constructor value"))
+  | Switch { cases; default; occurrence } ->
+      let v = resolve_occurrence mc root occurrence |> force mc in
+      (match v with
+      | VAtom a -> (
+          match
+            List.find_opt (fun (atom, _) -> Syntax.Ast.Atom.equal atom a) cases
+          with
+          | Some (_, sub) -> eval_decision_tree mc env root branches sub
+          | None -> eval_decision_tree mc env root branches default)
+      | _ -> raise (EvalError "switch on non-atom value"))
+
+and resolve_occurrence (mc : MetaContext.t) (root : value)
+    (occ : Core_decision_tree.occurrence) : value =
+  match occ with
+  | OBase -> root
+  | OChild { parent; index } -> (
+      match force mc (resolve_occurrence mc root parent) with
+      | VCon { spine; _ } -> List.nth spine index
+      | _ -> raise (EvalError "resolve_occurrence: not a VCon"))
 
 and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   match (p1, p2) with

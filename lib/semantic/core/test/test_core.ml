@@ -18,7 +18,12 @@ let eval_source source =
 let check_i64 label expected source () =
   match eval_source source with
   | VAtom (I64 n) -> Alcotest.(check int64) label expected n
-  | _ -> Alcotest.fail (Printf.sprintf "%s: expected VAtom I64" label)
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "%s: expected VAtom I64, got %s" label
+        (Core_tt.Debug.pp_value_short mc v))
+  | exception e ->
+      Alcotest.fail (Printf.sprintf "%s: exception %s" label (Printexc.to_string e))
 
 let check_conv label s1 s2 () =
   let ctx = Core_tt.Elaborate.init_ctx () in
@@ -255,6 +260,22 @@ let () =
           Alcotest.test_case "rec not" `Quick
             (check_i64 "rec not" 0L
                "let rec f : Bool -> I64 = fun x -> if x then 0 else f (not x) in f false");
+          Alcotest.test_case "match ctor" `Quick
+            (check_i64 "match ctor" 1L
+               "type Color = Red | Green in match Red with Red -> 1 | Green -> 2 end");
+          Alcotest.test_case "match wildcard" `Quick
+            (check_i64 "match wildcard" 99L
+               "type Color = Red | Green | Blue in \
+                match Green with Red -> 1 | _ -> 99 end");
+          Alcotest.test_case "match bind" `Quick
+            (check_i64 "match bind" 42L
+               "type Option a = Some a | None in \
+                match Some 42 with Some(x) -> x | None -> 0 end");
+          Alcotest.test_case "match nested" `Quick
+            (check_i64 "match nested" 7L
+               "type Option a = Some a | None in \
+                match Some (Some 7) with \
+                  Some(Some(x)) -> x | Some(None) -> 0 | None -> 0 end");
         ] );
       ( "conv",
         [

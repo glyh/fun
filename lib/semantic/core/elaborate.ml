@@ -11,6 +11,7 @@ type elab_error =
   | NotANominalType
   | UnknownConstructor of string
   | PatternArityMismatch
+  | NonExhaustive of string
 
 exception ElabError of elab_error
 
@@ -298,7 +299,21 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             Ctx.define ctx cname ctor_ty ctor_val)
           body_ctx ctors (List.map snd elaborated_ctors)
       in
-      infer body_ctx body
+      let body_core, body_ty = infer body_ctx body in
+      let ctor_payload_terms =
+        List.map (fun (cname, payload_opt) ->
+          match payload_opt with
+          | None -> (cname, None)
+          | Some payload_expr ->
+              let payload_core, payload_ty = infer param_ctx payload_expr in
+              (match payload_ty with
+              | VU -> ()
+              | _ -> failwith ("constructor payload for " ^ cname ^ " must be a type"));
+              (cname, Some payload_core))
+        ctors
+      in
+      (NominalDef { name; num_params; ctors = ctor_payload_terms; body = body_core },
+       body_ty)
   | Match (scrutinee, branches) ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
       let scrut_ty =
@@ -345,6 +360,24 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           (core_pat, body_core))
           branches
       in
+      (match scrut_ty with
+      | VNominal { params; constructors; _ } ->
+          let ntp = List.length params in
+          let ctors =
+            List.map (fun (n, p) -> (n, ntp, Option.is_some p)) constructors
+          in
+          let pats = List.map fst branches' in
+          (* Exhaustiveness check only — decision tree is recomputed during NbE *)
+          (try ignore (Core_match_compile.compile ~constructors:ctors pats)
+           with Core_match_compile.Non_exhaustive mp ->
+             let rec pp_missing = function
+               | Core_match_compile.MWild -> "_"
+               | Core_match_compile.MCon (name, None) -> name
+               | Core_match_compile.MCon (name, Some sub) ->
+                   name ^ "(" ^ pp_missing sub ^ ")"
+             in
+             raise (ElabError (NonExhaustive (pp_missing mp))))
+      | _ -> ());
       (Match (scrut_core, branches'), ret_ty)
 
 (** Elaborate a surface pattern against a scrutinee type, producing a core

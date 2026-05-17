@@ -71,6 +71,15 @@ type term =
       (** Pattern matching. Scrutinee + branches. Each branch binds variables
           from the pattern — de Bruijn indices in the body count from the
           innermost pattern binding outward. *)
+  | NominalDef of {
+      name : string;
+      num_params : int;
+      ctors : (string * term option) list;
+      body : term;
+    }
+      (** Nominal type definition. Evaluator creates a fresh VNominal, builds
+          constructor values, extends env with [type, ctor1, ..., ctorN], then
+          evaluates [body]. The body's Var indices account for these bindings. *)
 
 and core_pat =
   | CPatCon of string * int * core_pat list
