@@ -276,6 +276,21 @@ let () =
                "type Option a = Some a | None in \
                 match Some (Some 7) with \
                   Some(Some(x)) -> x | Some(None) -> 0 | None -> 0 end");
+          Alcotest.test_case "match int literal hit" `Quick
+            (check_i64 "match int literal hit" 10L
+               "match 1 with 1 -> 10 | _ -> 20 end");
+          Alcotest.test_case "match int literal default" `Quick
+            (check_i64 "match int literal default" 20L
+               "match 2 with 1 -> 10 | _ -> 20 end");
+          Alcotest.test_case "match bool literal" `Quick
+            (check_i64 "match bool literal" 0L
+               "match false with true -> 1 | false -> 0 end");
+          Alcotest.test_case "match unit literal" `Quick
+            (check_i64 "match unit literal" 7L
+               "match () with () -> 7 end");
+          Alcotest.test_case "match literal binder fallback" `Quick
+            (check_i64 "match literal binder fallback" 42L
+               "match 42 with 0 -> 0 | x -> x end");
         ] );
       ( "conv",
         [

@@ -432,8 +432,20 @@ let match_tests =
         "type Color = Red | Green in \
          (match Red with x -> 1 end : I64)"
         (AtomTy TI64));
-    Alcotest.test_case "match non ADT fails" `Quick
-      (elab_fail "match 42 with _ -> 0 end");
+    Alcotest.test_case "match non ADT wildcard" `Quick
+      (check_type "match 42 with _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "match int literal" `Quick
+      (check_type "match 42 with 42 -> 1 | _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "match bool literals" `Quick
+      (check_type "match true with true -> 1 | false -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "match unit literal" `Quick
+      (check_type "match () with () -> 1 end" (AtomTy TI64));
+    Alcotest.test_case "literal type mismatch" `Quick
+      (elab_fail "match 1 with true -> 0 | _ -> 1 end");
+    Alcotest.test_case "non-exhaustive bool literal" `Quick
+      (elab_fail "match true with true -> 1 end");
+    Alcotest.test_case "non-exhaustive int literal" `Quick
+      (elab_fail "match 1 with 1 -> 1 end");
     Alcotest.test_case "match unknown constructor" `Quick
       (elab_fail "type Color = Red in match Red with Blue -> 0 end");
     Alcotest.test_case "match payload arity mismatch" `Quick

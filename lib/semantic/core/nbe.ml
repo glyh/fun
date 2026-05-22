@@ -20,6 +20,11 @@ module Prim = struct
     | _ -> None
 end
 
+let atom_ty_of_atom = function
+  | Syntax.Ast.Atom.I64 _ -> TI64
+  | Bool _ -> TBool
+  | Unit -> TUnit
+
 let prim_table : (string, Prim.reducer) Hashtbl.t =
   let open Prim in
   [
@@ -299,9 +304,14 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
   let scrutinee = force mc scrutinee in
   match scrutinee with
   | VCon { nominal; _ } ->
-      let constructors = nominal_constructors mc nominal in
+      let domain = Core_match_compile.Nominal (nominal_constructors mc nominal) in
       let pats = List.map fst branches in
-      let dt = Core_match_compile.compile ~constructors pats in
+      let dt = Core_match_compile.compile ~domain pats in
+      eval_decision_tree mc env scrutinee branches dt
+  | VAtom atom ->
+      let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
+      let pats = List.map fst branches in
+      let dt = Core_match_compile.compile ~domain pats in
       eval_decision_tree mc env scrutinee branches dt
   | _ ->
       let head, base_frames = stuck_head_frames scrutinee in
@@ -369,6 +379,7 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   match (p1, p2) with
   | CPatWild, CPatWild -> true
   | CPatBind, CPatBind -> true
+  | CPatAtom a1, CPatAtom a2 -> Syntax.Ast.Atom.equal a1 a2
   | CPatCon (n1, a1, ps1), CPatCon (n2, a2, ps2) ->
       String.equal n1 n2 && a1 = a2
       && List.length ps1 = List.length ps2

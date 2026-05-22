@@ -86,6 +86,8 @@ and core_pat =
       (** Constructor pattern. [name] is the constructor tag, [num_type_params]
           is how many leading spine elements are type args (skipped during
           matching), [sub_pats] bind the payload elements. *)
+  | CPatAtom of Syntax.Ast.Atom.t
+      (** Literal atom pattern. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
   | CPatBind

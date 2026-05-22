@@ -44,6 +44,10 @@ branch:
   | p = pat; ARROW; body = expr_arrow { (p, body) }
 
 pat:
+  | n = INT { PatAtom (I64 n) }
+  | TRUE { PatAtom (Bool true) }
+  | FALSE { PatAtom (Bool false) }
+  | UNIT { PatAtom Unit }
   | name = ID; LPAREN; sub = separated_nonempty_list(COMMA, pat); RPAREN
     { PatCon (name, sub) }
   | name = ID
