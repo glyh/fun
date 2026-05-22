@@ -311,6 +311,7 @@ module Inference = struct
     | Atom.Unit -> Type.Generic.unit
     | I64 _ -> Type.Generic.i64
     | Bool _ -> Type.Generic.bool
+    | Char _ -> Type.Generic.char
 
   let rec resolve_self ~nominal : Type.Human.t -> Type.Human.t = function
     | Con (id, []) when Type.TypeId.equal id Type.Generic.self_sentinel -> nominal

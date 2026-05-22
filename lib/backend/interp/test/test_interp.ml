@@ -98,6 +98,15 @@ let matches =
 end|}
            ~expected:(Value.Atom (Syntax.Ast.Atom.I64 11L))
            ~typ:Type.Generic.i64);
+      test_case "char literal switch" `Quick
+        (test_eval
+           ~source:
+             {|match 'a'
+| 'a' -> 11
+| _ -> 0
+end|}
+           ~expected:(Value.Atom (Syntax.Ast.Atom.I64 11L))
+           ~typ:Type.Generic.i64);
       test_case "tuple projection" `Quick
         (test_eval
            ~source:

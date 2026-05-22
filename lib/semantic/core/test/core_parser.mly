@@ -3,6 +3,7 @@ open Core_tt.Surface
 %}
 
 %token <int64> INT
+%token <char> CHAR
 %token <string> ID
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
@@ -45,6 +46,7 @@ branch:
 
 pat:
   | n = INT { PatAtom (I64 n) }
+  | c = CHAR { PatAtom (Char c) }
   | TRUE { PatAtom (Bool true) }
   | FALSE { PatAtom (Bool false) }
   | UNIT { PatAtom Unit }
@@ -96,6 +98,7 @@ expr_proj:
 
 expr_primary:
   | n = INT { Atom (I64 n) }
+  | c = CHAR { Atom (Char c) }
   | TRUE { Atom (Bool true) }
   | FALSE { Atom (Bool false) }
   | UNIT { Atom Unit }

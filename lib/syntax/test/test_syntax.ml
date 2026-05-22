@@ -282,6 +282,34 @@ let parentheses =
              [ Value { name = "x"; type_ = None; value = Atom (I64 42L) } ]);
     ]
 
+let chars =
+  Alcotest.
+    [
+      test_case "char literal binding" `Quick
+        (test_syntax ~source:"let c = 'a'"
+           ~expected:
+             [ Value { name = "c"; type_ = None; value = Atom (Char 'a') } ]);
+      test_case "escaped char literal binding" `Quick
+        (test_syntax ~source:"let c = '\\n'"
+           ~expected:
+             [ Value { name = "c"; type_ = None; value = Atom (Char '\n') } ]);
+      test_case "escaped quote char literal binding" `Quick
+        (test_syntax ~source:"let c = '\\''"
+           ~expected:
+             [ Value { name = "c"; type_ = None; value = Atom (Char '\'') } ]);
+      test_case "type variable is not char literal" `Quick
+        (test_syntax ~source:"type box['a] = Box 'a"
+           ~expected:
+             [
+               TypeDecl
+                 {
+                   name = "box";
+                   args = [ "a" ];
+                   rhs = Adt (Std.Nonempty_list.init ("Box", Some (Var "a")) []);
+                 };
+             ]);
+    ]
+
 let annotations =
   Alcotest.
     [
@@ -860,6 +888,18 @@ let qualified_patterns =
                       (Pattern.Tagged (["A"; "B"; "C"], "Red", Some (Bind "y")), Expr.Var "y")
                       [];
                 }));
+      test_case "char literal in pattern" `Quick
+        (test_expr
+           ~source:{|match c | 'a' -> 1 | _ -> 0 end|}
+           ~expected:
+             (Match
+                {
+                  matched = Var "c";
+                  branches =
+                    Std.Nonempty_list.init
+                      (Pattern.Just (Char 'a'), Expr.Atom (I64 1L))
+                      [ (Pattern.Any, Expr.Atom (I64 0L)) ];
+                }));
     ]
 
 let open_tests =
@@ -901,6 +941,7 @@ let () =
       ("ifs", ifs);
       ("lambdas", lambdas);
       ("parentheses", parentheses);
+      ("chars", chars);
       ("annotations", annotations);
       ("operators", operators);
       ("types", types);

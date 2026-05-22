@@ -28,6 +28,8 @@ let constants =
         (test_typecheck ~source:"true" ~expected:Type.Generic.bool);
       test_case "false literal" `Quick
         (test_typecheck ~source:"false" ~expected:Type.Generic.bool);
+      test_case "char literal" `Quick
+        (test_typecheck ~source:"'a'" ~expected:Type.Generic.char);
     ]
 
 let let_bindings =

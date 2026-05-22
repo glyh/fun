@@ -64,6 +64,7 @@ let constants =
     Alcotest.test_case "unit" `Quick (check_type "()" (AtomTy TUnit));
     Alcotest.test_case "true" `Quick (check_type "true" (AtomTy TBool));
     Alcotest.test_case "false" `Quick (check_type "false" (AtomTy TBool));
+    Alcotest.test_case "char" `Quick (check_type "'a'" (AtomTy TChar));
   ]
 
 let let_bindings =
@@ -102,6 +103,8 @@ let annotations =
       (check_type "(42 : I64)" (AtomTy TI64));
     Alcotest.test_case "bool annotation" `Quick
       (check_type "(true : Bool)" (AtomTy TBool));
+    Alcotest.test_case "char annotation" `Quick
+      (check_type "('a' : Char)" (AtomTy TChar));
     Alcotest.test_case "let with annotation" `Quick
       (check_type "let x : I64 = 42 in x" (AtomTy TI64));
   ]
@@ -440,12 +443,20 @@ let match_tests =
       (check_type "match true with true -> 1 | false -> 0 end" (AtomTy TI64));
     Alcotest.test_case "match unit literal" `Quick
       (check_type "match () with () -> 1 end" (AtomTy TI64));
+    Alcotest.test_case "match char literal" `Quick
+      (check_type "match 'a' with 'a' -> 1 | _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "match escaped char literal" `Quick
+      (check_type "match '\\n' with '\\n' -> 1 | _ -> 0 end" (AtomTy TI64));
     Alcotest.test_case "literal type mismatch" `Quick
       (elab_fail "match 1 with true -> 0 | _ -> 1 end");
+    Alcotest.test_case "char literal type mismatch" `Quick
+      (elab_fail "match 'a' with 1 -> 0 | _ -> 1 end");
     Alcotest.test_case "non-exhaustive bool literal" `Quick
       (elab_fail "match true with true -> 1 end");
     Alcotest.test_case "non-exhaustive int literal" `Quick
       (elab_fail "match 1 with 1 -> 1 end");
+    Alcotest.test_case "non-exhaustive char literal" `Quick
+      (elab_fail "match 'a' with 'a' -> 1 end");
     Alcotest.test_case "match tuple pattern" `Quick
       (check_type "match (1, true) with (x, b) -> if b then x else 0 end" (AtomTy TI64));
     Alcotest.test_case "match nested tuple pattern" `Quick

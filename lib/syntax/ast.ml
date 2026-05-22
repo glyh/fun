@@ -11,13 +11,22 @@ let pp_type_annotated = function
 module Atom = struct
   open Ppx_hash_lib.Std.Hash.Builtin
 
-  type t = Unit | I64 of int64 | Bool of bool [@@deriving eq, hash]
+  type t = Unit | I64 of int64 | Bool of bool | Char of char [@@deriving eq, hash]
+
+  let pp_char = function
+    | '\'' -> "\\'"
+    | '\\' -> "\\\\"
+    | '\n' -> "\\n"
+    | '\t' -> "\\t"
+    | '\r' -> "\\r"
+    | c -> String.make 1 c
 
   let pp = function
     | Unit -> "()"
     | I64 i -> Int64.to_string i
     | Bool true -> "true"
     | Bool false -> "false"
+    | Char c -> "'" ^ pp_char c ^ "'"
 end
 
 type type_rhs =

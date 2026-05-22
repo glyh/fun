@@ -288,6 +288,15 @@ let () =
           Alcotest.test_case "match unit literal" `Quick
             (check_i64 "match unit literal" 7L
                "match () with () -> 7 end");
+          Alcotest.test_case "match char literal hit" `Quick
+            (check_i64 "match char literal hit" 10L
+               "match 'a' with 'a' -> 10 | _ -> 20 end");
+          Alcotest.test_case "match char literal default" `Quick
+            (check_i64 "match char literal default" 20L
+               "match 'b' with 'a' -> 10 | _ -> 20 end");
+          Alcotest.test_case "match escaped char literal" `Quick
+            (check_i64 "match escaped char literal" 1L
+               "match '\\n' with '\\n' -> 1 | _ -> 0 end");
           Alcotest.test_case "match literal binder fallback" `Quick
             (check_i64 "match literal binder fallback" 42L
                "match 42 with 0 -> 0 | x -> x end");

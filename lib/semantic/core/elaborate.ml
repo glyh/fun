@@ -95,6 +95,7 @@ let atom_ty_of_atom = function
   | Syntax.Ast.Atom.I64 _ -> TI64
   | Bool _ -> TBool
   | Unit -> TUnit
+  | Char _ -> TChar
 
 let prims =
   let arithemetic = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TI64 in
@@ -211,6 +212,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Atom (I64 n) -> (Atom (I64 n), VAtomTy TI64)
   | Atom (Bool b) -> (Atom (Bool b), VAtomTy TBool)
   | Atom Unit -> (Atom Unit, VAtomTy TUnit)
+  | Atom (Char c) -> (Atom (Char c), VAtomTy TChar)
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
       (Var ix, ty)

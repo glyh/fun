@@ -67,6 +67,14 @@ let rec token buf =
   | Plus '0' .. '9' ->
       let num = Sedlexing.Utf8.lexeme buf |> Int64.of_string in
       I64 num
+  | "'", '\\', 'n', "'" -> CHAR '\n'
+  | "'", '\\', 't', "'" -> CHAR '\t'
+  | "'", '\\', 'r', "'" -> CHAR '\r'
+  | "'", '\\', "'", "'" -> CHAR '\''
+  | "'", '\\', '\\', "'" -> CHAR '\\'
+  | "'", Compl ('\'' | '\\' | '\n' | '\r'), "'" ->
+      let lexeme = Sedlexing.Utf8.lexeme buf in
+      CHAR lexeme.[1]
   | "'", id ->
       let drop_first s = String.sub s 1 (String.length s - 1) in
       TY_VAR (Sedlexing.Utf8.lexeme buf |> drop_first)

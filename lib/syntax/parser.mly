@@ -11,6 +11,7 @@
 %token <Type.Id.t> ID
 %token <Type.Id.t> TY_VAR
 %token <int64> I64
+%token <char> CHAR
 %token LET REC IN IF THEN ELSE FUN TYPE MATCH END STRUCT PUB IMPORT SELF OPEN EXPORT
 %token <string> STRING
 %token ARROW LPAREN RPAREN ASSIGN COLON DOUBLESEMI UNIT PIPE
@@ -117,8 +118,9 @@ binding:
     Binding.TypeDecl { name; args; rhs }
   }
 
-atom: 
+atom:
   | I64 { Atom.I64 $1 }
+  | CHAR { Atom.Char $1 }
   | UNIT { Atom.Unit }
   | TRUE { Atom.Bool true }
   | FALSE { Atom.Bool false }

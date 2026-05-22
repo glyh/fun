@@ -48,6 +48,14 @@ let rec token buf =
   | "|" -> BAR
   | Plus '0' .. '9' ->
       INT (Sedlexing.Utf8.lexeme buf |> Int64.of_string)
+  | "'", '\\', 'n', "'" -> CHAR '\n'
+  | "'", '\\', 't', "'" -> CHAR '\t'
+  | "'", '\\', 'r', "'" -> CHAR '\r'
+  | "'", '\\', "'", "'" -> CHAR '\''
+  | "'", '\\', '\\', "'" -> CHAR '\\'
+  | "'", Compl ('\'' | '\\' | '\n' | '\r'), "'" ->
+      let lexeme = Sedlexing.Utf8.lexeme buf in
+      CHAR lexeme.[1]
   | id -> ID (Sedlexing.Utf8.lexeme buf)
   | Plus (' ' | '\t' | '\n' | '\r') -> token buf
   | eof -> EOF
