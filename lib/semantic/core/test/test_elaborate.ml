@@ -446,6 +446,18 @@ let match_tests =
       (elab_fail "match true with true -> 1 end");
     Alcotest.test_case "non-exhaustive int literal" `Quick
       (elab_fail "match 1 with 1 -> 1 end");
+    Alcotest.test_case "match tuple pattern" `Quick
+      (check_type "match (1, true) with (x, b) -> if b then x else 0 end" (AtomTy TI64));
+    Alcotest.test_case "match nested tuple pattern" `Quick
+      (check_type "match ((1, true), 2) with ((x, _), y) -> x + y end" (AtomTy TI64));
+    Alcotest.test_case "tuple pattern arity mismatch" `Quick
+      (elab_fail "match (1, true) with (x, y, z) -> x end");
+    Alcotest.test_case "tuple literal type mismatch" `Quick
+      (elab_fail "match (1, true) with (true, x) -> x | _ -> 0 end");
+    Alcotest.test_case "non-exhaustive tuple literal" `Quick
+      (elab_fail "match (true, 1) with (true, x) -> x end");
+    Alcotest.test_case "match infers tuple scrutinee" `Quick
+      (elab_ok "fun x -> match x with (true, y) -> y | (false, y) -> y end");
     Alcotest.test_case "match unknown constructor" `Quick
       (elab_fail "type Color = Red in match Red with Blue -> 0 end");
     Alcotest.test_case "match payload arity mismatch" `Quick

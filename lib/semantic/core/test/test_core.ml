@@ -291,6 +291,21 @@ let () =
           Alcotest.test_case "match literal binder fallback" `Quick
             (check_i64 "match literal binder fallback" 42L
                "match 42 with 0 -> 0 | x -> x end");
+          Alcotest.test_case "match tuple bind" `Quick
+            (check_i64 "match tuple bind" 1L
+               "match (1, true) with (x, b) -> if b then x else 0 end");
+          Alcotest.test_case "match tuple wildcard" `Quick
+            (check_i64 "match tuple wildcard" 2L
+               "match (1, 2) with (_, y) -> y end");
+          Alcotest.test_case "match whole tuple binder" `Quick
+            (check_i64 "match whole tuple binder" 1L
+               "match (1, true) with p -> p.0 end");
+          Alcotest.test_case "match nested tuple" `Quick
+            (check_i64 "match nested tuple" 3L
+               "match ((1, true), 2) with ((x, _), y) -> x + y end");
+          Alcotest.test_case "match tuple literals" `Quick
+            (check_i64 "match tuple literals" 9L
+               "match (false, 1) with (true, x) -> x | (false, _) -> 9 end");
         ] );
       ( "conv",
         [

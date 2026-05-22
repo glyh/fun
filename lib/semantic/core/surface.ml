@@ -38,6 +38,7 @@ and t =
 
 and pat =
   | PatCon of string * pat list   (* Constructor(sub, patterns) *)
+  | PatProd of pat list
   | PatAtom of Syntax.Ast.Atom.t
   | PatWild                       (* _ *)
   | PatBind of string             (* variable binding *)

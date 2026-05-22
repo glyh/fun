@@ -1,7 +1,7 @@
 open Core
 module DT = Core_decision_tree
 
-type domain = Nominal of (string * int * bool) list | Atom of atom_ty | Unknown
+type domain = Nominal of (string * int * bool) list | Atom of atom_ty | Product of int | Unknown
 
 type missing_pat = MWild | MCon of string * missing_pat option
 
@@ -47,11 +47,12 @@ let swap_columns m i j =
       rows = List.map (fun r -> { r with pats = swap_arr r.pats }) m.rows;
     }
 
-type refutability = Irrefutable | Destruct | Switch
+type refutability = Irrefutable | Destruct | Switch | ProductPat
 
 let classify = function
   | CPatCon _ -> Destruct
   | CPatAtom _ -> Switch
+  | CPatProd _ -> ProductPat
   | CPatWild | CPatBind -> Irrefutable
 
 let find_refutable_column m =
@@ -144,6 +145,36 @@ let specialize_literal m atom =
   in
   { header; rows }
 
+let specialize_product m arity =
+  let occ0 = m.header.(0) in
+  let new_occs =
+    Array.init arity (fun i -> DT.OChild { parent = occ0; index = i })
+  in
+  let rest_header = Array.sub m.header 1 (Array.length m.header - 1) in
+  let header = Array.append new_occs rest_header in
+  let rows =
+    List.filter_map
+      (fun r ->
+        match r.pats.(0) with
+        | CPatProd sub_pats ->
+            if List.length sub_pats <> arity then None
+            else
+              let rest = Array.sub r.pats 1 (Array.length r.pats - 1) in
+              Some { r with pats = Array.append (Array.of_list sub_pats) rest }
+        | CPatWild ->
+            let wilds = Array.make arity CPatWild in
+            let rest = Array.sub r.pats 1 (Array.length r.pats - 1) in
+            Some { r with pats = Array.append wilds rest }
+        | CPatBind ->
+            let wilds = Array.make arity CPatWild in
+            let rest = Array.sub r.pats 1 (Array.length r.pats - 1) in
+            let bindings = r.bindings @ [ occ0 ] in
+            Some { pats = Array.append wilds rest; branch = r.branch; bindings }
+        | _ -> None)
+      m.rows
+  in
+  { header; rows }
+
 let default_matrix m =
   let occ0 = m.header.(0) in
   let header = Array.sub m.header 1 (Array.length m.header - 1) in
@@ -178,7 +209,7 @@ let all_atoms = function
   | TUnit -> Some [ Unit ]
   | TI64 | TChar -> None
 
-let compile ~domain (pats : core_pat list) : DT.t =
+let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
   let module DTB = DT.Make () in
   let initial : matrix =
     {
@@ -199,7 +230,18 @@ let compile ~domain (pats : core_pat list) : DT.t =
         let m = swap_columns m 0 i in
         let col = get_column m 0 in
         (match classify (List.find (fun p -> classify p <> Irrefutable) col) with
+        | ProductPat ->
+            let arity =
+              match List.find_map (function CPatProd ps -> Some (List.length ps) | _ -> None) col with
+              | Some arity -> arity
+              | None -> (
+                  match domain_of_occurrence m.header.(0) with
+                  | Product arity -> arity
+                  | _ -> 0)
+            in
+            go (specialize_product m arity)
         | Destruct ->
+            let domain = domain_of_occurrence m.header.(0) in
             let constructors = match domain with Nominal ctors -> ctors | _ -> [] in
             let tags = collect_tags col in
             let cases =
@@ -255,6 +297,7 @@ let compile ~domain (pats : core_pat list) : DT.t =
                 atoms
             in
             let dm = default_matrix m in
+            let domain = domain_of_occurrence m.header.(0) in
             let missing_finite_atom =
               match domain with
               | Atom atom_ty ->
@@ -276,3 +319,8 @@ let compile ~domain (pats : core_pat list) : DT.t =
         | Irrefutable -> assert false)
   in
   go initial
+
+let compile ~domain pats =
+  compile_with_domains
+    ~domain_of_occurrence:(function DT.OBase -> domain | _ -> Unknown)
+    pats

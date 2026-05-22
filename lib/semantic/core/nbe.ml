@@ -303,15 +303,34 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
   let scrutinee = force mc scrutinee in
   match scrutinee with
-  | VCon { nominal; _ } ->
-      let domain = Core_match_compile.Nominal (nominal_constructors mc nominal) in
+  | VCon _ ->
+      let domain_of_occurrence occ =
+        match resolve_occurrence_opt mc scrutinee occ with
+        | Some (VCon { nominal; _ }) ->
+            Core_match_compile.Nominal (nominal_constructors mc nominal)
+        | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+        | Some (VProd elems) -> Product (List.length elems)
+        | _ -> Unknown
+      in
       let pats = List.map fst branches in
-      let dt = Core_match_compile.compile ~domain pats in
+      let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
       eval_decision_tree mc env scrutinee branches dt
   | VAtom atom ->
       let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
       let pats = List.map fst branches in
       let dt = Core_match_compile.compile ~domain pats in
+      eval_decision_tree mc env scrutinee branches dt
+  | VProd _ ->
+      let domain_of_occurrence occ =
+        match resolve_occurrence_opt mc scrutinee occ with
+        | Some (VCon { nominal; _ }) ->
+            Core_match_compile.Nominal (nominal_constructors mc nominal)
+        | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+        | Some (VProd elems) -> Product (List.length elems)
+        | _ -> Unknown
+      in
+      let pats = List.map fst branches in
+      let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
       eval_decision_tree mc env scrutinee branches dt
   | _ ->
       let head, base_frames = stuck_head_frames scrutinee in
@@ -368,18 +387,27 @@ and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
 
 and resolve_occurrence (mc : MetaContext.t) (root : value)
     (occ : Core_decision_tree.occurrence) : value =
+  match resolve_occurrence_opt mc root occ with
+  | Some v -> v
+  | None -> raise (EvalError "resolve_occurrence: invalid occurrence")
+
+and resolve_occurrence_opt (mc : MetaContext.t) (root : value)
+    (occ : Core_decision_tree.occurrence) : value option =
   match occ with
-  | OBase -> root
+  | OBase -> Some root
   | OChild { parent; index } -> (
-      match force mc (resolve_occurrence mc root parent) with
-      | VCon { spine; _ } -> List.nth spine index
-      | _ -> raise (EvalError "resolve_occurrence: not a VCon"))
+      match Option.map (force mc) (resolve_occurrence_opt mc root parent) with
+      | Some (VCon { spine; _ }) -> List.nth_opt spine index
+      | Some (VProd elems) -> List.nth_opt elems index
+      | _ -> None)
 
 and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   match (p1, p2) with
   | CPatWild, CPatWild -> true
   | CPatBind, CPatBind -> true
   | CPatAtom a1, CPatAtom a2 -> Syntax.Ast.Atom.equal a1 a2
+  | CPatProd ps1, CPatProd ps2 ->
+      List.length ps1 = List.length ps2 && List.for_all2 conv_pat ps1 ps2
   | CPatCon (n1, a1, ps1), CPatCon (n2, a2, ps2) ->
       String.equal n1 n2 && a1 = a2
       && List.length ps1 = List.length ps2

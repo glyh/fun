@@ -143,10 +143,35 @@ let match_domain_of_ty ctx ty =
   | VAtomTy atom_ty -> Atom atom_ty
   | _ -> Unknown
 
+let rec type_at_occurrence ctx ty (occ : Core_decision_tree.occurrence) =
+  match occ with
+  | OBase -> Some ty
+  | OChild { parent; index } -> (
+      match type_at_occurrence ctx ty parent with
+      | Some parent_ty -> (
+          match Nbe.force ctx.Ctx.metas parent_ty with
+          | VProdTy tys -> List.nth_opt tys index
+          | VNominal { params; constructors; _ } ->
+              let num_type_params = List.length params in
+              let payload_index = index - num_type_params in
+              if payload_index = 0 then
+                constructors
+                |> List.find_map (fun (_, payload_opt) -> payload_opt)
+                |> Option.map (fun payload_clo ->
+                     Nbe.eval ctx.Ctx.metas (List.rev params @ payload_clo.env) payload_clo.body)
+              else None
+          | _ -> None)
+      | None -> None)
+
+let domain_of_occurrence ctx scrut_ty occ =
+  match type_at_occurrence ctx scrut_ty occ with
+  | Some ty -> match_domain_of_ty ctx ty
+  | None -> Unknown
+
 let refine_match_scrutinee_ty ctx scrut_ty branches =
   let ty = Nbe.force ctx.Ctx.metas scrut_ty in
   match ty with
-  | VNominal _ | VAtomTy _ -> ty
+  | VNominal _ | VAtomTy _ | VProdTy _ -> ty
   | _ ->
       let rec find = function
         | [] -> raise (ElabError NotANominalType)
@@ -159,9 +184,25 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
             let target = VAtomTy (atom_ty_of_atom atom) in
             unify_scrutinee_ty ctx ty target;
             Nbe.force ctx.Ctx.metas ty
+        | (Surface.PatProd ps, _) :: _ ->
+            let target = VProdTy (List.map (fun _ -> Ctx.raw_meta ctx) ps) in
+            unify_scrutinee_ty ctx ty target;
+            Nbe.force ctx.Ctx.metas ty
         | _ :: rest -> find rest
       in
       find branches
+
+let check_match_exhaustive ctx scrut_ty pats =
+  let domain_of_occurrence = domain_of_occurrence ctx scrut_ty in
+  try ignore (Core_match_compile.compile_with_domains ~domain_of_occurrence pats)
+  with Core_match_compile.Non_exhaustive mp ->
+    let rec pp_missing = function
+      | Core_match_compile.MWild -> "_"
+      | Core_match_compile.MCon (name, None) -> name
+      | Core_match_compile.MCon (name, Some sub) ->
+          name ^ "(" ^ pp_missing sub ^ ")"
+    in
+    raise (ElabError (NonExhaustive (pp_missing mp)))
 
 (** Bidirectional type inference: given a surface expression, produce a
     core term and its type. *)
@@ -378,17 +419,8 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           (core_pat, body_core))
           branches
       in
-      let domain = match_domain_of_ty ctx scrut_ty in
       let pats = List.map fst branches' in
-      (try ignore (Core_match_compile.compile ~domain pats)
-       with Core_match_compile.Non_exhaustive mp ->
-         let rec pp_missing = function
-           | Core_match_compile.MWild -> "_"
-           | Core_match_compile.MCon (name, None) -> name
-           | Core_match_compile.MCon (name, Some sub) ->
-               name ^ "(" ^ pp_missing sub ^ ")"
-         in
-         raise (ElabError (NonExhaustive (pp_missing mp))));
+      check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, branches'), Nbe.force ctx.metas ret_ty)
 
 (** Elaborate a surface pattern against a scrutinee type, producing a core
@@ -401,6 +433,20 @@ and elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
   | PatAtom atom ->
       Ctx.unify ctx scrutinee_ty (VAtomTy (atom_ty_of_atom atom));
       (CPatAtom atom, ctx)
+  | PatProd sub_pats -> (
+      match Nbe.force ctx.metas scrutinee_ty with
+      | VProdTy tys ->
+          if List.length sub_pats <> List.length tys then
+            raise (ElabError TupleLengthMismatch);
+          let core_subs, ctx' =
+            List.fold_left2
+              (fun (acc, ctx) pat ty ->
+                let core_pat, ctx' = elaborate_pat ctx pat ty in
+                (core_pat :: acc, ctx'))
+              ([], ctx) sub_pats tys
+          in
+          (CPatProd (List.rev core_subs), ctx')
+      | _ -> raise (ElabError TupleLengthMismatch))
   | PatCon (name, sub_pats) ->
       (match Nbe.force ctx.metas scrutinee_ty with
       | VNominal n ->
@@ -725,6 +771,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
           (core_pat, body_core))
           branches
       in
+      check_match_exhaustive ctx scrut_ty (List.map fst branches');
       Match (scrut_core, branches')
   | _ ->
       let core, inferred = infer ctx expr in

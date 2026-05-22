@@ -88,6 +88,8 @@ and core_pat =
           matching), [sub_pats] bind the payload elements. *)
   | CPatAtom of Syntax.Ast.Atom.t
       (** Literal atom pattern. *)
+  | CPatProd of core_pat list
+      (** Tuple pattern. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
   | CPatBind

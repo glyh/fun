@@ -41,13 +41,16 @@ expr:
   | e = expr_arrow { e }
 
 branch:
-  | p = pat; ARROW; body = expr_arrow { (p, body) }
+  | p = pat; ARROW; body = expr { (p, body) }
 
 pat:
   | n = INT { PatAtom (I64 n) }
   | TRUE { PatAtom (Bool true) }
   | FALSE { PatAtom (Bool false) }
   | UNIT { PatAtom Unit }
+  | LPAREN; p = pat; RPAREN { p }
+  | LPAREN; p = pat; COMMA; rest = separated_nonempty_list(COMMA, pat); RPAREN
+    { PatProd (p :: rest) }
   | name = ID; LPAREN; sub = separated_nonempty_list(COMMA, pat); RPAREN
     { PatCon (name, sub) }
   | name = ID
