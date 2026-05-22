@@ -9,10 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build commands
 
 ```sh
-dune build              # build
-dune test               # run all tests
-dune exec fun           # launch REPL
+dune build                     # build
+dune test                      # run all tests
+dune exec fun                  # launch REPL
+dune build @fmt --auto-promote # format OCaml/dune files with ocamlformat
+dune build @doc                # build odoc documentation
 ```
+
+There is no dedicated lint target; use `dune build`, `dune test`, and `dune build @fmt --auto-promote` as the standard validation loop.
 
 Run a single test suite:
 ```sh
@@ -31,7 +35,6 @@ Core type theory tests (separate prototype):
 ```sh
 dune exec lib/semantic/core/test/test_elaborate.exe
 dune exec lib/semantic/core/test/test_core.exe
-dune exec lib/semantic/core/test/test_debug.exe
 ```
 
 ## Compilation pipeline
@@ -49,6 +52,19 @@ Source string
 ```
 
 The desugar pass rewrites `type T = ...` into `let T = struct ... end` + `open T`. Callers must call `Desugar.expr` before passing to the typechecker. Match expressions are compiled lazily during evaluation: `Eval.eval` calls `Match_compile.compile` to build a decision tree, then interprets it against the scrutinee.
+
+AST/IR layering:
+- `Syntax.Ast` is parser output and includes user-facing forms such as `TypeDecl`, `Import`, and qualified record/constructor syntax.
+- `Syntax.Desugared_ast` is typechecker input; `TypeDecl` has been eliminated into `Value` plus `Open`/`Export` bindings.
+- `Typed_ir` is evaluator input; nodes are annotated with `Type.T.t`, and struct definitions carry resolved members and `pub_names`.
+
+## Important entrypoints
+
+- `bin/main.ml` wires the REPL: parse, build a loader rooted at `Sys.getcwd ()`, desugar/typecheck, evaluate, and print `value: type`.
+- `lib/loader/loader.ml` handles `.fun` import resolution, parsing imported modules, typechecking cache, and circular import detection.
+- `lib/semantic/type/typecheck/typecheck.ml` exposes the HM inference entrypoint `Typecheck.Inference.on_expr`.
+- `lib/backend/interp/eval.ml` is the tree-walking evaluator entrypoint.
+- `lib/semantic/core/elaborate.ml` is the dependent type prototype elaboration entrypoint.
 
 ## Type system architecture
 
@@ -128,4 +144,4 @@ std, syntax
 - `let rec` desugars to `Fix(Lam(name, body))`
 - Comments: `(* ... *)` with nesting
 - Built-in types: `I64`, `Bool`, `Unit`, `Char`
-- File imports: `import "path"` resolves to `./path.fun`, cached and circular-import-safe
+- File imports: `import "path"` resolves to `<cwd>/path.fun`, cached and circular-import-safe; imports are relative to the process working directory, not the importing file's directory
