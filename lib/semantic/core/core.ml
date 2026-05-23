@@ -27,6 +27,7 @@ type term =
   | Fix of term
   | Proj of term * int             (* positional tuple projection: e.0 *)
   | Dot of term * string           (* named struct field access: e.field *)
+  | RecordConstruct of { typ : term; fields : (string * term) list }
   | Struct of {
       con_fields : (string * term) list;
       bindings : struct_binding_term list;
@@ -92,6 +93,8 @@ and core_pat =
       (** Tuple pattern. *)
   | CPatOr of core_pat * core_pat
       (** Or-pattern. Both alternatives bind the same variables. *)
+  | CPatRecord of { fields : (string * core_pat) list; partial : bool }
+      (** Record-instance pattern. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
   | CPatBind
@@ -146,6 +149,8 @@ and value =
           [Computed] = in type but forbidden at construction,
           [Private] = invisible outside.  [partial] = width-subtyped
           (matches any struct with at least these fields). *)
+  | VRecord of { typ : value; fields : (string * value) list }
+      (** Record instance whose type is a [VStruct]. *)
   | VNominal of {
       id : nominal_id;
       name : string;

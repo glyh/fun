@@ -47,6 +47,7 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VProdTy elems ->
         Printf.sprintf "(%s)" (String.concat " * " (List.map (go (depth+1)) elems))
     | VStruct _ -> "<struct>"
+    | VRecord _ -> "<record>"
     | VFix _ -> "<fix>"
     | VNeutral _ -> "<neutral>"
   in

@@ -88,6 +88,10 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       in
       let _env, bind_vals = eval_binds env [] bindings in
       VStruct { fields = con_vals @ bind_vals; partial }
+  | RecordConstruct { typ; fields } ->
+      let typ = eval mc env typ in
+      let fields = List.map (fun (name, value) -> (name, eval mc env value)) fields in
+      VRecord { typ; fields }
   | Proj (e, i) ->
       let vs = eval mc env e in
       (match vs with
@@ -110,6 +114,10 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
           (* Dot: all non-Private fields accessible *)
           (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
           | Some (_, _, v) -> v
+          | None -> raise (EvalError "field not found"))
+      | VRecord { fields; _ } ->
+          (match List.find_opt (fun (n, _) -> String.equal n name) fields with
+          | Some (_, v) -> v
           | None -> raise (EvalError "field not found"))
       | VNeutral { neutral; _ } ->
           VNeutral
@@ -311,6 +319,8 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
             Core_match_compile.Nominal (nominal_constructors mc nominal)
         | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
         | Some (VProd elems) -> Product (List.length elems)
+        | Some (VRecord { typ = VStruct { fields; _ }; _ }) ->
+            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) fields)
         | _ -> Unknown
       in
       let pats = List.map fst branches in
@@ -321,13 +331,15 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
       let pats = List.map fst branches in
       let dt = Core_match_compile.compile ~domain pats in
       eval_decision_tree mc env scrutinee branches dt
-  | VProd _ ->
+  | VProd _ | VRecord _ ->
       let domain_of_occurrence occ =
         match resolve_occurrence_opt mc scrutinee occ with
         | Some (VCon { nominal; _ }) ->
             Core_match_compile.Nominal (nominal_constructors mc nominal)
         | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
         | Some (VProd elems) -> Product (List.length elems)
+        | Some (VRecord { typ = VStruct { fields; _ }; _ }) ->
+            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) fields)
         | _ -> Unknown
       in
       let pats = List.map fst branches in
@@ -401,6 +413,10 @@ and resolve_occurrence_opt (mc : MetaContext.t) (root : value)
       | Some (VCon { spine; _ }) -> List.nth_opt spine index
       | Some (VProd elems) -> List.nth_opt elems index
       | _ -> None)
+  | OField { parent; name } -> (
+      match Option.map (force mc) (resolve_occurrence_opt mc root parent) with
+      | Some (VRecord { fields; _ }) -> List.assoc_opt name fields
+      | _ -> None)
 
 and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   match (p1, p2) with
@@ -411,6 +427,12 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
       List.length ps1 = List.length ps2 && List.for_all2 conv_pat ps1 ps2
   | CPatOr (l1, r1), CPatOr (l2, r2) ->
       conv_pat l1 l2 && conv_pat r1 r2
+  | CPatRecord { fields = fs1; partial = p1 }, CPatRecord { fields = fs2; partial = p2 } ->
+      p1 = p2
+      && List.length fs1 = List.length fs2
+      && List.for_all2
+           (fun (n1, p1) (n2, p2) -> String.equal n1 n2 && conv_pat p1 p2)
+           fs1 fs2
   | CPatCon (n1, a1, ps1), CPatCon (n2, a2, ps2) ->
       String.equal n1 n2 && a1 = a2
       && List.length ps1 = List.length ps2
@@ -459,6 +481,10 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           | _ -> None) fields
       in
       Struct { con_fields; bindings; partial }
+  | VRecord { typ; fields } ->
+      RecordConstruct
+        { typ = quote mc depth typ;
+          fields = List.map (fun (name, value) -> (name, quote mc depth value)) fields }
   | VNominal n -> Con n.name
   | VCon { name; spine; _ } ->
       quote_spine mc depth (Con name) spine
@@ -548,6 +574,12 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
            (fun (n1, k1, v1) (n2, k2, v2) ->
              String.equal n1 n2 && k1 = k2 && conv mc depth v1 v2)
            vs1 vs2
+  | VRecord r1, VRecord r2 ->
+      conv mc depth r1.typ r2.typ
+      && List.length r1.fields = List.length r2.fields
+      && List.for_all2
+           (fun (n1, v1) (n2, v2) -> String.equal n1 n2 && conv mc depth v1 v2)
+           r1.fields r2.fields
   | VNominal n1, VNominal n2 ->
       n1.id = n2.id
       && List.length n1.params = List.length n2.params

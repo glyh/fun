@@ -1,6 +1,7 @@
 type occurrence =
   | OBase
   | OChild of { parent : occurrence; index : int }
+  | OField of { parent : occurrence; name : string }
 
 let rec occurrence_equal a b =
   match (a, b) with
@@ -8,13 +9,18 @@ let rec occurrence_equal a b =
   | OChild p1, OChild p2 ->
       p1.index = p2.index
       && occurrence_equal p1.parent p2.parent
+  | OField p1, OField p2 ->
+      String.equal p1.name p2.name
+      && occurrence_equal p1.parent p2.parent
   | _ -> false
 
 let rec occurrence_hash a =
   match a with
   | OBase -> 0
   | OChild { parent; index } ->
-      Hashtbl.hash (occurrence_hash parent, index)
+      Hashtbl.hash (1, occurrence_hash parent, index)
+  | OField { parent; name } ->
+      Hashtbl.hash (2, occurrence_hash parent, name)
 
 type branch = int
 

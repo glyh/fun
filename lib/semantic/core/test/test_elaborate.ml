@@ -13,6 +13,9 @@ let () =
           | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
           | PatternArityMismatch -> "PatternArityMismatch"
           | PatternBindingMismatch -> "PatternBindingMismatch"
+          | UnknownRecordField n -> "UnknownRecordField \"" ^ n ^ "\""
+          | DuplicateRecordField n -> "DuplicateRecordField \"" ^ n ^ "\""
+          | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
           | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""))
     | Unify.UnifyError e ->
         let open Unify in
@@ -214,6 +217,20 @@ let structs =
       (check_type
          "let S = struct let helper = 42; pub let x = helper end in S.x"
          (AtomTy TI64));
+    Alcotest.test_case "record construction" `Quick
+      (check_type
+         "let Point = struct x: I64; y: I64; end in Point {x = 1; y = 2}"
+         (Struct { con_fields = [ ("x", AtomTy TI64); ("y", AtomTy TI64) ]; bindings = []; partial = false }));
+    Alcotest.test_case "record field access" `Quick
+      (check_type
+         "let Point = struct x: I64; y: I64; end in (Point {x = 1; y = 2}).x"
+         (AtomTy TI64));
+    Alcotest.test_case "record construction missing field" `Quick
+      (elab_fail "let Point = struct x: I64; y: I64; end in Point {x = 1}");
+    Alcotest.test_case "record construction unknown field" `Quick
+      (elab_fail "let Point = struct x: I64; end in Point {x = 1; y = 2}");
+    Alcotest.test_case "record construction duplicate field" `Quick
+      (elab_fail "let Point = struct x: I64; end in Point {x = 1; x = 2}");
   ]
 
 let functors =
@@ -523,6 +540,44 @@ let match_tests =
         "type Color = Red | Green | Blue in \
          (match Red with Red -> 1 | Green -> 2 | Blue -> 3 end : I64)"
         (AtomTy TI64));
+    Alcotest.test_case "record pattern shorthand" `Quick
+      (check_type
+         "let Point = struct x: I64; y: I64; end in \
+          match Point {x = 1; y = 2} with Point {x; y} -> x + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "record pattern reordered" `Quick
+      (check_type
+         "let Point = struct x: I64; y: I64; end in \
+          match Point {x = 1; y = 2} with Point {y; x} -> x + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "record pattern renamed" `Quick
+      (check_type
+         "let Point = struct x: I64; y: I64; end in \
+          match Point {x = 1; y = 2} with Point {x = n; y} -> n + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "record pattern partial" `Quick
+      (check_type
+         "let Point = struct x: I64; y: I64; end in \
+          match Point {x = 1; y = 2} with Point {x; _} -> x end"
+         (AtomTy TI64));
+    Alcotest.test_case "record pattern literal dispatch" `Quick
+      (check_type
+         "let Flag = struct flag: Bool; value: I64; end in \
+          match Flag {flag = false; value = 3} with \
+          Flag {flag = true; value} -> value | Flag {flag = false; value} -> value + 1 end"
+         (AtomTy TI64));
+    Alcotest.test_case "record pattern incomplete" `Quick
+      (elab_fail
+         "let Point = struct x: I64; y: I64; end in \
+          match Point {x = 1; y = 2} with Point {x} -> x end");
+    Alcotest.test_case "record pattern unknown field" `Quick
+      (elab_fail
+         "let Point = struct x: I64; end in \
+          match Point {x = 1} with Point {y; _} -> y end");
+    Alcotest.test_case "record pattern duplicate field" `Quick
+      (elab_fail
+         "let Point = struct x: I64; end in \
+          match Point {x = 1} with Point {x; x} -> x end");
   ]
 
 let implicit_args =

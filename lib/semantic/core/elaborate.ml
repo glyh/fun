@@ -12,6 +12,9 @@ type elab_error =
   | UnknownConstructor of string
   | PatternArityMismatch
   | PatternBindingMismatch
+  | UnknownRecordField of string
+  | DuplicateRecordField of string
+  | MissingRecordField of string
   | NonExhaustive of string
 
 exception ElabError of elab_error
@@ -136,6 +139,22 @@ let unify_scrutinee_ty ctx ty target =
   | VFlex { id; spine = [] } -> MetaContext.solve ctx.Ctx.metas id target
   | _ -> Ctx.unify ctx ty target
 
+let visible_record_fields fields =
+  List.filter_map
+    (fun (name, kind, ty) -> if kind = Field then Some (name, ty) else None)
+    fields
+
+let find_record_field fields name =
+  List.find_opt (fun (n, _) -> String.equal n name) fields
+
+let check_duplicate_names names =
+  let seen = Hashtbl.create 8 in
+  List.iter
+    (fun name ->
+      if Hashtbl.mem seen name then raise (ElabError (DuplicateRecordField name));
+      Hashtbl.replace seen name ())
+    names
+
 let match_domain_of_ty ctx ty =
   match Nbe.force ctx.Ctx.metas ty with
   | VNominal { params; constructors; _ } ->
@@ -143,6 +162,8 @@ let match_domain_of_ty ctx ty =
       Core_match_compile.Nominal
         (List.map (fun (name, payload) -> (name, ntp, Option.is_some payload)) constructors)
   | VAtomTy atom_ty -> Atom atom_ty
+  | VProdTy tys -> Product (List.length tys)
+  | VStruct { fields; _ } -> Record (List.map fst (visible_record_fields fields))
   | _ -> Unknown
 
 let rec type_at_occurrence ctx ty (occ : Core_decision_tree.occurrence) =
@@ -164,6 +185,16 @@ let rec type_at_occurrence ctx ty (occ : Core_decision_tree.occurrence) =
               else None
           | _ -> None)
       | None -> None)
+  | OField { parent; name } -> (
+      match type_at_occurrence ctx ty parent with
+      | Some parent_ty -> (
+          match Nbe.force ctx.Ctx.metas parent_ty with
+          | VStruct { fields; _ } ->
+              visible_record_fields fields
+              |> fun fields -> find_record_field fields name
+              |> Option.map snd
+          | _ -> None)
+      | None -> None)
 
 let domain_of_occurrence ctx scrut_ty occ =
   match type_at_occurrence ctx scrut_ty occ with
@@ -182,6 +213,12 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
         | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
         | Surface.PatProd ps ->
             Some (VProdTy (List.map (fun _ -> Ctx.raw_meta ctx) ps))
+        | Surface.PatRecord { typ; _ } ->
+            let _, ty = Ctx.lookup ctx typ in
+            (match Nbe.force ctx.Ctx.metas ty with
+            | VU -> Some (Ctx.eval ctx (fst (Ctx.lookup ctx typ) |> fun ix -> Var ix))
+            | VStruct _ as record_ty -> Some record_ty
+            | _ -> None)
         | Surface.PatOr (lhs, rhs) -> (
             match find_pat lhs with Some _ as found -> found | None -> find_pat rhs)
         | PatWild | PatBind _ -> None
@@ -267,6 +304,35 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           if i < 0 || i >= List.length tys then
             raise (ElabError TupleLengthMismatch);
           (Proj (e_core, i), List.nth tys i)
+      | _ -> raise (ElabError ApplyingNonFunction))
+  | RecordConstruct { typ; fields } ->
+      let typ_core, typ_ty = infer ctx typ in
+      (match Nbe.force ctx.metas typ_ty with
+      | VStruct { fields = struct_fields; _ } as record_ty ->
+          let record_fields = visible_record_fields struct_fields in
+          check_duplicate_names (List.map fst fields);
+          List.iter
+            (fun (name, _) ->
+              if Option.is_none (find_record_field record_fields name) then
+                raise (ElabError (UnknownRecordField name)))
+            fields;
+          List.iter
+            (fun (name, _) ->
+              if Option.is_none (List.assoc_opt name fields) then
+                raise (ElabError (MissingRecordField name)))
+            record_fields;
+          let field_cores =
+            List.map
+              (fun (name, value) ->
+                let field_ty =
+                  match find_record_field record_fields name with
+                  | Some (_, ty) -> ty
+                  | None -> raise (ElabError (UnknownRecordField name))
+                in
+                (name, check ctx value field_ty))
+              fields
+          in
+          (RecordConstruct { typ = typ_core; fields = field_cores }, record_ty)
       | _ -> raise (ElabError ApplyingNonFunction))
   | Struct { con_fields; bindings } ->
       let con_cores =
@@ -471,6 +537,39 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           in
           (CPatProd (List.rev core_subs), List.rev binders)
       | _ -> raise (ElabError TupleLengthMismatch))
+  | PatRecord { typ; fields; partial } ->
+      let _, record_ty = Ctx.lookup ctx typ in
+      Ctx.unify ctx scrutinee_ty record_ty;
+      (match Nbe.force ctx.metas record_ty with
+      | VStruct { fields = struct_fields; _ } ->
+          let record_fields = visible_record_fields struct_fields in
+          check_duplicate_names (List.map fst fields);
+          List.iter
+            (fun (name, _) ->
+              if Option.is_none (find_record_field record_fields name) then
+                raise (ElabError (UnknownRecordField name)))
+            fields;
+          if not partial then
+            List.iter
+              (fun (name, _) ->
+                if Option.is_none (List.assoc_opt name fields) then
+                  raise (ElabError (MissingRecordField name)))
+              record_fields;
+          let core_fields, binders =
+            List.fold_left
+              (fun (core_acc, binder_acc) (name, pat_opt) ->
+                let field_ty =
+                  match find_record_field record_fields name with
+                  | Some (_, ty) -> ty
+                  | None -> raise (ElabError (UnknownRecordField name))
+                in
+                let field_pat = Option.value pat_opt ~default:(Surface.PatBind name) in
+                let core_pat, binders = elaborate_pat_binders ctx field_pat field_ty in
+                ((name, core_pat) :: core_acc, binders @ binder_acc))
+              ([], []) fields
+          in
+          (CPatRecord { fields = List.rev core_fields; partial }, List.rev binders)
+      | _ -> raise (ElabError ApplyingNonFunction))
   | PatCon (name, sub_pats) ->
       (match Nbe.force ctx.metas scrutinee_ty with
       | VNominal n ->

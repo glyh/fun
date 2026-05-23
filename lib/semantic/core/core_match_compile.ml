@@ -1,7 +1,7 @@
 open Core
 module DT = Core_decision_tree
 
-type domain = Nominal of (string * int * bool) list | Atom of atom_ty | Product of int | Unknown
+type domain = Nominal of (string * int * bool) list | Atom of atom_ty | Product of int | Record of string list | Unknown
 
 type missing_pat = MWild | MCon of string * missing_pat option
 
@@ -47,12 +47,13 @@ let swap_columns m i j =
       rows = List.map (fun r -> { r with pats = swap_arr r.pats }) m.rows;
     }
 
-type refutability = Irrefutable | Destruct | Switch | ProductPat | OrPat
+type refutability = Irrefutable | Destruct | Switch | ProductPat | RecordPat | OrPat
 
 let classify = function
   | CPatCon _ -> Destruct
   | CPatAtom _ -> Switch
   | CPatProd _ -> ProductPat
+  | CPatRecord _ -> RecordPat
   | CPatOr _ -> OrPat
   | CPatWild | CPatBind -> Irrefutable
 
@@ -199,6 +200,55 @@ let specialize_product m arity =
   in
   { header; rows }
 
+let collect_record_fields col domain_fields =
+  let seen = Hashtbl.create 8 in
+  let add name = if not (Hashtbl.mem seen name) then Hashtbl.replace seen name () in
+  List.iter add domain_fields;
+  List.iter
+    (fun p ->
+      match p with
+      | CPatRecord { fields; _ } -> List.iter (fun (name, _) -> add name) fields
+      | _ -> ())
+    col;
+  Hashtbl.fold (fun k () acc -> k :: acc) seen [] |> List.sort String.compare
+
+let specialize_record m field_names =
+  let occ0 = m.header.(0) in
+  let new_occs =
+    Array.of_list
+      (List.map (fun name -> DT.OField { parent = occ0; name }) field_names)
+  in
+  let rest_header = Array.sub m.header 1 (Array.length m.header - 1) in
+  let header = Array.append new_occs rest_header in
+  let rows =
+    List.filter_map
+      (fun r ->
+        match r.pats.(0) with
+        | CPatRecord { fields; _ } ->
+            let field_pats =
+              List.map
+                (fun name ->
+                  match List.assoc_opt name fields with
+                  | Some pat -> pat
+                  | None -> CPatWild)
+                field_names
+            in
+            let rest = Array.sub r.pats 1 (Array.length r.pats - 1) in
+            Some { r with pats = Array.append (Array.of_list field_pats) rest }
+        | CPatWild ->
+            let wilds = Array.make (List.length field_names) CPatWild in
+            let rest = Array.sub r.pats 1 (Array.length r.pats - 1) in
+            Some { r with pats = Array.append wilds rest }
+        | CPatBind ->
+            let wilds = Array.make (List.length field_names) CPatWild in
+            let rest = Array.sub r.pats 1 (Array.length r.pats - 1) in
+            let bindings = r.bindings @ [ occ0 ] in
+            Some { pats = Array.append wilds rest; branch = r.branch; bindings }
+        | _ -> None)
+      m.rows
+  in
+  { header; rows }
+
 let default_matrix m =
   let occ0 = m.header.(0) in
   let header = Array.sub m.header 1 (Array.length m.header - 1) in
@@ -267,6 +317,14 @@ let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
                   | _ -> 0)
             in
             go (specialize_product m arity)
+        | RecordPat ->
+            let domain_fields =
+              match domain_of_occurrence m.header.(0) with
+              | Record fields -> fields
+              | _ -> []
+            in
+            let field_names = collect_record_fields col domain_fields in
+            go (specialize_record m field_names)
         | Destruct ->
             let domain = domain_of_occurrence m.header.(0) in
             let constructors = match domain with Nominal ctors -> ctors | _ -> [] in

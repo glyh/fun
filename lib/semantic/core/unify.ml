@@ -113,6 +113,10 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             | _ -> None) fields
         in
         Struct { con_fields; bindings; partial }
+    | VRecord { typ; fields } ->
+        RecordConstruct
+          { typ = go d typ;
+            fields = List.map (fun (name, value) -> (name, go d value)) fields }
     | VNominal n ->
         let params_terms = List.map (go d) n.params in
         List.fold_left (fun acc t -> Ap (acc, Explicit, t))
@@ -184,6 +188,9 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VPi { domain = a; _ } -> occurs_check a
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
         | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> occurs_check v) fields
+        | VRecord { typ; fields } ->
+            occurs_check typ;
+            List.iter (fun (_, v) -> occurs_check v) fields
         | VNominal n -> List.iter occurs_check n.params
         | VCon { spine; nominal; _ } -> List.iter occurs_check spine; occurs_check nominal
         | VNeutral { neutral = { frames; _ }; _ } ->
@@ -264,6 +271,15 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
             | Some (_, _, large_ty) -> unify mc env depth ty large_ty
             | None -> raise (UnifyError StructFieldMismatch))
           small
+  | VRecord r1, VRecord r2 ->
+      unify mc env depth r1.typ r2.typ;
+      if List.length r1.fields <> List.length r2.fields then
+        raise (UnifyError StructFieldMismatch);
+      List.iter2
+        (fun (n1, v1) (n2, v2) ->
+          if not (String.equal n1 n2) then raise (UnifyError StructFieldMismatch);
+          unify mc env depth v1 v2)
+        r1.fields r2.fields
   | VNominal n1, VNominal n2 ->
       if n1.id <> n2.id then
         raise (UnifyError (NominalMismatch (n1.name, n2.name)));

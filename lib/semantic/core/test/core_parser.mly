@@ -1,5 +1,20 @@
 %{
 open Core_tt.Surface
+
+type record_pat_entry =
+  | RecordPatField of string * pat option
+  | RecordPatWildcard
+
+let split_record_pat_entries entries =
+  let rec go acc = function
+    | [] -> (List.rev acc, false)
+    | [RecordPatWildcard] -> (List.rev acc, true)
+    | RecordPatWildcard :: _ -> failwith "record pattern wildcard must be last"
+    | RecordPatField (name, pat) :: rest -> go ((name, pat) :: acc) rest
+  in
+  match go [] entries with
+  | [], _ -> failwith "record pattern must have at least one named field"
+  | result -> result
 %}
 
 %token <int64> INT
@@ -49,6 +64,9 @@ pat:
   | p = pat_atom { p }
 
 pat_atom:
+  | typ = ID; LBRACE; entries = separated_nonempty_list(SEMI, record_pat_entry); RBRACE
+    { let fields, partial = split_record_pat_entries entries in
+      PatRecord { typ; fields; partial } }
   | n = INT { PatAtom (I64 n) }
   | c = CHAR { PatAtom (Char c) }
   | TRUE { PatAtom (Bool true) }
@@ -63,6 +81,11 @@ pat_atom:
     { if String.equal name "_" then PatWild
       else if Char.uppercase_ascii name.[0] = name.[0] then PatCon (name, [])
       else PatBind name }
+
+record_pat_entry:
+  | name = ID; EQUALS; p = pat { RecordPatField (name, Some p) }
+  | name = ID
+    { if String.equal name "_" then RecordPatWildcard else RecordPatField (name, None) }
 
 struct_field_decl:
   | name = ID; COLON; ty = expr; SEMI { (name, ty) }
@@ -91,9 +114,14 @@ expr_binop:
   | e = expr_app { e }
 
 expr_app:
+  | typ = expr_app; LBRACE; fields = separated_nonempty_list(SEMI, record_expr_field); RBRACE
+    { RecordConstruct { typ; fields } }
   | f = expr_app; LBRACE; a = expr_proj; RBRACE { Ap (f, Implicit, a) }
   | f = expr_app; a = expr_proj { Ap (f, Explicit, a) }
   | e = expr_proj { e }
+
+record_expr_field:
+  | name = ID; EQUALS; value = expr { (name, value) }
 
 expr_proj:
   | e = expr_proj; DOT; i = INT { Proj (e, Int64.to_int i) }

@@ -322,6 +322,22 @@ let () =
           Alcotest.test_case "match tuple literals" `Quick
             (check_i64 "match tuple literals" 9L
                "match (false, 1) with (true, x) -> x | (false, _) -> 9 end");
+          Alcotest.test_case "record field access" `Quick
+            (check_i64 "record field access" 1L
+               "let Point = struct x: I64; y: I64; end in (Point {x = 1; y = 2}).x");
+          Alcotest.test_case "record pattern shorthand" `Quick
+            (check_i64 "record pattern shorthand" 3L
+               "let Point = struct x: I64; y: I64; end in \
+                match Point {x = 1; y = 2} with Point {x; y} -> x + y end");
+          Alcotest.test_case "record pattern reordered" `Quick
+            (check_i64 "record pattern reordered" 3L
+               "let Point = struct x: I64; y: I64; end in \
+                match Point {x = 1; y = 2} with Point {y; x} -> x + y end");
+          Alcotest.test_case "record pattern literal dispatch" `Quick
+            (check_i64 "record pattern literal dispatch" 4L
+               "let Flag = struct flag: Bool; value: I64; end in \
+                match Flag {flag = false; value = 3} with \
+                Flag {flag = true; value} -> value | Flag {flag = false; value} -> value + 1 end");
         ] );
       ( "conv",
         [

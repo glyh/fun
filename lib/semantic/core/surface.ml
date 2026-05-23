@@ -23,6 +23,7 @@ and t =
   | Arrow of explicitness * t * t
   | FieldAccess of t * string
   | Proj of t * int
+  | RecordConstruct of { typ : t; fields : (string * t) list }
   | Struct of {
       con_fields : (string * t) list;
       bindings : struct_binding list;
@@ -38,6 +39,7 @@ and t =
 
 and pat =
   | PatCon of string * pat list   (* Constructor(sub, patterns) *)
+  | PatRecord of { typ : string; fields : (string * pat option) list; partial : bool }
   | PatOr of pat * pat
   | PatProd of pat list
   | PatAtom of Syntax.Ast.Atom.t
