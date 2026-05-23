@@ -47,12 +47,13 @@ let swap_columns m i j =
       rows = List.map (fun r -> { r with pats = swap_arr r.pats }) m.rows;
     }
 
-type refutability = Irrefutable | Destruct | Switch | ProductPat
+type refutability = Irrefutable | Destruct | Switch | ProductPat | OrPat
 
 let classify = function
   | CPatCon _ -> Destruct
   | CPatAtom _ -> Switch
   | CPatProd _ -> ProductPat
+  | CPatOr _ -> OrPat
   | CPatWild | CPatBind -> Irrefutable
 
 let find_refutable_column m =
@@ -65,6 +66,29 @@ let find_refutable_column m =
       else go (i + 1)
   in
   go 0
+
+let rec or_alternatives = function
+  | CPatOr (lhs, rhs) -> or_alternatives lhs @ or_alternatives rhs
+  | p -> [ p ]
+
+let expand_first_column_ors m =
+  let changed = ref false in
+  let rows =
+    List.concat_map
+      (fun r ->
+        match r.pats.(0) with
+        | CPatOr _ as pat ->
+            changed := true;
+            List.map
+              (fun alt ->
+                let pats = Array.copy r.pats in
+                pats.(0) <- alt;
+                { r with pats })
+              (or_alternatives pat)
+        | _ -> [ r ])
+      m.rows
+  in
+  if !changed then Some { m with rows } else None
 
 let collect_tags col =
   let seen = Hashtbl.create 8 in
@@ -228,8 +252,11 @@ let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
                         bindings = collect_leaf_bindings m })
     | Some i ->
         let m = swap_columns m 0 i in
+        (match expand_first_column_ors m with
+        | Some m -> go m
+        | None ->
         let col = get_column m 0 in
-        (match classify (List.find (fun p -> classify p <> Irrefutable) col) with
+        match classify (List.find (fun p -> classify p <> Irrefutable) col) with
         | ProductPat ->
             let arity =
               match List.find_map (function CPatProd ps -> Some (List.length ps) | _ -> None) col with
@@ -316,6 +343,7 @@ let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
               else go dm
             in
             DTB.get (Switch { occurrence = m.header.(0); cases; default })
+        | OrPat -> assert false
         | Irrefutable -> assert false)
   in
   go initial

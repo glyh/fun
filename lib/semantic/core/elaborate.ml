@@ -11,6 +11,7 @@ type elab_error =
   | NotANominalType
   | UnknownConstructor of string
   | PatternArityMismatch
+  | PatternBindingMismatch
   | NonExhaustive of string
 
 exception ElabError of elab_error
@@ -174,22 +175,25 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
   match ty with
   | VNominal _ | VAtomTy _ | VProdTy _ -> ty
   | _ ->
+      let rec find_pat = function
+        | Surface.PatCon (name, _) ->
+            let _, ctor_ty = Ctx.lookup ctx name in
+            Some (nominal_from_constructor_type ctx ctor_ty)
+        | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
+        | Surface.PatProd ps ->
+            Some (VProdTy (List.map (fun _ -> Ctx.raw_meta ctx) ps))
+        | Surface.PatOr (lhs, rhs) -> (
+            match find_pat lhs with Some _ as found -> found | None -> find_pat rhs)
+        | PatWild | PatBind _ -> None
+      in
       let rec find = function
         | [] -> raise (ElabError NotANominalType)
-        | (Surface.PatCon (name, _), _) :: _ ->
-            let _, ctor_ty = Ctx.lookup ctx name in
-            let target = nominal_from_constructor_type ctx ctor_ty in
-            unify_scrutinee_ty ctx ty target;
-            Nbe.force ctx.Ctx.metas ty
-        | (Surface.PatAtom atom, _) :: _ ->
-            let target = VAtomTy (atom_ty_of_atom atom) in
-            unify_scrutinee_ty ctx ty target;
-            Nbe.force ctx.Ctx.metas ty
-        | (Surface.PatProd ps, _) :: _ ->
-            let target = VProdTy (List.map (fun _ -> Ctx.raw_meta ctx) ps) in
-            unify_scrutinee_ty ctx ty target;
-            Nbe.force ctx.Ctx.metas ty
-        | _ :: rest -> find rest
+        | (pat, _) :: rest -> (
+            match find_pat pat with
+            | Some target ->
+                unify_scrutinee_ty ctx ty target;
+                Nbe.force ctx.Ctx.metas ty
+            | None -> find rest)
       in
       find branches
 
@@ -429,25 +433,43 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
     pattern and extending the context with bound pattern variables. *)
 and elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
     : core_pat * Ctx.t =
+  let core_pat, binders = elaborate_pat_binders ctx pat scrutinee_ty in
+  let ctx' = List.fold_left (fun ctx (name, ty) -> Ctx.bind ctx name ty) ctx binders in
+  (core_pat, ctx')
+
+and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
+    (scrutinee_ty : value) : core_pat * (string * value) list =
   match pat with
-  | PatWild -> (CPatWild, ctx)
-  | PatBind name -> (CPatBind, Ctx.bind ctx name scrutinee_ty)
+  | PatWild -> (CPatWild, [])
+  | PatBind name -> (CPatBind, [ (name, scrutinee_ty) ])
   | PatAtom atom ->
       Ctx.unify ctx scrutinee_ty (VAtomTy (atom_ty_of_atom atom));
-      (CPatAtom atom, ctx)
+      (CPatAtom atom, [])
+  | PatOr (lhs, rhs) ->
+      let lhs_core, lhs_binders = elaborate_pat_binders ctx lhs scrutinee_ty in
+      let rhs_core, rhs_binders = elaborate_pat_binders ctx rhs scrutinee_ty in
+      if List.length lhs_binders <> List.length rhs_binders then
+        raise (ElabError PatternBindingMismatch);
+      List.iter2
+        (fun (lhs_name, lhs_ty) (rhs_name, rhs_ty) ->
+          if not (String.equal lhs_name rhs_name) then
+            raise (ElabError PatternBindingMismatch);
+          Ctx.unify ctx lhs_ty rhs_ty)
+        lhs_binders rhs_binders;
+      (CPatOr (lhs_core, rhs_core), lhs_binders)
   | PatProd sub_pats -> (
       match Nbe.force ctx.metas scrutinee_ty with
       | VProdTy tys ->
           if List.length sub_pats <> List.length tys then
             raise (ElabError TupleLengthMismatch);
-          let core_subs, ctx' =
+          let core_subs, binders =
             List.fold_left2
-              (fun (acc, ctx) pat ty ->
-                let core_pat, ctx' = elaborate_pat ctx pat ty in
-                (core_pat :: acc, ctx'))
-              ([], ctx) sub_pats tys
+              (fun (core_acc, binder_acc) pat ty ->
+                let core_pat, binders = elaborate_pat_binders ctx pat ty in
+                (core_pat :: core_acc, binders @ binder_acc))
+              ([], []) sub_pats tys
           in
-          (CPatProd (List.rev core_subs), ctx')
+          (CPatProd (List.rev core_subs), List.rev binders)
       | _ -> raise (ElabError TupleLengthMismatch))
   | PatCon (name, sub_pats) ->
       (match Nbe.force ctx.metas scrutinee_ty with
@@ -456,12 +478,12 @@ and elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
           | Some (_, payload_opt) ->
               let num_type_params = List.length n.params in
               (match (sub_pats, payload_opt) with
-              | [], None -> (CPatCon (name, num_type_params, []), ctx)
+              | [], None -> (CPatCon (name, num_type_params, []), [])
               | [sub_pat], Some payload_clo ->
                   let payload_ty =
                     Nbe.eval ctx.metas (List.rev n.params @ payload_clo.env) payload_clo.body in
-                  let core_sub, ctx' = elaborate_pat ctx sub_pat payload_ty in
-                  (CPatCon (name, num_type_params, [core_sub]), ctx')
+                  let core_sub, binders = elaborate_pat_binders ctx sub_pat payload_ty in
+                  (CPatCon (name, num_type_params, [core_sub]), binders)
               | _ ->
                   raise (ElabError PatternArityMismatch))
           | None -> raise (ElabError (UnknownConstructor name)))

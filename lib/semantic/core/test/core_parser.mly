@@ -45,6 +45,10 @@ branch:
   | p = pat; ARROW; body = expr { (p, body) }
 
 pat:
+  | lhs = pat_atom; BAR; rhs = pat { PatOr (lhs, rhs) }
+  | p = pat_atom { p }
+
+pat_atom:
   | n = INT { PatAtom (I64 n) }
   | c = CHAR { PatAtom (Char c) }
   | TRUE { PatAtom (Bool true) }

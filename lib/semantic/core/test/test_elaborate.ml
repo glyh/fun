@@ -12,6 +12,7 @@ let () =
           | NotANominalType -> "NotANominalType"
           | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
           | PatternArityMismatch -> "PatternArityMismatch"
+          | PatternBindingMismatch -> "PatternBindingMismatch"
           | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""))
     | Unify.UnifyError e ->
         let open Unify in
@@ -457,8 +458,38 @@ let match_tests =
       (elab_fail "match 1 with 1 -> 1 end");
     Alcotest.test_case "non-exhaustive char literal" `Quick
       (elab_fail "match 'a' with 'a' -> 1 end");
+    Alcotest.test_case "match literal or-pattern" `Quick
+      (check_type "match 1 with 0 | 1 -> 42 | _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "or-pattern covers bool" `Quick
+      (check_type "match true with true | false -> 1 end" (AtomTy TI64));
+    Alcotest.test_case "constructor or-pattern" `Quick
+      (check_type
+         "type Color = Red | Green | Blue in \
+          match Red with Red | Green -> 1 | Blue -> 2 end"
+         (AtomTy TI64));
+    Alcotest.test_case "constructor or-pattern binding" `Quick
+      (check_type
+         "type E = A I64 | B I64 in \
+          match A 1 with A(x) | B(x) -> x end"
+         (AtomTy TI64));
+    Alcotest.test_case "or-pattern binding name mismatch" `Quick
+      (elab_fail
+         "type E = A I64 | B I64 in \
+          match A 1 with A(x) | B(y) -> x end");
+    Alcotest.test_case "or-pattern missing binding" `Quick
+      (elab_fail
+         "type E = A I64 | C in \
+          match A 1 with A(x) | C -> x end");
+    Alcotest.test_case "non-exhaustive constructor or-pattern" `Quick
+      (elab_fail
+         "type Color = Red | Green | Blue in \
+          match Red with Red | Green -> 1 end");
     Alcotest.test_case "match tuple pattern" `Quick
       (check_type "match (1, true) with (x, b) -> if b then x else 0 end" (AtomTy TI64));
+    Alcotest.test_case "tuple or-pattern" `Quick
+      (check_type
+         "match (true, 1) with (true, x) | (false, x) -> x end"
+         (AtomTy TI64));
     Alcotest.test_case "match nested tuple pattern" `Quick
       (check_type "match ((1, true), 2) with ((x, _), y) -> x + y end" (AtomTy TI64));
     Alcotest.test_case "tuple pattern arity mismatch" `Quick

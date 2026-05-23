@@ -90,6 +90,8 @@ and core_pat =
       (** Literal atom pattern. *)
   | CPatProd of core_pat list
       (** Tuple pattern. *)
+  | CPatOr of core_pat * core_pat
+      (** Or-pattern. Both alternatives bind the same variables. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
   | CPatBind

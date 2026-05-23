@@ -271,6 +271,10 @@ let () =
             (check_i64 "match bind" 42L
                "type Option a = Some a | None in \
                 match Some 42 with Some(x) -> x | None -> 0 end");
+          Alcotest.test_case "match constructor or-pattern binding" `Quick
+            (check_i64 "match constructor or-pattern binding" 5L
+               "type E = A I64 | B I64 in \
+                match B 5 with A(x) | B(x) -> x end");
           Alcotest.test_case "match nested" `Quick
             (check_i64 "match nested" 7L
                "type Option a = Some a | None in \
@@ -282,6 +286,9 @@ let () =
           Alcotest.test_case "match int literal default" `Quick
             (check_i64 "match int literal default" 20L
                "match 2 with 1 -> 10 | _ -> 20 end");
+          Alcotest.test_case "match literal or-pattern" `Quick
+            (check_i64 "match literal or-pattern" 42L
+               "match 1 with 0 | 1 -> 42 | _ -> 0 end");
           Alcotest.test_case "match bool literal" `Quick
             (check_i64 "match bool literal" 0L
                "match false with true -> 1 | false -> 0 end");

@@ -409,6 +409,8 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   | CPatAtom a1, CPatAtom a2 -> Syntax.Ast.Atom.equal a1 a2
   | CPatProd ps1, CPatProd ps2 ->
       List.length ps1 = List.length ps2 && List.for_all2 conv_pat ps1 ps2
+  | CPatOr (l1, r1), CPatOr (l2, r2) ->
+      conv_pat l1 l2 && conv_pat r1 r2
   | CPatCon (n1, a1, ps1), CPatCon (n2, a2, ps2) ->
       String.equal n1 n2 && a1 = a2
       && List.length ps1 = List.length ps2
