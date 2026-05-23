@@ -231,6 +231,9 @@ let structs =
       (check_type
          "let Point = struct x: I64; y: I64; end in (Point {x = 1; y = 2}).x"
          (AtomTy TI64));
+    Alcotest.test_case "parameterized record construction" `Quick
+      (elab_ok
+         "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; end in (Pair {fst = 1; snd = true}).snd");
     Alcotest.test_case "record construction missing field" `Quick
       (elab_fail "let Point = struct x: I64; y: I64; end in Point {x = 1}");
     Alcotest.test_case "record construction unknown field" `Quick

@@ -2,6 +2,26 @@ open Core_tt.Core
 open Core_tt.Nbe
 open Core_tt.Unify
 
+let () =
+  Printexc.register_printer (function
+    | Core_tt.Elaborate.ElabError e ->
+        let open Core_tt.Elaborate in
+        Some
+          (Printf.sprintf "ElabError(%s)"
+             (match e with
+             | UnboundVariable n -> "UnboundVariable \"" ^ n ^ "\""
+             | ApplyingNonFunction -> "ApplyingNonFunction"
+             | TupleLengthMismatch -> "TupleLengthMismatch"
+             | NotANominalType -> "NotANominalType"
+             | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
+             | PatternArityMismatch -> "PatternArityMismatch"
+             | PatternBindingMismatch -> "PatternBindingMismatch"
+             | UnknownRecordField n -> "UnknownRecordField \"" ^ n ^ "\""
+             | DuplicateRecordField n -> "DuplicateRecordField \"" ^ n ^ "\""
+             | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
+             | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""))
+    | _ -> None)
+
 let mc () = MetaContext.create ()
 
 let parse_expr source =
@@ -338,6 +358,12 @@ let () =
           Alcotest.test_case "record field access" `Quick
             (check_i64 "record field access" 1L
                "let Point = struct x: I64; y: I64; end in (Point {x = 1; y = 2}).x");
+          Alcotest.test_case "parameterized record construction" `Quick
+            (check_bool "parameterized record construction" true
+               "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; end in (Pair {fst = 1; snd = true}).snd");
+          Alcotest.test_case "parameterized record method" `Quick
+            (check_bool "parameterized record method" true
+               "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; pub let swap = fun p -> (p.snd, p.fst) end in (Pair.swap (Pair {fst = 1; snd = true})).0");
           Alcotest.test_case "record pattern shorthand" `Quick
             (check_i64 "record pattern shorthand" 3L
                "let Point = struct x: I64; y: I64; end in \

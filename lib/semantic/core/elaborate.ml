@@ -278,6 +278,16 @@ let rec branch_type_refinement = function
       match branch_type_refinement lhs with Some _ as found -> found | None -> branch_type_refinement rhs)
   | _ -> None
 
+let rec insert_implicit_args ctx core ty =
+  match Nbe.force ctx.Ctx.metas ty with
+  | VPi { explicitness = Implicit; codomain; _ } ->
+      let arg_core = Ctx.fresh_meta ctx in
+      let arg_value = Ctx.eval ctx arg_core in
+      insert_implicit_args ctx
+        (Ap (core, Implicit, arg_core))
+        (Nbe.closure_apply ctx.Ctx.metas codomain arg_value)
+  | _ -> (core, ty)
+
 let refine_match_scrutinee_ty ctx scrut_ty branches =
   let ty = Nbe.force ctx.Ctx.metas scrut_ty in
   match ty with
@@ -362,10 +372,18 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       (Pi (expl_of_surface expl, a_core, b_core), VU)
   | FieldAccess (e, name) ->
       let e_core, e_ty = infer ctx e in
+      let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
       (match Nbe.force ctx.metas e_ty with
-      | VStruct { fields; _ } ->
+      | VStruct { fields; partial } ->
           (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
           | Some (_, _, field_ty) -> (Dot (e_core, name), field_ty)
+          | None when partial ->
+              let result_ty = Ctx.raw_meta ctx in
+              let constraint_ty =
+                VStruct { fields = fields @ [ (name, Field, result_ty) ]; partial = true }
+              in
+              Ctx.unify ctx e_ty constraint_ty;
+              (Dot (e_core, name), result_ty)
           | None -> raise (ElabError (UnboundVariable name)))
       | VFlex _ | VRigid _ | VNeutral _ ->
           let result_ty = Ctx.raw_meta ctx in
@@ -385,6 +403,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | RecordConstruct { typ; fields } ->
       let typ_core, typ_ty = infer ctx typ in
+      let typ_core, typ_ty = insert_implicit_args ctx typ_core typ_ty in
       (match Nbe.force ctx.metas typ_ty with
       | VStruct { fields = struct_fields; _ } as record_ty ->
           let record_fields = visible_record_fields struct_fields in
