@@ -5,9 +5,7 @@ open Core_tt.Unify
 let mc () = MetaContext.create ()
 
 let parse_expr source =
-  let lexbuf = Sedlexing.Utf8.from_string source in
-  let lexer = Sedlexing.with_tokenizer Core_lexer.token lexbuf in
-  MenhirLib.Convert.Simplified.traditional2revised Core_parser.expr_eof lexer
+  Core_tt.Core_lexer.parse_expr source
 
 let eval_source source =
   let expr = parse_expr source in
@@ -21,6 +19,16 @@ let check_i64 label expected source () =
   | v ->
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "%s: expected VAtom I64, got %s" label
+        (Core_tt.Debug.pp_value_short mc v))
+  | exception e ->
+      Alcotest.fail (Printf.sprintf "%s: exception %s" label (Printexc.to_string e))
+
+let check_bool label expected source () =
+  match eval_source source with
+  | VAtom (Bool b) -> Alcotest.(check bool) label expected b
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "%s: expected VAtom Bool, got %s" label
         (Core_tt.Debug.pp_value_short mc v))
   | exception e ->
       Alcotest.fail (Printf.sprintf "%s: exception %s" label (Printexc.to_string e))
@@ -248,6 +256,11 @@ let () =
           Alcotest.test_case "proj" `Quick (check_i64 "proj" 42L "(42, true).0");
           Alcotest.test_case "dot" `Quick test_eval_dot;
           Alcotest.test_case "pi" `Quick test_eval_pi;
+          Alcotest.test_case "eq i64" `Quick (check_bool "eq i64" true "1 == 1");
+          Alcotest.test_case "neq i64" `Quick (check_bool "neq i64" true "1 != 2");
+          Alcotest.test_case "eq bool" `Quick (check_bool "eq bool" false "true == false");
+          Alcotest.test_case "eq char" `Quick (check_bool "eq char" true "'a' == 'a'");
+          Alcotest.test_case "eq unit" `Quick (check_bool "eq unit" true "() == ()");
           Alcotest.test_case "fix" `Quick
             (check_i64 "fix" 0L
                "let rec f : Bool -> I64 = fun x -> if x then 0 else f true in f false");

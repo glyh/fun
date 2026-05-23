@@ -92,8 +92,10 @@ end
 
 (** Build a closed [VPi] value (for primitive types). *)
 let ( ^-> ) = fun lhs rhs -> VPi { explicitness = Explicit; domain = lhs; codomain = { env = []; body = rhs } }
+let ( ^=> ) = fun lhs rhs -> VPi { explicitness = Implicit; domain = lhs; codomain = { env = []; body = rhs } }
 (** Build a [Pi] term (for primitive type schemas). *)
 let ( ^->> ) = fun lhs rhs -> Pi (Explicit, lhs, rhs)
+let ( ^=>> ) = fun lhs rhs -> Pi (Implicit, lhs, rhs)
 
 let atom_ty_of_atom = function
   | Syntax.Ast.Atom.I64 _ -> TI64
@@ -103,19 +105,29 @@ let atom_ty_of_atom = function
 
 let prims =
   let arithemetic = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TI64 in
-  let comparator = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TBool in
+  let i64_comparator = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TBool in
+  let bool_comparator = VAtomTy TBool ^-> AtomTy TBool ^->> AtomTy TBool in
+  let char_comparator = VAtomTy TChar ^-> AtomTy TChar ^->> AtomTy TBool in
+  let unit_comparator = VAtomTy TUnit ^-> AtomTy TUnit ^->> AtomTy TBool in
   [
     ("+", arithemetic);
     ("-", arithemetic);
     ("*", arithemetic);
     ("/", arithemetic);
     ("%", arithemetic);
-    ("==", comparator);
-    ("!=", comparator);
-    ("<", comparator);
-    (">", comparator);
-    ("<=", comparator);
-    (">=", comparator);
+    ("eq_i64", i64_comparator);
+    ("neq_i64", i64_comparator);
+    ("eq_bool", bool_comparator);
+    ("neq_bool", bool_comparator);
+    ("eq_char", char_comparator);
+    ("neq_char", char_comparator);
+    ("eq_unit", unit_comparator);
+    ("neq_unit", unit_comparator);
+    ("panic", VPi { explicitness = Implicit; domain = VU; codomain = { env = []; body = Pi (Explicit, AtomTy TUnit, Var 1) } });
+    ("<", i64_comparator);
+    (">", i64_comparator);
+    ("<=", i64_comparator);
+    (">=", i64_comparator);
     ("not", VAtomTy TBool ^-> AtomTy TBool);
   ]
   |> NameMap.of_list
@@ -155,6 +167,26 @@ let check_duplicate_names names =
       Hashtbl.replace seen name ())
     names
 
+let stdlib_source =
+  {|
+let (==) : {A : Type} -> A -> A -> Bool =
+  fun {A : Type} ->
+    match A with
+      I64 -> eq_i64
+    | Bool -> eq_bool
+    | Char -> eq_char
+    | Unit -> eq_unit
+    | _ -> panic ()
+    end
+in
+let (!=) : {A : Type} -> A -> A -> Bool =
+  fun {A : Type} lhs rhs -> not ((==) {A} lhs rhs)
+in
+()
+|}
+
+let parsed_stdlib = lazy (Core_lexer.parse_expr stdlib_source)
+
 let match_domain_of_ty ctx ty =
   match Nbe.force ctx.Ctx.metas ty with
   | VNominal { params; constructors; _ } ->
@@ -162,6 +194,7 @@ let match_domain_of_ty ctx ty =
       Core_match_compile.Nominal
         (List.map (fun (name, payload) -> (name, ntp, Option.is_some payload)) constructors)
   | VAtomTy atom_ty -> Atom atom_ty
+  | VU -> Type
   | VProdTy tys -> Product (List.length tys)
   | VStruct { fields; _ } -> Record (List.map fst (visible_record_fields fields))
   | _ -> Unknown
@@ -201,6 +234,50 @@ let domain_of_occurrence ctx scrut_ty occ =
   | Some ty -> match_domain_of_ty ctx ty
   | None -> Unknown
 
+let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value) (v : value) : value =
+  match Nbe.force mc v with
+  | VRigid { lvl; spine } when lvl = target ->
+      List.fold_left (Nbe.apply mc) replacement spine
+  | VPi { explicitness; domain; codomain } ->
+      let domain = subst_value_var mc target replacement domain in
+      VPi { explicitness; domain; codomain = subst_closure_var mc target replacement codomain }
+  | VProd elems -> VProd (List.map (subst_value_var mc target replacement) elems)
+  | VProdTy elems -> VProdTy (List.map (subst_value_var mc target replacement) elems)
+  | VStruct { fields; partial } ->
+      VStruct { fields = List.map (fun (name, kind, value) -> (name, kind, subst_value_var mc target replacement value)) fields; partial }
+  | VRecord { typ; fields } ->
+      VRecord { typ = subst_value_var mc target replacement typ; fields = List.map (fun (name, value) -> (name, subst_value_var mc target replacement value)) fields }
+  | VNominal n -> VNominal { n with params = List.map (subst_value_var mc target replacement) n.params }
+  | VCon c -> VCon { c with spine = List.map (subst_value_var mc target replacement) c.spine; nominal = subst_value_var mc target replacement c.nominal }
+  | VNeutral { ty; neutral } ->
+      VNeutral { ty = subst_value_var mc target replacement ty; neutral = subst_neutral_var mc target replacement neutral }
+  | VFlex { id; spine } -> VFlex { id; spine = List.map (subst_value_var mc target replacement) spine }
+  | VRigid { lvl; spine } -> VRigid { lvl; spine = List.map (subst_value_var mc target replacement) spine }
+  | VLam _ | VFix _ as v -> v
+  | VU | VAtom _ | VAtomTy _ as v -> v
+
+and subst_closure_var mc target replacement clo =
+  { clo with env = List.map (subst_value_var mc target replacement) clo.env }
+
+and subst_neutral_var mc target replacement neutral =
+  let frames =
+    List.map
+      (function
+        | FApp value -> FApp (subst_value_var mc target replacement value)
+        | FIf { then_; else_ } -> FIf { then_ = subst_closure_var mc target replacement then_; else_ = subst_closure_var mc target replacement else_ }
+        | FProj _ as frame -> frame
+        | FDot _ as frame -> frame
+        | FMatch branches -> FMatch (List.map (fun (pat, clo) -> (pat, subst_closure_var mc target replacement clo)) branches))
+      neutral.frames
+  in
+  { neutral with frames }
+
+let rec branch_type_refinement = function
+  | Surface.PatType atom_ty -> Some (VAtomTy atom_ty)
+  | Surface.PatOr (lhs, rhs) -> (
+      match branch_type_refinement lhs with Some _ as found -> found | None -> branch_type_refinement rhs)
+  | _ -> None
+
 let refine_match_scrutinee_ty ctx scrut_ty branches =
   let ty = Nbe.force ctx.Ctx.metas scrut_ty in
   match ty with
@@ -211,6 +288,7 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
             let _, ctor_ty = Ctx.lookup ctx name in
             Some (nominal_from_constructor_type ctx ctor_ty)
         | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
+        | Surface.PatType _ -> Some VU
         | Surface.PatProd ps ->
             Some (VProdTy (List.map (fun _ -> Ctx.raw_meta ctx) ps))
         | Surface.PatRecord { typ; _ } ->
@@ -274,11 +352,11 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let cores = List.map fst cores_tys in
       let tys = List.map snd cores_tys in
       (Prod cores, VProdTy tys)
-  | Arrow (expl, a, b) ->
+  | Arrow (expl, name, a, b) ->
       let a_core, a_ty = infer ctx a in
       Ctx.unify ctx a_ty VU;
       let a_val = Ctx.eval ctx a_core in
-      let ctx' = Ctx.bind ctx "_" a_val in
+      let ctx' = Ctx.bind ctx (Option.value name ~default:"_") a_val in
       let b_core, b_ty = infer ctx' b in
       Ctx.unify ctx' b_ty VU;
       (Pi (expl_of_surface expl, a_core, b_core), VU)
@@ -511,6 +589,9 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
   | PatAtom atom ->
       Ctx.unify ctx scrutinee_ty (VAtomTy (atom_ty_of_atom atom));
       (CPatAtom atom, [])
+  | PatType atom_ty ->
+      Ctx.unify ctx scrutinee_ty VU;
+      (CPatType atom_ty, [])
   | PatOr (lhs, rhs) ->
       let lhs_core, lhs_binders = elaborate_pat_binders ctx lhs scrutinee_ty in
       let rhs_core, rhs_binders = elaborate_pat_binders ctx rhs scrutinee_ty in
@@ -826,18 +907,42 @@ and infer_lam (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
   let ctx' = Ctx.bind ctx param.name a_ty in
   let body_core, body_ty = infer ctx' body in
   let body_ty_term = Ctx.quote ctx' body_ty in
-  let pi_ty = VPi { explicitness = Explicit; domain = a_ty; codomain = { env = ctx.env; body = body_ty_term } } in
+  let pi_ty = VPi { explicitness = expl_of_surface param.explicitness; domain = a_ty; codomain = { env = ctx.env; body = body_ty_term } } in
   (Lam body_core, pi_ty)
 
 (** Bidirectional checking: verify [expr] against an [expected] type. *)
 and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
   let expected = Nbe.force ctx.metas expected in
   match (expr, expected) with
-  | Lam (param, body), VPi { explicitness = _; domain = a_ty; codomain = b_clo } ->
+  | Lam (param, body), VPi { explicitness; domain = a_ty; codomain = b_clo } ->
+      if expl_of_surface param.explicitness <> explicitness then raise (ElabError ApplyingNonFunction);
       let ctx' = Ctx.bind ctx param.name a_ty in
       let b_ty = Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] }) in
       let body_core = check ctx' body b_ty in
       Lam body_core
+  | Match (scrutinee, branches), VPi _ ->
+      let scrut_core = check ctx scrutinee VU in
+      let scrut_value = Ctx.eval ctx scrut_core in
+      let refinement_target =
+        match Nbe.force ctx.metas scrut_value with
+        | VRigid { lvl; spine = [] } -> Some lvl
+        | _ -> None
+      in
+      let branches' =
+        List.map
+          (fun (pat, body) ->
+            let core_pat, ctx' = elaborate_pat ctx pat VU in
+            let refined_expected =
+              match (branch_type_refinement pat, refinement_target) with
+              | Some replacement, Some target -> subst_value_var ctx.metas target replacement expected
+              | _ -> expected
+            in
+            let body_core = check ctx' body refined_expected in
+            (core_pat, body_core))
+          branches
+      in
+      check_match_exhaustive ctx VU (List.map fst branches');
+      Match (scrut_core, branches')
   | If { cond; then_; else_ }, _ ->
       let cond_core = check ctx cond (VAtomTy TBool) in
       let then_core = check ctx then_ expected in
@@ -921,10 +1026,31 @@ let init_ctx () : Ctx.t =
   let ctx = add_type ctx "Unit" (VAtomTy TUnit) in
   let ctx = add_type ctx "Char" (VAtomTy TChar) in
   let ctx = Ctx.define ctx "Type" VU VU in
-  NameMap.fold
-    (fun name ty ctx ->
-      Ctx.define ctx name ty (VNeutral { ty; neutral = { head = HPrim name; frames = [] } }))
-    prims ctx
+  let ctx =
+    NameMap.fold
+      (fun name ty ctx ->
+        Ctx.define ctx name ty (VNeutral { ty; neutral = { head = HPrim name; frames = [] } }))
+      prims ctx
+  in
+  let stdlib = Lazy.force parsed_stdlib in
+  let rec add_stdlib ctx = function
+    | Surface.Let { name; type_; value; body; recursive = false } ->
+        let value_core, value_ty =
+          match type_ with
+          | Some ty_expr ->
+              let ty_core, ty_ty = infer ctx ty_expr in
+              Ctx.unify ctx ty_ty VU;
+              let ty_val = Ctx.eval ctx ty_core in
+              (check ctx value ty_val, ty_val)
+          | None -> infer ctx value
+        in
+        let gen_value_core, gen_value_ty = generalize ctx value_core value_ty in
+        let gen_value = Ctx.eval ctx gen_value_core in
+        add_stdlib (Ctx.define ctx name gen_value_ty gen_value) body
+    | Surface.Let { recursive = true; _ } -> assert false
+    | _ -> ctx
+  in
+  add_stdlib ctx stdlib
 
 (** Entry point: elaborate a surface expression in the given context. *)
 let on_expr (ctx : Ctx.t) (expr : Surface.t) : term * value =

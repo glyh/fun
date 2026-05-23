@@ -35,10 +35,7 @@ let () =
               Printf.sprintf "NominalMismatch(%s, %s)" n1 n2))
     | _ -> None)
 
-let parse_expr s =
-  let lexbuf = Sedlexing.Utf8.from_string s in
-  let lexer = Sedlexing.with_tokenizer Core_lexer.token lexbuf in
-  MenhirLib.Convert.Simplified.traditional2revised Core_parser.expr_eof lexer
+let parse_expr = Core_lexer.parse_expr
 
 let elab source =
   let expr = parse_expr source in
@@ -126,6 +123,12 @@ let operators =
   [
     Alcotest.test_case "add" `Quick (check_type "1 + 2" (AtomTy TI64));
     Alcotest.test_case "compare" `Quick (check_type "1 == 2" (AtomTy TBool));
+    Alcotest.test_case "bool equality" `Quick (check_type "true == false" (AtomTy TBool));
+    Alcotest.test_case "char equality" `Quick (check_type "'a' == 'a'" (AtomTy TBool));
+    Alcotest.test_case "unit equality" `Quick (check_type "() == ()" (AtomTy TBool));
+    Alcotest.test_case "operator as value" `Quick (check_type "(==) 1 1" (AtomTy TBool));
+    Alcotest.test_case "polymorphic helper" `Quick
+      (check_type "let same : {A : Type} -> A -> A -> Bool = fun {A : Type} -> (==) {A} in same 1 1" (AtomTy TBool));
     Alcotest.test_case "complex" `Quick
       (check_type "let x = 1 + 2 in x * 3" (AtomTy TI64));
   ]
@@ -139,6 +142,9 @@ let elab_fail source () =
   | exception Elaborate.ElabError _ -> ()
   | exception Core_tt.Unify.UnifyError _ -> ()
   | _ -> Alcotest.fail "expected elaboration error"
+
+let equality_rejections =
+  [ Alcotest.test_case "mismatch rejection" `Quick (elab_fail "1 == true") ]
 
 let dependent =
   [
@@ -647,6 +653,7 @@ let () =
       ("annotations", annotations);
       ("tuples", tuples);
       ("operators", operators);
+      ("equality_rejections", equality_rejections);
       ("dependent", dependent);
       ("meta_solving", meta_solving);
       ("structs", structs);

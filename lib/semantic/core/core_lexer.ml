@@ -25,17 +25,17 @@ let rec token buf =
   | "false" -> FALSE
   | "->" -> ARROW
   | "()" -> UNIT
-  | "==" -> OP "=="
-  | "!=" -> OP "!="
-  | ">=" -> OP ">="
-  | "<=" -> OP "<="
-  | ">" -> OP ">"
-  | "<" -> OP "<"
-  | "+" -> OP "+"
-  | "-" -> OP "-"
-  | "*" -> OP "*"
-  | "/" -> OP "/"
-  | "%" -> OP "%"
+  | "==" -> CMP_OP "=="
+  | "!=" -> CMP_OP "!="
+  | ">=" -> CMP_OP ">="
+  | "<=" -> CMP_OP "<="
+  | ">" -> CMP_OP ">"
+  | "<" -> CMP_OP "<"
+  | "+" -> ADD_OP "+"
+  | "-" -> ADD_OP "-"
+  | "*" -> MUL_OP "*"
+  | "/" -> MUL_OP "/"
+  | "%" -> MUL_OP "%"
   | "{" -> LBRACE
   | "}" -> RBRACE
   | "(" -> LPAREN
@@ -60,3 +60,8 @@ let rec token buf =
   | Plus (' ' | '\t' | '\n' | '\r') -> token buf
   | eof -> EOF
   | _ -> failwith ("unexpected token: " ^ Sedlexing.Utf8.lexeme buf)
+
+let parse_expr source =
+  let lexbuf = Sedlexing.Utf8.from_string source in
+  let lexer = Sedlexing.with_tokenizer token lexbuf in
+  MenhirLib.Convert.Simplified.traditional2revised Core_parser.expr_eof lexer

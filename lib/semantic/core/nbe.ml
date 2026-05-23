@@ -18,6 +18,18 @@ module Prim = struct
   let bool_unop (f : bool -> bool) : reducer = function
     | [ Bool b ] -> Some (Bool (f b))
     | _ -> None
+
+  let bool_cmp (f : bool -> bool -> bool) : reducer = function
+    | [ Bool a; Bool b ] -> Some (Bool (f a b))
+    | _ -> None
+
+  let char_cmp (f : char -> char -> bool) : reducer = function
+    | [ Char a; Char b ] -> Some (Bool (f a b))
+    | _ -> None
+
+  let unit_cmp (f : unit -> unit -> bool) : reducer = function
+    | [ Unit; Unit ] -> Some (Bool (f () ()))
+    | _ -> None
 end
 
 let atom_ty_of_atom = function
@@ -34,8 +46,14 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
     "*",  i64_binop Int64.mul;
     "/",  i64_binop Int64.div;
     "%",  i64_binop Int64.rem;
-    "==", i64_cmp Int64.equal;
-    "!=", i64_cmp (fun a b -> not (Int64.equal a b));
+    "eq_i64", i64_cmp Int64.equal;
+    "neq_i64", i64_cmp (fun a b -> not (Int64.equal a b));
+    "eq_bool", bool_cmp Bool.equal;
+    "neq_bool", bool_cmp (fun a b -> not (Bool.equal a b));
+    "eq_char", char_cmp Char.equal;
+    "neq_char", char_cmp (fun a b -> not (Char.equal a b));
+    "eq_unit", unit_cmp (fun () () -> true);
+    "neq_unit", unit_cmp (fun () () -> false);
     "<",  i64_cmp (fun a b -> Int64.compare a b < 0);
     ">",  i64_cmp (fun a b -> Int64.compare a b > 0);
     "<=", i64_cmp (fun a b -> Int64.compare a b <= 0);
@@ -216,6 +234,8 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
 
 and try_prim_reduce (head : head) (frames : frame list) : value option =
   match head with
+  | HPrim "panic" when List.length frames = 2 ->
+      raise (EvalError "panic")
   | HPrim name -> (
       let atoms = List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames in
       if List.length atoms <> List.length frames then None
@@ -331,6 +351,10 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
       let pats = List.map fst branches in
       let dt = Core_match_compile.compile ~domain pats in
       eval_decision_tree mc env scrutinee branches dt
+  | VAtomTy _ ->
+      let pats = List.map fst branches in
+      let dt = Core_match_compile.compile ~domain:Type pats in
+      eval_decision_tree mc env scrutinee branches dt
   | VProd _ | VRecord _ ->
       let domain_of_occurrence occ =
         match resolve_occurrence_opt mc scrutinee occ with
@@ -389,14 +413,15 @@ and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
       | _ -> raise (EvalError "match on non-constructor value"))
   | Switch { cases; default; occurrence } ->
       let v = resolve_occurrence mc root occurrence |> force mc in
-      (match v with
-      | VAtom a -> (
-          match
-            List.find_opt (fun (atom, _) -> Syntax.Ast.Atom.equal atom a) cases
-          with
-          | Some (_, sub) -> eval_decision_tree mc env root branches sub
-          | None -> eval_decision_tree mc env root branches default)
-      | _ -> raise (EvalError "switch on non-atom value"))
+      let key =
+        match v with
+        | VAtom atom -> Core_decision_tree.KAtom atom
+        | VAtomTy atom_ty -> KType atom_ty
+        | _ -> raise (EvalError "switch on non-constant value")
+      in
+      (match List.find_opt (fun (case_key, _) -> Core_decision_tree.switch_key_equal case_key key) cases with
+      | Some (_, sub) -> eval_decision_tree mc env root branches sub
+      | None -> eval_decision_tree mc env root branches default)
 
 and resolve_occurrence (mc : MetaContext.t) (root : value)
     (occ : Core_decision_tree.occurrence) : value =

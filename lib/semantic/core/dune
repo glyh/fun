@@ -1,4 +1,7 @@
+(menhir
+ (modules core_parser))
+
 (library
  (name core_tt)
- (libraries core std syntax)
- (preprocess (pps ppx_deriving.std ppx_here)))
+ (libraries core std syntax menhirLib)
+ (preprocess (pps ppx_deriving.std ppx_here sedlex.ppx)))

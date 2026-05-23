@@ -3,6 +3,8 @@ type occurrence =
   | OChild of { parent : occurrence; index : int }
   | OField of { parent : occurrence; name : string }
 
+type switch_key = KAtom of Syntax.Ast.Atom.t | KType of Core.atom_ty
+
 let rec occurrence_equal a b =
   match (a, b) with
   | OBase, OBase -> true
@@ -22,6 +24,12 @@ let rec occurrence_hash a =
   | OField { parent; name } ->
       Hashtbl.hash (2, occurrence_hash parent, name)
 
+let switch_key_equal lhs rhs =
+  match (lhs, rhs) with
+  | KAtom lhs, KAtom rhs -> Syntax.Ast.Atom.equal lhs rhs
+  | KType lhs, KType rhs -> Core.equal_atom_ty lhs rhs
+  | _ -> false
+
 type branch = int
 
 type t = { id : int; content : content }
@@ -35,7 +43,7 @@ and content =
     }
   | Switch of {
       occurrence : occurrence;
-      cases : (Syntax.Ast.Atom.t * t) list;
+      cases : (switch_key * t) list;
       default : t;
     }
 
@@ -57,8 +65,7 @@ let rec equal a b =
         occurrence_equal s1.occurrence s2.occurrence
         && equal s1.default s2.default
         && List.equal
-             (fun (a1, t1) (a2, t2) ->
-               Syntax.Ast.Atom.equal a1 a2 && equal t1 t2)
+             (fun (a1, t1) (a2, t2) -> switch_key_equal a1 a2 && equal t1 t2)
              s1.cases s2.cases
     | _ -> false
 

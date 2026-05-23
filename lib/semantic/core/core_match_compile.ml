@@ -1,7 +1,7 @@
 open Core
 module DT = Core_decision_tree
 
-type domain = Nominal of (string * int * bool) list | Atom of atom_ty | Product of int | Record of string list | Unknown
+type domain = Nominal of (string * int * bool) list | Atom of atom_ty | Type | Product of int | Record of string list | Unknown
 
 type missing_pat = MWild | MCon of string * missing_pat option
 
@@ -51,7 +51,7 @@ type refutability = Irrefutable | Destruct | Switch | ProductPat | RecordPat | O
 
 let classify = function
   | CPatCon _ -> Destruct
-  | CPatAtom _ -> Switch
+  | CPatAtom _ | CPatType _ -> Switch
   | CPatProd _ -> ProductPat
   | CPatRecord _ -> RecordPat
   | CPatOr _ -> OrPat
@@ -102,13 +102,14 @@ let collect_tags col =
     col;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
 
-let collect_atoms col =
+let collect_switch_keys col =
   let seen = Hashtbl.create 8 in
+  let add key = if not (Hashtbl.mem seen key) then Hashtbl.replace seen key () in
   List.iter
     (fun p ->
       match p with
-      | CPatAtom atom ->
-          if not (Hashtbl.mem seen atom) then Hashtbl.replace seen atom ()
+      | CPatAtom atom -> add (DT.KAtom atom)
+      | CPatType atom_ty -> add (DT.KType atom_ty)
       | _ -> ())
     col;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
@@ -148,20 +149,23 @@ let specialize_destruct m tag ~num_type_params ~arity =
   in
   { header; rows }
 
-let specialize_literal m atom =
+let specialize_switch m key =
   let occ0 = m.header.(0) in
   let header = Array.sub m.header 1 (Array.length m.header - 1) in
   let rows =
     List.filter_map
       (fun r ->
-        match r.pats.(0) with
-        | CPatAtom atom' when Syntax.Ast.Atom.equal atom atom' ->
+        match (r.pats.(0), key) with
+        | CPatAtom atom, DT.KAtom atom' when Syntax.Ast.Atom.equal atom atom' ->
             let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
             Some { r with pats }
-        | CPatWild ->
+        | CPatType atom_ty, DT.KType atom_ty' when equal_atom_ty atom_ty atom_ty' ->
             let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
             Some { r with pats }
-        | CPatBind ->
+        | CPatWild, _ ->
+            let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
+            Some { r with pats }
+        | CPatBind, _ ->
             let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
             let bindings = r.bindings @ [ occ0 ] in
             Some { pats; branch = r.branch; bindings }
@@ -373,30 +377,31 @@ let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
             let cases_with_arity = List.map (fun (tag, arity, dt) -> (tag, arity, dt)) cases in
             DTB.get (Destruct { occurrence = m.header.(0); cases = cases_with_arity; default })
         | Switch ->
-            let atoms = collect_atoms col in
+            let keys = collect_switch_keys col in
             let cases =
               List.map
-                (fun atom ->
-                  let sub = specialize_literal m atom in
-                  (atom, go sub))
-                atoms
+                (fun key ->
+                  let sub = specialize_switch m key in
+                  (key, go sub))
+                keys
             in
             let dm = default_matrix m in
             let domain = domain_of_occurrence m.header.(0) in
-            let missing_finite_atom =
+            let missing_finite_key =
               match domain with
               | Atom atom_ty ->
                   (match all_atoms atom_ty with
                   | Some all ->
                       List.exists
                         (fun atom ->
-                          not (List.exists (Syntax.Ast.Atom.equal atom) atoms))
+                          not (List.exists (DT.switch_key_equal (DT.KAtom atom)) keys))
                         all
                   | None -> true)
+              | Type -> true
               | _ -> true
             in
             let default =
-              if is_empty dm && missing_finite_atom then raise (Non_exhaustive MWild)
+              if is_empty dm && missing_finite_key then raise (Non_exhaustive MWild)
               else if is_empty dm then DTB.get (Leaf { branch = (List.hd m.rows).branch; bindings = [] })
               else go dm
             in

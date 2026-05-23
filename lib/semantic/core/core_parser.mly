@@ -1,5 +1,5 @@
 %{
-open Core_tt.Surface
+open Surface
 
 type record_pat_entry =
   | RecordPatField of string * pat option
@@ -26,7 +26,7 @@ let split_record_pat_entries entries =
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
-%token <string> OP
+%token <string> CMP_OP ADD_OP MUL_OP
 %token EOF
 
 %start <t> expr_eof
@@ -37,7 +37,7 @@ expr_eof:
   | e = expr; EOF { e }
 
 expr:
-  | LET; name = ID; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
+  | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
     { Let { name; type_ = ty; value; body; recursive = false } }
   | LET; REC; name = ID; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
     { Let { name; type_ = ty; value; body; recursive = true } }
@@ -59,6 +59,10 @@ expr:
 branch:
   | p = pat; ARROW; body = expr { (p, body) }
 
+binding_name:
+  | name = ID { name }
+  | LPAREN; op = operator; RPAREN { op }
+
 pat:
   | lhs = pat_atom; BAR; rhs = pat { PatOr (lhs, rhs) }
   | p = pat_atom { p }
@@ -79,8 +83,12 @@ pat_atom:
     { PatCon (name, sub) }
   | name = ID
     { if String.equal name "_" then PatWild
-      else if Char.uppercase_ascii name.[0] = name.[0] then PatCon (name, [])
-      else PatBind name }
+      else match name with
+      | "I64" -> PatType Core.TI64
+      | "Bool" -> PatType TBool
+      | "Unit" -> PatType TUnit
+      | "Char" -> PatType TChar
+      | _ -> if Char.uppercase_ascii name.[0] = name.[0] then PatCon (name, []) else PatBind name }
 
 record_pat_entry:
   | name = ID; EQUALS; p = pat { RecordPatField (name, Some p) }
@@ -91,8 +99,8 @@ struct_field_decl:
   | name = ID; COLON; ty = expr; SEMI { (name, ty) }
 
 struct_binding:
-  | PUB; LET; name = ID; EQUALS; value = expr { LetBinding { name; value; public = true } }
-  | LET; name = ID; EQUALS; value = expr { LetBinding { name; value; public = false } }
+  | PUB; LET; name = binding_name; EQUALS; value = expr { LetBinding { name; value; public = true } }
+  | LET; name = binding_name; EQUALS; value = expr { LetBinding { name; value; public = false } }
   | PUB; TYPE; name = ID; params = list(ID); EQUALS;
     ctors = separated_nonempty_list(BAR, ctor_decl)
     { TypeBinding { name; params; ctors; public = true } }
@@ -104,14 +112,39 @@ ctor_decl:
   | name = ID; payload = option(expr) { (name, payload) }
 
 expr_arrow:
-  | LBRACE; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, dom, cod) }
-  | dom = expr_binop; ARROW; cod = expr_arrow { Arrow (Explicit, dom, cod) }
-  | e = expr_binop { e }
+  | LBRACE; name = ID; COLON; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, Some name, dom, cod) }
+  | LBRACE; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, None, dom, cod) }
+  | dom = expr_cmp; ARROW; cod = expr_arrow { Arrow (Explicit, None, dom, cod) }
+  | e = expr_cmp { e }
 
-expr_binop:
-  | lhs = expr_binop; op = OP; rhs = expr_app
+expr_cmp:
+  | lhs = expr_cmp; op = cmp_op; rhs = expr_add
+    { Ap (Ap (Var op, Explicit, lhs), Explicit, rhs) }
+  | e = expr_add { e }
+
+expr_add:
+  | lhs = expr_add; op = add_op; rhs = expr_mul
+    { Ap (Ap (Var op, Explicit, lhs), Explicit, rhs) }
+  | e = expr_mul { e }
+
+expr_mul:
+  | lhs = expr_mul; op = mul_op; rhs = expr_app
     { Ap (Ap (Var op, Explicit, lhs), Explicit, rhs) }
   | e = expr_app { e }
+
+cmp_op:
+  | op = CMP_OP { op }
+
+add_op:
+  | op = ADD_OP { op }
+
+mul_op:
+  | op = MUL_OP { op }
+
+operator:
+  | op = CMP_OP { op }
+  | op = ADD_OP { op }
+  | op = MUL_OP { op }
 
 expr_app:
   | typ = expr_app; LBRACE; fields = separated_nonempty_list(SEMI, record_expr_field); RBRACE
@@ -135,11 +168,13 @@ expr_primary:
   | FALSE { Atom (Bool false) }
   | UNIT { Atom Unit }
   | name = ID { Var name }
+  | LPAREN; op = operator; RPAREN { Var op }
   | LPAREN; e = expr; COLON; ty = expr; RPAREN { Annotated { inner = e; typ = ty } }
   | LPAREN; e = expr; RPAREN { e }
   | LPAREN; e1 = expr; COMMA; rest = separated_nonempty_list(COMMA, expr); RPAREN
     { Prod (e1 :: rest) }
 
 param:
-  | name = ID { { name; type_ = None } }
-  | LPAREN; name = ID; COLON; ty = expr; RPAREN { { name; type_ = Some ty } }
+  | name = ID { { name; type_ = None; explicitness = Explicit } }
+  | LPAREN; name = ID; COLON; ty = expr; RPAREN { { name; type_ = Some ty; explicitness = Explicit } }
+  | LBRACE; name = ID; COLON; ty = expr; RBRACE { { name; type_ = Some ty; explicitness = Implicit } }

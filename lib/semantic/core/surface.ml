@@ -1,6 +1,6 @@
 type explicitness = Implicit | Explicit
 
-type param = { name : string; type_ : t option }
+type param = { name : string; type_ : t option; explicitness : explicitness }
 
 and struct_binding =
   | LetBinding of { name : string; value : t; public : bool }
@@ -20,7 +20,7 @@ and t =
   | If of { cond : t; then_ : t; else_ : t }
   | Annotated of { inner : t; typ : t }
   | Prod of t list
-  | Arrow of explicitness * t * t
+  | Arrow of explicitness * string option * t * t
   | FieldAccess of t * string
   | Proj of t * int
   | RecordConstruct of { typ : t; fields : (string * t) list }
@@ -43,5 +43,6 @@ and pat =
   | PatOr of pat * pat
   | PatProd of pat list
   | PatAtom of Syntax.Ast.Atom.t
+  | PatType of Core.atom_ty
   | PatWild                       (* _ *)
   | PatBind of string             (* variable binding *)
