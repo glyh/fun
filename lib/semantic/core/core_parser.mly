@@ -15,6 +15,15 @@ let split_record_pat_entries entries =
   match go [] entries with
   | [], _ -> failwith "record pattern must have at least one named field"
   | result -> result
+
+let bare_pat_name path name =
+  if String.equal name "_" then PatWild
+  else match name with
+  | "I64" when path = [] -> PatType Core.TI64
+  | "Bool" when path = [] -> PatType TBool
+  | "Unit" when path = [] -> PatType TUnit
+  | "Char" when path = [] -> PatType TChar
+  | _ -> if path <> [] || Char.uppercase_ascii name.[0] = name.[0] then PatCon (path, name, []) else PatBind name
 %}
 
 %token <int64> INT
@@ -68,9 +77,10 @@ pat:
   | p = pat_atom { p }
 
 pat_atom:
-  | typ = ID; LBRACE; entries = separated_nonempty_list(SEMI, record_pat_entry); RBRACE
-    { let fields, partial = split_record_pat_entries entries in
-      PatRecord { typ; fields; partial } }
+  | typ = dotted_id; LBRACE; entries = separated_nonempty_list(SEMI, record_pat_entry); RBRACE
+    { let path, typ = typ in
+      let fields, partial = split_record_pat_entries entries in
+      PatRecord { typ_path = path; typ; fields; partial } }
   | n = INT { PatAtom (I64 n) }
   | c = CHAR { PatAtom (Char c) }
   | TRUE { PatAtom (Bool true) }
@@ -79,16 +89,14 @@ pat_atom:
   | LPAREN; p = pat; RPAREN { p }
   | LPAREN; p = pat; COMMA; rest = separated_nonempty_list(COMMA, pat); RPAREN
     { PatProd (p :: rest) }
-  | name = ID; LPAREN; sub = separated_nonempty_list(COMMA, pat); RPAREN
-    { PatCon (name, sub) }
-  | name = ID
-    { if String.equal name "_" then PatWild
-      else match name with
-      | "I64" -> PatType Core.TI64
-      | "Bool" -> PatType TBool
-      | "Unit" -> PatType TUnit
-      | "Char" -> PatType TChar
-      | _ -> if Char.uppercase_ascii name.[0] = name.[0] then PatCon (name, []) else PatBind name }
+  | name = dotted_id; LPAREN; sub = separated_nonempty_list(COMMA, pat); RPAREN
+    { let path, name = name in PatCon (path, name, sub) }
+  | name = dotted_id
+    { let path, name = name in bare_pat_name path name }
+
+dotted_id:
+  | name = ID { ([], name) }
+  | prefix = dotted_id; DOT; name = ID { let path, last = prefix in (path @ [last], name) }
 
 record_pat_entry:
   | name = ID; EQUALS; p = pat { RecordPatField (name, Some p) }

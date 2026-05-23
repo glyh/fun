@@ -62,6 +62,30 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
   ]
   |> List.to_seq |> Hashtbl.of_seq
 
+let dot_value (value : value) (name : string) : value =
+  match value with
+  | VStruct { fields; _ } -> (
+      match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
+      | Some (_, _, v) -> v
+      | None -> raise (EvalError "field not found"))
+  | VRecord { fields; _ } -> (
+      match List.find_opt (fun (n, _) -> String.equal n name) fields with
+      | Some (_, v) -> v
+      | None -> raise (EvalError "field not found"))
+  | VNeutral { neutral; _ } ->
+      VNeutral
+        { ty = VU;
+          neutral = { neutral with frames = neutral.frames @ [ FDot name ] } }
+  | VFlex { id; spine = sp } ->
+      let frames = List.map (fun v -> FApp v) sp in
+      VNeutral
+        { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FDot name ] } }
+  | VRigid { lvl; spine = sp } ->
+      let frames = List.map (fun v -> FApp v) sp in
+      VNeutral
+        { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FDot name ] } }
+  | _ -> raise (EvalError "field access on non-struct")
+
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
 
@@ -125,31 +149,7 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
           let frames = List.map (fun v -> FApp v) sp in
           VNeutral { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FProj i ] } }
       | _ -> raise (EvalError "projection of non-product"))
-  | Dot (e, name) ->
-      let vs = eval mc env e in
-      (match vs with
-      | VStruct { fields; _ } ->
-          (* Dot: all non-Private fields accessible *)
-          (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
-          | Some (_, _, v) -> v
-          | None -> raise (EvalError "field not found"))
-      | VRecord { fields; _ } ->
-          (match List.find_opt (fun (n, _) -> String.equal n name) fields with
-          | Some (_, v) -> v
-          | None -> raise (EvalError "field not found"))
-      | VNeutral { neutral; _ } ->
-          VNeutral
-            { ty = VU;
-              neutral = { neutral with frames = neutral.frames @ [ FDot name ] } }
-      | VFlex { id; spine = sp } ->
-          let frames = List.map (fun v -> FApp v) sp in
-          VNeutral
-            { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FDot name ] } }
-      | VRigid { lvl; spine = sp } ->
-          let frames = List.map (fun v -> FApp v) sp in
-          VNeutral
-            { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FDot name ] } }
-      | _ -> raise (EvalError "field access on non-struct"))
+  | Dot (e, name) -> dot_value (eval mc env e) name
   | Open (s, body) ->
       let vs = eval mc env s in
       (match vs with

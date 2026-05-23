@@ -278,6 +278,27 @@ let rec branch_type_refinement = function
       match branch_type_refinement lhs with Some _ as found -> found | None -> branch_type_refinement rhs)
   | _ -> None
 
+let resolve_path_value ctx path name =
+  match path with
+  | [] ->
+      let ix, ty = Ctx.lookup ctx name in
+      (Ctx.eval ctx (Var ix), ty)
+  | first :: rest ->
+      let ix, ty = Ctx.lookup ctx first in
+      let rec go current_value current_ty = function
+        | [] -> (current_value, current_ty)
+        | segment :: rest -> (
+            match Nbe.force ctx.Ctx.metas current_ty with
+            | VStruct { fields; _ } -> (
+                match List.find_opt (fun (n, k, _) -> String.equal n segment && k <> Private) fields with
+                | Some (_, _, field_ty) ->
+                    let next_value = Nbe.dot_value current_value segment in
+                    go next_value field_ty rest
+                | None -> raise (ElabError (UnboundVariable segment)))
+            | _ -> raise (ElabError (UnboundVariable segment)))
+      in
+      go (Ctx.eval ctx (Var ix)) ty (rest @ [name])
+
 let rec insert_implicit_args ctx core ty =
   match Nbe.force ctx.Ctx.metas ty with
   | VPi { explicitness = Implicit; codomain; _ } ->
@@ -294,17 +315,17 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
   | VNominal _ | VAtomTy _ | VProdTy _ -> ty
   | _ ->
       let rec find_pat = function
-        | Surface.PatCon (name, _) ->
-            let _, ctor_ty = Ctx.lookup ctx name in
+        | Surface.PatCon (path, name, _) ->
+            let _, ctor_ty = resolve_path_value ctx path name in
             Some (nominal_from_constructor_type ctx ctor_ty)
         | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
         | Surface.PatType _ -> Some VU
         | Surface.PatProd ps ->
             Some (VProdTy (List.map (fun _ -> Ctx.raw_meta ctx) ps))
-        | Surface.PatRecord { typ; _ } ->
-            let _, ty = Ctx.lookup ctx typ in
+        | Surface.PatRecord { typ_path; typ; _ } ->
+            let record_value, ty = resolve_path_value ctx typ_path typ in
             (match Nbe.force ctx.Ctx.metas ty with
-            | VU -> Some (Ctx.eval ctx (fst (Ctx.lookup ctx typ) |> fun ix -> Var ix))
+            | VU -> Some record_value
             | VStruct _ as record_ty -> Some record_ty
             | _ -> None)
         | Surface.PatOr (lhs, rhs) -> (
@@ -451,28 +472,39 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (LetBind (name, kind, val_core) :: acc_binds,
                field @ acc_fields)
               rest
-        | Surface.TypeBinding { name; params = _; ctors; public } :: rest ->
-            let ctor_names = List.map fst ctors in
-            let ctors' = List.map (fun c -> (c, None)) ctor_names in
-            let nominal = VNominal { id = NominalId.fresh (); name; params = []; constructors = ctors' } in
+        | Surface.TypeBinding { name; params; ctors; public } :: rest ->
+            if params <> [] then raise (ElabError NotANominalType);
+            let elaborated_ctors =
+              List.map
+                (fun (cname, payload_opt) ->
+                  match payload_opt with
+                  | None -> (cname, None)
+                  | Some payload_expr ->
+                      let payload_core, payload_ty = infer ctx payload_expr in
+                      Ctx.unify ctx payload_ty VU;
+                      (cname, Some { env = ctx.env; body = payload_core }))
+                ctors
+            in
+            let nominal = VNominal { id = NominalId.fresh (); name; params = []; constructors = elaborated_ctors } in
             let kind = if public then Public else Private in
+            let ctor_values, ctor_types =
+              List.split
+                (List.map
+                   (fun (cname, payload_clo_opt) ->
+                     let ctor_value, ctor_ty =
+                       build_ctor ctx.metas (nominal :: ctx.env) name cname 0 payload_clo_opt
+                     in
+                     ((cname, ctor_value), (cname, ctor_ty)))
+                   elaborated_ctors)
+            in
             let ctx =
               List.fold_left
-                (fun ctx ctor_name ->
-                  Ctx.define ctx ctor_name nominal
-                    (VCon { name = ctor_name; spine = []; nominal }))
-                ctx ctor_names
+                (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
+                  Ctx.define ctx ctor_name ctor_ty ctor_value)
+                ctx (List.combine ctor_values ctor_types)
             in
             let ctx = Ctx.define ctx name VU nominal in
-            let ctor_values =
-              List.map (fun c ->
-                (c, VCon { name = c; spine = []; nominal }))
-              ctor_names
-            in
-            let type_fields =
-              (name, kind, VU)
-              :: List.map (fun c -> (c, kind, nominal)) ctor_names
-            in
+            let type_fields = (name, kind, VU) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
             go ctx
               (TypeBind (name, kind, nominal, ctor_values) :: acc_binds,
                type_fields @ acc_fields)
@@ -637,8 +669,8 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           in
           (CPatProd (List.rev core_subs), List.rev binders)
       | _ -> raise (ElabError TupleLengthMismatch))
-  | PatRecord { typ; fields; partial } ->
-      let _, record_ty = Ctx.lookup ctx typ in
+  | PatRecord { typ_path; typ; fields; partial } ->
+      let _record_value, record_ty = resolve_path_value ctx typ_path typ in
       Ctx.unify ctx scrutinee_ty record_ty;
       (match Nbe.force ctx.metas record_ty with
       | VStruct { fields = struct_fields; _ } ->
@@ -670,9 +702,20 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           in
           (CPatRecord { fields = List.rev core_fields; partial }, List.rev binders)
       | _ -> raise (ElabError ApplyingNonFunction))
-  | PatCon (name, sub_pats) ->
+  | PatCon (path, name, sub_pats) ->
+      let resolved_nominal =
+        match path with
+        | [] -> None
+        | _ ->
+            let ctor_value, _ = resolve_path_value ctx path name in
+            match Nbe.force ctx.metas ctor_value with
+            | VCon { nominal; _ } -> Some nominal
+            | VLam _ | VPi _ -> None
+            | _ -> raise (ElabError (UnknownConstructor name))
+      in
       (match Nbe.force ctx.metas scrutinee_ty with
       | VNominal n ->
+          Option.iter (Ctx.unify ctx scrutinee_ty) resolved_nominal;
           (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
           | Some (_, payload_opt) ->
               let num_type_params = List.length n.params in

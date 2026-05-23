@@ -549,6 +549,30 @@ let match_tests =
         "type Color = Red | Green | Blue in \
          (match Red with Red -> 1 | Green -> 2 | Blue -> 3 end : I64)"
         (AtomTy TI64));
+    Alcotest.test_case "qualified constructor pattern" `Quick
+      (check_type
+         "let S = struct pub type Color = Red | Green end in \
+          match S.Red with S.Red -> 1 | S.Green -> 2 end"
+         (AtomTy TI64));
+    Alcotest.test_case "qualified nested constructor pattern" `Quick
+      (check_type
+         "let A = struct pub let B = struct pub type T = X I64 | Y end end in \
+          match A.B.X 7 with A.B.X(n) -> n | A.B.Y -> 0 end"
+         (AtomTy TI64));
+    Alcotest.test_case "qualified constructor pattern alias" `Quick
+      (check_type
+         "let S = struct pub type Color = Red | Green end in \
+          let N = S in match S.Red with N.Red -> 1 | N.Green -> 2 end"
+         (AtomTy TI64));
+    Alcotest.test_case "qualified constructor pattern private" `Quick
+      (elab_fail
+         "let S = struct type Color = Red | Green end in \
+          match S.Red with S.Red -> 1 | _ -> 0 end");
+    Alcotest.test_case "qualified constructor pattern wrong nominal" `Quick
+      (elab_fail
+         "let S = struct pub type Color = Red end in \
+          let T = struct pub type Color = Red end in \
+          match S.Red with T.Red -> 1 | _ -> 0 end");
     Alcotest.test_case "record pattern shorthand" `Quick
       (check_type
          "let Point = struct x: I64; y: I64; end in \
@@ -574,6 +598,16 @@ let match_tests =
          "let Flag = struct flag: Bool; value: I64; end in \
           match Flag {flag = false; value = 3} with \
           Flag {flag = true; value} -> value | Flag {flag = false; value} -> value + 1 end"
+         (AtomTy TI64));
+    Alcotest.test_case "qualified record pattern" `Quick
+      (check_type
+         "let M = struct pub let Point = struct x: I64; y: I64; end end in \
+          match M.Point {x = 1; y = 2} with M.Point {x; y} -> x + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "qualified record pattern alias" `Quick
+      (check_type
+         "let M = struct pub let Point = struct x: I64; y: I64; end end in \
+          let N = M in match M.Point {x = 1; y = 2} with N.Point {x; y} -> x + y end"
          (AtomTy TI64));
     Alcotest.test_case "record pattern incomplete" `Quick
       (elab_fail

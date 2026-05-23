@@ -313,6 +313,18 @@ let () =
                "type Option a = Some a | None in \
                 match Some (Some 7) with \
                   Some(Some(x)) -> x | Some(None) -> 0 | None -> 0 end");
+          Alcotest.test_case "qualified constructor pattern" `Quick
+            (check_i64 "qualified constructor pattern" 2L
+               "let S = struct pub type Color = Red | Green end in \
+                match S.Green with S.Red -> 1 | S.Green -> 2 end");
+          Alcotest.test_case "qualified nested constructor pattern" `Quick
+            (check_i64 "qualified nested constructor pattern" 7L
+               "let A = struct pub let B = struct pub type T = X I64 | Y end end in \
+                match A.B.X 7 with A.B.X(n) -> n | A.B.Y -> 0 end");
+          Alcotest.test_case "qualified constructor alias pattern" `Quick
+            (check_i64 "qualified constructor alias pattern" 1L
+               "let S = struct pub type Color = Red | Green end in \
+                let N = S in match S.Red with N.Red -> 1 | N.Green -> 2 end");
           Alcotest.test_case "match int literal hit" `Quick
             (check_i64 "match int literal hit" 10L
                "match 1 with 1 -> 10 | _ -> 20 end");
@@ -377,6 +389,10 @@ let () =
                "let Flag = struct flag: Bool; value: I64; end in \
                 match Flag {flag = false; value = 3} with \
                 Flag {flag = true; value} -> value | Flag {flag = false; value} -> value + 1 end");
+          Alcotest.test_case "qualified record pattern" `Quick
+            (check_i64 "qualified record pattern" 3L
+               "let M = struct pub let Point = struct x: I64; y: I64; end end in \
+                match M.Point {x = 1; y = 2} with M.Point {x; y} -> x + y end");
         ] );
       ( "conv",
         [

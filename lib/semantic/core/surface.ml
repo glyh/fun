@@ -38,8 +38,8 @@ and t =
   | Match of t * (pat * t) list  (* match scrutinee | pat -> body ... end *)
 
 and pat =
-  | PatCon of string * pat list   (* Constructor(sub, patterns) *)
-  | PatRecord of { typ : string; fields : (string * pat option) list; partial : bool }
+  | PatCon of string list * string * pat list   (* path, constructor, subpatterns *)
+  | PatRecord of { typ_path : string list; typ : string; fields : (string * pat option) list; partial : bool }
   | PatOr of pat * pat
   | PatProd of pat list
   | PatAtom of Syntax.Ast.Atom.t
