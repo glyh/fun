@@ -92,6 +92,16 @@ let check_type source expected () =
           | ProdTy _ -> "<prod>"
           | _ -> "<other>"))
 
+let elab_ok source () =
+  let _core, _ty = elab source in
+  ()
+
+let elab_fail source () =
+  match elab source with
+  | exception Elaborate.ElabError _ -> ()
+  | exception Core_tt.Unify.UnifyError _ -> ()
+  | _ -> Alcotest.fail "expected elaboration error"
+
 let constants =
   [
     Alcotest.test_case "int" `Quick (check_type "42" (AtomTy TI64));
@@ -115,6 +125,8 @@ let conditionals =
   [
     Alcotest.test_case "simple if" `Quick
       (check_type "if true then 1 else 2" (AtomTy TI64));
+    Alcotest.test_case "if branches must match" `Quick
+      (elab_fail "if true then 1 else false");
     Alcotest.test_case "nested if" `Quick
       (check_type "if true then if false then 1 else 2 else 3" (AtomTy TI64));
   ]
@@ -123,12 +135,21 @@ let lambdas =
   [
     Alcotest.test_case "application" `Quick
       (check_type "((fun x -> x) : I64 -> I64) 42" (AtomTy TI64));
+    Alcotest.test_case "apply non-function" `Quick
+      (elab_fail "1 2");
     Alcotest.test_case "annotated identity" `Quick
       (check_type "(fun x -> x : I64 -> I64)"
          (Pi (Explicit, AtomTy TI64, AtomTy TI64)));
     Alcotest.test_case "bool function" `Quick
       (check_type "(fun x -> x : Bool -> Bool)"
          (Pi (Explicit, AtomTy TBool, AtomTy TBool)));
+    Alcotest.test_case "higher-order twice" `Quick
+      (check_type
+         "let twice : (I64 -> I64) -> I64 -> I64 = fun f -> fun x -> f (f x) in twice"
+         (Pi
+            ( Explicit,
+              Pi (Explicit, AtomTy TI64, AtomTy TI64),
+              Pi (Explicit, AtomTy TI64, AtomTy TI64) )));
   ]
 
 let annotations =
@@ -165,16 +186,6 @@ let operators =
     Alcotest.test_case "complex" `Quick
       (check_type "let x = 1 + 2 in x * 3" (AtomTy TI64));
   ]
-
-let elab_ok source () =
-  let _core, _ty = elab source in
-  ()
-
-let elab_fail source () =
-  match elab source with
-  | exception Elaborate.ElabError _ -> ()
-  | exception Core_tt.Unify.UnifyError _ -> ()
-  | _ -> Alcotest.fail "expected elaboration error"
 
 let equality_rejections =
   [ Alcotest.test_case "mismatch rejection" `Quick (elab_fail "1 == true") ]
@@ -219,6 +230,10 @@ let structs =
       (check_type
          "let S = struct pub let x = 42 end in open S in x"
          (AtomTy TI64));
+    Alcotest.test_case "open struct constructors" `Quick
+      (elab_ok
+         "let Color = struct pub type Color = Red | Green | Blue end in \
+          open Color in Red");
     Alcotest.test_case "struct with pub fields" `Quick
       (elab_ok
          "let S = struct pub let x = 1; pub let y = true end in open S in if y then x else 0");
@@ -278,6 +293,17 @@ let structs =
     Alcotest.test_case "record type declaration pattern" `Quick
       (check_type
          "type Point = {x: I64; y: I64} in match Point {x = 1; y = 2} with Point {x; y} -> x + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "record construction field order" `Quick
+      (check_type
+         "type Point = {x: I64; y: I64} in let p = Point {y = 20; x = 10} in p.x + p.y"
+         (AtomTy TI64));
+    Alcotest.test_case "polymorphic record multiple instantiations" `Quick
+      (check_type
+         "type Pair A B = {fst: A; snd: B} in \
+          let p1 = Pair {fst = 10; snd = 20} in \
+          let p2 = Pair {fst = true; snd = 3} in \
+          if p2.fst then p1.fst + p2.snd else 0"
          (AtomTy TI64));
     Alcotest.test_case "record type declaration missing field" `Quick
       (elab_fail "type Point = {x: I64; y: I64} in Point {x = 1}");
@@ -526,6 +552,15 @@ let adts =
          "type Option a = Some a | None in \
           let x : Option I64 = Some {I64} 42 in \
           let _ : Option Bool = x in ()");
+    Alcotest.test_case "constructor polymorphism" `Quick
+      (elab_ok
+         "type Option a = Some a | None in \
+          let x = Some 1 in \
+          let y = Some true in y");
+    Alcotest.test_case "if with ADT branches" `Quick
+      (elab_ok
+         "type Result a e = Ok a | Err e in \
+          if true then Ok 1 else Err ()");
     Alcotest.test_case "recursive parameterized ADT" `Quick
       (elab_ok
          "type List a = Cons (a * List a) | Nil in \
@@ -633,6 +668,17 @@ let match_tests =
     Alcotest.test_case "non-exhaustive missing ctor" `Quick
       (elab_fail "type Color = Red | Green | Blue in \
                   match Red with Red -> 1 | Green -> 2 end");
+    Alcotest.test_case "non-exhaustive nested ADT" `Quick
+      (elab_fail
+         "type C = X I64 | Y I64 in \
+          type B = P C | Q C in \
+          type A = M B | N B in \
+          match M (P (X 1)) with M(P(X(x))) -> x end");
+    Alcotest.test_case "non-exhaustive partial nested branches" `Quick
+      (elab_fail
+         "type Inner = X I64 | Y I64 in \
+          type Outer = A Inner | B Inner in \
+          match A (X 1) with A(X(x)) -> x | B(X(x)) -> x end");
     Alcotest.test_case "non-exhaustive single ctor" `Quick
       (elab_fail "type Option a = Some a | None in \
                   match Some 42 with Some(x) -> x end");

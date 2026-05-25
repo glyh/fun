@@ -1,4 +1,13 @@
 (executable
  (public_name fun)
  (name main)
- (libraries linenoise interp loader menhirLib syntax sedlex type typecheck typed_ir))
+ (libraries
+  linenoise
+  interp
+  loader
+  menhirLib
+  syntax
+  sedlex
+  type
+  typecheck
+  typed_ir))

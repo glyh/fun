@@ -297,6 +297,10 @@ let () =
         [
           Alcotest.test_case "atom" `Quick (check_i64 "atom" 42L "42");
           Alcotest.test_case "lam+ap" `Quick (check_i64 "lam+ap" 7L "(fun x -> x) 7");
+          Alcotest.test_case "apply twice" `Quick
+            (check_i64 "apply twice" 5L
+               "let twice : (I64 -> I64) -> I64 -> I64 = fun f -> fun x -> f (f x) in \
+                let inc : I64 -> I64 = fun n -> n + 1 in twice inc 3");
           Alcotest.test_case "let" `Quick (check_i64 "let" 5L "let x : I64 = 5 in x");
           Alcotest.test_case "if true" `Quick (check_i64 "if true" 1L "if true then 1 else 2");
           Alcotest.test_case "if false" `Quick (check_i64 "if false" 2L "if false then 1 else 2");
@@ -315,6 +319,12 @@ let () =
           Alcotest.test_case "rec sum" `Quick
             (check_i64 "rec sum" 15L
                "let rec sum : I64 -> I64 = fun n -> if n == 0 then 0 else sum (n - 1) + n in sum 5");
+          Alcotest.test_case "factorial" `Quick
+            (check_i64 "factorial" 120L
+               "let rec fact : I64 -> I64 = fun n -> if n == 0 then 1 else n * fact (n - 1) in fact 5");
+          Alcotest.test_case "fibonacci" `Quick
+            (check_i64 "fibonacci" 8L
+               "let rec fib : I64 -> I64 = fun n -> if n <= 1 then n else fib (n - 1) + fib (n - 2) in fib 6");
           Alcotest.test_case "rec count" `Quick
             (check_i64 "rec count" 5L
                "let rec f : I64 -> I64 = fun n -> if n == 5 then 5 else f (n + 1) in f 0");
@@ -345,6 +355,12 @@ let () =
             (check_i64 "recursive parameterized ADT match" 1L
                "type List a = Cons (a * List a) | Nil in \
                 match Cons (1, Nil) with Cons(p) -> p.0 | Nil -> 0 end");
+          Alcotest.test_case "recursive list sum" `Quick
+            (check_i64 "recursive list sum" 6L
+               "type List a = Cons (a * List a) | Nil in \
+                let rec sum : List I64 -> I64 = fun xs -> \
+                  match xs with Cons(p) -> p.0 + sum p.1 | Nil -> 0 end in \
+                sum (Cons (1, Cons (2, Cons (3, Nil))))");
           Alcotest.test_case "qualified constructor pattern" `Quick
             (check_i64 "qualified constructor pattern" 2L
                "let S = struct pub type Color = Red | Green end in \
@@ -384,6 +400,12 @@ let () =
           Alcotest.test_case "match literal binder fallback" `Quick
             (check_i64 "match literal binder fallback" 42L
                "match 42 with 0 -> 0 | x -> x end");
+          Alcotest.test_case "match first branch wins" `Quick
+            (check_i64 "match first branch wins" 0L
+               "match 1 with _ -> 0 | 1 -> 1 end");
+          Alcotest.test_case "match tagged payload" `Quick
+            (check_i64 "match tagged payload" 42L
+               "type Wrapper = W I64 in match W 41 with W(x) -> x + 1 end");
           Alcotest.test_case "match tuple bind" `Quick
             (check_i64 "match tuple bind" 1L
                "match (1, true) with (x, b) -> if b then x else 0 end");
@@ -408,9 +430,19 @@ let () =
           Alcotest.test_case "record type declaration" `Quick
             (check_i64 "record type declaration" 2L
                "type Point = {x: I64; y: I64} in (Point {x = 1; y = 2}).y");
+          Alcotest.test_case "record construction field order" `Quick
+            (check_i64 "record construction field order" 30L
+               "type Point = {x: I64; y: I64} in \
+                let p = Point {y = 20; x = 10} in p.x + p.y");
           Alcotest.test_case "parameterized record type declaration" `Quick
             (check_bool "parameterized record type declaration" true
                "type Pair A B = {fst: A; snd: B} in (Pair {fst = 1; snd = true}).snd");
+          Alcotest.test_case "polymorphic record multiple instantiations" `Quick
+            (check_i64 "polymorphic record multiple instantiations" 13L
+               "type Pair A B = {fst: A; snd: B} in \
+                let p1 = Pair {fst = 10; snd = 20} in \
+                let p2 = Pair {fst = true; snd = 3} in \
+                if p2.fst then p1.fst + p2.snd else 0");
           Alcotest.test_case "parameterized record method" `Quick
             (check_bool "parameterized record method" true
                "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; pub let swap = fun p -> (p.snd, p.fst) end in (Pair.swap (Pair {fst = 1; snd = true})).0");
@@ -434,6 +466,14 @@ let () =
             (check_i64 "record pattern reordered" 3L
                "let Point = struct x: I64; y: I64; end in \
                 match Point {x = 1; y = 2} with Point {y; x} -> x + y end");
+          Alcotest.test_case "record pattern renamed field" `Quick
+            (check_i64 "record pattern renamed field" 30L
+               "type Point = {x: I64; y: I64} in \
+                match Point {x = 10; y = 20} with Point {x = wow; y} -> wow + y end");
+          Alcotest.test_case "record pattern partial" `Quick
+            (check_i64 "record pattern partial" 3L
+               "type Point = {x: I64; y: I64} in \
+                match Point {x = 3; y = 4} with Point {x; _} -> x end");
           Alcotest.test_case "record pattern literal dispatch" `Quick
             (check_i64 "record pattern literal dispatch" 4L
                "let Flag = struct flag: Bool; value: I64; end in \
@@ -443,12 +483,31 @@ let () =
             (check_i64 "qualified record pattern" 3L
                "let M = struct pub let Point = struct x: I64; y: I64; end end in \
                 match M.Point {x = 1; y = 2} with M.Point {x; y} -> x + y end");
+          Alcotest.test_case "struct private helper" `Quick
+            (check_i64 "struct private helper" 11L
+               "let M = struct let secret = 10; pub let x = secret + 1 end in M.x");
+          Alcotest.test_case "struct public function" `Quick
+            (check_i64 "struct public function" 42L
+               "let M = struct let helper = fun x -> x * 2; pub let double = helper end in M.double 21");
+          Alcotest.test_case "struct multiple public members" `Quick
+            (check_i64 "struct multiple public members" 3L
+               "let M = struct pub let a = 1; pub let b = 2 end in M.a + M.b");
+          Alcotest.test_case "open struct values" `Quick
+            (check_i64 "open struct values" 52L
+               "let M = struct pub let x = 42; pub let y = 10 end in open M in x + y");
+          Alcotest.test_case "open struct constructors" `Quick
+            (check_i64 "open struct constructors" 1L
+               "let Color = struct pub type Color = Red | Green | Blue end in \
+                open Color in match Red with Red -> 1 | Green -> 2 | Blue -> 3 end");
         ] );
       ( "imports",
         [
           Alcotest.test_case "basic import" `Quick
             (check_import_i64 "basic import" [ ("math", "pub let x = 41; pub let y = x + 1") ] 42L
                "let M = import \"math\" in M.y");
+          Alcotest.test_case "imported public function" `Quick
+            (check_import_i64 "imported public function" [ ("math", "pub let double = fun x -> x + x") ] 10L
+               "let M = import \"math\" in M.double 5");
           Alcotest.test_case "nested import" `Quick
             (check_import_i64 "nested import"
                [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ] 42L
