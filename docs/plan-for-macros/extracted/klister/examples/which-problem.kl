@@ -1,0 +1,92 @@
+#lang "prelude.kl"
+
+(import (shift "prelude.kl" 1))
+(import (shift "quasiquote.kl" 1))
+(import "quasiquote.kl")
+(import "define-syntax-rule.kl")
+
+
+(define-macros
+  ([m (lambda (stx)
+        (>>= (which-problem)
+          (lambda (prob)
+            (case prob
+              [(declaration)  (pure '(example (the (m) (m))))]
+              [(type)         (pure 'Bool)]
+              [(expression t) (pure 'true)]
+              [(pattern)      (pure 'unit)]))))]))
+
+(m)
+
+(example (case unit
+           ((m) true)))
+
+
+-- (the (-> Bool Bool Bool Bool Unit) (mega-const unit))
+-- =>
+-- (the (-> Bool Bool Bool Bool Unit) (lambda (_ _ _ _) unit))
+(define-macro (mega-const e)
+  (>>= (which-problem)
+       (lambda (prob)
+          (case prob
+            [(expression t)
+             (type-case t
+               [(-> a b)
+                (pure `(lambda (_)
+                         (mega-const ,e)))]
+               [(else x) (pure e)])]))))
+
+(example (the (-> Bool Bool Bool Bool Unit) (mega-const unit)))
+
+(define-macros
+  ([llet (lambda (stx)
+          (syntax-case stx
+            [(list (_ binding body))
+             (syntax-case binding
+               [(list (name def))
+                (pure (quasiquote/loc stx
+                        ((lambda (,name) ,body) ,def)))])]))]))
+
+(example (llet (x (mega-const unit)) (the (-> Bool Bool Bool Bool Unit) x)))
+
+
+(datatype (Both A) (both A A))
+
+(example (both (lambda (x) (lambda (y) (lambda (z) 'hello))) (mega-const 'world)))
+(example (both (mega-const 'hello) (lambda (x) (lambda (y) (lambda (z) 'world)))))
+
+-- Regression test for a bug where matching on String didn't work.
+--
+-- Also acts as a regression test for a bug where the pattern (-> a b)
+-- was binding the same type to both a and b.
+(define-macro (type-name)
+  (flet (render-type (in-lhs type)
+          (type-case type
+            [(-> type1 type2)
+             (>>= (render-type true type1)
+                  (lambda (string1)
+                    (>>= (render-type false type2)
+                         (lambda (string2)
+                           (let (r (string-append string1
+                                     (string-append " -> " string2)))
+                             (case in-lhs
+                               [(true)
+                                (pure (string-append "("
+                                        (string-append r ")")))]
+                               [(false)
+                                 (pure r)]))))))]
+            [String
+             (pure "String")]))
+    (>>= (which-problem)
+         (lambda (prob)
+           (case prob
+             [(expression t)
+              (>>= (render-type false t)
+                   (lambda (string)
+                     (let (syntax (close-syntax '() '() (string-contents string)))
+                       (pure `(mega-const ,syntax)))))])))))
+
+(example (the String (type-name)))
+(example (the String ((type-name) "foo")))
+(example (the String ((type-name) "foo" "bar")))
+(example (the String ((type-name) (lambda (x) (the String x)))))
