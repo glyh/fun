@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this
 
-`fun` is a programming language compiler/interpreter written in OCaml 5.3. The implementation is centered on the `core_tt` dependent type core: a surface parser, bidirectional elaborator, normalization-by-evaluation runtime, nominal ADTs, structural records/modules, pattern matching, and file imports.
+`fun` is a programming language compiler/interpreter written in OCaml 5.3. The implementation is centered on the `core_tt` dependent type pipeline: surface parser, bidirectional elaborator, normalization-by-evaluation runtime, nominal ADTs, structural records/modules, pattern matching, and file imports.
 
 ## Build commands
 
@@ -21,14 +21,15 @@ There is no dedicated lint target; use `dune build`, `dune test`, and `dune buil
 Run a single test suite:
 
 ```sh
-dune exec lib/semantic/core/test/test_core.exe
-dune exec lib/semantic/core/test/test_elaborate.exe
+dune exec test/backend/test_core.exe
+dune exec test/semantic/test_elaborate.exe
+dune exec test/syntax/test_match_parse.exe
 ```
 
 Run a single test case with Alcotest's test filter syntax when needed:
 
 ```sh
-dune exec lib/semantic/core/test/test_core.exe -- test eval -e 'factorial'
+dune exec test/backend/test_core.exe -- test eval -e 'factorial'
 ```
 
 ## Compilation pipeline
@@ -43,19 +44,31 @@ Source string
   → Debug.pp_value_short
 ```
 
-`bin/main.ml` wires the REPL. It parses each input expression, creates a `Core_loader` rooted at `Sys.getcwd ()`, elaborates through `Elaborate.on_expr ~loader`, evaluates with `Elaborate.Ctx.eval`, and prints `value: type`. Exceptions are caught per input so the REPL stays alive after parse, elaboration, or runtime errors.
+`bin/main.ml` wires the REPL directly through the staged libraries. It parses each input expression, creates a `Core_loader` rooted at `Sys.getcwd ()`, elaborates through `Elaborate.on_expr ~loader`, evaluates with `Elaborate.Ctx.eval`, and prints `value: type`. Exceptions are caught per input so the REPL stays alive after parse, elaboration, or runtime errors.
+
+## Source layout
+
+The implementation is split by pipeline stage, with each source folder owning its own Dune library.
+
+- `lib/syntax/` — `Surface`, `Core_parser`, and `Core_lexer` for the surface AST and parser.
+- `lib/core_kernel/` — `Atom`, `Core`, and `Debug` for primitive atoms, core terms, semantic values, metas, and pretty-printers.
+- `lib/semantic/match/` — `Core_decision_tree` and `Core_match_compile` for pattern matrix compilation and exhaustiveness checking.
+- `lib/semantic/typecheck/` — `Elaborate` and `Unify` for bidirectional elaboration and metavariable solving.
+- `lib/backend/interp/` — `Nbe` for normalization-by-evaluation and runtime match evaluation.
+- `lib/loader/` — `Core_loader` for `.fun` import resolution, caching, and circular import detection.
+- `test/backend/`, `test/semantic/`, and `test/syntax/` — tests grouped by pipeline stage.
 
 ## Important entrypoints
 
 - `bin/main.ml` — executable REPL wiring for parse/elaborate/eval/print.
-- `lib/semantic/core/core_lexer.ml` and `lib/semantic/core/core_parser.mly` — sedlex/menhir parser for expressions and `.fun` module files.
-- `lib/semantic/core/surface.ml` — surface AST consumed by elaboration.
-- `lib/semantic/core/elaborate.ml` — bidirectional elaborator, context management, implicit insertion, pattern elaboration, and match exhaustiveness checks.
-- `lib/semantic/core/nbe.ml` — normalization-by-evaluation, primitive evaluation, quoting, conversion, and runtime match evaluation.
-- `lib/semantic/core/unify.ml` — higher-order metavariable unification.
-- `lib/semantic/core/core_match_compile.ml` and `lib/semantic/core/core_decision_tree.ml` — decision-tree match compilation.
-- `lib/semantic/core/core_loader.ml` — `.fun` import resolution, caching, and circular import detection.
-- `lib/semantic/core/debug.ml` — compact pretty-printers for REPL/test output.
+- `lib/syntax/core_lexer.ml` and `lib/syntax/core_parser.mly` — sedlex/menhir parser for expressions and `.fun` module files.
+- `lib/syntax/surface.ml` — surface AST consumed by elaboration.
+- `lib/semantic/typecheck/elaborate.ml` — bidirectional elaborator, context management, implicit insertion, pattern elaboration, and match exhaustiveness checks.
+- `lib/backend/interp/nbe.ml` — normalization-by-evaluation, primitive evaluation, quoting, conversion, and runtime match evaluation.
+- `lib/semantic/typecheck/unify.ml` — higher-order metavariable unification.
+- `lib/semantic/match/core_match_compile.ml` and `lib/semantic/match/core_decision_tree.ml` — decision-tree match compilation.
+- `lib/loader/core_loader.ml` — `.fun` import resolution, caching, and circular import detection.
+- `lib/core_kernel/debug.ml` — compact pretty-printers for REPL/test output.
 
 ## Type system architecture
 
@@ -112,7 +125,7 @@ Nominal type equality is by generated nominal id plus parameter equality, not by
 
 ## Pattern matching
 
-Pattern matching is elaborated into core patterns and compiled through `core_match_compile.ml` into decision trees. Supported patterns include:
+Pattern matching is elaborated into core patterns and compiled through `Core_match_compile` into decision trees. Supported patterns include:
 
 - wildcards and binders
 - literal atoms (`I64`, `Bool`, `Char`, `Unit`)
@@ -133,16 +146,40 @@ A `.fun` module file is parsed as a struct-like module body. Public members are 
 ## Library dependency graph
 
 ```
-core_tt
+core_tt_kernel
+  └─ primitive atoms, core terms, debug helpers
+
+core_tt_syntax
+  ├─ core_tt_kernel
   ├─ menhirLib
   └─ sedlex
 
+core_tt_match
+  └─ core_tt_kernel
+
+core_tt_interp
+  ├─ core_tt_kernel
+  └─ core_tt_match
+
+core_tt_loader
+  └─ core_tt_syntax
+
+core_tt_typecheck
+  ├─ core_tt_kernel
+  ├─ core_tt_syntax
+  ├─ core_tt_match
+  ├─ core_tt_interp
+  └─ core_tt_loader
+
 fun executable
   ├─ linenoise
-  └─ core_tt
+  ├─ core_tt_syntax
+  ├─ core_tt_loader
+  ├─ core_tt_typecheck
+  └─ core_tt_kernel
 ```
 
-Tests depend on `core_tt` and `alcotest`.
+Tests depend on the staged libraries they exercise and `alcotest`.
 
 ## Language syntax notes
 

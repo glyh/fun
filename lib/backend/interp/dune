@@ -1,0 +1,6 @@
+(library
+ (name core_tt_interp)
+ (wrapped false)
+ (libraries core_tt_kernel core_tt_match)
+ (preprocess
+  (pps ppx_deriving.std)))

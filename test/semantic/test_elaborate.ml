@@ -1,5 +1,4 @@
-open Core_tt.Core
-open Core_tt
+open Core
 
 let () =
   Printexc.register_printer (function
@@ -72,7 +71,7 @@ let import_elab_fail modules source () =
   with_modules modules (fun loader ->
       match elab_with_loader loader source with
       | exception Elaborate.ElabError _ -> ()
-      | exception Core_tt.Unify.UnifyError _ -> ()
+      | exception Unify.UnifyError _ -> ()
       | _ -> Alcotest.fail "expected elaboration error")
 
 let check_type source expected () =
@@ -99,7 +98,7 @@ let elab_ok source () =
 let elab_fail source () =
   match elab source with
   | exception Elaborate.ElabError _ -> ()
-  | exception Core_tt.Unify.UnifyError _ -> ()
+  | exception Unify.UnifyError _ -> ()
   | _ -> Alcotest.fail "expected elaboration error"
 
 let constants =

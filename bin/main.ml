@@ -5,14 +5,14 @@ let rec user_input prompt callback =
          user_input prompt callback)
 
 let run source =
-  let expr = Core_tt.Core_lexer.parse_expr source in
-  let loader = Core_tt.Core_loader.create ~base_dir:(Sys.getcwd ()) in
-  let ctx = Core_tt.Elaborate.init_ctx () in
-  let core, ty = Core_tt.Elaborate.on_expr ~loader ctx expr in
-  let value = Core_tt.Elaborate.Ctx.eval ctx core in
+  let expr = Core_lexer.parse_expr source in
+  let loader = Core_loader.create ~base_dir:(Sys.getcwd ()) in
+  let ctx = Elaborate.init_ctx () in
+  let core, ty = Elaborate.on_expr ~loader ctx expr in
+  let value = Elaborate.Ctx.eval ctx core in
   Printf.printf "%s: %s\n"
-    (Core_tt.Debug.pp_value_short ctx.metas value)
-    (Core_tt.Debug.pp_value_short ctx.metas ty);
+    (Debug.pp_value_short ctx.metas value)
+    (Debug.pp_value_short ctx.metas ty);
   Out_channel.flush stdout
 
 let interactive_pipeline source =

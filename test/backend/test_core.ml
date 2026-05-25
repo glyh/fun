@@ -1,12 +1,12 @@
-open Core_tt.Core
-open Core_tt.Atom
-open Core_tt.Nbe
-open Core_tt.Unify
+open Core
+open Atom
+open Nbe
+open Unify
 
 let () =
   Printexc.register_printer (function
-    | Core_tt.Elaborate.ElabError e ->
-        let open Core_tt.Elaborate in
+    | Elaborate.ElabError e ->
+        let open Elaborate in
         Some
           (Printf.sprintf "ElabError(%s)"
              (match e with
@@ -28,19 +28,19 @@ let () =
 let mc () = MetaContext.create ()
 
 let parse_expr source =
-  Core_tt.Core_lexer.parse_expr source
+  Core_lexer.parse_expr source
 
 let eval_source source =
   let expr = parse_expr source in
-  let ctx = Core_tt.Elaborate.init_ctx () in
-  let core, _ty = Core_tt.Elaborate.on_expr ctx expr in
-  Core_tt.Elaborate.Ctx.eval ctx core
+  let ctx = Elaborate.init_ctx () in
+  let core, _ty = Elaborate.on_expr ctx expr in
+  Elaborate.Ctx.eval ctx core
 
 let eval_source_with_loader loader source =
   let expr = parse_expr source in
-  let ctx = Core_tt.Elaborate.init_ctx () in
-  let core, _ty = Core_tt.Elaborate.on_expr ~loader ctx expr in
-  Core_tt.Elaborate.Ctx.eval ctx core
+  let ctx = Elaborate.init_ctx () in
+  let core, _ty = Elaborate.on_expr ~loader ctx expr in
+  Elaborate.Ctx.eval ctx core
 
 let with_modules modules f =
   let dir = Filename.temp_dir "fun_core_test" "" in
@@ -49,7 +49,7 @@ let with_modules modules f =
       let path = Filename.concat dir (name ^ ".fun") in
       Out_channel.with_open_text path (fun oc -> output_string oc source))
     modules;
-  let loader = Core_tt.Core_loader.create ~base_dir:dir in
+  let loader = Core_loader.create ~base_dir:dir in
   f loader
 
 let check_import_i64 label modules expected source () =
@@ -59,7 +59,7 @@ let check_import_i64 label modules expected source () =
       | v ->
           let mc = MetaContext.create () in
           Alcotest.fail
-            (Printf.sprintf "%s: expected VAtom I64, got %s" label (Core_tt.Debug.pp_value_short mc v))
+            (Printf.sprintf "%s: expected VAtom I64, got %s" label (Debug.pp_value_short mc v))
       | exception e -> Alcotest.fail (Printf.sprintf "%s: exception %s" label (Printexc.to_string e)))
 
 let check_i64 label expected source () =
@@ -68,7 +68,7 @@ let check_i64 label expected source () =
   | v ->
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "%s: expected VAtom I64, got %s" label
-        (Core_tt.Debug.pp_value_short mc v))
+        (Debug.pp_value_short mc v))
   | exception e ->
       Alcotest.fail (Printf.sprintf "%s: exception %s" label (Printexc.to_string e))
 
@@ -78,25 +78,25 @@ let check_bool label expected source () =
   | v ->
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "%s: expected VAtom Bool, got %s" label
-        (Core_tt.Debug.pp_value_short mc v))
+        (Debug.pp_value_short mc v))
   | exception e ->
       Alcotest.fail (Printf.sprintf "%s: exception %s" label (Printexc.to_string e))
 
 let check_conv label s1 s2 () =
-  let ctx = Core_tt.Elaborate.init_ctx () in
-  let core1, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s1) in
-  let core2, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s2) in
-  let v1 = Core_tt.Elaborate.Ctx.eval ctx core1 in
-  let v2 = Core_tt.Elaborate.Ctx.eval ctx core2 in
-  Alcotest.(check bool) label true (Core_tt.Elaborate.Ctx.conv ctx v1 v2)
+  let ctx = Elaborate.init_ctx () in
+  let core1, _ = Elaborate.on_expr ctx (parse_expr s1) in
+  let core2, _ = Elaborate.on_expr ctx (parse_expr s2) in
+  let v1 = Elaborate.Ctx.eval ctx core1 in
+  let v2 = Elaborate.Ctx.eval ctx core2 in
+  Alcotest.(check bool) label true (Elaborate.Ctx.conv ctx v1 v2)
 
 let check_not_conv label s1 s2 () =
-  let ctx = Core_tt.Elaborate.init_ctx () in
-  let core1, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s1) in
-  let core2, _ = Core_tt.Elaborate.on_expr ctx (parse_expr s2) in
-  let v1 = Core_tt.Elaborate.Ctx.eval ctx core1 in
-  let v2 = Core_tt.Elaborate.Ctx.eval ctx core2 in
-  Alcotest.(check bool) label false (Core_tt.Elaborate.Ctx.conv ctx v1 v2)
+  let ctx = Elaborate.init_ctx () in
+  let core1, _ = Elaborate.on_expr ctx (parse_expr s1) in
+  let core2, _ = Elaborate.on_expr ctx (parse_expr s2) in
+  let v1 = Elaborate.Ctx.eval ctx core1 in
+  let v2 = Elaborate.Ctx.eval ctx core2 in
+  Alcotest.(check bool) label false (Elaborate.Ctx.conv ctx v1 v2)
 
 (* -- eval tests --------------------------------------------------------- *)
 

@@ -2,7 +2,8 @@
  (modules core_parser))
 
 (library
- (name core_tt)
- (libraries menhirLib sedlex)
+ (name core_tt_syntax)
+ (wrapped false)
+ (libraries core_tt_kernel menhirLib sedlex)
  (preprocess
   (pps ppx_deriving.std sedlex.ppx)))
