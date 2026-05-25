@@ -2,4 +2,4 @@
  (names test_core test_elaborate)
  (libraries core_tt alcotest menhirLib)
  (preprocess
-  (pps ppx_deriving.std ppx_here)))
+  (pps ppx_deriving.std)))

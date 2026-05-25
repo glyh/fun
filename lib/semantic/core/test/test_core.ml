@@ -1,4 +1,5 @@
 open Core_tt.Core
+open Core_tt.Atom
 open Core_tt.Nbe
 open Core_tt.Unify
 

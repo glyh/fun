@@ -228,7 +228,7 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
   let v2 = Nbe.force mc v2 in
   match (v1, v2) with
   | VU, VU -> ()
-  | VAtom a1, VAtom a2 when Syntax.Ast.Atom.equal a1 a2 -> ()
+  | VAtom a1, VAtom a2 when Atom.equal a1 a2 -> ()
   | VAtomTy t1, VAtomTy t2 when equal_atom_ty t1 t2 -> ()
   | ( VPi { explicitness = e1; domain = a1; codomain = clo1 },
       VPi { explicitness = e2; domain = a2; codomain = clo2 } )

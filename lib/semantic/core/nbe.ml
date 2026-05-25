@@ -3,7 +3,7 @@ open Core
 exception EvalError of string
 
 module Prim = struct
-  open Syntax.Ast.Atom
+  open Atom
 
   type reducer = t list -> t option
 
@@ -33,7 +33,7 @@ module Prim = struct
 end
 
 let atom_ty_of_atom = function
-  | Syntax.Ast.Atom.I64 _ -> TI64
+  | Atom.I64 _ -> TI64
   | Bool _ -> TBool
   | Unit -> TUnit
   | Char _ -> TChar
@@ -449,7 +449,7 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   match (p1, p2) with
   | CPatWild, CPatWild -> true
   | CPatBind, CPatBind -> true
-  | CPatAtom a1, CPatAtom a2 -> Syntax.Ast.Atom.equal a1 a2
+  | CPatAtom a1, CPatAtom a2 -> Atom.equal a1 a2
   | CPatProd ps1, CPatProd ps2 ->
       List.length ps1 = List.length ps2 && List.for_all2 conv_pat ps1 ps2
   | CPatOr (l1, r1), CPatOr (l2, r2) ->
@@ -564,7 +564,7 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
   let v2 = force mc v2 in
   match (v1, v2) with
   | VU, VU -> true
-  | VAtom a1, VAtom a2 -> Syntax.Ast.Atom.equal a1 a2
+  | VAtom a1, VAtom a2 -> Atom.equal a1 a2
   | VAtomTy t1, VAtomTy t2 -> equal_atom_ty t1 t2
   | ( VPi { explicitness = e1; domain = a1; codomain = clo1 },
       VPi { explicitness = e2; domain = a2; codomain = clo2 } )

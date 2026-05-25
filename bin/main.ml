@@ -1,30 +1,23 @@
 let rec user_input prompt callback =
   LNoise.linenoise prompt
-  |> Option.iter (fun v ->
-         callback v;
+  |> Option.iter (fun input ->
+         callback input;
          user_input prompt callback)
 
-let typecheck ?loader expr =
-  Typecheck.Inference.on_expr ?loader Typecheck.TypeEnv.default (Syntax.Desugar.expr expr)
+let run source =
+  let expr = Core_tt.Core_lexer.parse_expr source in
+  let loader = Core_tt.Core_loader.create ~base_dir:(Sys.getcwd ()) in
+  let ctx = Core_tt.Elaborate.init_ctx () in
+  let core, ty = Core_tt.Elaborate.on_expr ~loader ctx expr in
+  let value = Core_tt.Elaborate.Ctx.eval ctx core in
+  Printf.printf "%s: %s\n"
+    (Core_tt.Debug.pp_value_short ctx.metas value)
+    (Core_tt.Debug.pp_value_short ctx.metas ty);
+  Out_channel.flush stdout
 
 let interactive_pipeline source =
-  let lexbuf = Sedlexing.Utf8.from_string source in
-  let lexer = Sedlexing.with_tokenizer Syntax.Lexer.token lexbuf in
-  let parsed =
-    MenhirLib.Convert.Simplified.traditional2revised Syntax.Parser.expr_eof
-      lexer
-  in
-  let loader =
-    Loader.create ~base_dir:(Sys.getcwd ())
-      ~typecheck_fn:(fun ?loader expr -> typecheck ?loader expr)
-  in
-  let typed, type_defs =
-    typecheck ~loader parsed
-  in
-  let result = Interp.(Eval.eval ~type_defs Env.default typed) in
-  Printf.printf "%s: %s\n"
-    (Interp.Model.Value.pp result)
-    (Type.T.pp typed.Typed_ir.Expr.type_);
-  Out_channel.(flush stdout)
+  try run source
+  with exn ->
+    Printf.eprintf "error: %s\n%!" (Printexc.to_string exn)
 
-let () = interactive_pipeline |> user_input "fun> "
+let () = user_input "fun> " interactive_pipeline

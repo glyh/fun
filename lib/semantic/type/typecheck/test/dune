@@ -1,3 +1,0 @@
-(test
- (name test_typecheck)
- (libraries alcotest menhirLib syntax sedlex type typecheck typed_ir))

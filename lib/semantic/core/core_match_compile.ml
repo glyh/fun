@@ -156,7 +156,7 @@ let specialize_switch m key =
     List.filter_map
       (fun r ->
         match (r.pats.(0), key) with
-        | CPatAtom atom, DT.KAtom atom' when Syntax.Ast.Atom.equal atom atom' ->
+        | CPatAtom atom, DT.KAtom atom' when Atom.equal atom atom' ->
             let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
             Some { r with pats }
         | CPatType atom_ty, DT.KType atom_ty' when equal_atom_ty atom_ty atom_ty' ->
@@ -283,7 +283,7 @@ let collect_leaf_bindings m =
   r.bindings @ extra
 
 let all_atoms = function
-  | TBool -> Some [ Syntax.Ast.Atom.Bool true; Bool false ]
+  | TBool -> Some [ Atom.Bool true; Bool false ]
   | TUnit -> Some [ Unit ]
   | TI64 | TChar -> None
 

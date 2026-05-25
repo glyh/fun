@@ -13,7 +13,7 @@ and struct_binding =
     }
 
 and t =
-  | Atom of Syntax.Ast.Atom.t
+  | Atom of Atom.t
   | Var of string
   | Self
   | SelfType
@@ -53,7 +53,7 @@ and pat =
   | PatRecord of { typ_path : string list; typ : string; fields : (string * pat option) list; partial : bool }
   | PatOr of pat * pat
   | PatProd of pat list
-  | PatAtom of Syntax.Ast.Atom.t
+  | PatAtom of Atom.t
   | PatType of Core.atom_ty
   | PatWild                       (* _ *)
   | PatBind of string             (* variable binding *)

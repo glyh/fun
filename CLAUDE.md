@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this
 
-`fun` is a programming language compiler/interpreter written in OCaml 5.3. It features Hindley-Milner type inference, a struct-based module system (inspired by Zig), Maranget-style pattern match compilation with exhaustiveness checking, and file imports.
+`fun` is a programming language compiler/interpreter written in OCaml 5.3. The implementation is centered on the `core_tt` dependent type core: a surface parser, bidirectional elaborator, normalization-by-evaluation runtime, nominal ADTs, structural records/modules, pattern matching, and file imports.
 
 ## Build commands
 
@@ -19,129 +19,144 @@ dune build @doc                # build odoc documentation
 There is no dedicated lint target; use `dune build`, `dune test`, and `dune build @fmt --auto-promote` as the standard validation loop.
 
 Run a single test suite:
-```sh
-dune exec lib/backend/interp/test/test_interp.exe
-dune exec lib/syntax/test/test_syntax.exe
-dune exec lib/semantic/type/test/test_type.exe
-dune exec lib/semantic/type/typecheck/test/test_typecheck.exe
-```
 
-Run a single test case (Alcotest syntax):
 ```sh
-dune exec lib/backend/interp/test/test_interp.exe -- test 'matches' -e 'literal switch'
-```
-
-Core type theory tests (separate prototype):
-```sh
-dune exec lib/semantic/core/test/test_elaborate.exe
 dune exec lib/semantic/core/test/test_core.exe
+dune exec lib/semantic/core/test/test_elaborate.exe
+```
+
+Run a single test case with Alcotest's test filter syntax when needed:
+
+```sh
+dune exec lib/semantic/core/test/test_core.exe -- test eval -e 'factorial'
 ```
 
 ## Compilation pipeline
 
 ```
 Source string
-  → Lexer (sedlex)
-  → Parser (menhir)
-  → Syntax.Ast.Expr.t              (untyped AST, may contain TypeDecl)
-  → Syntax.Desugar.expr
-  → Syntax.Desugared_ast.Expr.t    (TypeDecl eliminated — only Value/Open/Export bindings)
-  → Typecheck.Inference.on_expr    (constraint-based HM inference)
-  → Typed_ir.Expr.t                (every node annotated with Type.T.t)
-  → Interp.Eval.eval               (tree-walking interpreter)
+  → Core_lexer / Core_parser
+  → Surface.t
+  → Elaborate.on_expr
+  → Core.term + Core.value type
+  → NBE evaluation / Elaborate.Ctx.eval
+  → Debug.pp_value_short
 ```
 
-The desugar pass rewrites `type T = ...` into `let T = struct ... end` + `open T`. Callers must call `Desugar.expr` before passing to the typechecker. Match expressions are compiled lazily during evaluation: `Eval.eval` calls `Match_compile.compile` to build a decision tree, then interprets it against the scrutinee.
-
-AST/IR layering:
-- `Syntax.Ast` is parser output and includes user-facing forms such as `TypeDecl`, `Import`, and qualified record/constructor syntax.
-- `Syntax.Desugared_ast` is typechecker input; `TypeDecl` has been eliminated into `Value` plus `Open`/`Export` bindings.
-- `Typed_ir` is evaluator input; nodes are annotated with `Type.T.t`, and struct definitions carry resolved members and `pub_names`.
+`bin/main.ml` wires the REPL. It parses each input expression, creates a `Core_loader` rooted at `Sys.getcwd ()`, elaborates through `Elaborate.on_expr ~loader`, evaluates with `Elaborate.Ctx.eval`, and prints `value: type`. Exceptions are caught per input so the REPL stays alive after parse, elaboration, or runtime errors.
 
 ## Important entrypoints
 
-- `bin/main.ml` wires the REPL: parse, build a loader rooted at `Sys.getcwd ()`, desugar/typecheck, evaluate, and print `value: type`.
-- `lib/loader/loader.ml` handles `.fun` import resolution, parsing imported modules, typechecking cache, and circular import detection.
-- `lib/semantic/type/typecheck/typecheck.ml` exposes the HM inference entrypoint `Typecheck.Inference.on_expr`.
-- `lib/backend/interp/eval.ml` is the tree-walking evaluator entrypoint.
-- `lib/semantic/core/elaborate.ml` is the dependent type prototype elaboration entrypoint.
+- `bin/main.ml` — executable REPL wiring for parse/elaborate/eval/print.
+- `lib/semantic/core/core_lexer.ml` and `lib/semantic/core/core_parser.mly` — sedlex/menhir parser for expressions and `.fun` module files.
+- `lib/semantic/core/surface.ml` — surface AST consumed by elaboration.
+- `lib/semantic/core/elaborate.ml` — bidirectional elaborator, context management, implicit insertion, pattern elaboration, and match exhaustiveness checks.
+- `lib/semantic/core/nbe.ml` — normalization-by-evaluation, primitive evaluation, quoting, conversion, and runtime match evaluation.
+- `lib/semantic/core/unify.ml` — higher-order metavariable unification.
+- `lib/semantic/core/core_match_compile.ml` and `lib/semantic/core/core_decision_tree.ml` — decision-tree match compilation.
+- `lib/semantic/core/core_loader.ml` — `.fun` import resolution, caching, and circular import detection.
+- `lib/semantic/core/debug.ml` — compact pretty-printers for REPL/test output.
 
 ## Type system architecture
 
-`Type.Generic` is parameterized over variable representation:
-- `Type.Human.t` — source-level types with string variables, used in parser output and AST
-- `Type.T.t` — internal types with unique integer-tagged `Var.t`, used after typechecking
+`core_tt` uses de Bruijn indices in core terms and de Bruijn levels in semantic values. Names exist at the surface/elaboration boundary for lookup and diagnostics, but the core representation is index-based.
 
-`Type.T.of_human` converts between the two. `Type.T.equal` handles alpha-equivalence for `Forall` types.
+The current universe model is `Type : Type`. This is intentionally simple and can be replaced with a universe hierarchy later.
 
-Type inference in `typecheck.ml` generates constraints from `Desugared_ast.Expr.t`, solves via unification, and generalizes let-bindings. Record types are tracked in `RecordDefs` with lookup by field name or type name (used for field access inference).
+Elaboration is bidirectional:
 
-`self` is encoded as a sentinel `Con({path=[]; name="self"}, [])` in `Human.t`. The typechecker's `resolve_self ~nominal` substitutes it with the actual nominal type before processing.
+- `infer` synthesizes a core term and semantic type.
+- `check` verifies a surface expression against an expected semantic type.
+- implicit arguments are represented with explicitness flags on Pi/application forms and inserted with metavariables during elaboration.
+- let-bound unsolved metas are generalized into implicit parameters, giving HM-like let-polymorphism through the dependent core.
 
-## Module system
+Metavariable solving uses Miller-style pattern unification in `unify.ml`. `MetaContext` tracks solved and unsolved metas, and NbE `force` follows solved metas during normalization/conversion.
 
-`struct ... end` is the universal construct for records, ADTs, modules, and namespaces. A struct body is one of three forms:
-- `Fields` — record type (`x: I64; y: I64;`)
-- `Variants` — ADT (`| Some 'a | None`)
-- `Namespace` — pure namespace (only `let`/`type`/`open` members)
+## Structs, records, modules, and ADTs
 
-`type T = ...` desugars into `let T = struct ... end` + `open T` (or `export T` for pub types inside structs). The `Desugared_ast` has no `TypeDecl` — only `Value | Open | Export` bindings.
+`struct ... end` is the universal structural value for records, modules, and namespaces. A struct can contain:
 
-`open Name` brings struct members into scope privately. `export Name` does the same but re-exports them publicly. Inside structs, `open`/`export` control whether opened names leak to the parent's public interface.
+- field declarations: `x: I64;`
+- computed public fields: `pub let x = expr`
+- private bindings: `let x = expr`
+- nested public/private type bindings
+- `open` / `export` members for scoped imports and re-exports
+- methods with `self` and `Self` support for record-like structs
 
-## Key IR types
+Record construction uses a struct type value:
 
-- `Typed_ir.Binding.t` = `Value | Open | Export` (no TypeDecl)
-- `Typed_ir.Expr.StructDef` carries `body : Ast.struct_body`, `members : Binding.t list`, `pub_names : string list`
-- `Value.t` uses `Struct of (string * t) list` for both records and structs (unified)
+```fun
+let Point = struct x: I64; y: I64; end in
+Point {x = 1; y = 2}
+```
 
-## Pattern match compilation
+Record patterns destructure by field name:
 
-`lib/semantic/match/` implements Maranget-style pattern matrix decomposition:
-- `matrix.ml` — pattern matrix with occurrence-indexed columns
-- `match_compile.ml` — finds refutable columns, specializes by constructor (`Destruct`) or literal (`Switch`)
-- `decision_tree.ml` — hash-consed DAG output (deduplicates identical subtrees)
-- `missing_pat.ml` — structured missing pattern diagnostics for exhaustiveness errors
-- Union patterns (`|`) are expanded into multiple matrix rows
+```fun
+match p with
+| Point {x; y} -> x + y
+end
+```
 
-## Dependent type theory prototype (`core_tt`)
+ADTs are nominal and are introduced with `type`:
 
-`lib/semantic/core/` is a standalone prototype for the planned DT migration. It has its own surface syntax (`surface.ml`), core terms (`core.ml`), NbE evaluator (`nbe.ml`), elaborator with implicit argument insertion (`elaborate.ml`), and higher-order unification with metavariables (`unify.ml`). It depends on `std` and `syntax` (for `Ast.Atom.t`) but is not wired into the main compilation pipeline yet.
+```fun
+type Option A = Some A | None in
+match Some 1 with
+| Some x -> x
+| None -> 0
+end
+```
 
-Key differences from the HM pipeline:
-- Uses de Bruijn indices/levels instead of named `Var.t`
-- Type : Type (no universe hierarchy yet)
-- Implicit arguments (`{x : A} -> B`) with insertion via `InsertedMeta`
-- Nominal types with constructors (`VNominal`, `VCon`) and pattern matching
-- Structs with `open` scoping and partial application
+Nominal type equality is by generated nominal id plus parameter equality, not by name.
 
-The test suite has its own parser (`core_parser.mly` / `core_lexer.ml`) for writing test expressions in a concise syntax.
+## Pattern matching
+
+Pattern matching is elaborated into core patterns and compiled through `core_match_compile.ml` into decision trees. Supported patterns include:
+
+- wildcards and binders
+- literal atoms (`I64`, `Bool`, `Char`, `Unit`)
+- tuples/products
+- nominal constructors, including qualified paths
+- records, including renamed and partial field patterns
+- or-patterns
+- type-head patterns used by type-specialized primitives
+
+The match compiler performs exhaustiveness checks for finite domains where possible and treats open domains, such as `Type`, conservatively.
+
+## Imports
+
+`import "path"` resolves to `<cwd>/path.fun`, using the process working directory as the import base. `Core_loader` parses imported files through the module parser entrypoint, caches parsed modules, and reports circular imports.
+
+A `.fun` module file is parsed as a struct-like module body. Public members are exposed to import users through ordinary struct/module field access and `open`.
 
 ## Library dependency graph
 
 ```
-std
-  ← type
-     ← syntax, typed_ir
-        ← typecheck, match
-           ← interp, loader
+core_tt
+  ├─ menhirLib
+  └─ sedlex
 
-std, syntax
-  ← core_tt (standalone prototype, not connected to main pipeline)
+fun executable
+  ├─ linenoise
+  └─ core_tt
 ```
+
+Tests depend on `core_tt` and `alcotest`.
 
 ## Language syntax notes
 
-- Type parameters: `'a` syntax. Parameterized types use square brackets: `option['a]`, `list['a]`
-- ADTs: `type option['a] = Some 'a | None` (desugars to struct internally)
-- Records: `type point = {x: I64; y: I64}`, constructed as `point {x = 1; y = 2}`, accessed as `expr.field`
-- Record patterns: strict `point {x; y}` or partial `point {x; _}` (type name required)
-- Structs: `let M = struct ... end`, parameterized `struct['a] ... end`
-- `self` keyword in type positions refers to the enclosing type (recursive types)
-- `open M in expr` / `open M` inside structs; `export M` inside structs for re-export
-- Nullary constructors in patterns require parens: `Red()` is a constructor, `Red` is a variable binding
-- Match: `match expr | pat -> body | pat -> body end`
-- `let rec` desugars to `Fix(Lam(name, body))`
-- Comments: `(* ... *)` with nesting
-- Built-in types: `I64`, `Bool`, `Unit`, `Char`
-- File imports: `import "path"` resolves to `<cwd>/path.fun`, cached and circular-import-safe; imports are relative to the process working directory, not the importing file's directory
+- Built-in types: `I64`, `Bool`, `Unit`, `Char`, `Type`.
+- Type parameters are ordinary binders in dependent function types; implicit arguments use braces.
+- Explicit function type: `(x : A) -> B`; implicit function type: `{x : A} -> B`.
+- Explicit application: `f x`; explicit implicit application: `f {A}`.
+- ADTs: `type Option A = Some A | None in ...`.
+- Records: `let Point = struct x: I64; y: I64; end in Point {x = 1; y = 2}`.
+- Field access: `expr.field`.
+- Record patterns: `Point {x; y}`, `Point {x = n; _}`, and qualified forms such as `M.Point {x}`.
+- Structs: `struct ... end` with `let`, `pub let`, `type`, `pub type`, `open`, and `export` members.
+- `self` names the receiver inside methods; `Self` names the enclosing record type after field declarations.
+- `open M in expr` brings public members into expression scope.
+- Match: `match expr with | pat -> body | pat -> body end`.
+- Recursive values use `let rec`.
+- Comments: `(* ... *)` with nesting.

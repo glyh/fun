@@ -1,5 +1,0 @@
-(library
- (name typecheck)
- (libraries type syntax typed_ir)
- (preprocess
-  (pps ppx_deriving_yojson ppx_hash ppx_here)))

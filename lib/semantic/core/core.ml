@@ -19,7 +19,7 @@ type term =
   | Let of term * term * term   (* let _ : A = def in body *)
   | Pi of explicitness * term * term  (* (x : A) -> B or {x : A} -> B *)
   | U (* Type : Type *)
-  | Atom of Syntax.Ast.Atom.t
+  | Atom of Atom.t
   | AtomTy of atom_ty
   | If of term * term * term
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
@@ -87,7 +87,7 @@ and core_pat =
       (** Constructor pattern. [name] is the constructor tag, [num_type_params]
           is how many leading spine elements are type args (skipped during
           matching), [sub_pats] bind the payload elements. *)
-  | CPatAtom of Syntax.Ast.Atom.t
+  | CPatAtom of Atom.t
       (** Literal atom pattern. *)
   | CPatType of atom_ty
       (** Primitive type-head pattern. *)
@@ -137,7 +137,7 @@ and value =
   | VLam of { body : closure }
   | VPi of { explicitness : explicitness; domain : value; codomain : closure }
   | VU
-  | VAtom of Syntax.Ast.Atom.t
+  | VAtom of Atom.t
   | VAtomTy of atom_ty
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)

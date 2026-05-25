@@ -1,5 +1,6 @@
 %{
 open Surface
+module A = Atom
 
 type record_pat_entry =
   | RecordPatField of string * pat option
@@ -91,11 +92,11 @@ pat_atom:
     { let path, typ = typ in
       let fields, partial = split_record_pat_entries entries in
       PatRecord { typ_path = path; typ; fields; partial } }
-  | n = INT { PatAtom (I64 n) }
-  | c = CHAR { PatAtom (Char c) }
-  | TRUE { PatAtom (Bool true) }
-  | FALSE { PatAtom (Bool false) }
-  | UNIT { PatAtom Unit }
+  | n = INT { PatAtom (A.I64 n) }
+  | c = CHAR { PatAtom (A.Char c) }
+  | TRUE { PatAtom (A.Bool true) }
+  | FALSE { PatAtom (A.Bool false) }
+  | UNIT { PatAtom A.Unit }
   | LPAREN; p = pat; RPAREN { p }
   | LPAREN; p = pat; COMMA; rest = separated_nonempty_list(COMMA, pat); RPAREN
     { PatProd (p :: rest) }
@@ -204,11 +205,11 @@ expr_proj:
   | e = expr_primary { e }
 
 expr_primary:
-  | n = INT { Atom (I64 n) }
-  | c = CHAR { Atom (Char c) }
-  | TRUE { Atom (Bool true) }
-  | FALSE { Atom (Bool false) }
-  | UNIT { Atom Unit }
+  | n = INT { Atom (A.I64 n) }
+  | c = CHAR { Atom (A.Char c) }
+  | TRUE { Atom (A.Bool true) }
+  | FALSE { Atom (A.Bool false) }
+  | UNIT { Atom A.Unit }
   | SELF { Self }
   | SELF_TYPE { SelfType }
   | IMPORT; path = STRING { Import path }

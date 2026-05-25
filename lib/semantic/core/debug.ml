@@ -8,7 +8,7 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VAtom (I64 n) -> Int64.to_string n
     | VAtom (Bool b) -> string_of_bool b
     | VAtom Unit -> "()"
-    | VAtom (Char c) -> Syntax.Ast.Atom.pp (Char c)
+    | VAtom (Char c) -> Atom.pp (Char c)
     | VAtomTy TI64 -> "I64"
     | VAtomTy TBool -> "Bool"
     | VAtomTy TUnit -> "Unit"

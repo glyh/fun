@@ -1,5 +1,0 @@
-(library
- (name std)
- (libraries core)
- (preprocess
-  (pps ppx_deriving.std ppx_hash)))

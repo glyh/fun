@@ -139,7 +139,7 @@ let ( ^->> ) = fun lhs rhs -> Pi (Explicit, lhs, rhs)
 let ( ^=>> ) = fun lhs rhs -> Pi (Implicit, lhs, rhs)
 
 let atom_ty_of_atom = function
-  | Syntax.Ast.Atom.I64 _ -> TI64
+  | Atom.I64 _ -> TI64
   | Bool _ -> TBool
   | Unit -> TUnit
   | Char _ -> TChar

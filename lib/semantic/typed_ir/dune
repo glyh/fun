@@ -1,3 +1,0 @@
-(library
- (name typed_ir)
- (libraries std type syntax))
