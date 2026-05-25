@@ -17,6 +17,7 @@ type elab_error =
   | MissingRecordField of string
   | NonExhaustive of string
   | InvalidRecursiveRecord of string
+  | ImportRequiresLoader of string
 
 exception ElabError of elab_error
 
@@ -36,12 +37,23 @@ module Ctx = struct
     name_table : name_entry NameMap.t;
     self_entry : name_entry option;
     self_type : value option;
+    loader : Core_loader.t option;
   }
 
   (** Create an empty elaboration context with a fresh meta store. *)
   let empty () : t =
     let metas = MetaContext.create () in
-    { env = []; types = []; lvl = 0; metas; bds = []; name_table = NameMap.empty; self_entry = None; self_type = None }
+    {
+      env = [];
+      types = [];
+      lvl = 0;
+      metas;
+      bds = [];
+      name_table = NameMap.empty;
+      self_entry = None;
+      self_type = None;
+      loader = None;
+    }
 
   (** Extend the context with a [Bound] binder (lambda/pi parameter). *)
   let bind (ctx : t) (name : string) (ty : value) : t =
@@ -55,6 +67,7 @@ module Ctx = struct
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
       self_entry = ctx.self_entry;
       self_type = ctx.self_type;
+      loader = ctx.loader;
     }
 
   (** Extend the context with a [Defined] binder (let/define). *)
@@ -68,6 +81,7 @@ module Ctx = struct
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
       self_entry = ctx.self_entry;
       self_type = ctx.self_type;
+      loader = ctx.loader;
     }
 
   (** Resolve a user-written name to its de Bruijn index and type.
@@ -93,6 +107,8 @@ module Ctx = struct
     { ctx with self_entry = Some { level = ctx.lvl - 1; ty } }
 
   let with_self_type (ctx : t) (ty : value) : t = { ctx with self_type = Some ty }
+
+  let with_loader (ctx : t) (loader : Core_loader.t) : t = { ctx with loader = Some loader }
 
   let clear_self (ctx : t) : t = { ctx with self_entry = None }
 
@@ -253,6 +269,7 @@ let rewrite_record_self_refs record_name params expr =
             Surface.Struct
               { con_fields = List.map (fun (name, ty) -> (name, go bound ty)) con_fields;
                 bindings = List.map binding bindings }
+        | Surface.Import _ -> expr
         | Surface.Open (name, body) -> Surface.Open (name, go bound body)
         | Surface.RecordTypeDef { name; params; fields; body } ->
             Surface.RecordTypeDef
@@ -589,6 +606,10 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             raise (ElabError TupleLengthMismatch);
           (Proj (e_core, i), Nbe.force ctx.metas (List.nth tys i))
       | _ -> raise (ElabError ApplyingNonFunction))
+  | Import path -> (
+      match ctx.loader with
+      | Some loader -> Core_loader.load loader path (fun imported -> infer ctx imported)
+      | None -> raise (ElabError (ImportRequiresLoader path)))
   | RecordConstruct { typ; fields } ->
       let typ_core, typ_ty = infer ctx typ in
       let typ_core, typ_ty = insert_implicit_args ctx typ_core typ_ty in
@@ -1388,5 +1409,6 @@ let init_ctx () : Ctx.t =
   add_stdlib ctx stdlib
 
 (** Entry point: elaborate a surface expression in the given context. *)
-let on_expr (ctx : Ctx.t) (expr : Surface.t) : term * value =
+let on_expr ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value =
+  let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
   infer ctx expr

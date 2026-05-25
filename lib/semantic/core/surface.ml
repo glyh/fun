@@ -32,6 +32,7 @@ and t =
       con_fields : (string * t) list;
       bindings : struct_binding list;
     }
+  | Import of string
   | Open of string * t
   | RecordTypeDef of {
       name : string;

@@ -20,7 +20,8 @@ let () =
              | DuplicateRecordField n -> "DuplicateRecordField \"" ^ n ^ "\""
              | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
              | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
-             | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""))
+             | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
+             | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""))
     | _ -> None)
 
 let mc () = MetaContext.create ()
@@ -33,6 +34,32 @@ let eval_source source =
   let ctx = Core_tt.Elaborate.init_ctx () in
   let core, _ty = Core_tt.Elaborate.on_expr ctx expr in
   Core_tt.Elaborate.Ctx.eval ctx core
+
+let eval_source_with_loader loader source =
+  let expr = parse_expr source in
+  let ctx = Core_tt.Elaborate.init_ctx () in
+  let core, _ty = Core_tt.Elaborate.on_expr ~loader ctx expr in
+  Core_tt.Elaborate.Ctx.eval ctx core
+
+let with_modules modules f =
+  let dir = Filename.temp_dir "fun_core_test" "" in
+  List.iter
+    (fun (name, source) ->
+      let path = Filename.concat dir (name ^ ".fun") in
+      Out_channel.with_open_text path (fun oc -> output_string oc source))
+    modules;
+  let loader = Core_tt.Core_loader.create ~base_dir:dir in
+  f loader
+
+let check_import_i64 label modules expected source () =
+  with_modules modules (fun loader ->
+      match eval_source_with_loader loader source with
+      | VAtom (I64 n) -> Alcotest.(check int64) label expected n
+      | v ->
+          let mc = MetaContext.create () in
+          Alcotest.fail
+            (Printf.sprintf "%s: expected VAtom I64, got %s" label (Core_tt.Debug.pp_value_short mc v))
+      | exception e -> Alcotest.fail (Printf.sprintf "%s: exception %s" label (Printexc.to_string e)))
 
 let check_i64 label expected source () =
   match eval_source source with
@@ -416,6 +443,23 @@ let () =
             (check_i64 "qualified record pattern" 3L
                "let M = struct pub let Point = struct x: I64; y: I64; end end in \
                 match M.Point {x = 1; y = 2} with M.Point {x; y} -> x + y end");
+        ] );
+      ( "imports",
+        [
+          Alcotest.test_case "basic import" `Quick
+            (check_import_i64 "basic import" [ ("math", "pub let x = 41; pub let y = x + 1") ] 42L
+               "let M = import \"math\" in M.y");
+          Alcotest.test_case "nested import" `Quick
+            (check_import_i64 "nested import"
+               [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ] 42L
+               "let W = import \"wrapper\" in W.M.x");
+          Alcotest.test_case "repeated import" `Quick
+            (check_import_i64 "repeated import" [ ("m", "pub let x = 21") ] 42L
+               "let A = import \"m\" in let B = import \"m\" in A.x + B.x");
+          Alcotest.test_case "imported ADT match" `Quick
+            (check_import_i64 "imported ADT match"
+               [ ("color", "pub type Color = Red | Green | Blue; pub let default = Green") ] 2L
+               "let C = import \"color\" in match C.default with C.Red -> 1 | C.Green -> 2 | C.Blue -> 3 end");
         ] );
       ( "conv",
         [

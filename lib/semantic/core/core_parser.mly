@@ -29,9 +29,10 @@ let bare_pat_name path name =
 %token <int64> INT
 %token <char> CHAR
 %token <string> ID
+%token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE METHOD SELF SELF_TYPE
+%token STRUCT END OPEN PUB TYPE METHOD IMPORT SELF SELF_TYPE
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
@@ -39,11 +40,16 @@ let bare_pat_name path name =
 %token EOF
 
 %start <t> expr_eof
+%start <t> module_eof
 
 %%
 
 expr_eof:
   | e = expr; EOF { e }
+
+module_eof:
+  | flds = list(struct_field_decl); bnds = separated_list(SEMI, struct_binding); EOF
+    { Struct { con_fields = flds; bindings = bnds } }
 
 expr:
   | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
@@ -205,6 +211,7 @@ expr_primary:
   | UNIT { Atom Unit }
   | SELF { Self }
   | SELF_TYPE { SelfType }
+  | IMPORT; path = STRING { Import path }
   | name = ID { Var name }
   | LPAREN; op = operator; RPAREN { Var op }
   | LPAREN; e = expr; COLON; ty = expr; RPAREN { Annotated { inner = e; typ = ty } }

@@ -17,7 +17,10 @@ let () =
           | DuplicateRecordField n -> "DuplicateRecordField \"" ^ n ^ "\""
           | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
           | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
-          | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""))
+          | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
+          | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""))
+    | Core_loader.CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
+    | Core_loader.ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
     | Unify.UnifyError e ->
         let open Unify in
         Some (Printf.sprintf "UnifyError(%s)" (match e with
@@ -42,6 +45,35 @@ let elab source =
   let expr = parse_expr source in
   let ctx = Elaborate.init_ctx () in
   Elaborate.on_expr ctx expr
+
+let elab_with_loader loader source =
+  let expr = parse_expr source in
+  let ctx = Elaborate.init_ctx () in
+  Elaborate.on_expr ~loader ctx expr
+
+let with_modules modules f =
+  let dir = Filename.temp_dir "fun_core_test" "" in
+  List.iter
+    (fun (name, source) ->
+      let path = Filename.concat dir (name ^ ".fun") in
+      Out_channel.with_open_text path (fun oc -> output_string oc source))
+    modules;
+  let loader = Core_loader.create ~base_dir:dir in
+  f loader
+
+let check_import_type modules source expected () =
+  with_modules modules (fun loader ->
+      let _core, ty = elab_with_loader loader source in
+      let mc = MetaContext.create () in
+      let expected_val = Nbe.eval mc [] expected in
+      if not (Nbe.conv mc 0 ty expected_val) then Alcotest.fail "type mismatch")
+
+let import_elab_fail modules source () =
+  with_modules modules (fun loader ->
+      match elab_with_loader loader source with
+      | exception Elaborate.ElabError _ -> ()
+      | exception Core_tt.Unify.UnifyError _ -> ()
+      | _ -> Alcotest.fail "expected elaboration error")
 
 let check_type source expected () =
   let _core, ty = elab source in
@@ -729,6 +761,51 @@ let implicit_args =
            let _ : Bool = g (Some true) in ()"));
   ]
 
+let imports =
+  [
+    Alcotest.test_case "basic import" `Quick
+      (check_import_type [ ("math", "pub let x = 41; pub let y = x + 1") ]
+         "let M = import \"math\" in M.y" (AtomTy TI64));
+    Alcotest.test_case "private import member hidden" `Quick
+      (import_elab_fail [ ("m", "let secret = 1; pub let exposed = secret + 1") ]
+         "let M = import \"m\" in M.secret");
+    Alcotest.test_case "private import member usable internally" `Quick
+      (check_import_type [ ("m", "let secret = 1; pub let exposed = secret + 1") ]
+         "let M = import \"m\" in M.exposed" (AtomTy TI64));
+    Alcotest.test_case "nested import" `Quick
+      (check_import_type [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ]
+         "let W = import \"wrapper\" in W.M.x" (AtomTy TI64));
+    Alcotest.test_case "imported ADT match" `Quick
+      (check_import_type
+         [ ("color", "pub type Color = Red | Green | Blue; pub let default = Green") ]
+         "let C = import \"color\" in match C.default with C.Red -> 1 | C.Green -> 2 | C.Blue -> 3 end"
+         (AtomTy TI64));
+    Alcotest.test_case "repeated import" `Quick
+      (check_import_type [ ("m", "pub let x = 21") ]
+         "let A = import \"m\" in let B = import \"m\" in A.x + B.x" (AtomTy TI64));
+    Alcotest.test_case "missing import" `Quick
+      (fun () ->
+        let loader = Core_loader.create ~base_dir:(Filename.temp_dir "fun_core_test" "") in
+        match elab_with_loader loader "import \"missing\"" with
+        | exception Core_loader.ImportNotFound "missing" -> ()
+        | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+        | _ -> Alcotest.fail "expected missing import");
+    Alcotest.test_case "circular import" `Quick
+      (fun () ->
+        with_modules [ ("a", "pub let B = import \"b\""); ("b", "pub let A = import \"a\"") ]
+          (fun loader ->
+            match elab_with_loader loader "import \"a\"" with
+            | exception Core_loader.CircularImport "a" -> ()
+            | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+            | _ -> Alcotest.fail "expected circular import"));
+    Alcotest.test_case "import requires loader" `Quick
+      (fun () ->
+        match elab "import \"m\"" with
+        | exception Elaborate.ElabError (Elaborate.ImportRequiresLoader "m") -> ()
+        | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+        | _ -> Alcotest.fail "expected import loader error");
+  ]
+
 let let_rec =
   [
     Alcotest.test_case "recursive function annotated" `Quick
@@ -764,5 +841,6 @@ let () =
       ("adts", adts);
       ("match", match_tests);
       ("implicit_args", implicit_args);
+      ("imports", imports);
       ("let_rec", let_rec);
     ]
