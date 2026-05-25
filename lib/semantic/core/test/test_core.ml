@@ -313,6 +313,10 @@ let () =
                "type Option a = Some a | None in \
                 match Some (Some 7) with \
                   Some(Some(x)) -> x | Some(None) -> 0 | None -> 0 end");
+          Alcotest.test_case "recursive parameterized ADT match" `Quick
+            (check_i64 "recursive parameterized ADT match" 1L
+               "type List a = Cons (a * List a) | Nil in \
+                match Cons (1, Nil) with Cons(p) -> p.0 | Nil -> 0 end");
           Alcotest.test_case "qualified constructor pattern" `Quick
             (check_i64 "qualified constructor pattern" 2L
                "let S = struct pub type Color = Red | Green end in \

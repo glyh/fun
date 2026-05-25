@@ -20,6 +20,7 @@ and t =
   | If of { cond : t; then_ : t; else_ : t }
   | Annotated of { inner : t; typ : t }
   | Prod of t list
+  | ProdTy of t list
   | Arrow of explicitness * string option * t * t
   | FieldAccess of t * string
   | Proj of t * int

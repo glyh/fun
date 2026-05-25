@@ -278,6 +278,55 @@ let rec branch_type_refinement = function
       match branch_type_refinement lhs with Some _ as found -> found | None -> branch_type_refinement rhs)
   | _ -> None
 
+let close_recursive_payload_term nominal_name num_params =
+  let rec collect_apps acc = function
+    | Ap (f, Explicit, a) -> collect_apps (a :: acc) f
+    | f -> (f, acc)
+  in
+  let rec go cutoff term =
+    match collect_apps [] term with
+    | Var ix, args when ix = cutoff && List.length args = num_params ->
+        NomRef (nominal_name, List.map (go cutoff) args)
+    | _ -> (
+        match term with
+        | Var ix when ix = cutoff ->
+            NomRef (nominal_name, List.init num_params (fun i -> Var (num_params - 1 - i)))
+        | Var ix when ix > cutoff -> Var (ix - 1)
+        | Var ix -> Var ix
+        | Lam body -> Lam (go (cutoff + 1) body)
+        | Ap (f, expl, a) -> Ap (go cutoff f, expl, go cutoff a)
+        | Let (ty, def, body) -> Let (go cutoff ty, go cutoff def, go (cutoff + 1) body)
+        | Pi (expl, a, b) -> Pi (expl, go cutoff a, go (cutoff + 1) b)
+        | If (cond, then_, else_) -> If (go cutoff cond, go cutoff then_, go cutoff else_)
+        | Prod elems -> Prod (List.map (go cutoff) elems)
+        | ProdTy elems -> ProdTy (List.map (go cutoff) elems)
+        | Proj (e, i) -> Proj (go cutoff e, i)
+        | Dot (e, field) -> Dot (go cutoff e, field)
+        | Struct { con_fields; bindings; partial } ->
+            let con_fields = List.map (fun (field, ty) -> (field, go cutoff ty)) con_fields in
+            let binding = function
+              | LetBind (field, kind, value) -> LetBind (field, kind, go cutoff value)
+              | TypeBind (field, kind, nominal, ctors) -> TypeBind (field, kind, nominal, ctors)
+            in
+            Struct { con_fields; bindings = List.map binding bindings; partial }
+        | RecordConstruct { typ; fields } ->
+            RecordConstruct { typ = go cutoff typ; fields = List.map (fun (field, value) -> (field, go cutoff value)) fields }
+        | Open (s, body) -> Open (go cutoff s, go cutoff body)
+        | Fix body -> Fix (go (cutoff + 1) body)
+        | NomRef (name, params) -> NomRef (name, List.map (go cutoff) params)
+        | Ctor { name; spine; nominal_name; nominal_spine } ->
+            Ctor { name; spine = List.map (go cutoff) spine; nominal_name; nominal_spine = List.map (go cutoff) nominal_spine }
+        | Match (scrut, branches) ->
+            Match (go cutoff scrut, List.map (fun (pat, body) -> (pat, go cutoff body)) branches)
+        | NominalDef { name; num_params; ctors; body } ->
+            NominalDef
+              { name; num_params;
+                ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go cutoff) payload)) ctors;
+                body = go cutoff body }
+        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ as term -> term)
+  in
+  go 0
+
 let resolve_path_value ctx path name =
   match path with
   | [] ->
@@ -383,6 +432,16 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let cores = List.map fst cores_tys in
       let tys = List.map snd cores_tys in
       (Prod cores, VProdTy tys)
+  | ProdTy elems ->
+      let core_elems =
+        List.map
+          (fun elem ->
+            let elem_core, elem_ty = infer ctx elem in
+            Ctx.unify ctx elem_ty VU;
+            elem_core)
+          elems
+      in
+      (ProdTy core_elems, VU)
   | Arrow (expl, name, a, b) ->
       let a_core, a_ty = infer ctx a in
       Ctx.unify ctx a_ty VU;
@@ -540,21 +599,38 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             Ctx.define ctx param_name VU (VRigid { lvl = ctx.lvl; spine = [] }))
           ctx params
       in
-      (* Elaborate constructor payload types with rigid params in scope.
-         Store as closures: env = outer ctx.env, body = payload term
-         with Var 0..n-1 referencing params. *)
-      let elaborated_ctors =
-        List.map (fun (cname, payload_opt) ->
-          match payload_opt with
-          | None -> (cname, None)
-          | Some payload_expr ->
-              let payload_core, payload_ty = infer param_ctx payload_expr in
-              Ctx.unify param_ctx payload_ty VU;
-              let payload_term = payload_core in
-              (cname, Some { env = ctx.env; body = payload_term }))
-        ctors
+      let nominal_id = NominalId.fresh () in
+      let nominal_placeholder = VNominal { id = nominal_id; name; params = []; constructors = [] } in
+      let recursive_param_ctx =
+        if num_params = 0 then Ctx.define param_ctx name VU nominal_placeholder
+        else
+          let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
+          let type_body_term = NomRef (name, type_var_terms) in
+          let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
+          let type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
+          let type_ty =
+            let depth = List.length param_ctx.env + 1 in
+            List.fold_right
+              (fun _ acc ->
+                VPi { explicitness = Explicit; domain = VU;
+                      codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
+              params VU
+          in
+          Ctx.define param_ctx name type_ty type_val
       in
-      let nominal = VNominal { id = NominalId.fresh (); name; params = []; constructors = elaborated_ctors } in
+      let elaborated_ctors =
+        List.map
+          (fun (cname, payload_opt) ->
+            match payload_opt with
+            | None -> (cname, None)
+            | Some payload_expr ->
+                let payload_core, payload_ty = infer recursive_param_ctx payload_expr in
+                Ctx.unify recursive_param_ctx payload_ty VU;
+                let payload_core = close_recursive_payload_term name num_params payload_core in
+                (cname, Some { env = ctx.env @ [ nominal_placeholder ]; body = payload_core }))
+          ctors
+      in
+      let nominal = VNominal { id = nominal_id; name; params = []; constructors = elaborated_ctors } in
       (* For parameterized types, build an Explicit VPi chain so Option I64 works.
          For nullary types, just bind with VU as before. *)
       let body_ctx =
@@ -585,7 +661,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           Ctx.define body_ctx name type_ty type_val
         end
       in
-      let env = body_ctx.env in
+      let env = nominal :: body_ctx.env in
       let body_ctx =
         List.fold_left2
           (fun ctx (cname, _payload_surface) payload_clo_opt ->
@@ -596,16 +672,15 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       in
       let body_core, body_ty = infer body_ctx body in
       let ctor_payload_terms =
-        List.map (fun (cname, payload_opt) ->
-          match payload_opt with
-          | None -> (cname, None)
-          | Some payload_expr ->
-              let payload_core, payload_ty = infer param_ctx payload_expr in
-              (match payload_ty with
-              | VU -> ()
-              | _ -> failwith ("constructor payload for " ^ cname ^ " must be a type"));
-              (cname, Some payload_core))
-        ctors
+        List.map
+          (fun (cname, payload_opt) ->
+            match payload_opt with
+            | None -> (cname, None)
+            | Some payload_expr ->
+                let payload_core, payload_ty = infer recursive_param_ctx payload_expr in
+                Ctx.unify recursive_param_ctx payload_ty VU;
+                (cname, Some (close_recursive_payload_term name num_params payload_core)))
+          ctors
       in
       (NominalDef { name; num_params; ctors = ctor_payload_terms; body = body_core },
        body_ty)

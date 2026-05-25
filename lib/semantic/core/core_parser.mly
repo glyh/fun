@@ -117,7 +117,24 @@ struct_binding:
     { TypeBinding { name; params; ctors; public = false } }
 
 ctor_decl:
-  | name = ID; payload = option(expr) { (name, payload) }
+  | name = ID; payload = option(type_expr) { (name, payload) }
+
+type_expr:
+  | lhs = type_expr; op = MUL_OP; rhs = type_app
+    { if not (String.equal op "*") then failwith "only * is valid in type product syntax";
+      match lhs with
+      | ProdTy elems -> ProdTy (elems @ [ rhs ])
+      | _ -> ProdTy [ lhs; rhs ] }
+  | e = type_app { e }
+
+type_app:
+  | f = type_app; a = type_atom { Ap (f, Explicit, a) }
+  | e = type_atom { e }
+
+type_atom:
+  | name = ID { Var name }
+  | LPAREN; e = type_expr; RPAREN { e }
+  | e = expr_primary { e }
 
 expr_arrow:
   | LBRACE; name = ID; COLON; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, Some name, dom, cod) }

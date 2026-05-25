@@ -510,7 +510,9 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
       RecordConstruct
         { typ = quote mc depth typ;
           fields = List.map (fun (name, value) -> (name, quote mc depth value)) fields }
-  | VNominal n -> Con n.name
+  | VNominal n ->
+      if n.params = [] then Con n.name
+      else NomRef (n.name, List.map (quote mc depth) n.params)
   | VCon { name; spine; _ } ->
       quote_spine mc depth (Con name) spine
   | VNeutral { neutral = neu; _ } -> quote_neutral mc depth neu

@@ -438,6 +438,15 @@ let adts =
          "type Option a = Some a | None in \
           let x : Option I64 = Some {I64} 42 in \
           let _ : Option Bool = x in ()");
+    Alcotest.test_case "recursive parameterized ADT" `Quick
+      (elab_ok
+         "type List a = Cons (a * List a) | Nil in \
+          Cons (1, Nil)");
+    Alcotest.test_case "recursive parameterized ADT match" `Quick
+      (check_type
+         "type List a = Cons (a * List a) | Nil in \
+          match Cons (1, Nil) with Cons(p) -> p.0 | Nil -> 0 end"
+         (AtomTy TI64));
   ]
 
 let match_tests =
