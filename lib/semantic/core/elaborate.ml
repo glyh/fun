@@ -33,12 +33,14 @@ module Ctx = struct
     metas : MetaContext.t;
     bds : bd list;
     name_table : name_entry NameMap.t;
+    self_entry : name_entry option;
+    self_type : value option;
   }
 
   (** Create an empty elaboration context with a fresh meta store. *)
   let empty () : t =
     let metas = MetaContext.create () in
-    { env = []; types = []; lvl = 0; metas; bds = []; name_table = NameMap.empty }
+    { env = []; types = []; lvl = 0; metas; bds = []; name_table = NameMap.empty; self_entry = None; self_type = None }
 
   (** Extend the context with a [Bound] binder (lambda/pi parameter). *)
   let bind (ctx : t) (name : string) (ty : value) : t =
@@ -50,6 +52,8 @@ module Ctx = struct
       metas = ctx.metas;
       bds = Bound :: ctx.bds;
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
+      self_entry = ctx.self_entry;
+      self_type = ctx.self_type;
     }
 
   (** Extend the context with a [Defined] binder (let/define). *)
@@ -61,6 +65,8 @@ module Ctx = struct
       metas = ctx.metas;
       bds = Defined :: ctx.bds;
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
+      self_entry = ctx.self_entry;
+      self_type = ctx.self_type;
     }
 
   (** Resolve a user-written name to its de Bruijn index and type.
@@ -70,6 +76,24 @@ module Ctx = struct
     match NameMap.find_opt name ctx.name_table with
     | Some { level; ty } -> (Nbe.lvl_to_ix ctx.lvl level, ty)
     | None -> raise (ElabError (UnboundVariable name))
+
+  let lookup_self (ctx : t) : ix * value =
+    match ctx.self_entry with
+    | Some { level; ty } -> (Nbe.lvl_to_ix ctx.lvl level, ty)
+    | None -> raise (ElabError (UnboundVariable "self"))
+
+  let lookup_self_type (ctx : t) : value =
+    match ctx.self_type with
+    | Some ty -> ty
+    | None -> raise (ElabError (UnboundVariable "Self"))
+
+  let bind_self (ctx : t) (ty : value) : t =
+    let ctx = bind ctx "self" ty in
+    { ctx with self_entry = Some { level = ctx.lvl - 1; ty } }
+
+  let with_self_type (ctx : t) (ty : value) : t = { ctx with self_type = Some ty }
+
+  let clear_self (ctx : t) : t = { ctx with self_entry = None }
 
   (** Create a fresh metavariable, recording the current [bd] mask so
       [eval_inserted_meta] applies it only to [Bound] variables. *)
@@ -339,7 +363,7 @@ let resolve_path_value ctx path name =
         | segment :: rest -> (
             match Nbe.force ctx.Ctx.metas current_ty with
             | VStruct { fields; _ } -> (
-                match List.find_opt (fun (n, k, _) -> String.equal n segment && k <> Private) fields with
+                match List.find_opt (fun (n, k, _) -> String.equal n segment && k <> Private && k <> PrivateMethod) fields with
                 | Some (_, _, field_ty) ->
                     let next_value = Nbe.dot_value current_value segment in
                     go next_value field_ty rest
@@ -415,6 +439,11 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
       (Var ix, ty)
+  | Self ->
+      let ix, ty = Ctx.lookup_self ctx in
+      (Var ix, ty)
+  | SelfType ->
+      (Ctx.quote ctx (Ctx.lookup_self_type ctx), VU)
   | Ap (f, Surface.Explicit, a) -> infer_ap ctx f a
   | Ap (f, Surface.Implicit, a) -> infer_ap_implicit ctx f a
   | Let { name; type_; value; body; recursive } ->
@@ -455,7 +484,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
       (match Nbe.force ctx.metas e_ty with
       | VStruct { fields; partial } ->
-          (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
+          (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private && k <> PrivateMethod) fields with
           | Some (_, _, field_ty) -> (Dot (e_core, name), field_ty)
           | None when partial ->
               let result_ty = Ctx.raw_meta ctx in
@@ -479,7 +508,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       | VProdTy tys ->
           if i < 0 || i >= List.length tys then
             raise (ElabError TupleLengthMismatch);
-          (Proj (e_core, i), List.nth tys i)
+          (Proj (e_core, i), Nbe.force ctx.metas (List.nth tys i))
       | _ -> raise (ElabError ApplyingNonFunction))
   | RecordConstruct { typ; fields } ->
       let typ_core, typ_ty = infer ctx typ in
@@ -519,16 +548,73 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           (name, ty_core, Ctx.eval ctx ty_core))
         con_fields
       in
+      let self_ty =
+        VStruct {
+          fields = List.map (fun (name, _, ty) -> (name, Field, ty)) con_cores;
+          partial = true;
+        }
+      in
+      let binding_ctx = Ctx.with_self_type ctx self_ty in
+      let rec elaborate_method_params ctx params body =
+        match params with
+        | [] ->
+            let body_core, body_ty = infer ctx body in
+            (body_core, body_ty)
+        | param :: rest ->
+            let a_ty =
+              match param.Surface.type_ with
+              | Some ty_expr ->
+                  let ty_core, ty_ty = infer ctx ty_expr in
+                  Ctx.unify ctx ty_ty VU;
+                  Ctx.eval ctx ty_core
+              | None -> Ctx.raw_meta ctx
+            in
+            let ctx' = Ctx.bind ctx param.name a_ty in
+            let body_core, body_ty = elaborate_method_params ctx' rest body in
+            let body_ty_term = Ctx.quote ctx' body_ty in
+            let method_ty =
+              VPi {
+                explicitness = expl_of_surface param.explicitness;
+                domain = a_ty;
+                codomain = { env = ctx.env; body = body_ty_term };
+              }
+            in
+            (Lam body_core, method_ty)
+      in
+      let elaborate_method ctx params body =
+        let self_ctx = Ctx.bind_self ctx self_ty in
+        let body_core, body_ty = elaborate_method_params self_ctx params body in
+        let body_ty_term = Ctx.quote self_ctx body_ty in
+        let method_ty =
+          VPi {
+            explicitness = Explicit;
+            domain = self_ty;
+            codomain = { env = ctx.env; body = body_ty_term };
+          }
+        in
+        (Lam body_core, method_ty)
+      in
       let rec go ctx (acc_binds, acc_fields) = function
         | [] -> (List.rev acc_binds, List.rev acc_fields)
         | Surface.LetBinding { name; value; public } :: rest ->
-            let val_core, val_ty = infer ctx value in
+            let value_ctx = Ctx.clear_self ctx in
+            let val_core, val_ty = infer value_ctx value in
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
             let ctx' = Ctx.define ctx name val_ty val_val in
             let field = if public then [ (name, kind, val_ty) ] else [] in
             go ctx'
               (LetBind (name, kind, val_core) :: acc_binds,
+               field @ acc_fields)
+              rest
+        | Surface.MethodBinding { name; params; body; public } :: rest ->
+            let method_core, method_ty = elaborate_method ctx params body in
+            let method_val = Ctx.eval ctx method_core in
+            let kind = if public then Method else PrivateMethod in
+            let ctx' = Ctx.define ctx name method_ty method_val in
+            let field = if public then [ (name, kind, method_ty) ] else [] in
+            go ctx'
+              (LetBind (name, kind, method_core) :: acc_binds,
                field @ acc_fields)
               rest
         | Surface.TypeBinding { name; params; ctors; public } :: rest ->
@@ -569,7 +655,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
                type_fields @ acc_fields)
               rest
       in
-      let core_bindings, extra_fields = go ctx ([], []) bindings in
+      let core_bindings, extra_fields = go binding_ctx ([], []) bindings in
       let result_con_fields = List.map (fun (n, c, _) -> (n, c)) con_cores in
       let type_fields =
         List.map (fun (n, _, ty) -> (n, Field, ty)) con_cores
@@ -584,7 +670,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           let ctx' =
             List.fold_left
               (fun c (fname, k, fty) ->
-                if k = Public then Ctx.define c fname fty fty else c)
+                if k = Public || k = Method then Ctx.define c fname fty fty else c)
               ctx fields
           in
           let body_core, body_ty = infer ctx' body in
@@ -828,7 +914,7 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
       let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
-      (Ap (f_core, Explicit, a_core), ret_ty)
+      (Ap (f_core, Explicit, a_core), Nbe.force ctx.metas ret_ty)
   | VFlex _ | VRigid _ | VNeutral _ ->
       let a_ty = Ctx.raw_meta ctx in
       let a_core = check ctx a a_ty in
@@ -858,7 +944,7 @@ and infer_ap_implicit (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * val
       let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
-      (Ap (f_core, Implicit, a_core), ret_ty)
+      (Ap (f_core, Implicit, a_core), Nbe.force ctx.metas ret_ty)
   | VPi { explicitness = Explicit; _ } ->
       raise (ElabError ApplyingNonFunction)
   | VFlex _ | VRigid _ | VNeutral _ ->

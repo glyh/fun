@@ -110,6 +110,8 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             match k with
             | Public -> Some (LetBind (n, Public, go d v))
             | Private -> Some (LetBind (n, Private, go d v))
+            | Method -> Some (LetBind (n, Method, go d v))
+            | PrivateMethod -> Some (LetBind (n, PrivateMethod, go d v))
             | _ -> None) fields
         in
         Struct { con_fields; bindings; partial }
@@ -249,7 +251,7 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
         raise (UnifyError TupleLengthMismatch);
       List.iter2 (unify mc env depth) elems1 elems2
   | VStruct { fields = fs1; partial = p1 }, VStruct { fields = fs2; partial = p2 } ->
-      let visible fs = List.filter (fun (_, k, _) -> k <> Private) fs in
+      let visible fs = List.filter (fun (_, k, _) -> k <> Private && k <> PrivateMethod) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
       if (not p1) && (not p2) then begin
         if List.length vs1 <> List.length vs2 then

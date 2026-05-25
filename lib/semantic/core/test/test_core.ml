@@ -380,6 +380,18 @@ let () =
           Alcotest.test_case "parameterized record method" `Quick
             (check_bool "parameterized record method" true
                "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; pub let swap = fun p -> (p.snd, p.fst) end in (Pair.swap (Pair {fst = 1; snd = true})).0");
+          Alcotest.test_case "method uses self" `Quick
+            (check_i64 "method uses self" 1L
+               "let Box = fun {A : Type} -> struct value: A; pub method get -> self.value end in Box.get (Box {value = 1})");
+          Alcotest.test_case "parameterized method uses self" `Quick
+            (check_bool "parameterized method uses self" true
+               "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; pub method swap -> (self.snd, self.fst) end in (Pair.swap (Pair {fst = 1; snd = true})).0");
+          Alcotest.test_case "method extra parameter" `Quick
+            (check_i64 "method extra parameter" 3L
+               "let Counter = struct value: I64; pub method add x -> self.value + x end in Counter.add (Counter {value = 1}) 2");
+          Alcotest.test_case "method uses Self type" `Quick
+            (check_i64 "method uses Self type" 2L
+               "let Box = fun {A : Type} -> struct value: A; pub method id (other : Self) -> other.value end in Box.id (Box {value = 1}) (Box {value = 2})");
           Alcotest.test_case "record pattern shorthand" `Quick
             (check_i64 "record pattern shorthand" 3L
                "let Point = struct x: I64; y: I64; end in \

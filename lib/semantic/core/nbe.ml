@@ -62,10 +62,14 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
   ]
   |> List.to_seq |> Hashtbl.of_seq
 
+let visible_kind = function
+  | Private | PrivateMethod -> false
+  | Field | Public | Method -> true
+
 let dot_value (value : value) (name : string) : value =
   match value with
   | VStruct { fields; _ } -> (
-      match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private) fields with
+      match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
       | Some (_, _, v) -> v
       | None -> raise (EvalError "field not found"))
   | VRecord { fields; _ } -> (
@@ -115,7 +119,6 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       let con_vals =
         List.map (fun (name, ty) -> (name, Field, eval mc env ty)) con_fields
       in
-      let env = List.fold_left (fun e (_, _, v) -> v :: e) env con_vals in
       (* bindings: sequential, TypeBind stores values directly *)
       let rec eval_binds env acc = function
         | [] -> env, List.rev acc
@@ -154,8 +157,7 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
       let vs = eval mc env s in
       (match vs with
       | VStruct { fields; _ } ->
-          (* Open: only Public (pub-let) fields *)
-          let vals = List.filter_map (fun (_, k, v) -> if k = Public then Some v else None) fields in
+          let vals = List.filter_map (fun (_, k, v) -> if k = Public || k = Method then Some v else None) fields in
           let env' = List.fold_left (fun e v -> v :: e) env vals in
           eval mc env' body
       | _ -> raise (EvalError "open of non-struct"))
@@ -503,6 +505,8 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           match k with
           | Public -> Some (LetBind (n, Public, quote mc depth v))
           | Private -> Some (LetBind (n, Private, quote mc depth v))
+          | Method -> Some (LetBind (n, Method, quote mc depth v))
+          | PrivateMethod -> Some (LetBind (n, PrivateMethod, quote mc depth v))
           | _ -> None) fields
       in
       Struct { con_fields; bindings; partial }
@@ -594,7 +598,7 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
         (closure_apply mc clo1 var)
         (closure_apply mc clo2 var)
   | VStruct { fields = fs1; _ }, VStruct { fields = fs2; _ } ->
-      let visible fs = List.filter (fun (_, k, _) -> k <> Private) fs in
+      let visible fs = List.filter (fun (_, k, _) -> visible_kind k) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
       List.length vs1 = List.length vs2
       && List.for_all2

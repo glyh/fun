@@ -4,6 +4,7 @@ type param = { name : string; type_ : t option; explicitness : explicitness }
 
 and struct_binding =
   | LetBinding of { name : string; value : t; public : bool }
+  | MethodBinding of { name : string; params : param list; body : t; public : bool }
   | TypeBinding of {
       name : string;
       params : string list;
@@ -14,6 +15,8 @@ and struct_binding =
 and t =
   | Atom of Syntax.Ast.Atom.t
   | Var of string
+  | Self
+  | SelfType
   | Ap of t * explicitness * t
   | Lam of param * t
   | Let of { name : string; type_ : t option; value : t; body : t; recursive : bool }

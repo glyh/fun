@@ -31,7 +31,7 @@ let bare_pat_name path name =
 %token <string> ID
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE
+%token STRUCT END OPEN PUB TYPE METHOD SELF SELF_TYPE
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
@@ -109,6 +109,10 @@ struct_field_decl:
 struct_binding:
   | PUB; LET; name = binding_name; EQUALS; value = expr { LetBinding { name; value; public = true } }
   | LET; name = binding_name; EQUALS; value = expr { LetBinding { name; value; public = false } }
+  | PUB; METHOD; name = ID; params = list(param); ARROW; body = expr
+    { MethodBinding { name; params; body; public = true } }
+  | METHOD; name = ID; params = list(param); ARROW; body = expr
+    { MethodBinding { name; params; body; public = false } }
   | PUB; TYPE; name = ID; params = list(ID); EQUALS;
     ctors = separated_nonempty_list(BAR, ctor_decl)
     { TypeBinding { name; params; ctors; public = true } }
@@ -192,6 +196,8 @@ expr_primary:
   | TRUE { Atom (Bool true) }
   | FALSE { Atom (Bool false) }
   | UNIT { Atom Unit }
+  | SELF { Self }
+  | SELF_TYPE { SelfType }
   | name = ID { Var name }
   | LPAREN; op = operator; RPAREN { Var op }
   | LPAREN; e = expr; COLON; ty = expr; RPAREN { Annotated { inner = e; typ = ty } }

@@ -8,7 +8,7 @@ type atom_ty = TI64 | TBool | TUnit | TChar [@@deriving eq]
    InsertedMeta uses this to know which scope vars to abstract over. *)
 type bd = Bound | Defined
 
-type struct_field_kind = Field | Public | Private
+type struct_field_kind = Field | Public | Private | Method | PrivateMethod
 
 type explicitness = Implicit | Explicit
 
@@ -147,9 +147,9 @@ and value =
       partial : bool;
     }
       (** Struct value/type. [fields] carry a [struct_field_kind]:
-          [Constructor] = must be provided at construction,
-          [Computed] = in type but forbidden at construction,
-          [Private] = invisible outside.  [partial] = width-subtyped
+          [Field] = record constructor field, [Public]/[Private] = value field,
+          [Method]/[PrivateMethod] = function-valued method field. [Private]
+          and [PrivateMethod] are invisible outside. [partial] = width-subtyped
           (matches any struct with at least these fields). *)
   | VRecord of { typ : value; fields : (string * value) list }
       (** Record instance whose type is a [VStruct]. *)

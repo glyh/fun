@@ -234,6 +234,29 @@ let structs =
     Alcotest.test_case "parameterized record construction" `Quick
       (elab_ok
          "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; end in (Pair {fst = 1; snd = true}).snd");
+    Alcotest.test_case "method uses self" `Quick
+      (check_type
+         "let Box = fun {A : Type} -> struct value: A; pub method get -> self.value end in Box.get (Box {value = 1})"
+         (AtomTy TI64));
+    Alcotest.test_case "parameterized method uses self" `Quick
+      (check_type
+         "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; pub method swap -> (self.snd, self.fst) end in (Pair.swap (Pair {fst = 1; snd = true})).0"
+         (AtomTy TBool));
+    Alcotest.test_case "method extra parameter" `Quick
+      (check_type
+         "let Counter = struct value: I64; pub method add x -> self.value + x end in Counter.add (Counter {value = 1}) 2"
+         (AtomTy TI64));
+    Alcotest.test_case "method uses Self type" `Quick
+      (check_type
+         "let Box = fun {A : Type} -> struct value: A; pub method id (other : Self) -> other.value end in Box.id (Box {value = 1}) (Box {value = 2})"
+         (AtomTy TI64));
+    Alcotest.test_case "Self in let binding" `Quick
+      (elab_ok
+         "let Box = struct value: I64; pub let id = fun (b : Self) -> b.value end in Box.id (Box {value = 1})");
+    Alcotest.test_case "self outside method" `Quick
+      (elab_fail "self");
+    Alcotest.test_case "self in let binding" `Quick
+      (elab_fail "let Box = struct value: I64; pub let bad = self.value end in Box.bad");
     Alcotest.test_case "record construction missing field" `Quick
       (elab_fail "let Point = struct x: I64; y: I64; end in Point {x = 1}");
     Alcotest.test_case "record construction unknown field" `Quick

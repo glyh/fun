@@ -21,6 +21,9 @@ let rec token buf =
   | "end" -> END
   | "open" -> OPEN
   | "type" -> TYPE
+  | "method" -> METHOD
+  | "self" -> SELF
+  | "Self" -> SELF_TYPE
   | "true" -> TRUE
   | "false" -> FALSE
   | "->" -> ARROW
