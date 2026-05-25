@@ -33,6 +33,12 @@ and t =
       bindings : struct_binding list;
     }
   | Open of string * t
+  | RecordTypeDef of {
+      name : string;
+      params : string list;
+      fields : (string * t) list;
+      body : t;
+    }
   | TypeDef of {
       name : string;
       params : string list;

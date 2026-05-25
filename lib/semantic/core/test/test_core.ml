@@ -19,7 +19,8 @@ let () =
              | UnknownRecordField n -> "UnknownRecordField \"" ^ n ^ "\""
              | DuplicateRecordField n -> "DuplicateRecordField \"" ^ n ^ "\""
              | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
-             | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""))
+             | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
+             | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""))
     | _ -> None)
 
 let mc () = MetaContext.create ()
@@ -377,6 +378,12 @@ let () =
           Alcotest.test_case "parameterized record construction" `Quick
             (check_bool "parameterized record construction" true
                "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; end in (Pair {fst = 1; snd = true}).snd");
+          Alcotest.test_case "record type declaration" `Quick
+            (check_i64 "record type declaration" 2L
+               "type Point = {x: I64; y: I64} in (Point {x = 1; y = 2}).y");
+          Alcotest.test_case "parameterized record type declaration" `Quick
+            (check_bool "parameterized record type declaration" true
+               "type Pair A B = {fst: A; snd: B} in (Pair {fst = 1; snd = true}).snd");
           Alcotest.test_case "parameterized record method" `Quick
             (check_bool "parameterized record method" true
                "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; pub let swap = fun p -> (p.snd, p.fst) end in (Pair.swap (Pair {fst = 1; snd = true})).0");

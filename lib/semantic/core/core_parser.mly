@@ -57,6 +57,10 @@ expr:
   | STRUCT; flds = list(struct_field_decl); bnds = separated_list(SEMI, struct_binding); END
     { Struct { con_fields = flds; bindings = bnds } }
   | TYPE; name = ID; params = list(ID); EQUALS;
+    LBRACE; fields = separated_nonempty_list(SEMI, record_type_field_decl); RBRACE;
+    IN; body = expr
+    { RecordTypeDef { name; params; fields; body } }
+  | TYPE; name = ID; params = list(ID); EQUALS;
     ctors = separated_nonempty_list(BAR, ctor_decl); IN; body = expr
     { TypeDef { name; params; ctors; body } }
   | OPEN; name = ID; IN; body = expr
@@ -105,6 +109,9 @@ record_pat_entry:
 
 struct_field_decl:
   | name = ID; COLON; ty = expr; SEMI { (name, ty) }
+
+record_type_field_decl:
+  | name = ID; COLON; ty = expr { (name, ty) }
 
 struct_binding:
   | PUB; LET; name = binding_name; EQUALS; value = expr { LetBinding { name; value; public = true } }

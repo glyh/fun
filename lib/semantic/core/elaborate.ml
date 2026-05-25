@@ -16,6 +16,7 @@ type elab_error =
   | DuplicateRecordField of string
   | MissingRecordField of string
   | NonExhaustive of string
+  | InvalidRecursiveRecord of string
 
 exception ElabError of elab_error
 
@@ -190,6 +191,84 @@ let check_duplicate_names names =
       if Hashtbl.mem seen name then raise (ElabError (DuplicateRecordField name));
       Hashtbl.replace seen name ())
     names
+
+let rewrite_record_self_refs record_name params expr =
+  let invalid () =
+    raise
+      (ElabError
+         (InvalidRecursiveRecord
+            ("recursive record references must be same-instantiation uses of " ^ record_name)))
+  in
+  let rec collect_apps acc = function
+    | Surface.Ap (f, Surface.Explicit, a) -> collect_apps (a :: acc) f
+    | f -> (f, acc)
+  in
+  let shadowed bound name = List.exists (String.equal name) bound in
+  let is_decl_param bound param arg =
+    match arg with Surface.Var name -> String.equal name param && not (shadowed bound name) | _ -> false
+  in
+  let param_names params = List.map (fun (param : Surface.param) -> param.name) params in
+  let rec go bound expr =
+    match collect_apps [] expr with
+    | Surface.Var name, args when String.equal name record_name && not (shadowed bound name) ->
+        if List.length args = List.length params && List.for_all2 (is_decl_param bound) params args then
+          Surface.SelfType
+        else invalid ()
+    | _ -> (
+        match expr with
+        | Surface.Ap (f, expl, a) -> Surface.Ap (go bound f, expl, go bound a)
+        | Surface.Lam (param, body) -> Surface.Lam (param, go (param.name :: bound) body)
+        | Surface.Let { name; type_; value; body; recursive } ->
+            Surface.Let
+              { name;
+                type_ = Option.map (go bound) type_;
+                value = go bound value;
+                body = go (name :: bound) body;
+                recursive }
+        | Surface.If { cond; then_; else_ } ->
+            Surface.If { cond = go bound cond; then_ = go bound then_; else_ = go bound else_ }
+        | Surface.Annotated { inner; typ } -> Surface.Annotated { inner = go bound inner; typ = go bound typ }
+        | Surface.Prod elems -> Surface.Prod (List.map (go bound) elems)
+        | Surface.ProdTy elems -> Surface.ProdTy (List.map (go bound) elems)
+        | Surface.Arrow (expl, name, a, b) ->
+            let bound' = match name with Some name -> name :: bound | None -> bound in
+            Surface.Arrow (expl, name, go bound a, go bound' b)
+        | Surface.FieldAccess (e, name) -> Surface.FieldAccess (go bound e, name)
+        | Surface.Proj (e, i) -> Surface.Proj (go bound e, i)
+        | Surface.RecordConstruct { typ; fields } ->
+            Surface.RecordConstruct
+              { typ = go bound typ; fields = List.map (fun (name, value) -> (name, go bound value)) fields }
+        | Surface.Struct { con_fields; bindings } ->
+            let binding = function
+              | Surface.LetBinding { name; value; public } ->
+                  Surface.LetBinding { name; value = go bound value; public }
+              | Surface.MethodBinding { name; params; body; public } ->
+                  Surface.MethodBinding { name; params; body = go (param_names params @ bound) body; public }
+              | Surface.TypeBinding { name; params; ctors; public } ->
+                  Surface.TypeBinding
+                    { name; params;
+                      ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
+                      public }
+            in
+            Surface.Struct
+              { con_fields = List.map (fun (name, ty) -> (name, go bound ty)) con_fields;
+                bindings = List.map binding bindings }
+        | Surface.Open (name, body) -> Surface.Open (name, go bound body)
+        | Surface.RecordTypeDef { name; params; fields; body } ->
+            Surface.RecordTypeDef
+              { name; params;
+                fields = List.map (fun (field, ty) -> (field, go (params @ bound) ty)) fields;
+                body = go (name :: bound) body }
+        | Surface.TypeDef { name; params; ctors; body } ->
+            Surface.TypeDef
+              { name; params;
+                ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
+                body = go (name :: bound) body }
+        | Surface.Match (scrutinee, branches) ->
+            Surface.Match (go bound scrutinee, List.map (fun (pat, body) -> (pat, go bound body)) branches)
+        | Atom _ | Var _ | Self | SelfType -> expr)
+  in
+  go [] expr
 
 let stdlib_source =
   {|
@@ -485,7 +564,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       (match Nbe.force ctx.metas e_ty with
       | VStruct { fields; partial } ->
           (match List.find_opt (fun (n, k, _) -> String.equal n name && k <> Private && k <> PrivateMethod) fields with
-          | Some (_, _, field_ty) -> (Dot (e_core, name), field_ty)
+          | Some (_, _, field_ty) -> (Dot (e_core, name), Nbe.force ctx.metas field_ty)
           | None when partial ->
               let result_ty = Ctx.raw_meta ctx in
               let constraint_ty =
@@ -676,6 +755,39 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           let body_core, body_ty = infer ctx' body in
           (Open (Var ix, body_core), body_ty)
       | _ -> raise (ElabError (UnboundVariable name (* not a struct *))))
+  | RecordTypeDef { name; params; fields; body } ->
+      check_duplicate_names (List.map fst fields);
+      let rewritten_fields =
+        List.map
+          (fun (field, ty) -> (field, rewrite_record_self_refs name params ty))
+          fields
+      in
+      let rec elaborate_params ctx param_values = function
+        | [] ->
+            let placeholder =
+              VNeutral
+                { ty = VU;
+                  neutral = { head = HPrim name; frames = List.map (fun value -> FApp value) param_values } }
+            in
+            infer (Ctx.with_self_type ctx placeholder)
+              (Surface.Struct { con_fields = rewritten_fields; bindings = [] })
+        | param :: rest ->
+            let param_value = VRigid { lvl = ctx.lvl; spine = [] } in
+            let ctx' = Ctx.bind ctx param VU in
+            let body_core, body_ty = elaborate_params ctx' (param_values @ [ param_value ]) rest in
+            let body_ty_term = Ctx.quote ctx' body_ty in
+            ( Lam body_core,
+              VPi
+                { explicitness = Implicit;
+                  domain = VU;
+                  codomain = { env = ctx.env; body = body_ty_term } } )
+      in
+      let val_core, val_ty = elaborate_params ctx [] params in
+      let val_val = Ctx.eval ctx val_core in
+      let ty_term = Ctx.quote ctx val_ty in
+      let ctx' = Ctx.define ctx name val_ty val_val in
+      let body_core, body_ty = infer ctx' body in
+      (Let (ty_term, val_core, body_core), body_ty)
   | TypeDef { name; params; ctors; body } ->
       let num_params = List.length params in
       (* Bind type params as rigid variables (locally abstract types) *)

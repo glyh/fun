@@ -16,7 +16,8 @@ let () =
           | UnknownRecordField n -> "UnknownRecordField \"" ^ n ^ "\""
           | DuplicateRecordField n -> "DuplicateRecordField \"" ^ n ^ "\""
           | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
-          | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""))
+          | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
+          | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""))
     | Unify.UnifyError e ->
         let open Unify in
         Some (Printf.sprintf "UnifyError(%s)" (match e with
@@ -234,6 +235,38 @@ let structs =
     Alcotest.test_case "parameterized record construction" `Quick
       (elab_ok
          "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; end in (Pair {fst = 1; snd = true}).snd");
+    Alcotest.test_case "record type declaration" `Quick
+      (check_type
+         "type Point = {x: I64; y: I64} in (Point {x = 1; y = 2}).x"
+         (AtomTy TI64));
+    Alcotest.test_case "parameterized record type declaration" `Quick
+      (check_type
+         "type Pair A B = {fst: A; snd: B} in (Pair {fst = 1; snd = true}).snd"
+         (AtomTy TBool));
+    Alcotest.test_case "record type declaration pattern" `Quick
+      (check_type
+         "type Point = {x: I64; y: I64} in match Point {x = 1; y = 2} with Point {x; y} -> x + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "record type declaration missing field" `Quick
+      (elab_fail "type Point = {x: I64; y: I64} in Point {x = 1}");
+    Alcotest.test_case "record type declaration unknown field" `Quick
+      (elab_fail "type Point = {x: I64} in Point {x = 1; y = 2}");
+    Alcotest.test_case "record construction duplicate field" `Quick
+      (elab_fail "type Point = {x: I64} in Point {x = 1; x = 2}");
+    Alcotest.test_case "record declaration duplicate field" `Quick
+      (elab_fail "type Point = {x: I64; x: Bool} in Point");
+    Alcotest.test_case "record type declaration same recursion" `Quick
+      (elab_ok "type Option A = Some A | None in type List A = {meta: A; next: Option (List A)} in List");
+    Alcotest.test_case "recursive record construction" `Quick
+      (elab_ok "type Option A = Some A | None in type List A = {meta: A; next: Option (List A)} in List {meta = 1; next = None}");
+    Alcotest.test_case "recursive record rejects non-self payload" `Quick
+      (elab_fail "type Option A = Some A | None in type List A = {meta: A; next: Option (List A)} in List {meta = 1; next = Some 2}");
+    Alcotest.test_case "record rewrite respects type name shadowing" `Quick
+      (elab_ok "type R A = {x: (fun R -> R) I64} in R");
+    Alcotest.test_case "record rewrite respects parameter shadowing" `Quick
+      (elab_ok "type R A = {x: (fun A -> A) I64} in R");
+    Alcotest.test_case "record type declaration changed recursion rejected" `Quick
+      (elab_fail "type Bad A B = {x: Bad B A} in Bad");
     Alcotest.test_case "method uses self" `Quick
       (check_type
          "let Box = fun {A : Type} -> struct value: A; pub method get -> self.value end in Box.get (Box {value = 1})"
