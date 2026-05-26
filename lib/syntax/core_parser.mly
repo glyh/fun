@@ -152,7 +152,6 @@ type_app:
 type_atom:
   | name = ID { Var name }
   | LPAREN; e = type_expr; RPAREN { e }
-  | e = expr_primary { e }
 
 expr_arrow:
   | LBRACE; name = ID; COLON; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, Some name, dom, cod) }
