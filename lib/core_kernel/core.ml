@@ -2,6 +2,7 @@ type ix = int (* de Bruijn index: distance to binder *)
 type lvl = int (* de Bruijn level: distance from outermost scope *)
 type meta_id = int
 type nominal_id = int (* unique identity for each nominal type definition *)
+type effect_id = int (* unique identity for each effect family definition *)
 type atom_ty = TI64 | TBool | TUnit | TChar [@@deriving eq]
 
 (* Bound = introduced by lambda/pi, Defined = introduced by let.
@@ -45,6 +46,10 @@ type term =
           a [VNominal] template with this name, evaluates the param terms,
           and returns [VNominal] with those params. Used in constructor Pi
           types to express e.g. [Option a] where [a] is a de Bruijn var. *)
+  | EffectRef of string * term list
+      (** Applied effect family reference. [eval] scans the environment for a
+          [VEffect] template with this name, evaluates the param terms, and
+          returns [VEffect] with those params. *)
   | Ctor of {
       name : string;
       spine : term list;           (* type args then payload args *)
@@ -81,6 +86,15 @@ type term =
       (** Nominal type definition. Evaluator creates a fresh VNominal, builds
           constructor values, extends env with [type, ctor1, ..., ctorN], then
           evaluates [body]. The body's Var indices account for these bindings. *)
+  | EffectDef of {
+      id : effect_id;
+      name : string;
+      num_params : int;
+      ops : (string * term * term) list;
+      body : term;
+    }
+      (** Effect family definition. The [id] is allocated during elaboration so
+          repeated evaluation of the same declaration remains applicative. *)
 
 and core_pat =
   | CPatCon of string * int * core_pat list
@@ -108,6 +122,9 @@ and struct_binding_term =
   | TypeBind of string * struct_field_kind * value * (string * value) list
       (** name, kind, nominal_value, [(ctor_name, ctor_value)].
           Evaluator stores values directly without routing through [eval]. *)
+  | EffectBind of string * struct_field_kind * value
+      (** name, kind, effect_family_value. Operations are metadata and are not
+          exposed as fields in phase one. *)
 
 (* Semantic domain — de Bruijn levels for variables *)
 
@@ -167,6 +184,14 @@ and value =
       (** Nominal ADT type. Unifies by [id] equality. [params] are the
           applied type arguments, e.g. [Option I64] has params = [VAtomTy TI64].
           [constructors] maps each constructor name to its payload type closure. *)
+  | VEffect of {
+      id : effect_id;
+      name : string;
+      params : value list;
+      operations : (string * closure * closure) list;
+    }
+      (** Nominal effect family instance. Unifies by [id] and applied params;
+          operation signatures are declaration metadata, not structural identity. *)
   | VCon of { name : string; spine : value list; nominal : value }
       (** Fully saturated constructor value. [name] is the constructor tag,
           [spine] collects type+value arguments in application order
@@ -253,6 +278,19 @@ end
     two separately-defined types with the same name are distinct. *)
 module NominalId : sig
   val fresh : unit -> nominal_id
+end = struct
+  let counter = ref 0
+  let fresh () =
+    let id = !counter in
+    incr counter;
+    id
+end
+
+(** Global counter for fresh effect family identities.
+    Equality of effect families compares by id and instantiated params, not by
+    operation names or signatures. *)
+module EffectId : sig
+  val fresh : unit -> effect_id
 end = struct
   let counter = ref 0
   let fresh () =

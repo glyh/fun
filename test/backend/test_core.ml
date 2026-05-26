@@ -22,7 +22,8 @@ let () =
              | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
              | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
              | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
-             | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""))
+             | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
+             | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""))
     | _ -> None)
 
 let mc () = MetaContext.create ()
@@ -291,6 +292,46 @@ let test_unify_nominal_params () =
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different nominal params"
 
+let test_unify_effect_same_id_same_params () =
+  let mc = mc () in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  unify mc [] 0 eff1 eff2
+
+let test_unify_effect_same_id_different_params () =
+  let mc = mc () in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy TBool ]; operations = [] } in
+  match unify mc [] 0 eff1 eff2 with
+  | exception UnifyError _ -> ()
+  | () -> Alcotest.fail "expected unify error for different effect params"
+
+let test_unify_effect_different_ids () =
+  let mc = mc () in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 8; name = "Env"; params = [ VAtomTy TI64 ]; operations = [] } in
+  match unify mc [] 0 eff1 eff2 with
+  | exception UnifyError (EffectMismatch ("State", "Env")) -> ()
+  | exception UnifyError _ -> Alcotest.fail "wrong unify error"
+  | () -> Alcotest.fail "expected unify error for distinct effect ids"
+
+let test_conv_effect_same_id_same_params () =
+  let mc = mc () in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  Alcotest.(check bool) "effect conv" true (conv mc 0 eff1 eff2)
+
+let test_conv_effect_different_ids () =
+  let mc = mc () in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 8; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  Alcotest.(check bool) "effect conv" false (conv mc 0 eff1 eff2)
+
+let test_debug_effect () =
+  let mc = mc () in
+  let text = Debug.pp_value_short mc (VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] }) in
+  Alcotest.(check string) "debug effect" "effect State(I64)" text
+
 let () =
   Alcotest.run "core"
     [
@@ -531,6 +572,12 @@ let () =
                "fun (y : I64) -> y");
           Alcotest.test_case "not equal" `Quick
             (check_not_conv "not equal" "I64" "Bool");
+          Alcotest.test_case "effect same id same params" `Quick test_conv_effect_same_id_same_params;
+          Alcotest.test_case "effect different ids" `Quick test_conv_effect_different_ids;
+        ] );
+      ( "debug",
+        [
+          Alcotest.test_case "effect" `Quick test_debug_effect;
         ] );
       ( "neutral",
         [
@@ -555,6 +602,9 @@ let () =
           Alcotest.test_case "occurs check" `Quick test_unify_occurs_check;
           Alcotest.test_case "nonlinear spine" `Quick test_unify_nonlinear_spine;
           Alcotest.test_case "nominal params" `Quick test_unify_nominal_params;
+          Alcotest.test_case "effect same id same params" `Quick test_unify_effect_same_id_same_params;
+          Alcotest.test_case "effect same id different params" `Quick test_unify_effect_same_id_different_params;
+          Alcotest.test_case "effect different ids" `Quick test_unify_effect_different_ids;
           Alcotest.test_case "mismatch" `Quick test_unify_mismatch;
         ] );
     ]

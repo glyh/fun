@@ -33,7 +33,7 @@ let bare_pat_name path name =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE METHOD IMPORT SELF SELF_TYPE
+%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
@@ -53,8 +53,13 @@ module_eof:
     { Struct { con_fields = flds; bindings = bnds } }
 
 expr:
-  | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
-    { Let { name; type_ = ty; value; body; recursive = false } }
+  | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs; IN; body = expr
+    { match rhs with
+      | `Value value -> Let { name; type_ = ty; value; body; recursive = false }
+      | `Effect ops -> EffectDef { name; params = []; ops; body } }
+  | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
+    ops = separated_nonempty_list(SEMI, effect_op_decl); END; IN; body = expr
+    { EffectDef { name; params; ops; body } }
   | LET; REC; name = ID; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
     { Let { name; type_ = ty; value; body; recursive = true } }
   | FUN; ps = nonempty_list(param); ARROW; body = expr
@@ -120,9 +125,29 @@ struct_field_decl:
 record_type_field_decl:
   | name = ID; COLON; ty = expr { (name, ty) }
 
+effect_op_decl:
+  | name = ID; COLON; input = type_expr; ARROW; output = type_expr
+    { { name; input; output } }
+
+let_rhs:
+  | EFFECT; ops = separated_nonempty_list(SEMI, effect_op_decl); END { `Effect ops }
+  | value = expr { `Value value }
+
 struct_binding:
-  | PUB; LET; name = binding_name; EQUALS; value = expr { LetBinding { name; value; public = true } }
-  | LET; name = binding_name; EQUALS; value = expr { LetBinding { name; value; public = false } }
+  | PUB; LET; name = binding_name; EQUALS; rhs = let_rhs
+    { match rhs with
+      | `Value value -> LetBinding { name; value; public = true }
+      | `Effect ops -> EffectBinding { name; params = []; ops; public = true } }
+  | PUB; LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
+    ops = separated_nonempty_list(SEMI, effect_op_decl); END
+    { EffectBinding { name; params; ops; public = true } }
+  | LET; name = binding_name; EQUALS; rhs = let_rhs
+    { match rhs with
+      | `Value value -> LetBinding { name; value; public = false }
+      | `Effect ops -> EffectBinding { name; params = []; ops; public = false } }
+  | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
+    ops = separated_nonempty_list(SEMI, effect_op_decl); END
+    { EffectBinding { name; params; ops; public = false } }
   | PUB; METHOD; name = ID; params = list(param); ARROW; body = expr
     { MethodBinding { name; params; body; public = true } }
   | METHOD; name = ID; params = list(param); ARROW; body = expr

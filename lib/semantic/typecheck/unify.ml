@@ -13,6 +13,7 @@ type unify_error =
   | FrameMismatch
   | StructFieldMismatch
   | NominalMismatch of string * string
+  | EffectMismatch of string * string
 
 exception UnifyError of unify_error
 
@@ -123,6 +124,8 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         let params_terms = List.map (go d) n.params in
         List.fold_left (fun acc t -> Ap (acc, Explicit, t))
           (Con n.name) params_terms
+    | VEffect e ->
+        EffectRef (e.name, List.map (go d) e.params)
     | VCon { name; spine; _ } ->
         let spine_terms = List.map (go d) spine in
         List.fold_left (fun acc t -> Ap (acc, Explicit, t))
@@ -194,6 +197,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             occurs_check typ;
             List.iter (fun (_, v) -> occurs_check v) fields
         | VNominal n -> List.iter occurs_check n.params
+        | VEffect e -> List.iter occurs_check e.params
         | VCon { spine; nominal; _ } -> List.iter occurs_check spine; occurs_check nominal
         | VNeutral { neutral = { frames; _ }; _ } ->
             List.iter (fun f -> match f with
@@ -288,6 +292,12 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       if List.length n1.params <> List.length n2.params then
         raise (UnifyError (NominalMismatch (n1.name, n2.name)));
       List.iter2 (unify mc env depth) n1.params n2.params
+  | VEffect e1, VEffect e2 ->
+      if e1.id <> e2.id then
+        raise (UnifyError (EffectMismatch (e1.name, e2.name)));
+      if List.length e1.params <> List.length e2.params then
+        raise (UnifyError (EffectMismatch (e1.name, e2.name)));
+      List.iter2 (unify mc env depth) e1.params e2.params
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc env depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->

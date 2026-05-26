@@ -38,6 +38,10 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
         if List.length n.params = 0 then n.name
         else Printf.sprintf "%s(%s)" n.name
           (String.concat ", " (List.map (go (depth+1)) n.params))
+    | VEffect e ->
+        if List.length e.params = 0 then Printf.sprintf "effect %s" e.name
+        else Printf.sprintf "effect %s(%s)" e.name
+          (String.concat ", " (List.map (go (depth+1)) e.params))
     | VCon { name; spine; _ } ->
         if List.length spine = 0 then name
         else Printf.sprintf "%s(%s)" name
@@ -80,6 +84,8 @@ let rec pp_term (t : term) : string =
   | Meta id -> Printf.sprintf "Meta(%d)" id
   | InsertedMeta (id, _) -> Printf.sprintf "IMeta(%d)" id
   | NomRef (name, args) -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
+  | EffectRef (name, args) -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
   | Con name -> Printf.sprintf "Con(%s)" name
   | Ctor { name; nominal_name; _ } -> Printf.sprintf "Ctor(%s/%s)" name nominal_name
+  | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
   | _ -> "<term>"

@@ -1,5 +1,12 @@
 (test
  (name test_core)
- (libraries core_tt_kernel core_tt_syntax core_tt_loader core_tt_typecheck core_tt_interp alcotest menhirLib)
+ (libraries
+  core_tt_kernel
+  core_tt_syntax
+  core_tt_loader
+  core_tt_typecheck
+  core_tt_interp
+  alcotest
+  menhirLib)
  (preprocess
   (pps ppx_deriving.std)))

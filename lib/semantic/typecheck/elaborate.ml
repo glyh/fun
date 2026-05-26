@@ -15,6 +15,7 @@ type elab_error =
   | UnknownRecordField of string
   | DuplicateRecordField of string
   | MissingRecordField of string
+  | DuplicateEffectOperation of string
   | NonExhaustive of string
   | InvalidRecursiveRecord of string
   | ImportRequiresLoader of string
@@ -208,6 +209,14 @@ let check_duplicate_names names =
       Hashtbl.replace seen name ())
     names
 
+let check_duplicate_eff_ops ops =
+  let seen = Hashtbl.create 8 in
+  List.iter
+    (fun (op : Surface.effect_op) ->
+      if Hashtbl.mem seen op.name then raise (ElabError (DuplicateEffectOperation op.name));
+      Hashtbl.replace seen op.name ())
+    ops
+
 let rewrite_record_self_refs record_name params expr =
   let invalid () =
     raise
@@ -265,6 +274,14 @@ let rewrite_record_self_refs record_name params expr =
                     { name; params;
                       ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
                       public }
+              | Surface.EffectBinding { name; params; ops; public } ->
+                  Surface.EffectBinding
+                    { name; params;
+                      ops = List.map
+                        (fun (op : Surface.effect_op) ->
+                          { op with input = go (params @ bound) op.input; output = go (params @ bound) op.output })
+                        ops;
+                      public }
             in
             Surface.Struct
               { con_fields = List.map (fun (name, ty) -> (name, go bound ty)) con_fields;
@@ -280,6 +297,14 @@ let rewrite_record_self_refs record_name params expr =
             Surface.TypeDef
               { name; params;
                 ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
+                body = go (name :: bound) body }
+        | Surface.EffectDef { name; params; ops; body } ->
+            Surface.EffectDef
+              { name; params;
+                ops = List.map
+                  (fun (op : Surface.effect_op) ->
+                    { op with input = go (params @ bound) op.input; output = go (params @ bound) op.output })
+                  ops;
                 body = go (name :: bound) body }
         | Surface.Match (scrutinee, branches) ->
             Surface.Match (go bound scrutinee, List.map (fun (pat, body) -> (pat, go bound body)) branches)
@@ -368,6 +393,7 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
   | VRecord { typ; fields } ->
       VRecord { typ = subst_value_var mc target replacement typ; fields = List.map (fun (name, value) -> (name, subst_value_var mc target replacement value)) fields }
   | VNominal n -> VNominal { n with params = List.map (subst_value_var mc target replacement) n.params }
+  | VEffect e -> VEffect { e with params = List.map (subst_value_var mc target replacement) e.params }
   | VCon c -> VCon { c with spine = List.map (subst_value_var mc target replacement) c.spine; nominal = subst_value_var mc target replacement c.nominal }
   | VNeutral { ty; neutral } ->
       VNeutral { ty = subst_value_var mc target replacement ty; neutral = subst_neutral_var mc target replacement neutral }
@@ -427,6 +453,7 @@ let close_recursive_payload_term nominal_name num_params =
             let binding = function
               | LetBind (field, kind, value) -> LetBind (field, kind, go cutoff value)
               | TypeBind (field, kind, nominal, ctors) -> TypeBind (field, kind, nominal, ctors)
+              | EffectBind (field, kind, eff) -> EffectBind (field, kind, eff)
             in
             Struct { con_fields; bindings = List.map binding bindings; partial }
         | RecordConstruct { typ; fields } ->
@@ -434,6 +461,7 @@ let close_recursive_payload_term nominal_name num_params =
         | Open (s, body) -> Open (go cutoff s, go cutoff body)
         | Fix body -> Fix (go (cutoff + 1) body)
         | NomRef (name, params) -> NomRef (name, List.map (go cutoff) params)
+        | EffectRef (name, params) -> EffectRef (name, List.map (go cutoff) params)
         | Ctor { name; spine; nominal_name; nominal_spine } ->
             Ctor { name; spine = List.map (go cutoff) spine; nominal_name; nominal_spine = List.map (go cutoff) nominal_spine }
         | Match (scrut, branches) ->
@@ -442,6 +470,11 @@ let close_recursive_payload_term nominal_name num_params =
             NominalDef
               { name; num_params;
                 ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go cutoff) payload)) ctors;
+                body = go cutoff body }
+        | EffectDef { id; name; num_params; ops; body } ->
+            EffectDef
+              { id; name; num_params;
+                ops = List.map (fun (op, input, output) -> (op, go cutoff input, go cutoff output)) ops;
                 body = go cutoff body }
         | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ as term -> term)
   in
@@ -717,6 +750,17 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (LetBind (name, kind, method_core) :: acc_binds,
                field @ acc_fields)
               rest
+        | Surface.EffectBinding { name; params; ops; public } :: rest ->
+            let _effect_id, eff, eff_ty, _elaborated_ops =
+              elaborate_eff_family ctx name params ops
+            in
+            let kind = if public then Public else Private in
+            let ctx' = Ctx.define ctx name eff_ty eff in
+            let field = if public then [ (name, kind, eff_ty) ] else [] in
+            go ctx'
+              (EffectBind (name, kind, eff) :: acc_binds,
+               field @ acc_fields)
+              rest
         | Surface.TypeBinding { name; params; ctors; public } :: rest ->
             if params <> [] then raise (ElabError NotANominalType);
             let elaborated_ctors =
@@ -765,13 +809,18 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
        VStruct { fields = type_fields; partial = false })
   | Open (name, body) ->
       let ix, ty = Ctx.lookup ctx name in
-      (match Nbe.force ctx.metas ty with
-      | VStruct { fields; _ } ->
+      let value = Ctx.eval ctx (Var ix) in
+      (match (Nbe.force ctx.metas ty, Nbe.force ctx.metas value) with
+      | VStruct { fields = type_fields; _ }, VStruct { fields = value_fields; _ } ->
           let ctx' =
             List.fold_left
               (fun c (fname, k, fty) ->
-                if k = Public || k = Method then Ctx.define c fname fty fty else c)
-              ctx fields
+                if k = Public || k = Method then
+                  match List.find_opt (fun (vname, vk, _) -> String.equal fname vname && vk = k) value_fields with
+                  | Some (_, _, value) -> Ctx.define c fname fty value
+                  | None -> c
+                else c)
+              ctx type_fields
           in
           let body_core, body_ty = infer ctx' body in
           (Open (Var ix, body_core), body_ty)
@@ -902,6 +951,15 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           ctors
       in
       (NominalDef { name; num_params; ctors = ctor_payload_terms; body = body_core },
+       body_ty)
+  | EffectDef { name; params; ops; body } ->
+      let num_params = List.length params in
+      let effect_id, eff, eff_ty, elaborated_ops =
+        elaborate_eff_family ctx name params ops
+      in
+      let body_ctx = Ctx.define ctx name eff_ty eff in
+      let body_core, body_ty = infer body_ctx body in
+      (EffectDef { id = effect_id; name; num_params; ops = elaborated_ops; body = body_core },
        body_ty)
   | Match (scrutinee, branches) ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
@@ -1196,6 +1254,44 @@ and infer_if (ctx : Ctx.t) (cond : Surface.t) (then_ : Surface.t)
   let then_core, then_ty = infer ctx then_ in
   let else_core = check ctx else_ then_ty in
   (If (cond_core, then_core, else_core), then_ty)
+
+and elaborate_eff_family (ctx : Ctx.t) (name : string) (params : string list)
+    (ops : Surface.effect_op list) : effect_id * value * value * (string * term * term) list =
+  check_duplicate_eff_ops ops;
+  let param_ctx =
+    List.fold_left
+      (fun ctx param_name ->
+        Ctx.define ctx param_name VU (VRigid { lvl = ctx.lvl; spine = [] }))
+      ctx params
+  in
+  let effect_id = EffectId.fresh () in
+  let elaborated_ops =
+    List.map
+      (fun (op : Surface.effect_op) ->
+        let input_core, input_ty = infer param_ctx op.input in
+        Ctx.unify param_ctx input_ty VU;
+        let output_core, output_ty = infer param_ctx op.output in
+        Ctx.unify param_ctx output_ty VU;
+        (op.name, input_core, output_core))
+      ops
+  in
+  let operations =
+    List.map
+      (fun (op_name, input_core, output_core) ->
+        (op_name, { env = ctx.env; body = input_core }, { env = ctx.env; body = output_core }))
+      elaborated_ops
+  in
+  let eff = VEffect { id = effect_id; name; params = []; operations } in
+  let eff_ty =
+    List.fold_right
+      (fun _ acc ->
+        VPi
+          { explicitness = Explicit;
+            domain = VU;
+            codomain = { env = ctx.env; body = Nbe.quote ctx.metas ctx.lvl acc } })
+      params VU
+  in
+  (effect_id, eff, eff_ty, elaborated_ops)
 
 (** Build a constructor's VLam chain + VPi type from type params and optional payload.
     [payload_clo_opt] is a closure whose body is the payload type term with

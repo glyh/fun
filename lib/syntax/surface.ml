@@ -2,6 +2,8 @@ type explicitness = Implicit | Explicit
 
 type param = { name : string; type_ : t option; explicitness : explicitness }
 
+and effect_op = { name : string; input : t; output : t }
+
 and struct_binding =
   | LetBinding of { name : string; value : t; public : bool }
   | MethodBinding of { name : string; params : param list; body : t; public : bool }
@@ -9,6 +11,12 @@ and struct_binding =
       name : string;
       params : string list;
       ctors : (string * t option) list;  (* (ctor_name, payload_type option) *)
+      public : bool;
+    }
+  | EffectBinding of {
+      name : string;
+      params : string list;
+      ops : effect_op list;
       public : bool;
     }
 
@@ -44,6 +52,12 @@ and t =
       name : string;
       params : string list;
       ctors : (string * t option) list;  (* (ctor_name, payload_type option) *)
+      body : t;
+    }
+  | EffectDef of {
+      name : string;
+      params : string list;
+      ops : effect_op list;
       body : t;
     }
   | Match of t * (pat * t) list  (* match scrutinee | pat -> body ... end *)

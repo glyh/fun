@@ -130,6 +130,8 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
             let env = List.fold_left (fun e (_, _, v) -> v :: e) env ctor_vals in
             let env = nominal :: env in
             eval_binds env ((name, kind, nominal) :: ctor_vals @ acc) rest
+        | EffectBind (name, kind, eff) :: rest ->
+            eval_binds (eff :: env) ((name, kind, eff) :: acc) rest
       in
       let _env, bind_vals = eval_binds env [] bindings in
       VStruct { fields = con_vals @ bind_vals; partial }
@@ -169,6 +171,12 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
           let param_vals = List.map (eval mc env) params in
           List.fold_left (fun acc v -> apply mc acc v) nom param_vals
       | _ -> raise (EvalError ("NomRef is not VNominal: " ^ name)))
+  | EffectRef (name, params) ->
+      (match eval_eff env name with
+      | VEffect _ as eff ->
+          let param_vals = List.map (eval mc env) params in
+          List.fold_left (fun acc v -> apply mc acc v) eff param_vals
+      | _ -> raise (EvalError ("EffectRef is not VEffect: " ^ name)))
   | Ctor { name; spine; nominal_name; nominal_spine } ->
       let spine_vals = List.map (eval mc env) spine in
       let nom_spine_vals = List.map (eval mc env) nominal_spine in
@@ -230,6 +238,14 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
         env elaborated_ctors
       in
       eval mc env body
+  | EffectDef { id; name; ops; body; _ } ->
+      let elaborated_ops =
+        List.map (fun (op_name, input, output) ->
+          (op_name, { env; body = input }, { env; body = output }))
+          ops
+      in
+      let eff = VEffect { id; name; params = []; operations = elaborated_ops } in
+      eval mc (eff :: env) body
   | Match (scrut, branches) ->
       let vs = eval mc env scrut in
       eval_match mc env vs branches
@@ -264,6 +280,7 @@ and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
   | VFlex { id; spine = sp } -> VFlex { id; spine = sp @ [ va ] }
   | VRigid { lvl; spine = sp } -> VRigid { lvl; spine = sp @ [ va ] }
   | VNominal n -> VNominal { n with params = n.params @ [ va ] }
+  | VEffect e -> VEffect { e with params = e.params @ [ va ] }
   | VCon c -> VCon { c with spine = c.spine @ [ va ] }
   | _ -> raise (EvalError "applying non-function")
 
@@ -324,6 +341,14 @@ and eval_con (env : env) (name : string) : value =
     | [] -> raise (EvalError ("unbound constructor/type: " ^ name))
     | VCon c :: _ when String.equal c.name name -> VCon c
     | VNominal n :: _ when String.equal n.name name -> VNominal n
+    | _ :: rest -> go rest
+  in
+  go env
+
+and eval_eff (env : env) (name : string) : value =
+  let rec go = function
+    | [] -> raise (EvalError ("unbound eff: " ^ name))
+    | VEffect e :: _ when String.equal e.name name -> VEffect e
     | _ :: rest -> go rest
   in
   go env
@@ -502,11 +527,13 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
       in
       let bindings =
         List.filter_map (fun (n, k, v) ->
-          match k with
-          | Public -> Some (LetBind (n, Public, quote mc depth v))
-          | Private -> Some (LetBind (n, Private, quote mc depth v))
-          | Method -> Some (LetBind (n, Method, quote mc depth v))
-          | PrivateMethod -> Some (LetBind (n, PrivateMethod, quote mc depth v))
+          match k, force mc v with
+          | Public, VEffect _ -> Some (EffectBind (n, Public, v))
+          | Private, VEffect _ -> Some (EffectBind (n, Private, v))
+          | Public, _ -> Some (LetBind (n, Public, quote mc depth v))
+          | Private, _ -> Some (LetBind (n, Private, quote mc depth v))
+          | Method, _ -> Some (LetBind (n, Method, quote mc depth v))
+          | PrivateMethod, _ -> Some (LetBind (n, PrivateMethod, quote mc depth v))
           | _ -> None) fields
       in
       Struct { con_fields; bindings; partial }
@@ -517,6 +544,7 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VNominal n ->
       if n.params = [] then Con n.name
       else NomRef (n.name, List.map (quote mc depth) n.params)
+  | VEffect e -> EffectRef (e.name, List.map (quote mc depth) e.params)
   | VCon { name; spine; _ } ->
       quote_spine mc depth (Con name) spine
   | VNeutral { neutral = neu; _ } -> quote_neutral mc depth neu
@@ -615,6 +643,10 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       n1.id = n2.id
       && List.length n1.params = List.length n2.params
       && List.for_all2 (conv mc depth) n1.params n2.params
+  | VEffect e1, VEffect e2 ->
+      e1.id = e2.id
+      && List.length e1.params = List.length e2.params
+      && List.for_all2 (conv mc depth) e1.params e2.params
   | VCon c1, VCon c2 ->
       String.equal c1.name c2.name
       && List.length c1.spine = List.length c2.spine

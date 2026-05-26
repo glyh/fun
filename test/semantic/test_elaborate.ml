@@ -17,7 +17,8 @@ let () =
           | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
           | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
           | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
-          | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""))
+          | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
+          | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""))
     | Core_loader.CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
     | Core_loader.ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
     | Unify.UnifyError e ->
@@ -35,7 +36,9 @@ let () =
           | FrameMismatch -> "FrameMismatch"
           | StructFieldMismatch -> "StructFieldMismatch"
           | NominalMismatch (n1, n2) ->
-              Printf.sprintf "NominalMismatch(%s, %s)" n1 n2))
+              Printf.sprintf "NominalMismatch(%s, %s)" n1 n2
+          | EffectMismatch (e1, e2) ->
+              Printf.sprintf "EffectMismatch(%s, %s)" e1 e2))
     | _ -> None)
 
 let parse_expr = Core_lexer.parse_expr
@@ -806,6 +809,54 @@ let implicit_args =
            let _ : Bool = g (Some true) in ()"));
   ]
 
+let effects =
+  [
+    Alcotest.test_case "effect instance has type Type" `Quick
+      (check_type
+         "let State S = effect get : Unit -> S; put : S -> Unit end in State I64"
+         U);
+    Alcotest.test_case "effect family has function type" `Quick
+      (check_type
+         "let State S = effect get : Unit -> S end in State"
+         (Pi (Explicit, U, U)));
+    Alcotest.test_case "same effect family and params compare equal" `Quick
+      (check_type
+         "let State S = effect get : Unit -> S end in State I64 == State I64"
+         (AtomTy TBool));
+    Alcotest.test_case "different effect params elaborate" `Quick
+      (check_type
+         "let State S = effect get : Unit -> S end in State I64 != State Bool"
+         (AtomTy TBool));
+    Alcotest.test_case "identical signatures remain nominal" `Quick
+      (check_type
+         "let State S = effect get : Unit -> S end in let Env S = effect get : Unit -> S end in State I64 != Env I64"
+         (AtomTy TBool));
+    Alcotest.test_case "public effect field through dot" `Quick
+      (check_type
+         "let M = struct pub let State S = effect get : Unit -> S end end in M.State I64"
+         U);
+    Alcotest.test_case "public effect field through open" `Quick
+      (check_type
+         "let M = struct pub let State S = effect get : Unit -> S end end in open M in State I64"
+         U);
+    Alcotest.test_case "private effect field hidden" `Quick
+      (elab_fail
+         "let M = struct let State S = effect get : Unit -> S end end in M.State I64");
+    Alcotest.test_case "private effect usable by public member" `Quick
+      (check_type
+         "let M = struct let State S = effect get : Unit -> S end; pub let T = State I64 end in M.T"
+         U);
+    Alcotest.test_case "duplicate operation rejected" `Quick
+      (elab_fail
+         "let State S = effect get : Unit -> S; get : Unit -> S end in State I64");
+    Alcotest.test_case "operation name is not bound" `Quick
+      (elab_fail
+         "let State S = effect get : Unit -> S end in get");
+    Alcotest.test_case "imported public effect" `Quick
+      (check_import_type [ ("effects", "pub let State S = effect get : Unit -> S end") ]
+         "let E = import \"effects\" in E.State I64" U);
+  ]
+
 let imports =
   [
     Alcotest.test_case "basic import" `Quick
@@ -886,6 +937,7 @@ let () =
       ("adts", adts);
       ("match", match_tests);
       ("implicit_args", implicit_args);
+      ("effects", effects);
       ("imports", imports);
       ("let_rec", let_rec);
     ]
