@@ -103,6 +103,8 @@ and term =
     }
       (** Effect family definition. The [id] is allocated during elaboration so
           repeated evaluation of the same declaration remains applicative. *)
+  | Perform of { eff : term; op : string; arg : term }
+      (** Effect operation invocation. Handlers/runtime bubbling are not implemented yet. *)
 
 and core_pat =
   | CPatCon of string * int * core_pat list

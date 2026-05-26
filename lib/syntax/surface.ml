@@ -62,6 +62,7 @@ and t =
       ops : effect_op list;
       body : t;
     }
+  | Perform of { effect_path : string list; op : string; arg : t }
   | Match of t * (pat * t) list  (* match scrutinee | pat -> body ... end *)
 
 and pat =

@@ -28,6 +28,8 @@ let rec pp_term (t : term) : string =
   | Con name -> Printf.sprintf "Con(%s)" name
   | Ctor { name; nominal_name; _ } -> Printf.sprintf "Ctor(%s/%s)" name nominal_name
   | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
+  | Perform { eff; op; arg } ->
+      Printf.sprintf "Perform(%s.%s, %s)" (pp_term eff) op (pp_term arg)
   | _ -> "<term>"
 
 let pp_value_short (mc : MetaContext.t) (v : value) : string =

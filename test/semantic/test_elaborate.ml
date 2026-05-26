@@ -20,7 +20,10 @@ let () =
           | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
           | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
           | ExpectedEffect -> "ExpectedEffect"
-          | DuplicateEffect -> "DuplicateEffect"))
+          | DuplicateEffect -> "DuplicateEffect"
+	             | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
+	             | EffectOperationPathExpected -> "EffectOperationPathExpected"
+	             | UnhandledEffects -> "UnhandledEffects"))
     | Core_loader.CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
     | Core_loader.ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
     | Unify.UnifyError e ->
@@ -882,6 +885,38 @@ let effects =
     Alcotest.test_case "duplicate row entry rejected" `Quick
       (elab_fail
          "let IO = effect read : Unit -> I64 end in I64 -> I64 can {IO, IO}");
+    Alcotest.test_case "perform get checks in effectful lambda" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S end in (fun _ -> perform State.get () : Unit -> I64 can State I64)");
+    Alcotest.test_case "perform put checks in effectful lambda" `Quick
+      (elab_ok
+         "let State S = effect put : S -> Unit end in (fun _ -> perform State.put 42 : Unit -> Unit can State I64)");
+    Alcotest.test_case "unknown operation rejected" `Quick
+      (elab_fail
+         "let State S = effect get : Unit -> S end in (fun _ -> perform State.missing () : Unit -> I64 can State I64)");
+    Alcotest.test_case "wrong operation argument rejected" `Quick
+      (elab_fail
+         "let State S = effect put : S -> Unit end in (fun _ -> perform State.put true : Unit -> Unit can State I64)");
+    Alcotest.test_case "pure lambda rejects perform" `Quick
+      (elab_fail
+         "let State S = effect get : Unit -> S end in (fun _ -> perform State.get () : Unit -> I64)");
+    Alcotest.test_case "pure lambda still checks against effectful type" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S end in (fun _ -> 1 : Unit -> I64 can State I64)");
+    Alcotest.test_case "effectful call must be accounted for" `Quick
+      (elab_fail
+         "let State S = effect get : Unit -> S end in let f : Unit -> I64 can State I64 = fun _ -> perform State.get () in (fun _ -> f () : Unit -> I64)");
+    Alcotest.test_case "effectful call propagates latent row" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S end in let f : Unit -> I64 can State I64 = fun _ -> perform State.get () in (fun _ -> f () : Unit -> I64 can State I64)");
+    Alcotest.test_case "inferred perform lambda exposes latent effect" `Quick
+      (fun () ->
+        let expr = Core_lexer.parse_expr "let State S = effect get : Unit -> S end in fun _ -> perform State.get ()" in
+        let ctx = Elaborate.init_ctx () in
+        let _core, ty, _effects = Elaborate.on_expr_effects ctx expr in
+        match Nbe.force ctx.Elaborate.Ctx.metas ty with
+        | VPi { effects; _ } when not (List.is_empty effects.effects) -> ()
+        | _ -> Alcotest.fail "expected latent State effect");
   ]
 
 let imports =

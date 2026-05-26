@@ -25,7 +25,10 @@ let () =
              | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
              | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
              | ExpectedEffect -> "ExpectedEffect"
-             | DuplicateEffect -> "DuplicateEffect"))
+             | DuplicateEffect -> "DuplicateEffect"
+	          | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
+	          | EffectOperationPathExpected -> "EffectOperationPathExpected"
+	          | UnhandledEffects -> "UnhandledEffects"))
     | _ -> None)
 
 let mc () = MetaContext.create ()
@@ -372,6 +375,18 @@ let test_debug_effect () =
   let text = Debug.pp_value_short mc (VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] }) in
   Alcotest.(check string) "debug effect" "effect State(I64)" text
 
+let test_eval_unhandled_perform () =
+  let state = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let term = Perform { eff = Var 0; op = "put"; arg = Atom (I64 42L) } in
+  match Nbe.eval (mc ()) [ state ] term with
+  | exception Nbe.EvalError msg ->
+      if not (String.contains msg 'S') then Alcotest.fail ("unexpected perform error: " ^ msg)
+  | _ -> Alcotest.fail "expected unhandled perform error"
+
+let test_debug_perform () =
+  let text = Debug.pp_term (Perform { eff = EffectRef ("State", [ AtomTy TI64 ]); op = "get"; arg = Atom Unit }) in
+  if not (String.contains text 'g') then Alcotest.fail ("expected perform debug output, got " ^ text)
+
 let () =
   Alcotest.run "core"
     [
@@ -413,6 +428,7 @@ let () =
           Alcotest.test_case "rec not" `Quick
             (check_i64 "rec not" 0L
                "let rec f : Bool -> I64 = fun x -> if x then 0 else f (not x) in f false");
+          Alcotest.test_case "unhandled perform" `Quick test_eval_unhandled_perform;
           Alcotest.test_case "match ctor" `Quick
             (check_i64 "match ctor" 1L
                "type Color = Red | Green in match Red with Red -> 1 | Green -> 2 end");
@@ -621,6 +637,7 @@ let () =
         [
           Alcotest.test_case "effect" `Quick test_debug_effect;
           Alcotest.test_case "effectful pi" `Quick test_debug_effectful_pi;
+          Alcotest.test_case "perform" `Quick test_debug_perform;
         ] );
       ( "neutral",
         [

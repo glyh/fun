@@ -52,6 +52,26 @@ let closest_arrow_can_shape () =
       ()
   | _ -> Alcotest.fail "expected can to bind to closest arrow"
 
+let perform_get_shape () =
+  match Core_lexer.parse_expr "perform State.get ()" with
+  | Perform { effect_path = [ "State" ]; op = "get"; arg = Atom Atom.Unit } -> ()
+  | _ -> Alcotest.fail "expected perform get"
+
+let perform_put_shape () =
+  match Core_lexer.parse_expr "perform State.put 42" with
+  | Perform { effect_path = [ "State" ]; op = "put"; arg = Atom (Atom.I64 42L) } -> ()
+  | _ -> Alcotest.fail "expected perform put"
+
+let perform_qualified_shape () =
+  match Core_lexer.parse_expr "perform M.State.get ()" with
+  | Perform { effect_path = [ "M"; "State" ]; op = "get"; arg = Atom Atom.Unit } -> ()
+  | _ -> Alcotest.fail "expected qualified perform"
+
+let dotted_field_shape () =
+  match Core_lexer.parse_expr "State.get" with
+  | FieldAccess (Var "State", "get") -> ()
+  | _ -> Alcotest.fail "expected ordinary field access"
+
 let () =
   Alcotest.run "syntax"
     [
@@ -66,5 +86,9 @@ let () =
           Alcotest.test_case "single can shape" `Quick single_can_shape;
           Alcotest.test_case "braced can shape" `Quick braced_can_shape;
           Alcotest.test_case "closest arrow can shape" `Quick closest_arrow_can_shape;
+          Alcotest.test_case "perform get shape" `Quick perform_get_shape;
+          Alcotest.test_case "perform put shape" `Quick perform_put_shape;
+          Alcotest.test_case "perform qualified shape" `Quick perform_qualified_shape;
+          Alcotest.test_case "dotted field shape" `Quick dotted_field_shape;
         ] );
     ]

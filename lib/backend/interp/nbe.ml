@@ -253,6 +253,13 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
   | Match (scrut, branches) ->
       let vs = eval mc env scrut in
       eval_match mc env vs branches
+  | Perform { eff; op; arg } ->
+      let eff = eval mc env eff |> force mc in
+      let _arg = eval mc env arg in
+      (match eff with
+      | VEffect e ->
+          raise (EvalError ("unhandled effect " ^ e.name ^ "." ^ op ^ "; handlers are not implemented"))
+      | _ -> raise (EvalError "perform target is not an effect"))
 
 and try_prim_reduce (head : head) (frames : frame list) : value option =
   match head with

@@ -34,6 +34,11 @@ let attach_arrow_effects expr effects =
       | Arrow (expl, name, domain, None, codomain) -> Arrow (expl, name, domain, Some effects, codomain)
       | Arrow _ -> failwith "duplicate effect annotation"
       | _ -> failwith "can annotation requires an arrow")
+
+let split_operation_path path name =
+  match List.rev (path @ [name]) with
+  | op :: effect_rev when effect_rev <> [] -> (List.rev effect_rev, op)
+  | _ -> failwith "perform requires an effect operation path"
 %}
 
 %token <int64> INT
@@ -42,7 +47,7 @@ let attach_arrow_effects expr effects =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE CAN
+%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE CAN PERFORM
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
@@ -244,6 +249,8 @@ expr_app:
     { RecordConstruct { typ; fields } }
   | f = expr_app; LBRACE; a = expr_proj; RBRACE { Ap (f, Implicit, a) }
   | f = expr_app; a = expr_proj { Ap (f, Explicit, a) }
+  | PERFORM; name = dotted_id; arg = expr_proj
+    { let effect_path, op = split_operation_path (fst name) (snd name) in Perform { effect_path; op; arg } }
   | e = expr_proj { e }
 
 record_expr_field:
