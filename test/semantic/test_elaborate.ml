@@ -21,6 +21,7 @@ let () =
           | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
           | ExpectedEffect -> "ExpectedEffect"
           | DuplicateEffect -> "DuplicateEffect"
+	             | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
 	             | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
 	             | EffectOperationPathExpected -> "EffectOperationPathExpected"
 	             | UnhandledEffects -> "UnhandledEffects"))
@@ -917,6 +918,21 @@ let effects =
         match Nbe.force ctx.Elaborate.Ctx.metas ty with
         | VPi { effects; _ } when not (List.is_empty effects.effects) -> ()
         | _ -> Alcotest.fail "expected latent State effect");
+    Alcotest.test_case "handler removes single-operation effect" `Quick
+      (elab_ok
+         "let Exc = effect raise : I64 -> I64 end in (fun _ -> match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> n + 1 end : Unit -> I64)");
+    Alcotest.test_case "handler continuation type checks" `Quick
+      (elab_ok
+         "let Exc = effect raise : I64 -> I64 end in (fun _ -> match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> k (n + 1) end : Unit -> I64)");
+    Alcotest.test_case "handler branch body type checked" `Quick
+      (elab_fail
+         "let Exc = effect raise : I64 -> I64 end in (match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> true end : I64)");
+    Alcotest.test_case "multi-operation handler remains effectful when partial" `Quick
+      (elab_fail
+         "let State S = effect get : Unit -> S; put : S -> Unit end in (fun _ -> match perform State.get () with x -> x | effect State.get () k -> 0 end : Unit -> I64)");
+    Alcotest.test_case "duplicate effect branch rejected" `Quick
+      (elab_fail
+         "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> n | effect Exc.raise n k -> n end");
   ]
 
 let imports =

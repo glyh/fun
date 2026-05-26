@@ -98,7 +98,10 @@ expr:
   | e = expr_arrow { e }
 
 branch:
-  | p = pat; ARROW; body = expr { (p, body) }
+  | p = pat; ARROW; body = expr { ValueBranch (p, body) }
+  | EFFECT; name = dotted_id; arg = pat; k = ID; ARROW; body = expr
+    { let effect_path, op = split_operation_path (fst name) (snd name) in
+      EffectBranch { effect_path; op; arg_pat = arg; k; body } }
 
 binding_name:
   | name = ID { name }

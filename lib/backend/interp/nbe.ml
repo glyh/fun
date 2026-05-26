@@ -2,6 +2,25 @@ open Core
 
 exception EvalError of string
 
+type result =
+  | Done of value
+  | Effect of {
+      eff : value;
+      op : string;
+      arg : value;
+      k : value -> result;
+    }
+
+type continuation = { mutable used : bool; resume : value -> result }
+
+let make_cont resume = VCont (Obj.repr { used = false; resume })
+let get_cont obj : continuation = Obj.obj obj
+
+let rec bind_result result f =
+  match result with
+  | Done v -> f v
+  | Effect e -> Effect { e with k = (fun v -> bind_result (e.k v) f) }
+
 module Prim = struct
   open Atom
 
@@ -90,34 +109,51 @@ let dot_value (value : value) (name : string) : value =
         { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FDot name ] } }
   | _ -> raise (EvalError "field access on non-struct")
 
+let unhandled_effect_error eff op =
+  match eff with
+  | VEffect e -> raise (EvalError ("unhandled effect " ^ e.name ^ "." ^ op ^ "; handlers are not implemented"))
+  | _ -> raise (EvalError "perform target is not an effect")
+
+let result_value _mc = function
+  | Done v -> v
+  | Effect { eff; op; _ } -> unhandled_effect_error eff op
+
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
 
 and eval (mc : MetaContext.t) (env : env) (t : term) : value =
+  result_value mc (eval_result mc env t)
+
+and sequence_values mc env terms k =
+  match terms with
+  | [] -> k []
+  | term :: rest ->
+      bind_result (eval_result mc env term) (fun value ->
+        sequence_values mc env rest (fun values -> k (value :: values)))
+
+and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   match t with
-  | Var ix -> List.nth env ix
-  | Lam body -> VLam { body = { env; body } }
+  | Var ix -> Done (List.nth env ix)
+  | Lam body -> Done (VLam { body = { env; body } })
   | Ap (f, _, a) ->
-      let vf = eval mc env f in
-      let va = eval mc env a in
-      apply mc vf va
+      bind_result (eval_result mc env f) (fun vf ->
+        bind_result (eval_result mc env a) (fun va -> apply_result mc vf va))
   | Let (_, def, body) ->
-      let vdef = eval mc env def in
-      eval mc (vdef :: env) body
+      bind_result (eval_result mc env def) (fun vdef -> eval_result mc (vdef :: env) body)
   | Pi { explicitness; domain; effects; codomain } ->
-      VPi
-        { explicitness;
-          domain = eval mc env domain;
-          effects = effect_row_closure env effects;
-          codomain = { env; body = codomain } }
-  | U -> VU
-  | Atom a -> VAtom a
-  | AtomTy t -> VAtomTy t
+      Done
+        (VPi
+           { explicitness;
+             domain = eval mc env domain;
+             effects = effect_row_closure env effects;
+             codomain = { env; body = codomain } })
+  | U -> Done VU
+  | Atom a -> Done (VAtom a)
+  | AtomTy t -> Done (VAtomTy t)
   | If (cond, then_, else_) ->
-      let vc = eval mc env cond in
-      eval_if mc env vc then_ else_
-  | Prod elems -> VProd (List.map (eval mc env) elems)
-  | ProdTy elems -> VProdTy (List.map (eval mc env) elems)
+      bind_result (eval_result mc env cond) (fun vc -> Done (eval_if mc env vc then_ else_))
+  | Prod elems -> sequence_values mc env elems (fun values -> Done (VProd values))
+  | ProdTy elems -> sequence_values mc env elems (fun values -> Done (VProdTy values))
   | Struct { con_fields; bindings; partial } ->
       (* con_fields: all at same scope, no sequential dependency *)
       let con_vals =
@@ -138,63 +174,69 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
             eval_binds (eff :: env) ((name, kind, eff) :: acc) rest
       in
       let _env, bind_vals = eval_binds env [] bindings in
-      VStruct { fields = con_vals @ bind_vals; partial }
+      Done (VStruct { fields = con_vals @ bind_vals; partial })
   | RecordConstruct { typ; fields } ->
-      let typ = eval mc env typ in
-      let fields = List.map (fun (name, value) -> (name, eval mc env value)) fields in
-      VRecord { typ; fields }
+      bind_result (eval_result mc env typ) (fun typ ->
+        let rec go acc = function
+          | [] -> Done (VRecord { typ; fields = List.rev acc })
+          | (name, value) :: rest ->
+              bind_result (eval_result mc env value) (fun value -> go ((name, value) :: acc) rest)
+        in
+        go [] fields)
   | Proj (e, i) ->
-      let vs = eval mc env e in
-      (match vs with
-      | VProd elems -> List.nth elems i
-      | VNeutral { neutral; _ } ->
-          VNeutral
-            { ty = VU;
-              neutral = { neutral with frames = neutral.frames @ [ FProj i ] } }
-      | VFlex { id; spine = sp } ->
-          let frames = List.map (fun v -> FApp v) sp in
-          VNeutral { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FProj i ] } }
-      | VRigid { lvl; spine = sp } ->
-          let frames = List.map (fun v -> FApp v) sp in
-          VNeutral { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FProj i ] } }
-      | _ -> raise (EvalError "projection of non-product"))
-  | Dot (e, name) -> dot_value (eval mc env e) name
+      bind_result (eval_result mc env e) (fun vs ->
+        Done
+          (match vs with
+          | VProd elems -> List.nth elems i
+          | VNeutral { neutral; _ } ->
+              VNeutral
+                { ty = VU;
+                  neutral = { neutral with frames = neutral.frames @ [ FProj i ] } }
+          | VFlex { id; spine = sp } ->
+              let frames = List.map (fun v -> FApp v) sp in
+              VNeutral { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FProj i ] } }
+          | VRigid { lvl; spine = sp } ->
+              let frames = List.map (fun v -> FApp v) sp in
+              VNeutral { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FProj i ] } }
+          | _ -> raise (EvalError "projection of non-product")))
+  | Dot (e, name) -> bind_result (eval_result mc env e) (fun value -> Done (dot_value value name))
   | Open (s, body) ->
-      let vs = eval mc env s in
-      (match vs with
-      | VStruct { fields; _ } ->
-          let vals = List.filter_map (fun (_, k, v) -> if k = Public || k = Method then Some v else None) fields in
-          let env' = List.fold_left (fun e v -> v :: e) env vals in
-          eval mc env' body
-      | _ -> raise (EvalError "open of non-struct"))
-  | Fix body -> VFix { body = { env; body } }
-  | Con name -> eval_con env name
+      bind_result (eval_result mc env s) (fun vs ->
+        match vs with
+        | VStruct { fields; _ } ->
+            let vals = List.filter_map (fun (_, k, v) -> if k = Public || k = Method then Some v else None) fields in
+            let env' = List.fold_left (fun e v -> v :: e) env vals in
+            eval_result mc env' body
+        | _ -> raise (EvalError "open of non-struct"))
+  | Fix body -> Done (VFix { body = { env; body } })
+  | Con name -> Done (eval_con env name)
   | NomRef (name, params) ->
       (match eval_con env name with
       | VNominal _ as nom ->
-          let param_vals = List.map (eval mc env) params in
-          List.fold_left (fun acc v -> apply mc acc v) nom param_vals
+          sequence_values mc env params (fun param_vals ->
+            Done (List.fold_left (fun acc v -> apply mc acc v) nom param_vals))
       | _ -> raise (EvalError ("NomRef is not VNominal: " ^ name)))
   | EffectRef (name, params) ->
       (match eval_eff env name with
       | VEffect _ as eff ->
-          let param_vals = List.map (eval mc env) params in
-          List.fold_left (fun acc v -> apply mc acc v) eff param_vals
+          sequence_values mc env params (fun param_vals ->
+            Done (List.fold_left (fun acc v -> apply mc acc v) eff param_vals))
       | _ -> raise (EvalError ("EffectRef is not VEffect: " ^ name)))
   | Ctor { name; spine; nominal_name; nominal_spine } ->
-      let spine_vals = List.map (eval mc env) spine in
-      let nom_spine_vals = List.map (eval mc env) nominal_spine in
-      (match eval_con env nominal_name with
-      | VNominal n ->
-          VCon
-            { name;
-              spine = spine_vals;
-              nominal = VNominal { n with params = nom_spine_vals } }
-      | _ -> raise (EvalError ("Ctor nominal is not VNominal: " ^ nominal_name)))
+      sequence_values mc env spine (fun spine_vals ->
+        sequence_values mc env nominal_spine (fun nom_spine_vals ->
+          match eval_con env nominal_name with
+          | VNominal n ->
+              Done
+                (VCon
+                   { name;
+                     spine = spine_vals;
+                     nominal = VNominal { n with params = nom_spine_vals } })
+          | _ -> raise (EvalError ("Ctor nominal is not VNominal: " ^ nominal_name))))
   | Prim name ->
-      VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } }
-  | Meta id -> eval_meta mc id
-  | InsertedMeta (id, bds) -> eval_inserted_meta mc env id bds
+      Done (VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } })
+  | Meta id -> Done (eval_meta mc id)
+  | InsertedMeta (id, bds) -> Done (eval_inserted_meta mc env id bds)
   | NominalDef { name; num_params; ctors; body } ->
       let elaborated_ctors =
         List.map (fun (cname, payload_opt) ->
@@ -241,7 +283,7 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
             eval mc env ctor_term :: env)
         env elaborated_ctors
       in
-      eval mc env body
+      eval_result mc env body
   | EffectDef { id; name; ops; body; _ } ->
       let elaborated_ops =
         List.map (fun (op_name, input, output) ->
@@ -249,17 +291,15 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
           ops
       in
       let eff = VEffect { id; name; params = []; operations = elaborated_ops } in
-      eval mc (eff :: env) body
+      eval_result mc (eff :: env) body
   | Match (scrut, branches) ->
-      let vs = eval mc env scrut in
-      eval_match mc env vs branches
+      eval_match_result mc env (eval_result mc env scrut) branches
   | Perform { eff; op; arg } ->
-      let eff = eval mc env eff |> force mc in
-      let _arg = eval mc env arg in
-      (match eff with
-      | VEffect e ->
-          raise (EvalError ("unhandled effect " ^ e.name ^ "." ^ op ^ "; handlers are not implemented"))
-      | _ -> raise (EvalError "perform target is not an effect"))
+      bind_result (eval_result mc env eff) (fun eff ->
+        bind_result (eval_result mc env arg) (fun arg ->
+          match force mc eff with
+          | VEffect _ as eff -> Effect { eff; op; arg; k = (fun v -> Done v) }
+          | _ -> raise (EvalError "perform target is not an effect")))
 
 and try_prim_reduce (head : head) (frames : frame list) : value option =
   match head with
@@ -274,26 +314,34 @@ and try_prim_reduce (head : head) (frames : frame list) : value option =
         | None -> None)
   | _ -> None
 
-and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
+and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   match vf with
-  | VLam { body = clo; _ } -> eval mc (va :: clo.env) clo.body
+  | VLam { body = clo; _ } -> eval_result mc (va :: clo.env) clo.body
   | VFix { body = clo; _ } ->
       let self = VFix { body = clo } in
       let unfolded = eval mc (self :: clo.env) clo.body in
-      apply mc unfolded va
+      apply_result mc unfolded va
+  | VCont obj ->
+      let cont = get_cont obj in
+      if cont.used then raise (EvalError "continuation already used");
+      cont.used <- true;
+      cont.resume va
   | VNeutral { ty; neutral = neu } ->
       let cod = apply_ty mc ty va in
       let frames = neu.frames @ [ FApp va ] in
-      (match try_prim_reduce neu.head frames with
-      | Some v -> v
-      | None ->
-          VNeutral { ty = cod; neutral = { head = neu.head; frames } })
-  | VFlex { id; spine = sp } -> VFlex { id; spine = sp @ [ va ] }
-  | VRigid { lvl; spine = sp } -> VRigid { lvl; spine = sp @ [ va ] }
-  | VNominal n -> VNominal { n with params = n.params @ [ va ] }
-  | VEffect e -> VEffect { e with params = e.params @ [ va ] }
-  | VCon c -> VCon { c with spine = c.spine @ [ va ] }
+      Done
+        (match try_prim_reduce neu.head frames with
+        | Some v -> v
+        | None -> VNeutral { ty = cod; neutral = { head = neu.head; frames } })
+  | VFlex { id; spine = sp } -> Done (VFlex { id; spine = sp @ [ va ] })
+  | VRigid { lvl; spine = sp } -> Done (VRigid { lvl; spine = sp @ [ va ] })
+  | VNominal n -> Done (VNominal { n with params = n.params @ [ va ] })
+  | VEffect e -> Done (VEffect { e with params = e.params @ [ va ] })
+  | VCon c -> Done (VCon { c with spine = c.spine @ [ va ] })
   | _ -> raise (EvalError "applying non-function")
+
+and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
+  result_value mc (apply_result mc vf va)
 
 and apply_ty (mc : MetaContext.t) (ty : value) (va : value) : value =
   match ty with
@@ -369,6 +417,97 @@ and eval_eff (env : env) (name : string) : value =
     | _ :: rest -> go rest
   in
   go env
+
+and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : result)
+    (branches : match_branch list) : result =
+  let value_branches, effect_branches = close_match_branches mc env branches in
+  let rec handle = function
+    | Done v -> Done (eval_match mc env v value_branches)
+    | Effect e -> (
+        match find_effect_branch mc effect_branches e.eff e.op e.arg with
+        | Some (arg_bindings, body) ->
+            let k = make_cont (fun resume -> handle (e.k resume)) in
+            eval_result mc (k :: arg_bindings @ body.env) body.body
+        | None ->
+            Effect { e with k = (fun resume -> handle (e.k resume)) })
+  in
+  handle scrutinee
+
+and close_match_branches mc env branches =
+  let value_branches, effect_branches =
+    List.fold_right
+      (fun branch (values, effects) ->
+        match branch with
+        | ValueBranch (pat, body) -> ((pat, body) :: values, effects)
+        | EffectBranch { eff; op; arg_pat; body } ->
+            (values, (eval mc env eff, op, arg_pat, { env; body }) :: effects))
+      branches ([], [])
+  in
+  (value_branches, effect_branches)
+
+and find_effect_branch mc branches eff op arg =
+  List.find_map
+    (fun (branch_eff, branch_op, arg_pat, body) ->
+      let branch_eff = force mc branch_eff in
+      if String.equal op branch_op && runtime_value_equal mc eff branch_eff then
+        Option.map (fun bindings -> (bindings, body)) (match_core_pat mc arg_pat arg)
+      else None)
+    branches
+
+and runtime_value_equal mc lhs rhs =
+  match (force mc lhs, force mc rhs) with
+  | VEffect e1, VEffect e2 ->
+      e1.id = e2.id
+      && List.length e1.params = List.length e2.params
+      && List.for_all2 (runtime_value_equal mc) e1.params e2.params
+  | VNominal n1, VNominal n2 ->
+      n1.id = n2.id
+      && List.length n1.params = List.length n2.params
+      && List.for_all2 (runtime_value_equal mc) n1.params n2.params
+  | VAtom a, VAtom b -> Atom.equal a b
+  | VAtomTy a, VAtomTy b -> equal_atom_ty a b
+  | VU, VU -> true
+  | _ -> false
+
+and match_core_pat mc pat value =
+  match (pat, force mc value) with
+  | CPatWild, _ -> Some []
+  | CPatBind, v -> Some [ v ]
+  | CPatAtom expected, VAtom actual when Atom.equal expected actual -> Some []
+  | CPatType expected, VAtomTy actual when equal_atom_ty expected actual -> Some []
+  | CPatProd pats, VProd values when List.length pats = List.length values ->
+      match_core_pats mc pats values
+  | CPatCon (name, num_type_params, sub_pats), VCon { name = actual; spine; _ }
+    when String.equal name actual ->
+      let payload = List.drop num_type_params spine in
+      if List.length sub_pats = List.length payload then match_core_pats mc sub_pats payload else None
+  | CPatRecord { fields; _ }, VRecord { fields = values; _ } ->
+      let rec go acc = function
+        | [] -> Some (List.rev acc)
+        | (name, pat) :: rest -> (
+            match List.assoc_opt name values with
+            | Some value -> (
+                match match_core_pat mc pat value with
+                | Some bindings -> go (List.rev_append bindings acc) rest
+                | None -> None)
+            | None -> None)
+      in
+      go [] fields
+  | CPatOr (lhs, rhs), v -> (
+      match match_core_pat mc lhs v with Some _ as matched -> matched | None -> match_core_pat mc rhs v)
+  | _ -> None
+
+and match_core_pats mc pats values =
+  let rec go acc pats values =
+    match (pats, values) with
+    | [], [] -> Some (List.rev acc)
+    | pat :: pats, value :: values -> (
+        match match_core_pat mc pat value with
+        | Some bindings -> go (List.rev_append bindings acc) pats values
+        | None -> None)
+    | _ -> None
+  in
+  go [] pats values
 
 (* Pattern matching: compile to decision tree, then interpret.
    For a stuck scrutinee, accumulate an FMatch frame. *)
@@ -572,6 +711,7 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VEffect e -> EffectRef (e.name, List.map (quote mc depth) e.params)
   | VCon { name; spine; _ } ->
       quote_spine mc depth (Con name) spine
+  | VCont _ -> raise (EvalError "cannot quote continuation")
   | VNeutral { neutral = neu; _ } -> quote_neutral mc depth neu
   | VFlex { id; spine = sp } -> quote_spine mc depth (Meta id) sp
   | VRigid { lvl = l; spine = sp } ->
@@ -607,7 +747,7 @@ and quote_frames (mc : MetaContext.t) (depth : lvl) (head : term)
           Match
             ( acc,
               List.map
-                (fun (p, clo) -> (p, quote mc depth (eval mc clo.env clo.body)))
+                (fun (p, clo) -> ValueBranch (p, quote mc depth (eval mc clo.env clo.body)))
                 branches ))
     head frames
 

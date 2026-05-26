@@ -63,7 +63,17 @@ and t =
       body : t;
     }
   | Perform of { effect_path : string list; op : string; arg : t }
-  | Match of t * (pat * t) list  (* match scrutinee | pat -> body ... end *)
+  | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
+
+and match_branch =
+  | ValueBranch of pat * t
+  | EffectBranch of {
+      effect_path : string list;
+      op : string;
+      arg_pat : pat;
+      k : string;
+      body : t;
+    }
 
 and pat =
   | PatCon of string list * string * pat list   (* path, constructor, subpatterns *)

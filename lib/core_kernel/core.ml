@@ -81,10 +81,11 @@ and term =
           [Defined] ones), so the solver only abstracts over variables with
           unknown values. This keeps unification solutions minimal and avoids
           spurious occurs-check failures. *)
-  | Match of term * (core_pat * term) list
-      (** Pattern matching. Scrutinee + branches. Each branch binds variables
+  | Match of term * match_branch list
+      (** Pattern matching. Scrutinee + branches. Value branches bind variables
           from the pattern — de Bruijn indices in the body count from the
-          innermost pattern binding outward. *)
+          innermost pattern binding outward. Effect branches bind operation
+          argument pattern variables plus an innermost continuation. *)
   | NominalDef of {
       name : string;
       num_params : int;
@@ -105,6 +106,15 @@ and term =
           repeated evaluation of the same declaration remains applicative. *)
   | Perform of { eff : term; op : string; arg : term }
       (** Effect operation invocation. Handlers/runtime bubbling are not implemented yet. *)
+
+and match_branch =
+  | ValueBranch of core_pat * term
+  | EffectBranch of {
+      eff : term;
+      op : string;
+      arg_pat : core_pat;
+      body : term;
+    }
 
 and core_pat =
   | CPatCon of string * int * core_pat list
@@ -216,6 +226,8 @@ and value =
           [nominal] is the fully-applied nominal type this constructor
           belongs to. Pattern matching (Phase 5) dispatches on [name] and
           binds [spine] elements to sub-patterns. *)
+  | VCont of Obj.t
+      (** Interpreter-only one-shot continuation token for algebraic effect handlers. *)
   | VNeutral of { ty : value; neutral : neutral }
       (** Stuck computation with a primitive or a variable/metavariable wrapped in
           elimination frames ([FIf], [FProj]). Unification decomposes these:
@@ -264,10 +276,8 @@ and frame =
   | FProj of int
   | FDot of string
   | FMatch of (core_pat * closure) list
-      (** Match frame: scrutinee is stuck, branches are closures.
-          Each closure's env captures the context at the match site;
-          the body is the branch term (with pattern bindings as extra
-          de Bruijn indices). *)
+      (** Match frame for stuck scrutinees. Effect branches are runtime-only
+          handlers and do not participate in neutral matching. *)
 
 and closure = { env : env; body : term }
 

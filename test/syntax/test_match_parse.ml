@@ -72,6 +72,25 @@ let dotted_field_shape () =
   | FieldAccess (Var "State", "get") -> ()
   | _ -> Alcotest.fail "expected ordinary field access"
 
+let effect_branch_shape () =
+  match Core_lexer.parse_expr "match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> n end" with
+  | Match
+      ( Perform { effect_path = [ "Exc" ]; op = "raise"; _ },
+        [ ValueBranch (PatBind "x", Var "x");
+          EffectBranch { effect_path = [ "Exc" ]; op = "raise"; arg_pat = PatBind "n"; k = "k"; body = Var "n" } ] ) ->
+      ()
+  | _ -> Alcotest.fail "expected effect branch"
+
+let qualified_effect_branch_shape () =
+  match Core_lexer.parse_expr "match perform M.Exc.raise 1 with x -> x | effect M.Exc.raise n k -> n end" with
+  | Match (_, [ _; EffectBranch { effect_path = [ "M"; "Exc" ]; op = "raise"; _ } ]) -> ()
+  | _ -> Alcotest.fail "expected qualified effect branch"
+
+let tuple_effect_branch_shape () =
+  match Core_lexer.parse_expr "match perform Console.log (1, 2) with x -> x | effect Console.log (level, msg) k -> level end" with
+  | Match (_, [ _; EffectBranch { arg_pat = PatProd [ PatBind "level"; PatBind "msg" ]; _ } ]) -> ()
+  | _ -> Alcotest.fail "expected tuple effect branch pattern"
+
 let () =
   Alcotest.run "syntax"
     [
@@ -90,5 +109,8 @@ let () =
           Alcotest.test_case "perform put shape" `Quick perform_put_shape;
           Alcotest.test_case "perform qualified shape" `Quick perform_qualified_shape;
           Alcotest.test_case "dotted field shape" `Quick dotted_field_shape;
+          Alcotest.test_case "effect branch shape" `Quick effect_branch_shape;
+          Alcotest.test_case "qualified effect branch shape" `Quick qualified_effect_branch_shape;
+          Alcotest.test_case "tuple effect branch shape" `Quick tuple_effect_branch_shape;
         ] );
     ]

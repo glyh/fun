@@ -18,6 +18,7 @@ type elab_error =
   | DuplicateEffectOperation of string
   | ExpectedEffect
   | DuplicateEffect
+  | DuplicateEffectBranch of string
   | UnknownEffectOperation of string
   | EffectOperationPathExpected
   | UnhandledEffects
@@ -325,7 +326,12 @@ let rewrite_record_self_refs record_name params expr =
                   ops;
                 body = go (name :: bound) body }
         | Surface.Match (scrutinee, branches) ->
-            Surface.Match (go bound scrutinee, List.map (fun (pat, body) -> (pat, go bound body)) branches)
+            let go_branch = function
+              | Surface.ValueBranch (pat, body) -> Surface.ValueBranch (pat, go bound body)
+              | Surface.EffectBranch { effect_path; op; arg_pat; k; body } ->
+                  Surface.EffectBranch { effect_path; op; arg_pat; k; body = go bound body }
+            in
+            Surface.Match (go bound scrutinee, List.map go_branch branches)
         | Atom _ | Var _ | Self | SelfType -> expr)
   in
   go [] expr
@@ -418,7 +424,7 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
       VNeutral { ty = subst_value_var mc target replacement ty; neutral = subst_neutral_var mc target replacement neutral }
   | VFlex { id; spine } -> VFlex { id; spine = List.map (subst_value_var mc target replacement) spine }
   | VRigid { lvl; spine } -> VRigid { lvl; spine = List.map (subst_value_var mc target replacement) spine }
-  | VLam _ | VFix _ as v -> v
+  | VLam _ | VFix _ | VCont _ as v -> v
   | VU | VAtom _ | VAtomTy _ as v -> v
 
 and subst_closure_var mc target replacement clo =
@@ -492,7 +498,12 @@ let close_recursive_payload_term nominal_name num_params =
         | Ctor { name; spine; nominal_name; nominal_spine } ->
             Ctor { name; spine = List.map (go cutoff) spine; nominal_name; nominal_spine = List.map (go cutoff) nominal_spine }
         | Match (scrut, branches) ->
-            Match (go cutoff scrut, List.map (fun (pat, body) -> (pat, go cutoff body)) branches)
+            let go_branch = function
+              | ValueBranch (pat, body) -> ValueBranch (pat, go cutoff body)
+              | EffectBranch { eff; op; arg_pat; body } ->
+                  EffectBranch { eff = go cutoff eff; op; arg_pat; body = go cutoff body }
+            in
+            Match (go cutoff scrut, List.map go_branch branches)
         | NominalDef { name; num_params; ctors; body } ->
             NominalDef
               { name; num_params;
@@ -606,6 +617,45 @@ let rec insert_implicit_args ctx core ty =
         (Ap (core, Implicit, arg_core))
         (Nbe.closure_apply ctx.Ctx.metas codomain arg_value)
   | _ -> (core, ty)
+
+let surface_value_branches branches =
+  List.filter_map (function
+    | Surface.ValueBranch (pat, body) -> Some (pat, body)
+    | Surface.EffectBranch _ -> None)
+    branches
+
+let core_value_branches branches =
+  List.filter_map (function
+    | ValueBranch (pat, body) -> Some (pat, body)
+    | EffectBranch _ -> None)
+    branches
+
+type surface_effect_branch = {
+  effect_path : string list;
+  op : string;
+  arg_pat : Surface.pat;
+  k : string;
+  body : Surface.t;
+}
+
+let surface_effect_branches branches =
+  List.filter_map (function
+    | Surface.ValueBranch _ -> None
+    | Surface.EffectBranch { effect_path; op; arg_pat; k; body } ->
+        Some { effect_path; op; arg_pat; k; body })
+    branches
+
+let expr_effect_of_value ctx value = { core = Ctx.quote ctx value; value }
+
+let remove_expr_effect ctx handled effects =
+  List.filter (fun candidate -> not (Ctx.conv ctx candidate.value handled.value)) effects
+
+let effect_instance_ops = function
+  | VEffect eff -> List.map (fun (name, _, _) -> name) eff.operations
+  | _ -> []
+
+let effect_row_closure_of_expr_effects ctx effects =
+  effect_row_closure ctx.Ctx.env (effect_row_of_expr_effects ctx effects)
 
 let refine_match_scrutinee_ty ctx scrut_ty branches =
   let ty = Nbe.force ctx.Ctx.metas scrut_ty in
@@ -796,16 +846,39 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let op_effects = List.concat_map (fun (op : Surface.effect_op) -> [ collect_effects ctx op.input; collect_effects ctx op.output ]) ops in
       union_many_expr_effects ctx (op_effects @ [ collect_effects (Ctx.define ctx name eff_ty eff) body ])
   | Surface.Match (scrutinee, branches) ->
+      let value_branches = surface_value_branches branches in
+      let effect_branches = surface_effect_branches branches in
       let scrut_core, scrut_ty = infer ctx scrutinee in
-      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty branches in
+      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty value_branches in
       ignore scrut_core;
-      union_many_expr_effects ctx
-        (collect_effects ctx scrutinee
-         :: List.map
-              (fun (pat, body) ->
-                let _core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
-                collect_effects ctx' body)
-              branches)
+      let scrutinee_effects = collect_effects ctx scrutinee in
+      let residual = residual_effects ctx scrutinee_effects effect_branches in
+      let ret_ty = Ctx.raw_meta ctx in
+      let value_branch_effects =
+        List.map
+          (fun (pat, body) ->
+            let _core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
+            collect_effects ctx' body)
+          value_branches
+      in
+      let effect_branch_effects =
+        List.map
+          (fun branch ->
+            let _effect_core, _effect_value, input_ty, output_ty =
+              resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+            in
+            let _core_pat, arg_ctx = elaborate_pat ctx branch.arg_pat input_ty in
+            let cont_ty =
+              VPi
+                { explicitness = Explicit;
+                  domain = output_ty;
+                  effects = effect_row_closure_of_expr_effects arg_ctx residual;
+                  codomain = { env = arg_ctx.env; body = Ctx.quote arg_ctx ret_ty } }
+            in
+            collect_effects (Ctx.bind arg_ctx branch.k cont_ty) branch.body)
+          effect_branches
+      in
+      union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
   | Atom _ | Var _ | Self | SelfType | Import _ -> empty_expr_effects
 
 and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
@@ -1227,18 +1300,23 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
        body_ty)
   | Match (scrutinee, branches) ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
-      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty branches in
+      let value_branches = surface_value_branches branches in
+      let effect_branches = surface_effect_branches branches in
+      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let ret_ty = Ctx.raw_meta ctx in
-      let branches' =
+      let scrutinee_effects = collect_effects ctx scrutinee in
+      let residual = residual_effects ctx scrutinee_effects effect_branches in
+      let value_branches' =
         List.map (fun (pat, body) ->
           let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
           let body_core = check ctx' body ret_ty in
-          (core_pat, body_core))
-          branches
+          ValueBranch (core_pat, body_core))
+          value_branches
       in
-      let pats = List.map fst branches' in
+      let effect_branches' = List.map (elaborate_effect_branch ctx ret_ty residual) effect_branches in
+      let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
-      (Match (scrut_core, branches'), Nbe.force ctx.metas ret_ty)
+      (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
 
 (** Elaborate a surface pattern against a scrutinee type, producing a core
     pattern and extending the context with bound pattern variables. *)
@@ -1347,6 +1425,54 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           | None -> raise (ElabError (UnknownConstructor name)))
       | _ -> raise (ElabError NotANominalType))
 
+and handled_effects ctx scrutinee_effects branches =
+  let grouped = Hashtbl.create 8 in
+  List.iter
+    (fun branch ->
+      let _effect_core, effect_value, input_ty, _output_ty =
+        resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+      in
+      let core_pat, _ = elaborate_pat ctx branch.arg_pat input_ty in
+      check_match_exhaustive ctx input_ty [ core_pat ];
+      let key =
+        match Nbe.force ctx.Ctx.metas effect_value with
+        | VEffect eff -> string_of_int eff.id ^ ":" ^ branch.op
+        | _ -> raise (ElabError ExpectedEffect)
+      in
+      if Hashtbl.mem grouped key then raise (ElabError (DuplicateEffectBranch branch.op));
+      Hashtbl.add grouped key effect_value)
+    branches;
+  List.filter
+    (fun eff_expr ->
+      match Nbe.force ctx.Ctx.metas eff_expr.value with
+      | VEffect eff ->
+          List.exists (fun performed -> Ctx.conv ctx performed.value eff_expr.value) scrutinee_effects
+          && List.for_all
+               (fun (op_name, _, _) -> Hashtbl.mem grouped (string_of_int eff.id ^ ":" ^ op_name))
+               eff.operations
+      | _ -> false)
+    scrutinee_effects
+
+and residual_effects ctx scrutinee_effects effect_branches =
+  List.fold_left (fun effects handled -> remove_expr_effect ctx handled effects)
+    scrutinee_effects
+    (handled_effects ctx scrutinee_effects effect_branches)
+
+and elaborate_effect_branch ctx ret_ty residual branch =
+  let effect_core, _effect_value, input_ty, output_ty =
+    resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+  in
+  let core_pat, arg_ctx = elaborate_pat ctx branch.arg_pat input_ty in
+  let cont_ty =
+    VPi
+      { explicitness = Explicit;
+        domain = output_ty;
+        effects = effect_row_closure_of_expr_effects arg_ctx residual;
+        codomain = { env = arg_ctx.env; body = Ctx.quote arg_ctx ret_ty } }
+  in
+  let body_core = check (Ctx.bind arg_ctx branch.k cont_ty) branch.body ret_ty in
+  EffectBranch { eff = effect_core; op = branch.op; arg_pat = core_pat; body = body_core }
+
 (** Application inference.
     Loops to insert fresh metas for implicit VPi domains before consuming
     the user's explicit argument. *)
@@ -1452,7 +1578,7 @@ and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
           let var = VRigid { lvl = ctx.lvl; spine = [] } in
           List.iter (fun eff -> collect (Nbe.eval ctx.metas (var :: effects.env) eff)) effects.effects;
           collect (Nbe.closure_apply ctx.metas codomain var)
-      | VU | VAtom _ | VAtomTy _ | VRigid _ | VProd _ | VProdTy _ -> ()
+      | VU | VAtom _ | VAtomTy _ | VRigid _ | VProd _ | VProdTy _ | VCont _ -> ()
       | _ -> ()
     in
     collect val_ty;
@@ -1649,7 +1775,10 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       check_effect_subset ctx' body_effects (effect_row_values ctx effects binder);
       Lam body_core
   | Match (scrutinee, branches), VPi _ ->
-      require_empty_effects (collect_effects ctx scrutinee);
+      let scrutinee_effects = collect_effects ctx scrutinee in
+      let effect_branches = surface_effect_branches branches in
+      let residual = residual_effects ctx scrutinee_effects effect_branches in
+      require_empty_effects residual;
       let scrut_core = check ctx scrutinee VU in
       let scrut_value = Ctx.eval ctx scrut_core in
       let refinement_target =
@@ -1657,7 +1786,8 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
         | VRigid { lvl; spine = [] } -> Some lvl
         | _ -> None
       in
-      let branches' =
+      let value_branches = surface_value_branches branches in
+      let value_branches' =
         List.map
           (fun (pat, body) ->
             let core_pat, ctx' = elaborate_pat ctx pat VU in
@@ -1667,11 +1797,12 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
               | _ -> expected
             in
             let body_core = check ctx' body refined_expected in
-            (core_pat, body_core))
-          branches
+            ValueBranch (core_pat, body_core))
+          value_branches
       in
-      check_match_exhaustive ctx VU (List.map fst branches');
-      Match (scrut_core, branches')
+      let effect_branches' = List.map (elaborate_effect_branch ctx expected residual) effect_branches in
+      check_match_exhaustive ctx VU (List.map fst (core_value_branches value_branches'));
+      Match (scrut_core, value_branches' @ effect_branches')
   | If { cond; then_; else_ }, _ ->
       let cond_core = check ctx cond (VAtomTy TBool) in
       let then_core = check ctx then_ expected in
@@ -1720,16 +1851,22 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       end
   | Match (scrutinee, branches), _ ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
-      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty branches in
-      let branches' =
+      let value_branches = surface_value_branches branches in
+      let effect_branches = surface_effect_branches branches in
+      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty value_branches in
+      let scrutinee_effects = collect_effects ctx scrutinee in
+      let residual = residual_effects ctx scrutinee_effects effect_branches in
+      require_empty_effects residual;
+      let value_branches' =
         List.map (fun (pat, body) ->
           let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
           let body_core = check ctx' body expected in
-          (core_pat, body_core))
-          branches
+          ValueBranch (core_pat, body_core))
+          value_branches
       in
-      check_match_exhaustive ctx scrut_ty (List.map fst branches');
-      Match (scrut_core, branches')
+      let effect_branches' = List.map (elaborate_effect_branch ctx expected residual) effect_branches in
+      check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
+      Match (scrut_core, value_branches' @ effect_branches')
   | _ ->
       let core, inferred = infer ctx expr in
       let rec wrap_implicits core ty =

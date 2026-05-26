@@ -26,6 +26,7 @@ let () =
              | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
              | ExpectedEffect -> "ExpectedEffect"
              | DuplicateEffect -> "DuplicateEffect"
+	             | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
 	          | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
 	          | EffectOperationPathExpected -> "EffectOperationPathExpected"
 	          | UnhandledEffects -> "UnhandledEffects"))
@@ -387,6 +388,26 @@ let test_debug_perform () =
   let text = Debug.pp_term (Perform { eff = EffectRef ("State", [ AtomTy TI64 ]); op = "get"; arg = Atom Unit }) in
   if not (String.contains text 'g') then Alcotest.fail ("expected perform debug output, got " ^ text)
 
+let test_eval_handler_ignores_continuation () =
+  check_i64 "handler ignores continuation" 2L
+    "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> n + 1 end"
+    ()
+
+let test_eval_handler_resumes_once () =
+  check_i64 "handler resumes once" 2L
+    "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> k (n + 1) end"
+    ()
+
+let test_eval_handler_value_branch () =
+  check_i64 "handler value branch" 42L
+    "let Exc = effect raise : I64 -> I64 end in match 41 with x -> x + 1 | effect Exc.raise n k -> 0 end"
+    ()
+
+let test_eval_handler_outer_bubble () =
+  check_i64 "handler outer bubble" 2L
+    "let Exc = effect raise : I64 -> I64 end in match (match perform Exc.raise 1 with x -> x end) with x -> x | effect Exc.raise n k -> n + 1 end"
+    ()
+
 let () =
   Alcotest.run "core"
     [
@@ -429,6 +450,10 @@ let () =
             (check_i64 "rec not" 0L
                "let rec f : Bool -> I64 = fun x -> if x then 0 else f (not x) in f false");
           Alcotest.test_case "unhandled perform" `Quick test_eval_unhandled_perform;
+          Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
+          Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
+          Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;
+          Alcotest.test_case "handler outer bubble" `Quick test_eval_handler_outer_bubble;
           Alcotest.test_case "match ctor" `Quick
             (check_i64 "match ctor" 1L
                "type Color = Red | Green in match Red with Red -> 1 | Green -> 2 end");

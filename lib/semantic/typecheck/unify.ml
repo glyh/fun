@@ -145,6 +145,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
+    | VCont _ -> raise (UnifyError CannotUnify)
     | VNeutral { neutral = neu; _ } -> go_neutral d neu
   and go_spine (d : lvl) (head : term) (sp : spine) : term =
     List.fold_left (fun acc v -> Ap (acc, Explicit, go d v)) head sp
@@ -180,7 +181,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
               ( acc,
                 List.map
                   (fun (p, clo) ->
-                    (p, go d (Nbe.eval mc clo.env clo.body)))
+                    ValueBranch (p, go d (Nbe.eval mc clo.env clo.body)))
                   branches ))
       head frames
   in
@@ -219,7 +220,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter (fun f -> match f with
               | FApp v -> occurs_check v
               | _ -> ()) frames
-        | VU | VAtom _ | VAtomTy _ | VRigid _ | VLam _ | VFix _ -> ()
+        | VU | VAtom _ | VAtomTy _ | VRigid _ | VLam _ | VFix _ | VCont _ -> ()
       in
       occurs_check rhs;
       MetaContext.solve mc id rhs
