@@ -16,6 +16,8 @@ type elab_error =
   | DuplicateRecordField of string
   | MissingRecordField of string
   | DuplicateEffectOperation of string
+  | ExpectedEffect
+  | DuplicateEffect
   | NonExhaustive of string
   | InvalidRecursiveRecord of string
   | ImportRequiresLoader of string
@@ -133,11 +135,12 @@ module Ctx = struct
 end
 
 (** Build a closed [VPi] value (for primitive types). *)
-let ( ^-> ) = fun lhs rhs -> VPi { explicitness = Explicit; domain = lhs; codomain = { env = []; body = rhs } }
-let ( ^=> ) = fun lhs rhs -> VPi { explicitness = Implicit; domain = lhs; codomain = { env = []; body = rhs } }
+let pure_effects = effect_row_closure [] empty_effect_row
+let ( ^-> ) = fun lhs rhs -> VPi { explicitness = Explicit; domain = lhs; effects = pure_effects; codomain = { env = []; body = rhs } }
+let ( ^=> ) = fun lhs rhs -> VPi { explicitness = Implicit; domain = lhs; effects = pure_effects; codomain = { env = []; body = rhs } }
 (** Build a [Pi] term (for primitive type schemas). *)
-let ( ^->> ) = fun lhs rhs -> Pi (Explicit, lhs, rhs)
-let ( ^=>> ) = fun lhs rhs -> Pi (Implicit, lhs, rhs)
+let ( ^->> ) = fun lhs rhs -> Pi { explicitness = Explicit; domain = lhs; effects = empty_effect_row; codomain = rhs }
+let ( ^=>> ) = fun lhs rhs -> Pi { explicitness = Implicit; domain = lhs; effects = empty_effect_row; codomain = rhs }
 
 let atom_ty_of_atom = function
   | Atom.I64 _ -> TI64
@@ -165,7 +168,7 @@ let prims =
     ("neq_char", char_comparator);
     ("eq_unit", unit_comparator);
     ("neq_unit", unit_comparator);
-    ("panic", VPi { explicitness = Implicit; domain = VU; codomain = { env = []; body = Pi (Explicit, AtomTy TUnit, Var 1) } });
+    ("panic", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = AtomTy TUnit ^->> Var 1 } });
     ("<", i64_comparator);
     (">", i64_comparator);
     ("<=", i64_comparator);
@@ -255,9 +258,14 @@ let rewrite_record_self_refs record_name params expr =
         | Surface.Annotated { inner; typ } -> Surface.Annotated { inner = go bound inner; typ = go bound typ }
         | Surface.Prod elems -> Surface.Prod (List.map (go bound) elems)
         | Surface.ProdTy elems -> Surface.ProdTy (List.map (go bound) elems)
-        | Surface.Arrow (expl, name, a, b) ->
+        | Surface.Arrow (expl, name, a, effects, b) ->
             let bound' = match name with Some name -> name :: bound | None -> bound in
-            Surface.Arrow (expl, name, go bound a, go bound' b)
+            let effects =
+              Option.map
+                (fun (row : Surface.effect_row) -> { Surface.effects = List.map (go bound') row.effects; tail = Option.map (go bound') row.tail })
+                effects
+            in
+            Surface.Arrow (expl, name, go bound a, effects, go bound' b)
         | Surface.FieldAccess (e, name) -> Surface.FieldAccess (go bound e, name)
         | Surface.Proj (e, i) -> Surface.Proj (go bound e, i)
         | Surface.RecordConstruct { typ; fields } ->
@@ -383,9 +391,10 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
   match Nbe.force mc v with
   | VRigid { lvl; spine } when lvl = target ->
       List.fold_left (Nbe.apply mc) replacement spine
-  | VPi { explicitness; domain; codomain } ->
+  | VPi { explicitness; domain; effects; codomain } ->
       let domain = subst_value_var mc target replacement domain in
-      VPi { explicitness; domain; codomain = subst_closure_var mc target replacement codomain }
+      let effects = subst_effect_row_closure_var mc target replacement effects in
+      VPi { explicitness; domain; effects; codomain = subst_closure_var mc target replacement codomain }
   | VProd elems -> VProd (List.map (subst_value_var mc target replacement) elems)
   | VProdTy elems -> VProdTy (List.map (subst_value_var mc target replacement) elems)
   | VStruct { fields; partial } ->
@@ -404,6 +413,9 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
 
 and subst_closure_var mc target replacement clo =
   { clo with env = List.map (subst_value_var mc target replacement) clo.env }
+
+and subst_effect_row_closure_var mc target replacement row =
+  { row with env = List.map (subst_value_var mc target replacement) row.env }
 
 and subst_neutral_var mc target replacement neutral =
   let frames =
@@ -442,7 +454,12 @@ let close_recursive_payload_term nominal_name num_params =
         | Lam body -> Lam (go (cutoff + 1) body)
         | Ap (f, expl, a) -> Ap (go cutoff f, expl, go cutoff a)
         | Let (ty, def, body) -> Let (go cutoff ty, go cutoff def, go (cutoff + 1) body)
-        | Pi (expl, a, b) -> Pi (expl, go cutoff a, go (cutoff + 1) b)
+        | Pi { explicitness; domain; effects; codomain } ->
+            Pi
+              { explicitness;
+                domain = go cutoff domain;
+                effects = { effects with effects = List.map (go (cutoff + 1)) effects.effects };
+                codomain = go (cutoff + 1) codomain }
         | If (cond, then_, else_) -> If (go cutoff cond, go cutoff then_, go cutoff else_)
         | Prod elems -> Prod (List.map (go cutoff) elems)
         | ProdTy elems -> ProdTy (List.map (go cutoff) elems)
@@ -559,7 +576,31 @@ let check_match_exhaustive ctx scrut_ty pats =
 
 (** Bidirectional type inference: given a surface expression, produce a
     core term and its type. *)
-let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
+let rec elaborate_effect_row (ctx : Ctx.t) = function
+  | None -> empty_effect_row
+  | Some (row : Surface.effect_row) ->
+      let entries =
+        List.map
+          (fun eff_expr ->
+            let eff_core, eff_ty = infer ctx eff_expr in
+            Ctx.unify ctx eff_ty VU;
+            let eff_value = Ctx.eval ctx eff_core in
+            match Nbe.force ctx.metas eff_value with
+            | VEffect _ -> (eff_core, eff_value)
+            | _ -> raise (ElabError ExpectedEffect))
+          row.effects
+      in
+      let rec check_unique = function
+        | [] -> ()
+        | (_, eff_value) :: rest ->
+            if List.exists (fun (_, other) -> Ctx.conv ctx eff_value other) rest then
+              raise (ElabError DuplicateEffect);
+            check_unique rest
+      in
+      check_unique entries;
+      { effects = List.map fst entries; tail = None }
+
+and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   match expr with
   | Atom (I64 n) -> (Atom (I64 n), VAtomTy TI64)
   | Atom (Bool b) -> (Atom (Bool b), VAtomTy TBool)
@@ -600,14 +641,15 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           elems
       in
       (ProdTy core_elems, VU)
-  | Arrow (expl, name, a, b) ->
+  | Arrow (expl, name, a, effects, b) ->
       let a_core, a_ty = infer ctx a in
       Ctx.unify ctx a_ty VU;
       let a_val = Ctx.eval ctx a_core in
       let ctx' = Ctx.bind ctx (Option.value name ~default:"_") a_val in
+      let effects = elaborate_effect_row ctx' effects in
       let b_core, b_ty = infer ctx' b in
       Ctx.unify ctx' b_ty VU;
-      (Pi (expl_of_surface expl, a_core, b_core), VU)
+      (Pi { explicitness = expl_of_surface expl; domain = a_core; effects; codomain = b_core }, VU)
   | FieldAccess (e, name) ->
       let e_core, e_ty = infer ctx e in
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
@@ -709,6 +751,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               VPi {
                 explicitness = expl_of_surface param.explicitness;
                 domain = a_ty;
+                effects = effect_row_closure ctx.env empty_effect_row;
                 codomain = { env = ctx.env; body = body_ty_term };
               }
             in
@@ -722,6 +765,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           VPi {
             explicitness = Explicit;
             domain = self_ty;
+            effects = effect_row_closure ctx.env empty_effect_row;
             codomain = { env = ctx.env; body = body_ty_term };
           }
         in
@@ -850,6 +894,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               VPi
                 { explicitness = Implicit;
                   domain = VU;
+                  effects = effect_row_closure ctx.env empty_effect_row;
                   codomain = { env = ctx.env; body = body_ty_term } } )
       in
       let val_core, val_ty = elaborate_params ctx [] params in
@@ -881,6 +926,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             List.fold_right
               (fun _ acc ->
                 VPi { explicitness = Explicit; domain = VU;
+                      effects = effect_row_closure (nominal_placeholder :: param_ctx.env) empty_effect_row;
                       codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
               params VU
           in
@@ -923,6 +969,7 @@ let rec infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             List.fold_right
               (fun _ acc ->
                 VPi { explicitness = Explicit; domain = VU;
+                      effects = effect_row_closure body_ctx.env empty_effect_row;
                       codomain = { env = body_ctx.env; body = Nbe.quote body_ctx.metas depth acc } })
               params VU
           in
@@ -1092,7 +1139,7 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
   (* Insert metas for leading implicit VPi layers *)
   let rec insert_implicits f_core f_ty =
     match f_ty with
-    | VPi { explicitness = Implicit; domain = _; codomain = b_clo } ->
+    | VPi { explicitness = Implicit; domain = _; codomain = b_clo; _ } ->
         let meta_core = Ctx.fresh_meta ctx in
         let meta_val = Ctx.eval ctx meta_core in
         let ret_ty = Nbe.closure_apply ctx.metas b_clo meta_val in
@@ -1101,7 +1148,7 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
   in
   let f_core, f_ty = insert_implicits f_core f_ty in
   match f_ty with
-  | VPi { explicitness = Explicit; domain = a_ty; codomain = b_clo } ->
+  | VPi { explicitness = Explicit; domain = a_ty; codomain = b_clo; _ } ->
       let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
@@ -1115,6 +1162,7 @@ and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
         VPi
           { explicitness = Explicit;
             domain = a_ty;
+            effects = effect_row_closure ctx.env empty_effect_row;
             codomain = { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta } }
       in
       Ctx.unify ctx f_ty expected_f_ty;
@@ -1131,7 +1179,7 @@ and infer_ap_implicit (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * val
   let f_core, f_ty = infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in
   match f_ty with
-  | VPi { explicitness = Implicit; domain = a_ty; codomain = b_clo } ->
+  | VPi { explicitness = Implicit; domain = a_ty; codomain = b_clo; _ } ->
       let a_core = check ctx a a_ty in
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
@@ -1147,6 +1195,7 @@ and infer_ap_implicit (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * val
         VPi
           { explicitness = Implicit;
             domain = a_ty;
+            effects = effect_row_closure ctx.env empty_effect_row;
             codomain = { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta } }
       in
       Ctx.unify ctx f_ty expected_f_ty;
@@ -1181,7 +1230,11 @@ and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
       | VFlex { id; spine = [] } ->
           (match MetaContext.lookup ctx.metas id with Unsolved -> add id | Solved _ -> ())
       | VFlex { spine; _ } -> List.iter collect spine
-      | VPi { domain = a; _ } -> collect a
+      | VPi { domain = a; effects; codomain; _ } ->
+          collect a;
+          let var = VRigid { lvl = ctx.lvl; spine = [] } in
+          List.iter (fun eff -> collect (Nbe.eval ctx.metas (var :: effects.env) eff)) effects.effects;
+          collect (Nbe.closure_apply ctx.metas codomain var)
       | VU | VAtom _ | VAtomTy _ | VRigid _ | VProd _ | VProdTy _ -> ()
       | _ -> ()
     in
@@ -1201,6 +1254,7 @@ and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
       let gen_ty_val =
         List.fold_right (fun _ acc ->
           VPi { explicitness = Implicit; domain = VU;
+                effects = effect_row_closure ctx.env empty_effect_row;
                 codomain = { env = ctx.env; body = Nbe.quote ctx.metas qdepth acc } })
           unsolved val_ty
       in
@@ -1288,6 +1342,7 @@ and elaborate_eff_family (ctx : Ctx.t) (name : string) (params : string list)
         VPi
           { explicitness = Explicit;
             domain = VU;
+            effects = effect_row_closure ctx.env empty_effect_row;
             codomain = { env = ctx.env; body = Nbe.quote ctx.metas ctx.lvl acc } })
       params VU
   in
@@ -1334,11 +1389,11 @@ and build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_na
         let payload_val =
           Nbe.eval mc (List.rev param_rigids @ payload_clo.env) payload_clo.body in
         let payload_term = Nbe.quote mc (depth + num_params) payload_val in
-        let inner = Pi (Explicit, payload_term, ret_term) in
-        let rec wrap_pi n t = if n = 0 then t else wrap_pi (n - 1) (Pi (Implicit, U, t)) in
+        let inner = payload_term ^->> ret_term in
+        let rec wrap_pi n t = if n = 0 then t else wrap_pi (n - 1) (U ^=>> t) in
         wrap_pi num_params inner
     | None ->
-        let rec wrap_pi n t = if n = 0 then t else wrap_pi (n - 1) (Pi (Implicit, U, t)) in
+        let rec wrap_pi n t = if n = 0 then t else wrap_pi (n - 1) (U ^=>> t) in
         wrap_pi num_params ret_term
   in
   let ret_type = Nbe.eval mc env type_term in
@@ -1359,14 +1414,14 @@ and infer_lam (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
   let ctx' = Ctx.bind ctx param.name a_ty in
   let body_core, body_ty = infer ctx' body in
   let body_ty_term = Ctx.quote ctx' body_ty in
-  let pi_ty = VPi { explicitness = expl_of_surface param.explicitness; domain = a_ty; codomain = { env = ctx.env; body = body_ty_term } } in
+  let pi_ty = VPi { explicitness = expl_of_surface param.explicitness; domain = a_ty; effects = effect_row_closure ctx.env empty_effect_row; codomain = { env = ctx.env; body = body_ty_term } } in
   (Lam body_core, pi_ty)
 
 (** Bidirectional checking: verify [expr] against an [expected] type. *)
 and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
   let expected = Nbe.force ctx.metas expected in
   match (expr, expected) with
-  | Lam (param, body), VPi { explicitness; domain = a_ty; codomain = b_clo } ->
+  | Lam (param, body), VPi { explicitness; domain = a_ty; codomain = b_clo; _ } ->
       if expl_of_surface param.explicitness <> explicitness then raise (ElabError ApplyingNonFunction);
       let ctx' = Ctx.bind ctx param.name a_ty in
       let b_ty = Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] }) in

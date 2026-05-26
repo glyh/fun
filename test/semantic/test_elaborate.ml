@@ -18,7 +18,9 @@ let () =
           | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
           | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
           | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
-          | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""))
+          | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
+          | ExpectedEffect -> "ExpectedEffect"
+          | DuplicateEffect -> "DuplicateEffect"))
     | Core_loader.CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
     | Core_loader.ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
     | Unify.UnifyError e ->
@@ -38,10 +40,12 @@ let () =
           | NominalMismatch (n1, n2) ->
               Printf.sprintf "NominalMismatch(%s, %s)" n1 n2
           | EffectMismatch (e1, e2) ->
-              Printf.sprintf "EffectMismatch(%s, %s)" e1 e2))
+              Printf.sprintf "EffectMismatch(%s, %s)" e1 e2
+          | EffectRowMismatch -> "EffectRowMismatch"))
     | _ -> None)
 
 let parse_expr = Core_lexer.parse_expr
+let pi explicitness domain codomain = Pi { explicitness; domain; effects = empty_effect_row; codomain }
 
 let elab source =
   let expr = parse_expr source in
@@ -141,17 +145,16 @@ let lambdas =
       (elab_fail "1 2");
     Alcotest.test_case "annotated identity" `Quick
       (check_type "(fun x -> x : I64 -> I64)"
-         (Pi (Explicit, AtomTy TI64, AtomTy TI64)));
+         (pi Explicit (AtomTy TI64) (AtomTy TI64)));
     Alcotest.test_case "bool function" `Quick
       (check_type "(fun x -> x : Bool -> Bool)"
-         (Pi (Explicit, AtomTy TBool, AtomTy TBool)));
+         (pi Explicit (AtomTy TBool) (AtomTy TBool)));
     Alcotest.test_case "higher-order twice" `Quick
       (check_type
          "let twice : (I64 -> I64) -> I64 -> I64 = fun f -> fun x -> f (f x) in twice"
-         (Pi
-            ( Explicit,
-              Pi (Explicit, AtomTy TI64, AtomTy TI64),
-              Pi (Explicit, AtomTy TI64, AtomTy TI64) )));
+         (pi Explicit
+            (pi Explicit (AtomTy TI64) (AtomTy TI64))
+            (pi Explicit (AtomTy TI64) (AtomTy TI64))));
   ]
 
 let annotations =
@@ -221,7 +224,7 @@ let meta_solving =
       (check_type "let f : I64 -> I64 = fun x -> x in f 42" (AtomTy TI64));
     Alcotest.test_case "infer lambda param from body" `Quick
       (check_type "(fun x -> x + 1 : I64 -> I64)"
-         (Pi (Explicit, AtomTy TI64, AtomTy TI64)));
+         (pi Explicit (AtomTy TI64) (AtomTy TI64)));
   ]
 
 let structs =
@@ -818,7 +821,7 @@ let effects =
     Alcotest.test_case "effect family has function type" `Quick
       (check_type
          "let State S = effect get : Unit -> S end in State"
-         (Pi (Explicit, U, U)));
+         (pi Explicit U U));
     Alcotest.test_case "same effect family and params compare equal" `Quick
       (check_type
          "let State S = effect get : Unit -> S end in State I64 == State I64"
@@ -855,6 +858,30 @@ let effects =
     Alcotest.test_case "imported public effect" `Quick
       (check_import_type [ ("effects", "pub let State S = effect get : Unit -> S end") ]
          "let E = import \"effects\" in E.State I64" U);
+    Alcotest.test_case "effectful arrow has type Type" `Quick
+      (check_type
+         "let IO = effect read : Unit -> I64 end in I64 -> I64 can IO"
+         U);
+    Alcotest.test_case "parameterized row has type Type" `Quick
+      (check_type
+         "let State S = effect get : Unit -> S end in Unit -> I64 can State I64"
+         U);
+    Alcotest.test_case "braced multi-effect row has type Type" `Quick
+      (check_type
+         "let State S = effect get : Unit -> S end in let IO = effect read : Unit -> I64 end in Unit -> I64 can {State I64, IO}"
+         U);
+    Alcotest.test_case "lambda checks against effectful function type" `Quick
+      (elab_ok
+         "let IO = effect read : Unit -> I64 end in (fun x -> x : I64 -> I64 can IO)");
+    Alcotest.test_case "row order ignored" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S end in let IO = effect read : Unit -> I64 end in ((fun x -> x : I64 -> I64 can {IO, State I64}) : I64 -> I64 can {State I64, IO})");
+    Alcotest.test_case "non-effect row entry rejected" `Quick
+      (elab_fail
+         "I64 -> I64 can I64");
+    Alcotest.test_case "duplicate row entry rejected" `Quick
+      (elab_fail
+         "let IO = effect read : Unit -> I64 end in I64 -> I64 can {IO, IO}");
   ]
 
 let imports =
@@ -911,7 +938,7 @@ let let_rec =
     Alcotest.test_case "recursive identity" `Quick
       (check_type
          "let rec f : I64 -> I64 = fun n -> if n == 0 then n else f (n - 1) in f"
-         (Pi (Explicit, AtomTy TI64, AtomTy TI64)));
+         (pi Explicit (AtomTy TI64) (AtomTy TI64)));
     Alcotest.test_case "recursive bool" `Quick
       (check_type
          "let rec f : I64 -> Bool = fun n -> if n == 0 then true else f (n - 1) in f 3"

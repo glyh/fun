@@ -20,6 +20,38 @@ let effect_struct_shape () =
   | Struct { bindings = [ EffectBinding { name = "State"; params = [ "S" ]; public = true; ops = [ { name = "get"; _ } ] } ]; _ } -> ()
   | _ -> Alcotest.fail "expected public effect binding"
 
+let pure_arrow_shape () =
+  match Core_lexer.parse_expr "I64 -> I64" with
+  | Arrow (Explicit, None, Var "I64", None, Var "I64") -> ()
+  | _ -> Alcotest.fail "expected pure arrow"
+
+let single_can_shape () =
+  match Core_lexer.parse_expr "I64 -> I64 can IO" with
+  | Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tail = None }, Var "I64") -> ()
+  | _ -> Alcotest.fail "expected single-effect can row"
+
+let braced_can_shape () =
+  match Core_lexer.parse_expr "Unit -> I64 can {State I64, IO}" with
+  | Arrow
+      ( Explicit,
+        None,
+        Var "Unit",
+        Some { effects = [ Ap (Var "State", Explicit, Var "I64"); Var "IO" ]; tail = None },
+        Var "I64" ) ->
+      ()
+  | _ -> Alcotest.fail "expected braced effect row"
+
+let closest_arrow_can_shape () =
+  match Core_lexer.parse_expr "I64 -> I64 -> I64 can IO" with
+  | Arrow
+      ( Explicit,
+        None,
+        Var "I64",
+        None,
+        Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tail = None }, Var "I64") ) ->
+      ()
+  | _ -> Alcotest.fail "expected can to bind to closest arrow"
+
 let () =
   Alcotest.run "syntax"
     [
@@ -30,5 +62,9 @@ let () =
           Alcotest.test_case "effect expr shape" `Quick effect_expr_shape;
           Alcotest.test_case "zero-param effect shape" `Quick effect_zero_param_shape;
           Alcotest.test_case "struct effect shape" `Quick effect_struct_shape;
+          Alcotest.test_case "pure arrow shape" `Quick pure_arrow_shape;
+          Alcotest.test_case "single can shape" `Quick single_can_shape;
+          Alcotest.test_case "braced can shape" `Quick braced_can_shape;
+          Alcotest.test_case "closest arrow can shape" `Quick closest_arrow_can_shape;
         ] );
     ]

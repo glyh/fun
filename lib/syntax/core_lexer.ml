@@ -22,6 +22,7 @@ let rec token buf =
   | "open" -> OPEN
   | "type" -> TYPE
   | "effect" -> EFFECT
+  | "can" -> CAN
   | "method" -> METHOD
   | "import" -> IMPORT
   | "self" -> SELF

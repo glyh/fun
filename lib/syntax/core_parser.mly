@@ -25,6 +25,15 @@ let bare_pat_name path name =
   | "Unit" when path = [] -> PatType TUnit
   | "Char" when path = [] -> PatType TChar
   | _ -> if path <> [] || Char.uppercase_ascii name.[0] = name.[0] then PatCon (path, name, []) else PatBind name
+
+let attach_arrow_effects expr effects =
+  match effects with
+  | None -> expr
+  | Some effects -> (
+      match expr with
+      | Arrow (expl, name, domain, None, codomain) -> Arrow (expl, name, domain, Some effects, codomain)
+      | Arrow _ -> failwith "duplicate effect annotation"
+      | _ -> failwith "can annotation requires an arrow")
 %}
 
 %token <int64> INT
@@ -33,12 +42,14 @@ let bare_pat_name path name =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE
+%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE CAN
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
 %token <string> CMP_OP ADD_OP MUL_OP
 %token EOF
+%nonassoc ARROW_BODY
+%nonassoc CAN
 
 %start <t> expr_eof
 %start <t> module_eof
@@ -178,11 +189,26 @@ type_atom:
   | name = ID { Var name }
   | LPAREN; e = type_expr; RPAREN { e }
 
+effect_row:
+  | CAN; eff = effect_row_entry
+    { { effects = [ eff ]; tail = None } }
+  | CAN; LBRACE; effs = separated_nonempty_list(COMMA, effect_row_entry); RBRACE
+    { { effects = effs; tail = None } }
+
+effect_row_entry:
+  | f = effect_row_entry; a = expr_proj { Ap (f, Explicit, a) }
+  | f = effect_row_entry; LBRACE; a = expr_proj; RBRACE { Ap (f, Implicit, a) }
+  | e = expr_proj { e }
+
 expr_arrow:
-  | LBRACE; name = ID; COLON; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, Some name, dom, cod) }
-  | LBRACE; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, None, dom, cod) }
-  | dom = expr_cmp; ARROW; cod = expr_arrow { Arrow (Explicit, None, dom, cod) }
+  | e = arrow_form; effs = effect_row { attach_arrow_effects e (Some effs) }
+  | e = arrow_form { e } %prec ARROW_BODY
   | e = expr_cmp { e }
+
+arrow_form:
+  | LBRACE; name = ID; COLON; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, Some name, dom, None, cod) }
+  | LBRACE; dom = expr; RBRACE; ARROW; cod = expr_arrow { Arrow (Implicit, None, dom, None, cod) }
+  | dom = expr_cmp; ARROW; cod = expr_arrow { Arrow (Explicit, None, dom, None, cod) }
 
 expr_cmp:
   | lhs = expr_cmp; op = cmp_op; rhs = expr_add

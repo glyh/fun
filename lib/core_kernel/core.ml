@@ -13,12 +13,20 @@ type struct_field_kind = Field | Public | Private | Method | PrivateMethod
 
 type explicitness = Implicit | Explicit
 
-type term =
+type effect_row = { effects : term list; tail : term option }
+
+and term =
   | Var of ix
   | Lam of term
   | Ap of term * explicitness * term
   | Let of term * term * term   (* let _ : A = def in body *)
-  | Pi of explicitness * term * term  (* (x : A) -> B or {x : A} -> B *)
+  | Pi of {
+      explicitness : explicitness;
+      domain : term;
+      effects : effect_row;
+      codomain : term;
+    }
+      (* (x : A) -> B or {x : A} -> B, with latent effects *)
   | U (* Type : Type *)
   | Atom of Atom.t
   | AtomTy of atom_ty
@@ -130,6 +138,8 @@ and struct_binding_term =
 
 and env = value list (* head = most recently bound *)
 
+and effect_row_closure = { env : env; effects : term list; tail : term option }
+
 (*
    Notation used in the [value] constructor comments:
 
@@ -152,7 +162,12 @@ and env = value list (* head = most recently bound *)
 
 and value =
   | VLam of { body : closure }
-  | VPi of { explicitness : explicitness; domain : value; codomain : closure }
+  | VPi of {
+      explicitness : explicitness;
+      domain : value;
+      effects : effect_row_closure;
+      codomain : closure;
+    }
   | VU
   | VAtom of Atom.t
   | VAtomTy of atom_ty
@@ -253,6 +268,10 @@ and frame =
           de Bruijn indices). *)
 
 and closure = { env : env; body : term }
+
+let empty_effect_row = { effects = []; tail = None }
+let is_empty_effect_row row = List.is_empty row.effects && Option.is_none row.tail
+let effect_row_closure env row = { env; effects = row.effects; tail = row.tail }
 
 module MetaContext = struct
   type entry = Solved of value | Unsolved

@@ -23,10 +23,13 @@ let () =
              | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
              | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
              | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
-             | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""))
+             | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
+             | ExpectedEffect -> "ExpectedEffect"
+             | DuplicateEffect -> "DuplicateEffect"))
     | _ -> None)
 
 let mc () = MetaContext.create ()
+let pure_effects = effect_row_closure [] empty_effect_row
 
 let parse_expr source =
   Core_lexer.parse_expr source
@@ -185,8 +188,8 @@ let test_unify_simple () =
 let test_unify_pi () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
-  let v2 = VPi { explicitness = Explicit; domain = VAtomTy TI64; codomain = { env = []; body = AtomTy TBool } } in
+  let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy TBool } } in
+  let v2 = VPi { explicitness = Explicit; domain = VAtomTy TI64; effects = pure_effects; codomain = { env = []; body = AtomTy TBool } } in
   unify mc [] 0 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected TI64 in pi domain"
@@ -258,7 +261,7 @@ let test_unify_occurs_check () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [] } in
-  let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; codomain = { env = []; body = AtomTy TBool } } in
+  let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy TBool } } in
   match unify mc [] 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected occurs check error"
@@ -326,6 +329,43 @@ let test_conv_effect_different_ids () =
   let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
   let eff2 = VEffect { id = 8; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
   Alcotest.(check bool) "effect conv" false (conv mc 0 eff1 eff2)
+
+let effect_row_env () =
+  [ VEffect { id = 1; name = "IO"; params = []; operations = [] };
+    VEffect { id = 2; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } ]
+
+let effectful_pi effects =
+  VPi
+    { explicitness = Explicit;
+      domain = VAtomTy TI64;
+      effects = { env = effect_row_env (); effects; tail = None };
+      codomain = { env = []; body = AtomTy TI64 } }
+
+let test_conv_effect_row_order () =
+  let mc = mc () in
+  Alcotest.(check bool) "effect row order" true
+    (conv mc 0 (effectful_pi [ Var 1; Var 0 ]) (effectful_pi [ Var 0; Var 1 ]))
+
+let test_conv_effect_row_mismatch () =
+  let mc = mc () in
+  Alcotest.(check bool) "effect row mismatch" false
+    (conv mc 0 (effectful_pi [ Var 1 ]) (effectful_pi [ Var 0 ]))
+
+let test_unify_effect_row_order () =
+  let mc = mc () in
+  unify mc [] 0 (effectful_pi [ Var 1; Var 0 ]) (effectful_pi [ Var 0; Var 1 ])
+
+let test_unify_effect_row_mismatch () =
+  let mc = mc () in
+  match unify mc [] 0 (effectful_pi [ Var 1 ]) (effectful_pi [ Var 0 ]) with
+  | exception UnifyError EffectRowMismatch -> ()
+  | exception UnifyError _ -> Alcotest.fail "wrong unify error"
+  | () -> Alcotest.fail "expected effect row mismatch"
+
+let test_debug_effectful_pi () =
+  let mc = mc () in
+  let text = Debug.pp_value_short mc (effectful_pi [ Var 1 ]) in
+  if not (String.contains text 'c') then Alcotest.fail ("expected can in debug output, got " ^ text)
 
 let test_debug_effect () =
   let mc = mc () in
@@ -574,10 +614,13 @@ let () =
             (check_not_conv "not equal" "I64" "Bool");
           Alcotest.test_case "effect same id same params" `Quick test_conv_effect_same_id_same_params;
           Alcotest.test_case "effect different ids" `Quick test_conv_effect_different_ids;
+          Alcotest.test_case "effect row order" `Quick test_conv_effect_row_order;
+          Alcotest.test_case "effect row mismatch" `Quick test_conv_effect_row_mismatch;
         ] );
       ( "debug",
         [
           Alcotest.test_case "effect" `Quick test_debug_effect;
+          Alcotest.test_case "effectful pi" `Quick test_debug_effectful_pi;
         ] );
       ( "neutral",
         [
@@ -605,6 +648,8 @@ let () =
           Alcotest.test_case "effect same id same params" `Quick test_unify_effect_same_id_same_params;
           Alcotest.test_case "effect same id different params" `Quick test_unify_effect_same_id_different_params;
           Alcotest.test_case "effect different ids" `Quick test_unify_effect_different_ids;
+          Alcotest.test_case "effect row order" `Quick test_unify_effect_row_order;
+          Alcotest.test_case "effect row mismatch" `Quick test_unify_effect_row_mismatch;
           Alcotest.test_case "mismatch" `Quick test_unify_mismatch;
         ] );
     ]

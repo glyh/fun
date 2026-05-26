@@ -104,8 +104,12 @@ and eval (mc : MetaContext.t) (env : env) (t : term) : value =
   | Let (_, def, body) ->
       let vdef = eval mc env def in
       eval mc (vdef :: env) body
-  | Pi (expl, a, b) ->
-      VPi { explicitness = expl; domain = eval mc env a; codomain = { env; body = b } }
+  | Pi { explicitness; domain; effects; codomain } ->
+      VPi
+        { explicitness;
+          domain = eval mc env domain;
+          effects = effect_row_closure env effects;
+          codomain = { env; body = codomain } }
   | U -> VU
   | Atom a -> VAtom a
   | AtomTy t -> VAtomTy t
@@ -288,6 +292,12 @@ and apply_ty (mc : MetaContext.t) (ty : value) (va : value) : value =
   match ty with
   | VPi { codomain = clo; _ } -> eval mc (va :: clo.env) clo.body
   | _ -> VU
+
+and eval_effect_row_closure (mc : MetaContext.t) (row : effect_row_closure)
+    (binder : value) : value list =
+  match row.tail with
+  | Some _ -> raise (EvalError "open effect rows are not implemented")
+  | None -> List.map (eval mc (binder :: row.env)) row.effects
 
 and eval_if (mc : MetaContext.t) (env : env) (vc : value) (then_ : term)
     (else_ : term) : value =
@@ -509,9 +519,17 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VLam { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       Lam (quote mc (depth + 1) (closure_apply mc clo var))
-  | VPi { explicitness = expl; domain = a; codomain = clo } ->
+  | VPi { explicitness; domain; effects; codomain } ->
       let var = VRigid { lvl = depth; spine = [] } in
-      Pi (expl, quote mc depth a, quote mc (depth + 1) (closure_apply mc clo var))
+      let row =
+        { effects = List.map (quote mc (depth + 1)) (eval_effect_row_closure mc effects var);
+          tail = None }
+      in
+      Pi
+        { explicitness;
+          domain = quote mc depth domain;
+          effects = row;
+          codomain = quote mc (depth + 1) (closure_apply mc codomain var) }
   | VU -> U
   | VAtom a -> Atom a
   | VAtomTy t -> AtomTy t
@@ -594,15 +612,18 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
   | VU, VU -> true
   | VAtom a1, VAtom a2 -> Atom.equal a1 a2
   | VAtomTy t1, VAtomTy t2 -> equal_atom_ty t1 t2
-  | ( VPi { explicitness = e1; domain = a1; codomain = clo1 },
-      VPi { explicitness = e2; domain = a2; codomain = clo2 } )
+  | ( VPi { explicitness = e1; domain = a1; effects = effs1; codomain = clo1 },
+      VPi { explicitness = e2; domain = a2; effects = effs2; codomain = clo2 } )
     when e1 = e2 ->
       conv mc depth a1 a2
       &&
       let var = VRigid { lvl = depth; spine = [] } in
-      conv mc (depth + 1)
-        (closure_apply mc clo1 var)
-        (closure_apply mc clo2 var)
+      conv_effect_rows mc (depth + 1)
+        (eval_effect_row_closure mc effs1 var)
+        (eval_effect_row_closure mc effs2 var)
+      && conv mc (depth + 1)
+           (closure_apply mc clo1 var)
+           (closure_apply mc clo2 var)
   | VLam { body = clo1; _ }, VLam { body = clo2; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       conv mc (depth + 1)
@@ -656,6 +677,19 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
 and conv_spine (mc : MetaContext.t) (depth : lvl) (sp1 : spine) (sp2 : spine) :
     bool =
   List.length sp1 = List.length sp2 && List.for_all2 (conv mc depth) sp1 sp2
+
+and conv_effect_rows (mc : MetaContext.t) (depth : lvl) (row1 : value list)
+    (row2 : value list) : bool =
+  let rec remove_match eff = function
+    | [] -> None
+    | candidate :: rest when conv mc depth eff candidate -> Some rest
+    | candidate :: rest -> Option.map (fun rest -> candidate :: rest) (remove_match eff rest)
+  in
+  List.length row1 = List.length row2
+  && Option.is_some
+       (List.fold_left
+          (fun remaining eff -> Option.bind remaining (remove_match eff))
+          (Some row2) row1)
 
 and conv_neutral (mc : MetaContext.t) (depth : lvl) (n1 : neutral)
     (n2 : neutral) : bool =

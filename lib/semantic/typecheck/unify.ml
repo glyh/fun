@@ -14,6 +14,7 @@ type unify_error =
   | StructFieldMismatch
   | NominalMismatch of string * string
   | EffectMismatch of string * string
+  | EffectRowMismatch
 
 exception UnifyError of unify_error
 
@@ -93,9 +94,20 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VLam { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Lam (go (d + 1) (Nbe.closure_apply mc clo var))
-    | VPi { explicitness = expl; domain = a; codomain = clo } ->
+    | VPi { explicitness = expl; domain = a; effects; codomain = clo } ->
         let var = VRigid { lvl = d; spine = [] } in
-        Pi (expl, go d a, go (d + 1) (Nbe.closure_apply mc clo var))
+        let row =
+          match effects.tail with
+          | Some _ -> raise (UnifyError EffectRowMismatch)
+          | None ->
+              { effects = List.map (fun eff -> go (d + 1) (Nbe.eval mc (var :: effects.env) eff)) effects.effects;
+                tail = None }
+        in
+        Pi
+          { explicitness = expl;
+            domain = go d a;
+            effects = row;
+            codomain = go (d + 1) (Nbe.closure_apply mc clo var) }
     | VU -> U
     | VAtom a -> Atom a
     | VAtomTy t -> AtomTy t
@@ -190,7 +202,11 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VFlex { id = id'; spine } ->
             if id' = id then raise (UnifyError OccursCheck);
             List.iter occurs_check spine
-        | VPi { domain = a; _ } -> occurs_check a
+        | VPi { domain = a; effects; codomain = clo; _ } ->
+            occurs_check a;
+            let var = VRigid { lvl = 0; spine = [] } in
+            List.iter (fun eff -> occurs_check (Nbe.eval mc (var :: effects.env) eff)) effects.effects;
+            occurs_check (Nbe.closure_apply mc clo var)
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
         | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> occurs_check v) fields
         | VRecord { typ; fields } ->
@@ -234,11 +250,14 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
   | VU, VU -> ()
   | VAtom a1, VAtom a2 when Atom.equal a1 a2 -> ()
   | VAtomTy t1, VAtomTy t2 when equal_atom_ty t1 t2 -> ()
-  | ( VPi { explicitness = e1; domain = a1; codomain = clo1 },
-      VPi { explicitness = e2; domain = a2; codomain = clo2 } )
+  | ( VPi { explicitness = e1; domain = a1; effects = effs1; codomain = clo1 },
+      VPi { explicitness = e2; domain = a2; effects = effs2; codomain = clo2 } )
     when e1 = e2 ->
       unify mc env depth a1 a2;
       let var = VRigid { lvl = depth; spine = [] } in
+      unify_effect_rows mc env (depth + 1)
+        (Nbe.eval_effect_row_closure mc effs1 var)
+        (Nbe.eval_effect_row_closure mc effs2 var);
       unify mc env (depth + 1)
         (Nbe.closure_apply mc clo1 var)
         (Nbe.closure_apply mc clo2 var)
@@ -323,6 +342,19 @@ and unify_spine (mc : MetaContext.t) (env : env) (depth : lvl) (sp1 : spine) (sp
   if List.length sp1 <> List.length sp2 then
     raise (UnifyError SpineLengthMismatch);
   List.iter2 (unify mc env depth) sp1 sp2
+
+and unify_effect_rows (mc : MetaContext.t) (env : env) (depth : lvl)
+    (row1 : value list) (row2 : value list) : unit =
+  let rec remove_match eff = function
+    | [] -> raise (UnifyError EffectRowMismatch)
+    | candidate :: rest -> (
+        try
+          unify mc env depth eff candidate;
+          rest
+        with UnifyError _ -> candidate :: remove_match eff rest)
+  in
+  if List.length row1 <> List.length row2 then raise (UnifyError EffectRowMismatch);
+  ignore (List.fold_left (fun remaining eff -> remove_match eff remaining) row2 row1)
 
 (** Unify two stuck computations. First check the heads match (same
     variable level, same metavariable id, or same primitive name),

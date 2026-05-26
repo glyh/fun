@@ -4,6 +4,8 @@ type param = { name : string; type_ : t option; explicitness : explicitness }
 
 and effect_op = { name : string; input : t; output : t }
 
+and effect_row = { effects : t list; tail : t option }
+
 and struct_binding =
   | LetBinding of { name : string; value : t; public : bool }
   | MethodBinding of { name : string; params : param list; body : t; public : bool }
@@ -32,7 +34,7 @@ and t =
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
-  | Arrow of explicitness * string option * t * t
+  | Arrow of explicitness * string option * t * effect_row option * t
   | FieldAccess of t * string
   | Proj of t * int
   | RecordConstruct of { typ : t; fields : (string * t) list }

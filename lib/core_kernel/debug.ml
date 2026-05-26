@@ -1,5 +1,35 @@
 open Core
 
+let rec pp_term (t : term) : string =
+  match t with
+  | Var ix -> Printf.sprintf "Var(%d)" ix
+  | Lam body -> Printf.sprintf "Lam(%s)" (pp_term body)
+  | Ap (f, _, a) -> Printf.sprintf "Ap(%s, %s)" (pp_term f) (pp_term a)
+  | Let (_, def, body) -> Printf.sprintf "Let(%s, %s)" (pp_term def) (pp_term body)
+  | Pi { explicitness; domain; effects; codomain } ->
+      let row =
+        if is_empty_effect_row effects then ""
+        else
+          Printf.sprintf " can %s"
+            (String.concat ", " (List.map pp_term effects.effects))
+      in
+      (match explicitness with
+      | Implicit ->
+          Printf.sprintf "Pi{%s, %s%s}" (pp_term domain) (pp_term codomain) row
+      | Explicit ->
+          Printf.sprintf "Pi(%s, %s%s)" (pp_term domain) (pp_term codomain) row)
+  | U -> "U"
+  | Atom _ -> "Atom"
+  | AtomTy _ -> "AtomTy"
+  | Meta id -> Printf.sprintf "Meta(%d)" id
+  | InsertedMeta (id, _) -> Printf.sprintf "IMeta(%d)" id
+  | NomRef (name, args) -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
+  | EffectRef (name, args) -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
+  | Con name -> Printf.sprintf "Con(%s)" name
+  | Ctor { name; nominal_name; _ } -> Printf.sprintf "Ctor(%s/%s)" name nominal_name
+  | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
+  | _ -> "<term>"
+
 let pp_value_short (mc : MetaContext.t) (v : value) : string =
   let rec go depth v =
     if depth > 4 then "..." else
@@ -30,10 +60,16 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
             (String.concat ", " (List.map (go (depth+1)) spine))
         else base
     | VLam _ -> "<lam>"
-    | VPi { explicitness = Implicit; domain; _ } ->
-        Printf.sprintf "{%s} -> ..." (go (depth+1) domain)
-    | VPi { explicitness = Explicit; domain; _ } ->
-        Printf.sprintf "%s -> ..." (go (depth+1) domain)
+    | VPi { explicitness; domain; effects; _ } ->
+        let arrow =
+          match explicitness with
+          | Implicit -> Printf.sprintf "{%s} -> ..." (go (depth + 1) domain)
+          | Explicit -> Printf.sprintf "%s -> ..." (go (depth + 1) domain)
+        in
+        if List.is_empty effects.effects && Option.is_none effects.tail then arrow
+        else
+          Printf.sprintf "%s can %s" arrow
+            (String.concat ", " (List.map pp_term effects.effects))
     | VNominal n ->
         if List.length n.params = 0 then n.name
         else Printf.sprintf "%s(%s)" n.name
@@ -69,23 +105,3 @@ let dump_metas (mc : MetaContext.t) : unit =
     Printf.eprintf "  %s\n%!" (pp_meta_state mc i)
   done;
   Printf.eprintf "---\n%!"
-
-let rec pp_term (t : term) : string =
-  match t with
-  | Var ix -> Printf.sprintf "Var(%d)" ix
-  | Lam body -> Printf.sprintf "Lam(%s)" (pp_term body)
-  | Ap (f, _, a) -> Printf.sprintf "Ap(%s, %s)" (pp_term f) (pp_term a)
-  | Let (_, def, body) -> Printf.sprintf "Let(%s, %s)" (pp_term def) (pp_term body)
-  | Pi (Implicit, a, b) -> Printf.sprintf "Pi{%s, %s}" (pp_term a) (pp_term b)
-  | Pi (Explicit, a, b) -> Printf.sprintf "Pi(%s, %s)" (pp_term a) (pp_term b)
-  | U -> "U"
-  | Atom _ -> "Atom"
-  | AtomTy _ -> "AtomTy"
-  | Meta id -> Printf.sprintf "Meta(%d)" id
-  | InsertedMeta (id, _) -> Printf.sprintf "IMeta(%d)" id
-  | NomRef (name, args) -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
-  | EffectRef (name, args) -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
-  | Con name -> Printf.sprintf "Con(%s)" name
-  | Ctor { name; nominal_name; _ } -> Printf.sprintf "Ctor(%s/%s)" name nominal_name
-  | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
-  | _ -> "<term>"
