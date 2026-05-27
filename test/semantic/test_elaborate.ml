@@ -197,12 +197,28 @@ let operators =
   ]
 
 let equality_rejections =
-  [ Alcotest.test_case "mismatch rejection" `Quick (elab_fail "1 == true") ]
+  [
+    Alcotest.test_case "mismatch rejection" `Quick (elab_fail "1 == true");
+    Alcotest.test_case "nominal equality accepted statically" `Quick
+      (check_type "type Color = Red in Red == Red" (AtomTy TBool));
+    Alcotest.test_case "record equality accepted statically" `Quick
+      (check_type "type Point = {x: I64} in Point {x = 1} == Point {x = 1}" (AtomTy TBool));
+  ]
 
 let dependent =
   [
     Alcotest.test_case "Type as value" `Quick
       (check_type "(I64 : Type)" U);
+    Alcotest.test_case "type-head match I64" `Quick
+      (check_type "match I64 with I64 -> 1 | _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "type-head match Bool" `Quick
+      (check_type "match Bool with Bool -> 1 | _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "type-head match Char" `Quick
+      (check_type "match Char with Char -> 1 | _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "type-head match Unit" `Quick
+      (check_type "match Unit with Unit -> 1 | _ -> 0 end" (AtomTy TI64));
+    Alcotest.test_case "open Type match fallback" `Quick
+      (check_type "let classify : Type -> I64 = fun T -> match T with I64 -> 1 | _ -> 0 end in classify Bool" (AtomTy TI64));
     Alcotest.test_case "type-passing identity" `Quick
       (elab_ok
          "((fun (T : Type) -> fun (x : T) -> x : Type -> I64 -> I64) I64 42)");
@@ -933,6 +949,21 @@ let effects =
     Alcotest.test_case "duplicate effect branch rejected" `Quick
       (elab_fail
          "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n -> n | effect Exc.raise n -> n end");
+    Alcotest.test_case "resume outside effect branch rejected" `Quick
+      (elab_fail "resume 1");
+    Alcotest.test_case "resume without argument rejected" `Quick
+      (fun () ->
+        match Core_lexer.parse_expr "resume" with
+        | exception _ -> ()
+        | _ -> Alcotest.fail "expected parse failure");
+    Alcotest.test_case "full multi-operation handler removes effect" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S; put : S -> Unit end in \
+          (fun _ -> match perform State.get () with x -> x | effect State.get () -> 0 | effect State.put next -> resume () end : Unit -> I64)");
+    Alcotest.test_case "handler branch can perform handled effect" `Quick
+      (elab_ok
+         "let Ping = effect hit : I64 -> I64 end in \
+          (match perform Ping.hit 1 with x -> x | effect Ping.hit n -> perform Ping.hit (n + 1) end : I64)");
   ]
 
 let imports =
@@ -957,6 +988,49 @@ let imports =
     Alcotest.test_case "repeated import" `Quick
       (check_import_type [ ("m", "pub let x = 21") ]
          "let A = import \"m\" in let B = import \"m\" in A.x + B.x" (AtomTy TI64));
+    Alcotest.test_case "imported record field access" `Quick
+      (check_import_type [ ("shapes", "pub type Point = {x: I64; y: I64}") ]
+         "let S = import \"shapes\" in (S.Point {x = 1; y = 2}).x" (AtomTy TI64));
+    Alcotest.test_case "imported record pattern" `Quick
+      (check_import_type [ ("shapes", "pub type Point = {x: I64; y: I64}") ]
+         "let S = import \"shapes\" in match S.Point {x = 1; y = 2} with S.Point {x; y} -> x + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "imported record pattern alias" `Quick
+      (check_import_type [ ("shapes", "pub type Point = {x: I64; y: I64}") ]
+         "let S = import \"shapes\" in let Alias = S in match S.Point {x = 1; y = 2} with Alias.Point {x; y} -> x + y end"
+         (AtomTy TI64));
+    Alcotest.test_case "imported method uses self" `Quick
+      (check_import_type
+         [ ("box", "pub let Box = struct value: I64; pub method get -> self.value end") ]
+         "let B = import \"box\" in B.Box.get (B.Box {value = 1})" (AtomTy TI64));
+    Alcotest.test_case "imported method uses Self" `Quick
+      (check_import_type
+         [ ("box", "pub let Box = struct value: I64; pub method copy (other : Self) -> other.value end") ]
+         "let B = import \"box\" in B.Box.copy (B.Box {value = 1}) (B.Box {value = 2})"
+         (AtomTy TI64));
+    Alcotest.test_case "imported nested constructor pattern" `Quick
+      (check_import_type
+         [ ("nested", "pub let M = struct pub type T = X I64 | Y end") ]
+         "let N = import \"nested\" in match N.M.X 7 with N.M.X(n) -> n | N.M.Y -> 0 end"
+         (AtomTy TI64));
+    Alcotest.test_case "imported module alias pattern" `Quick
+      (check_import_type [ ("color", "pub type Color = Red | Green") ]
+         "let C = import \"color\" in let Alias = C in match C.Red with Alias.Red -> 1 | Alias.Green -> 2 end"
+         (AtomTy TI64));
+    Alcotest.test_case "wrong-nominal imported constructor pattern" `Quick
+      (import_elab_fail
+         [ ("a", "pub type Color = Red"); ("b", "pub type Color = Red") ]
+         "let A = import \"a\" in let B = import \"b\" in match A.Red with B.Red -> 1 | _ -> 0 end");
+    Alcotest.test_case "imported public effect handler" `Quick
+      (check_import_type [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ]
+         "let E = import \"effects\" in match perform E.Exc.raise 1 with x -> x | effect E.Exc.raise n -> n + 1 end"
+         (AtomTy TI64));
+    Alcotest.test_case "imported private constructor hidden" `Quick
+      (import_elab_fail [ ("secret", "type Hidden = Wrap I64; pub let value = Wrap 1") ]
+         "let S = import \"secret\" in match S.value with S.Wrap(n) -> n end");
+    Alcotest.test_case "imported private member hidden through alias" `Quick
+      (import_elab_fail [ ("m", "let secret = 1; pub let exposed = 2") ]
+         "let M = import \"m\" in let Alias = M in Alias.secret");
     Alcotest.test_case "missing import" `Quick
       (fun () ->
         let loader = Core_loader.create ~base_dir:(Filename.temp_dir "fun_core_test" "") in

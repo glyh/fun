@@ -439,6 +439,25 @@ let test_eval_handler_ping_pong_effects () =
      end"
     ()
 
+let test_eval_recursive_handler_ping_pong_effects () =
+  check_i64 "recursive handler ping pong effects" 10L
+    "let Ping = effect hit : I64 -> I64 end in \
+     let Pong = effect hit : I64 -> I64 end in \
+     let rec loop : I64 -> I64 can {Ping, Pong} = fun n -> \
+       if n == 0 then \
+         0 \
+       else \
+         let x = perform Ping.hit n in \
+         let y = perform Pong.hit (n - 1) in \
+         x + y + loop (n - 2) \
+     in \
+     match loop 4 with \
+       x -> x \
+     | effect Ping.hit n -> resume n \
+     | effect Pong.hit n -> resume n \
+     end"
+    ()
+
 let test_eval_state_handler_sequences_operations () =
   check_i64 "state handler sequences operations" 2L
     "let State S = effect get : Unit -> S; put : S -> Unit end in \
@@ -475,6 +494,31 @@ let test_eval_handler_record_payload_pattern () =
      | effect Ask.prompt Request {value; extra} -> value + extra \
      end"
     ()
+
+let test_eval_handler_same_match_branch_effect () =
+  check_i64 "handler same match branch effect" 43L
+    "let Ping = effect hit : I64 -> I64 end in \
+     match perform Ping.hit 1 with \
+       x -> x \
+     | effect Ping.hit n -> \
+         if n == 1 then \
+           let y = perform Ping.hit 42 in \
+           y + 1 \
+         else \
+           resume n \
+     end"
+    ()
+
+let test_eval_continuation_reuse_error () =
+  let mc = mc () in
+  let cont = make_cont (fun value -> Done value) in
+  match apply_result mc cont (VAtom (I64 1L)) with
+  | Done (VAtom (I64 1L)) -> (
+      match apply_result mc cont (VAtom (I64 2L)) with
+      | exception EvalError "continuation already used" -> ()
+      | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+      | _ -> Alcotest.fail "expected continuation reuse error")
+  | _ -> Alcotest.fail "unexpected continuation result"
 
 let () =
   Alcotest.run "core"
@@ -524,9 +568,12 @@ let () =
           Alcotest.test_case "handler outer bubble" `Quick test_eval_handler_outer_bubble;
           Alcotest.test_case "handler escape skips continuation" `Quick test_eval_handler_escape_skips_continuation;
           Alcotest.test_case "handler ping pong effects" `Quick test_eval_handler_ping_pong_effects;
+          Alcotest.test_case "recursive handler ping pong effects" `Quick test_eval_recursive_handler_ping_pong_effects;
           Alcotest.test_case "state handler sequences operations" `Quick test_eval_state_handler_sequences_operations;
           Alcotest.test_case "handler tuple payload pattern" `Quick test_eval_handler_tuple_payload_pattern;
           Alcotest.test_case "handler record payload pattern" `Quick test_eval_handler_record_payload_pattern;
+          Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
+          Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick
             (check_i64 "match ctor" 1L
                "type Color = Red | Green in match Red with Red -> 1 | Green -> 2 end");
@@ -654,6 +701,9 @@ let () =
           Alcotest.test_case "method uses Self type" `Quick
             (check_i64 "method uses Self type" 2L
                "let Box = fun {A : Type} -> struct value: A; pub method id (other : Self) -> other.value end in Box.id (Box {value = 1}) (Box {value = 2})");
+          Alcotest.test_case "method returns Self" `Quick
+            (check_i64 "method returns Self" 1L
+               "let Box = struct value: I64; pub method copy -> self end in (Box.copy (Box {value = 1})).value");
           Alcotest.test_case "record pattern shorthand" `Quick
             (check_i64 "record pattern shorthand" 3L
                "let Point = struct x: I64; y: I64; end in \
@@ -715,6 +765,39 @@ let () =
             (check_import_i64 "imported ADT match"
                [ ("color", "pub type Color = Red | Green | Blue; pub let default = Green") ] 2L
                "let C = import \"color\" in match C.default with C.Red -> 1 | C.Green -> 2 | C.Blue -> 3 end");
+          Alcotest.test_case "imported record field access" `Quick
+            (check_import_i64 "imported record field access"
+               [ ("shapes", "pub type Point = {x: I64; y: I64}") ] 1L
+               "let S = import \"shapes\" in (S.Point {x = 1; y = 2}).x");
+          Alcotest.test_case "imported record pattern" `Quick
+            (check_import_i64 "imported record pattern"
+               [ ("shapes", "pub type Point = {x: I64; y: I64}") ] 3L
+               "let S = import \"shapes\" in match S.Point {x = 1; y = 2} with S.Point {x; y} -> x + y end");
+          Alcotest.test_case "imported record pattern alias" `Quick
+            (check_import_i64 "imported record pattern alias"
+               [ ("shapes", "pub type Point = {x: I64; y: I64}") ] 3L
+               "let S = import \"shapes\" in let Alias = S in match S.Point {x = 1; y = 2} with Alias.Point {x; y} -> x + y end");
+          Alcotest.test_case "imported method uses self" `Quick
+            (check_import_i64 "imported method uses self"
+               [ ("box", "pub let Box = struct value: I64; pub method get -> self.value end") ] 1L
+               "let B = import \"box\" in B.Box.get (B.Box {value = 1})");
+          Alcotest.test_case "imported method uses Self" `Quick
+            (check_import_i64 "imported method uses Self"
+               [ ("box", "pub let Box = struct value: I64; pub method copy (other : Self) -> other.value end") ]
+               2L
+               "let B = import \"box\" in B.Box.copy (B.Box {value = 1}) (B.Box {value = 2})");
+          Alcotest.test_case "imported nested constructor pattern" `Quick
+            (check_import_i64 "imported nested constructor pattern"
+               [ ("nested", "pub let M = struct pub type T = X I64 | Y end") ] 7L
+               "let N = import \"nested\" in match N.M.X 7 with N.M.X(n) -> n | N.M.Y -> 0 end");
+          Alcotest.test_case "imported module alias pattern" `Quick
+            (check_import_i64 "imported module alias pattern"
+               [ ("color", "pub type Color = Red | Green") ] 1L
+               "let C = import \"color\" in let Alias = C in match C.Red with Alias.Red -> 1 | Alias.Green -> 2 end");
+          Alcotest.test_case "imported public effect handler" `Quick
+            (check_import_i64 "imported public effect handler"
+               [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ] 2L
+               "let E = import \"effects\" in match perform E.Exc.raise 1 with x -> x | effect E.Exc.raise n -> n + 1 end");
         ] );
       ( "conv",
         [

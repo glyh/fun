@@ -322,6 +322,11 @@ let rewrite_record_self_refs record_name params expr =
                     { name; params;
                       ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
                       public }
+              | Surface.RecordTypeBinding { name; params; fields; public } ->
+                  Surface.RecordTypeBinding
+                    { name; params;
+                      fields = List.map (fun (field, ty) -> (field, go (params @ bound) ty)) fields;
+                      public }
               | Surface.EffectBinding { name; params; ops; public } ->
                   Surface.EffectBinding
                     { name; params;
@@ -1135,6 +1140,43 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (EffectBind (name, kind, eff) :: acc_binds,
                field @ acc_fields)
               rest
+        | Surface.RecordTypeBinding { name; params; fields; public } :: rest ->
+            check_duplicate_names (List.map fst fields);
+            let rewritten_fields =
+              List.map
+                (fun (field, ty) -> (field, rewrite_record_self_refs name params ty))
+                fields
+            in
+            let rec elaborate_params ctx param_values = function
+              | [] ->
+                  let placeholder =
+                    VNeutral
+                      { ty = VU;
+                        neutral = { head = HPrim name; frames = List.map (fun value -> FApp value) param_values } }
+                  in
+                  infer (Ctx.with_self_type ctx placeholder)
+                    (Surface.Struct { con_fields = rewritten_fields; bindings = [] })
+              | param :: rest ->
+                  let param_value = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
+                  let ctx' = Ctx.bind ctx param VU in
+                  let body_core, body_ty = elaborate_params ctx' (param_values @ [ param_value ]) rest in
+                  let body_ty_term = Ctx.quote ctx' body_ty in
+                  ( Lam body_core,
+                    VPi
+                      { explicitness = Implicit;
+                        domain = VU;
+                        effects = effect_row_closure ctx.Ctx.env empty_effect_row;
+                        codomain = { env = ctx.Ctx.env; body = body_ty_term } } )
+            in
+            let val_core, val_ty = elaborate_params ctx [] params in
+            let val_val = Ctx.eval ctx val_core in
+            let kind = if public then Public else Private in
+            let ctx' = Ctx.define ctx name val_ty val_val in
+            let field = if public then [ (name, kind, val_ty) ] else [] in
+            go ctx'
+              (LetBind (name, kind, val_core) :: acc_binds,
+               field @ acc_fields)
+              rest
         | Surface.TypeBinding { name; params; ctors; public } :: rest ->
             if params <> [] then raise (ElabError NotANominalType);
             let elaborated_ctors =
@@ -1342,7 +1384,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let scrut_core, scrut_ty = infer ctx scrutinee in
       let value_branches = surface_value_branches branches in
       let effect_branches = surface_effect_branches branches in
-      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty value_branches in
+      let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let ret_ty = Ctx.raw_meta ctx in
       let scrutinee_effects = collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
@@ -1914,7 +1956,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let scrut_core, scrut_ty = infer ctx scrutinee in
       let value_branches = surface_value_branches branches in
       let effect_branches = surface_effect_branches branches in
-      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty value_branches in
+      let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let scrutinee_effects = collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       require_empty_effects residual;

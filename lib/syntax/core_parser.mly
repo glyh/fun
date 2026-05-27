@@ -172,8 +172,14 @@ struct_binding:
   | METHOD; name = ID; params = list(param); ARROW; body = expr
     { MethodBinding { name; params; body; public = false } }
   | PUB; TYPE; name = ID; params = list(ID); EQUALS;
+    LBRACE; fields = separated_nonempty_list(SEMI, record_type_field_decl); RBRACE
+    { RecordTypeBinding { name; params; fields; public = true } }
+  | PUB; TYPE; name = ID; params = list(ID); EQUALS;
     ctors = separated_nonempty_list(BAR, ctor_decl)
     { TypeBinding { name; params; ctors; public = true } }
+  | TYPE; name = ID; params = list(ID); EQUALS;
+    LBRACE; fields = separated_nonempty_list(SEMI, record_type_field_decl); RBRACE
+    { RecordTypeBinding { name; params; fields; public = false } }
   | TYPE; name = ID; params = list(ID); EQUALS;
     ctors = separated_nonempty_list(BAR, ctor_decl)
     { TypeBinding { name; params; ctors; public = false } }

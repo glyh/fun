@@ -151,7 +151,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Atom a -> Done (VAtom a)
   | AtomTy t -> Done (VAtomTy t)
   | If (cond, then_, else_) ->
-      bind_result (eval_result mc env cond) (fun vc -> Done (eval_if mc env vc then_ else_))
+      bind_result (eval_result mc env cond) (fun vc -> eval_if mc env vc then_ else_)
   | Prod elems -> sequence_values mc env elems (fun values -> Done (VProd values))
   | ProdTy elems -> sequence_values mc env elems (fun values -> Done (VProdTy values))
   | Struct { con_fields; bindings; partial } ->
@@ -355,17 +355,18 @@ and eval_effect_row_closure (mc : MetaContext.t) (row : effect_row_closure)
   | None -> List.map (eval mc (binder :: row.env)) row.effects
 
 and eval_if (mc : MetaContext.t) (env : env) (vc : value) (then_ : term)
-    (else_ : term) : value =
+    (else_ : term) : result =
   match vc with
-  | VAtom (Bool true) -> eval mc env then_
-  | VAtom (Bool false) -> eval mc env else_
+  | VAtom (Bool true) -> eval_result mc env then_
+  | VAtom (Bool false) -> eval_result mc env else_
   | _ ->
       let head, base_frames = stuck_head_frames vc in
       let if_frame =
         FIf { then_ = { env; body = then_ }; else_ = { env; body = else_ } }
       in
-      VNeutral
-        { ty = VU; neutral = { head; frames = base_frames @ [ if_frame ] } }
+      Done
+        (VNeutral
+           { ty = VU; neutral = { head; frames = base_frames @ [ if_frame ] } })
 
 (* Extract the head and existing frames from a stuck value *)
 and stuck_head_frames (v : value) : head * frame list =

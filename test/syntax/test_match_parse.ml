@@ -3,6 +3,11 @@ open Surface
 let parse_ok source () =
   ignore (Core_lexer.parse_expr source)
 
+let parse_fail source () =
+  match Core_lexer.parse_expr source with
+  | exception _ -> ()
+  | _ -> Alcotest.fail "expected parse failure"
+
 let effect_expr_shape () =
   match Core_lexer.parse_expr "let State S = effect get : Unit -> S; put : S -> Unit end in State I64" with
   | EffectDef { name = "State"; params = [ "S" ]; ops; body = Ap (Var "State", Explicit, Var "I64") } ->
@@ -112,5 +117,6 @@ let () =
           Alcotest.test_case "effect branch shape" `Quick effect_branch_shape;
           Alcotest.test_case "qualified effect branch shape" `Quick qualified_effect_branch_shape;
           Alcotest.test_case "tuple effect branch shape" `Quick tuple_effect_branch_shape;
+          Alcotest.test_case "resume without argument rejected" `Quick (parse_fail "resume");
         ] );
     ]

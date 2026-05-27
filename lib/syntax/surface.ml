@@ -15,6 +15,12 @@ and struct_binding =
       ctors : (string * t option) list;  (* (ctor_name, payload_type option) *)
       public : bool;
     }
+  | RecordTypeBinding of {
+      name : string;
+      params : string list;
+      fields : (string * t) list;
+      public : bool;
+    }
   | EffectBinding of {
       name : string;
       params : string list;
