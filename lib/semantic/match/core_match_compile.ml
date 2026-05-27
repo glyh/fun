@@ -51,7 +51,7 @@ type refutability = Irrefutable | Destruct | Switch | ProductPat | RecordPat | O
 
 let classify = function
   | CPatCon _ -> Destruct
-  | CPatAtom _ | CPatType _ -> Switch
+  | CPatAtom _ | CPatType _ | CPatNominalHead _ -> Switch
   | CPatProd _ -> ProductPat
   | CPatRecord _ -> RecordPat
   | CPatOr _ -> OrPat
@@ -110,6 +110,7 @@ let collect_switch_keys col =
       match p with
       | CPatAtom atom -> add (DT.KAtom atom)
       | CPatType atom_ty -> add (DT.KType atom_ty)
+      | CPatNominalHead { id; _ } -> add (DT.KNominal id)
       | _ -> ())
     col;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
@@ -151,24 +152,36 @@ let specialize_destruct m tag ~num_type_params ~arity =
 
 let specialize_switch m key =
   let occ0 = m.header.(0) in
-  let header = Array.sub m.header 1 (Array.length m.header - 1) in
+  let nominal_arity =
+    match key with
+    | DT.KNominal id ->
+        m.rows
+        |> List.find_map (fun r ->
+             match r.pats.(0) with
+             | CPatNominalHead { id = id'; num_params; _ } when id = id' -> Some num_params
+             | _ -> None)
+        |> Option.value ~default:0
+    | _ -> 0
+  in
+  let nominal_occs = Array.init nominal_arity (fun i -> DT.OChild { parent = occ0; index = i }) in
+  let rest_header = Array.sub m.header 1 (Array.length m.header - 1) in
+  let header = Array.append nominal_occs rest_header in
   let rows =
     List.filter_map
       (fun r ->
+        let rest = Array.sub r.pats 1 (Array.length r.pats - 1) in
         match (r.pats.(0), key) with
         | CPatAtom atom, DT.KAtom atom' when Atom.equal atom atom' ->
-            let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
-            Some { r with pats }
+            Some { r with pats = rest }
         | CPatType atom_ty, DT.KType atom_ty' when equal_atom_ty atom_ty atom_ty' ->
-            let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
-            Some { r with pats }
+            Some { r with pats = rest }
+        | CPatNominalHead { id; param_pats; _ }, DT.KNominal id' when id = id' ->
+            Some { r with pats = Array.append (Array.of_list param_pats) rest }
         | CPatWild, _ ->
-            let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
-            Some { r with pats }
+            Some { r with pats = Array.append (Array.make nominal_arity CPatWild) rest }
         | CPatBind, _ ->
-            let pats = Array.sub r.pats 1 (Array.length r.pats - 1) in
             let bindings = r.bindings @ [ occ0 ] in
-            Some { pats; branch = r.branch; bindings }
+            Some { pats = Array.append (Array.make nominal_arity CPatWild) rest; branch = r.branch; bindings }
         | _ -> None)
       m.rows
   in

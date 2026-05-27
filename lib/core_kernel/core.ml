@@ -87,6 +87,7 @@ and term =
           innermost pattern binding outward. Effect branches bind operation
           argument pattern variables plus an innermost continuation. *)
   | NominalDef of {
+      id : nominal_id;
       name : string;
       num_params : int;
       ctors : (string * term option) list;
@@ -133,6 +134,11 @@ and core_pat =
       (** Record-instance pattern. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
+  | CPatNominalHead of { id : nominal_id; name : string; num_params : int; param_pats : core_pat list }
+      (** Nominal type-head pattern for type-case. [id] is the unique nominal identity
+          for switch comparison, [name] is the nominal type name,
+          [num_params] is how many type params the nominal has, [param_pats] are
+          type-level sub-patterns matched against the nominal's parameter values. *)
   | CPatBind
       (** Variable binding — matches anything, binds the matched value.
           No name needed — binding is by de Bruijn index. *)
@@ -200,6 +206,7 @@ and value =
   | VNominal of {
       id : nominal_id;
       name : string;
+      num_params : int;
       params : value list;
       constructors : (string * closure option) list;
           (** (ctor_name, payload_type_closure option). [None] = nullary.
@@ -208,9 +215,11 @@ and value =
               referencing the type params. Instantiate by evaluating with
               [List.rev actual_params @ clo.env]. *)
     }
-      (** Nominal ADT type. Unifies by [id] equality. [params] are the
-          applied type arguments, e.g. [Option I64] has params = [VAtomTy TI64].
-          [constructors] maps each constructor name to its payload type closure. *)
+      (** Nominal ADT type. Unifies by [id] equality. [num_params] is the
+          arity of type parameters for the template (unapplied) nominal.
+          [params] are the applied type arguments, e.g. [Option I64] has
+          params = [VAtomTy TI64]. [constructors] maps each constructor name
+          to its payload type closure. *)
   | VEffect of {
       id : effect_id;
       name : string;

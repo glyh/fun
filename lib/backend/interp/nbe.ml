@@ -244,14 +244,14 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       Done (VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } })
   | Meta id -> Done (eval_meta mc id)
   | InsertedMeta (id, bds) -> Done (eval_inserted_meta mc env id bds)
-  | NominalDef { name; num_params; ctors; body } ->
+  | NominalDef { id; name; num_params; ctors; body } ->
       let elaborated_ctors =
         List.map (fun (cname, payload_opt) ->
           (cname, Option.map (fun t -> { env; body = t }) payload_opt))
         ctors
       in
       let nominal = VNominal {
-        id = NominalId.fresh (); name; params = [];
+        id; name; num_params; params = [];
         constructors = elaborated_ctors
       } in
       (* Add dummy entries for type params (body expects them in scope) *)
@@ -494,6 +494,8 @@ and match_core_pat mc pat value =
     when String.equal name actual ->
       let payload = List.drop num_type_params spine in
       if List.length sub_pats = List.length payload then match_core_pats mc sub_pats payload else None
+  | CPatNominalHead { id; param_pats; _ }, VNominal n when n.id = id ->
+      if List.length param_pats = List.length n.params then match_core_pats mc param_pats n.params else None
   | CPatRecord { fields; _ }, VRecord { fields = values; _ } ->
       let rec go acc = function
         | [] -> Some (List.rev acc)
@@ -547,9 +549,18 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
       let pats = List.map fst branches in
       let dt = Core_match_compile.compile ~domain pats in
       eval_decision_tree mc env scrutinee branches dt
-  | VAtomTy _ ->
+  | VAtomTy _ | VNominal _ ->
+      let domain_of_occurrence occ =
+        match resolve_occurrence_opt mc scrutinee occ with
+        | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+        | Some (VAtomTy _) | Some (VNominal _) -> Type
+        | Some (VProd elems) -> Product (List.length elems)
+        | Some (VRecord { typ = VStruct { fields; _ }; _ }) ->
+            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) fields)
+        | _ -> Unknown
+      in
       let pats = List.map fst branches in
-      let dt = Core_match_compile.compile ~domain:Type pats in
+      let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
       eval_decision_tree mc env scrutinee branches dt
   | VProd _ | VRecord _ ->
       let domain_of_occurrence occ =
@@ -613,6 +624,7 @@ and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
         match v with
         | VAtom atom -> Core_decision_tree.KAtom atom
         | VAtomTy atom_ty -> KType atom_ty
+        | VNominal n -> KNominal n.id
         | _ -> raise (EvalError "switch on non-constant value")
       in
       (match List.find_opt (fun (case_key, _) -> Core_decision_tree.switch_key_equal case_key key) cases with
@@ -632,6 +644,7 @@ and resolve_occurrence_opt (mc : MetaContext.t) (root : value)
   | OChild { parent; index } -> (
       match Option.map (force mc) (resolve_occurrence_opt mc root parent) with
       | Some (VCon { spine; _ }) -> List.nth_opt spine index
+      | Some (VNominal { params; _ }) -> List.nth_opt params index
       | Some (VProd elems) -> List.nth_opt elems index
       | _ -> None)
   | OField { parent; name } -> (
@@ -658,6 +671,9 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
       String.equal n1 n2 && a1 = a2
       && List.length ps1 = List.length ps2
       && List.for_all2 conv_pat ps1 ps2
+  | ( CPatNominalHead { id = id1; num_params = n1; param_pats = ps1; _ },
+      CPatNominalHead { id = id2; num_params = n2; param_pats = ps2; _ } ) ->
+      id1 = id2 && n1 = n2 && List.length ps1 = List.length ps2 && List.for_all2 conv_pat ps1 ps2
   | _ -> false
 
 and force (mc : MetaContext.t) (v : value) : value =

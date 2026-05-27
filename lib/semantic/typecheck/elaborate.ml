@@ -508,16 +508,6 @@ let refine_context_type_var ctx target replacement =
     resume_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.resume_entry;
   }
 
-let refine_branch_context ctx refinement_target pat =
-  match (branch_type_refinement pat, refinement_target) with
-  | Some replacement, Some target -> refine_context_type_var ctx target replacement
-  | _ -> ctx
-
-let refine_branch_expected ctx refinement_target pat expected =
-  match (branch_type_refinement pat, refinement_target) with
-  | Some replacement, Some target -> subst_value_var ctx.Ctx.metas target replacement expected
-  | _ -> expected
-
 let close_recursive_payload_term nominal_name num_params =
   let rec collect_apps acc = function
     | Ap (f, Explicit, a) -> collect_apps (a :: acc) f
@@ -570,9 +560,9 @@ let close_recursive_payload_term nominal_name num_params =
                   EffectBranch { eff = go cutoff eff; op; arg_pat; body = go cutoff body }
             in
             Match (go cutoff scrut, List.map go_branch branches)
-        | NominalDef { name; num_params; ctors; body } ->
+        | NominalDef { id; name; num_params; ctors; body } ->
             NominalDef
-              { name; num_params;
+              { id; name; num_params;
                 ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go cutoff) payload)) ctors;
                 body = go cutoff body }
         | EffectDef { id; name; num_params; ops; body } ->
@@ -611,6 +601,63 @@ let resolve_path_core_value ctx path name =
 let resolve_path_value ctx path name =
   let _, value, ty = resolve_path_core_value ctx path name in
   (value, ty)
+
+let find_nominal_template ctx path name =
+  let scan_env () =
+    List.find_map
+      (function
+        | VNominal n when String.equal n.name name -> Some (VNominal n)
+        | _ -> None)
+      ctx.Ctx.env
+  in
+  match path with
+  | [] -> (
+      let value, _ = resolve_path_value ctx [] name in
+      match Nbe.force ctx.Ctx.metas value with
+      | VNominal _ as nominal -> nominal
+      | _ -> (
+          match scan_env () with
+          | Some nominal -> nominal
+          | None -> raise (ElabError (UnknownConstructor name))))
+  | _ ->
+      let value, _ = resolve_path_value ctx path name in
+      match Nbe.force ctx.Ctx.metas value with
+      | VNominal _ as nominal -> nominal
+      | _ -> raise (ElabError (UnknownConstructor name))
+
+let starts_lowercase name =
+  String.length name > 0 && Char.lowercase_ascii name.[0] = name.[0]
+
+let rec refinement_for_nominal_head ctx = function
+  | Surface.PatCon (path, name, _) -> (
+      try
+        match find_nominal_template ctx path name with
+        | VNominal n -> Some (VNominal { n with params = List.init n.num_params (fun _ -> Ctx.raw_meta ctx) })
+        | _ -> None
+      with _ -> None)
+  | Surface.PatOr (lhs, rhs) -> (
+      match refinement_for_nominal_head ctx lhs with
+      | Some _ as found -> found
+      | None -> refinement_for_nominal_head ctx rhs)
+  | _ -> None
+
+let refine_branch_context ctx refinement_target pat =
+  match (branch_type_refinement pat, refinement_target) with
+  | Some replacement, Some target -> refine_context_type_var ctx target replacement
+  | None, Some target -> (
+      match refinement_for_nominal_head ctx pat with
+      | Some replacement -> refine_context_type_var ctx target replacement
+      | None -> ctx)
+  | _ -> ctx
+
+let refine_branch_expected ctx refinement_target pat expected =
+  match (branch_type_refinement pat, refinement_target) with
+  | Some replacement, Some target -> subst_value_var ctx.Ctx.metas target replacement expected
+  | None, Some target -> (
+      match refinement_for_nominal_head ctx pat with
+      | Some replacement -> subst_value_var ctx.Ctx.metas target replacement expected
+      | None -> expected)
+  | _ -> expected
 
 let union_expr_effects ctx lhs rhs =
   let add acc eff =
@@ -729,8 +776,10 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
   | _ ->
       let rec find_pat = function
         | Surface.PatCon (path, name, _) ->
-            let _, ctor_ty = resolve_path_value ctx path name in
-            Some (nominal_from_constructor_type ctx ctor_ty)
+            let ctor_value, ctor_ty = resolve_path_value ctx path name in
+            (match Nbe.force ctx.Ctx.metas ctor_value with
+            | VNominal _ -> Some VU
+            | _ -> Some (nominal_from_constructor_type ctx ctor_ty))
         | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
         | Surface.PatType _ -> Some VU
         | Surface.PatProd ps ->
@@ -1211,7 +1260,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
                       (cname, Some { env = ctx.env; body = payload_core }))
                 ctors
             in
-            let nominal = VNominal { id = NominalId.fresh (); name; params = []; constructors = elaborated_ctors } in
+            let nominal = VNominal { id = NominalId.fresh (); name; num_params = 0; params = []; constructors = elaborated_ctors } in
             let kind = if public then Public else Private in
             let ctor_values, ctor_types =
               List.split
@@ -1306,7 +1355,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           ctx params
       in
       let nominal_id = NominalId.fresh () in
-      let nominal_placeholder = VNominal { id = nominal_id; name; params = []; constructors = [] } in
+      let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
       let recursive_param_ctx =
         if num_params = 0 then Ctx.define param_ctx name VU nominal_placeholder
         else
@@ -1337,7 +1386,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
                 (cname, Some { env = ctx.env @ [ nominal_placeholder ]; body = payload_core }))
           ctors
       in
-      let nominal = VNominal { id = nominal_id; name; params = []; constructors = elaborated_ctors } in
+      let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
       (* For parameterized types, build an Explicit VPi chain so Option I64 works.
          For nullary types, just bind with VU as before. *)
       let body_ctx =
@@ -1390,7 +1439,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
                 (cname, Some (close_recursive_payload_term name num_params payload_core)))
           ctors
       in
-      (NominalDef { name; num_params; ctors = ctor_payload_terms; body = body_core },
+      (NominalDef { id = nominal_id; name; num_params; ctors = ctor_payload_terms; body = body_core },
        body_ty)
   | EffectDef { name; params; ops; body } ->
       let num_params = List.length params in
@@ -1501,34 +1550,57 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           in
           (CPatRecord { fields = List.rev core_fields; partial }, List.rev binders)
       | _ -> raise (ElabError ApplyingNonFunction))
-  | PatCon (path, name, sub_pats) ->
-      let resolved_nominal =
-        match path with
-        | [] -> None
-        | _ ->
-            let ctor_value, _ = resolve_path_value ctx path name in
-            match Nbe.force ctx.metas ctor_value with
-            | VCon { nominal; _ } -> Some nominal
-            | VLam _ | VPi _ -> None
-            | _ -> raise (ElabError (UnknownConstructor name))
-      in
-      (match Nbe.force ctx.metas scrutinee_ty with
-      | VNominal n ->
-          Option.iter (Ctx.unify ctx scrutinee_ty) resolved_nominal;
-          (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
-          | Some (_, payload_opt) ->
-              let num_type_params = List.length n.params in
-              (match (sub_pats, payload_opt) with
-              | [], None -> (CPatCon (name, num_type_params, []), [])
-              | [sub_pat], Some payload_clo ->
-                  let payload_ty =
-                    Nbe.eval ctx.metas (List.rev n.params @ payload_clo.env) payload_clo.body in
-                  let core_sub, binders = elaborate_pat_binders ctx sub_pat payload_ty in
-                  (CPatCon (name, num_type_params, [core_sub]), binders)
-              | _ ->
-                  raise (ElabError PatternArityMismatch))
-          | None -> raise (ElabError (UnknownConstructor name)))
-      | _ -> raise (ElabError NotANominalType))
+  | PatCon (path, name, sub_pats) -> (
+      match Nbe.force ctx.metas scrutinee_ty with
+      | VU -> (
+          match find_nominal_template ctx path name with
+          | VNominal n ->
+              if List.length sub_pats <> n.num_params then
+                raise (ElabError PatternArityMismatch);
+              let param_tys = List.init n.num_params (fun _ -> VU) in
+              let core_param_pats, binders =
+                List.fold_left2
+                  (fun (pat_acc, binder_acc) sub_pat param_ty ->
+                    let core_pat, sub_binders = elaborate_pat_binders ctx sub_pat param_ty in
+                    (core_pat :: pat_acc, sub_binders @ binder_acc))
+                  ([], []) sub_pats param_tys
+              in
+              (CPatNominalHead { id = n.id; name = n.name; num_params = n.num_params;
+                                 param_pats = List.rev core_param_pats },
+               List.rev binders)
+          | _ -> raise (ElabError (UnknownConstructor name))
+          | exception ElabError (UnknownConstructor _) when path = [] && sub_pats = [] && starts_lowercase name ->
+              (CPatBind, [ (name, VU) ])
+          | exception ElabError (UnboundVariable _) when path = [] && sub_pats = [] && starts_lowercase name ->
+              (CPatBind, [ (name, VU) ]))
+      | _ ->
+          let resolved_nominal =
+            match path with
+            | [] -> None
+            | _ ->
+                let ctor_value, _ = resolve_path_value ctx path name in
+                match Nbe.force ctx.metas ctor_value with
+                | VCon { nominal; _ } -> Some nominal
+                | VLam _ | VPi _ -> None
+                | _ -> raise (ElabError (UnknownConstructor name))
+          in
+          (match Nbe.force ctx.metas scrutinee_ty with
+          | VNominal n ->
+              Option.iter (Ctx.unify ctx scrutinee_ty) resolved_nominal;
+              (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
+              | Some (_, payload_opt) ->
+                  let num_type_params = List.length n.params in
+                  (match (sub_pats, payload_opt) with
+                  | [], None -> (CPatCon (name, num_type_params, []), [])
+                  | [sub_pat], Some payload_clo ->
+                      let payload_ty =
+                        Nbe.eval ctx.metas (List.rev n.params @ payload_clo.env) payload_clo.body in
+                      let core_sub, binders = elaborate_pat_binders ctx sub_pat payload_ty in
+                      (CPatCon (name, num_type_params, [core_sub]), binders)
+                  | _ ->
+                      raise (ElabError PatternArityMismatch))
+              | None -> raise (ElabError (UnknownConstructor name)))
+          | _ -> raise (ElabError NotANominalType)))
 
 and resolve_effect_branch_operation ctx scrutinee_effects branch =
   let effect_core, effect_value, input_ty, output_ty =

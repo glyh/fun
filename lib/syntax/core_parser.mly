@@ -110,7 +110,12 @@ binding_name:
   | LPAREN; op = operator; RPAREN { op }
 
 pat:
-  | lhs = pat_atom; BAR; rhs = pat { PatOr (lhs, rhs) }
+  | lhs = pat_app; BAR; rhs = pat { PatOr (lhs, rhs) }
+  | p = pat_app { p }
+
+pat_app:
+  | name = dotted_id; args = nonempty_list(pat_atom)
+    { let path, name = name in PatCon (path, name, args) }
   | p = pat_atom { p }
 
 pat_atom:

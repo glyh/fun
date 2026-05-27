@@ -96,6 +96,16 @@ let tuple_effect_branch_shape () =
   | Match (_, [ _; EffectBranch { arg_pat = PatProd [ PatBind "level"; PatBind "msg" ]; _ } ]) -> ()
   | _ -> Alcotest.fail "expected tuple effect branch pattern"
 
+let nominal_type_pattern_app_shape () =
+  match Core_lexer.parse_expr "match T with Option x -> x | _ -> I64 end" with
+  | Match (_, [ ValueBranch (PatCon ([], "Option", [ PatBind "x" ]), Var "x"); _ ]) -> ()
+  | _ -> Alcotest.fail "expected nominal type pattern application"
+
+let nominal_type_pattern_complex_arg_shape () =
+  match Core_lexer.parse_expr "match T with Option (Option I64 | I64) -> I64 | _ -> Bool end" with
+  | Match (_, [ ValueBranch (PatCon ([], "Option", [ PatOr (PatCon ([], "Option", [ PatType Core.TI64 ]), PatType Core.TI64) ]), _); _ ]) -> ()
+  | _ -> Alcotest.fail "expected complex nominal type pattern argument"
+
 let () =
   Alcotest.run "syntax"
     [
@@ -117,6 +127,8 @@ let () =
           Alcotest.test_case "effect branch shape" `Quick effect_branch_shape;
           Alcotest.test_case "qualified effect branch shape" `Quick qualified_effect_branch_shape;
           Alcotest.test_case "tuple effect branch shape" `Quick tuple_effect_branch_shape;
+          Alcotest.test_case "nominal type pattern application shape" `Quick nominal_type_pattern_app_shape;
+          Alcotest.test_case "nominal type pattern complex arg shape" `Quick nominal_type_pattern_complex_arg_shape;
           Alcotest.test_case "resume without argument rejected" `Quick (parse_fail "resume");
         ] );
     ]

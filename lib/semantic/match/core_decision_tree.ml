@@ -3,7 +3,7 @@ type occurrence =
   | OChild of { parent : occurrence; index : int }
   | OField of { parent : occurrence; name : string }
 
-type switch_key = KAtom of Atom.t | KType of Core.atom_ty
+type switch_key = KAtom of Atom.t | KType of Core.atom_ty | KNominal of Core.nominal_id
 
 let rec occurrence_equal a b =
   match (a, b) with
@@ -28,6 +28,7 @@ let switch_key_equal lhs rhs =
   match (lhs, rhs) with
   | KAtom lhs, KAtom rhs -> Atom.equal lhs rhs
   | KType lhs, KType rhs -> Core.equal_atom_ty lhs rhs
+  | KNominal lhs, KNominal rhs -> lhs = rhs
   | _ -> false
 
 type branch = int

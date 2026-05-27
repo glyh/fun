@@ -293,8 +293,8 @@ let test_unify_mismatch () =
 
 let test_unify_nominal_params () =
   let mc = mc () in
-  let nom1 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TI64 ]; constructors = [] } in
-  let nom2 = VNominal { id = 99; name = "Option"; params = [ VAtomTy TBool ]; constructors = [] } in
+  let nom1 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy TI64 ]; constructors = [] } in
+  let nom2 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy TBool ]; constructors = [] } in
   match unify mc [] 0 nom1 nom2 with
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different nominal params"
@@ -550,6 +550,35 @@ let test_eval_type_case_default_string_panics () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected panic"
 
+let test_eval_type_case_nominal_full_application () =
+  check_i64 "type-case nominal full application" 1L
+    "type Option a = Some a | None in \
+     match Option I64 with \
+       Option(I64) -> 1 \
+     | Option(Bool) -> 2 \
+     | _ -> 3 \
+     end"
+    ()
+
+let test_eval_type_case_nominal_param_bind () =
+  check_i64 "type-case nominal param bind" 1L
+    "type Option a = Some a | None in \
+     match Option I64 with \
+       Option x -> match x with I64 -> 1 | _ -> 2 end \
+     | _ -> 3 \
+     end"
+    ()
+
+let test_eval_type_case_nominal_complex_param_pattern () =
+  check_i64 "type-case nominal complex param pattern" 1L
+    "type Option a = Some a | None in \
+     match Option (Option I64) with \
+       Option (Option I64 | I64) -> 1 \
+     | Option _ -> 2 \
+     | _ -> 3 \
+     end"
+    ()
+
 let test_eval_handler_same_match_branch_effect () =
   check_i64 "handler same match branch effect" 43L
     "let Ping = effect hit : I64 -> I64 end in \
@@ -644,6 +673,9 @@ let () =
           Alcotest.test_case "type-case default Bool" `Quick test_eval_type_case_default_bool;
           Alcotest.test_case "type-case default Unit" `Quick test_eval_type_case_default_unit;
           Alcotest.test_case "type-case default String panics" `Quick test_eval_type_case_default_string_panics;
+          Alcotest.test_case "type-case nominal full application" `Quick test_eval_type_case_nominal_full_application;
+          Alcotest.test_case "type-case nominal param bind" `Quick test_eval_type_case_nominal_param_bind;
+          Alcotest.test_case "type-case nominal complex param pattern" `Quick test_eval_type_case_nominal_complex_param_pattern;
           Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick

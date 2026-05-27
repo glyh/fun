@@ -254,6 +254,10 @@ let dependent =
           end \
           in default"
          (Pi { explicitness = Implicit; domain = U; effects = empty_effect_row; codomain = Var 0 }));
+    Alcotest.test_case "type-case unresolved uppercase pattern rejects" `Quick
+      (elab_fail
+         "type Option a = Some a | None in \
+          match Option I64 with Option X -> I64 | _ -> Bool end");
     Alcotest.test_case "type-passing identity" `Quick
       (elab_ok
          "((fun (T : Type) -> fun (x : T) -> x : Type -> I64 -> I64) I64 42)");
