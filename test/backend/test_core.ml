@@ -408,6 +408,43 @@ let test_eval_handler_outer_bubble () =
     "let Exc = effect raise : I64 -> I64 end in match (match perform Exc.raise 1 with x -> x end) with x -> x | effect Exc.raise n k -> n + 1 end"
     ()
 
+let test_eval_state_handler_sequences_operations () =
+  check_i64 "state handler sequences operations" 2L
+    "let State S = effect get : Unit -> S; put : S -> Unit end in \
+     let program : Unit -> I64 can State I64 = fun _ -> \
+       let x = perform State.get () in \
+       let _ = perform State.put (x + 1) in \
+       perform State.get () \
+     in \
+     let rec run : I64 -> (Unit -> I64 can State I64) -> I64 = fun state -> fun thunk -> \
+       match thunk () with \
+         x -> x \
+       | effect State.get () k -> run state (fun _ -> k state) \
+       | effect State.put next k -> run next (fun _ -> k ()) \
+       end \
+     in \
+     run 1 program"
+    ()
+
+let test_eval_handler_tuple_payload_pattern () =
+  check_i64 "handler tuple payload pattern" 42L
+    "let Console = effect log : I64 * I64 -> I64 end in \
+     match perform Console.log (40, 2) with \
+       x -> x \
+     | effect Console.log (level, message) k -> level + message \
+     end"
+    ()
+
+let test_eval_handler_record_payload_pattern () =
+  check_i64 "handler record payload pattern" 42L
+    "let Request = struct value: I64; extra: I64; end in \
+     let Ask = effect prompt : Request -> I64 end in \
+     match perform Ask.prompt (Request {value = 40; extra = 2}) with \
+       x -> x \
+     | effect Ask.prompt Request {value; extra} k -> value + extra \
+     end"
+    ()
+
 let () =
   Alcotest.run "core"
     [
@@ -454,6 +491,9 @@ let () =
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
           Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;
           Alcotest.test_case "handler outer bubble" `Quick test_eval_handler_outer_bubble;
+          Alcotest.test_case "state handler sequences operations" `Quick test_eval_state_handler_sequences_operations;
+          Alcotest.test_case "handler tuple payload pattern" `Quick test_eval_handler_tuple_payload_pattern;
+          Alcotest.test_case "handler record payload pattern" `Quick test_eval_handler_record_payload_pattern;
           Alcotest.test_case "match ctor" `Quick
             (check_i64 "match ctor" 1L
                "type Color = Red | Green in match Red with Red -> 1 | Green -> 2 end");

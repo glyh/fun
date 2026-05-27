@@ -426,8 +426,8 @@ and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : result)
     | Effect e -> (
         match find_effect_branch mc effect_branches e.eff e.op e.arg with
         | Some (arg_bindings, body) ->
-            let k = make_cont (fun resume -> handle (e.k resume)) in
-            eval_result mc (k :: arg_bindings @ body.env) body.body
+            let k = make_cont e.k in
+            handle (eval_result mc (k :: arg_bindings @ body.env) body.body)
         | None ->
             Effect { e with k = (fun resume -> handle (e.k resume)) })
   in

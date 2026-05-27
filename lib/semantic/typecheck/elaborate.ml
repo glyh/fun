@@ -214,6 +214,14 @@ let visible_record_fields fields =
 let find_record_field fields name =
   List.find_opt (fun (n, _) -> String.equal n name) fields
 
+let is_record_type_value ctx value =
+  match Nbe.force ctx.Ctx.metas value with
+  | VStruct { fields; _ } -> visible_record_fields fields <> []
+  | _ -> false
+
+let check_type_or_record_type ctx ty value =
+  if not (Ctx.conv ctx ty VU || is_record_type_value ctx value) then Ctx.unify ctx ty VU
+
 let check_duplicate_names names =
   let seen = Hashtbl.create 8 in
   List.iter
@@ -691,6 +699,9 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
       in
       find branches
 
+let maybe_refine_match_scrutinee_ty ctx scrut_ty branches =
+  try refine_match_scrutinee_ty ctx scrut_ty branches with ElabError NotANominalType -> scrut_ty
+
 let check_match_exhaustive ctx scrut_ty pats =
   let domain_of_occurrence = domain_of_occurrence ctx scrut_ty in
   try ignore (Core_match_compile.compile_with_domains ~domain_of_occurrence pats)
@@ -776,8 +787,11 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         | None -> infer ctx value
       in
       let gen_value_core, gen_value_ty = generalize ctx value_core value_ty in
-      let value_val = Ctx.eval ctx gen_value_core in
-      let body_effects = collect_effects (Ctx.define ctx name gen_value_ty value_val) body in
+      let body_ctx =
+        if value_effects = [] then Ctx.define ctx name gen_value_ty (Ctx.eval ctx gen_value_core)
+        else Ctx.bind ctx name gen_value_ty
+      in
+      let body_effects = collect_effects body_ctx body in
       union_expr_effects ctx value_effects body_effects
   | Surface.Let { name; type_; value; body; recursive = true } ->
       let rec_ty =
@@ -849,7 +863,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let value_branches = surface_value_branches branches in
       let effect_branches = surface_effect_branches branches in
       let scrut_core, scrut_ty = infer ctx scrutinee in
-      let scrut_ty = refine_match_scrutinee_ty ctx scrut_ty value_branches in
+      let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       ignore scrut_core;
       let scrutinee_effects = collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
@@ -865,7 +879,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         List.map
           (fun branch ->
             let _effect_core, _effect_value, input_ty, output_ty =
-              resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+              resolve_effect_branch_operation ctx scrutinee_effects branch
             in
             let _core_pat, arg_ctx = elaborate_pat ctx branch.arg_pat input_ty in
             let cont_ty =
@@ -1313,7 +1327,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           ValueBranch (core_pat, body_core))
           value_branches
       in
-      let effect_branches' = List.map (elaborate_effect_branch ctx ret_ty residual) effect_branches in
+      let effect_branches' = List.map (elaborate_effect_branch ctx ret_ty residual scrutinee_effects) effect_branches in
       let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
@@ -1425,12 +1439,21 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           | None -> raise (ElabError (UnknownConstructor name)))
       | _ -> raise (ElabError NotANominalType))
 
+and resolve_effect_branch_operation ctx scrutinee_effects branch =
+  let effect_core, effect_value, input_ty, output_ty =
+    resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+  in
+  match List.find_opt (fun performed -> Ctx.conv ctx performed.value effect_value) scrutinee_effects with
+  | None -> (effect_core, effect_value, input_ty, output_ty)
+  | Some matched ->
+      (matched.core, matched.value, Nbe.force ctx.Ctx.metas input_ty, Nbe.force ctx.Ctx.metas output_ty)
+
 and handled_effects ctx scrutinee_effects branches =
   let grouped = Hashtbl.create 8 in
   List.iter
     (fun branch ->
       let _effect_core, effect_value, input_ty, _output_ty =
-        resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+        resolve_effect_branch_operation ctx scrutinee_effects branch
       in
       let core_pat, _ = elaborate_pat ctx branch.arg_pat input_ty in
       check_match_exhaustive ctx input_ty [ core_pat ];
@@ -1458,9 +1481,9 @@ and residual_effects ctx scrutinee_effects effect_branches =
     scrutinee_effects
     (handled_effects ctx scrutinee_effects effect_branches)
 
-and elaborate_effect_branch ctx ret_ty residual branch =
+and elaborate_effect_branch ctx ret_ty residual scrutinee_effects branch =
   let effect_core, _effect_value, input_ty, output_ty =
-    resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+    resolve_effect_branch_operation ctx scrutinee_effects branch
   in
   let core_pat, arg_ctx = elaborate_pat ctx branch.arg_pat input_ty in
   let cont_ty =
@@ -1666,9 +1689,9 @@ and elaborate_eff_family (ctx : Ctx.t) (name : string) (params : string list)
     List.map
       (fun (op : Surface.effect_op) ->
         let input_core, input_ty = infer param_ctx op.input in
-        Ctx.unify param_ctx input_ty VU;
+        check_type_or_record_type param_ctx input_ty (Ctx.eval param_ctx input_core);
         let output_core, output_ty = infer param_ctx op.output in
-        Ctx.unify param_ctx output_ty VU;
+        check_type_or_record_type param_ctx output_ty (Ctx.eval param_ctx output_core);
         (op.name, input_core, output_core))
       ops
   in
@@ -1800,7 +1823,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
             ValueBranch (core_pat, body_core))
           value_branches
       in
-      let effect_branches' = List.map (elaborate_effect_branch ctx expected residual) effect_branches in
+      let effect_branches' = List.map (elaborate_effect_branch ctx expected residual scrutinee_effects) effect_branches in
       check_match_exhaustive ctx VU (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
   | If { cond; then_; else_ }, _ ->
@@ -1843,9 +1866,11 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
           | None -> infer ctx value
         in
         let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
-        let val_val = Ctx.eval ctx gen_val_core in
         let ty_term = Ctx.quote ctx gen_val_ty in
-        let ctx' = Ctx.define ctx name gen_val_ty val_val in
+        let ctx' =
+          if collect_effects ctx value = [] then Ctx.define ctx name gen_val_ty (Ctx.eval ctx gen_val_core)
+          else Ctx.bind ctx name gen_val_ty
+        in
         let body_core = check ctx' body expected in
         Let (ty_term, gen_val_core, body_core)
       end
@@ -1864,7 +1889,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
           ValueBranch (core_pat, body_core))
           value_branches
       in
-      let effect_branches' = List.map (elaborate_effect_branch ctx expected residual) effect_branches in
+      let effect_branches' = List.map (elaborate_effect_branch ctx expected residual scrutinee_effects) effect_branches in
       check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
   | _ ->
