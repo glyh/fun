@@ -550,6 +550,56 @@ let test_eval_type_case_default_string_panics () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected panic"
 
+let default_or_source call =
+  "let default_or : {T : Type} -> T -> T = fun {T : Type} -> fun fallback -> \
+   match T with \
+   I64 -> 0 \
+   | Bool -> false \
+   | Unit -> () \
+   | Char -> 'a' \
+   | String -> \"\" \
+   | _ -> fallback \
+   end \
+   in " ^ call
+
+let test_eval_type_case_default_or_i64 () =
+  check_i64 "type-case default_or I64" 0L (default_or_source "default_or {I64} 99") ()
+
+let test_eval_type_case_default_or_bool () =
+  check_bool "type-case default_or Bool" false (default_or_source "default_or {Bool} true") ()
+
+let test_eval_type_case_default_or_string () =
+  check_bool "type-case default_or String" true (default_or_source "default_or {String} \"fallback\" == \"\"") ()
+
+let test_eval_type_case_default_or_nominal_fallback () =
+  check_i64 "type-case default_or nominal fallback" 2L
+    ("type Color = Red | Blue in " ^ default_or_source "match default_or {Color} Blue with Red -> 1 | Blue -> 2 end")
+    ()
+
+let type_name_source call =
+  "let type_name : Type -> String = fun T -> \
+   match T with \
+   I64 -> \"i64\" \
+   | Bool -> \"bool\" \
+   | Char -> \"char\" \
+   | Unit -> \"unit\" \
+   | String -> \"string\" \
+   | _ -> \"other\" \
+   end \
+   in " ^ call
+
+let test_eval_type_case_type_name_i64 () =
+  check_bool "type-case type_name I64" true (type_name_source "type_name I64 == \"i64\"") ()
+
+let test_eval_type_case_type_name_string () =
+  check_bool "type-case type_name String" true (type_name_source "type_name String == \"string\"") ()
+
+let test_eval_equality_nominal_panics () =
+  match eval_source "type Color = Red in Red == Red" with
+  | exception Nbe.EvalError "equality not defined for this type" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected equality panic"
+
 let test_eval_type_case_nominal_full_application () =
   check_i64 "type-case nominal full application" 1L
     "type Option a = Some a | None in \
@@ -578,6 +628,25 @@ let test_eval_type_case_nominal_complex_param_pattern () =
      | _ -> 3 \
      end"
     ()
+
+let nominal_classify_source call =
+  "type Option a = Some a | None in \
+   let classify : Type -> I64 = fun T -> \
+   match T with \
+   Option I64 -> 1 \
+   | Option _ -> 2 \
+   | _ -> 0 \
+   end \
+   in " ^ call
+
+let test_eval_type_case_nominal_classifier_i64 () =
+  check_i64 "type-case nominal classifier I64" 1L (nominal_classify_source "classify (Option I64)") ()
+
+let test_eval_type_case_nominal_classifier_bool () =
+  check_i64 "type-case nominal classifier Bool" 2L (nominal_classify_source "classify (Option Bool)") ()
+
+let test_eval_type_case_nominal_classifier_fallback () =
+  check_i64 "type-case nominal classifier fallback" 0L (nominal_classify_source "classify I64") ()
 
 let test_eval_handler_same_match_branch_effect () =
   check_i64 "handler same match branch effect" 43L
@@ -629,6 +698,7 @@ let () =
           Alcotest.test_case "eq unit" `Quick (check_bool "eq unit" true "() == ()");
           Alcotest.test_case "eq string" `Quick (check_bool "eq string" true "\"hello\" == \"hello\"");
           Alcotest.test_case "neq string" `Quick (check_bool "neq string" true "\"hello\" != \"world\"");
+          Alcotest.test_case "eq nominal panics" `Quick test_eval_equality_nominal_panics;
           Alcotest.test_case "panic message" `Quick (fun () ->
               match eval_source "panic {I64} \"test message\"" with
               | exception Nbe.EvalError "test message" -> ()
@@ -673,9 +743,18 @@ let () =
           Alcotest.test_case "type-case default Bool" `Quick test_eval_type_case_default_bool;
           Alcotest.test_case "type-case default Unit" `Quick test_eval_type_case_default_unit;
           Alcotest.test_case "type-case default String panics" `Quick test_eval_type_case_default_string_panics;
+          Alcotest.test_case "type-case default_or I64" `Quick test_eval_type_case_default_or_i64;
+          Alcotest.test_case "type-case default_or Bool" `Quick test_eval_type_case_default_or_bool;
+          Alcotest.test_case "type-case default_or String" `Quick test_eval_type_case_default_or_string;
+          Alcotest.test_case "type-case default_or nominal fallback" `Quick test_eval_type_case_default_or_nominal_fallback;
+          Alcotest.test_case "type-case type_name I64" `Quick test_eval_type_case_type_name_i64;
+          Alcotest.test_case "type-case type_name String" `Quick test_eval_type_case_type_name_string;
           Alcotest.test_case "type-case nominal full application" `Quick test_eval_type_case_nominal_full_application;
           Alcotest.test_case "type-case nominal param bind" `Quick test_eval_type_case_nominal_param_bind;
           Alcotest.test_case "type-case nominal complex param pattern" `Quick test_eval_type_case_nominal_complex_param_pattern;
+          Alcotest.test_case "type-case nominal classifier I64" `Quick test_eval_type_case_nominal_classifier_i64;
+          Alcotest.test_case "type-case nominal classifier Bool" `Quick test_eval_type_case_nominal_classifier_bool;
+          Alcotest.test_case "type-case nominal classifier fallback" `Quick test_eval_type_case_nominal_classifier_fallback;
           Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick

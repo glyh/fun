@@ -36,14 +36,18 @@ This is the lowest-risk near-term work because it preserves known behavior witho
 
 ### 2. Type-case / generic programming
 
-Direct matching on `Type` values enables generic programming, type-driven dispatch, and comptime-style reflection. Primitive type-head patterns already provide the starting point; the next useful work is expanding this toward nominal and record type analysis.
+Direct matching on `Type` values enables generic programming, type-driven dispatch, and comptime-style reflection. The current prototype supports primitive and nominal type-head matching, predictable open `Type` fallback behavior, and generic helper examples for equality dispatch, fallback defaulting, and classification.
 
-Likely milestones:
+Completed milestones:
 
-- nominal type-head matching;
-- record type reflection;
-- predictable behavior for open `Type` matching;
-- tests for generic functions that branch on primitive, nominal, and record type structure.
+- primitive type-head matching with branch-local dependent refinement;
+- predictable behavior for open `Type` matching via required fallback branches;
+- nominal type-head matching, including applied ADTs and parameter subpatterns;
+- tests for generic functions that branch on primitive and nominal type structure.
+
+Remaining milestone:
+
+- record type reflection.
 
 This is a real prototype goal because it exercises the dependent core and the language's intended flexibility without requiring the macro system first.
 

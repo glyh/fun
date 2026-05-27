@@ -254,6 +254,40 @@ let dependent =
           end \
           in default"
          (Pi { explicitness = Implicit; domain = U; effects = empty_effect_row; codomain = Var 0 }));
+    Alcotest.test_case "type-case default with fallback" `Quick
+      (elab_ok
+         "let default_or : {T : Type} -> T -> T = fun {T : Type} -> fun fallback -> \
+          match T with \
+          I64 -> 0 \
+          | Bool -> false \
+          | Unit -> () \
+          | Char -> 'a' \
+          | String -> \"\" \
+          | _ -> fallback \
+          end \
+          in default_or");
+    Alcotest.test_case "type-case string classifier" `Quick
+      (elab_ok
+         "let type_name : Type -> String = fun T -> \
+          match T with \
+          I64 -> \"i64\" \
+          | Bool -> \"bool\" \
+          | Char -> \"char\" \
+          | Unit -> \"unit\" \
+          | String -> \"string\" \
+          | _ -> \"other\" \
+          end \
+          in type_name");
+    Alcotest.test_case "type-case nominal classifier" `Quick
+      (elab_ok
+         "type Option a = Some a | None in \
+          let classify : Type -> I64 = fun T -> \
+          match T with \
+          Option I64 -> 1 \
+          | Option _ -> 2 \
+          | _ -> 0 \
+          end \
+          in classify");
     Alcotest.test_case "type-case unresolved uppercase pattern rejects" `Quick
       (elab_fail
          "type Option a = Some a | None in \
