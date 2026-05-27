@@ -524,6 +524,32 @@ let test_eval_type_case_unit () =
 let test_eval_type_case_char_a () =
   check_bool "type-case Char a" true (is_zeroish_source "is_zeroish 'a'") ()
 
+let default_source call =
+  "let default : {T : Type} -> T = fun {T : Type} -> \
+   match T with \
+   I64 -> 0 \
+   | Bool -> false \
+   | Unit -> () \
+   | Char -> 'a' \
+   | _ -> panic \"no default\" \
+   end \
+   in " ^ call
+
+let test_eval_type_case_default_i64 () =
+  check_i64 "type-case default I64" 0L (default_source "default {I64}") ()
+
+let test_eval_type_case_default_bool () =
+  check_bool "type-case default Bool" false (default_source "default {Bool}") ()
+
+let test_eval_type_case_default_unit () =
+  check_bool "type-case default Unit" true (default_source "default {Unit} == ()") ()
+
+let test_eval_type_case_default_string_panics () =
+  match eval_source (default_source "default {String}") with
+  | exception Nbe.EvalError "no default" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected panic"
+
 let test_eval_handler_same_match_branch_effect () =
   check_i64 "handler same match branch effect" 43L
     "let Ping = effect hit : I64 -> I64 end in \
@@ -614,6 +640,10 @@ let () =
           Alcotest.test_case "type-case Bool true" `Quick test_eval_type_case_bool_true;
           Alcotest.test_case "type-case Unit" `Quick test_eval_type_case_unit;
           Alcotest.test_case "type-case Char a" `Quick test_eval_type_case_char_a;
+          Alcotest.test_case "type-case default I64" `Quick test_eval_type_case_default_i64;
+          Alcotest.test_case "type-case default Bool" `Quick test_eval_type_case_default_bool;
+          Alcotest.test_case "type-case default Unit" `Quick test_eval_type_case_default_unit;
+          Alcotest.test_case "type-case default String panics" `Quick test_eval_type_case_default_string_panics;
           Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick

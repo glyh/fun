@@ -242,6 +242,18 @@ let dependent =
           | _ -> false \
           end \
           in bad");
+    Alcotest.test_case "type-case default refines return type" `Quick
+      (check_type
+         "let default : {T : Type} -> T = fun {T : Type} -> \
+          match T with \
+          I64 -> 0 \
+          | Bool -> false \
+          | Unit -> () \
+          | Char -> 'a' \
+          | _ -> panic \"no default\" \
+          end \
+          in default"
+         (Pi { explicitness = Implicit; domain = U; effects = empty_effect_row; codomain = Var 0 }));
     Alcotest.test_case "type-passing identity" `Quick
       (elab_ok
          "((fun (T : Type) -> fun (x : T) -> x : Type -> I64 -> I64) I64 42)");
