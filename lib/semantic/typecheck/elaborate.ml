@@ -173,6 +173,7 @@ let atom_ty_of_atom = function
   | Bool _ -> TBool
   | Unit -> TUnit
   | Char _ -> TChar
+  | String _ -> TString
 
 type expr_effect = { core : term; value : value }
 type expr_effects = expr_effect list
@@ -186,6 +187,7 @@ let prims =
   let bool_comparator = VAtomTy TBool ^-> AtomTy TBool ^->> AtomTy TBool in
   let char_comparator = VAtomTy TChar ^-> AtomTy TChar ^->> AtomTy TBool in
   let unit_comparator = VAtomTy TUnit ^-> AtomTy TUnit ^->> AtomTy TBool in
+  let string_comparator = VAtomTy TString ^-> AtomTy TString ^->> AtomTy TBool in
   [
     ("+", arithemetic);
     ("-", arithemetic);
@@ -200,7 +202,9 @@ let prims =
     ("neq_char", char_comparator);
     ("eq_unit", unit_comparator);
     ("neq_unit", unit_comparator);
-    ("panic", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = AtomTy TUnit ^->> Var 1 } });
+    ("eq_string", string_comparator);
+    ("neq_string", string_comparator);
+    ("panic", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = AtomTy TString ^->> Var 1 } });
     ("<", i64_comparator);
     (">", i64_comparator);
     ("<=", i64_comparator);
@@ -381,7 +385,8 @@ let (==) : {A : Type} -> A -> A -> Bool =
     | Bool -> eq_bool
     | Char -> eq_char
     | Unit -> eq_unit
-    | _ -> panic ()
+    | String -> eq_string
+    | _ -> panic "equality not defined for this type"
     end
 in
 let (!=) : {A : Type} -> A -> A -> Bool =
@@ -945,6 +950,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Atom (Bool b) -> (Atom (Bool b), VAtomTy TBool)
   | Atom Unit -> (Atom Unit, VAtomTy TUnit)
   | Atom (Char c) -> (Atom (Char c), VAtomTy TChar)
+  | Atom (String s) -> (Atom (String s), VAtomTy TString)
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
       (Var ix, ty)
@@ -2006,6 +2012,8 @@ let init_ctx () : Ctx.t =
   let ctx = add_type ctx "Bool" (VAtomTy TBool) in
   let ctx = add_type ctx "Unit" (VAtomTy TUnit) in
   let ctx = add_type ctx "Char" (VAtomTy TChar) in
+  let ctx = add_type ctx "String" (VAtomTy TString) in
+  let ctx = add_type ctx "Absurd" (VAtomTy TAbsurd) in
   let ctx = Ctx.define ctx "Type" VU VU in
   let ctx =
     NameMap.fold

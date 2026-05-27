@@ -119,6 +119,9 @@ let constants =
     Alcotest.test_case "true" `Quick (check_type "true" (AtomTy TBool));
     Alcotest.test_case "false" `Quick (check_type "false" (AtomTy TBool));
     Alcotest.test_case "char" `Quick (check_type "'a'" (AtomTy TChar));
+    Alcotest.test_case "string" `Quick (check_type "\"hello\"" (AtomTy TString));
+    Alcotest.test_case "string type" `Quick (check_type "String" U);
+    Alcotest.test_case "absurd type" `Quick (check_type "Absurd" U);
   ]
 
 let let_bindings =

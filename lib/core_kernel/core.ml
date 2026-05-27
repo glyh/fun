@@ -3,7 +3,7 @@ type lvl = int (* de Bruijn level: distance from outermost scope *)
 type meta_id = int
 type nominal_id = int (* unique identity for each nominal type definition *)
 type effect_id = int (* unique identity for each effect family definition *)
-type atom_ty = TI64 | TBool | TUnit | TChar [@@deriving eq]
+type atom_ty = TI64 | TBool | TUnit | TChar | TString | TAbsurd [@@deriving eq]
 
 (* Bound = introduced by lambda/pi, Defined = introduced by let.
    InsertedMeta uses this to know which scope vars to abstract over. *)

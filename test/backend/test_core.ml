@@ -572,6 +572,13 @@ let () =
           Alcotest.test_case "eq bool" `Quick (check_bool "eq bool" false "true == false");
           Alcotest.test_case "eq char" `Quick (check_bool "eq char" true "'a' == 'a'");
           Alcotest.test_case "eq unit" `Quick (check_bool "eq unit" true "() == ()");
+          Alcotest.test_case "eq string" `Quick (check_bool "eq string" true "\"hello\" == \"hello\"");
+          Alcotest.test_case "neq string" `Quick (check_bool "neq string" true "\"hello\" != \"world\"");
+          Alcotest.test_case "panic message" `Quick (fun () ->
+              match eval_source "panic {I64} \"test message\"" with
+              | exception Nbe.EvalError "test message" -> ()
+              | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+              | _ -> Alcotest.fail "expected panic");
           Alcotest.test_case "fix" `Quick
             (check_i64 "fix" 0L
                "let rec f : Bool -> I64 = fun x -> if x then 0 else f true in f false");

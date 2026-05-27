@@ -49,6 +49,10 @@ module Prim = struct
   let unit_cmp (f : unit -> unit -> bool) : reducer = function
     | [ Unit; Unit ] -> Some (Bool (f () ()))
     | _ -> None
+
+  let string_cmp (f : string -> string -> bool) : reducer = function
+    | [ String a; String b ] -> Some (Bool (f a b))
+    | _ -> None
 end
 
 let atom_ty_of_atom = function
@@ -56,6 +60,7 @@ let atom_ty_of_atom = function
   | Bool _ -> TBool
   | Unit -> TUnit
   | Char _ -> TChar
+  | String _ -> TString
 
 let prim_table : (string, Prim.reducer) Hashtbl.t =
   let open Prim in
@@ -73,6 +78,8 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
     "neq_char", char_cmp (fun a b -> not (Char.equal a b));
     "eq_unit", unit_cmp (fun () () -> true);
     "neq_unit", unit_cmp (fun () () -> false);
+    "eq_string", string_cmp String.equal;
+    "neq_string", string_cmp (fun a b -> not (String.equal a b));
     "<",  i64_cmp (fun a b -> Int64.compare a b < 0);
     ">",  i64_cmp (fun a b -> Int64.compare a b > 0);
     "<=", i64_cmp (fun a b -> Int64.compare a b <= 0);
@@ -303,8 +310,13 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
 
 and try_prim_reduce (head : head) (frames : frame list) : value option =
   match head with
-  | HPrim "panic" when List.length frames = 2 ->
-      raise (EvalError "panic")
+  | HPrim "panic" when List.length frames >= 2 ->
+      let msg =
+        match List.nth frames 1 with
+        | FApp (VAtom (String s)) -> s
+        | _ -> "panic"
+      in
+      raise (EvalError msg)
   | HPrim name -> (
       let atoms = List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames in
       if List.length atoms <> List.length frames then None

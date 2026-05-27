@@ -285,7 +285,8 @@ let collect_leaf_bindings m =
 let all_atoms = function
   | TBool -> Some [ Atom.Bool true; Bool false ]
   | TUnit -> Some [ Unit ]
-  | TI64 | TChar -> None
+  | TAbsurd -> Some []
+  | TI64 | TChar | TString -> None
 
 let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
   let module DTB = DT.Make () in

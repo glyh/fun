@@ -24,6 +24,8 @@ let bare_pat_name path name =
   | "Bool" when path = [] -> PatType TBool
   | "Unit" when path = [] -> PatType TUnit
   | "Char" when path = [] -> PatType TChar
+  | "String" when path = [] -> PatType TString
+  | "Absurd" when path = [] -> PatType TAbsurd
   | _ -> if path <> [] || Char.uppercase_ascii name.[0] = name.[0] then PatCon (path, name, []) else PatBind name
 
 let attach_arrow_effects expr effects =
@@ -280,6 +282,7 @@ expr_primary:
   | SELF { Self }
   | SELF_TYPE { SelfType }
   | IMPORT; path = STRING { Import path }
+  | s = STRING { Atom (A.String s) }
   | name = ID { Var name }
   | LPAREN; op = operator; RPAREN { Var op }
   | LPAREN; e = expr; COLON; ty = expr; RPAREN { Annotated { inner = e; typ = ty } }

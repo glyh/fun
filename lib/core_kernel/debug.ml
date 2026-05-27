@@ -41,10 +41,13 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VAtom (Bool b) -> string_of_bool b
     | VAtom Unit -> "()"
     | VAtom (Char c) -> Atom.pp (Char c)
+    | VAtom (String s) -> Atom.pp (String s)
     | VAtomTy TI64 -> "I64"
     | VAtomTy TBool -> "Bool"
     | VAtomTy TUnit -> "Unit"
     | VAtomTy TChar -> "Char"
+    | VAtomTy TString -> "String"
+    | VAtomTy TAbsurd -> "Absurd"
     | VFlex { id; spine } ->
         let base = Printf.sprintf "?%d" id in
         let solved = match MetaContext.lookup mc id with
