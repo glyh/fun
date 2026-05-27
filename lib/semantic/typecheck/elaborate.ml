@@ -44,6 +44,7 @@ module Ctx = struct
     name_table : name_entry NameMap.t;
     self_entry : name_entry option;
     self_type : value option;
+    resume_entry : name_entry option;
     loader : Core_loader.t option;
   }
 
@@ -59,6 +60,7 @@ module Ctx = struct
       name_table = NameMap.empty;
       self_entry = None;
       self_type = None;
+      resume_entry = None;
       loader = None;
     }
 
@@ -74,8 +76,26 @@ module Ctx = struct
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
       self_entry = ctx.self_entry;
       self_type = ctx.self_type;
+      resume_entry = ctx.resume_entry;
       loader = ctx.loader;
     }
+
+  let bind_anonymous (ctx : t) (ty : value) : t * name_entry =
+    let entry = { level = ctx.lvl; ty } in
+    let var = VRigid { lvl = ctx.lvl; spine = [] } in
+    ({
+       env = var :: ctx.env;
+       types = ty :: ctx.types;
+       lvl = ctx.lvl + 1;
+       metas = ctx.metas;
+       bds = Bound :: ctx.bds;
+       name_table = ctx.name_table;
+       self_entry = ctx.self_entry;
+       self_type = ctx.self_type;
+       resume_entry = ctx.resume_entry;
+       loader = ctx.loader;
+     },
+     entry)
 
   (** Extend the context with a [Defined] binder (let/define). *)
   let define (ctx : t) (name : string) (ty : value) (v : value) : t =
@@ -88,6 +108,7 @@ module Ctx = struct
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
       self_entry = ctx.self_entry;
       self_type = ctx.self_type;
+      resume_entry = ctx.resume_entry;
       loader = ctx.loader;
     }
 
@@ -109,9 +130,10 @@ module Ctx = struct
     | Some ty -> ty
     | None -> raise (ElabError (UnboundVariable "Self"))
 
-  let bind_self (ctx : t) (ty : value) : t =
-    let ctx = bind ctx "self" ty in
-    { ctx with self_entry = Some { level = ctx.lvl - 1; ty } }
+  let lookup_resume (ctx : t) : ix * value =
+    match ctx.resume_entry with
+    | Some { level; ty } -> (Nbe.lvl_to_ix ctx.lvl level, ty)
+    | None -> raise (ElabError (UnboundVariable "resume"))
 
   let with_self_type (ctx : t) (ty : value) : t = { ctx with self_type = Some ty }
 
@@ -314,6 +336,7 @@ let rewrite_record_self_refs record_name params expr =
                 bindings = List.map binding bindings }
         | Surface.Import _ -> expr
         | Surface.Perform { effect_path; op; arg } -> Surface.Perform { effect_path; op; arg = go bound arg }
+        | Surface.Resume arg -> Surface.Resume (go bound arg)
         | Surface.Open (name, body) -> Surface.Open (name, go bound body)
         | Surface.RecordTypeDef { name; params; fields; body } ->
             Surface.RecordTypeDef
@@ -336,8 +359,8 @@ let rewrite_record_self_refs record_name params expr =
         | Surface.Match (scrutinee, branches) ->
             let go_branch = function
               | Surface.ValueBranch (pat, body) -> Surface.ValueBranch (pat, go bound body)
-              | Surface.EffectBranch { effect_path; op; arg_pat; k; body } ->
-                  Surface.EffectBranch { effect_path; op; arg_pat; k; body = go bound body }
+              | Surface.EffectBranch { effect_path; op; arg_pat; body } ->
+                  Surface.EffectBranch { effect_path; op; arg_pat; body = go bound body }
             in
             Surface.Match (go bound scrutinee, List.map go_branch branches)
         | Atom _ | Var _ | Self | SelfType -> expr)
@@ -642,15 +665,14 @@ type surface_effect_branch = {
   effect_path : string list;
   op : string;
   arg_pat : Surface.pat;
-  k : string;
   body : Surface.t;
 }
 
 let surface_effect_branches branches =
   List.filter_map (function
     | Surface.ValueBranch _ -> None
-    | Surface.EffectBranch { effect_path; op; arg_pat; k; body } ->
-        Some { effect_path; op; arg_pat; k; body })
+    | Surface.EffectBranch { effect_path; op; arg_pat; body } ->
+        Some { effect_path; op; arg_pat; body })
     branches
 
 let expr_effect_of_value ctx value = { core = Ctx.quote ctx value; value }
@@ -746,6 +768,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let effect_core, effect_value, input_ty, _output_ty = resolve_perform_operation ctx ~effect_path ~op in
       let _arg_core = check ctx arg input_ty in
       union_expr_effects ctx (collect_effects ctx arg) (singleton_expr_effect effect_core effect_value)
+  | Surface.Resume arg -> collect_effects ctx arg
   | Surface.Ap (f, Surface.Explicit, a) ->
       let f_core, f_ty = infer ctx f in
       let _f_core, f_ty = insert_implicit_args ctx f_core f_ty in
@@ -889,7 +912,8 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
                   effects = effect_row_closure_of_expr_effects arg_ctx residual;
                   codomain = { env = arg_ctx.env; body = Ctx.quote arg_ctx ret_ty } }
             in
-            collect_effects (Ctx.bind arg_ctx branch.k cont_ty) branch.body)
+            let branch_ctx, resume_entry = Ctx.bind_anonymous arg_ctx cont_ty in
+            collect_effects { branch_ctx with Ctx.resume_entry = Some resume_entry } branch.body)
           effect_branches
       in
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
@@ -913,6 +937,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let effect_core, _effect_value, input_ty, output_ty = resolve_perform_operation ctx ~effect_path ~op in
       let arg_core = check ctx arg input_ty in
       (Perform { eff = effect_core; op; arg = arg_core }, Nbe.force ctx.metas output_ty)
+  | Resume arg -> infer_resume ctx arg
   | Ap (f, Surface.Explicit, a) -> infer_ap ctx f a
   | Ap (f, Surface.Implicit, a) -> infer_ap_implicit ctx f a
   | Let { name; type_; value; body; recursive } ->
@@ -1062,7 +1087,8 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             (Lam body_core, method_ty)
       in
       let elaborate_method ctx params body =
-        let self_ctx = Ctx.bind_self ctx self_ty in
+        let self_ctx, self_entry = Ctx.bind_anonymous ctx self_ty in
+        let self_ctx = { self_ctx with Ctx.self_entry = Some self_entry } in
         let body_core, body_ty = elaborate_method_params self_ctx params body in
         let body_ty_term = Ctx.quote self_ctx body_ty in
         let method_ty =
@@ -1493,12 +1519,22 @@ and elaborate_effect_branch ctx ret_ty residual scrutinee_effects branch =
         effects = effect_row_closure_of_expr_effects arg_ctx residual;
         codomain = { env = arg_ctx.env; body = Ctx.quote arg_ctx ret_ty } }
   in
-  let body_core = check (Ctx.bind arg_ctx branch.k cont_ty) branch.body ret_ty in
+  let body_ctx, resume_entry = Ctx.bind_anonymous arg_ctx cont_ty in
+  let body_core = check { body_ctx with Ctx.resume_entry = Some resume_entry } branch.body ret_ty in
   EffectBranch { eff = effect_core; op = branch.op; arg_pat = core_pat; body = body_core }
 
 (** Application inference.
     Loops to insert fresh metas for implicit VPi domains before consuming
     the user's explicit argument. *)
+and infer_resume (ctx : Ctx.t) (arg : Surface.t) : term * value =
+  let cont_ix, cont_ty = Ctx.lookup_resume ctx in
+  match Nbe.force ctx.metas cont_ty with
+  | VPi { explicitness = Explicit; domain; codomain; _ } ->
+      let arg_core = check ctx arg domain in
+      let arg_value = Ctx.eval ctx arg_core in
+      (Ap (Var cont_ix, Explicit, arg_core), Nbe.closure_apply ctx.metas codomain arg_value)
+  | _ -> raise (ElabError ApplyingNonFunction)
+
 and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
   let f_core, f_ty = infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in

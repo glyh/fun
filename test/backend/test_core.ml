@@ -390,22 +390,53 @@ let test_debug_perform () =
 
 let test_eval_handler_ignores_continuation () =
   check_i64 "handler ignores continuation" 2L
-    "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> n + 1 end"
+    "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n -> n + 1 end"
     ()
 
 let test_eval_handler_resumes_once () =
   check_i64 "handler resumes once" 2L
-    "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n k -> k (n + 1) end"
+    "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n -> resume (n + 1) end"
     ()
 
 let test_eval_handler_value_branch () =
   check_i64 "handler value branch" 42L
-    "let Exc = effect raise : I64 -> I64 end in match 41 with x -> x + 1 | effect Exc.raise n k -> 0 end"
+    "let Exc = effect raise : I64 -> I64 end in match 41 with x -> x + 1 | effect Exc.raise n -> 0 end"
     ()
 
 let test_eval_handler_outer_bubble () =
   check_i64 "handler outer bubble" 2L
-    "let Exc = effect raise : I64 -> I64 end in match (match perform Exc.raise 1 with x -> x end) with x -> x | effect Exc.raise n k -> n + 1 end"
+    "let Exc = effect raise : I64 -> I64 end in match (match perform Exc.raise 1 with x -> x end) with x -> x | effect Exc.raise n -> n + 1 end"
+    ()
+
+let test_eval_handler_escape_skips_continuation () =
+  check_i64 "handler escape skips continuation" 99L
+    "let Exit = effect now : I64 -> I64 end in \
+     let program : Unit -> I64 can Exit = fun _ -> \
+       let _ = perform Exit.now 99 in \
+       0 \
+     in \
+     match program () with \
+       x -> x \
+     | effect Exit.now value -> value \
+     end"
+    ()
+
+let test_eval_handler_ping_pong_effects () =
+  check_i64 "handler ping pong effects" 212L
+    "let Ping = effect hit : I64 -> I64 end in \
+     let Pong = effect hit : I64 -> I64 end in \
+     let program : Unit -> I64 can {Ping, Pong} = fun _ -> \
+       let x = perform Ping.hit 1 in \
+       perform Pong.hit (x + 10) \
+     in \
+     match program () with \
+       x -> x \
+     | effect Ping.hit n -> \
+         let y = perform Pong.hit (n + 1) in \
+         resume y \
+     | effect Pong.hit n -> \
+         resume (n + 100) \
+     end"
     ()
 
 let test_eval_state_handler_sequences_operations () =
@@ -419,8 +450,8 @@ let test_eval_state_handler_sequences_operations () =
      let rec run : I64 -> (Unit -> I64 can State I64) -> I64 = fun state -> fun thunk -> \
        match thunk () with \
          x -> x \
-       | effect State.get () k -> run state (fun _ -> k state) \
-       | effect State.put next k -> run next (fun _ -> k ()) \
+       | effect State.get () -> run state (fun _ -> resume state) \
+       | effect State.put next -> run next (fun _ -> resume ()) \
        end \
      in \
      run 1 program"
@@ -431,7 +462,7 @@ let test_eval_handler_tuple_payload_pattern () =
     "let Console = effect log : I64 * I64 -> I64 end in \
      match perform Console.log (40, 2) with \
        x -> x \
-     | effect Console.log (level, message) k -> level + message \
+     | effect Console.log (level, message) -> level + message \
      end"
     ()
 
@@ -441,7 +472,7 @@ let test_eval_handler_record_payload_pattern () =
      let Ask = effect prompt : Request -> I64 end in \
      match perform Ask.prompt (Request {value = 40; extra = 2}) with \
        x -> x \
-     | effect Ask.prompt Request {value; extra} k -> value + extra \
+     | effect Ask.prompt Request {value; extra} -> value + extra \
      end"
     ()
 
@@ -491,6 +522,8 @@ let () =
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
           Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;
           Alcotest.test_case "handler outer bubble" `Quick test_eval_handler_outer_bubble;
+          Alcotest.test_case "handler escape skips continuation" `Quick test_eval_handler_escape_skips_continuation;
+          Alcotest.test_case "handler ping pong effects" `Quick test_eval_handler_ping_pong_effects;
           Alcotest.test_case "state handler sequences operations" `Quick test_eval_state_handler_sequences_operations;
           Alcotest.test_case "handler tuple payload pattern" `Quick test_eval_handler_tuple_payload_pattern;
           Alcotest.test_case "handler record payload pattern" `Quick test_eval_handler_record_payload_pattern;

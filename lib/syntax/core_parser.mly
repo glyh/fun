@@ -47,7 +47,7 @@ let split_operation_path path name =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE CAN PERFORM
+%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
@@ -99,9 +99,9 @@ expr:
 
 branch:
   | p = pat; ARROW; body = expr { ValueBranch (p, body) }
-  | EFFECT; name = dotted_id; arg = pat; k = ID; ARROW; body = expr
+  | EFFECT; name = dotted_id; arg = pat; ARROW; body = expr
     { let effect_path, op = split_operation_path (fst name) (snd name) in
-      EffectBranch { effect_path; op; arg_pat = arg; k; body } }
+      EffectBranch { effect_path; op; arg_pat = arg; body } }
 
 binding_name:
   | name = ID { name }
@@ -254,6 +254,7 @@ expr_app:
   | f = expr_app; a = expr_proj { Ap (f, Explicit, a) }
   | PERFORM; name = dotted_id; arg = expr_proj
     { let effect_path, op = split_operation_path (fst name) (snd name) in Perform { effect_path; op; arg } }
+  | RESUME; arg = expr_proj { Resume arg }
   | e = expr_proj { e }
 
 record_expr_field:

@@ -63,6 +63,7 @@ and t =
       body : t;
     }
   | Perform of { effect_path : string list; op : string; arg : t }
+  | Resume of t
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
 
 and match_branch =
@@ -71,7 +72,6 @@ and match_branch =
       effect_path : string list;
       op : string;
       arg_pat : pat;
-      k : string;
       body : t;
     }
 

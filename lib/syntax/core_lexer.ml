@@ -24,6 +24,7 @@ let rec token buf =
   | "effect" -> EFFECT
   | "can" -> CAN
   | "perform" -> PERFORM
+  | "resume" -> RESUME
   | "method" -> METHOD
   | "import" -> IMPORT
   | "self" -> SELF
