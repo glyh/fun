@@ -12,57 +12,101 @@ Consistency > Flexibility > Correctness.
 
 The old HM/typecheck/interpreter pipeline has been replaced by `core_tt`:
 
-```
+```text
 Surface.t → elaboration → Core.term + semantic type → NbE evaluation
 ```
 
-This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, and imports.
+This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, imports, and algebraic effects.
 
-## Near-term work
+## Ordered work
 
-- Improve diagnostics for parse, elaboration, unification, and exhaustiveness errors.
-- Expand parser syntax from the test-oriented core grammar toward the final user-facing syntax.
-- Add more current-behavior regression tests around imports, module files, records, methods, and qualified patterns.
-- Decide how much type-level computation and type-case should be exposed in ordinary user code before introducing larger features.
+### 1. Regression coverage for current behavior
 
-## Type-case / generic programming
+Add more current-behavior regression tests around features that already exist and should not regress while larger prototype work continues.
 
-Direct matching on `Type` values enables generic programming, type-driven dispatch, and comptime-style reflection. Primitive type-head patterns already provide the starting point; future work can expand this toward nominal and record type analysis.
+Priority areas:
 
-## Algebraic effects
+- imports and module files;
+- records and record patterns;
+- methods, `self`, and `Self`;
+- qualified patterns and qualified constructors;
+- algebraic effect declarations, `perform`, handlers, and `resume`.
 
-Effects need function-type effect annotations and a runtime model for continuations. Implementing them on a custom VM remains the preferred path because the goal is to learn and control the continuation machinery rather than delegating to OCaml effects.
+This is the lowest-risk near-term work because it preserves known behavior without forcing new surface syntax or architecture decisions.
 
-## VM backend
+### 2. Type-case / generic programming
 
-A later backend can lower the core language through a continuation-aware intermediate representation into bytecode for a register-based VM.
+Direct matching on `Type` values enables generic programming, type-driven dispatch, and comptime-style reflection. Primitive type-head patterns already provide the starting point; the next useful work is expanding this toward nominal and record type analysis.
 
-```
-Core.term → CPS/closure conversion → Bytecode → VM
-```
+Likely milestones:
 
-- **Value representation**: tagged pointers initially; NaN-boxing can wait.
-- **Closures**: flat closures are sufficient until mutable captures require more.
-- **GC**: start with a simple bump allocator plus stop-the-world collection, or leak memory while prototyping the bytecode pipeline.
+- nominal type-head matching;
+- record type reflection;
+- predictable behavior for open `Type` matching;
+- tests for generic functions that branch on primitive, nominal, and record type structure.
 
-CPS remains attractive because it naturally exposes continuations, which the effect system will need.
+This is a real prototype goal because it exercises the dependent core and the language's intended flexibility without requiring the macro system first.
 
-## References
+### 3. Typeclasses / protocols / ad-hoc polymorphism
 
-Mutable ref cells should capture the cell, not the current value, inside closures. They will affect closure conversion and runtime value representation.
+Resolve long-term equality and ad-hoc polymorphism for nominal and record values. The first design target should be an explicit protocol/typeclass-like mechanism that fits the existing dependent core, implicit arguments, and type-case direction rather than copying Haskell-style typeclasses wholesale.
 
-## UFCS
+Likely milestones:
 
-Uniform function call syntax remains desirable once method and field access semantics settle.
+- decide whether this is called typeclasses, protocols, instances, or another language-specific term;
+- define equality for nominal values without defaulting to accidental structural equality;
+- define equality or derivation behavior for record values;
+- decide how instance/protocol lookup interacts with implicit arguments;
+- decide whether type-case can implement part of the mechanism directly;
+- add tests for equality and other small protocol-style operations over primitive, nominal, and record types.
 
-## Native bindings
+This should come after initial type-case work because type-directed dispatch is the foundation for the simplest version of the feature.
 
-FFI support should allow `fun` code to call native functionality without compromising the core evaluator's invariants.
+### 4. Algebraic effects hardening
 
-## Macros
+Algebraic effects now have nominal effect families, closed latent rows, `perform`, match-based handlers, and `resume`. The remaining work should focus on semantic hardening before larger type-system extensions.
 
-User-defined syntax extensions are still open design territory and should wait until the surface syntax stabilizes.
+Near-term effect work lives in `docs/7.algebraic_effects_plan.md` and is ordered as:
 
-## Zig rewrite + syntax redesign
+- handler semantics hardening;
+- open effect rows / effect polymorphism.
 
-A future rewrite in Zig may make sense once the dependent core, implicit resolution story, and VM prototype are stable. That would also be the right time for a larger surface syntax redesign toward Ruby/Elixir-style `do ... end` blocks and less ML-flavored syntax.
+Optimization, VM, and CPS lowering are not part of the current effects plan.
+
+### 5. References
+
+Mutable ref cells should capture the cell, not the current value, inside closures. They will affect closure conversion and runtime value representation, so they should wait until the current evaluator and core behavior are better covered by tests.
+
+### 6. UFCS
+
+Uniform function call syntax remains desirable once method and field access semantics settle. This is smaller than macros, but it should wait until existing method semantics are well covered and the surface syntax direction is clearer.
+
+### 7. Native bindings
+
+FFI support should allow `fun` code to call native functionality without compromising the core evaluator's invariants. This is useful, but it is not a prototype priority until the language core stabilizes further.
+
+### 8. Macro system
+
+User-defined syntax extensions are still open design territory and should wait until the core language behavior is better understood. The macro plan is much larger than the effects plan because it requires syntax objects, hygiene, enforestation, phase-aware modules, and eventually type-integrated expansion.
+
+Parser syntax redesign is blocked on this work: the parser should not be expanded aggressively toward final user-facing syntax before the macro system direction is clear.
+
+### 9. CLR/C# rewrite target
+
+A future rewrite should target the CLR and be implemented in C#. This is now preferred over a Zig rewrite because the CLR provides major runtime pieces for free: GC, JIT, mature tooling, packaging, debugging/profiling support, and a practical native interop story.
+
+The current OCaml implementation remains the design prototype. The rewrite should wait until the dependent core, implicit resolution story, type-case direction, effect semantics, and macro direction are better understood.
+
+Likely rewrite goals:
+
+- keep the core language model from the OCaml prototype;
+- use C# for the compiler/runtime implementation;
+- target CLR execution rather than building a custom VM first;
+- preserve room for algebraic effects through CPS/trampolining/runtime encoding if needed;
+- defer larger surface syntax redesign until the rewrite, including possible Ruby/Elixir-style `do ... end` blocks and less ML-flavored syntax.
+
+### 10. Post-rewrite diagnostics polish
+
+Diagnostics for parse, elaboration, unification, exhaustiveness, macro expansion, and runtime errors should be polished after the CLR/C# rewrite, when the implementation shape is less likely to be thrown away.
+
+Before the rewrite, improve diagnostics only when needed to unblock feature work or tests. Avoid broad diagnostics cleanup in the OCaml prototype because that code is expected to be replaced.
