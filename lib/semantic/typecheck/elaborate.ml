@@ -488,6 +488,31 @@ let rec branch_type_refinement = function
       match branch_type_refinement lhs with Some _ as found -> found | None -> branch_type_refinement rhs)
   | _ -> None
 
+let refinement_target_of_scrutinee ctx scrut_core =
+  match scrut_core with
+  | Var ix -> Some (ctx.Ctx.lvl - ix - 1)
+  | _ -> None
+
+let refine_context_type_var ctx target replacement =
+  let substitute = subst_value_var ctx.Ctx.metas target replacement in
+  {
+    ctx with
+    Ctx.types = List.map substitute ctx.Ctx.types;
+    name_table = NameMap.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.name_table;
+    self_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.self_entry;
+    resume_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.resume_entry;
+  }
+
+let refine_branch_context ctx refinement_target pat =
+  match (branch_type_refinement pat, refinement_target) with
+  | Some replacement, Some target -> refine_context_type_var ctx target replacement
+  | _ -> ctx
+
+let refine_branch_expected ctx refinement_target pat expected =
+  match (branch_type_refinement pat, refinement_target) with
+  | Some replacement, Some target -> subst_value_var ctx.Ctx.metas target replacement expected
+  | _ -> expected
+
 let close_recursive_payload_term nominal_name num_params =
   let rec collect_apps acc = function
     | Ap (f, Explicit, a) -> collect_apps (a :: acc) f
@@ -790,18 +815,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       union_many_expr_effects ctx [ collect_effects ctx f; collect_effects ctx a; latent ]
   | Surface.Ap (f, Surface.Implicit, a) ->
       union_expr_effects ctx (collect_effects ctx f) (collect_effects ctx a)
-  | Surface.Lam (param, body) ->
-      let a_ty =
-        match param.Surface.type_ with
-        | Some ty_expr ->
-            require_empty_effects (collect_effects ctx ty_expr);
-            let ty_core, ty_ty = infer ctx ty_expr in
-            Ctx.unify ctx ty_ty VU;
-            Ctx.eval ctx ty_core
-        | None -> Ctx.raw_meta ctx
-      in
-      let _body_effects = collect_effects (Ctx.bind ctx param.name a_ty) body in
-      empty_expr_effects
+  | Surface.Lam _ -> empty_expr_effects
   | Surface.Let { name; type_; value; body; recursive = false } ->
       let value_effects = collect_effects ctx value in
       let value_core, value_ty =
@@ -892,14 +906,15 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let effect_branches = surface_effect_branches branches in
       let scrut_core, scrut_ty = infer ctx scrutinee in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
-      ignore scrut_core;
+      let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let scrutinee_effects = collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       let ret_ty = Ctx.raw_meta ctx in
       let value_branch_effects =
         List.map
           (fun (pat, body) ->
-            let _core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
+            let branch_ctx = refine_branch_context ctx refinement_target pat in
+            let _core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
             collect_effects ctx' body)
           value_branches
       in
@@ -1386,11 +1401,13 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let effect_branches = surface_effect_branches branches in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let ret_ty = Ctx.raw_meta ctx in
+      let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let scrutinee_effects = collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       let value_branches' =
         List.map (fun (pat, body) ->
-          let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
+          let branch_ctx = refine_branch_context ctx refinement_target pat in
+          let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
           let body_core = check ctx' body ret_ty in
           ValueBranch (core_pat, body_core))
           value_branches
@@ -1881,22 +1898,14 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       require_empty_effects residual;
       let scrut_core = check ctx scrutinee VU in
-      let scrut_value = Ctx.eval ctx scrut_core in
-      let refinement_target =
-        match Nbe.force ctx.metas scrut_value with
-        | VRigid { lvl; spine = [] } -> Some lvl
-        | _ -> None
-      in
+      let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let value_branches = surface_value_branches branches in
       let value_branches' =
         List.map
           (fun (pat, body) ->
-            let core_pat, ctx' = elaborate_pat ctx pat VU in
-            let refined_expected =
-              match (branch_type_refinement pat, refinement_target) with
-              | Some replacement, Some target -> subst_value_var ctx.metas target replacement expected
-              | _ -> expected
-            in
+            let branch_ctx = refine_branch_context ctx refinement_target pat in
+            let core_pat, ctx' = elaborate_pat branch_ctx pat VU in
+            let refined_expected = refine_branch_expected ctx refinement_target pat expected in
             let body_core = check ctx' body refined_expected in
             ValueBranch (core_pat, body_core))
           value_branches
@@ -1957,13 +1966,16 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let value_branches = surface_value_branches branches in
       let effect_branches = surface_effect_branches branches in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
+      let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let scrutinee_effects = collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       require_empty_effects residual;
       let value_branches' =
         List.map (fun (pat, body) ->
-          let core_pat, ctx' = elaborate_pat ctx pat scrut_ty in
-          let body_core = check ctx' body expected in
+          let branch_ctx = refine_branch_context ctx refinement_target pat in
+          let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
+          let refined_expected = refine_branch_expected ctx refinement_target pat expected in
+          let body_core = check ctx' body refined_expected in
           ValueBranch (core_pat, body_core))
           value_branches
       in

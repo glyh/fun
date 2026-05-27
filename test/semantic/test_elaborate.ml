@@ -219,6 +219,26 @@ let dependent =
       (check_type "match Unit with Unit -> 1 | _ -> 0 end" (AtomTy TI64));
     Alcotest.test_case "open Type match fallback" `Quick
       (check_type "let classify : Type -> I64 = fun T -> match T with I64 -> 1 | _ -> 0 end in classify Bool" (AtomTy TI64));
+    Alcotest.test_case "type-case refines dependent argument" `Quick
+      (check_type
+         "let is_zeroish : {T : Type} -> T -> Bool = fun {T : Type} -> fun x -> \
+          match T with \
+          I64 -> x == 0 \
+          | Bool -> x == false \
+          | Unit -> true \
+          | Char -> x == 'a' \
+          | _ -> false \
+          end \
+          in is_zeroish"
+         (Pi { explicitness = Implicit; domain = U; effects = empty_effect_row; codomain = Pi { explicitness = Explicit; domain = Var 0; effects = empty_effect_row; codomain = AtomTy TBool } }));
+    Alcotest.test_case "type-case rejects invalid refined branch" `Quick
+      (elab_fail
+         "let bad : (T : Type) -> T -> Bool = fun (T : Type) -> fun x -> \
+          match T with \
+          I64 -> x == false \
+          | _ -> false \
+          end \
+          in bad");
     Alcotest.test_case "type-passing identity" `Quick
       (elab_ok
          "((fun (T : Type) -> fun (x : T) -> x : Type -> I64 -> I64) I64 42)");

@@ -495,6 +495,35 @@ let test_eval_handler_record_payload_pattern () =
      end"
     ()
 
+let is_zeroish_source call =
+  "let is_zeroish : {T : Type} -> T -> Bool = fun {T : Type} -> fun x -> \
+   match T with \
+   I64 -> x == 0 \
+   | Bool -> x == false \
+   | Unit -> true \
+   | Char -> x == 'a' \
+   | _ -> false \
+   end \
+   in " ^ call
+
+let test_eval_type_case_i64_zero () =
+  check_bool "type-case I64 zero" true (is_zeroish_source "is_zeroish 0") ()
+
+let test_eval_type_case_i64_nonzero () =
+  check_bool "type-case I64 nonzero" false (is_zeroish_source "is_zeroish 1") ()
+
+let test_eval_type_case_bool_false () =
+  check_bool "type-case Bool false" true (is_zeroish_source "is_zeroish false") ()
+
+let test_eval_type_case_bool_true () =
+  check_bool "type-case Bool true" false (is_zeroish_source "is_zeroish true") ()
+
+let test_eval_type_case_unit () =
+  check_bool "type-case Unit" true (is_zeroish_source "is_zeroish ()") ()
+
+let test_eval_type_case_char_a () =
+  check_bool "type-case Char a" true (is_zeroish_source "is_zeroish 'a'") ()
+
 let test_eval_handler_same_match_branch_effect () =
   check_i64 "handler same match branch effect" 43L
     "let Ping = effect hit : I64 -> I64 end in \
@@ -572,6 +601,12 @@ let () =
           Alcotest.test_case "state handler sequences operations" `Quick test_eval_state_handler_sequences_operations;
           Alcotest.test_case "handler tuple payload pattern" `Quick test_eval_handler_tuple_payload_pattern;
           Alcotest.test_case "handler record payload pattern" `Quick test_eval_handler_record_payload_pattern;
+          Alcotest.test_case "type-case I64 zero" `Quick test_eval_type_case_i64_zero;
+          Alcotest.test_case "type-case I64 nonzero" `Quick test_eval_type_case_i64_nonzero;
+          Alcotest.test_case "type-case Bool false" `Quick test_eval_type_case_bool_false;
+          Alcotest.test_case "type-case Bool true" `Quick test_eval_type_case_bool_true;
+          Alcotest.test_case "type-case Unit" `Quick test_eval_type_case_unit;
+          Alcotest.test_case "type-case Char a" `Quick test_eval_type_case_char_a;
           Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick
