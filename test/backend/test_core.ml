@@ -648,6 +648,44 @@ let test_eval_type_case_nominal_classifier_bool () =
 let test_eval_type_case_nominal_classifier_fallback () =
   check_i64 "type-case nominal classifier fallback" 0L (nominal_classify_source "classify I64") ()
 
+let struct_type_classify_source call =
+  "let classify : Type -> I64 = fun T -> \
+   match T with \
+   struct x: I64; _ end -> 1 \
+   | struct x: Bool; _ end -> 2 \
+   | struct y: p; _ end -> match p with String -> 3 | _ -> 4 end \
+   | _ -> 0 \
+   end \
+   in " ^ call
+
+let test_eval_type_case_struct_field_i64 () =
+  check_i64 "type-case struct field I64" 1L
+    (struct_type_classify_source "type Point = {x: I64; y: Bool} in classify Point")
+    ()
+
+let test_eval_type_case_struct_field_bool () =
+  check_i64 "type-case struct field Bool" 2L
+    (struct_type_classify_source "type Point = {x: Bool} in classify Point")
+    ()
+
+let test_eval_type_case_struct_field_binder () =
+  check_i64 "type-case struct field binder" 3L
+    (struct_type_classify_source "type Point = {y: String; z: I64} in classify Point")
+    ()
+
+let test_eval_type_case_struct_field_fallback () =
+  check_i64 "type-case struct field fallback" 0L (struct_type_classify_source "classify I64") ()
+
+let test_eval_type_case_struct_closed_rejects_extra () =
+  check_i64 "type-case struct closed rejects extra" 2L
+    "type Point = {x: I64; y: Bool} in \
+     match Point with \
+     struct x: I64 end -> 1 \
+     | struct x: I64; _ end -> 2 \
+     | _ -> 3 \
+     end"
+    ()
+
 let test_eval_handler_same_match_branch_effect () =
   check_i64 "handler same match branch effect" 43L
     "let Ping = effect hit : I64 -> I64 end in \
@@ -755,6 +793,11 @@ let () =
           Alcotest.test_case "type-case nominal classifier I64" `Quick test_eval_type_case_nominal_classifier_i64;
           Alcotest.test_case "type-case nominal classifier Bool" `Quick test_eval_type_case_nominal_classifier_bool;
           Alcotest.test_case "type-case nominal classifier fallback" `Quick test_eval_type_case_nominal_classifier_fallback;
+          Alcotest.test_case "type-case struct field I64" `Quick test_eval_type_case_struct_field_i64;
+          Alcotest.test_case "type-case struct field Bool" `Quick test_eval_type_case_struct_field_bool;
+          Alcotest.test_case "type-case struct field binder" `Quick test_eval_type_case_struct_field_binder;
+          Alcotest.test_case "type-case struct field fallback" `Quick test_eval_type_case_struct_field_fallback;
+          Alcotest.test_case "type-case struct closed rejects extra" `Quick test_eval_type_case_struct_closed_rejects_extra;
           Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick

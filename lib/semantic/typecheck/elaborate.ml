@@ -790,6 +790,8 @@ let refine_match_scrutinee_ty ctx scrut_ty branches =
             | VU -> Some record_value
             | VStruct _ as record_ty -> Some record_ty
             | _ -> None)
+        | Surface.PatStructType _ -> (
+            match ty with VStruct _ -> Some ty | _ -> Some VU)
         | Surface.PatOr (lhs, rhs) -> (
             match find_pat lhs with Some _ as found -> found | None -> find_pat rhs)
         | PatWild | PatBind _ -> None
@@ -1550,6 +1552,19 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           in
           (CPatRecord { fields = List.rev core_fields; partial }, List.rev binders)
       | _ -> raise (ElabError ApplyingNonFunction))
+  | PatStructType { fields; partial } ->
+      (match Nbe.force ctx.metas scrutinee_ty with
+      | VStruct _ -> ()
+      | _ -> Ctx.unify ctx scrutinee_ty VU);
+      check_duplicate_names (List.map fst fields);
+      let core_fields, binders =
+        List.fold_left
+          (fun (core_acc, binder_acc) (name, field_pat) ->
+            let core_pat, binders = elaborate_pat_binders ctx field_pat VU in
+            ((name, core_pat) :: core_acc, binders @ binder_acc))
+          ([], []) fields
+      in
+      (CPatStructType { fields = List.rev core_fields; partial }, List.rev binders)
   | PatCon (path, name, sub_pats) -> (
       match Nbe.force ctx.metas scrutinee_ty with
       | VU -> (
@@ -2072,7 +2087,10 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
         | _ -> (core, ty)
       in
       let core, inferred = wrap_implicits core inferred in
-      Ctx.unify ctx expected inferred;
+      if Ctx.conv ctx expected VU then
+        check_type_or_record_type ctx inferred (Ctx.eval ctx core)
+      else
+        Ctx.unify ctx expected inferred;
       core
 
 (** Build the initial elaboration context with built-in types ([I64],

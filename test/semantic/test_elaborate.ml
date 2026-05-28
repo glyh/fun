@@ -288,6 +288,31 @@ let dependent =
           | _ -> 0 \
           end \
           in classify");
+    Alcotest.test_case "type-case struct field type binder" `Quick
+      (elab_ok
+         "let classify : Type -> I64 = fun T -> \
+          match T with \
+          struct x: p; _ end -> match p with I64 -> 1 | _ -> 2 end \
+          | _ -> 0 \
+          end \
+          in classify");
+    Alcotest.test_case "type-case struct field type pattern" `Quick
+      (elab_ok
+         "let classify : Type -> I64 = fun T -> \
+          match T with \
+          struct x: I64; _ end -> 1 \
+          | struct x: Bool; _ end -> 2 \
+          | _ -> 0 \
+          end \
+          in classify");
+    Alcotest.test_case "type-case duplicate struct field pattern rejects" `Quick
+      (elab_fail
+         "match I64 with \
+          struct x: I64; x: Bool; _ end -> 1 \
+          | _ -> 0 \
+          end");
+    Alcotest.test_case "type-case struct pattern on non-Type rejects" `Quick
+      (elab_fail "match 1 with struct x: I64; _ end -> 1 | _ -> 0 end");
     Alcotest.test_case "type-case unresolved uppercase pattern rejects" `Quick
       (elab_fail
          "type Option a = Some a | None in \

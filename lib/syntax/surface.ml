@@ -84,6 +84,7 @@ and match_branch =
 and pat =
   | PatCon of string list * string * pat list   (* path, constructor, subpatterns *)
   | PatRecord of { typ_path : string list; typ : string; fields : (string * pat option) list; partial : bool }
+  | PatStructType of { fields : (string * pat) list; partial : bool }
   | PatOr of pat * pat
   | PatProd of pat list
   | PatAtom of Atom.t

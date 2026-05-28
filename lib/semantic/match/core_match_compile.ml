@@ -54,6 +54,7 @@ let classify = function
   | CPatAtom _ | CPatType _ | CPatNominalHead _ -> Switch
   | CPatProd _ -> ProductPat
   | CPatRecord _ -> RecordPat
+  | CPatStructType _ -> RecordPat
   | CPatOr _ -> OrPat
   | CPatWild | CPatBind -> Irrefutable
 
@@ -224,7 +225,7 @@ let collect_record_fields col domain_fields =
   List.iter
     (fun p ->
       match p with
-      | CPatRecord { fields; _ } -> List.iter (fun (name, _) -> add name) fields
+      | CPatRecord { fields; _ } | CPatStructType { fields; _ } -> List.iter (fun (name, _) -> add name) fields
       | _ -> ())
     col;
   Hashtbl.fold (fun k () acc -> k :: acc) seen [] |> List.sort String.compare
@@ -241,7 +242,7 @@ let specialize_record m field_names =
     List.filter_map
       (fun r ->
         match r.pats.(0) with
-        | CPatRecord { fields; _ } ->
+        | CPatRecord { fields; _ } | CPatStructType { fields; _ } ->
             let field_pats =
               List.map
                 (fun name ->

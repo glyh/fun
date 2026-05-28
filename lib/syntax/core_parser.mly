@@ -6,6 +6,10 @@ type record_pat_entry =
   | RecordPatField of string * pat option
   | RecordPatWildcard
 
+type struct_type_pat_entry =
+  | StructTypePatField of string * pat
+  | StructTypePatWildcard
+
 let split_record_pat_entries entries =
   let rec go acc = function
     | [] -> (List.rev acc, false)
@@ -15,6 +19,17 @@ let split_record_pat_entries entries =
   in
   match go [] entries with
   | [], _ -> failwith "record pattern must have at least one named field"
+  | result -> result
+
+let split_struct_type_pat_entries entries =
+  let rec go acc = function
+    | [] -> (List.rev acc, false)
+    | [StructTypePatWildcard] -> (List.rev acc, true)
+    | StructTypePatWildcard :: _ -> failwith "struct type pattern wildcard must be last"
+    | StructTypePatField (name, pat) :: rest -> go ((name, pat) :: acc) rest
+  in
+  match go [] entries with
+  | [], _ -> failwith "struct type pattern must have at least one named field"
   | result -> result
 
 let bare_pat_name path name =
@@ -119,6 +134,9 @@ pat_app:
   | p = pat_atom { p }
 
 pat_atom:
+  | STRUCT; entries = separated_nonempty_list(SEMI, struct_type_pat_entry); END
+    { let fields, partial = split_struct_type_pat_entries entries in
+      PatStructType { fields; partial } }
   | typ = dotted_id; LBRACE; entries = separated_nonempty_list(SEMI, record_pat_entry); RBRACE
     { let path, typ = typ in
       let fields, partial = split_record_pat_entries entries in
@@ -144,6 +162,11 @@ record_pat_entry:
   | name = ID; EQUALS; p = pat { RecordPatField (name, Some p) }
   | name = ID
     { if String.equal name "_" then RecordPatWildcard else RecordPatField (name, None) }
+
+struct_type_pat_entry:
+  | name = ID; COLON; p = pat { StructTypePatField (name, p) }
+  | name = ID
+    { if String.equal name "_" then StructTypePatWildcard else failwith "struct type pattern fields require ':'" }
 
 struct_field_decl:
   | name = ID; COLON; ty = expr; SEMI { (name, ty) }

@@ -482,6 +482,18 @@ and runtime_value_equal mc lhs rhs =
   | VU, VU -> true
   | _ -> false
 
+and core_pat_contains_struct_type = function
+  | CPatStructType _ -> true
+  | CPatProd pats -> List.exists core_pat_contains_struct_type pats
+  | CPatOr (lhs, rhs) -> core_pat_contains_struct_type lhs || core_pat_contains_struct_type rhs
+  | CPatRecord { fields; _ } -> List.exists (fun (_, pat) -> core_pat_contains_struct_type pat) fields
+  | CPatCon (_, _, pats) -> List.exists core_pat_contains_struct_type pats
+  | CPatNominalHead { param_pats; _ } -> List.exists core_pat_contains_struct_type param_pats
+  | CPatWild | CPatBind | CPatAtom _ | CPatType _ -> false
+
+and struct_type_fields fields =
+  List.filter_map (fun (name, kind, ty) -> if kind = Field then Some (name, ty) else None) fields
+
 and match_core_pat mc pat value =
   match (pat, force mc value) with
   | CPatWild, _ -> Some []
@@ -508,6 +520,21 @@ and match_core_pat mc pat value =
             | None -> None)
       in
       go [] fields
+  | CPatStructType { fields; partial }, VStruct { fields = struct_fields; _ } ->
+      let struct_fields = struct_type_fields struct_fields in
+      if (not partial) && List.length fields <> List.length struct_fields then None
+      else
+        let rec go acc = function
+          | [] -> Some (List.rev acc)
+          | (name, pat) :: rest -> (
+              match List.assoc_opt name struct_fields with
+              | Some field_ty -> (
+                  match match_core_pat mc pat field_ty with
+                  | Some bindings -> go (List.rev_append bindings acc) rest
+                  | None -> None)
+              | None -> None)
+        in
+        go [] fields
   | CPatOr (lhs, rhs), v -> (
       match match_core_pat mc lhs v with Some _ as matched -> matched | None -> match_core_pat mc rhs v)
   | _ -> None
@@ -529,6 +556,11 @@ and match_core_pats mc pats values =
 and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
   let scrutinee = force mc scrutinee in
+  if List.exists (fun (pat, _) -> core_pat_contains_struct_type pat) branches then
+    match branches with
+    | [] -> raise (EvalError "non-exhaustive match at runtime")
+    | _ -> eval_match_direct mc env scrutinee branches
+  else
   match scrutinee with
   | VCon _ ->
       let domain_of_occurrence occ =
@@ -582,6 +614,15 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
         { ty = VU;
           neutral = { head; frames = base_frames @ [ FMatch
               (List.map (fun (p, body) -> (p, { env; body })) branches) ] } }
+
+and eval_match_direct (mc : MetaContext.t) (env : env) (scrutinee : value)
+    (branches : (core_pat * term) list) : value =
+  match branches with
+  | [] -> raise (EvalError "non-exhaustive match at runtime")
+  | (pat, body) :: rest -> (
+      match match_core_pat mc pat scrutinee with
+      | Some bindings -> eval mc (List.rev_append bindings env) body
+      | None -> eval_match_direct mc env scrutinee rest)
 
 and nominal_constructors (mc : MetaContext.t) (nom : value) :
     (string * int * bool) list =
@@ -662,6 +703,12 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   | CPatOr (l1, r1), CPatOr (l2, r2) ->
       conv_pat l1 l2 && conv_pat r1 r2
   | CPatRecord { fields = fs1; partial = p1 }, CPatRecord { fields = fs2; partial = p2 } ->
+      p1 = p2
+      && List.length fs1 = List.length fs2
+      && List.for_all2
+           (fun (n1, p1) (n2, p2) -> String.equal n1 n2 && conv_pat p1 p2)
+           fs1 fs2
+  | CPatStructType { fields = fs1; partial = p1 }, CPatStructType { fields = fs2; partial = p2 } ->
       p1 = p2
       && List.length fs1 = List.length fs2
       && List.for_all2

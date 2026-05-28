@@ -132,6 +132,8 @@ and core_pat =
       (** Or-pattern. Both alternatives bind the same variables. *)
   | CPatRecord of { fields : (string * core_pat) list; partial : bool }
       (** Record-instance pattern. *)
+  | CPatStructType of { fields : (string * core_pat) list; partial : bool }
+      (** Struct type pattern for type-case. Field subpatterns match field types. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
   | CPatNominalHead of { id : nominal_id; name : string; num_params : int; param_pats : core_pat list }
