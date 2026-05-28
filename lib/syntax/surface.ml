@@ -1,6 +1,13 @@
 type explicitness = Implicit | Explicit
 
-type param = { name : string; type_ : t option; explicitness : explicitness }
+type trait_bound = { trait_path : string list; trait_name : string }
+
+type param = {
+  name : string;
+  type_ : t option;
+  trait_bounds : trait_bound list;
+  explicitness : explicitness;
+}
 
 and effect_op = { name : string; input : t; output : t }
 
@@ -25,6 +32,19 @@ and struct_binding =
       name : string;
       params : string list;
       ops : effect_op list;
+      public : bool;
+    }
+  | TraitBinding of {
+      name : string;
+      params : string list;
+      fields : (string * t) list;
+      public : bool;
+    }
+  | ImplBinding of {
+      trait_path : string list;
+      trait_name : string;
+      args : t list;
+      fields : (string * t) list;
       public : bool;
     }
 
@@ -66,6 +86,19 @@ and t =
       name : string;
       params : string list;
       ops : effect_op list;
+      body : t;
+    }
+  | TraitDef of {
+      name : string;
+      params : string list;
+      fields : (string * t) list;
+      body : t;
+    }
+  | ImplDef of {
+      trait_path : string list;
+      trait_name : string;
+      args : t list;
+      fields : (string * t) list;
       body : t;
     }
   | Perform of { effect_path : string list; op : string; arg : t }

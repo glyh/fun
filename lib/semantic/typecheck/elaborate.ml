@@ -25,12 +25,38 @@ type elab_error =
   | NonExhaustive of string
   | InvalidRecursiveRecord of string
   | ImportRequiresLoader of string
+  | UnknownTrait of string
+  | UnknownTraitMethod of string
+  | DuplicateTraitField of string
+  | MissingTraitField of string
+  | AmbiguousTraitImplementation of string
 
 exception ElabError of elab_error
 
 module NameMap = Map.Make (String)
 
+let trait_id_counter = ref 0
+let fresh_trait_id () =
+  let id = !trait_id_counter in
+  incr trait_id_counter;
+  id
+
 type name_entry = { level : lvl; ty : value }
+
+type trait_info = {
+  trait_id : int;
+  trait_name : string;
+  trait_params : string list;
+  trait_fields : (string * closure) list;
+}
+
+type trait_evidence = {
+  evidence_trait_id : int;
+  evidence_trait_name : string;
+  evidence_args : value list;
+  evidence_level : lvl;
+  evidence_ty : value;
+}
 
 (** Elaboration context: tracks de Bruijn environment, name→index mapping,
     metavariables, and which binders are [Bound] vs [Defined] for [InsertedMeta]. *)
@@ -42,6 +68,8 @@ module Ctx = struct
     metas : MetaContext.t;
     bds : bd list;
     name_table : name_entry NameMap.t;
+    traits : trait_info NameMap.t;
+    trait_evidence : trait_evidence list;
     self_entry : name_entry option;
     self_type : value option;
     resume_entry : name_entry option;
@@ -58,6 +86,8 @@ module Ctx = struct
       metas;
       bds = [];
       name_table = NameMap.empty;
+      traits = NameMap.empty;
+      trait_evidence = [];
       self_entry = None;
       self_type = None;
       resume_entry = None;
@@ -74,6 +104,8 @@ module Ctx = struct
       metas = ctx.metas;
       bds = Bound :: ctx.bds;
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
+      traits = ctx.traits;
+      trait_evidence = ctx.trait_evidence;
       self_entry = ctx.self_entry;
       self_type = ctx.self_type;
       resume_entry = ctx.resume_entry;
@@ -90,6 +122,8 @@ module Ctx = struct
        metas = ctx.metas;
        bds = Bound :: ctx.bds;
        name_table = ctx.name_table;
+       traits = ctx.traits;
+       trait_evidence = ctx.trait_evidence;
        self_entry = ctx.self_entry;
        self_type = ctx.self_type;
        resume_entry = ctx.resume_entry;
@@ -106,6 +140,8 @@ module Ctx = struct
       metas = ctx.metas;
       bds = Defined :: ctx.bds;
       name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
+      traits = ctx.traits;
+      trait_evidence = ctx.trait_evidence;
       self_entry = ctx.self_entry;
       self_type = ctx.self_type;
       resume_entry = ctx.resume_entry;
@@ -138,6 +174,12 @@ module Ctx = struct
   let with_self_type (ctx : t) (ty : value) : t = { ctx with self_type = Some ty }
 
   let with_loader (ctx : t) (loader : Core_loader.t) : t = { ctx with loader = Some loader }
+
+  let add_trait (ctx : t) (trait_info : trait_info) : t =
+    { ctx with traits = NameMap.add trait_info.trait_name trait_info ctx.traits }
+
+  let add_trait_evidence (ctx : t) (evidence : trait_evidence) : t =
+    { ctx with trait_evidence = evidence :: ctx.trait_evidence }
 
   let clear_self (ctx : t) : t = { ctx with self_entry = None }
 
@@ -240,13 +282,20 @@ let visible_record_fields fields =
 let find_record_field fields name =
   List.find_opt (fun (n, _) -> String.equal n name) fields
 
-let is_record_type_value ctx value =
+let rec is_type_like_value ctx value =
   match Nbe.force ctx.Ctx.metas value with
-  | VStruct { fields; _ } -> visible_record_fields fields <> []
+  | VU | VAtomTy _ | VPi _ | VProdTy _ | VNominal _ | VEffect _ -> true
+  | VStruct { fields; _ } ->
+      List.for_all
+        (fun (_, kind, value) ->
+          match kind with
+          | Private | PrivateMethod -> true
+          | Field | Public | Method -> is_type_like_value ctx value)
+        fields
   | _ -> false
 
-let check_type_or_record_type ctx ty value =
-  if not (Ctx.conv ctx ty VU || is_record_type_value ctx value) then Ctx.unify ctx ty VU
+let check_type_like ctx ty value =
+  if not (Ctx.conv ctx ty VU || is_type_like_value ctx value) then Ctx.unify ctx ty VU
 
 let check_duplicate_names names =
   let seen = Hashtbl.create 8 in
@@ -263,6 +312,27 @@ let check_duplicate_eff_ops ops =
       if Hashtbl.mem seen op.name then raise (ElabError (DuplicateEffectOperation op.name));
       Hashtbl.replace seen op.name ())
     ops
+
+let check_duplicate_trait_fields fields =
+  let seen = Hashtbl.create 8 in
+  List.iter
+    (fun (name, _) ->
+      if Hashtbl.mem seen name then raise (ElabError (DuplicateTraitField name));
+      Hashtbl.replace seen name ())
+    fields
+
+let trait_dict_ty trait_name args fields =
+  let marker_fields =
+    match args with
+    | [ arg ] ->
+        [ ("__arg", Private, arg);
+          ("__trait", Private, VAtom (Atom.String trait_name)) ]
+    | _ -> []
+  in
+  VStruct { fields = marker_fields @ List.map (fun (name, ty) -> (name, Public, ty)) fields; partial = false }
+
+let trait_key trait_name args =
+  trait_name ^ " " ^ String.concat " " (List.map (fun _ -> "_") args)
 
 let rewrite_record_self_refs record_name params expr =
   let invalid () =
@@ -339,6 +409,17 @@ let rewrite_record_self_refs record_name params expr =
                           { op with input = go (params @ bound) op.input; output = go (params @ bound) op.output })
                         ops;
                       public }
+              | Surface.TraitBinding { name; params; fields; public } ->
+                  Surface.TraitBinding
+                    { name; params;
+                      fields = List.map (fun (field, ty) -> (field, go (params @ bound) ty)) fields;
+                      public }
+              | Surface.ImplBinding { trait_path; trait_name; args; fields; public } ->
+                  Surface.ImplBinding
+                    { trait_path; trait_name;
+                      args = List.map (go bound) args;
+                      fields = List.map (fun (field, value) -> (field, go bound value)) fields;
+                      public }
             in
             Surface.Struct
               { con_fields = List.map (fun (name, ty) -> (name, go bound ty)) con_fields;
@@ -365,6 +446,17 @@ let rewrite_record_self_refs record_name params expr =
                     { op with input = go (params @ bound) op.input; output = go (params @ bound) op.output })
                   ops;
                 body = go (name :: bound) body }
+        | Surface.TraitDef { name; params; fields; body } ->
+            Surface.TraitDef
+              { name; params;
+                fields = List.map (fun (field, ty) -> (field, go (params @ bound) ty)) fields;
+                body = go (name :: bound) body }
+        | Surface.ImplDef { trait_path; trait_name; args; fields; body } ->
+            Surface.ImplDef
+              { trait_path; trait_name;
+                args = List.map (go bound) args;
+                fields = List.map (fun (field, value) -> (field, go bound value)) fields;
+                body = go bound body }
         | Surface.Match (scrutinee, branches) ->
             let go_branch = function
               | Surface.ValueBranch (pat, body) -> Surface.ValueBranch (pat, go bound body)
@@ -443,6 +535,48 @@ let domain_of_occurrence ctx scrut_ty occ =
   match type_at_occurrence ctx scrut_ty occ with
   | Some ty -> match_domain_of_ty ctx ty
   | None -> Unknown
+
+let term_mentions_var target term =
+  let rec go target = function
+    | Var ix -> ix = target
+    | Lam body | Fix body -> go (target + 1) body
+    | Ap (f, _, a) -> go target f || go target a
+    | Let (ty, def, body) -> go target ty || go target def || go (target + 1) body
+    | Pi { domain; effects; codomain; _ } ->
+        go target domain
+        || List.exists (go (target + 1)) effects.effects
+        || (match effects.tail with Some tail -> go (target + 1) tail | None -> false)
+        || go (target + 1) codomain
+    | If (cond, then_, else_) -> go target cond || go target then_ || go target else_
+    | Prod elems | ProdTy elems -> List.exists (go target) elems
+    | Proj (e, _) | Dot (e, _) | Open (e, _) -> go target e
+    | Struct { con_fields; bindings; _ } ->
+        List.exists (fun (_, ty) -> go target ty) con_fields
+        || List.exists
+             (function
+               | LetBind (_, _, value) -> go target value
+               | TypeBind _ | EffectBind _ -> false)
+             bindings
+    | RecordConstruct { typ; fields } ->
+        go target typ || List.exists (fun (_, value) -> go target value) fields
+    | NomRef (_, params) | EffectRef (_, params) -> List.exists (go target) params
+    | Ctor { spine; nominal_spine; _ } ->
+        List.exists (go target) spine || List.exists (go target) nominal_spine
+    | Match (scrut, branches) ->
+        go target scrut
+        || List.exists
+             (function
+               | ValueBranch (_, body) -> go target body
+               | EffectBranch { eff; body; _ } -> go target eff || go target body)
+             branches
+    | NominalDef { ctors; body; _ } ->
+        List.exists (fun (_, payload) -> match payload with Some payload -> go target payload | None -> false) ctors || go target body
+    | EffectDef { ops; body; _ } ->
+        List.exists (fun (_, input, output) -> go target input || go target output) ops || go target body
+    | Perform { eff; arg; _ } -> go target eff || go target arg
+    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ -> false
+  in
+  go target term
 
 let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value) (v : value) : value =
   match Nbe.force mc v with
@@ -602,6 +736,51 @@ let resolve_path_value ctx path name =
   let _, value, ty = resolve_path_core_value ctx path name in
   (value, ty)
 
+let lookup_trait ctx name =
+  match NameMap.find_opt name ctx.Ctx.traits with
+  | Some info -> info
+  | None -> raise (ElabError (UnknownTrait name))
+
+let eval_trait_fields ctx trait_info args =
+  List.map
+    (fun (field, clo) -> (field, Nbe.eval ctx.Ctx.metas (List.rev args @ clo.env) clo.body))
+    trait_info.trait_fields
+
+let resolve_trait_evidence ctx trait_info args =
+  let matches =
+    List.filter
+      (fun evidence ->
+        evidence.evidence_trait_id = trait_info.trait_id
+        && List.length evidence.evidence_args = List.length args
+        && List.for_all2 (Ctx.conv ctx) evidence.evidence_args args)
+      ctx.Ctx.trait_evidence
+  in
+  match matches with
+  | [ evidence ] -> (Var (Nbe.lvl_to_ix ctx.Ctx.lvl evidence.evidence_level), evidence.evidence_ty)
+  | [] -> raise (ElabError (UnknownTrait trait_info.trait_name))
+  | _ -> raise (ElabError (AmbiguousTraitImplementation (trait_key trait_info.trait_name args)))
+
+let resolve_trait_dict_ty ctx = function
+  | VStruct { fields; _ } -> (
+      match fields with
+      | ("__arg", Private, arg) :: ("__trait", Private, VAtom (Atom.String trait_name)) :: _ ->
+          let trait_info = lookup_trait ctx trait_name in
+          let fields = eval_trait_fields ctx trait_info [ arg ] in
+          Some (trait_info, [ arg ], trait_dict_ty trait_info.trait_name [ arg ] fields)
+      | _ -> None)
+  | _ -> None
+
+let resolve_trait_method ctx trait_info method_name =
+  match List.find_opt (fun evidence -> evidence.evidence_trait_id = trait_info.trait_id) ctx.Ctx.trait_evidence with
+  | None -> raise (ElabError (UnknownTrait trait_info.trait_name))
+  | Some evidence -> (
+      match Nbe.force ctx.Ctx.metas evidence.evidence_ty with
+      | VStruct { fields; _ } -> (
+          match List.find_opt (fun (name, kind, _) -> String.equal name method_name && kind <> Private && kind <> PrivateMethod) fields with
+          | Some (_, _, method_ty) -> (Dot (Var (Nbe.lvl_to_ix ctx.Ctx.lvl evidence.evidence_level), method_name), method_ty)
+          | None -> raise (ElabError (UnknownTraitMethod method_name)))
+      | _ -> raise (ElabError (UnknownTraitMethod method_name)))
+
 let find_nominal_template ctx path name =
   let scan_env () =
     List.find_map
@@ -692,6 +871,103 @@ let check_effect_subset ctx actual expected =
 let effect_row_of_expr_effects ctx effects =
   { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects; tail = None }
 
+let rec surface_trait_bound_names = function
+  | Surface.Var name -> Some [ name ]
+  | Surface.Ap (Surface.Ap (Surface.Var "+", Surface.Explicit, lhs), Surface.Explicit, rhs) -> (
+      match surface_trait_bound_names lhs, surface_trait_bound_names rhs with
+      | Some lhs, Some rhs -> Some (lhs @ rhs)
+      | _ -> None)
+  | _ -> None
+
+let trait_marker_ty trait_name arg =
+  VStruct
+    { fields =
+        [ ("__arg", Private, arg);
+          ("__trait", Private, VAtom (Atom.String trait_name)) ];
+      partial = false }
+
+let infer_ref : (Ctx.t -> Surface.t -> term * value) ref =
+  ref (fun _ _ -> failwith "infer not initialized")
+
+let check_ref : (Ctx.t -> Surface.t -> value -> term) ref =
+  ref (fun _ _ _ -> failwith "check not initialized")
+
+let collect_effects_ref : (Ctx.t -> Surface.t -> expr_effects) ref =
+  ref (fun _ _ -> failwith "collect_effects not initialized")
+
+let elaborate_trait ctx name params fields =
+  check_duplicate_trait_fields fields;
+  let param_ctx =
+    List.fold_left
+      (fun ctx param_name ->
+        Ctx.define ctx param_name VU (VRigid { lvl = ctx.Ctx.lvl; spine = [] }))
+      ctx params
+  in
+  let field_terms =
+    List.map
+      (fun (field_name, ty_expr) ->
+        let ty_core, ty_ty = !infer_ref param_ctx ty_expr in
+        check_type_like param_ctx ty_ty (Ctx.eval param_ctx ty_core);
+        (field_name, ty_core))
+      fields
+  in
+  let trait_info =
+    { trait_id = fresh_trait_id ();
+      trait_name = name;
+      trait_params = params;
+      trait_fields = List.map (fun (field_name, ty_core) -> (field_name, { env = ctx.Ctx.env; body = ty_core })) field_terms }
+  in
+  let trait_ty = VAtom (Atom.String ("trait:" ^ name)) in
+  (trait_info, trait_ty)
+
+let elaborate_impl ctx trait_name args fields =
+  let trait_info = lookup_trait ctx trait_name in
+  let arg_cores =
+    List.map
+      (fun arg ->
+        let arg_core, arg_ty = !infer_ref ctx arg in
+        check_type_like ctx arg_ty (Ctx.eval ctx arg_core);
+        arg_core)
+      args
+  in
+  let arg_values = List.map (Ctx.eval ctx) arg_cores in
+  let expected_fields = eval_trait_fields ctx trait_info arg_values in
+  let expected_dict_ty = trait_dict_ty trait_name arg_values expected_fields in
+  check_duplicate_names (List.map fst fields);
+  List.iter
+    (fun (name, _) ->
+      if Option.is_none (List.assoc_opt name expected_fields) then
+        raise (ElabError (UnknownTraitMethod name)))
+    fields;
+  List.iter
+    (fun (name, _) ->
+      if Option.is_none (List.assoc_opt name fields) then raise (ElabError (MissingTraitField name)))
+    expected_fields;
+  let impl_effects = List.map (fun (_, value) -> !collect_effects_ref ctx value) fields in
+  let field_cores =
+    List.map
+      (fun (name, value) ->
+        let field_ty =
+          match List.assoc_opt name expected_fields with
+          | Some ty -> ty
+          | None -> raise (ElabError (UnknownTraitMethod name))
+        in
+        (name, !check_ref ctx value field_ty))
+      fields
+  in
+  let impl_core = Struct { con_fields = []; bindings = List.map (fun (name, value) -> LetBind (name, Public, value)) field_cores; partial = false } in
+  let impl_name = "__impl_" ^ trait_name in
+  let impl_value = VNeutral { ty = expected_dict_ty; neutral = { head = HVar ctx.Ctx.lvl; frames = [] } } in
+  let ctx' = Ctx.define ctx impl_name expected_dict_ty impl_value in
+  let evidence =
+    { evidence_trait_id = trait_info.trait_id;
+      evidence_trait_name = trait_name;
+      evidence_args = arg_values;
+      evidence_level = ctx.Ctx.lvl;
+      evidence_ty = expected_dict_ty }
+  in
+  (Ctx.add_trait_evidence ctx' evidence, impl_effects, impl_name, expected_dict_ty, impl_core)
+
 let rec insert_explicit_effect_metas ctx core ty =
   match Nbe.force ctx.Ctx.metas ty with
   | VPi { explicitness = Explicit; codomain; _ } ->
@@ -723,12 +999,21 @@ let resolve_perform_operation ctx ~effect_path ~op =
 
 let rec insert_implicit_args ctx core ty =
   match Nbe.force ctx.Ctx.metas ty with
-  | VPi { explicitness = Implicit; codomain; _ } ->
-      let arg_core = Ctx.fresh_meta ctx in
-      let arg_value = Ctx.eval ctx arg_core in
-      insert_implicit_args ctx
-        (Ap (core, Implicit, arg_core))
-        (Nbe.closure_apply ctx.Ctx.metas codomain arg_value)
+  | VPi { explicitness = Implicit; domain; codomain; _ } ->
+      let arg_core_opt =
+        match resolve_trait_dict_ty ctx domain with
+        | Some (trait_info, args, _) -> (
+            try Some (fst (resolve_trait_evidence ctx trait_info args))
+            with ElabError (UnknownTrait _) -> None)
+        | None -> Some (Ctx.fresh_meta ctx)
+      in
+      (match arg_core_opt with
+      | None -> (core, ty)
+      | Some arg_core ->
+          let arg_value = Ctx.eval ctx arg_core in
+          insert_implicit_args ctx
+            (Ap (core, Implicit, arg_core))
+            (Nbe.closure_apply ctx.Ctx.metas codomain arg_value))
   | _ -> (core, ty)
 
 let surface_value_branches branches =
@@ -863,8 +1148,13 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         match f_ty with
         | VPi { explicitness = Explicit; domain = a_ty; effects; _ } ->
             let arg_core = check ctx a a_ty in
-            let arg_val = Ctx.eval ctx arg_core in
-            let latent = List.map (fun value -> { core = Ctx.quote ctx value; value }) (effect_row_values ctx effects arg_val) in
+            let latent =
+              match effects.effects, effects.tail with
+              | [], None -> empty_expr_effects
+              | _ ->
+                  let arg_val = Ctx.eval ctx arg_core in
+                  List.map (fun value -> { core = Ctx.quote ctx value; value }) (effect_row_values ctx effects arg_val)
+            in
             (latent, arg_core)
         | _ -> (empty_expr_effects, Atom Atom.Unit)
       in
@@ -879,8 +1169,8 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         | Some ty_expr ->
             require_empty_effects (collect_effects ctx ty_expr);
             let ty_core, ty_ty = infer ctx ty_expr in
-            Ctx.unify ctx ty_ty VU;
             let ty_val = Ctx.eval ctx ty_core in
+            check_type_like ctx ty_ty ty_val;
             (check ctx value ty_val, ty_val)
         | None -> infer ctx value
       in
@@ -897,8 +1187,9 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         | Some ty_expr ->
             require_empty_effects (collect_effects ctx ty_expr);
             let ty_core, ty_ty = infer ctx ty_expr in
-            Ctx.unify ctx ty_ty VU;
-            Ctx.eval ctx ty_core
+            let ty_val = Ctx.eval ctx ty_core in
+            check_type_like ctx ty_ty ty_val;
+            ty_val
         | None -> Ctx.raw_meta ctx
       in
       let fix_core = Fix (check (Ctx.bind ctx name rec_ty) value rec_ty) in
@@ -910,11 +1201,43 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       require_empty_effects (collect_effects ctx typ);
       collect_effects ctx inner
   | Surface.Prod elems | Surface.ProdTy elems -> union_many_expr_effects ctx (List.map (collect_effects ctx) elems)
+  | Surface.Arrow (Surface.Implicit, Some name, a, row, b) -> (
+      match surface_trait_bound_names a with
+      | Some trait_names when List.for_all (fun trait_name -> NameMap.mem trait_name ctx.Ctx.traits) trait_names ->
+          let type_ctx = Ctx.bind ctx name VU in
+          let arg = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
+          let dict_ctx =
+            List.fold_left
+              (fun c trait_name ->
+                let trait_info = lookup_trait ctx trait_name in
+                let dict_ty = trait_dict_ty trait_name [ arg ] (eval_trait_fields ctx trait_info [ arg ]) in
+                let c', entry = Ctx.bind_anonymous c dict_ty in
+                let evidence =
+                  { evidence_trait_id = trait_info.trait_id;
+                    evidence_trait_name = trait_name;
+                    evidence_args = [ arg ];
+                    evidence_level = entry.level;
+                    evidence_ty = dict_ty }
+                in
+                Ctx.add_trait_evidence c' evidence)
+              type_ctx trait_names
+          in
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects dict_ctx eff)) row.effects) row;
+          require_empty_effects (collect_effects dict_ctx b)
+      | _ ->
+          require_empty_effects (collect_effects ctx a);
+          let a_core, a_ty = infer ctx a in
+          let a_val = Ctx.eval ctx a_core in
+          check_type_like ctx a_ty a_val;
+          let ctx' = Ctx.bind ctx name a_val in
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) row;
+          require_empty_effects (collect_effects ctx' b));
+      empty_expr_effects
   | Surface.Arrow (_, name, a, row, b) ->
       require_empty_effects (collect_effects ctx a);
       let a_core, a_ty = infer ctx a in
-      Ctx.unify ctx a_ty VU;
       let a_val = Ctx.eval ctx a_core in
+      check_type_like ctx a_ty a_val;
       let ctx' = Ctx.bind ctx (Option.value name ~default:"_") a_val in
       Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) row;
       require_empty_effects (collect_effects ctx' b);
@@ -957,6 +1280,15 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let _effect_id, eff, eff_ty, _elaborated_ops = elaborate_eff_family ctx name params ops in
       let op_effects = List.concat_map (fun (op : Surface.effect_op) -> [ collect_effects ctx op.input; collect_effects ctx op.output ]) ops in
       union_many_expr_effects ctx (op_effects @ [ collect_effects (Ctx.define ctx name eff_ty eff) body ])
+  | Surface.TraitDef { name; params; fields; body } ->
+      let trait_info, trait_ty = elaborate_trait ctx name params fields in
+      let body_ctx = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
+      union_many_expr_effects ctx (List.map (fun (_, ty) -> collect_effects ctx ty) fields @ [ collect_effects body_ctx body ])
+  | Surface.ImplDef { trait_path = []; trait_name; args; fields; body } ->
+      let ctx', impl_effects, _impl_name, _impl_ty, _impl_core = elaborate_impl ctx trait_name args fields in
+      union_many_expr_effects ctx (impl_effects @ [ collect_effects ctx' body ])
+  | Surface.ImplDef { trait_path = _ :: _; trait_name; _ } ->
+      raise (ElabError (UnknownTrait trait_name))
   | Surface.Match (scrutinee, branches) ->
       let value_branches = surface_value_branches branches in
       let effect_branches = surface_effect_branches branches in
@@ -1024,8 +1356,8 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Annotated { inner; typ } ->
       require_empty_effects (collect_effects ctx typ);
       let ty_core, ty_ty = infer ctx typ in
-      Ctx.unify ctx ty_ty VU;
       let ty_val = Ctx.eval ctx ty_core in
+      check_type_like ctx ty_ty ty_val;
       let core = check ctx inner ty_val in
       (core, ty_val)
   | Prod elems ->
@@ -1039,23 +1371,76 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           (fun elem ->
             require_empty_effects (collect_effects ctx elem);
             let elem_core, elem_ty = infer ctx elem in
-            Ctx.unify ctx elem_ty VU;
+            check_type_like ctx elem_ty (Ctx.eval ctx elem_core);
             elem_core)
           elems
       in
       (ProdTy core_elems, VU)
+  | Arrow (Surface.Implicit, Some name, a, effects, b) -> (
+      match surface_trait_bound_names a with
+      | Some trait_names when List.for_all (fun trait_name -> NameMap.mem trait_name ctx.Ctx.traits) trait_names ->
+          let type_ctx = Ctx.bind ctx name VU in
+          let arg = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
+          let dict_ctx, dict_layers =
+            List.fold_left
+              (fun (c, layers) trait_name ->
+                let trait_info = lookup_trait ctx trait_name in
+                let dict_ty = trait_dict_ty trait_name [ arg ] (eval_trait_fields ctx trait_info [ arg ]) in
+                let dict_core = Ctx.quote c dict_ty in
+                let c', entry = Ctx.bind_anonymous c dict_ty in
+                let evidence =
+                  { evidence_trait_id = trait_info.trait_id;
+                    evidence_trait_name = trait_name;
+                    evidence_args = [ arg ];
+                    evidence_level = entry.level;
+                    evidence_ty = dict_ty }
+                in
+                (Ctx.add_trait_evidence c' evidence, layers @ [ dict_core ]))
+              (type_ctx, []) trait_names
+          in
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects dict_ctx eff)) row.effects) effects;
+          let effects = elaborate_effect_row dict_ctx effects in
+          require_empty_effects (collect_effects dict_ctx b);
+          let b_core, b_ty = infer dict_ctx b in
+          check_type_like dict_ctx b_ty (Ctx.eval dict_ctx b_core);
+          let core =
+            Pi
+              { explicitness = Implicit;
+                domain = U;
+                effects;
+                codomain =
+                  List.fold_right
+                    (fun dict_core codomain ->
+                      Pi { explicitness = Implicit; domain = dict_core; effects = empty_effect_row; codomain })
+                    dict_layers b_core }
+          in
+          (core, VU)
+      | _ ->
+          require_empty_effects (collect_effects ctx a);
+          let a_core, a_ty = infer ctx a in
+          let a_val = Ctx.eval ctx a_core in
+          check_type_like ctx a_ty a_val;
+          let ctx' = Ctx.bind ctx name a_val in
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) effects;
+          let effects = elaborate_effect_row ctx' effects in
+          require_empty_effects (collect_effects ctx' b);
+          let b_core, b_ty = infer ctx' b in
+          check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
+          (Pi { explicitness = Implicit; domain = a_core; effects; codomain = b_core }, VU))
   | Arrow (expl, name, a, effects, b) ->
       require_empty_effects (collect_effects ctx a);
       let a_core, a_ty = infer ctx a in
-      Ctx.unify ctx a_ty VU;
       let a_val = Ctx.eval ctx a_core in
+      check_type_like ctx a_ty a_val;
       let ctx' = Ctx.bind ctx (Option.value name ~default:"_") a_val in
       Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) effects;
       let effects = elaborate_effect_row ctx' effects in
       require_empty_effects (collect_effects ctx' b);
       let b_core, b_ty = infer ctx' b in
-      Ctx.unify ctx' b_ty VU;
+      check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
       (Pi { explicitness = expl_of_surface expl; domain = a_core; effects; codomain = b_core }, VU)
+  | FieldAccess (Var trait_name, name) when NameMap.mem trait_name ctx.Ctx.traits ->
+      resolve_trait_method ctx (lookup_trait ctx trait_name) name
   | FieldAccess (e, name) ->
       let e_core, e_ty = infer ctx e in
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
@@ -1125,8 +1510,9 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let con_cores =
         List.map (fun (name, ty_expr) ->
           let ty_core, ty_ty = infer ctx ty_expr in
-          Ctx.unify ctx ty_ty VU;
-          (name, ty_core, Ctx.eval ctx ty_core))
+          let ty_value = Ctx.eval ctx ty_core in
+          check_type_like ctx ty_ty ty_value;
+          (name, ty_core, ty_value))
         con_fields
       in
       let self_ty =
@@ -1146,8 +1532,9 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               match param.Surface.type_ with
               | Some ty_expr ->
                   let ty_core, ty_ty = infer ctx ty_expr in
-                  Ctx.unify ctx ty_ty VU;
-                  Ctx.eval ctx ty_core
+                  let ty_value = Ctx.eval ctx ty_core in
+                  check_type_like ctx ty_ty ty_value;
+                  ty_value
               | None -> Ctx.raw_meta ctx
             in
             let ctx' = Ctx.bind ctx param.name a_ty in
@@ -1212,6 +1599,8 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (EffectBind (name, kind, eff) :: acc_binds,
                field @ acc_fields)
               rest
+        | Surface.TraitBinding _ :: _ | Surface.ImplBinding _ :: _ ->
+            raise (ElabError ApplyingNonFunction)
         | Surface.RecordTypeBinding { name; params; fields; public } :: rest ->
             check_duplicate_names (List.map fst fields);
             let rewritten_fields =
@@ -1258,7 +1647,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
                   | None -> (cname, None)
                   | Some payload_expr ->
                       let payload_core, payload_ty = infer ctx payload_expr in
-                      Ctx.unify ctx payload_ty VU;
+                      check_type_like ctx payload_ty (Ctx.eval ctx payload_core);
                       (cname, Some { env = ctx.env; body = payload_core }))
                 ctors
             in
@@ -1383,7 +1772,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             | None -> (cname, None)
             | Some payload_expr ->
                 let payload_core, payload_ty = infer recursive_param_ctx payload_expr in
-                Ctx.unify recursive_param_ctx payload_ty VU;
+                check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
                 let payload_core = close_recursive_payload_term name num_params payload_core in
                 (cname, Some { env = ctx.env @ [ nominal_placeholder ]; body = payload_core }))
           ctors
@@ -1437,7 +1826,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
             | None -> (cname, None)
             | Some payload_expr ->
                 let payload_core, payload_ty = infer recursive_param_ctx payload_expr in
-                Ctx.unify recursive_param_ctx payload_ty VU;
+                check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
                 (cname, Some (close_recursive_payload_term name num_params payload_core)))
           ctors
       in
@@ -1452,6 +1841,17 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let body_core, body_ty = infer body_ctx body in
       (EffectDef { id = effect_id; name; num_params; ops = elaborated_ops; body = body_core },
        body_ty)
+  | TraitDef { name; params; fields; body } ->
+      let trait_info, trait_ty = elaborate_trait ctx name params fields in
+      let body_ctx = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
+      let body_core, body_ty = infer body_ctx body in
+      (Let (U, Atom (Atom.String ("trait:" ^ name)), body_core), body_ty)
+  | ImplDef { trait_path = []; trait_name; args; fields; body } ->
+      let body_ctx, _impl_effects, _impl_name, impl_ty, impl_core = elaborate_impl ctx trait_name args fields in
+      let body_core, body_ty = infer body_ctx body in
+      (Let (Ctx.quote ctx impl_ty, impl_core, body_core), body_ty)
+  | ImplDef { trait_path = _ :: _; trait_name; _ } ->
+      raise (ElabError (UnknownTrait trait_name))
   | Match (scrutinee, branches) ->
       let scrut_core, scrut_ty = infer ctx scrutinee in
       let value_branches = surface_value_branches branches in
@@ -1690,43 +2090,74 @@ and infer_resume (ctx : Ctx.t) (arg : Surface.t) : term * value =
 and infer_ap (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
   let f_core, f_ty = infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in
-  (* Insert metas for leading implicit VPi layers *)
-  let rec insert_implicits f_core f_ty =
-    match f_ty with
-    | VPi { explicitness = Implicit; domain = _; codomain = b_clo; _ } ->
-        let meta_core = Ctx.fresh_meta ctx in
-        let meta_val = Ctx.eval ctx meta_core in
-        let ret_ty = Nbe.closure_apply ctx.metas b_clo meta_val in
-        insert_implicits (Ap (f_core, Implicit, meta_core)) ret_ty
-    | _ -> (f_core, f_ty)
+  (* Insert leading implicit arguments before consuming the user's explicit argument. *)
+  let f_core, f_ty = insert_implicit_args ctx f_core f_ty in
+  let rec pending_trait_dicts ty pending =
+    match Nbe.force ctx.metas ty with
+    | VPi { explicitness = Implicit; domain; codomain; _ } -> (
+        match resolve_trait_dict_ty ctx domain with
+        | Some (trait_info, args, _) -> (
+            match resolve_trait_evidence ctx trait_info args with
+            | _ -> None
+            | exception ElabError (UnknownTrait _) ->
+                let dict_placeholder = Ctx.raw_meta ctx in
+                pending_trait_dicts
+                  (Nbe.closure_apply ctx.metas codomain dict_placeholder)
+                  (pending @ [ (trait_info, args) ]))
+        | None -> None)
+    | ty -> if pending = [] then None else Some (pending, ty)
   in
-  let f_core, f_ty = insert_implicits f_core f_ty in
+  let apply_pending_trait_dicts pending core =
+    List.fold_left
+      (fun core (trait_info, args) ->
+        let evidence_core, _ = resolve_trait_evidence ctx trait_info args in
+        Ap (core, Implicit, evidence_core))
+      core pending
+  in
   match f_ty with
   | VPi { explicitness = Explicit; domain = a_ty; codomain = b_clo; _ } ->
       let a_core = check ctx a a_ty in
-      let a_val = Ctx.eval ctx a_core in
-      let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
-      (Ap (f_core, Explicit, a_core), Nbe.force ctx.metas ret_ty)
-  | VFlex _ | VRigid _ | VNeutral _ ->
-      let a_ty = Ctx.raw_meta ctx in
-      let a_core = check ctx a a_ty in
-      let a_val = Ctx.eval ctx a_core in
-      let ret_meta = Ctx.raw_meta (Ctx.bind ctx "_" a_ty) in
-      let expected_f_ty =
-        VPi
-          { explicitness = Explicit;
-            domain = a_ty;
-            effects = effect_row_closure ctx.env empty_effect_row;
-            codomain = { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta } }
-      in
-      Ctx.unify ctx f_ty expected_f_ty;
       let ret_ty =
-        Nbe.closure_apply ctx.metas
-          { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta }
-          a_val
+        if term_mentions_var 0 b_clo.body then
+          let a_val = Ctx.eval ctx a_core in
+          Nbe.closure_apply ctx.metas b_clo a_val
+        else Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] })
       in
-      (Ap (f_core, Explicit, a_core), ret_ty)
-  | _ -> raise (ElabError ApplyingNonFunction)
+      (Ap (f_core, Explicit, a_core), Nbe.force ctx.metas ret_ty)
+  | _ -> (
+      match pending_trait_dicts f_ty [] with
+      | Some (pending, VPi { explicitness = Explicit; domain = a_ty; codomain = b_clo; _ }) ->
+          let a_core = check ctx a a_ty in
+          let f_core = apply_pending_trait_dicts pending f_core in
+          let ret_ty =
+            if term_mentions_var 0 b_clo.body then
+              let a_val = Ctx.eval ctx a_core in
+              Nbe.closure_apply ctx.metas b_clo a_val
+            else Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] })
+          in
+          (Ap (f_core, Explicit, a_core), Nbe.force ctx.metas ret_ty)
+      | _ -> (
+          match f_ty with
+          | VFlex _ | VRigid _ | VNeutral _ ->
+              let a_ty = Ctx.raw_meta ctx in
+              let a_core = check ctx a a_ty in
+              let a_val = Ctx.eval ctx a_core in
+              let ret_meta = Ctx.raw_meta (Ctx.bind ctx "_" a_ty) in
+              let expected_f_ty =
+                VPi
+                  { explicitness = Explicit;
+                    domain = a_ty;
+                    effects = effect_row_closure ctx.env empty_effect_row;
+                    codomain = { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta } }
+              in
+              Ctx.unify ctx f_ty expected_f_ty;
+              let ret_ty =
+                Nbe.closure_apply ctx.metas
+                  { env = ctx.env; body = Ctx.quote (Ctx.bind ctx "_" a_ty) ret_meta }
+                  a_val
+              in
+              (Ap (f_core, Explicit, a_core), ret_ty)
+          | _ -> raise (ElabError ApplyingNonFunction)))
 
 (** Explicit implicit application ([f {arg}]). *)
 and infer_ap_implicit (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
@@ -1824,8 +2255,9 @@ and infer_let (ctx : Ctx.t) (name : string) (type_ : Surface.t option)
       match type_ with
       | Some ty_expr ->
           let ty_core, ty_ty = infer ctx ty_expr in
-          Ctx.unify ctx ty_ty VU;
-          Ctx.eval ctx ty_core
+          let ty_val = Ctx.eval ctx ty_core in
+          check_type_like ctx ty_ty ty_val;
+          ty_val
       | None -> Ctx.raw_meta ctx
     in
     let ctx_with_self = Ctx.bind ctx name rec_ty in
@@ -1841,8 +2273,8 @@ and infer_let (ctx : Ctx.t) (name : string) (type_ : Surface.t option)
       match type_ with
       | Some ty_expr ->
           let ty_core, ty_ty = infer ctx ty_expr in
-          Ctx.unify ctx ty_ty VU;
           let ty_val = Ctx.eval ctx ty_core in
+          check_type_like ctx ty_ty ty_val;
           let core = check ctx value ty_val in
           (core, ty_val)
       | None -> infer ctx value
@@ -1877,9 +2309,9 @@ and elaborate_eff_family (ctx : Ctx.t) (name : string) (params : string list)
     List.map
       (fun (op : Surface.effect_op) ->
         let input_core, input_ty = infer param_ctx op.input in
-        check_type_or_record_type param_ctx input_ty (Ctx.eval param_ctx input_core);
+        check_type_like param_ctx input_ty (Ctx.eval param_ctx input_core);
         let output_core, output_ty = infer param_ctx op.output in
-        check_type_or_record_type param_ctx output_ty (Ctx.eval param_ctx output_core);
+        check_type_like param_ctx output_ty (Ctx.eval param_ctx output_core);
         (op.name, input_core, output_core))
       ops
   in
@@ -1960,8 +2392,9 @@ and infer_lam (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
     match param.type_ with
     | Some ty_expr ->
         let ty_core, ty_ty = infer ctx ty_expr in
-        Ctx.unify ctx ty_ty VU;
-        Ctx.eval ctx ty_core
+        let ty_val = Ctx.eval ctx ty_core in
+        check_type_like ctx ty_ty ty_val;
+        ty_val
     | None ->
         Ctx.raw_meta ctx
   in
@@ -1980,11 +2413,32 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       if expl_of_surface param.explicitness <> explicitness then raise (ElabError ApplyingNonFunction);
       let ctx' = Ctx.bind ctx param.name a_ty in
       let binder = VRigid { lvl = ctx.lvl; spine = [] } in
+      let rec insert_hidden_dicts ctx body_ty inserted =
+        match Nbe.force ctx.Ctx.metas body_ty with
+        | VPi { explicitness = Implicit; domain; codomain; _ } -> (
+            match resolve_trait_dict_ty ctx domain with
+            | Some (trait_info, args, dict_ty) ->
+                let ctx', entry = Ctx.bind_anonymous ctx dict_ty in
+                let evidence =
+                  { evidence_trait_id = trait_info.trait_id;
+                    evidence_trait_name = trait_info.trait_name;
+                    evidence_args = args;
+                    evidence_level = entry.level;
+                    evidence_ty = dict_ty }
+                in
+                let dict_value = VRigid { lvl = entry.level; spine = [] } in
+                insert_hidden_dicts (Ctx.add_trait_evidence ctx' evidence)
+                  (Nbe.closure_apply ctx.Ctx.metas codomain dict_value)
+                  (inserted + 1)
+            | None -> (ctx, body_ty, inserted))
+        | _ -> (ctx, body_ty, inserted)
+      in
       let b_ty = Nbe.closure_apply ctx.metas b_clo binder in
-      let body_core = check ctx' body b_ty in
-      let body_effects = collect_effects ctx' body in
-      check_effect_subset ctx' body_effects (effect_row_values ctx effects binder);
-      Lam body_core
+      let body_ctx, body_expected, inserted = insert_hidden_dicts ctx' b_ty 0 in
+      let body_core = check body_ctx body body_expected in
+      let body_effects = collect_effects body_ctx body in
+      check_effect_subset body_ctx body_effects (effect_row_values ctx effects binder);
+      Lam (List.fold_left (fun acc _ -> Lam acc) body_core (List.init inserted Fun.id))
   | Match (scrutinee, branches), VPi _ ->
       let scrutinee_effects = collect_effects ctx scrutinee in
       let effect_branches = surface_effect_branches branches in
@@ -2022,8 +2476,9 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
           match type_ with
           | Some ty_expr ->
               let ty_core, ty_ty = infer ctx ty_expr in
-              Ctx.unify ctx ty_ty VU;
-              Ctx.eval ctx ty_core
+              let ty_val = Ctx.eval ctx ty_core in
+              check_type_like ctx ty_ty ty_val;
+              ty_val
           | None -> Ctx.raw_meta ctx
         in
         let ctx_with_self = Ctx.bind ctx name rec_ty in
@@ -2039,8 +2494,8 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
           match type_ with
           | Some ty_expr ->
               let ty_core, ty_ty = infer ctx ty_expr in
-              Ctx.unify ctx ty_ty VU;
               let ty_val = Ctx.eval ctx ty_core in
+              check_type_like ctx ty_ty ty_val;
               let core = check ctx value ty_val in
               (core, ty_val)
           | None -> infer ctx value
@@ -2088,10 +2543,15 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       in
       let core, inferred = wrap_implicits core inferred in
       if Ctx.conv ctx expected VU then
-        check_type_or_record_type ctx inferred (Ctx.eval ctx core)
+        check_type_like ctx inferred (Ctx.eval ctx core)
       else
         Ctx.unify ctx expected inferred;
       core
+
+let () =
+  infer_ref := infer;
+  check_ref := check;
+  collect_effects_ref := collect_effects
 
 (** Build the initial elaboration context with built-in types ([I64],
     [Bool], [Unit], [Char], [Type]) and primitive operators. *)
@@ -2118,8 +2578,8 @@ let init_ctx () : Ctx.t =
           match type_ with
           | Some ty_expr ->
               let ty_core, ty_ty = infer ctx ty_expr in
-              Ctx.unify ctx ty_ty VU;
               let ty_val = Ctx.eval ctx ty_core in
+              check_type_like ctx ty_ty ty_val;
               (check ctx value ty_val, ty_val)
           | None -> infer ctx value
         in

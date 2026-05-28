@@ -48,20 +48,27 @@ Completed milestones:
 
 This is a real prototype goal because it exercises the dependent core and the language's intended flexibility without requiring the macro system first.
 
-### 3. Typeclasses / protocols / ad-hoc polymorphism
+### 3. Traits / ad-hoc polymorphism
 
-Resolve long-term equality and ad-hoc polymorphism for nominal and record values. The first design target should be an explicit protocol/typeclass-like mechanism that fits the existing dependent core, implicit arguments, and type-case direction rather than copying Haskell-style typeclasses wholesale.
+Nominal `trait` declarations are the chosen mechanism for ad-hoc polymorphism. The current prototype adds local trait declarations, `impl` declarations, hidden dictionary evidence, trait-bound implicit parameters such as `{A : Eq}` and `{A : Eq + Jsonable}`, qualified method calls such as `Eq.eq x y`, and tests for direct and generic dispatch.
 
-Likely milestones:
+Completed milestones:
 
-- decide whether this is called typeclasses, protocols, instances, or another language-specific term;
-- define equality for nominal values without defaulting to accidental structural equality;
+- chose the feature name and surface shape: `trait`, `impl`, and qualified trait method calls;
+- added parser and AST support for trait/impl declarations in expressions and structs;
+- added hidden dictionary binders for trait-bound implicit function types;
+- added local implementation lookup, dictionary passing, and ambiguity detection;
+- added semantic tests for trait declaration, implementation checking, method dispatch, bound dispatch, missing impls, duplicate fields, and missing fields.
+
+Remaining milestones:
+
+- define equality conventions for nominal values without defaulting to accidental structural equality;
 - define equality or derivation behavior for record values;
-- decide how instance/protocol lookup interacts with implicit arguments;
-- decide whether type-case can implement part of the mechanism directly;
-- add tests for equality and other small protocol-style operations over primitive, nominal, and record types.
+- integrate public/imported implementations with module visibility rules;
+- decide whether type-case should help implement deriving or fallback behavior;
+- add more protocol-style operations over primitive, nominal, and record types.
 
-This should come after initial type-case work because type-directed dispatch is the foundation for the simplest version of the feature.
+The near-term design details live in `docs/11.trait_plan.md`.
 
 ### 4. Algebraic effects hardening
 

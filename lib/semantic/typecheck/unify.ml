@@ -6,7 +6,7 @@ type unify_error =
   | VarNotInSpine of lvl
   | NeutralVarNotInSpine of lvl
   | OccursCheck
-  | CannotUnify
+  | CannotUnify of string
   | TupleLengthMismatch
   | SpineLengthMismatch
   | NeutralHeadMismatch
@@ -145,7 +145,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
-    | VCont _ -> raise (UnifyError CannotUnify)
+    | VCont _ -> raise (UnifyError (CannotUnify "cannot quote continuation during unification"))
     | VNeutral { neutral = neu; _ } -> go_neutral d neu
   and go_spine (d : lvl) (head : term) (sp : spine) : term =
     List.fold_left (fun acc v -> Ap (acc, Explicit, go d v)) head sp
@@ -244,6 +244,33 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
      - VFlex vs anything → [solve] the metavariable.
      - VNeutral → decompose head + frames.
      - Otherwise → [CannotUnify]. *)
+let value_form = function
+  | VU -> "Type"
+  | VAtom atom -> "atom " ^ Atom.pp atom
+  | VAtomTy atom_ty ->
+      "atom type "
+      ^ (match atom_ty with
+        | TI64 -> "I64"
+        | TBool -> "Bool"
+        | TUnit -> "Unit"
+        | TChar -> "Char"
+        | TString -> "String"
+        | TAbsurd -> "Absurd")
+  | VPi _ -> "function type"
+  | VLam _ -> "lambda"
+  | VProd _ -> "tuple value"
+  | VProdTy _ -> "tuple type"
+  | VStruct _ -> "struct type/value"
+  | VRecord _ -> "record value"
+  | VNominal n -> "nominal type " ^ n.name
+  | VEffect e -> "effect " ^ e.name
+  | VCon c -> "constructor " ^ c.name
+  | VRigid { lvl; _ } -> Printf.sprintf "rigid #%d" lvl
+  | VFlex { id; _ } -> Printf.sprintf "meta ?%d" id
+  | VNeutral _ -> "neutral"
+  | VFix _ -> "fixpoint"
+  | VCont _ -> "continuation"
+
 let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : value) : unit =
   let v1 = Nbe.force mc v1 in
   let v2 = Nbe.force mc v2 in
@@ -324,7 +351,8 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       unify_spine mc env depth sp1 sp2
   | VFlex { id; spine = sp }, v | v, VFlex { id; spine = sp } -> solve mc env id sp v
   | VCon c1, VCon c2 ->
-      if not (String.equal c1.name c2.name) then raise (UnifyError CannotUnify);
+      if not (String.equal c1.name c2.name) then
+        raise (UnifyError (CannotUnify ("constructor mismatch: " ^ c1.name ^ " vs " ^ c2.name)));
       unify_spine mc env depth c1.spine c2.spine
   | VNeutral { neutral = n1; _ }, VNeutral { neutral = n2; _ } -> unify_neutral mc env depth n1 n2
   | VFix { body = clo1; _ }, VFix { body = clo2; _ } ->
@@ -334,7 +362,7 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
         (Nbe.closure_apply mc clo2 var)
   | _ ->
       raise
-        (UnifyError CannotUnify)
+        (UnifyError (CannotUnify (value_form v1 ^ " vs " ^ value_form v2)))
 
 (** Unify two argument lists pointwise. Both spines must have the same
     length — a variable with different arities can't be unified. *)

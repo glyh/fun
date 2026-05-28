@@ -22,6 +22,8 @@ let rec token buf =
   | "open" -> OPEN
   | "type" -> TYPE
   | "effect" -> EFFECT
+  | "trait" -> TRAIT
+  | "impl" -> IMPL
   | "can" -> CAN
   | "perform" -> PERFORM
   | "resume" -> RESUME

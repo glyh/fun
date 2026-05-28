@@ -29,7 +29,12 @@ let () =
 	             | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
 	          | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
 	          | EffectOperationPathExpected -> "EffectOperationPathExpected"
-	          | UnhandledEffects -> "UnhandledEffects"))
+	          | UnhandledEffects -> "UnhandledEffects"
+	          | UnknownTrait n -> "UnknownTrait \"" ^ n ^ "\""
+	          | UnknownTraitMethod n -> "UnknownTraitMethod \"" ^ n ^ "\""
+	          | DuplicateTraitField n -> "DuplicateTraitField \"" ^ n ^ "\""
+	          | MissingTraitField n -> "MissingTraitField \"" ^ n ^ "\""
+	          | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""))
     | _ -> None)
 
 let mc () = MetaContext.create ()

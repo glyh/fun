@@ -24,7 +24,12 @@ let () =
 	             | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
 	             | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
 	             | EffectOperationPathExpected -> "EffectOperationPathExpected"
-	             | UnhandledEffects -> "UnhandledEffects"))
+	             | UnhandledEffects -> "UnhandledEffects"
+	             | UnknownTrait n -> "UnknownTrait \"" ^ n ^ "\""
+	             | UnknownTraitMethod n -> "UnknownTraitMethod \"" ^ n ^ "\""
+	             | DuplicateTraitField n -> "DuplicateTraitField \"" ^ n ^ "\""
+	             | MissingTraitField n -> "MissingTraitField \"" ^ n ^ "\""
+	             | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""))
     | Core_loader.CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
     | Core_loader.ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
     | Unify.UnifyError e ->
@@ -35,7 +40,7 @@ let () =
           | VarNotInSpine l -> Printf.sprintf "VarNotInSpine %d" l
           | NeutralVarNotInSpine l -> Printf.sprintf "NeutralVarNotInSpine %d" l
           | OccursCheck -> "OccursCheck"
-          | CannotUnify -> "CannotUnify"
+          | CannotUnify msg -> "CannotUnify \"" ^ msg ^ "\""
           | TupleLengthMismatch -> "TupleLengthMismatch"
           | SpineLengthMismatch -> "SpineLengthMismatch"
           | NeutralHeadMismatch -> "NeutralHeadMismatch"
@@ -930,6 +935,33 @@ let implicit_args =
            let _ : Bool = g (Some true) in ()"));
   ]
 
+let traits =
+  [
+    Alcotest.test_case "trait declaration" `Quick
+      (elab_ok "trait Eq A = struct eq : A -> A -> Bool end in Eq");
+    Alcotest.test_case "impl declaration" `Quick
+      (elab_ok "trait Eq A = struct eq : A -> A -> Bool end in impl Eq I64 = struct let eq x y = x == y end in 0");
+    Alcotest.test_case "trait method dispatch" `Quick
+      (check_type
+         "trait Eq A = struct eq : A -> A -> Bool end in \
+          impl Eq I64 = struct let eq x y = x == y end in Eq.eq 1 1"
+         (AtomTy TBool));
+    Alcotest.test_case "trait bound dispatch" `Quick
+      (check_type
+         "trait Eq A = struct eq : A -> A -> Bool end in \
+          impl Eq I64 = struct let eq x y = x == y end in \
+          let same : {A : Eq} -> A -> A -> Bool = fun {A : Type} x y -> Eq.eq x y in same 1 1"
+         (AtomTy TBool));
+    Alcotest.test_case "missing impl rejected" `Quick
+      (elab_fail
+         "trait Eq A = struct eq : A -> A -> Bool end in \
+          let same : {A : Eq} -> A -> A -> Bool = fun {A : Type} x y -> Eq.eq x y in same true false");
+    Alcotest.test_case "duplicate trait field rejected" `Quick
+      (elab_fail "trait Bad A = struct f : A; f : A end in Bad");
+    Alcotest.test_case "impl missing field rejected" `Quick
+      (elab_fail "trait Eq A = struct eq : A -> A -> Bool end in impl Eq I64 = struct end in 0");
+  ]
+
 let effects =
   [
     Alcotest.test_case "effect instance has type Type" `Quick
@@ -1187,6 +1219,7 @@ let () =
       ("adts", adts);
       ("match", match_tests);
       ("implicit_args", implicit_args);
+      ("traits", traits);
       ("effects", effects);
       ("imports", imports);
       ("let_rec", let_rec);

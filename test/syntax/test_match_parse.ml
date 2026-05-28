@@ -121,6 +121,26 @@ let struct_type_pattern_nominal_field_shape () =
   | Match (_, [ ValueBranch (PatStructType { fields = [ ("value", PatCon ([], "Option", [ PatBind "x" ])) ]; partial = true }, Var "x"); _ ]) -> ()
   | _ -> Alcotest.fail "expected struct type pattern with nominal field pattern"
 
+let trait_decl_shape () =
+  match Core_lexer.parse_expr "trait Eq A = struct eq : A -> A -> Bool end in Eq" with
+  | TraitDef { name = "Eq"; params = [ "A" ]; fields = [ ("eq", Arrow (Explicit, None, Var "A", None, Arrow (Explicit, None, Var "A", None, Var "Bool"))) ]; body = Var "Eq" } -> ()
+  | _ -> Alcotest.fail "expected trait declaration"
+
+let impl_decl_shape () =
+  match Core_lexer.parse_expr "impl Eq I64 = struct let eq x y = x == y end in Eq.eq" with
+  | ImplDef { trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; body = FieldAccess (Var "Eq", "eq") } -> ()
+  | _ -> Alcotest.fail "expected impl declaration"
+
+let single_trait_bound_shape () =
+  match Core_lexer.parse_expr "{A : Eq} -> A -> A" with
+  | Arrow (Implicit, Some "A", Var "Eq", None, Arrow (Explicit, None, Var "A", None, Var "A")) -> ()
+  | _ -> Alcotest.fail "expected single trait bound"
+
+let multi_trait_bound_shape () =
+  match Core_lexer.parse_expr "{A : Eq + Jsonable} -> A" with
+  | Arrow (Implicit, Some "A", Ap (Ap (Var "+", Explicit, Var "Eq"), Explicit, Var "Jsonable"), None, Var "A") -> ()
+  | _ -> Alcotest.fail "expected multi trait bound"
+
 let () =
   Alcotest.run "syntax"
     [
@@ -147,6 +167,10 @@ let () =
           Alcotest.test_case "struct type pattern open shape" `Quick struct_type_pattern_open_shape;
           Alcotest.test_case "struct type pattern closed shape" `Quick struct_type_pattern_closed_shape;
           Alcotest.test_case "struct type pattern nominal field shape" `Quick struct_type_pattern_nominal_field_shape;
+          Alcotest.test_case "trait declaration shape" `Quick trait_decl_shape;
+          Alcotest.test_case "impl declaration shape" `Quick impl_decl_shape;
+          Alcotest.test_case "single trait bound shape" `Quick single_trait_bound_shape;
+          Alcotest.test_case "multi trait bound shape" `Quick multi_trait_bound_shape;
           Alcotest.test_case "resume without argument rejected" `Quick (parse_fail "resume");
         ] );
     ]

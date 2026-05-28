@@ -64,7 +64,7 @@ let split_operation_path path name =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE EFFECT METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME
+%token STRUCT END OPEN PUB TYPE EFFECT TRAIT IMPL METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
@@ -93,6 +93,12 @@ expr:
   | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END; IN; body = expr
     { EffectDef { name; params; ops; body } }
+  | TRAIT; name = ID; params = list(ID); EQUALS; STRUCT;
+    fields = separated_list(SEMI, trait_field_decl); END; IN; body = expr
+    { TraitDef { name; params; fields; body } }
+  | IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
+    fields = separated_list(SEMI, impl_field_decl); END; IN; body = expr
+    { let trait_path, trait_name = trait_name in ImplDef { trait_path; trait_name; args; fields; body } }
   | LET; REC; name = ID; ty = option(preceded(COLON, expr)); EQUALS; value = expr; IN; body = expr
     { Let { name; type_ = ty; value; body; recursive = true } }
   | FUN; ps = nonempty_list(param); ARROW; body = expr
@@ -174,6 +180,13 @@ struct_field_decl:
 record_type_field_decl:
   | name = ID; COLON; ty = expr { (name, ty) }
 
+trait_field_decl:
+  | name = ID; COLON; ty = expr { (name, ty) }
+
+impl_field_decl:
+  | LET; name = ID; params = list(param); EQUALS; body = expr
+    { let value = List.fold_right (fun p acc -> Lam (p, acc)) params body in (name, value) }
+
 effect_op_decl:
   | name = ID; COLON; input = type_expr; ARROW; output = type_expr
     { { name; input; output } }
@@ -190,6 +203,12 @@ struct_binding:
   | PUB; LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END
     { EffectBinding { name; params; ops; public = true } }
+  | PUB; TRAIT; name = ID; params = list(ID); EQUALS; STRUCT;
+    fields = separated_list(SEMI, trait_field_decl); END
+    { TraitBinding { name; params; fields; public = true } }
+  | PUB; IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
+    fields = separated_list(SEMI, impl_field_decl); END
+    { let trait_path, trait_name = trait_name in ImplBinding { trait_path; trait_name; args; fields; public = true } }
   | LET; name = binding_name; EQUALS; rhs = let_rhs
     { match rhs with
       | `Value value -> LetBinding { name; value; public = false }
@@ -197,6 +216,12 @@ struct_binding:
   | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END
     { EffectBinding { name; params; ops; public = false } }
+  | TRAIT; name = ID; params = list(ID); EQUALS; STRUCT;
+    fields = separated_list(SEMI, trait_field_decl); END
+    { TraitBinding { name; params; fields; public = false } }
+  | IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
+    fields = separated_list(SEMI, impl_field_decl); END
+    { let trait_path, trait_name = trait_name in ImplBinding { trait_path; trait_name; args; fields; public = false } }
   | PUB; METHOD; name = ID; params = list(param); ARROW; body = expr
     { MethodBinding { name; params; body; public = true } }
   | METHOD; name = ID; params = list(param); ARROW; body = expr
@@ -319,6 +344,6 @@ expr_primary:
     { Prod (e1 :: rest) }
 
 param:
-  | name = ID { { name; type_ = None; explicitness = Explicit } }
-  | LPAREN; name = ID; COLON; ty = expr; RPAREN { { name; type_ = Some ty; explicitness = Explicit } }
-  | LBRACE; name = ID; COLON; ty = expr; RBRACE { { name; type_ = Some ty; explicitness = Implicit } }
+  | name = ID { { name; type_ = None; trait_bounds = []; explicitness = Explicit } }
+  | LPAREN; name = ID; COLON; ty = expr; RPAREN { { name; type_ = Some ty; trait_bounds = []; explicitness = Explicit } }
+  | LBRACE; name = ID; COLON; ty = expr; RBRACE { { name; type_ = Some ty; trait_bounds = []; explicitness = Implicit } }
