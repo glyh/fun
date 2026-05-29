@@ -207,10 +207,10 @@ let operators =
 let equality_rejections =
   [
     Alcotest.test_case "mismatch rejection" `Quick (elab_fail "1 == true");
-    Alcotest.test_case "nominal equality accepted statically" `Quick
-      (check_type "type Color = Red in Red == Red" (AtomTy TBool));
-    Alcotest.test_case "record equality accepted statically" `Quick
-      (check_type "type Point = {x: I64} in Point {x = 1} == Point {x = 1}" (AtomTy TBool));
+    Alcotest.test_case "nominal equality requires impl" `Quick
+      (elab_fail "type Color = Red in Red == Red");
+    Alcotest.test_case "record equality requires impl" `Quick
+      (elab_fail "type Point = {x: I64} in Point {x = 1} == Point {x = 1}");
   ]
 
 let dependent =
@@ -996,18 +996,19 @@ let effects =
       (check_type
          "let State S = effect get : Unit -> S end in State"
          (pi Explicit U U));
-    Alcotest.test_case "same effect family and params compare equal" `Quick
-      (check_type
-         "let State S = effect get : Unit -> S end in State I64 == State I64"
-         (AtomTy TBool));
+    Alcotest.test_case "same effect family and params convert" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S end in \
+          ((fun x -> x : Unit -> Unit can State I64) : Unit -> Unit can State I64)");
     Alcotest.test_case "different effect params elaborate" `Quick
       (check_type
-         "let State S = effect get : Unit -> S end in State I64 != State Bool"
-         (AtomTy TBool));
+         "let State S = effect get : Unit -> S end in Unit -> I64 can State Bool"
+         U);
     Alcotest.test_case "identical signatures remain nominal" `Quick
-      (check_type
-         "let State S = effect get : Unit -> S end in let Env S = effect get : Unit -> S end in State I64 != Env I64"
-         (AtomTy TBool));
+      (elab_fail
+         "let State S = effect get : Unit -> S end in \
+          let Env S = effect get : Unit -> S end in \
+          ((fun x -> x : Unit -> Unit can State I64) : Unit -> Unit can Env I64)");
     Alcotest.test_case "public effect field through dot" `Quick
       (check_type
          "let M = module pub let State S = effect get : Unit -> S end end in M.State I64"

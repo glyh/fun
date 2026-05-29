@@ -619,11 +619,11 @@ let test_eval_type_case_type_name_i64 () =
 let test_eval_type_case_type_name_string () =
   check_bool "type-case type_name String" true (type_name_source "type_name String == \"string\"") ()
 
-let test_eval_equality_nominal_panics () =
+let test_eval_equality_nominal_rejected () =
   match eval_source "type Color = Red in Red == Red" with
-  | exception Nbe.EvalError "equality not defined for this type" -> ()
+  | exception Elaborate.ElabError (UnknownTrait "Eq") -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected equality panic"
+  | _ -> Alcotest.fail "expected missing Eq impl"
 
 let test_eval_type_case_nominal_full_application () =
   check_i64 "type-case nominal full application" 1L
@@ -765,7 +765,7 @@ let () =
           Alcotest.test_case "eq unit" `Quick (check_bool "eq unit" true "() == ()");
           Alcotest.test_case "eq string" `Quick (check_bool "eq string" true "\"hello\" == \"hello\"");
           Alcotest.test_case "neq string" `Quick (check_bool "neq string" true "\"hello\" != \"world\"");
-          Alcotest.test_case "eq nominal panics" `Quick test_eval_equality_nominal_panics;
+          Alcotest.test_case "eq nominal rejected" `Quick test_eval_equality_nominal_rejected;
           Alcotest.test_case "panic message" `Quick (fun () ->
               match eval_source "panic {I64} \"test message\"" with
               | exception Nbe.EvalError "test message" -> ()

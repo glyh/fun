@@ -56,6 +56,11 @@ let split_operation_path path name =
   match List.rev (path @ [name]) with
   | op :: effect_rev when effect_rev <> [] -> (List.rev effect_rev, op)
   | _ -> failwith "perform requires an effect operation path"
+
+let annotated_binding value typ =
+  match typ with
+  | Some typ -> Annotated { inner = value; typ }
+  | None -> value
 %}
 
 %token <int64> INT
@@ -201,10 +206,12 @@ let_rhs:
   | value = expr { `Value value }
 
 module_binding:
-  | PUB; LET; name = binding_name; EQUALS; rhs = let_rhs
+  | PUB; LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs
     { match rhs with
-      | `Value value -> LetBinding { name; value; public = true }
-      | `Effect ops -> EffectBinding { name; params = []; ops; public = true } }
+      | `Value value -> LetBinding { name; value = annotated_binding value ty; public = true }
+      | `Effect ops ->
+          if Option.is_some ty then failwith "effect bindings cannot have let annotations";
+          EffectBinding { name; params = []; ops; public = true } }
   | PUB; LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END
     { EffectBinding { name; params; ops; public = true } }
@@ -214,10 +221,12 @@ module_binding:
   | PUB; IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
     fields = separated_list(SEMI, impl_field_decl); END
     { let trait_path, trait_name = trait_name in ImplBinding { trait_path; trait_name; args; fields; public = true } }
-  | LET; name = binding_name; EQUALS; rhs = let_rhs
+  | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs
     { match rhs with
-      | `Value value -> LetBinding { name; value; public = false }
-      | `Effect ops -> EffectBinding { name; params = []; ops; public = false } }
+      | `Value value -> LetBinding { name; value = annotated_binding value ty; public = false }
+      | `Effect ops ->
+          if Option.is_some ty then failwith "effect bindings cannot have let annotations";
+          EffectBinding { name; params = []; ops; public = false } }
   | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END
     { EffectBinding { name; params; ops; public = false } }
@@ -241,10 +250,12 @@ module_binding:
     { TypeBinding { name; params; ctors; public = false } }
 
 struct_binding:
-  | PUB; LET; name = binding_name; EQUALS; rhs = let_rhs
+  | PUB; LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs
     { match rhs with
-      | `Value value -> LetBinding { name; value; public = true }
-      | `Effect ops -> EffectBinding { name; params = []; ops; public = true } }
+      | `Value value -> LetBinding { name; value = annotated_binding value ty; public = true }
+      | `Effect ops ->
+          if Option.is_some ty then failwith "effect bindings cannot have let annotations";
+          EffectBinding { name; params = []; ops; public = true } }
   | PUB; LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END
     { EffectBinding { name; params; ops; public = true } }
@@ -254,10 +265,12 @@ struct_binding:
   | PUB; IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
     fields = separated_list(SEMI, impl_field_decl); END
     { let trait_path, trait_name = trait_name in ImplBinding { trait_path; trait_name; args; fields; public = true } }
-  | LET; name = binding_name; EQUALS; rhs = let_rhs
+  | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs
     { match rhs with
-      | `Value value -> LetBinding { name; value; public = false }
-      | `Effect ops -> EffectBinding { name; params = []; ops; public = false } }
+      | `Value value -> LetBinding { name; value = annotated_binding value ty; public = false }
+      | `Effect ops ->
+          if Option.is_some ty then failwith "effect bindings cannot have let annotations";
+          EffectBinding { name; params = []; ops; public = false } }
   | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END
     { EffectBinding { name; params; ops; public = false } }
