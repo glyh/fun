@@ -91,6 +91,11 @@ let qualified_effect_branch_shape () =
   | Match (_, [ _; EffectBranch { effect_path = [ "M"; "Exc" ]; op = "raise"; _ } ]) -> ()
   | _ -> Alcotest.fail "expected qualified effect branch"
 
+let resume_arg_shape () =
+  match Core_lexer.parse_expr "match perform Exc.raise 1 with x -> x | effect Exc.raise n -> resume (n + 1) end" with
+  | Match (_, [ _; EffectBranch { body = Resume (Ap (Ap (Var "+", Explicit, Var "n"), Explicit, Atom (Atom.I64 1L))); _ } ]) -> ()
+  | _ -> Alcotest.fail "expected resume with argument"
+
 let tuple_effect_branch_shape () =
   match Core_lexer.parse_expr "match perform Console.log (1, 2) with x -> x | effect Console.log (level, msg) -> level end" with
   | Match (_, [ _; EffectBranch { arg_pat = PatProd [ PatBind "level"; PatBind "msg" ]; _ } ]) -> ()
@@ -171,6 +176,7 @@ let () =
           Alcotest.test_case "dotted field shape" `Quick dotted_field_shape;
           Alcotest.test_case "effect branch shape" `Quick effect_branch_shape;
           Alcotest.test_case "qualified effect branch shape" `Quick qualified_effect_branch_shape;
+          Alcotest.test_case "resume argument shape" `Quick resume_arg_shape;
           Alcotest.test_case "tuple effect branch shape" `Quick tuple_effect_branch_shape;
           Alcotest.test_case "nominal type pattern application shape" `Quick nominal_type_pattern_app_shape;
           Alcotest.test_case "nominal type pattern complex arg shape" `Quick nominal_type_pattern_complex_arg_shape;

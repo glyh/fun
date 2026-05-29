@@ -510,6 +510,15 @@ let test_eval_handler_tuple_payload_pattern () =
      end"
     ()
 
+let test_eval_handler_tuple_payload_binding_order () =
+  check_i64 "handler tuple payload binding order" 38L
+    "let Console = effect log : I64 * I64 -> I64 end in \
+     match perform Console.log (40, 2) with \
+       x -> x \
+     | effect Console.log (level, message) -> level - message \
+     end"
+    ()
+
 let test_eval_handler_record_payload_pattern () =
   check_i64 "handler record payload pattern" 42L
     "let Request = struct value: I64; extra: I64; end in \
@@ -517,6 +526,16 @@ let test_eval_handler_record_payload_pattern () =
      match perform Ask.prompt (Request {value = 40; extra = 2}) with \
        x -> x \
      | effect Ask.prompt Request {value; extra} -> value + extra \
+     end"
+    ()
+
+let test_eval_handler_record_payload_binding_order () =
+  check_i64 "handler record payload binding order" 38L
+    "let Request = struct value: I64; extra: I64; end in \
+     let Ask = effect prompt : Request -> I64 end in \
+     match perform Ask.prompt (Request {value = 40; extra = 2}) with \
+       x -> x \
+     | effect Ask.prompt Request {value; extra} -> value - extra \
      end"
     ()
 
@@ -725,6 +744,71 @@ let test_eval_handler_same_match_branch_effect () =
      end"
     ()
 
+let test_eval_handler_parameterized_dispatch () =
+  check_i64 "handler parameterized dispatch" 11L
+    "let State S = effect get : Unit -> S end in \
+     let StateI64 = State I64 in \
+     let StateBool = State Bool in \
+     match (if perform StateBool.get () then perform StateI64.get () + 1 else 0) with \
+       x -> x \
+     | effect StateI64.get () -> resume 10 \
+     | effect StateBool.get () -> resume true \
+     end"
+    ()
+
+let test_eval_handler_value_branch_handles_same_effect () =
+  check_i64 "handler value branch handles same effect" 42L
+    "let Ask = effect value : Unit -> I64 end in \
+     match 0 with \
+       x -> perform Ask.value () \
+     | effect Ask.value () -> 42 \
+     end"
+    ()
+
+let test_eval_handler_value_branch_bubbles_outer_effect () =
+  check_i64 "handler value branch bubbles outer effect" 42L
+    "let Inner = effect value : Unit -> I64 end in \
+     let Outer = effect value : Unit -> I64 end in \
+     match (match 0 with \
+       x -> perform Outer.value () \
+     | effect Inner.value () -> 0 \
+     end) with \
+       x -> x \
+     | effect Outer.value () -> 42 \
+     end"
+    ()
+
+let test_eval_handler_resumed_continuation_is_deep () =
+  check_i64 "handler resumed continuation is deep" 42L
+    "let Ping = effect hit : I64 -> I64 end in \
+     match (if perform Ping.hit 1 == 41 then perform Ping.hit 2 else 0) with \
+       x -> x \
+     | effect Ping.hit n -> resume (n + 40) \
+     end"
+    ()
+
+let test_eval_handler_outer_handles_residual_effect () =
+  check_i64 "handler outer handles residual effect" 42L
+    "let Inner = effect hit : I64 -> I64 end in \
+     let Outer = effect hit : I64 -> I64 end in \
+     match (match perform Outer.hit 1 with \
+       x -> x \
+     | effect Inner.hit n -> resume n \
+     end) with \
+       x -> x \
+     | effect Outer.hit n -> n + 41 \
+     end"
+    ()
+
+let test_eval_handler_lexical_resume_nested_lambda () =
+  check_i64 "handler lexical resume nested lambda" 41L
+    "let Exc = effect raise : I64 -> I64 end in \
+     match perform Exc.raise 1 with \
+       x -> x \
+     | effect Exc.raise n -> (fun x -> resume (x + 40)) n \
+     end"
+    ()
+
 let test_eval_continuation_reuse_error () =
   let mc = mc () in
   let cont = make_cont (fun value -> Done value) in
@@ -799,7 +883,9 @@ let () =
           Alcotest.test_case "recursive handler ping pong effects" `Quick test_eval_recursive_handler_ping_pong_effects;
           Alcotest.test_case "state handler sequences operations" `Quick test_eval_state_handler_sequences_operations;
           Alcotest.test_case "handler tuple payload pattern" `Quick test_eval_handler_tuple_payload_pattern;
+          Alcotest.test_case "handler tuple payload binding order" `Quick test_eval_handler_tuple_payload_binding_order;
           Alcotest.test_case "handler record payload pattern" `Quick test_eval_handler_record_payload_pattern;
+          Alcotest.test_case "handler record payload binding order" `Quick test_eval_handler_record_payload_binding_order;
           Alcotest.test_case "type-case I64 zero" `Quick test_eval_type_case_i64_zero;
           Alcotest.test_case "type-case I64 nonzero" `Quick test_eval_type_case_i64_nonzero;
           Alcotest.test_case "type-case Bool false" `Quick test_eval_type_case_bool_false;
@@ -828,6 +914,12 @@ let () =
           Alcotest.test_case "type-case struct field fallback" `Quick test_eval_type_case_struct_field_fallback;
           Alcotest.test_case "type-case struct closed rejects extra" `Quick test_eval_type_case_struct_closed_rejects_extra;
           Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
+          Alcotest.test_case "handler parameterized dispatch" `Quick test_eval_handler_parameterized_dispatch;
+          Alcotest.test_case "handler value branch handles same effect" `Quick test_eval_handler_value_branch_handles_same_effect;
+          Alcotest.test_case "handler value branch bubbles outer effect" `Quick test_eval_handler_value_branch_bubbles_outer_effect;
+          Alcotest.test_case "handler resumed continuation is deep" `Quick test_eval_handler_resumed_continuation_is_deep;
+          Alcotest.test_case "handler outer handles residual effect" `Quick test_eval_handler_outer_handles_residual_effect;
+          Alcotest.test_case "handler lexical resume nested lambda" `Quick test_eval_handler_lexical_resume_nested_lambda;
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick
             (check_i64 "match ctor" 1L

@@ -1105,9 +1105,25 @@ let effects =
     Alcotest.test_case "handler continuation type checks" `Quick
       (elab_ok
          "let Exc = effect raise : I64 -> I64 end in (fun _ -> match perform Exc.raise 1 with x -> x | effect Exc.raise n -> resume (n + 1) end : Unit -> I64)");
+    Alcotest.test_case "resume argument type checked" `Quick
+      (elab_fail
+         "let Exc = effect raise : I64 -> I64 end in match perform Exc.raise 1 with x -> x | effect Exc.raise n -> resume true end");
+    Alcotest.test_case "lexical resume in nested lambda type checks" `Quick
+      (elab_ok
+         "let Exc = effect raise : I64 -> I64 end in \
+          (match perform Exc.raise 1 with x -> x | effect Exc.raise n -> (fun x -> resume (x + 1)) n end : I64)");
     Alcotest.test_case "handler branch body type checked" `Quick
       (elab_fail
          "let Exc = effect raise : I64 -> I64 end in (match perform Exc.raise 1 with x -> x | effect Exc.raise n -> true end : I64)");
+    Alcotest.test_case "tuple effect branch payload checked" `Quick
+      (elab_fail
+         "let Console = effect log : I64 * I64 -> I64 end in \
+          match perform Console.log (1, 2) with x -> x | effect Console.log (only) -> only end");
+    Alcotest.test_case "record effect branch payload checked" `Quick
+      (elab_fail
+         "let Request = struct value: I64; extra: I64; end in \
+          let Ask = effect prompt : Request -> I64 end in \
+          match perform Ask.prompt (Request {value = 1; extra = 2}) with x -> x | effect Ask.prompt Request {missing} -> missing end");
     Alcotest.test_case "multi-operation handler remains effectful when partial" `Quick
       (elab_fail
          "let State S = effect get : Unit -> S; put : S -> Unit end in (fun _ -> match perform State.get () with x -> x | effect State.get () -> 0 end : Unit -> I64)");
@@ -1125,6 +1141,29 @@ let effects =
       (elab_ok
          "let State S = effect get : Unit -> S; put : S -> Unit end in \
           (fun _ -> match perform State.get () with x -> x | effect State.get () -> 0 | effect State.put next -> resume () end : Unit -> I64)");
+    Alcotest.test_case "parameterized handlers distinguish effect instances" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S end in \
+          let StateI64 = State I64 in \
+          let StateBool = State Bool in \
+          (fun _ -> \
+            match (if perform StateBool.get () then perform StateI64.get () else 0) with \
+              x -> x \
+            | effect StateI64.get () -> resume 1 \
+            | effect StateBool.get () -> resume true \
+            end \
+           : Unit -> I64)");
+    Alcotest.test_case "parameterized handler remains effectful when instance missing" `Quick
+      (elab_fail
+         "let State S = effect get : Unit -> S end in \
+          let StateI64 = State I64 in \
+          let StateBool = State Bool in \
+          (fun _ -> \
+            match (if perform StateBool.get () then perform StateI64.get () else 0) with \
+              x -> x \
+            | effect StateI64.get () -> resume 1 \
+            end \
+           : Unit -> I64)");
     Alcotest.test_case "handler branch can perform handled effect" `Quick
       (elab_ok
          "let Ping = effect hit : I64 -> I64 end in \

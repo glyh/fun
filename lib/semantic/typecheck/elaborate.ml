@@ -652,7 +652,7 @@ let term_mentions_var target term =
         || List.exists
              (function
                | ValueBranch (_, body) -> go target body
-               | EffectBranch { eff; body; _ } -> go target eff || go target body)
+               | EffectBranch { body; _ } -> go target body)
              branches
     | NominalDef { ctors; body; _ } ->
         List.exists (fun (_, payload) -> match payload with Some payload -> go target payload | None -> false) ctors || go target body
@@ -818,7 +818,7 @@ let close_recursive_payload_term nominal_name num_params =
             let go_branch = function
               | ValueBranch (pat, body) -> ValueBranch (pat, go cutoff body)
               | EffectBranch { eff; op; arg_pat; body } ->
-                  EffectBranch { eff = go cutoff eff; op; arg_pat; body = go cutoff body }
+                  EffectBranch { eff; op; arg_pat; body = go cutoff body }
             in
             Match (go cutoff scrut, List.map go_branch branches)
         | NominalDef { id; name; num_params; ctors; body } ->
@@ -1389,7 +1389,23 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       in
       union_many_expr_effects ctx [ collect_effects ctx f; collect_effects ctx a; latent ]
   | Surface.Ap (f, Surface.Implicit, a) ->
-      union_expr_effects ctx (collect_effects ctx f) (collect_effects ctx a)
+      let _f_core, f_ty = infer ctx f in
+      let f_ty = Nbe.force ctx.Ctx.metas f_ty in
+      let latent, _arg_core =
+        match f_ty with
+        | VPi { explicitness = Implicit; domain = a_ty; effects; _ } ->
+            let arg_core = check ctx a a_ty in
+            let latent =
+              match effects.effects, effects.tail with
+              | [], None -> empty_expr_effects
+              | _ ->
+                  let arg_val = Ctx.eval ctx arg_core in
+                  List.map (fun value -> { core = Ctx.quote ctx value; value }) (effect_row_values ctx effects arg_val)
+            in
+            (latent, arg_core)
+        | _ -> (empty_expr_effects, Atom Atom.Unit)
+      in
+      union_many_expr_effects ctx [ collect_effects ctx f; collect_effects ctx a; latent ]
   | Surface.Lam _ -> empty_expr_effects
   | Surface.Let { name; type_; value; body; recursive = false } ->
       let value_effects = collect_effects ctx value in
@@ -2351,13 +2367,23 @@ and resolve_effect_branch_operation ctx scrutinee_effects branch =
   let effect_core, effect_value, input_ty, output_ty =
     resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
   in
+  let adopt_matched_effect matched =
+    (matched.core, matched.value, Nbe.force ctx.Ctx.metas input_ty, Nbe.force ctx.Ctx.metas output_ty)
+  in
   match List.find_opt (fun performed -> Ctx.conv ctx performed.value effect_value) scrutinee_effects with
-  | None -> (effect_core, effect_value, input_ty, output_ty)
-  | Some matched ->
-      (matched.core, matched.value, Nbe.force ctx.Ctx.metas input_ty, Nbe.force ctx.Ctx.metas output_ty)
+  | Some matched -> adopt_matched_effect matched
+  | None -> (
+      let same_effect_family performed =
+        match (Nbe.force ctx.Ctx.metas performed.value, Nbe.force ctx.Ctx.metas effect_value) with
+        | VEffect performed_eff, VEffect branch_eff -> performed_eff.id = branch_eff.id
+        | _ -> false
+      in
+      match List.filter same_effect_family scrutinee_effects with
+      | [ matched ] -> adopt_matched_effect matched
+      | _ -> (effect_core, effect_value, input_ty, output_ty))
 
 and handled_effects ctx scrutinee_effects branches =
-  let grouped = Hashtbl.create 8 in
+  let handled = ref [] in
   List.iter
     (fun branch ->
       let _effect_core, effect_value, input_ty, _output_ty =
@@ -2365,13 +2391,16 @@ and handled_effects ctx scrutinee_effects branches =
       in
       let core_pat, _ = elaborate_pat ctx branch.arg_pat input_ty in
       check_match_exhaustive ctx input_ty [ core_pat ];
-      let key =
-        match Nbe.force ctx.Ctx.metas effect_value with
-        | VEffect eff -> (eff.id, branch.op)
-        | _ -> raise (ElabError ExpectedEffect)
-      in
-      if Hashtbl.mem grouped key then raise (ElabError (DuplicateEffectBranch branch.op));
-      Hashtbl.add grouped key effect_value)
+      (match Nbe.force ctx.Ctx.metas effect_value with
+      | VEffect _ -> ()
+      | _ -> raise (ElabError ExpectedEffect));
+      if
+        List.exists
+          (fun (handled_effect, handled_op) ->
+            String.equal branch.op handled_op && Ctx.conv ctx effect_value handled_effect)
+          !handled
+      then raise (ElabError (DuplicateEffectBranch branch.op));
+      handled := (effect_value, branch.op) :: !handled)
     branches;
   List.filter
     (fun eff_expr ->
@@ -2379,7 +2408,11 @@ and handled_effects ctx scrutinee_effects branches =
       | VEffect eff ->
           List.exists (fun performed -> Ctx.conv ctx performed.value eff_expr.value) scrutinee_effects
           && List.for_all
-               (fun (op_name, _, _) -> Hashtbl.mem grouped (eff.id, op_name))
+               (fun (op_name, _, _) ->
+                 List.exists
+                   (fun (handled_effect, handled_op) ->
+                     String.equal op_name handled_op && Ctx.conv ctx eff_expr.value handled_effect)
+                   !handled)
                eff.operations
       | _ -> false)
     scrutinee_effects
@@ -2390,7 +2423,7 @@ and residual_effects ctx scrutinee_effects effect_branches =
     (handled_effects ctx scrutinee_effects effect_branches)
 
 and elaborate_effect_branch ctx ret_ty residual scrutinee_effects branch =
-  let effect_core, _effect_value, input_ty, output_ty =
+  let _effect_core, effect_value, input_ty, output_ty =
     resolve_effect_branch_operation ctx scrutinee_effects branch
   in
   let core_pat, arg_ctx = elaborate_pat ctx branch.arg_pat input_ty in
@@ -2403,7 +2436,7 @@ and elaborate_effect_branch ctx ret_ty residual scrutinee_effects branch =
   in
   let body_ctx, resume_entry = Ctx.bind_anonymous arg_ctx cont_ty in
   let body_core = check { body_ctx with Ctx.resume_entry = Some resume_entry } branch.body ret_ty in
-  EffectBranch { eff = effect_core; op = branch.op; arg_pat = core_pat; body = body_core }
+  EffectBranch { eff = effect_value; op = branch.op; arg_pat = core_pat; body = body_core }
 
 (** Application inference.
     Loops to insert fresh metas for implicit VPi domains before consuming

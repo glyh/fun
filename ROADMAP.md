@@ -75,12 +75,9 @@ The near-term design details live in `docs/11.trait_plan.md`.
 
 ### 4. Algebraic effects hardening
 
-Algebraic effects now have nominal effect families, closed latent rows, `perform`, match-based handlers, and `resume`. The remaining work should focus on semantic hardening before larger type-system extensions.
+Algebraic effects now have nominal effect families, closed latent rows, `perform`, match-based handlers, and `resume`. Handler semantics are hardened for closed rows: handlers are deep, value branches and branch bodies run through the active handler loop, parameterized effect instances are distinguished during branch coverage and dispatch, lexical `resume` is allowed inside nested branch-local lambdas, and continuations remain one-shot.
 
-Near-term effect work lives in `docs/7.algebraic_effects_plan.md` and is ordered as:
-
-- handler semantics hardening;
-- open effect rows / effect polymorphism.
+The remaining near-term effect work in `docs/7.algebraic_effects_plan.md` is open effect rows / effect polymorphism.
 
 Optimization, VM, and CPS lowering are not part of the current effects plan.
 

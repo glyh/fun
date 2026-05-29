@@ -4,12 +4,14 @@ exception EvalError of string
 
 type result =
   | Done of value
-  | Effect of {
-      eff : value;
-      op : string;
-      arg : value;
-      k : value -> result;
-    }
+  | Effect of effect_request
+
+and effect_request = {
+  eff : value;
+  op : string;
+  arg : value;
+  k : value -> result;
+}
 
 type continuation = { mutable used : bool; resume : value -> result }
 
@@ -348,7 +350,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       let eff = VEffect { id; name; params = []; operations = elaborated_ops } in
       eval_result mc (eff :: env) body
   | Match (scrut, branches) ->
-      eval_match_result mc env (eval_result mc env scrut) branches
+      eval_match_result mc env scrut branches
   | Perform { eff; op; arg } ->
       bind_result (eval_result mc env eff) (fun eff ->
         bind_result (eval_result mc env arg) (fun arg ->
@@ -480,29 +482,34 @@ and eval_eff (env : env) (name : string) : value =
   in
   go env
 
-and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : result)
+and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : term)
     (branches : match_branch list) : result =
-  let value_branches, effect_branches = close_match_branches mc env branches in
-  let rec handle = function
-    | Done v -> Done (eval_match mc env v value_branches)
-    | Effect e -> (
-        match find_effect_branch mc effect_branches e.eff e.op e.arg with
-        | Some (arg_bindings, body) ->
-            let k = make_cont e.k in
-            handle (eval_result mc (k :: arg_bindings @ body.env) body.body)
-        | None ->
-            Effect { e with k = (fun resume -> handle (e.k resume)) })
+  let value_branches, effect_branches = close_match_branches env branches in
+  let rec handle_scrutinee = function
+    | Done v ->
+        if List.is_empty effect_branches then Done (eval_match mc env v value_branches)
+        else handle_body (eval_match_result_value mc env v value_branches)
+    | Effect request -> handle_effect handle_scrutinee request
+  and handle_body = function
+    | Done v -> Done v
+    | Effect request -> handle_effect handle_body request
+  and handle_effect resume_with request =
+    match find_effect_branch mc effect_branches request.eff request.op request.arg with
+    | Some (arg_bindings, body) ->
+        let k = make_cont request.k in
+        handle_body (eval_result mc (k :: List.rev_append arg_bindings body.env) body.body)
+    | None -> Effect { request with k = (fun resume -> resume_with (request.k resume)) }
   in
-  handle scrutinee
+  handle_scrutinee (eval_result mc env scrutinee)
 
-and close_match_branches mc env branches =
+and close_match_branches env branches =
   let value_branches, effect_branches =
     List.fold_right
       (fun branch (values, effects) ->
         match branch with
         | ValueBranch (pat, body) -> ((pat, body) :: values, effects)
         | EffectBranch { eff; op; arg_pat; body } ->
-            (values, (eval mc env eff, op, arg_pat, { env; body }) :: effects))
+            (values, (eff, op, arg_pat, { env; body }) :: effects))
       branches ([], [])
   in
   (value_branches, effect_branches)
@@ -538,6 +545,15 @@ and core_pat_contains_struct_type = function
   | CPatRecord { fields; _ } -> List.exists (fun (_, pat) -> core_pat_contains_struct_type pat) fields
   | CPatCon (_, _, pats) -> List.exists core_pat_contains_struct_type pats
   | CPatNominalHead { param_pats; _ } -> List.exists core_pat_contains_struct_type param_pats
+  | CPatWild | CPatBind | CPatAtom _ | CPatType _ -> false
+
+and core_pat_contains_nominal_head = function
+  | CPatNominalHead _ -> true
+  | CPatProd pats -> List.exists core_pat_contains_nominal_head pats
+  | CPatOr (lhs, rhs) -> core_pat_contains_nominal_head lhs || core_pat_contains_nominal_head rhs
+  | CPatRecord { fields; _ } -> List.exists (fun (_, pat) -> core_pat_contains_nominal_head pat) fields
+  | CPatCon (_, _, pats) -> List.exists core_pat_contains_nominal_head pats
+  | CPatStructType { fields; _ } -> List.exists (fun (_, pat) -> core_pat_contains_nominal_head pat) fields
   | CPatWild | CPatBind | CPatAtom _ | CPatType _ -> false
 
 and struct_type_fields fields =
@@ -602,6 +618,70 @@ and match_core_pats mc pats values =
 
 (* Pattern matching: compile to decision tree, then interpret.
    For a stuck scrutinee, accumulate an FMatch frame. *)
+and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
+    (branches : (core_pat * term) list) : result =
+  let scrutinee = force mc scrutinee in
+  if
+    List.exists
+      (fun (pat, _) -> core_pat_contains_struct_type pat || core_pat_contains_nominal_head pat)
+      branches
+  then eval_match_direct_result mc env scrutinee branches
+  else
+    match scrutinee with
+    | VCon _ ->
+        let domain_of_occurrence occ =
+          match resolve_occurrence_opt mc scrutinee occ with
+          | Some (VCon { nominal; _ }) ->
+              Core_match_compile.Nominal (nominal_constructors mc nominal)
+          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+          | Some (VProd elems) -> Product (List.length elems)
+          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+              Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
+          | _ -> Unknown
+        in
+        let pats = List.map fst branches in
+        let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
+        eval_decision_tree_result mc env scrutinee branches dt
+    | VAtom atom ->
+        let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
+        let pats = List.map fst branches in
+        let dt = Core_match_compile.compile ~domain pats in
+        eval_decision_tree_result mc env scrutinee branches dt
+    | VAtomTy _ | VNominal _ ->
+        let domain_of_occurrence occ =
+          match resolve_occurrence_opt mc scrutinee occ with
+          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+          | Some (VAtomTy _) | Some (VNominal _) -> Type
+          | Some (VProd elems) -> Product (List.length elems)
+          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+              Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
+          | _ -> Unknown
+        in
+        let pats = List.map fst branches in
+        let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
+        eval_decision_tree_result mc env scrutinee branches dt
+    | VProd _ | VRecord _ ->
+        let domain_of_occurrence occ =
+          match resolve_occurrence_opt mc scrutinee occ with
+          | Some (VCon { nominal; _ }) ->
+              Core_match_compile.Nominal (nominal_constructors mc nominal)
+          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+          | Some (VProd elems) -> Product (List.length elems)
+          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+              Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
+          | _ -> Unknown
+        in
+        let pats = List.map fst branches in
+        let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
+        eval_decision_tree_result mc env scrutinee branches dt
+    | _ ->
+        let head, base_frames = stuck_head_frames scrutinee in
+        Done
+          (VNeutral
+             { ty = VU;
+               neutral = { head; frames = base_frames @ [ FMatch
+                   (List.map (fun (p, body) -> (p, { env; body })) branches) ] } })
+
 and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
   let scrutinee = force mc scrutinee in
@@ -666,12 +746,16 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
 
 and eval_match_direct (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
+  result_value mc (eval_match_direct_result mc env scrutinee branches)
+
+and eval_match_direct_result (mc : MetaContext.t) (env : env) (scrutinee : value)
+    (branches : (core_pat * term) list) : result =
   match branches with
   | [] -> raise (EvalError "non-exhaustive match at runtime")
   | (pat, body) :: rest -> (
       match match_core_pat mc pat scrutinee with
-      | Some bindings -> eval mc (List.rev_append bindings env) body
-      | None -> eval_match_direct mc env scrutinee rest)
+      | Some bindings -> eval_result mc (List.rev_append bindings env) body
+      | None -> eval_match_direct_result mc env scrutinee rest)
 
 and nominal_constructors (mc : MetaContext.t) (nom : value) :
     (string * int * bool) list =
@@ -685,6 +769,11 @@ and nominal_constructors (mc : MetaContext.t) (nom : value) :
 and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
     (branches : (core_pat * term) list)
     (dt : Core_decision_tree.t) : value =
+  result_value mc (eval_decision_tree_result mc env root branches dt)
+
+and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
+    (branches : (core_pat * term) list)
+    (dt : Core_decision_tree.t) : result =
   match dt.content with
   | Leaf { branch; bindings } ->
       let env' =
@@ -693,7 +782,7 @@ and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
           env bindings
       in
       let _, body = List.nth branches branch in
-      eval mc env' body
+      eval_result mc env' body
   | Destruct { occurrence; cases; default } ->
       let v = resolve_occurrence mc root occurrence |> force mc in
       (match v with
@@ -702,10 +791,10 @@ and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
             List.find_opt (fun (cn, _, _) -> String.equal cn name) cases
           with
           | Some (_, _, sub) ->
-              eval_decision_tree mc env root branches sub
+              eval_decision_tree_result mc env root branches sub
           | None -> (
               match default with
-              | Some d -> eval_decision_tree mc env root branches d
+              | Some d -> eval_decision_tree_result mc env root branches d
               | None -> raise (EvalError "non-exhaustive match at runtime")))
       | _ -> raise (EvalError "match on non-constructor value"))
   | Switch { cases; default; occurrence } ->
@@ -718,8 +807,8 @@ and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
         | _ -> raise (EvalError "switch on non-constant value")
       in
       (match List.find_opt (fun (case_key, _) -> Core_decision_tree.switch_key_equal case_key key) cases with
-      | Some (_, sub) -> eval_decision_tree mc env root branches sub
-      | None -> eval_decision_tree mc env root branches default)
+      | Some (_, sub) -> eval_decision_tree_result mc env root branches sub
+      | None -> eval_decision_tree_result mc env root branches default)
 
 and resolve_occurrence (mc : MetaContext.t) (root : value)
     (occ : Core_decision_tree.occurrence) : value =

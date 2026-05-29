@@ -126,7 +126,7 @@ and term =
 and match_branch =
   | ValueBranch of core_pat * term
   | EffectBranch of {
-      eff : term;
+      eff : value;
       op : string;
       arg_pat : core_pat;
       body : term;
