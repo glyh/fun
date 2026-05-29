@@ -55,17 +55,19 @@ Nominal `trait` declarations are the chosen mechanism for ad-hoc polymorphism. T
 Completed milestones:
 
 - chose the feature name and surface shape: `trait`, `impl`, and qualified trait method calls;
-- added parser and AST support for trait/impl declarations in expressions and structs;
+- added parser and AST support for trait/impl declarations in expressions, modules, and structs;
 - added hidden dictionary binders for trait-bound implicit function types;
 - added local implementation lookup, dictionary passing, and ambiguity detection;
 - made trait declarations, dictionary types, and module impl entries structural rather than generated-symbol based;
 - added public module impl/trait evidence through `open`/imports while preserving module binding order;
-- added semantic tests for trait declaration, implementation checking, method dispatch, bound dispatch, missing impls, duplicate fields, and missing fields.
+- kept nominal ADT equality explicit: ADTs do not derive `Eq` automatically;
+- kept record/struct `Eq` explicit by default: records reject `==` unless suitable evidence exists;
+- added ordered struct impl evidence, including `pub impl Eq Self` inside a struct body;
+- added imported struct-local impl coverage, so an exported struct can carry public `Self` evidence across module imports;
+- added semantic and backend tests for trait declaration, implementation checking, method dispatch, bound dispatch, missing impls, duplicate fields, missing fields, explicit record equality rejection, struct-local `Self` impls, and imported struct-local `Self` impls.
 
 Remaining milestones:
 
-- keep nominal ADT equality explicit: ADTs should not derive `Eq` automatically unless an explicit deriving mechanism is added later;
-- keep record/struct `Eq` explicit by default: a struct can provide an `impl` in its definitions, while structural equality remains future opt-in/library-level deriving work;
 - implement explicit deriving/fallback behavior as library-level type-case code where possible, rather than compiler magic;
 - add more protocol-style operations over primitive, nominal, and record types.
 

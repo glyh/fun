@@ -1048,6 +1048,12 @@ let () =
                [ ("box", "pub let Box = struct value: I64; pub method copy (other : Self) -> other.value end") ]
                2L
                "let B = import \"box\" in B.Box.copy (B.Box {value = 1}) (B.Box {value = 2})");
+          Alcotest.test_case "imported struct impl for Self" `Quick
+            (check_import_i64 "imported struct impl for Self"
+               [ ( "shapes",
+                   "pub let Point = struct x: I64; pub impl Eq Self = struct let eq lhs rhs = lhs.x == rhs.x end end" ) ]
+               1L
+               "let S = import \"shapes\" in if S.Point {x = 1} == S.Point {x = 1} then 1 else 0");
           Alcotest.test_case "imported nested constructor pattern" `Quick
             (check_import_i64 "imported nested constructor pattern"
                [ ("nested", "pub let M = module pub type T = X I64 | Y end") ] 7L
