@@ -94,7 +94,8 @@ let visible_kind = function
 
 let dot_value (value : value) (name : string) : value =
   match value with
-  | VModule { fields; partial = _ } ->
+  | VModule { entries; partial = _ } ->
+      let fields = module_entry_fields entries in
       validate_module_fields fields;
       (match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
       | Some (_, _, v) -> v
@@ -171,17 +172,20 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
         | [] -> env, List.rev acc
         | LetBind (name, kind, def) :: rest ->
             let vdef = eval mc env def in
-            eval_binds (vdef :: env) ((name, kind, vdef) :: acc) rest
+            eval_binds (vdef :: env) (ModuleField (name, kind, vdef) :: acc) rest
         | TypeBind (name, kind, nominal, ctors) :: rest ->
-            let ctor_vals = List.map (fun (n, v) -> (n, kind, v)) ctors in
-            let env = List.fold_left (fun e (_, _, v) -> v :: e) env ctor_vals in
+            let ctor_entries = List.map (fun (n, v) -> ModuleField (n, kind, v)) ctors in
+            let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
             let env = nominal :: env in
-            eval_binds env ((name, kind, nominal) :: ctor_vals @ acc) rest
+            eval_binds env (List.rev_append ctor_entries (ModuleField (name, kind, nominal) :: acc)) rest
         | EffectBind (name, kind, eff) :: rest ->
-            eval_binds (eff :: env) ((name, kind, eff) :: acc) rest
+            eval_binds (eff :: env) (ModuleField (name, kind, eff) :: acc) rest
+        | ImplBind (kind, def, ty) :: rest ->
+            let vdef = eval mc env def in
+            eval_binds (vdef :: env) (ModuleImpl (kind, ty, vdef) :: acc) rest
       in
-      let _env, fields = eval_binds env [] bindings in
-      Done (VModule { fields; partial = false })
+      let _env, entries = eval_binds env [] bindings in
+      Done (VModule { entries; partial = false })
   | Struct { con_fields; bindings; partial } ->
       (* con_fields: all at same scope, no sequential dependency *)
       let con_vals =
@@ -200,6 +204,9 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
             eval_binds env ((name, kind, nominal) :: ctor_vals @ acc) rest
         | EffectBind (name, kind, eff) :: rest ->
             eval_binds (eff :: env) ((name, kind, eff) :: acc) rest
+        | ImplBind (_, def, _) :: rest ->
+            let vdef = eval mc env def in
+            eval_binds (vdef :: env) acc rest
       in
       let _env, bind_vals = eval_binds env [] bindings in
       Done (VStruct { fields = con_vals @ bind_vals; partial })
@@ -231,8 +238,15 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Open (s, body) ->
       bind_result (eval_result mc env s) (fun vs ->
         match vs with
-        | VModule { fields; partial = _ } ->
-            let vals = List.filter_map (fun (_, k, v) -> if k = Public || k = Method then Some v else None) fields in
+        | VModule { entries; partial = _ } ->
+            let vals =
+              List.filter_map
+                (function
+                  | ModuleField (_, k, v) when k = Public || k = Method -> Some v
+                  | ModuleImpl (k, _, v) when k = Public -> Some v
+                  | _ -> None)
+                entries
+            in
             let env' = List.fold_left (fun e v -> v :: e) env vals in
             eval_result mc env' body
         | _ -> raise (EvalError "open of non-module"))
@@ -250,6 +264,17 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           sequence_values mc env params (fun param_vals ->
             Done (List.fold_left (fun acc v -> apply mc acc v) eff param_vals))
       | _ -> raise (EvalError ("EffectRef is not VEffect: " ^ name)))
+  | TraitRef { trait_id; trait_name } -> Done (VTrait { trait_id; trait_name })
+  | TraitDictTy { trait_id; trait_name; args; fields } ->
+      sequence_values mc env args (fun arg_vals ->
+        let rec eval_fields acc = function
+          | [] -> Done (VTraitDict { trait_id; trait_name; args = arg_vals; fields = List.rev acc })
+          | (name, field) :: rest ->
+              bind_result (eval_result mc env field) (fun value -> eval_fields ((name, value) :: acc) rest)
+        in
+        eval_fields [] fields)
+  | SelfTypeRef args ->
+      sequence_values mc env args (fun arg_vals -> Done (VSelfType arg_vals))
   | Ctor { name; spine; nominal_name; nominal_spine } ->
       sequence_values mc env spine (fun spine_vals ->
         sequence_values mc env nominal_spine (fun nom_spine_vals ->
@@ -370,6 +395,7 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VRigid { lvl; spine = sp } -> Done (VRigid { lvl; spine = sp @ [ va ] })
   | VNominal n -> Done (VNominal { n with params = n.params @ [ va ] })
   | VEffect e -> Done (VEffect { e with params = e.params @ [ va ] })
+  | VTraitDict d -> Done (VTraitDict { d with args = d.args @ [ va ] })
   | VCon c -> Done (VCon { c with spine = c.spine @ [ va ] })
   | _ -> raise (EvalError "applying non-function")
 
@@ -781,17 +807,22 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VFix { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       Fix (quote mc (depth + 1) (closure_apply mc clo var))
-  | VModule { fields; partial = _ } ->
+  | VModule { entries; partial = _ } ->
+      let fields = module_entry_fields entries in
       let bindings =
-        List.filter_map (fun (n, k, v) ->
-          match k, force mc v with
-          | Public, VEffect _ -> Some (EffectBind (n, Public, v))
-          | Private, VEffect _ -> Some (EffectBind (n, Private, v))
-          | Public, _ -> Some (LetBind (n, Public, quote mc depth v))
-          | Private, _ -> Some (LetBind (n, Private, quote mc depth v))
-          | Method, _ | PrivateMethod, _ | Field, _ ->
-              validate_module_fields fields;
-              failwith "unreachable") fields
+        List.map
+          (function
+            | ModuleField (n, k, v) -> (
+                match k, force mc v with
+                | Public, VEffect _ -> EffectBind (n, Public, v)
+                | Private, VEffect _ -> EffectBind (n, Private, v)
+                | Public, _ -> LetBind (n, Public, quote mc depth v)
+                | Private, _ -> LetBind (n, Private, quote mc depth v)
+                | Method, _ | PrivateMethod, _ | Field, _ ->
+                    validate_module_fields fields;
+                    failwith "unreachable")
+            | ModuleImpl (kind, ty, value) -> ImplBind (kind, quote mc depth value, ty))
+          entries
       in
       Module { bindings }
   | VStruct { fields; partial } ->
@@ -819,6 +850,14 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
       if n.params = [] then Con n.name
       else NomRef (n.name, List.map (quote mc depth) n.params)
   | VEffect e -> EffectRef (e.name, List.map (quote mc depth) e.params)
+  | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }
+  | VTraitDict d ->
+      TraitDictTy
+        { trait_id = d.trait_id;
+          trait_name = d.trait_name;
+          args = List.map (quote mc depth) d.args;
+          fields = List.map (fun (name, value) -> (name, quote mc depth value)) d.fields }
+  | VSelfType args -> SelfTypeRef (List.map (quote mc depth) args)
   | VCon { name; spine; _ } ->
       quote_spine mc depth (Con name) spine
   | VCont _ -> raise (EvalError "cannot quote continuation")
@@ -903,7 +942,9 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       conv mc (depth + 1)
         (closure_apply mc clo1 var)
         (closure_apply mc clo2 var)
-  | VModule { fields = fs1; partial = p1 }, VModule { fields = fs2; partial = p2 } ->
+  | VModule { entries = es1; partial = p1 }, VModule { entries = es2; partial = p2 } ->
+      let fs1 = module_entry_fields es1 in
+      let fs2 = module_entry_fields es2 in
       validate_module_fields fs1;
       validate_module_fields fs2;
       let visible fs = List.filter (fun (_, k, _) -> visible_kind k) fs in
@@ -940,6 +981,16 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       e1.id = e2.id
       && List.length e1.params = List.length e2.params
       && List.for_all2 (conv mc depth) e1.params e2.params
+  | VTraitDict d1, VTraitDict d2 ->
+      d1.trait_id = d2.trait_id
+      && List.length d1.args = List.length d2.args
+      && List.for_all2 (conv mc depth) d1.args d2.args
+      && List.length d1.fields = List.length d2.fields
+      && List.for_all2
+           (fun (n1, v1) (n2, v2) -> String.equal n1 n2 && conv mc depth v1 v2)
+           d1.fields d2.fields
+  | VSelfType args1, VSelfType args2 ->
+      List.length args1 = List.length args2 && List.for_all2 (conv mc depth) args1 args2
   | VCon c1, VCon c2 ->
       String.equal c1.name c2.name
       && List.length c1.spine = List.length c2.spine

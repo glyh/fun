@@ -113,15 +113,20 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VAtomTy t -> AtomTy t
     | VProd elems -> Prod (List.map (go d) elems)
     | VProdTy elems -> ProdTy (List.map (go d) elems)
-    | VModule { fields; partial = _ } ->
+    | VModule { entries; partial = _ } ->
+        let fields = module_entry_fields entries in
         let bindings =
-          List.map (fun (n, k, v) ->
-            match k with
-            | Public -> LetBind (n, Public, go d v)
-            | Private -> LetBind (n, Private, go d v)
-            | Method | PrivateMethod | Field ->
-                validate_module_fields fields;
-                failwith "unreachable") fields
+          List.map
+            (function
+              | ModuleField (n, k, v) -> (
+                  match k with
+                  | Public -> LetBind (n, Public, go d v)
+                  | Private -> LetBind (n, Private, go d v)
+                  | Method | PrivateMethod | Field ->
+                      validate_module_fields fields;
+                      failwith "unreachable")
+              | ModuleImpl (kind, ty, value) -> ImplBind (kind, go d value, ty))
+            entries
         in
         Module { bindings }
     | VStruct { fields; partial } ->
@@ -149,6 +154,14 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
           (Con n.name) params_terms
     | VEffect e ->
         EffectRef (e.name, List.map (go d) e.params)
+    | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }
+    | VTraitDict dict ->
+        TraitDictTy
+          { trait_id = dict.trait_id;
+            trait_name = dict.trait_name;
+            args = List.map (go d) dict.args;
+            fields = List.map (fun (name, value) -> (name, go d value)) dict.fields }
+    | VSelfType args -> SelfTypeRef (List.map (go d) args)
     | VCon { name; spine; _ } ->
         let spine_terms = List.map (go d) spine in
         List.fold_left (fun acc t -> Ap (acc, Explicit, t))
@@ -220,18 +233,30 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter (fun eff -> occurs_check (Nbe.eval mc (var :: effects.env) eff)) effects.effects;
             occurs_check (Nbe.closure_apply mc clo var)
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
-        | VModule { fields; partial = _ } | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> occurs_check v) fields
+        | VModule { entries; partial = _ } ->
+            List.iter
+              (function
+                | ModuleField (_, _, v) -> occurs_check v
+                | ModuleImpl (_, ty, value) ->
+                    occurs_check ty;
+                    occurs_check value)
+              entries
+        | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> occurs_check v) fields
         | VRecord { typ; fields } ->
             occurs_check typ;
             List.iter (fun (_, v) -> occurs_check v) fields
         | VNominal n -> List.iter occurs_check n.params
         | VEffect e -> List.iter occurs_check e.params
+        | VTraitDict d ->
+            List.iter occurs_check d.args;
+            List.iter (fun (_, value) -> occurs_check value) d.fields
+        | VSelfType args -> List.iter occurs_check args
         | VCon { spine; nominal; _ } -> List.iter occurs_check spine; occurs_check nominal
         | VNeutral { neutral = { frames; _ }; _ } ->
             List.iter (fun f -> match f with
               | FApp v -> occurs_check v
               | _ -> ()) frames
-        | VU | VAtom _ | VAtomTy _ | VRigid _ | VLam _ | VFix _ | VCont _ -> ()
+        | VU | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ -> ()
       in
       occurs_check rhs;
       MetaContext.solve mc id rhs
@@ -273,6 +298,9 @@ let value_form = function
   | VProdTy _ -> "tuple type"
   | VModule _ -> "module value"
   | VStruct _ -> "struct type"
+  | VTrait t -> "trait " ^ t.trait_name
+  | VTraitDict d -> "trait dictionary " ^ d.trait_name
+  | VSelfType _ -> "Self"
   | VRecord _ -> "record value"
   | VNominal n -> "nominal type " ^ n.name
   | VEffect e -> "effect " ^ e.name
@@ -313,7 +341,9 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       if List.length elems1 <> List.length elems2 then
         raise (UnifyError TupleLengthMismatch);
       List.iter2 (unify mc env depth) elems1 elems2
-  | VModule { fields = fs1; partial = p1 }, VModule { fields = fs2; partial = p2 } ->
+  | VModule { entries = es1; partial = p1 }, VModule { entries = es2; partial = p2 } ->
+      let fs1 = module_entry_fields es1 in
+      let fs2 = module_entry_fields es2 in
       validate_module_fields fs1;
       validate_module_fields fs2;
       let visible fs = List.filter (fun (_, k, _) -> k <> Private) fs in
@@ -374,6 +404,19 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       if List.length e1.params <> List.length e2.params then
         raise (UnifyError (EffectMismatch (e1.name, e2.name)));
       List.iter2 (unify mc env depth) e1.params e2.params
+  | VTraitDict d1, VTraitDict d2 ->
+      if d1.trait_id <> d2.trait_id then raise (UnifyError (CannotUnify (value_form v1 ^ " vs " ^ value_form v2)));
+      if List.length d1.args <> List.length d2.args then raise (UnifyError (CannotUnify (value_form v1 ^ " vs " ^ value_form v2)));
+      List.iter2 (unify mc env depth) d1.args d2.args;
+      if List.length d1.fields <> List.length d2.fields then raise (UnifyError StructFieldMismatch);
+      List.iter2
+        (fun (n1, v1) (n2, v2) ->
+          if not (String.equal n1 n2) then raise (UnifyError StructFieldMismatch);
+          unify mc env depth v1 v2)
+        d1.fields d2.fields
+  | VSelfType args1, VSelfType args2 ->
+      if List.length args1 <> List.length args2 then raise (UnifyError TupleLengthMismatch);
+      List.iter2 (unify mc env depth) args1 args2
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc env depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->

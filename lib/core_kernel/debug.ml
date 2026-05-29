@@ -25,6 +25,10 @@ let rec pp_term (t : term) : string =
   | InsertedMeta (id, _) -> Printf.sprintf "IMeta(%d)" id
   | NomRef (name, args) -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
   | EffectRef (name, args) -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
+  | TraitRef { trait_name; _ } -> Printf.sprintf "TraitRef(%s)" trait_name
+  | TraitDictTy { trait_name; args; _ } ->
+      Printf.sprintf "TraitDictTy(%s, [%s])" trait_name (String.concat "," (List.map pp_term args))
+  | SelfTypeRef args -> Printf.sprintf "SelfTypeRef([%s])" (String.concat "," (List.map pp_term args))
   | Con name -> Printf.sprintf "Con(%s)" name
   | Ctor { name; nominal_name; _ } -> Printf.sprintf "Ctor(%s/%s)" name nominal_name
   | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
@@ -83,6 +87,12 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
         if List.length e.params = 0 then Printf.sprintf "effect %s" e.name
         else Printf.sprintf "effect %s(%s)" e.name
           (String.concat ", " (List.map (go (depth+1)) e.params))
+    | VTrait t -> Printf.sprintf "trait %s" t.trait_name
+    | VTraitDict d ->
+        Printf.sprintf "<impl %s%s>" d.trait_name
+          (if List.is_empty d.args then "" else " " ^ String.concat " " (List.map (go (depth + 1)) d.args))
+    | VSelfType args ->
+        if List.is_empty args then "Self" else Printf.sprintf "Self(%s)" (String.concat ", " (List.map (go (depth + 1)) args))
     | VCon { name; spine; _ } ->
         if List.length spine = 0 then name
         else Printf.sprintf "%s(%s)" name

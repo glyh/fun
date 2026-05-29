@@ -59,6 +59,20 @@ and term =
       (** Applied effect family reference. [eval] scans the environment for a
           [VEffect] template with this name, evaluates the param terms, and
           returns [VEffect] with those params. *)
+  | TraitRef of { trait_id : int; trait_name : string }
+      (** Internal trait declaration reference. Quotation uses this to preserve
+          trait identity without string marker atoms. *)
+  | TraitDictTy of {
+      trait_id : int;
+      trait_name : string;
+      args : term list;
+      fields : (string * term) list;
+    }
+      (** Internal trait dictionary type reference. Used by quotation to preserve
+          trait dictionary identity without encoding marker fields in structs. *)
+  | SelfTypeRef of term list
+      (** Internal recursive record [Self] type reference while a record type is
+          being elaborated. The arguments are the current record parameters. *)
   | Ctor of {
       name : string;
       spine : term list;           (* type args then payload args *)
@@ -154,6 +168,15 @@ and struct_binding_term =
   | EffectBind of string * struct_field_kind * value
       (** name, kind, effect_family_value. Operations are metadata and are not
           exposed as fields in phase one. *)
+  | ImplBind of struct_field_kind * term * value
+      (** kind, dictionary term, dictionary type. Impl evidence extends runtime
+          scope for trait resolution but is not an ordinary named field. *)
+
+and module_entry =
+  | ModuleField of string * struct_field_kind * value
+  | ModuleImpl of struct_field_kind * value * value
+      (** kind, dictionary type, dictionary value. Kept in source order with
+          fields so de Bruijn references across module bindings remain valid. *)
 
 (* Semantic domain — de Bruijn levels for variables *)
 
@@ -196,12 +219,12 @@ and value =
   | VProdTy of value list (* type-level tuple — lives in VU *)
   | VFix of { body : closure }
   | VModule of {
-      fields : (string * struct_field_kind * value) list;
+      entries : module_entry list;
       partial : bool;
     }
-      (** Namespace/module value or partial module signature. Fields carry
-          visibility and member kind, but [Field] entries are reserved for
-          record structs. *)
+      (** Namespace/module value or partial module signature. Entries preserve
+          binding order. Field entries carry visibility and member kind, while
+          impl entries carry trait evidence without exposing generated fields. *)
   | VStruct of {
       fields : (string * struct_field_kind * value) list;
       partial : bool;
@@ -237,6 +260,19 @@ and value =
     }
       (** Nominal effect family instance. Unifies by [id] and applied params;
           operation signatures are declaration metadata, not structural identity. *)
+  | VTrait of { trait_id : int; trait_name : string }
+      (** Trait declaration value. Trait lookup metadata lives in the elaborator;
+          this value preserves declaration identity through evaluation. *)
+  | VTraitDict of {
+      trait_id : int;
+      trait_name : string;
+      args : value list;
+      fields : (string * value) list;
+    }
+      (** Trait dictionary type. The runtime dictionary value is struct-like,
+          but the type is not encoded as private marker fields on [VStruct]. *)
+  | VSelfType of value list
+      (** Recursive record [Self] type while the record type is being built. *)
   | VCon of { name : string; spine : value list; nominal : value }
       (** Fully saturated constructor value. [name] is the constructor tag,
           [spine] collects type+value arguments in application order
@@ -306,6 +342,9 @@ let effect_row_closure env row = { env; effects = row.effects; tail = row.tail }
 let validate_module_fields fields =
   if List.exists (fun (_, kind, _) -> kind = Field || kind = Method || kind = PrivateMethod) fields then
     failwith "VModule invariant violation: non-module field"
+
+let module_entry_fields entries =
+  List.filter_map (function ModuleField (name, kind, value) -> Some (name, kind, value) | ModuleImpl _ -> None) entries
 
 module MetaContext = struct
   type entry = Solved of value | Unsolved
