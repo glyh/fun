@@ -178,6 +178,12 @@ and module_entry =
       (** kind, dictionary type, dictionary value. Kept in source order with
           fields so de Bruijn references across module bindings remain valid. *)
 
+and struct_entry =
+  | StructField of string * struct_field_kind * value
+  | StructImpl of struct_field_kind * value * value
+      (** kind, dictionary type, dictionary value. Kept in source order with
+          fields so de Bruijn references across struct bindings remain valid. *)
+
 (* Semantic domain — de Bruijn levels for variables *)
 
 and env = value list (* head = most recently bound *)
@@ -226,13 +232,13 @@ and value =
           binding order. Field entries carry visibility and member kind, while
           impl entries carry trait evidence without exposing generated fields. *)
   | VStruct of {
-      fields : (string * struct_field_kind * value) list;
+      entries : struct_entry list;
       partial : bool;
     }
-      (** Record struct type. [Field] entries are record constructor fields;
-          [Public]/[Private]/[Method]/[PrivateMethod] entries are associated
-          members exposed through the struct's module view. [partial] =
-          width-subtyped record shape. *)
+      (** Record struct type. Entries preserve binding order. Field entries carry
+          record constructor fields and associated members; impl entries carry
+          trait evidence scoped to this struct type without exposing generated
+          fields. [partial] = width-subtyped record shape. *)
   | VRecord of { typ : value; fields : (string * value) list }
       (** Record instance whose type is a [VStruct]. *)
   | VNominal of {
@@ -345,6 +351,9 @@ let validate_module_fields fields =
 
 let module_entry_fields entries =
   List.filter_map (function ModuleField (name, kind, value) -> Some (name, kind, value) | ModuleImpl _ -> None) entries
+
+let struct_entry_fields entries =
+  List.filter_map (function StructField (name, kind, value) -> Some (name, kind, value) | StructImpl _ -> None) entries
 
 module MetaContext = struct
   type entry = Solved of value | Unsolved

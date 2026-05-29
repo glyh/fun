@@ -197,6 +197,8 @@ let operators =
     Alcotest.test_case "bool equality" `Quick (check_type "true == false" (AtomTy TBool));
     Alcotest.test_case "char equality" `Quick (check_type "'a' == 'a'" (AtomTy TBool));
     Alcotest.test_case "unit equality" `Quick (check_type "() == ()" (AtomTy TBool));
+    Alcotest.test_case "type alias equality" `Quick
+      (check_type "let MyInt = I64 in (1 : MyInt) == (2 : MyInt)" (AtomTy TBool));
     Alcotest.test_case "operator as value" `Quick (check_type "(==) 1 1" (AtomTy TBool));
     Alcotest.test_case "polymorphic helper" `Quick
       (check_type "let same : {A : Type} -> A -> A -> Bool = fun {A : Type} -> (==) {A} in same 1 1" (AtomTy TBool));
@@ -984,6 +986,14 @@ let traits =
       (elab_fail "trait Bad A = struct f : A; f : A end in Bad");
     Alcotest.test_case "impl missing field rejected" `Quick
       (elab_fail "trait Eq A = struct eq : A -> A -> Bool end in impl Eq I64 = struct end in 0");
+    Alcotest.test_case "struct impl for Self" `Quick
+      (check_type
+         "let Point = struct \
+            x: I64; \
+            pub impl Eq Self = struct let eq lhs rhs = lhs.x == rhs.x end \
+          end in \
+          Point {x = 1} == Point {x = 1}"
+         (AtomTy TBool));
   ]
 
 let effects =

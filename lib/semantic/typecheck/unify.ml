@@ -129,19 +129,24 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             entries
         in
         Module { bindings }
-    | VStruct { fields; partial } ->
+    | VStruct { entries; partial } ->
         let con_fields =
-          List.filter_map (fun (n, k, v) ->
-            if k = Field then Some (n, go d v) else None) fields
+          List.filter_map
+            (function StructField (n, Field, v) -> Some (n, go d v) | _ -> None)
+            entries
         in
         let bindings =
-          List.filter_map (fun (n, k, v) ->
-            match k with
-            | Public -> Some (LetBind (n, Public, go d v))
-            | Private -> Some (LetBind (n, Private, go d v))
-            | Method -> Some (LetBind (n, Method, go d v))
-            | PrivateMethod -> Some (LetBind (n, PrivateMethod, go d v))
-            | _ -> None) fields
+          List.filter_map
+            (function
+              | StructField (n, k, v) -> (
+                  match k with
+                  | Public -> Some (LetBind (n, Public, go d v))
+                  | Private -> Some (LetBind (n, Private, go d v))
+                  | Method -> Some (LetBind (n, Method, go d v))
+                  | PrivateMethod -> Some (LetBind (n, PrivateMethod, go d v))
+                  | _ -> None)
+              | StructImpl (kind, ty, value) -> Some (ImplBind (kind, go d value, ty)))
+            entries
         in
         Struct { con_fields; bindings; partial }
     | VRecord { typ; fields } ->
@@ -241,7 +246,12 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
                     occurs_check ty;
                     occurs_check value)
               entries
-        | VStruct { fields; _ } -> List.iter (fun (_, _, v) -> occurs_check v) fields
+        | VStruct { entries; _ } ->
+            List.iter
+              (function
+                | StructField (_, _, v) -> occurs_check v
+                | StructImpl (_, ty, value) -> occurs_check ty; occurs_check value)
+              entries
         | VRecord { typ; fields } ->
             occurs_check typ;
             List.iter (fun (_, v) -> occurs_check v) fields
@@ -360,7 +370,9 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       end else
         let required, available = if p1 && not p2 then vs1, vs2 else if p2 && not p1 then vs2, vs1 else if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
         List.iter (fun field -> unify_field field available) required
-  | VStruct { fields = fs1; partial = p1 }, VStruct { fields = fs2; partial = p2 } ->
+  | VStruct { entries = es1; partial = p1 }, VStruct { entries = es2; partial = p2 } ->
+      let fs1 = struct_entry_fields es1 in
+      let fs2 = struct_entry_fields es2 in
       let visible fs = List.filter (fun (_, k, _) -> k <> Private && k <> PrivateMethod) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
       if (not p1) && (not p2) then begin

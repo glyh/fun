@@ -959,6 +959,13 @@ let () =
           Alcotest.test_case "method returns Self" `Quick
             (check_i64 "method returns Self" 1L
                "let Box = struct value: I64; pub method copy -> self end in (Box.copy (Box {value = 1})).value");
+          Alcotest.test_case "struct impl for Self" `Quick
+            (check_bool "struct impl for Self" true
+               "let Point = struct \
+                  x: I64; \
+                  pub impl Eq Self = struct let eq lhs rhs = lhs.x == rhs.x end \
+                end in \
+                Point {x = 1} == Point {x = 1}");
           Alcotest.test_case "record pattern shorthand" `Quick
             (check_i64 "record pattern shorthand" 3L
                "let Point = struct x: I64; y: I64; end in \

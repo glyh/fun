@@ -314,6 +314,7 @@ type_app:
 
 type_atom:
   | name = ID { Var name }
+  | SELF_TYPE { SelfType }
   | LPAREN; e = type_expr; RPAREN { e }
 
 effect_row:

@@ -16,7 +16,7 @@ The old HM/typecheck/interpreter pipeline has been replaced by `core_tt`:
 Surface.t → elaboration → Core.term + semantic type → NbE evaluation
 ```
 
-This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, imports, and algebraic effects.
+This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, imports, traits, and algebraic effects.
 
 ## Ordered work
 
@@ -50,7 +50,7 @@ This is a real prototype goal because it exercises the dependent core and the la
 
 ### 3. Traits / ad-hoc polymorphism
 
-Nominal `trait` declarations are the chosen mechanism for ad-hoc polymorphism. The current prototype adds local trait declarations, `impl` declarations, hidden dictionary evidence, trait-bound implicit parameters such as `{A : Eq}` and `{A : Eq + Jsonable}`, qualified method calls such as `Eq.eq x y`, and tests for direct and generic dispatch.
+Nominal `trait` declarations are the chosen mechanism for ad-hoc polymorphism. The current prototype adds local and module-level trait declarations, `impl` declarations, structural dictionary evidence, trait-bound implicit parameters such as `{A : Eq}` and `{A : Eq + Jsonable}`, qualified method calls such as `Eq.eq x y`, and tests for direct and generic dispatch.
 
 Completed milestones:
 
@@ -58,14 +58,15 @@ Completed milestones:
 - added parser and AST support for trait/impl declarations in expressions and structs;
 - added hidden dictionary binders for trait-bound implicit function types;
 - added local implementation lookup, dictionary passing, and ambiguity detection;
+- made trait declarations, dictionary types, and module impl entries structural rather than generated-symbol based;
+- added public module impl/trait evidence through `open`/imports while preserving module binding order;
 - added semantic tests for trait declaration, implementation checking, method dispatch, bound dispatch, missing impls, duplicate fields, and missing fields.
 
 Remaining milestones:
 
-- define equality conventions for nominal values without defaulting to accidental structural equality;
-- define equality or derivation behavior for record values;
-- integrate public/imported implementations with module visibility rules;
-- decide whether type-case should help implement deriving or fallback behavior;
+- keep nominal ADT equality explicit: ADTs should not derive `Eq` automatically unless an explicit deriving mechanism is added later;
+- keep record/struct `Eq` explicit by default: a struct can provide an `impl` in its definitions, while structural equality remains future opt-in/library-level deriving work;
+- implement explicit deriving/fallback behavior as library-level type-case code where possible, rather than compiler magic;
 - add more protocol-style operations over primitive, nominal, and record types.
 
 The near-term design details live in `docs/11.trait_plan.md`.

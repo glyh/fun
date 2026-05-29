@@ -100,7 +100,8 @@ let dot_value (value : value) (name : string) : value =
       (match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
       | Some (_, _, v) -> v
       | None -> raise (EvalError "field not found"))
-  | VStruct { fields; _ } -> (
+  | VStruct { entries; _ } -> (
+      let fields = struct_entry_fields entries in
       match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
       | Some (_, _, v) -> v
       | None -> raise (EvalError "field not found"))
@@ -192,24 +193,25 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
         List.map (fun (name, ty) -> (name, Field, eval mc env ty)) con_fields
       in
       (* bindings: sequential, TypeBind stores values directly *)
-      let rec eval_binds env acc = function
-        | [] -> env, List.rev acc
+      let rec eval_binds env acc_entries = function
+        | [] -> env, List.rev acc_entries
         | LetBind (name, kind, def) :: rest ->
             let vdef = eval mc env def in
-            eval_binds (vdef :: env) ((name, kind, vdef) :: acc) rest
+            eval_binds (vdef :: env) (StructField (name, kind, vdef) :: acc_entries) rest
         | TypeBind (name, kind, nominal, ctors) :: rest ->
-            let ctor_vals = List.map (fun (n, v) -> (n, kind, v)) ctors in
-            let env = List.fold_left (fun e (_, _, v) -> v :: e) env ctor_vals in
+            let ctor_entries = List.map (fun (n, v) -> StructField (n, kind, v)) ctors in
+            let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
             let env = nominal :: env in
-            eval_binds env ((name, kind, nominal) :: ctor_vals @ acc) rest
+            eval_binds env (List.rev_append ctor_entries (StructField (name, kind, nominal) :: acc_entries)) rest
         | EffectBind (name, kind, eff) :: rest ->
-            eval_binds (eff :: env) ((name, kind, eff) :: acc) rest
-        | ImplBind (_, def, _) :: rest ->
+            eval_binds (eff :: env) (StructField (name, kind, eff) :: acc_entries) rest
+        | ImplBind (kind, def, ty) :: rest ->
             let vdef = eval mc env def in
-            eval_binds (vdef :: env) acc rest
+            eval_binds (vdef :: env) (StructImpl (kind, ty, vdef) :: acc_entries) rest
       in
-      let _env, bind_vals = eval_binds env [] bindings in
-      Done (VStruct { fields = con_vals @ bind_vals; partial })
+      let _env, bind_entries = eval_binds env [] bindings in
+      let con_entries = List.map (fun (name, kind, value) -> StructField (name, kind, value)) con_vals in
+      Done (VStruct { entries = con_entries @ bind_entries; partial })
   | RecordConstruct { typ; fields } ->
       bind_result (eval_result mc env typ) (fun typ ->
         let rec go acc = function
@@ -567,8 +569,8 @@ and match_core_pat mc pat value =
             | None -> None)
       in
       go [] fields
-  | CPatStructType { fields; partial }, VStruct { fields = struct_fields; _ } ->
-      let struct_fields = struct_type_fields struct_fields in
+  | CPatStructType { fields; partial }, VStruct { entries = struct_entries; _ } ->
+      let struct_fields = struct_type_fields (struct_entry_fields struct_entries) in
       if (not partial) && List.length fields <> List.length struct_fields then None
       else
         let rec go acc = function
@@ -616,8 +618,8 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
             Core_match_compile.Nominal (nominal_constructors mc nominal)
         | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
         | Some (VProd elems) -> Product (List.length elems)
-        | Some (VRecord { typ = VStruct { fields; _ }; _ }) ->
-            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) fields)
+        | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
         | _ -> Unknown
       in
       let pats = List.map fst branches in
@@ -634,8 +636,8 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
         | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
         | Some (VAtomTy _) | Some (VNominal _) -> Type
         | Some (VProd elems) -> Product (List.length elems)
-        | Some (VRecord { typ = VStruct { fields; _ }; _ }) ->
-            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) fields)
+        | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
         | _ -> Unknown
       in
       let pats = List.map fst branches in
@@ -648,8 +650,8 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
             Core_match_compile.Nominal (nominal_constructors mc nominal)
         | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
         | Some (VProd elems) -> Product (List.length elems)
-        | Some (VRecord { typ = VStruct { fields; _ }; _ }) ->
-            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) fields)
+        | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
         | _ -> Unknown
       in
       let pats = List.map fst branches in
@@ -825,21 +827,26 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           entries
       in
       Module { bindings }
-  | VStruct { fields; partial } ->
+  | VStruct { entries; partial } ->
       let con_fields =
-        List.filter_map (fun (n, k, v) ->
-          if k = Field then Some (n, quote mc depth v) else None) fields
+        List.filter_map (function
+          | StructField (n, Field, v) -> Some (n, quote mc depth v)
+          | _ -> None) entries
       in
       let bindings =
-        List.filter_map (fun (n, k, v) ->
-          match k, force mc v with
-          | Public, VEffect _ -> Some (EffectBind (n, Public, v))
-          | Private, VEffect _ -> Some (EffectBind (n, Private, v))
-          | Public, _ -> Some (LetBind (n, Public, quote mc depth v))
-          | Private, _ -> Some (LetBind (n, Private, quote mc depth v))
-          | Method, _ -> Some (LetBind (n, Method, quote mc depth v))
-          | PrivateMethod, _ -> Some (LetBind (n, PrivateMethod, quote mc depth v))
-          | _ -> None) fields
+        List.filter_map
+          (function
+            | StructField (n, k, v) -> (
+                match k, force mc v with
+                | Public, VEffect _ -> Some (EffectBind (n, Public, v))
+                | Private, VEffect _ -> Some (EffectBind (n, Private, v))
+                | Public, _ -> Some (LetBind (n, Public, quote mc depth v))
+                | Private, _ -> Some (LetBind (n, Private, quote mc depth v))
+                | Method, _ -> Some (LetBind (n, Method, quote mc depth v))
+                | PrivateMethod, _ -> Some (LetBind (n, PrivateMethod, quote mc depth v))
+                | _ -> None)
+            | StructImpl (kind, ty, value) -> Some (ImplBind (kind, quote mc depth value, ty)))
+          entries
       in
       Struct { con_fields; bindings; partial }
   | VRecord { typ; fields } ->
@@ -959,14 +966,24 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       else
         let required, available = if p1 && not p2 then vs1, vs2 else if p2 && not p1 then vs2, vs1 else if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
         List.for_all (fun field -> conv_field field available) required
-  | VStruct { fields = fs1; _ }, VStruct { fields = fs2; _ } ->
+  | VStruct { entries = es1; partial = p1 }, VStruct { entries = es2; partial = p2 } ->
+      let fs1 = struct_entry_fields es1 in
+      let fs2 = struct_entry_fields es2 in
       let visible fs = List.filter (fun (_, k, _) -> visible_kind k) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
-      List.length vs1 = List.length vs2
-      && List.for_all2
-           (fun (n1, k1, v1) (n2, k2, v2) ->
-             String.equal n1 n2 && k1 = k2 && conv mc depth v1 v2)
-           vs1 vs2
+      let conv_field (name, kind, ty) fields =
+        match List.find_opt (fun (n, k, _) -> String.equal n name && k = kind) fields with
+        | Some (_, _, other_ty) -> conv mc depth ty other_ty
+        | None -> false
+      in
+      if (not p1) && (not p2) then
+        List.length vs1 = List.length vs2 && List.for_all2
+          (fun (n1, k1, v1) (n2, k2, v2) ->
+            String.equal n1 n2 && k1 = k2 && conv mc depth v1 v2)
+          vs1 vs2
+      else
+        let required, available = if p1 && not p2 then vs1, vs2 else if p2 && not p1 then vs2, vs1 else if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
+        List.for_all (fun field -> conv_field field available) required
   | VRecord r1, VRecord r2 ->
       conv mc depth r1.typ r2.typ
       && List.length r1.fields = List.length r2.fields
