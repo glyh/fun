@@ -352,52 +352,76 @@ let meta_solving =
 
 let structs =
   [
-    Alcotest.test_case "empty struct" `Quick
-      (elab_ok "struct end");
-    Alcotest.test_case "open struct" `Quick
+    Alcotest.test_case "empty module" `Quick
+      (elab_ok "module end");
+    Alcotest.test_case "open module" `Quick
       (check_type
-         "let S = struct pub let x = 42 end in open S in x"
+         "let S = module pub let x = 42 end in open S in x"
          (AtomTy TI64));
     Alcotest.test_case "open struct constructors" `Quick
       (elab_ok
-         "let Color = struct pub type Color = Red | Green | Blue end in \
+         "let Color = module pub type Color = Red | Green | Blue end in \
           open Color in Red");
     Alcotest.test_case "struct with pub fields" `Quick
       (elab_ok
-         "let S = struct pub let x = 1; pub let y = true end in open S in if y then x else 0");
+         "let S = module pub let x = 1; pub let y = true end in open S in if y then x else 0");
     Alcotest.test_case "nested struct open" `Quick
       (check_type
-         "let Outer = struct pub let Inner = struct pub let val = 42 end end in open Outer in open Inner in val"
+         "let Outer = module pub let Inner = module pub let val = 42 end end in open Outer in open Inner in val"
          (AtomTy TI64));
     Alcotest.test_case "open only imports pub" `Quick
       (elab_fail
-         "let S = struct let x = 42 end in open S in x");
+         "let S = module let x = 42 end in open S in x");
     Alcotest.test_case "field access" `Quick
       (check_type
-         "let S = struct pub let x = 42 end in S.x"
+         "let S = module pub let x = 42 end in S.x"
          (AtomTy TI64));
     Alcotest.test_case "field access boolean" `Quick
       (check_type
-         "let S = struct pub let x = 1; pub let y = true end in S.y"
+         "let S = module pub let x = 1; pub let y = true end in S.y"
          (AtomTy TBool));
     Alcotest.test_case "nested field access" `Quick
       (check_type
-         "let Outer = struct pub let Inner = struct pub let val = 42 end end in Outer.Inner.val"
+         "let Outer = module pub let Inner = module pub let val = 42 end end in Outer.Inner.val"
          (AtomTy TI64));
     Alcotest.test_case "field not found" `Quick
-      (elab_fail "let S = struct pub let x = 1 end in S.y");
+      (elab_fail "let S = module pub let x = 1 end in S.y");
     Alcotest.test_case "private not accessible" `Quick
-      (elab_fail "let S = struct let x = 42 end in S.x");
+      (elab_fail "let S = module let x = 42 end in S.x");
     Alcotest.test_case "field decls" `Quick
       (elab_ok "struct x: I64; y: Bool; end");
     Alcotest.test_case "field decls with pub binding" `Quick
       (elab_ok "struct x: I64; pub let fourty_two = 42 end");
-    Alcotest.test_case "pass struct through function" `Quick
+    Alcotest.test_case "pass record through function" `Quick
       (elab_ok
-         "let S = struct pub let x = 42 end in (fun s -> s.x) S");
+         "let Point = struct x: I64; end in (fun p -> p.x) (Point {x = 42})");
+    Alcotest.test_case "module signature argument" `Quick
+      (check_type
+         "(fun (m : module let x = I64 end) -> m.x) (module pub let x = 1 end)"
+         (AtomTy TI64));
+    Alcotest.test_case "module signature allows extra fields" `Quick
+      (check_type
+         "(fun (m : module let x = I64 end) -> m.x) (module pub let x = 1; pub let y = true end)"
+         (AtomTy TI64));
+    Alcotest.test_case "signature sugar argument" `Quick
+      (check_type
+         "(fun (m : sig x : I64 end) -> m.x) (module pub let x = 1 end)"
+         (AtomTy TI64));
+    Alcotest.test_case "module signature missing field rejected" `Quick
+      (elab_fail
+         "(fun (m : module let x = I64 end) -> m.x) (module pub let y = 1 end)");
+    Alcotest.test_case "module signature wrong field type rejected" `Quick
+      (elab_fail
+         "(fun (m : module let x = I64 end) -> m.x) (module pub let x = true end)");
+    Alcotest.test_case "module signature private field rejected" `Quick
+      (elab_fail
+         "(fun (m : module let x = I64 end) -> m.x) (module let x = 1 end)");
+    Alcotest.test_case "record struct does not satisfy module signature" `Quick
+      (elab_fail
+         "let Point = struct x: I64; end in (fun (m : module let x = I64 end) -> m.x) Point");
     Alcotest.test_case "private used by pub" `Quick
       (check_type
-         "let S = struct let helper = 42; pub let x = helper end in S.x"
+         "let S = module let helper = 42; pub let x = helper end in S.x"
          (AtomTy TI64));
     Alcotest.test_case "record construction" `Quick
       (check_type
@@ -488,21 +512,21 @@ let functors =
   [
     Alcotest.test_case "identity functor" `Quick
       (check_type
-         "let Double = fun M -> struct pub let doubled = M.x + M.x end in (Double (struct pub let x = 21 end)).doubled"
+         "let Double = fun (M : module let x = I64 end) -> module pub let doubled = M.x + M.x end in (Double (module pub let x = 21 end)).doubled"
          (AtomTy TI64));
     Alcotest.test_case "functor pass through" `Quick
       (elab_ok
-         "let F = fun M -> struct pub let y = M.x end in let A = struct pub let x = 1 end in let B = F A in B.y");
+         "let F = fun (M : module let x = I64 end) -> module pub let y = M.x end in let A = module pub let x = 1 end in let B = F A in B.y");
     Alcotest.test_case "functor with private helper" `Quick
       (check_type
-         "let F = fun M -> struct let tmp = M.x; pub let y = tmp + 1 end in (F (struct pub let x = 1 end)).y"
+         "let F = fun (M : module let x = I64 end) -> module let tmp = M.x; pub let y = tmp + 1 end in (F (module pub let x = 1 end)).y"
          (AtomTy TI64));
     Alcotest.test_case "compose functors" `Quick
       (elab_ok
-         "let F = fun M -> struct pub let a = M.x end in let G = fun N -> struct pub let b = N.a end in (G (F (struct pub let x = 1 end))).b");
+         "let F = fun (M : module let x = I64 end) -> module pub let a = M.x end in let G = fun (N : module let a = I64 end) -> module pub let b = N.a end in (G (F (module pub let x = 1 end))).b");
     Alcotest.test_case "higher order functor" `Quick
       (elab_ok
-         "let Apply = fun F -> fun M -> F M in Apply (fun M -> struct pub let z = M.x end) (struct pub let x = 1 end)");
+         "let Apply = fun F -> fun (M : module let x = I64 end) -> F M in Apply (fun (M : module let x = I64 end) -> module pub let z = M.x end) (module pub let x = 1 end)");
   ]
 
 let tuple_proj =
@@ -561,7 +585,7 @@ let adts =
     Alcotest.test_case "pub type inside struct" `Quick (fun () ->
       let _core, ty =
         elab
-          "let S = struct \
+          "let S = module \
            pub type Color = Red | Green | Blue \
            end in S.Color"
       in
@@ -571,7 +595,7 @@ let adts =
     Alcotest.test_case "pub type ctor via dot" `Quick (fun () ->
       let _core, ty =
         elab
-          "let S = struct \
+          "let S = module \
            pub type Color = Red | Green | Blue \
            end in S.Red"
       in
@@ -582,13 +606,13 @@ let adts =
       | _ -> Alcotest.fail "expected nominal type");
     Alcotest.test_case "private type not visible via dot" `Quick
       (elab_fail
-         "let S = struct \
+         "let S = module \
           type Color = Red | Green | Blue \
           end in S.Red");
     Alcotest.test_case "private type visible to later binding" `Quick (fun () ->
       let _core, ty =
         elab
-          "let S = struct \
+          "let S = module \
            type Color = Red | Green | Blue; \
            pub let default = Red \
            end in S.default"
@@ -601,15 +625,15 @@ let adts =
     Alcotest.test_case "two structs, distinct nominal ids" `Quick (fun () ->
       let _core, _ty =
         elab
-          "let S = struct pub type Color = Red | Green end in \
-           let T = struct pub type Color = Blue end in \
+          "let S = module pub type Color = Red | Green end in \
+           let T = module pub type Color = Blue end in \
            let _ : S.Color = S.Red in ()"
       in
       ());
     Alcotest.test_case "distinct nominal ids don't unify" `Quick
       (elab_fail
-         "let S = struct pub type Color = Red | Green end in \
-          let T = struct pub type Color = Blue end in \
+         "let S = module pub type Color = Red | Green end in \
+          let T = module pub type Color = Blue end in \
           let _ : T.Color = S.Red in ()");
     Alcotest.test_case "parameterized ADT with payload" `Quick (fun () ->
       let _core, ty =
@@ -822,27 +846,27 @@ let match_tests =
         (AtomTy TI64));
     Alcotest.test_case "qualified constructor pattern" `Quick
       (check_type
-         "let S = struct pub type Color = Red | Green end in \
+         "let S = module pub type Color = Red | Green end in \
           match S.Red with S.Red -> 1 | S.Green -> 2 end"
          (AtomTy TI64));
     Alcotest.test_case "qualified nested constructor pattern" `Quick
       (check_type
-         "let A = struct pub let B = struct pub type T = X I64 | Y end end in \
+         "let A = module pub let B = module pub type T = X I64 | Y end end in \
           match A.B.X 7 with A.B.X(n) -> n | A.B.Y -> 0 end"
          (AtomTy TI64));
     Alcotest.test_case "qualified constructor pattern alias" `Quick
       (check_type
-         "let S = struct pub type Color = Red | Green end in \
+         "let S = module pub type Color = Red | Green end in \
           let N = S in match S.Red with N.Red -> 1 | N.Green -> 2 end"
          (AtomTy TI64));
     Alcotest.test_case "qualified constructor pattern private" `Quick
       (elab_fail
-         "let S = struct type Color = Red | Green end in \
+         "let S = module type Color = Red | Green end in \
           match S.Red with S.Red -> 1 | _ -> 0 end");
     Alcotest.test_case "qualified constructor pattern wrong nominal" `Quick
       (elab_fail
-         "let S = struct pub type Color = Red end in \
-          let T = struct pub type Color = Red end in \
+         "let S = module pub type Color = Red end in \
+          let T = module pub type Color = Red end in \
           match S.Red with T.Red -> 1 | _ -> 0 end");
     Alcotest.test_case "record pattern shorthand" `Quick
       (check_type
@@ -872,12 +896,12 @@ let match_tests =
          (AtomTy TI64));
     Alcotest.test_case "qualified record pattern" `Quick
       (check_type
-         "let M = struct pub let Point = struct x: I64; y: I64; end end in \
+         "let M = module pub let Point = struct x: I64; y: I64; end end in \
           match M.Point {x = 1; y = 2} with M.Point {x; y} -> x + y end"
          (AtomTy TI64));
     Alcotest.test_case "qualified record pattern alias" `Quick
       (check_type
-         "let M = struct pub let Point = struct x: I64; y: I64; end end in \
+         "let M = module pub let Point = struct x: I64; y: I64; end end in \
           let N = M in match M.Point {x = 1; y = 2} with N.Point {x; y} -> x + y end"
          (AtomTy TI64));
     Alcotest.test_case "record pattern incomplete" `Quick
@@ -986,18 +1010,18 @@ let effects =
          (AtomTy TBool));
     Alcotest.test_case "public effect field through dot" `Quick
       (check_type
-         "let M = struct pub let State S = effect get : Unit -> S end end in M.State I64"
+         "let M = module pub let State S = effect get : Unit -> S end end in M.State I64"
          U);
     Alcotest.test_case "public effect field through open" `Quick
       (check_type
-         "let M = struct pub let State S = effect get : Unit -> S end end in open M in State I64"
+         "let M = module pub let State S = effect get : Unit -> S end end in open M in State I64"
          U);
     Alcotest.test_case "private effect field hidden" `Quick
       (elab_fail
-         "let M = struct let State S = effect get : Unit -> S end end in M.State I64");
+         "let M = module let State S = effect get : Unit -> S end end in M.State I64");
     Alcotest.test_case "private effect usable by public member" `Quick
       (check_type
-         "let M = struct let State S = effect get : Unit -> S end; pub let T = State I64 end in M.T"
+         "let M = module let State S = effect get : Unit -> S end; pub let T = State I64 end in M.T"
          U);
     Alcotest.test_case "duplicate operation rejected" `Quick
       (elab_fail
@@ -1140,7 +1164,7 @@ let imports =
          (AtomTy TI64));
     Alcotest.test_case "imported nested constructor pattern" `Quick
       (check_import_type
-         [ ("nested", "pub let M = struct pub type T = X I64 | Y end") ]
+         [ ("nested", "pub let M = module pub type T = X I64 | Y end") ]
          "let N = import \"nested\" in match N.M.X 7 with N.M.X(n) -> n | N.M.Y -> 0 end"
          (AtomTy TI64));
     Alcotest.test_case "imported module alias pattern" `Quick

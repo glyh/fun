@@ -64,7 +64,7 @@ let split_operation_path path name =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token STRUCT END OPEN PUB TYPE EFFECT TRAIT IMPL METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME
+%token MODULE SIG STRUCT END OPEN PUB TYPE EFFECT TRAIT IMPL METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME
 %token ARROW COLON EQUALS SEMI
 %token LPAREN RPAREN COMMA DOT BAR
 %token LBRACE RBRACE
@@ -82,8 +82,8 @@ expr_eof:
   | e = expr; EOF { e }
 
 module_eof:
-  | flds = list(struct_field_decl); bnds = separated_list(SEMI, struct_binding); EOF
-    { Struct { con_fields = flds; bindings = bnds } }
+  | bnds = separated_list(SEMI, module_binding); EOF
+    { Module { bindings = bnds } }
 
 expr:
   | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs; IN; body = expr
@@ -105,7 +105,11 @@ expr:
     { List.fold_right (fun p acc -> Lam (p, acc)) ps body }
   | IF; cond = expr; THEN; then_ = expr; ELSE; else_ = expr
     { If { cond; then_; else_ } }
-  | STRUCT; flds = list(struct_field_decl); bnds = separated_list(SEMI, struct_binding); END
+  | MODULE; bnds = separated_list(SEMI, module_binding); END
+    { Module { bindings = bnds } }
+  | SIG; fields = separated_list(SEMI, module_sig_field); END
+    { Module { bindings = List.map (fun (name, value) -> LetBinding { name; value; public = true }) fields } }
+  | STRUCT; flds = nonempty_list(struct_field_decl); bnds = separated_list(SEMI, struct_binding); END
     { Struct { con_fields = flds; bindings = bnds } }
   | TYPE; name = ID; params = list(ID); EQUALS;
     LBRACE; fields = separated_nonempty_list(SEMI, record_type_field_decl); RBRACE;
@@ -155,8 +159,6 @@ pat_atom:
   | LPAREN; p = pat; RPAREN { p }
   | LPAREN; p = pat; COMMA; rest = separated_nonempty_list(COMMA, pat); RPAREN
     { PatProd (p :: rest) }
-  | name = dotted_id; LPAREN; sub = separated_nonempty_list(COMMA, pat); RPAREN
-    { let path, name = name in PatCon (path, name, sub) }
   | name = dotted_id
     { let path, name = name in bare_pat_name path name }
 
@@ -183,6 +185,9 @@ record_type_field_decl:
 trait_field_decl:
   | name = ID; COLON; ty = expr { (name, ty) }
 
+module_sig_field:
+  | name = ID; COLON; ty = expr { (name, ty) }
+
 impl_field_decl:
   | LET; name = ID; params = list(param); EQUALS; body = expr
     { let value = List.fold_right (fun p acc -> Lam (p, acc)) params body in (name, value) }
@@ -194,6 +199,46 @@ effect_op_decl:
 let_rhs:
   | EFFECT; ops = separated_nonempty_list(SEMI, effect_op_decl); END { `Effect ops }
   | value = expr { `Value value }
+
+module_binding:
+  | PUB; LET; name = binding_name; EQUALS; rhs = let_rhs
+    { match rhs with
+      | `Value value -> LetBinding { name; value; public = true }
+      | `Effect ops -> EffectBinding { name; params = []; ops; public = true } }
+  | PUB; LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
+    ops = separated_nonempty_list(SEMI, effect_op_decl); END
+    { EffectBinding { name; params; ops; public = true } }
+  | PUB; TRAIT; name = ID; params = list(ID); EQUALS; STRUCT;
+    fields = separated_list(SEMI, trait_field_decl); END
+    { TraitBinding { name; params; fields; public = true } }
+  | PUB; IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
+    fields = separated_list(SEMI, impl_field_decl); END
+    { let trait_path, trait_name = trait_name in ImplBinding { trait_path; trait_name; args; fields; public = true } }
+  | LET; name = binding_name; EQUALS; rhs = let_rhs
+    { match rhs with
+      | `Value value -> LetBinding { name; value; public = false }
+      | `Effect ops -> EffectBinding { name; params = []; ops; public = false } }
+  | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
+    ops = separated_nonempty_list(SEMI, effect_op_decl); END
+    { EffectBinding { name; params; ops; public = false } }
+  | TRAIT; name = ID; params = list(ID); EQUALS; STRUCT;
+    fields = separated_list(SEMI, trait_field_decl); END
+    { TraitBinding { name; params; fields; public = false } }
+  | IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
+    fields = separated_list(SEMI, impl_field_decl); END
+    { let trait_path, trait_name = trait_name in ImplBinding { trait_path; trait_name; args; fields; public = false } }
+  | PUB; TYPE; name = ID; params = list(ID); EQUALS;
+    LBRACE; fields = separated_nonempty_list(SEMI, record_type_field_decl); RBRACE
+    { RecordTypeBinding { name; params; fields; public = true } }
+  | PUB; TYPE; name = ID; params = list(ID); EQUALS;
+    ctors = separated_nonempty_list(BAR, ctor_decl)
+    { TypeBinding { name; params; ctors; public = true } }
+  | TYPE; name = ID; params = list(ID); EQUALS;
+    LBRACE; fields = separated_nonempty_list(SEMI, record_type_field_decl); RBRACE
+    { RecordTypeBinding { name; params; fields; public = false } }
+  | TYPE; name = ID; params = list(ID); EQUALS;
+    ctors = separated_nonempty_list(BAR, ctor_decl)
+    { TypeBinding { name; params; ctors; public = false } }
 
 struct_binding:
   | PUB; LET; name = binding_name; EQUALS; rhs = let_rhs

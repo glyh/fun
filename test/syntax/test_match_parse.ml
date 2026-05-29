@@ -21,8 +21,8 @@ let effect_zero_param_shape () =
   | _ -> Alcotest.fail "expected zero-parameter effect declaration"
 
 let effect_struct_shape () =
-  match Core_lexer.parse_expr "struct pub let State S = effect get : Unit -> S end end" with
-  | Struct { bindings = [ EffectBinding { name = "State"; params = [ "S" ]; public = true; ops = [ { name = "get"; _ } ] } ]; _ } -> ()
+  match Core_lexer.parse_expr "module pub let State S = effect get : Unit -> S end end" with
+  | Module { bindings = [ EffectBinding { name = "State"; params = [ "S" ]; public = true; ops = [ { name = "get"; _ } ] } ] } -> ()
   | _ -> Alcotest.fail "expected public effect binding"
 
 let pure_arrow_shape () =
@@ -141,6 +141,16 @@ let multi_trait_bound_shape () =
   | Arrow (Implicit, Some "A", Ap (Ap (Var "+", Explicit, Var "Eq"), Explicit, Var "Jsonable"), None, Var "A") -> ()
   | _ -> Alcotest.fail "expected multi trait bound"
 
+let module_signature_sugar_shape () =
+  match Core_lexer.parse_expr "sig x : I64; y : Bool end" with
+  | Module { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = true }; LetBinding { name = "y"; value = Var "Bool"; public = true } ] } -> ()
+  | _ -> Alcotest.fail "expected signature sugar as public type module"
+
+let module_signature_param_shape () =
+  match Core_lexer.parse_expr "fun (m : module let x = I64 end) -> m.x" with
+  | Lam ({ name = "m"; type_ = Some (Module { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = false } ] }); _ }, FieldAccess (Var "m", "x")) -> ()
+  | _ -> Alcotest.fail "expected module signature parameter"
+
 let () =
   Alcotest.run "syntax"
     [
@@ -171,6 +181,8 @@ let () =
           Alcotest.test_case "impl declaration shape" `Quick impl_decl_shape;
           Alcotest.test_case "single trait bound shape" `Quick single_trait_bound_shape;
           Alcotest.test_case "multi trait bound shape" `Quick multi_trait_bound_shape;
+          Alcotest.test_case "module signature sugar shape" `Quick module_signature_sugar_shape;
+          Alcotest.test_case "module signature parameter shape" `Quick module_signature_param_shape;
           Alcotest.test_case "resume without argument rejected" `Quick (parse_fail "resume");
         ] );
     ]

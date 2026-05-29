@@ -94,6 +94,11 @@ let visible_kind = function
 
 let dot_value (value : value) (name : string) : value =
   match value with
+  | VModule { fields; partial = _ } ->
+      validate_module_fields fields;
+      (match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
+      | Some (_, _, v) -> v
+      | None -> raise (EvalError "field not found"))
   | VStruct { fields; _ } -> (
       match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
       | Some (_, _, v) -> v
@@ -161,6 +166,22 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       bind_result (eval_result mc env cond) (fun vc -> eval_if mc env vc then_ else_)
   | Prod elems -> sequence_values mc env elems (fun values -> Done (VProd values))
   | ProdTy elems -> sequence_values mc env elems (fun values -> Done (VProdTy values))
+  | Module { bindings } ->
+      let rec eval_binds env acc = function
+        | [] -> env, List.rev acc
+        | LetBind (name, kind, def) :: rest ->
+            let vdef = eval mc env def in
+            eval_binds (vdef :: env) ((name, kind, vdef) :: acc) rest
+        | TypeBind (name, kind, nominal, ctors) :: rest ->
+            let ctor_vals = List.map (fun (n, v) -> (n, kind, v)) ctors in
+            let env = List.fold_left (fun e (_, _, v) -> v :: e) env ctor_vals in
+            let env = nominal :: env in
+            eval_binds env ((name, kind, nominal) :: ctor_vals @ acc) rest
+        | EffectBind (name, kind, eff) :: rest ->
+            eval_binds (eff :: env) ((name, kind, eff) :: acc) rest
+      in
+      let _env, fields = eval_binds env [] bindings in
+      Done (VModule { fields; partial = false })
   | Struct { con_fields; bindings; partial } ->
       (* con_fields: all at same scope, no sequential dependency *)
       let con_vals =
@@ -210,11 +231,11 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Open (s, body) ->
       bind_result (eval_result mc env s) (fun vs ->
         match vs with
-        | VStruct { fields; _ } ->
+        | VModule { fields; partial = _ } ->
             let vals = List.filter_map (fun (_, k, v) -> if k = Public || k = Method then Some v else None) fields in
             let env' = List.fold_left (fun e v -> v :: e) env vals in
             eval_result mc env' body
-        | _ -> raise (EvalError "open of non-struct"))
+        | _ -> raise (EvalError "open of non-module"))
   | Fix body -> Done (VFix { body = { env; body } })
   | Con name -> Done (eval_con env name)
   | NomRef (name, params) ->
@@ -760,6 +781,19 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VFix { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       Fix (quote mc (depth + 1) (closure_apply mc clo var))
+  | VModule { fields; partial = _ } ->
+      let bindings =
+        List.filter_map (fun (n, k, v) ->
+          match k, force mc v with
+          | Public, VEffect _ -> Some (EffectBind (n, Public, v))
+          | Private, VEffect _ -> Some (EffectBind (n, Private, v))
+          | Public, _ -> Some (LetBind (n, Public, quote mc depth v))
+          | Private, _ -> Some (LetBind (n, Private, quote mc depth v))
+          | Method, _ | PrivateMethod, _ | Field, _ ->
+              validate_module_fields fields;
+              failwith "unreachable") fields
+      in
+      Module { bindings }
   | VStruct { fields; partial } ->
       let con_fields =
         List.filter_map (fun (n, k, v) ->
@@ -869,6 +903,21 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       conv mc (depth + 1)
         (closure_apply mc clo1 var)
         (closure_apply mc clo2 var)
+  | VModule { fields = fs1; partial = p1 }, VModule { fields = fs2; partial = p2 } ->
+      validate_module_fields fs1;
+      validate_module_fields fs2;
+      let visible fs = List.filter (fun (_, k, _) -> visible_kind k) fs in
+      let vs1 = visible fs1 and vs2 = visible fs2 in
+      let conv_field (name, kind, ty) fields =
+        match List.find_opt (fun (n, k, _) -> String.equal n name && k = kind) fields with
+        | Some (_, _, other_ty) -> conv mc depth ty other_ty
+        | None -> false
+      in
+      if (not p1) && (not p2) then
+        List.length vs1 = List.length vs2 && List.for_all (fun field -> conv_field field vs2) vs1
+      else
+        let required, available = if p1 && not p2 then vs1, vs2 else if p2 && not p1 then vs2, vs1 else if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
+        List.for_all (fun field -> conv_field field available) required
   | VStruct { fields = fs1; _ }, VStruct { fields = fs2; _ } ->
       let visible fs = List.filter (fun (_, k, _) -> visible_kind k) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in

@@ -15,6 +15,8 @@ let rec token buf =
   | "then" -> THEN
   | "else" -> ELSE
   | "pub" -> PUB
+  | "module" -> MODULE
+  | "sig" -> SIG
   | "struct" -> STRUCT
   | "match" -> MATCH
   | "with" -> WITH

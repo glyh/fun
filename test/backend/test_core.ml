@@ -124,9 +124,29 @@ let test_eval_pi () =
   | _ -> Alcotest.fail "expected VPi"
 
 let test_eval_dot () =
-  match eval_source "let M = struct pub let x = 99 end in M.x" with
+  match eval_source "let M = module pub let x = 99 end in M.x" with
   | VAtom (I64 n) -> Alcotest.(check int64) "dot" 99L n
   | _ -> Alcotest.fail "expected VAtom"
+
+let test_eval_module_signature_argument () =
+  check_i64 "module signature argument" 42L
+    "(fun (m : module let x = I64 end) -> m.x) (module pub let x = 42 end)"
+    ()
+
+let test_eval_module_signature_extra_field () =
+  check_i64 "module signature extra field" 42L
+    "(fun (m : module let x = I64 end) -> m.x) (module pub let x = 42; pub let y = true end)"
+    ()
+
+let test_eval_signature_sugar_argument () =
+  check_i64 "signature sugar argument" 42L
+    "(fun (m : sig x : I64 end) -> m.x) (module pub let x = 42 end)"
+    ()
+
+let test_eval_module_signature_functor () =
+  check_i64 "module signature functor" 42L
+    "let F = fun (M : module let x = I64 end) -> module pub let doubled = M.x + M.x end in (F (module pub let x = 21 end)).doubled"
+    ()
 
 (* -- neutral tests (require manual construction) ------------------------- *)
 
@@ -733,6 +753,10 @@ let () =
           Alcotest.test_case "prod" `Quick test_eval_prod;
           Alcotest.test_case "proj" `Quick (check_i64 "proj" 42L "(42, true).0");
           Alcotest.test_case "dot" `Quick test_eval_dot;
+          Alcotest.test_case "module signature argument" `Quick test_eval_module_signature_argument;
+          Alcotest.test_case "module signature extra field" `Quick test_eval_module_signature_extra_field;
+          Alcotest.test_case "signature sugar argument" `Quick test_eval_signature_sugar_argument;
+          Alcotest.test_case "module signature functor" `Quick test_eval_module_signature_functor;
           Alcotest.test_case "pi" `Quick test_eval_pi;
           Alcotest.test_case "eq i64" `Quick (check_bool "eq i64" true "1 == 1");
           Alcotest.test_case "neq i64" `Quick (check_bool "neq i64" true "1 != 2");
@@ -837,15 +861,15 @@ let () =
                 sum (Cons (1, Cons (2, Cons (3, Nil))))");
           Alcotest.test_case "qualified constructor pattern" `Quick
             (check_i64 "qualified constructor pattern" 2L
-               "let S = struct pub type Color = Red | Green end in \
+               "let S = module pub type Color = Red | Green end in \
                 match S.Green with S.Red -> 1 | S.Green -> 2 end");
           Alcotest.test_case "qualified nested constructor pattern" `Quick
             (check_i64 "qualified nested constructor pattern" 7L
-               "let A = struct pub let B = struct pub type T = X I64 | Y end end in \
+               "let A = module pub let B = module pub type T = X I64 | Y end end in \
                 match A.B.X 7 with A.B.X(n) -> n | A.B.Y -> 0 end");
           Alcotest.test_case "qualified constructor alias pattern" `Quick
             (check_i64 "qualified constructor alias pattern" 1L
-               "let S = struct pub type Color = Red | Green end in \
+               "let S = module pub type Color = Red | Green end in \
                 let N = S in match S.Red with N.Red -> 1 | N.Green -> 2 end");
           Alcotest.test_case "match int literal hit" `Quick
             (check_i64 "match int literal hit" 10L
@@ -958,23 +982,23 @@ let () =
                 Flag {flag = true; value} -> value | Flag {flag = false; value} -> value + 1 end");
           Alcotest.test_case "qualified record pattern" `Quick
             (check_i64 "qualified record pattern" 3L
-               "let M = struct pub let Point = struct x: I64; y: I64; end end in \
+               "let M = module pub let Point = struct x: I64; y: I64; end end in \
                 match M.Point {x = 1; y = 2} with M.Point {x; y} -> x + y end");
           Alcotest.test_case "struct private helper" `Quick
             (check_i64 "struct private helper" 11L
-               "let M = struct let secret = 10; pub let x = secret + 1 end in M.x");
-          Alcotest.test_case "struct public function" `Quick
-            (check_i64 "struct public function" 42L
-               "let M = struct let helper = fun x -> x * 2; pub let double = helper end in M.double 21");
+               "let M = module let secret = 10; pub let x = secret + 1 end in M.x");
+          Alcotest.test_case "module public function" `Quick
+            (check_i64 "module public function" 42L
+               "let M = module let helper = fun x -> x * 2; pub let double = helper end in M.double 21");
           Alcotest.test_case "struct multiple public members" `Quick
             (check_i64 "struct multiple public members" 3L
-               "let M = struct pub let a = 1; pub let b = 2 end in M.a + M.b");
+               "let M = module pub let a = 1; pub let b = 2 end in M.a + M.b");
           Alcotest.test_case "open struct values" `Quick
             (check_i64 "open struct values" 52L
-               "let M = struct pub let x = 42; pub let y = 10 end in open M in x + y");
+               "let M = module pub let x = 42; pub let y = 10 end in open M in x + y");
           Alcotest.test_case "open struct constructors" `Quick
             (check_i64 "open struct constructors" 1L
-               "let Color = struct pub type Color = Red | Green | Blue end in \
+               "let Color = module pub type Color = Red | Green | Blue end in \
                 open Color in match Red with Red -> 1 | Green -> 2 | Blue -> 3 end");
         ] );
       ( "imports",
@@ -1019,7 +1043,7 @@ let () =
                "let B = import \"box\" in B.Box.copy (B.Box {value = 1}) (B.Box {value = 2})");
           Alcotest.test_case "imported nested constructor pattern" `Quick
             (check_import_i64 "imported nested constructor pattern"
-               [ ("nested", "pub let M = struct pub type T = X I64 | Y end") ] 7L
+               [ ("nested", "pub let M = module pub type T = X I64 | Y end") ] 7L
                "let N = import \"nested\" in match N.M.X 7 with N.M.X(n) -> n | N.M.Y -> 0 end");
           Alcotest.test_case "imported module alias pattern" `Quick
             (check_import_i64 "imported module alias pattern"

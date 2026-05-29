@@ -35,14 +35,15 @@ and term =
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
   | Fix of term
   | Proj of term * int             (* positional tuple projection: e.0 *)
-  | Dot of term * string           (* named struct field access: e.field *)
+  | Dot of term * string           (* named member/field access: e.field *)
   | RecordConstruct of { typ : term; fields : (string * term) list }
+  | Module of { bindings : struct_binding_term list }
   | Struct of {
       con_fields : (string * term) list;
       bindings : struct_binding_term list;
       partial : bool;
     }
-  | Open of term * term            (* open S in body — evaluator extends env with struct fields *)
+  | Open of term * term            (* open S in body — evaluator extends env with module-view fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
   | Con of string
       (** Residual constructor/type reference in quoted output. Created when
@@ -194,15 +195,21 @@ and value =
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)
   | VFix of { body : closure }
+  | VModule of {
+      fields : (string * struct_field_kind * value) list;
+      partial : bool;
+    }
+      (** Namespace/module value or partial module signature. Fields carry
+          visibility and member kind, but [Field] entries are reserved for
+          record structs. *)
   | VStruct of {
       fields : (string * struct_field_kind * value) list;
       partial : bool;
     }
-      (** Struct value/type. [fields] carry a [struct_field_kind]:
-          [Field] = record constructor field, [Public]/[Private] = value field,
-          [Method]/[PrivateMethod] = function-valued method field. [Private]
-          and [PrivateMethod] are invisible outside. [partial] = width-subtyped
-          (matches any struct with at least these fields). *)
+      (** Record struct type. [Field] entries are record constructor fields;
+          [Public]/[Private]/[Method]/[PrivateMethod] entries are associated
+          members exposed through the struct's module view. [partial] =
+          width-subtyped record shape. *)
   | VRecord of { typ : value; fields : (string * value) list }
       (** Record instance whose type is a [VStruct]. *)
   | VNominal of {
@@ -295,6 +302,10 @@ and closure = { env : env; body : term }
 let empty_effect_row = { effects = []; tail = None }
 let is_empty_effect_row row = List.is_empty row.effects && Option.is_none row.tail
 let effect_row_closure env row = { env; effects = row.effects; tail = row.tail }
+
+let validate_module_fields fields =
+  if List.exists (fun (_, kind, _) -> kind = Field || kind = Method || kind = PrivateMethod) fields then
+    failwith "VModule invariant violation: non-module field"
 
 module MetaContext = struct
   type entry = Solved of value | Unsolved
