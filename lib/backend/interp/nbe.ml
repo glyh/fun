@@ -2,9 +2,7 @@ open Core
 
 exception EvalError of string
 
-type result =
-  | Done of value
-  | Effect of effect_request
+type result = Done of value | Effect of effect_request
 
 and effect_request = {
   eff : value;
@@ -67,26 +65,26 @@ let atom_ty_of_atom = function
 let prim_table : (string, Prim.reducer) Hashtbl.t =
   let open Prim in
   [
-    "+",  i64_binop Int64.add;
-    "-",  i64_binop Int64.sub;
-    "*",  i64_binop Int64.mul;
-    "/",  i64_binop Int64.div;
-    "%",  i64_binop Int64.rem;
-    "eq_i64", i64_cmp Int64.equal;
-    "neq_i64", i64_cmp (fun a b -> not (Int64.equal a b));
-    "eq_bool", bool_cmp Bool.equal;
-    "neq_bool", bool_cmp (fun a b -> not (Bool.equal a b));
-    "eq_char", char_cmp Char.equal;
-    "neq_char", char_cmp (fun a b -> not (Char.equal a b));
-    "eq_unit", unit_cmp (fun () () -> true);
-    "neq_unit", unit_cmp (fun () () -> false);
-    "eq_string", string_cmp String.equal;
-    "neq_string", string_cmp (fun a b -> not (String.equal a b));
-    "<",  i64_cmp (fun a b -> Int64.compare a b < 0);
-    ">",  i64_cmp (fun a b -> Int64.compare a b > 0);
-    "<=", i64_cmp (fun a b -> Int64.compare a b <= 0);
-    ">=", i64_cmp (fun a b -> Int64.compare a b >= 0);
-    "not", bool_unop not;
+    ("+", i64_binop Int64.add);
+    ("-", i64_binop Int64.sub);
+    ("*", i64_binop Int64.mul);
+    ("/", i64_binop Int64.div);
+    ("%", i64_binop Int64.rem);
+    ("eq_i64", i64_cmp Int64.equal);
+    ("neq_i64", i64_cmp (fun a b -> not (Int64.equal a b)));
+    ("eq_bool", bool_cmp Bool.equal);
+    ("neq_bool", bool_cmp (fun a b -> not (Bool.equal a b)));
+    ("eq_char", char_cmp Char.equal);
+    ("neq_char", char_cmp (fun a b -> not (Char.equal a b)));
+    ("eq_unit", unit_cmp (fun () () -> true));
+    ("neq_unit", unit_cmp (fun () () -> false));
+    ("eq_string", string_cmp String.equal);
+    ("neq_string", string_cmp (fun a b -> not (String.equal a b)));
+    ("<", i64_cmp (fun a b -> Int64.compare a b < 0));
+    (">", i64_cmp (fun a b -> Int64.compare a b > 0));
+    ("<=", i64_cmp (fun a b -> Int64.compare a b <= 0));
+    (">=", i64_cmp (fun a b -> Int64.compare a b >= 0));
+    ("not", bool_unop not);
   ]
   |> List.to_seq |> Hashtbl.of_seq
 
@@ -96,15 +94,23 @@ let visible_kind = function
 
 let dot_value (value : value) (name : string) : value =
   match value with
-  | VModule { entries; partial = _ } ->
+  | VModule { entries; partial = _ } -> (
       let fields = module_entry_fields entries in
       validate_module_fields fields;
-      (match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
+      match
+        List.find_opt
+          (fun (n, k, _) -> String.equal n name && visible_kind k)
+          fields
+      with
       | Some (_, _, v) -> v
       | None -> raise (EvalError "field not found"))
   | VStruct { entries; _ } -> (
       let fields = struct_entry_fields entries in
-      match List.find_opt (fun (n, k, _) -> String.equal n name && visible_kind k) fields with
+      match
+        List.find_opt
+          (fun (n, k, _) -> String.equal n name && visible_kind k)
+          fields
+      with
       | Some (_, _, v) -> v
       | None -> raise (EvalError "field not found"))
   | VRecord { fields; _ } -> (
@@ -113,21 +119,33 @@ let dot_value (value : value) (name : string) : value =
       | None -> raise (EvalError "field not found"))
   | VNeutral { neutral; _ } ->
       VNeutral
-        { ty = VU;
-          neutral = { neutral with frames = neutral.frames @ [ FDot name ] } }
+        {
+          ty = VU;
+          neutral = { neutral with frames = neutral.frames @ [ FDot name ] };
+        }
   | VFlex { id; spine = sp } ->
       let frames = List.map (fun v -> FApp v) sp in
       VNeutral
-        { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FDot name ] } }
+        {
+          ty = VU;
+          neutral = { head = HMeta id; frames = frames @ [ FDot name ] };
+        }
   | VRigid { lvl; spine = sp } ->
       let frames = List.map (fun v -> FApp v) sp in
       VNeutral
-        { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FDot name ] } }
+        {
+          ty = VU;
+          neutral = { head = HVar lvl; frames = frames @ [ FDot name ] };
+        }
   | _ -> raise (EvalError "field access on non-struct")
 
 let unhandled_effect_error eff op =
   match eff with
-  | VEffect e -> raise (EvalError ("unhandled effect " ^ e.name ^ "." ^ op ^ "; handlers are not implemented"))
+  | VEffect e ->
+      raise
+        (EvalError
+           ("unhandled effect " ^ e.name ^ "." ^ op
+          ^ "; handlers are not implemented"))
   | _ -> raise (EvalError "perform target is not an effect")
 
 let result_value _mc = function
@@ -145,7 +163,7 @@ and sequence_values mc env terms k =
   | [] -> k []
   | term :: rest ->
       bind_result (eval_result mc env term) (fun value ->
-        sequence_values mc env rest (fun values -> k (value :: values)))
+          sequence_values mc env rest (fun values -> k (value :: values)))
 
 and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   match t with
@@ -153,34 +171,130 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Lam body -> Done (VLam { body = { env; body } })
   | Ap (f, _, a) ->
       bind_result (eval_result mc env f) (fun vf ->
-        bind_result (eval_result mc env a) (fun va -> apply_result mc vf va))
+          bind_result (eval_result mc env a) (fun va -> apply_result mc vf va))
   | Let (_, def, body) ->
-      bind_result (eval_result mc env def) (fun vdef -> eval_result mc (vdef :: env) body)
+      bind_result (eval_result mc env def) (fun vdef ->
+          eval_result mc (vdef :: env) body)
   | Pi { explicitness; domain; effects; codomain } ->
       Done
         (VPi
-           { explicitness;
+           {
+             explicitness;
              domain = eval mc env domain;
              effects = effect_row_closure env effects;
-             codomain = { env; body = codomain } })
+             codomain = { env; body = codomain };
+           })
   | U -> Done VU
   | Atom a -> Done (VAtom a)
   | AtomTy t -> Done (VAtomTy t)
+  | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))
+  | RefNew e ->
+      bind_result (eval_result mc env e) (fun value -> Done (VRef (ref value)))
+  | RefGet r ->
+      bind_result (eval_result mc env r) (fun ref_value ->
+          match force mc ref_value with
+          | VRef cell -> Done !cell
+          | VNeutral { ty; neutral } -> (
+              match force mc ty with
+              | VRefTy elem_ty ->
+                  Done
+                    (VNeutral
+                       {
+                         ty = elem_ty;
+                         neutral =
+                           {
+                             neutral with
+                             frames = neutral.frames @ [ FRefGet ];
+                           };
+                       })
+              | _ -> raise (EvalError "deref of non-ref"))
+          | VFlex { id; spine = sp } ->
+              let frames = List.map (fun v -> FApp v) sp in
+              Done
+                (VNeutral
+                   {
+                     ty = VU;
+                     neutral =
+                       { head = HMeta id; frames = frames @ [ FRefGet ] };
+                   })
+          | VRigid { lvl; spine = sp } ->
+              let frames = List.map (fun v -> FApp v) sp in
+              Done
+                (VNeutral
+                   {
+                     ty = VU;
+                     neutral =
+                       { head = HVar lvl; frames = frames @ [ FRefGet ] };
+                   })
+          | _ -> raise (EvalError "deref of non-ref"))
+  | RefSet (r, e) ->
+      bind_result (eval_result mc env r) (fun ref_value ->
+          bind_result (eval_result mc env e) (fun value ->
+              match force mc ref_value with
+              | VRef cell ->
+                  cell := value;
+                  Done (VAtom Unit)
+              | VNeutral { neutral; _ } ->
+                  Done
+                    (VNeutral
+                       {
+                         ty = VAtomTy TUnit;
+                         neutral =
+                           {
+                             neutral with
+                             frames = neutral.frames @ [ FRefSet value ];
+                           };
+                       })
+              | VFlex { id; spine = sp } ->
+                  let frames = List.map (fun v -> FApp v) sp in
+                  Done
+                    (VNeutral
+                       {
+                         ty = VAtomTy TUnit;
+                         neutral =
+                           {
+                             head = HMeta id;
+                             frames = frames @ [ FRefSet value ];
+                           };
+                       })
+              | VRigid { lvl; spine = sp } ->
+                  let frames = List.map (fun v -> FApp v) sp in
+                  Done
+                    (VNeutral
+                       {
+                         ty = VAtomTy TUnit;
+                         neutral =
+                           {
+                             head = HVar lvl;
+                             frames = frames @ [ FRefSet value ];
+                           };
+                       })
+              | _ -> raise (EvalError "assignment to non-ref")))
   | If (cond, then_, else_) ->
-      bind_result (eval_result mc env cond) (fun vc -> eval_if mc env vc then_ else_)
-  | Prod elems -> sequence_values mc env elems (fun values -> Done (VProd values))
-  | ProdTy elems -> sequence_values mc env elems (fun values -> Done (VProdTy values))
+      bind_result (eval_result mc env cond) (fun vc ->
+          eval_if mc env vc then_ else_)
+  | Prod elems ->
+      sequence_values mc env elems (fun values -> Done (VProd values))
+  | ProdTy elems ->
+      sequence_values mc env elems (fun values -> Done (VProdTy values))
   | Module { bindings } ->
       let rec eval_binds env acc = function
-        | [] -> env, List.rev acc
+        | [] -> (env, List.rev acc)
         | LetBind (name, kind, def) :: rest ->
             let vdef = eval mc env def in
-            eval_binds (vdef :: env) (ModuleField (name, kind, vdef) :: acc) rest
+            eval_binds (vdef :: env)
+              (ModuleField (name, kind, vdef) :: acc)
+              rest
         | TypeBind (name, kind, nominal, ctors) :: rest ->
-            let ctor_entries = List.map (fun (n, v) -> ModuleField (n, kind, v)) ctors in
+            let ctor_entries =
+              List.map (fun (n, v) -> ModuleField (n, kind, v)) ctors
+            in
             let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
             let env = nominal :: env in
-            eval_binds env (List.rev_append ctor_entries (ModuleField (name, kind, nominal) :: acc)) rest
+            eval_binds env
+              (List.rev_append ctor_entries
+                 (ModuleField (name, kind, nominal) :: acc))
+              rest
         | EffectBind (name, kind, eff) :: rest ->
             eval_binds (eff :: env) (ModuleField (name, kind, eff) :: acc) rest
         | ImplBind (kind, def, ty) :: rest ->
@@ -196,114 +310,158 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       in
       (* bindings: sequential, TypeBind stores values directly *)
       let rec eval_binds env acc_entries = function
-        | [] -> env, List.rev acc_entries
+        | [] -> (env, List.rev acc_entries)
         | LetBind (name, kind, def) :: rest ->
             let vdef = eval mc env def in
-            eval_binds (vdef :: env) (StructField (name, kind, vdef) :: acc_entries) rest
+            eval_binds (vdef :: env)
+              (StructField (name, kind, vdef) :: acc_entries)
+              rest
         | TypeBind (name, kind, nominal, ctors) :: rest ->
-            let ctor_entries = List.map (fun (n, v) -> StructField (n, kind, v)) ctors in
+            let ctor_entries =
+              List.map (fun (n, v) -> StructField (n, kind, v)) ctors
+            in
             let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
             let env = nominal :: env in
-            eval_binds env (List.rev_append ctor_entries (StructField (name, kind, nominal) :: acc_entries)) rest
+            eval_binds env
+              (List.rev_append ctor_entries
+                 (StructField (name, kind, nominal) :: acc_entries))
+              rest
         | EffectBind (name, kind, eff) :: rest ->
-            eval_binds (eff :: env) (StructField (name, kind, eff) :: acc_entries) rest
+            eval_binds (eff :: env)
+              (StructField (name, kind, eff) :: acc_entries)
+              rest
         | ImplBind (kind, def, ty) :: rest ->
             let vdef = eval mc env def in
-            eval_binds (vdef :: env) (StructImpl (kind, ty, vdef) :: acc_entries) rest
+            eval_binds (vdef :: env)
+              (StructImpl (kind, ty, vdef) :: acc_entries)
+              rest
       in
       let _env, bind_entries = eval_binds env [] bindings in
-      let con_entries = List.map (fun (name, kind, value) -> StructField (name, kind, value)) con_vals in
+      let con_entries =
+        List.map
+          (fun (name, kind, value) -> StructField (name, kind, value))
+          con_vals
+      in
       Done (VStruct { entries = con_entries @ bind_entries; partial })
   | RecordConstruct { typ; fields } ->
       bind_result (eval_result mc env typ) (fun typ ->
-        let rec go acc = function
-          | [] -> Done (VRecord { typ; fields = List.rev acc })
-          | (name, value) :: rest ->
-              bind_result (eval_result mc env value) (fun value -> go ((name, value) :: acc) rest)
-        in
-        go [] fields)
+          let rec go acc = function
+            | [] -> Done (VRecord { typ; fields = List.rev acc })
+            | (name, value) :: rest ->
+                bind_result (eval_result mc env value) (fun value ->
+                    go ((name, value) :: acc) rest)
+          in
+          go [] fields)
   | Proj (e, i) ->
       bind_result (eval_result mc env e) (fun vs ->
-        Done
-          (match vs with
-          | VProd elems -> List.nth elems i
-          | VNeutral { neutral; _ } ->
-              VNeutral
-                { ty = VU;
-                  neutral = { neutral with frames = neutral.frames @ [ FProj i ] } }
-          | VFlex { id; spine = sp } ->
-              let frames = List.map (fun v -> FApp v) sp in
-              VNeutral { ty = VU; neutral = { head = HMeta id; frames = frames @ [ FProj i ] } }
-          | VRigid { lvl; spine = sp } ->
-              let frames = List.map (fun v -> FApp v) sp in
-              VNeutral { ty = VU; neutral = { head = HVar lvl; frames = frames @ [ FProj i ] } }
-          | _ -> raise (EvalError "projection of non-product")))
-  | Dot (e, name) -> bind_result (eval_result mc env e) (fun value -> Done (dot_value value name))
+          Done
+            (match vs with
+            | VProd elems -> List.nth elems i
+            | VNeutral { neutral; _ } ->
+                VNeutral
+                  {
+                    ty = VU;
+                    neutral =
+                      { neutral with frames = neutral.frames @ [ FProj i ] };
+                  }
+            | VFlex { id; spine = sp } ->
+                let frames = List.map (fun v -> FApp v) sp in
+                VNeutral
+                  {
+                    ty = VU;
+                    neutral = { head = HMeta id; frames = frames @ [ FProj i ] };
+                  }
+            | VRigid { lvl; spine = sp } ->
+                let frames = List.map (fun v -> FApp v) sp in
+                VNeutral
+                  {
+                    ty = VU;
+                    neutral = { head = HVar lvl; frames = frames @ [ FProj i ] };
+                  }
+            | _ -> raise (EvalError "projection of non-product")))
+  | Dot (e, name) ->
+      bind_result (eval_result mc env e) (fun value ->
+          Done (dot_value value name))
   | Open (s, body) ->
       bind_result (eval_result mc env s) (fun vs ->
-        match vs with
-        | VModule { entries; partial = _ } ->
-            let vals =
-              List.filter_map
-                (function
-                  | ModuleField (_, k, v) when k = Public || k = Method -> Some v
-                  | ModuleImpl (k, _, v) when k = Public -> Some v
-                  | _ -> None)
-                entries
-            in
-            let env' = List.fold_left (fun e v -> v :: e) env vals in
-            eval_result mc env' body
-        | _ -> raise (EvalError "open of non-module"))
+          match vs with
+          | VModule { entries; partial = _ } ->
+              let vals =
+                List.filter_map
+                  (function
+                    | ModuleField (_, k, v) when k = Public || k = Method ->
+                        Some v
+                    | ModuleImpl (k, _, v) when k = Public -> Some v
+                    | _ -> None)
+                  entries
+              in
+              let env' = List.fold_left (fun e v -> v :: e) env vals in
+              eval_result mc env' body
+          | _ -> raise (EvalError "open of non-module"))
   | Fix body -> Done (VFix { body = { env; body } })
   | Con name -> Done (eval_con env name)
-  | NomRef (name, params) ->
-      (match eval_con env name with
+  | NomRef (name, params) -> (
+      match eval_con env name with
       | VNominal _ as nom ->
           sequence_values mc env params (fun param_vals ->
-            Done (List.fold_left (fun acc v -> apply mc acc v) nom param_vals))
+              Done (List.fold_left (fun acc v -> apply mc acc v) nom param_vals))
       | _ -> raise (EvalError ("NomRef is not VNominal: " ^ name)))
-  | EffectRef (name, params) ->
-      (match eval_eff env name with
+  | EffectRef (name, params) -> (
+      match eval_eff env name with
       | VEffect _ as eff ->
           sequence_values mc env params (fun param_vals ->
-            Done (List.fold_left (fun acc v -> apply mc acc v) eff param_vals))
+              Done (List.fold_left (fun acc v -> apply mc acc v) eff param_vals))
       | _ -> raise (EvalError ("EffectRef is not VEffect: " ^ name)))
   | TraitRef { trait_id; trait_name } -> Done (VTrait { trait_id; trait_name })
   | TraitDictTy { trait_id; trait_name; args; fields } ->
       sequence_values mc env args (fun arg_vals ->
-        let rec eval_fields acc = function
-          | [] -> Done (VTraitDict { trait_id; trait_name; args = arg_vals; fields = List.rev acc })
-          | (name, field) :: rest ->
-              bind_result (eval_result mc env field) (fun value -> eval_fields ((name, value) :: acc) rest)
-        in
-        eval_fields [] fields)
+          let rec eval_fields acc = function
+            | [] ->
+                Done
+                  (VTraitDict
+                     {
+                       trait_id;
+                       trait_name;
+                       args = arg_vals;
+                       fields = List.rev acc;
+                     })
+            | (name, field) :: rest ->
+                bind_result (eval_result mc env field) (fun value ->
+                    eval_fields ((name, value) :: acc) rest)
+          in
+          eval_fields [] fields)
   | SelfTypeRef args ->
       sequence_values mc env args (fun arg_vals -> Done (VSelfType arg_vals))
   | Ctor { name; spine; nominal_name; nominal_spine } ->
       sequence_values mc env spine (fun spine_vals ->
-        sequence_values mc env nominal_spine (fun nom_spine_vals ->
-          match eval_con env nominal_name with
-          | VNominal n ->
-              Done
-                (VCon
-                   { name;
-                     spine = spine_vals;
-                     nominal = VNominal { n with params = nom_spine_vals } })
-          | _ -> raise (EvalError ("Ctor nominal is not VNominal: " ^ nominal_name))))
+          sequence_values mc env nominal_spine (fun nom_spine_vals ->
+              match eval_con env nominal_name with
+              | VNominal n ->
+                  Done
+                    (VCon
+                       {
+                         name;
+                         spine = spine_vals;
+                         nominal = VNominal { n with params = nom_spine_vals };
+                       })
+              | _ ->
+                  raise
+                    (EvalError ("Ctor nominal is not VNominal: " ^ nominal_name))))
   | Prim name ->
       Done (VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } })
   | Meta id -> Done (eval_meta mc id)
   | InsertedMeta (id, bds) -> Done (eval_inserted_meta mc env id bds)
   | NominalDef { id; name; num_params; ctors; body } ->
       let elaborated_ctors =
-        List.map (fun (cname, payload_opt) ->
-          (cname, Option.map (fun t -> { env; body = t }) payload_opt))
-        ctors
+        List.map
+          (fun (cname, payload_opt) ->
+            (cname, Option.map (fun t -> { env; body = t }) payload_opt))
+          ctors
       in
-      let nominal = VNominal {
-        id; name; num_params; params = [];
-        constructors = elaborated_ctors
-      } in
+      let nominal =
+        VNominal
+          { id; name; num_params; params = []; constructors = elaborated_ctors }
+      in
       (* Add dummy entries for type params (body expects them in scope) *)
       let depth = List.length env in
       let env =
@@ -316,47 +474,53 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       (* Push the nominal template (used by NomRef/eval_con) *)
       let env = nominal :: env in
       (* For parameterized types, elaborator also pushes a type-name binding *)
+      let env = if num_params > 0 then nominal :: env else env in
       let env =
-        if num_params > 0 then nominal :: env
-        else env
-      in
-      let env =
-        List.fold_left (fun env (cname, payload_clo_opt) ->
-          let has_payload = Option.is_some payload_clo_opt in
-          let total_args = num_params + (if has_payload then 1 else 0) in
-          if total_args = 0 then
-            VCon { name = cname; spine = []; nominal } :: env
-          else
-            let ctor_body =
-              let param_vars = List.init num_params (fun i ->
-                Var (total_args - 1 - i)) in
-              let payload_var = if has_payload then [ Var 0 ] else [] in
-              Ctor { name = cname; spine = param_vars @ payload_var;
-                     nominal_name = name;
-                     nominal_spine = param_vars }
-            in
-            let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in
-            let ctor_term = wrap total_args ctor_body in
-            eval mc env ctor_term :: env)
-        env elaborated_ctors
+        List.fold_left
+          (fun env (cname, payload_clo_opt) ->
+            let has_payload = Option.is_some payload_clo_opt in
+            let total_args = num_params + if has_payload then 1 else 0 in
+            if total_args = 0 then
+              VCon { name = cname; spine = []; nominal } :: env
+            else
+              let ctor_body =
+                let param_vars =
+                  List.init num_params (fun i -> Var (total_args - 1 - i))
+                in
+                let payload_var = if has_payload then [ Var 0 ] else [] in
+                Ctor
+                  {
+                    name = cname;
+                    spine = param_vars @ payload_var;
+                    nominal_name = name;
+                    nominal_spine = param_vars;
+                  }
+              in
+              let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in
+              let ctor_term = wrap total_args ctor_body in
+              eval mc env ctor_term :: env)
+          env elaborated_ctors
       in
       eval_result mc env body
   | EffectDef { id; name; ops; body; _ } ->
       let elaborated_ops =
-        List.map (fun (op_name, input, output) ->
-          (op_name, { env; body = input }, { env; body = output }))
+        List.map
+          (fun (op_name, input, output) ->
+            (op_name, { env; body = input }, { env; body = output }))
           ops
       in
-      let eff = VEffect { id; name; params = []; operations = elaborated_ops } in
+      let eff =
+        VEffect { id; name; params = []; operations = elaborated_ops }
+      in
       eval_result mc (eff :: env) body
-  | Match (scrut, branches) ->
-      eval_match_result mc env scrut branches
+  | Match (scrut, branches) -> eval_match_result mc env scrut branches
   | Perform { eff; op; arg } ->
       bind_result (eval_result mc env eff) (fun eff ->
-        bind_result (eval_result mc env arg) (fun arg ->
-          match force mc eff with
-          | VEffect _ as eff -> Effect { eff; op; arg; k = (fun v -> Done v) }
-          | _ -> raise (EvalError "perform target is not an effect")))
+          bind_result (eval_result mc env arg) (fun arg ->
+              match force mc eff with
+              | VEffect _ as eff ->
+                  Effect { eff; op; arg; k = (fun v -> Done v) }
+              | _ -> raise (EvalError "perform target is not an effect")))
 
 and try_prim_reduce (head : head) (frames : frame list) : value option =
   match head with
@@ -368,7 +532,9 @@ and try_prim_reduce (head : head) (frames : frame list) : value option =
       in
       raise (EvalError msg)
   | HPrim name -> (
-      let atoms = List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames in
+      let atoms =
+        List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames
+      in
       if List.length atoms <> List.length frames then None
       else
         match Hashtbl.find_opt prim_table name with
@@ -487,18 +653,26 @@ and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : term)
   let value_branches, effect_branches = close_match_branches env branches in
   let rec handle_scrutinee = function
     | Done v ->
-        if List.is_empty effect_branches then Done (eval_match mc env v value_branches)
+        if List.is_empty effect_branches then
+          Done (eval_match mc env v value_branches)
         else handle_body (eval_match_result_value mc env v value_branches)
     | Effect request -> handle_effect handle_scrutinee request
   and handle_body = function
     | Done v -> Done v
     | Effect request -> handle_effect handle_body request
   and handle_effect resume_with request =
-    match find_effect_branch mc effect_branches request.eff request.op request.arg with
+    match
+      find_effect_branch mc effect_branches request.eff request.op request.arg
+    with
     | Some (arg_bindings, body) ->
         let k = make_cont request.k in
-        handle_body (eval_result mc (k :: List.rev_append arg_bindings body.env) body.body)
-    | None -> Effect { request with k = (fun resume -> resume_with (request.k resume)) }
+        handle_body
+          (eval_result mc
+             (k :: List.rev_append arg_bindings body.env)
+             body.body)
+    | None ->
+        Effect
+          { request with k = (fun resume -> resume_with (request.k resume)) }
   in
   handle_scrutinee (eval_result mc env scrutinee)
 
@@ -519,7 +693,9 @@ and find_effect_branch mc branches eff op arg =
     (fun (branch_eff, branch_op, arg_pat, body) ->
       let branch_eff = force mc branch_eff in
       if String.equal op branch_op && runtime_value_equal mc eff branch_eff then
-        Option.map (fun bindings -> (bindings, body)) (match_core_pat mc arg_pat arg)
+        Option.map
+          (fun bindings -> (bindings, body))
+          (match_core_pat mc arg_pat arg)
       else None)
     branches
 
@@ -541,38 +717,51 @@ and runtime_value_equal mc lhs rhs =
 and core_pat_contains_struct_type = function
   | CPatStructType _ -> true
   | CPatProd pats -> List.exists core_pat_contains_struct_type pats
-  | CPatOr (lhs, rhs) -> core_pat_contains_struct_type lhs || core_pat_contains_struct_type rhs
-  | CPatRecord { fields; _ } -> List.exists (fun (_, pat) -> core_pat_contains_struct_type pat) fields
+  | CPatOr (lhs, rhs) ->
+      core_pat_contains_struct_type lhs || core_pat_contains_struct_type rhs
+  | CPatRecord { fields; _ } ->
+      List.exists (fun (_, pat) -> core_pat_contains_struct_type pat) fields
   | CPatCon (_, _, pats) -> List.exists core_pat_contains_struct_type pats
-  | CPatNominalHead { param_pats; _ } -> List.exists core_pat_contains_struct_type param_pats
+  | CPatNominalHead { param_pats; _ } ->
+      List.exists core_pat_contains_struct_type param_pats
   | CPatWild | CPatBind | CPatAtom _ | CPatType _ -> false
 
 and core_pat_contains_nominal_head = function
   | CPatNominalHead _ -> true
   | CPatProd pats -> List.exists core_pat_contains_nominal_head pats
-  | CPatOr (lhs, rhs) -> core_pat_contains_nominal_head lhs || core_pat_contains_nominal_head rhs
-  | CPatRecord { fields; _ } -> List.exists (fun (_, pat) -> core_pat_contains_nominal_head pat) fields
+  | CPatOr (lhs, rhs) ->
+      core_pat_contains_nominal_head lhs || core_pat_contains_nominal_head rhs
+  | CPatRecord { fields; _ } ->
+      List.exists (fun (_, pat) -> core_pat_contains_nominal_head pat) fields
   | CPatCon (_, _, pats) -> List.exists core_pat_contains_nominal_head pats
-  | CPatStructType { fields; _ } -> List.exists (fun (_, pat) -> core_pat_contains_nominal_head pat) fields
+  | CPatStructType { fields; _ } ->
+      List.exists (fun (_, pat) -> core_pat_contains_nominal_head pat) fields
   | CPatWild | CPatBind | CPatAtom _ | CPatType _ -> false
 
 and struct_type_fields fields =
-  List.filter_map (fun (name, kind, ty) -> if kind = Field then Some (name, ty) else None) fields
+  List.filter_map
+    (fun (name, kind, ty) -> if kind = Field then Some (name, ty) else None)
+    fields
 
 and match_core_pat mc pat value =
   match (pat, force mc value) with
   | CPatWild, _ -> Some []
   | CPatBind, v -> Some [ v ]
   | CPatAtom expected, VAtom actual when Atom.equal expected actual -> Some []
-  | CPatType expected, VAtomTy actual when equal_atom_ty expected actual -> Some []
+  | CPatType expected, VAtomTy actual when equal_atom_ty expected actual ->
+      Some []
   | CPatProd pats, VProd values when List.length pats = List.length values ->
       match_core_pats mc pats values
   | CPatCon (name, num_type_params, sub_pats), VCon { name = actual; spine; _ }
     when String.equal name actual ->
       let payload = List.drop num_type_params spine in
-      if List.length sub_pats = List.length payload then match_core_pats mc sub_pats payload else None
+      if List.length sub_pats = List.length payload then
+        match_core_pats mc sub_pats payload
+      else None
   | CPatNominalHead { id; param_pats; _ }, VNominal n when n.id = id ->
-      if List.length param_pats = List.length n.params then match_core_pats mc param_pats n.params else None
+      if List.length param_pats = List.length n.params then
+        match_core_pats mc param_pats n.params
+      else None
   | CPatRecord { fields; _ }, VRecord { fields = values; _ } ->
       let rec go acc = function
         | [] -> Some (List.rev acc)
@@ -585,9 +774,13 @@ and match_core_pat mc pat value =
             | None -> None)
       in
       go [] fields
-  | CPatStructType { fields; partial }, VStruct { entries = struct_entries; _ } ->
-      let struct_fields = struct_type_fields (struct_entry_fields struct_entries) in
-      if (not partial) && List.length fields <> List.length struct_fields then None
+  | CPatStructType { fields; partial }, VStruct { entries = struct_entries; _ }
+    ->
+      let struct_fields =
+        struct_type_fields (struct_entry_fields struct_entries)
+      in
+      if (not partial) && List.length fields <> List.length struct_fields then
+        None
       else
         let rec go acc = function
           | [] -> Some (List.rev acc)
@@ -601,7 +794,9 @@ and match_core_pat mc pat value =
         in
         go [] fields
   | CPatOr (lhs, rhs), v -> (
-      match match_core_pat mc lhs v with Some _ as matched -> matched | None -> match_core_pat mc rhs v)
+      match match_core_pat mc lhs v with
+      | Some _ as matched -> matched
+      | None -> match_core_pat mc rhs v)
   | _ -> None
 
 and match_core_pats mc pats values =
@@ -623,7 +818,8 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
   let scrutinee = force mc scrutinee in
   if
     List.exists
-      (fun (pat, _) -> core_pat_contains_struct_type pat || core_pat_contains_nominal_head pat)
+      (fun (pat, _) ->
+        core_pat_contains_struct_type pat || core_pat_contains_nominal_head pat)
       branches
   then eval_match_direct_result mc env scrutinee branches
   else
@@ -636,11 +832,16 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
           | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
           | Some (VProd elems) -> Product (List.length elems)
           | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
+              Record
+                (List.filter_map
+                   (fun (n, k, _) -> if k = Field then Some n else None)
+                   (struct_entry_fields entries))
           | _ -> Unknown
         in
         let pats = List.map fst branches in
-        let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
+        let dt =
+          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
+        in
         eval_decision_tree_result mc env scrutinee branches dt
     | VAtom atom ->
         let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
@@ -654,11 +855,16 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
           | Some (VAtomTy _) | Some (VNominal _) -> Type
           | Some (VProd elems) -> Product (List.length elems)
           | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
+              Record
+                (List.filter_map
+                   (fun (n, k, _) -> if k = Field then Some n else None)
+                   (struct_entry_fields entries))
           | _ -> Unknown
         in
         let pats = List.map fst branches in
-        let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
+        let dt =
+          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
+        in
         eval_decision_tree_result mc env scrutinee branches dt
     | VProd _ | VRecord _ ->
         let domain_of_occurrence occ =
@@ -668,88 +874,133 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
           | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
           | Some (VProd elems) -> Product (List.length elems)
           | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
+              Record
+                (List.filter_map
+                   (fun (n, k, _) -> if k = Field then Some n else None)
+                   (struct_entry_fields entries))
           | _ -> Unknown
         in
         let pats = List.map fst branches in
-        let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
+        let dt =
+          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
+        in
         eval_decision_tree_result mc env scrutinee branches dt
     | _ ->
         let head, base_frames = stuck_head_frames scrutinee in
         Done
           (VNeutral
-             { ty = VU;
-               neutral = { head; frames = base_frames @ [ FMatch
-                   (List.map (fun (p, body) -> (p, { env; body })) branches) ] } })
+             {
+               ty = VU;
+               neutral =
+                 {
+                   head;
+                   frames =
+                     base_frames
+                     @ [
+                         FMatch
+                           (List.map
+                              (fun (p, body) -> (p, { env; body }))
+                              branches);
+                       ];
+                 };
+             })
 
 and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
   let scrutinee = force mc scrutinee in
-  if List.exists (fun (pat, _) -> core_pat_contains_struct_type pat) branches then
+  if List.exists (fun (pat, _) -> core_pat_contains_struct_type pat) branches
+  then
     match branches with
     | [] -> raise (EvalError "non-exhaustive match at runtime")
     | _ -> eval_match_direct mc env scrutinee branches
   else
-  match scrutinee with
-  | VCon _ ->
-      let domain_of_occurrence occ =
-        match resolve_occurrence_opt mc scrutinee occ with
-        | Some (VCon { nominal; _ }) ->
-            Core_match_compile.Nominal (nominal_constructors mc nominal)
-        | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-        | Some (VProd elems) -> Product (List.length elems)
-        | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
-        | _ -> Unknown
-      in
-      let pats = List.map fst branches in
-      let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
-      eval_decision_tree mc env scrutinee branches dt
-  | VAtom atom ->
-      let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
-      let pats = List.map fst branches in
-      let dt = Core_match_compile.compile ~domain pats in
-      eval_decision_tree mc env scrutinee branches dt
-  | VAtomTy _ | VNominal _ ->
-      let domain_of_occurrence occ =
-        match resolve_occurrence_opt mc scrutinee occ with
-        | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-        | Some (VAtomTy _) | Some (VNominal _) -> Type
-        | Some (VProd elems) -> Product (List.length elems)
-        | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
-        | _ -> Unknown
-      in
-      let pats = List.map fst branches in
-      let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
-      eval_decision_tree mc env scrutinee branches dt
-  | VProd _ | VRecord _ ->
-      let domain_of_occurrence occ =
-        match resolve_occurrence_opt mc scrutinee occ with
-        | Some (VCon { nominal; _ }) ->
-            Core_match_compile.Nominal (nominal_constructors mc nominal)
-        | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-        | Some (VProd elems) -> Product (List.length elems)
-        | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-            Record (List.filter_map (fun (n, k, _) -> if k = Field then Some n else None) (struct_entry_fields entries))
-        | _ -> Unknown
-      in
-      let pats = List.map fst branches in
-      let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence pats in
-      eval_decision_tree mc env scrutinee branches dt
-  | _ ->
-      let head, base_frames = stuck_head_frames scrutinee in
-      VNeutral
-        { ty = VU;
-          neutral = { head; frames = base_frames @ [ FMatch
-              (List.map (fun (p, body) -> (p, { env; body })) branches) ] } }
+    match scrutinee with
+    | VCon _ ->
+        let domain_of_occurrence occ =
+          match resolve_occurrence_opt mc scrutinee occ with
+          | Some (VCon { nominal; _ }) ->
+              Core_match_compile.Nominal (nominal_constructors mc nominal)
+          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+          | Some (VProd elems) -> Product (List.length elems)
+          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+              Record
+                (List.filter_map
+                   (fun (n, k, _) -> if k = Field then Some n else None)
+                   (struct_entry_fields entries))
+          | _ -> Unknown
+        in
+        let pats = List.map fst branches in
+        let dt =
+          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
+        in
+        eval_decision_tree mc env scrutinee branches dt
+    | VAtom atom ->
+        let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
+        let pats = List.map fst branches in
+        let dt = Core_match_compile.compile ~domain pats in
+        eval_decision_tree mc env scrutinee branches dt
+    | VAtomTy _ | VNominal _ ->
+        let domain_of_occurrence occ =
+          match resolve_occurrence_opt mc scrutinee occ with
+          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+          | Some (VAtomTy _) | Some (VNominal _) -> Type
+          | Some (VProd elems) -> Product (List.length elems)
+          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+              Record
+                (List.filter_map
+                   (fun (n, k, _) -> if k = Field then Some n else None)
+                   (struct_entry_fields entries))
+          | _ -> Unknown
+        in
+        let pats = List.map fst branches in
+        let dt =
+          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
+        in
+        eval_decision_tree mc env scrutinee branches dt
+    | VProd _ | VRecord _ ->
+        let domain_of_occurrence occ =
+          match resolve_occurrence_opt mc scrutinee occ with
+          | Some (VCon { nominal; _ }) ->
+              Core_match_compile.Nominal (nominal_constructors mc nominal)
+          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+          | Some (VProd elems) -> Product (List.length elems)
+          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
+              Record
+                (List.filter_map
+                   (fun (n, k, _) -> if k = Field then Some n else None)
+                   (struct_entry_fields entries))
+          | _ -> Unknown
+        in
+        let pats = List.map fst branches in
+        let dt =
+          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
+        in
+        eval_decision_tree mc env scrutinee branches dt
+    | _ ->
+        let head, base_frames = stuck_head_frames scrutinee in
+        VNeutral
+          {
+            ty = VU;
+            neutral =
+              {
+                head;
+                frames =
+                  base_frames
+                  @ [
+                      FMatch
+                        (List.map
+                           (fun (p, body) -> (p, { env; body }))
+                           branches);
+                    ];
+              };
+          }
 
 and eval_match_direct (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
   result_value mc (eval_match_direct_result mc env scrutinee branches)
 
-and eval_match_direct_result (mc : MetaContext.t) (env : env) (scrutinee : value)
-    (branches : (core_pat * term) list) : result =
+and eval_match_direct_result (mc : MetaContext.t) (env : env)
+    (scrutinee : value) (branches : (core_pat * term) list) : result =
   match branches with
   | [] -> raise (EvalError "non-exhaustive match at runtime")
   | (pat, body) :: rest -> (
@@ -762,18 +1013,17 @@ and nominal_constructors (mc : MetaContext.t) (nom : value) :
   match force mc nom with
   | VNominal { params; constructors; _ } ->
       let ntp = List.length params in
-      List.map (fun (name, payload) -> (name, ntp, Option.is_some payload))
+      List.map
+        (fun (name, payload) -> (name, ntp, Option.is_some payload))
         constructors
   | _ -> raise (EvalError "match scrutinee type is not a nominal")
 
 and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
-    (branches : (core_pat * term) list)
-    (dt : Core_decision_tree.t) : value =
+    (branches : (core_pat * term) list) (dt : Core_decision_tree.t) : value =
   result_value mc (eval_decision_tree_result mc env root branches dt)
 
 and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
-    (branches : (core_pat * term) list)
-    (dt : Core_decision_tree.t) : result =
+    (branches : (core_pat * term) list) (dt : Core_decision_tree.t) : result =
   match dt.content with
   | Leaf { branch; bindings } ->
       let env' =
@@ -783,9 +1033,9 @@ and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
       in
       let _, body = List.nth branches branch in
       eval_result mc env' body
-  | Destruct { occurrence; cases; default } ->
+  | Destruct { occurrence; cases; default } -> (
       let v = resolve_occurrence mc root occurrence |> force mc in
-      (match v with
+      match v with
       | VCon { name; _ } -> (
           match
             List.find_opt (fun (cn, _, _) -> String.equal cn name) cases
@@ -797,7 +1047,7 @@ and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
               | Some d -> eval_decision_tree_result mc env root branches d
               | None -> raise (EvalError "non-exhaustive match at runtime")))
       | _ -> raise (EvalError "match on non-constructor value"))
-  | Switch { cases; default; occurrence } ->
+  | Switch { cases; default; occurrence } -> (
       let v = resolve_occurrence mc root occurrence |> force mc in
       let key =
         match v with
@@ -806,7 +1056,12 @@ and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
         | VNominal n -> KNominal n.id
         | _ -> raise (EvalError "switch on non-constant value")
       in
-      (match List.find_opt (fun (case_key, _) -> Core_decision_tree.switch_key_equal case_key key) cases with
+      match
+        List.find_opt
+          (fun (case_key, _) ->
+            Core_decision_tree.switch_key_equal case_key key)
+          cases
+      with
       | Some (_, sub) -> eval_decision_tree_result mc env root branches sub
       | None -> eval_decision_tree_result mc env root branches default)
 
@@ -838,15 +1093,16 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   | CPatAtom a1, CPatAtom a2 -> Atom.equal a1 a2
   | CPatProd ps1, CPatProd ps2 ->
       List.length ps1 = List.length ps2 && List.for_all2 conv_pat ps1 ps2
-  | CPatOr (l1, r1), CPatOr (l2, r2) ->
-      conv_pat l1 l2 && conv_pat r1 r2
-  | CPatRecord { fields = fs1; partial = p1 }, CPatRecord { fields = fs2; partial = p2 } ->
+  | CPatOr (l1, r1), CPatOr (l2, r2) -> conv_pat l1 l2 && conv_pat r1 r2
+  | ( CPatRecord { fields = fs1; partial = p1 },
+      CPatRecord { fields = fs2; partial = p2 } ) ->
       p1 = p2
       && List.length fs1 = List.length fs2
       && List.for_all2
            (fun (n1, p1) (n2, p2) -> String.equal n1 n2 && conv_pat p1 p2)
            fs1 fs2
-  | CPatStructType { fields = fs1; partial = p1 }, CPatStructType { fields = fs2; partial = p2 } ->
+  | ( CPatStructType { fields = fs1; partial = p1 },
+      CPatStructType { fields = fs2; partial = p2 } ) ->
       p1 = p2
       && List.length fs1 = List.length fs2
       && List.for_all2
@@ -858,7 +1114,9 @@ and conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
       && List.for_all2 conv_pat ps1 ps2
   | ( CPatNominalHead { id = id1; num_params = n1; param_pats = ps1; _ },
       CPatNominalHead { id = id2; num_params = n2; param_pats = ps2; _ } ) ->
-      id1 = id2 && n1 = n2 && List.length ps1 = List.length ps2 && List.for_all2 conv_pat ps1 ps2
+      id1 = id2 && n1 = n2
+      && List.length ps1 = List.length ps2
+      && List.for_all2 conv_pat ps1 ps2
   | _ -> false
 
 and force (mc : MetaContext.t) (v : value) : value =
@@ -882,14 +1140,21 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VPi { explicitness; domain; effects; codomain } ->
       let var = VRigid { lvl = depth; spine = [] } in
       let row =
-        { effects = List.map (quote mc (depth + 1)) (eval_effect_row_closure mc effects var);
-          tail = None }
+        {
+          effects =
+            List.map
+              (quote mc (depth + 1))
+              (eval_effect_row_closure mc effects var);
+          tail = None;
+        }
       in
       Pi
-        { explicitness;
+        {
+          explicitness;
           domain = quote mc depth domain;
           effects = row;
-          codomain = quote mc (depth + 1) (closure_apply mc codomain var) }
+          codomain = quote mc (depth + 1) (closure_apply mc codomain var);
+        }
   | VU -> U
   | VAtom a -> Atom a
   | VAtomTy t -> AtomTy t
@@ -904,7 +1169,7 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
         List.map
           (function
             | ModuleField (n, k, v) -> (
-                match k, force mc v with
+                match (k, force mc v) with
                 | Public, VEffect _ -> EffectBind (n, Public, v)
                 | Private, VEffect _ -> EffectBind (n, Private, v)
                 | Public, _ -> LetBind (n, Public, quote mc depth v)
@@ -912,36 +1177,44 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
                 | Method, _ | PrivateMethod, _ | Field, _ ->
                     validate_module_fields fields;
                     failwith "unreachable")
-            | ModuleImpl (kind, ty, value) -> ImplBind (kind, quote mc depth value, ty))
+            | ModuleImpl (kind, ty, value) ->
+                ImplBind (kind, quote mc depth value, ty))
           entries
       in
       Module { bindings }
   | VStruct { entries; partial } ->
       let con_fields =
-        List.filter_map (function
-          | StructField (n, Field, v) -> Some (n, quote mc depth v)
-          | _ -> None) entries
+        List.filter_map
+          (function
+            | StructField (n, Field, v) -> Some (n, quote mc depth v)
+            | _ -> None)
+          entries
       in
       let bindings =
         List.filter_map
           (function
             | StructField (n, k, v) -> (
-                match k, force mc v with
+                match (k, force mc v) with
                 | Public, VEffect _ -> Some (EffectBind (n, Public, v))
                 | Private, VEffect _ -> Some (EffectBind (n, Private, v))
                 | Public, _ -> Some (LetBind (n, Public, quote mc depth v))
                 | Private, _ -> Some (LetBind (n, Private, quote mc depth v))
                 | Method, _ -> Some (LetBind (n, Method, quote mc depth v))
-                | PrivateMethod, _ -> Some (LetBind (n, PrivateMethod, quote mc depth v))
+                | PrivateMethod, _ ->
+                    Some (LetBind (n, PrivateMethod, quote mc depth v))
                 | _ -> None)
-            | StructImpl (kind, ty, value) -> Some (ImplBind (kind, quote mc depth value, ty)))
+            | StructImpl (kind, ty, value) ->
+                Some (ImplBind (kind, quote mc depth value, ty)))
           entries
       in
       Struct { con_fields; bindings; partial }
   | VRecord { typ; fields } ->
       RecordConstruct
-        { typ = quote mc depth typ;
-          fields = List.map (fun (name, value) -> (name, quote mc depth value)) fields }
+        {
+          typ = quote mc depth typ;
+          fields =
+            List.map (fun (name, value) -> (name, quote mc depth value)) fields;
+        }
   | VNominal n ->
       if n.params = [] then Con n.name
       else NomRef (n.name, List.map (quote mc depth) n.params)
@@ -949,13 +1222,19 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }
   | VTraitDict d ->
       TraitDictTy
-        { trait_id = d.trait_id;
+        {
+          trait_id = d.trait_id;
           trait_name = d.trait_name;
           args = List.map (quote mc depth) d.args;
-          fields = List.map (fun (name, value) -> (name, quote mc depth value)) d.fields }
+          fields =
+            List.map
+              (fun (name, value) -> (name, quote mc depth value))
+              d.fields;
+        }
   | VSelfType args -> SelfTypeRef (List.map (quote mc depth) args)
-  | VCon { name; spine; _ } ->
-      quote_spine mc depth (Con name) spine
+  | VRefTy a -> RefTy (quote mc depth a)
+  | VRef _ -> raise (EvalError "cannot quote ref")
+  | VCon { name; spine; _ } -> quote_spine mc depth (Con name) spine
   | VCont _ -> raise (EvalError "cannot quote continuation")
   | VNeutral { neutral = neu; _ } -> quote_neutral mc depth neu
   | VFlex { id; spine = sp } -> quote_spine mc depth (Meta id) sp
@@ -988,11 +1267,14 @@ and quote_frames (mc : MetaContext.t) (depth : lvl) (head : term)
               quote mc depth (eval mc else_.env else_.body) )
       | FProj i -> Proj (acc, i)
       | FDot name -> Dot (acc, name)
+      | FRefGet -> RefGet acc
+      | FRefSet value -> RefSet (acc, quote mc depth value)
       | FMatch branches ->
           Match
             ( acc,
               List.map
-                (fun (p, clo) -> ValueBranch (p, quote mc depth (eval mc clo.env clo.body)))
+                (fun (p, clo) ->
+                  ValueBranch (p, quote mc depth (eval mc clo.env clo.body)))
                 branches ))
     head frames
 
@@ -1027,6 +1309,7 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
   | VProd elems1, VProd elems2 | VProdTy elems1, VProdTy elems2 ->
       List.length elems1 = List.length elems2
       && List.for_all2 (conv mc depth) elems1 elems2
+  | VRefTy a1, VRefTy a2 -> conv mc depth a1 a2
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } ->
       l1 = l2 && conv_spine mc depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } ->
@@ -1038,7 +1321,8 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       conv mc (depth + 1)
         (closure_apply mc clo1 var)
         (closure_apply mc clo2 var)
-  | VModule { entries = es1; partial = p1 }, VModule { entries = es2; partial = p2 } ->
+  | ( VModule { entries = es1; partial = p1 },
+      VModule { entries = es2; partial = p2 } ) ->
       let fs1 = module_entry_fields es1 in
       let fs2 = module_entry_fields es2 in
       validate_module_fields fs1;
@@ -1046,32 +1330,53 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
       let visible fs = List.filter (fun (_, k, _) -> visible_kind k) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
       let conv_field (name, kind, ty) fields =
-        match List.find_opt (fun (n, k, _) -> String.equal n name && k = kind) fields with
+        match
+          List.find_opt
+            (fun (n, k, _) -> String.equal n name && k = kind)
+            fields
+        with
         | Some (_, _, other_ty) -> conv mc depth ty other_ty
         | None -> false
       in
-      if (not p1) && (not p2) then
-        List.length vs1 = List.length vs2 && List.for_all (fun field -> conv_field field vs2) vs1
+      if (not p1) && not p2 then
+        List.length vs1 = List.length vs2
+        && List.for_all (fun field -> conv_field field vs2) vs1
       else
-        let required, available = if p1 && not p2 then vs1, vs2 else if p2 && not p1 then vs2, vs1 else if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
+        let required, available =
+          if p1 && not p2 then (vs1, vs2)
+          else if p2 && not p1 then (vs2, vs1)
+          else if List.length vs1 <= List.length vs2 then (vs1, vs2)
+          else (vs2, vs1)
+        in
         List.for_all (fun field -> conv_field field available) required
-  | VStruct { entries = es1; partial = p1 }, VStruct { entries = es2; partial = p2 } ->
+  | ( VStruct { entries = es1; partial = p1 },
+      VStruct { entries = es2; partial = p2 } ) ->
       let fs1 = struct_entry_fields es1 in
       let fs2 = struct_entry_fields es2 in
       let visible fs = List.filter (fun (_, k, _) -> visible_kind k) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
       let conv_field (name, kind, ty) fields =
-        match List.find_opt (fun (n, k, _) -> String.equal n name && k = kind) fields with
+        match
+          List.find_opt
+            (fun (n, k, _) -> String.equal n name && k = kind)
+            fields
+        with
         | Some (_, _, other_ty) -> conv mc depth ty other_ty
         | None -> false
       in
-      if (not p1) && (not p2) then
-        List.length vs1 = List.length vs2 && List.for_all2
-          (fun (n1, k1, v1) (n2, k2, v2) ->
-            String.equal n1 n2 && k1 = k2 && conv mc depth v1 v2)
-          vs1 vs2
+      if (not p1) && not p2 then
+        List.length vs1 = List.length vs2
+        && List.for_all2
+             (fun (n1, k1, v1) (n2, k2, v2) ->
+               String.equal n1 n2 && k1 = k2 && conv mc depth v1 v2)
+             vs1 vs2
       else
-        let required, available = if p1 && not p2 then vs1, vs2 else if p2 && not p1 then vs2, vs1 else if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
+        let required, available =
+          if p1 && not p2 then (vs1, vs2)
+          else if p2 && not p1 then (vs2, vs1)
+          else if List.length vs1 <= List.length vs2 then (vs1, vs2)
+          else (vs2, vs1)
+        in
         List.for_all (fun field -> conv_field field available) required
   | VRecord r1, VRecord r2 ->
       conv mc depth r1.typ r2.typ
@@ -1096,7 +1401,8 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
            (fun (n1, v1) (n2, v2) -> String.equal n1 n2 && conv mc depth v1 v2)
            d1.fields d2.fields
   | VSelfType args1, VSelfType args2 ->
-      List.length args1 = List.length args2 && List.for_all2 (conv mc depth) args1 args2
+      List.length args1 = List.length args2
+      && List.for_all2 (conv mc depth) args1 args2
   | VCon c1, VCon c2 ->
       String.equal c1.name c2.name
       && List.length c1.spine = List.length c2.spine
@@ -1112,7 +1418,8 @@ and conv_effect_rows (mc : MetaContext.t) (depth : lvl) (row1 : value list)
   let rec remove_match eff = function
     | [] -> None
     | candidate :: rest when conv mc depth eff candidate -> Some rest
-    | candidate :: rest -> Option.map (fun rest -> candidate :: rest) (remove_match eff rest)
+    | candidate :: rest ->
+        Option.map (fun rest -> candidate :: rest) (remove_match eff rest)
   in
   List.length row1 = List.length row2
   && Option.is_some
@@ -1146,14 +1453,15 @@ and conv_frames (mc : MetaContext.t) (depth : lvl) (fs1 : frame list)
       i1 = i2 && conv_frames mc depth rest1 rest2
   | FDot n1 :: rest1, FDot n2 :: rest2 ->
       String.equal n1 n2 && conv_frames mc depth rest1 rest2
+  | FRefGet :: rest1, FRefGet :: rest2 -> conv_frames mc depth rest1 rest2
+  | FRefSet v1 :: rest1, FRefSet v2 :: rest2 ->
+      conv mc depth v1 v2 && conv_frames mc depth rest1 rest2
   | FMatch bs1 :: rest1, FMatch bs2 :: rest2 ->
       List.length bs1 = List.length bs2
       && List.for_all2
            (fun (p1, c1) (p2, c2) ->
              conv_pat p1 p2
-             && conv mc depth
-                  (eval mc c1.env c1.body)
-                  (eval mc c2.env c2.body))
+             && conv mc depth (eval mc c1.env c1.body) (eval mc c2.env c2.body))
            bs1 bs2
       && conv_frames mc depth rest1 rest2
   | _ -> false

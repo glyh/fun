@@ -34,6 +34,10 @@ let rec pp_term (t : term) : string =
   | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
   | Perform { eff; op; arg } ->
       Printf.sprintf "Perform(%s.%s, %s)" (pp_term eff) op (pp_term arg)
+  | RefTy a -> Printf.sprintf "RefTy(%s)" (pp_term a)
+  | RefNew e -> Printf.sprintf "RefNew(%s)" (pp_term e)
+  | RefGet e -> Printf.sprintf "RefGet(%s)" (pp_term e)
+  | RefSet (r, e) -> Printf.sprintf "RefSet(%s, %s)" (pp_term r) (pp_term e)
   | _ -> "<term>"
 
 let pp_value_short (mc : MetaContext.t) (v : value) : string =
@@ -93,6 +97,8 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
           (if List.is_empty d.args then "" else " " ^ String.concat " " (List.map (go (depth + 1)) d.args))
     | VSelfType args ->
         if List.is_empty args then "Self" else Printf.sprintf "Self(%s)" (String.concat ", " (List.map (go (depth + 1)) args))
+    | VRefTy a -> Printf.sprintf "Ref %s" (go (depth + 1) a)
+    | VRef _ -> "<ref>"
     | VCon { name; spine; _ } ->
         if List.length spine = 0 then name
         else Printf.sprintf "%s(%s)" name

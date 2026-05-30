@@ -122,6 +122,10 @@ and term =
           repeated evaluation of the same declaration remains applicative. *)
   | Perform of { eff : term; op : string; arg : term }
       (** Effect operation invocation. Handlers/runtime bubbling are not implemented yet. *)
+  | RefTy of term
+  | RefNew of term
+  | RefGet of term
+  | RefSet of term * term
 
 and match_branch =
   | ValueBranch of core_pat * term
@@ -279,6 +283,8 @@ and value =
           but the type is not encoded as private marker fields on [VStruct]. *)
   | VSelfType of value list
       (** Recursive record [Self] type while the record type is being built. *)
+  | VRefTy of value
+  | VRef of value ref
   | VCon of { name : string; spine : value list; nominal : value }
       (** Fully saturated constructor value. [name] is the constructor tag,
           [spine] collects type+value arguments in application order
@@ -335,6 +341,8 @@ and frame =
   | FIf of { then_ : closure; else_ : closure }
   | FProj of int
   | FDot of string
+  | FRefGet
+  | FRefSet of value
   | FMatch of (core_pat * closure) list
       (** Match frame for stuck scrutinees. Effect branches are runtime-only
           handlers and do not participate in neutral matching. *)

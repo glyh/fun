@@ -313,7 +313,7 @@ let find_record_field fields name =
 
 let rec is_type_like_value ctx value =
   match Nbe.force ctx.Ctx.metas value with
-  | VU | VAtomTy _ | VPi _ | VProdTy _ | VNominal _ | VEffect _ | VTraitDict _ -> true
+  | VU | VAtomTy _ | VPi _ | VProdTy _ | VNominal _ | VEffect _ | VTraitDict _ | VRefTy _ -> true
   | VModule { entries; partial = true } ->
       let fields = module_entry_fields entries in
       validate_module_fields fields;
@@ -503,6 +503,9 @@ let rewrite_record_self_refs record_name params expr =
         | Surface.Import _ -> expr
         | Surface.Perform { effect_path; op; arg } -> Surface.Perform { effect_path; op; arg = go bound arg }
         | Surface.Resume arg -> Surface.Resume (go bound arg)
+        | Surface.RefNew e -> Surface.RefNew (go bound e)
+        | Surface.RefGet e -> Surface.RefGet (go bound e)
+        | Surface.RefSet (r, e) -> Surface.RefSet (go bound r, go bound e)
         | Surface.Open (name, body) -> Surface.Open (name, go bound body)
         | Surface.RecordTypeDef { name; params; fields; body } ->
             Surface.RecordTypeDef
@@ -622,6 +625,8 @@ let term_mentions_var target term =
         || go (target + 1) codomain
     | If (cond, then_, else_) -> go target cond || go target then_ || go target else_
     | Prod elems | ProdTy elems -> List.exists (go target) elems
+    | RefTy a | RefNew a | RefGet a -> go target a
+    | RefSet (r, e) -> go target r || go target e
     | Proj (e, _) | Dot (e, _) | Open (e, _) -> go target e
     | Module { bindings } ->
         List.exists
@@ -704,6 +709,8 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
           args = List.map (subst_value_var mc target replacement) d.args;
           fields = List.map (fun (name, value) -> (name, subst_value_var mc target replacement value)) d.fields }
   | VSelfType args -> VSelfType (List.map (subst_value_var mc target replacement) args)
+  | VRefTy a -> VRefTy (subst_value_var mc target replacement a)
+  | VRef _ as v -> v
   | VCon c -> VCon { c with spine = List.map (subst_value_var mc target replacement) c.spine; nominal = subst_value_var mc target replacement c.nominal }
   | VNeutral { ty; neutral } ->
       VNeutral { ty = subst_value_var mc target replacement ty; neutral = subst_neutral_var mc target replacement neutral }
@@ -726,6 +733,8 @@ and subst_neutral_var mc target replacement neutral =
         | FIf { then_; else_ } -> FIf { then_ = subst_closure_var mc target replacement then_; else_ = subst_closure_var mc target replacement else_ }
         | FProj _ as frame -> frame
         | FDot _ as frame -> frame
+        | FRefGet as frame -> frame
+        | FRefSet value -> FRefSet (subst_value_var mc target replacement value)
         | FMatch branches -> FMatch (List.map (fun (pat, clo) -> (pat, subst_closure_var mc target replacement clo)) branches))
       neutral.frames
   in
@@ -779,6 +788,10 @@ let close_recursive_payload_term nominal_name num_params =
         | If (cond, then_, else_) -> If (go cutoff cond, go cutoff then_, go cutoff else_)
         | Prod elems -> Prod (List.map (go cutoff) elems)
         | ProdTy elems -> ProdTy (List.map (go cutoff) elems)
+        | RefTy a -> RefTy (go cutoff a)
+        | RefNew e -> RefNew (go cutoff e)
+        | RefGet e -> RefGet (go cutoff e)
+        | RefSet (r, e) -> RefSet (go cutoff r, go cutoff e)
         | Proj (e, i) -> Proj (go cutoff e, i)
         | Dot (e, field) -> Dot (go cutoff e, field)
         | Module { bindings } ->
@@ -1387,6 +1400,8 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let _arg_core = check ctx arg input_ty in
       union_expr_effects ctx (collect_effects ctx arg) (singleton_expr_effect effect_core effect_value)
   | Surface.Resume arg -> collect_effects ctx arg
+  | Surface.RefNew e | Surface.RefGet e -> collect_effects ctx e
+  | Surface.RefSet (r, e) -> union_expr_effects ctx (collect_effects ctx r) (collect_effects ctx e)
   | Surface.Ap (f, Surface.Explicit, a) ->
       let f_core, f_ty = infer ctx f in
       let _f_core, f_ty = insert_implicit_args ctx f_core f_ty in
@@ -1437,7 +1452,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       in
       let gen_value_core, gen_value_ty = generalize ctx value_core value_ty in
       let body_ctx =
-        if value_effects = [] then Ctx.define ctx name gen_value_ty (Ctx.eval ctx gen_value_core)
+        if value_effects = [] && compile_time_safe value then Ctx.define ctx name gen_value_ty (Ctx.eval ctx gen_value_core)
         else Ctx.bind ctx name gen_value_ty
       in
       let body_effects = collect_effects body_ctx body in
@@ -1574,6 +1589,58 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
   | Atom _ | Var _ | Self | SelfType | Import _ -> empty_expr_effects
 
+and compile_time_safe (expr : Surface.t) : bool =
+  match expr with
+  | Surface.RefNew _ | Surface.RefGet _ | Surface.RefSet _ -> false
+  | Surface.Atom _ | Surface.Var _ | Surface.Self | Surface.SelfType | Surface.Import _ -> true
+  | Surface.Ap (f, _, a) -> compile_time_safe f && compile_time_safe a
+  | Surface.Lam (_, body) -> compile_time_safe body
+  | Surface.Let { type_; value; body; _ } ->
+      Option.fold ~none:true ~some:compile_time_safe type_ && compile_time_safe value && compile_time_safe body
+  | Surface.If { cond; then_; else_ } ->
+      compile_time_safe cond && compile_time_safe then_ && compile_time_safe else_
+  | Surface.Annotated { inner; typ } -> compile_time_safe inner && compile_time_safe typ
+  | Surface.Prod elems | Surface.ProdTy elems -> List.for_all compile_time_safe elems
+  | Surface.Arrow (_, _, a, row, b) ->
+      let row_safe =
+        match row with
+        | None -> true
+        | Some (row : Surface.effect_row) ->
+            List.for_all compile_time_safe row.effects && Option.fold ~none:true ~some:compile_time_safe row.tail
+      in
+      compile_time_safe a && row_safe && compile_time_safe b
+  | Surface.FieldAccess (e, _) | Surface.Proj (e, _) -> compile_time_safe e
+  | Surface.RecordConstruct { typ; fields } ->
+      compile_time_safe typ && List.for_all (fun (_, value) -> compile_time_safe value) fields
+  | Surface.Struct { con_fields; bindings } ->
+      List.for_all (fun (_, ty) -> compile_time_safe ty) con_fields
+      && List.for_all compile_time_safe_struct_binding bindings
+  | Surface.Module { bindings } -> List.for_all compile_time_safe_struct_binding bindings
+  | Surface.Open (_, body) -> compile_time_safe body
+  | Surface.RecordTypeDef { fields; body; _ } ->
+      List.for_all (fun (_, ty) -> compile_time_safe ty) fields && compile_time_safe body
+  | Surface.TypeDef { ctors; body; _ } ->
+      List.for_all (fun (_, payload) -> Option.fold ~none:true ~some:compile_time_safe payload) ctors && compile_time_safe body
+  | Surface.EffectDef { ops; body; _ } ->
+      List.for_all (fun (op : Surface.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops && compile_time_safe body
+  | Surface.TraitDef { fields; body; _ } ->
+      List.for_all (fun (_, ty) -> compile_time_safe ty) fields && compile_time_safe body
+  | Surface.ImplDef { args; fields; body; _ } ->
+      List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields && compile_time_safe body
+  | Surface.Perform _ | Surface.Resume _ | Surface.Match _ -> false
+
+and compile_time_safe_struct_binding = function
+  | Surface.LetBinding { value; _ } -> compile_time_safe value
+  | Surface.MethodBinding { body; _ } -> compile_time_safe body
+  | Surface.TypeBinding { ctors; _ } ->
+      List.for_all (fun (_, payload) -> Option.fold ~none:true ~some:compile_time_safe payload) ctors
+  | Surface.RecordTypeBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
+  | Surface.EffectBinding { ops; _ } ->
+      List.for_all (fun (op : Surface.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops
+  | Surface.TraitBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
+  | Surface.ImplBinding { args; fields; _ } ->
+      List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields
+
 and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   match expr with
   | Atom (I64 n) -> (Atom (I64 n), VAtomTy TI64)
@@ -1594,6 +1661,23 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let arg_core = check ctx arg input_ty in
       (Perform { eff = effect_core; op; arg = arg_core }, Nbe.force ctx.metas output_ty)
   | Resume arg -> infer_resume ctx arg
+  | RefNew e ->
+      let core, ty = infer ctx e in
+      (RefNew core, VRefTy ty)
+  | RefGet r ->
+      let r_core, r_ty = infer ctx r in
+      let r_core, r_ty = insert_implicit_args ctx r_core r_ty in
+      (match Nbe.force ctx.metas r_ty with
+      | VRefTy elem_ty -> (RefGet r_core, elem_ty)
+      | _ -> raise (ElabError ApplyingNonFunction))
+  | RefSet (r, e) ->
+      let r_core, r_ty = infer ctx r in
+      let r_core, r_ty = insert_implicit_args ctx r_core r_ty in
+      (match Nbe.force ctx.metas r_ty with
+      | VRefTy elem_ty ->
+          let e_core = check ctx e elem_ty in
+          (RefSet (r_core, e_core), VAtomTy TUnit)
+      | _ -> raise (ElabError ApplyingNonFunction))
   | Ap (f, Surface.Explicit, a) -> infer_ap ctx f a
   | Ap (f, Surface.Implicit, a) -> infer_ap_implicit ctx f a
   | Let { name; type_; value; body; recursive } ->
@@ -2597,13 +2681,65 @@ and infer_ap_implicit (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * val
     VPi layers. At each use site, Phase 6's insert_implicits auto-instantiates
     with fresh metas. *)
 and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
-  (* Only generalize simple single-binder lambdas at the top level.
-     Multi-binder or nested lambdas would have their de Bruijn levels
-     shifted by outer binders, breaking VRigid level assignments. *)
+  (* Only generalize simple closed single-binder lambdas at the top level.
+     Adding implicit binders around lambdas with outer captures would require
+     shifting those captured de Bruijn indices under the inserted binders. *)
+  let rec closed_under depth = function
+    | Var ix -> ix < depth
+    | Lam body -> closed_under (depth + 1) body
+    | Ap (f, _, a) -> closed_under depth f && closed_under depth a
+    | Let (ty, def, body) -> closed_under depth ty && closed_under depth def && closed_under (depth + 1) body
+    | Pi { domain; effects; codomain; _ } ->
+        closed_under depth domain
+        && List.for_all (closed_under (depth + 1)) effects.effects
+        && Option.fold ~none:true ~some:(closed_under (depth + 1)) effects.tail
+        && closed_under (depth + 1) codomain
+    | If (cond, then_, else_) -> closed_under depth cond && closed_under depth then_ && closed_under depth else_
+    | Prod elems | ProdTy elems -> List.for_all (closed_under depth) elems
+    | RefTy a | RefNew a | RefGet a -> closed_under depth a
+    | RefSet (r, e) -> closed_under depth r && closed_under depth e
+    | Proj (e, _) | Dot (e, _) -> closed_under depth e
+    | RecordConstruct { typ; fields } -> closed_under depth typ && List.for_all (fun (_, value) -> closed_under depth value) fields
+    | Open (s, body) -> closed_under depth s && closed_under depth body
+    | Fix body -> closed_under (depth + 1) body
+    | NomRef (_, params) | EffectRef (_, params) -> List.for_all (closed_under depth) params
+    | TraitDictTy { args; fields; _ } ->
+        List.for_all (closed_under depth) args && List.for_all (fun (_, value) -> closed_under depth value) fields
+    | SelfTypeRef args -> List.for_all (closed_under depth) args
+    | Ctor { spine; nominal_spine; _ } ->
+        List.for_all (closed_under depth) spine && List.for_all (closed_under depth) nominal_spine
+    | Match (scrut, branches) ->
+        closed_under depth scrut
+        && List.for_all
+             (function
+               | ValueBranch (_, body) -> closed_under depth body
+               | EffectBranch { body; _ } -> closed_under depth body)
+             branches
+    | NominalDef { ctors; body; _ } ->
+        List.for_all (fun (_, payload) -> Option.fold ~none:true ~some:(closed_under depth) payload) ctors && closed_under depth body
+    | EffectDef { ops; body; _ } ->
+        List.for_all (fun (_, input, output) -> closed_under depth input && closed_under depth output) ops && closed_under depth body
+    | Module { bindings } ->
+        List.for_all
+          (function
+            | LetBind (_, _, value) -> closed_under depth value
+            | ImplBind (_, value, _) -> closed_under depth value
+            | TypeBind _ | EffectBind _ -> true)
+          bindings
+    | Struct { con_fields; bindings; _ } ->
+        List.for_all (fun (_, ty) -> closed_under depth ty) con_fields
+        && List.for_all
+             (function
+               | LetBind (_, _, value) -> closed_under depth value
+               | ImplBind (_, value, _) -> closed_under depth value
+               | TypeBind _ | EffectBind _ -> true)
+             bindings
+    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Perform _ -> true
+  in
   let has_bound = List.exists (fun bd -> bd = Bound) ctx.bds in
   let eligible = match val_core with
     | Lam body when not has_bound ->
-        begin match body with Lam _ -> false | _ -> true end
+        begin match body with Lam _ -> false | _ -> closed_under 1 body end
     | _ -> false
   in
   if not eligible then (val_core, val_ty)
@@ -2620,7 +2756,8 @@ and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
           let var = VRigid { lvl = ctx.lvl; spine = [] } in
           List.iter (fun eff -> collect (Nbe.eval ctx.metas (var :: effects.env) eff)) effects.effects;
           collect (Nbe.closure_apply ctx.metas codomain var)
-      | VU | VAtom _ | VAtomTy _ | VTrait _ | VTraitDict _ | VRigid _ | VProd _ | VProdTy _ | VCont _ -> ()
+      | VRefTy a -> collect a
+      | VU | VAtom _ | VAtomTy _ | VTrait _ | VTraitDict _ | VRigid _ | VProd _ | VProdTy _ | VCont _ | VRef _ -> ()
       | _ -> ()
     in
     collect val_ty;
@@ -2891,7 +3028,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
         let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
         let ty_term = Ctx.quote ctx gen_val_ty in
         let ctx' =
-          if collect_effects ctx value = [] then Ctx.define ctx name gen_val_ty (Ctx.eval ctx gen_val_core)
+          if collect_effects ctx value = [] && compile_time_safe value then Ctx.define ctx name gen_val_ty (Ctx.eval ctx gen_val_core)
           else Ctx.bind ctx name gen_val_ty
         in
         let body_core = check ctx' body expected in
@@ -2953,6 +3090,8 @@ let init_ctx () : Ctx.t =
   let ctx = add_type ctx "String" (VAtomTy TString) in
   let ctx = add_type ctx "Absurd" (VAtomTy TAbsurd) in
   let ctx = Ctx.define ctx "Type" VU VU in
+  let ref_ty = VPi { explicitness = Explicit; domain = VU; effects = effect_row_closure ctx.env empty_effect_row; codomain = { env = ctx.env; body = U } } in
+  let ctx = Ctx.define ctx "Ref" ref_ty (VLam { body = { env = ctx.env; body = RefTy (Var 0) } }) in
   let ctx =
     NameMap.fold
       (fun name ty ctx ->

@@ -156,6 +156,31 @@ let module_signature_param_shape () =
   | Lam ({ name = "m"; type_ = Some (Module { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = false } ] }); _ }, FieldAccess (Var "m", "x")) -> ()
   | _ -> Alcotest.fail "expected module signature parameter"
 
+let ref_new_shape () =
+  match Core_lexer.parse_expr "ref 1" with
+  | RefNew (Atom (Atom.I64 1L)) -> ()
+  | _ -> Alcotest.fail "expected ref allocation"
+
+let ref_get_shape () =
+  match Core_lexer.parse_expr "!r" with
+  | RefGet (Var "r") -> ()
+  | _ -> Alcotest.fail "expected deref"
+
+let ref_set_shape () =
+  match Core_lexer.parse_expr "r := 2" with
+  | RefSet (Var "r", Atom (Atom.I64 2L)) -> ()
+  | _ -> Alcotest.fail "expected assignment"
+
+let ref_set_deref_shape () =
+  match Core_lexer.parse_expr "r := !r + 1" with
+  | RefSet (Var "r", Ap (Ap (Var "+", Explicit, RefGet (Var "r")), Explicit, Atom (Atom.I64 1L))) -> ()
+  | _ -> Alcotest.fail "expected assignment with deref"
+
+let neq_still_parses_shape () =
+  match Core_lexer.parse_expr "1 != 2" with
+  | Ap (Ap (Var "!=", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.I64 2L)) -> ()
+  | _ -> Alcotest.fail "expected inequality"
+
 let () =
   Alcotest.run "syntax"
     [
@@ -189,6 +214,11 @@ let () =
           Alcotest.test_case "multi trait bound shape" `Quick multi_trait_bound_shape;
           Alcotest.test_case "module signature sugar shape" `Quick module_signature_sugar_shape;
           Alcotest.test_case "module signature parameter shape" `Quick module_signature_param_shape;
+          Alcotest.test_case "ref new shape" `Quick ref_new_shape;
+          Alcotest.test_case "ref get shape" `Quick ref_get_shape;
+          Alcotest.test_case "ref set shape" `Quick ref_set_shape;
+          Alcotest.test_case "ref set deref shape" `Quick ref_set_deref_shape;
+          Alcotest.test_case "inequality still parses" `Quick neq_still_parses_shape;
           Alcotest.test_case "resume without argument rejected" `Quick (parse_fail "resume");
         ] );
     ]

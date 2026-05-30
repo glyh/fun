@@ -69,10 +69,10 @@ let annotated_binding value typ =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token MODULE SIG STRUCT END OPEN PUB TYPE EFFECT TRAIT IMPL METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME
-%token ARROW COLON EQUALS SEMI
+%token MODULE SIG STRUCT END OPEN PUB TYPE EFFECT TRAIT IMPL METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME REF
+%token ARROW COLON EQUALS ASSIGN SEMI
 %token LPAREN RPAREN COMMA DOT BAR
-%token LBRACE RBRACE
+%token LBRACE RBRACE BANG
 %token <string> CMP_OP ADD_OP MUL_OP
 %token EOF
 %nonassoc ARROW_BODY
@@ -329,6 +329,7 @@ effect_row_entry:
   | e = expr_proj { e }
 
 expr_arrow:
+  | lhs = expr_cmp; ASSIGN; rhs = expr_arrow { RefSet (lhs, rhs) }
   | e = arrow_form; effs = effect_row { attach_arrow_effects e (Some effs) }
   | e = arrow_form { e } %prec ARROW_BODY
   | e = expr_cmp { e }
@@ -375,6 +376,8 @@ expr_app:
   | PERFORM; name = dotted_id; arg = expr_proj
     { let effect_path, op = split_operation_path (fst name) (snd name) in Perform { effect_path; op; arg } }
   | RESUME; arg = expr_proj { Resume arg }
+  | REF; arg = expr_proj { RefNew arg }
+  | BANG; arg = expr_app { RefGet arg }
   | e = expr_proj { e }
 
 record_expr_field:

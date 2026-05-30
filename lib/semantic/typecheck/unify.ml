@@ -113,6 +113,8 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VAtomTy t -> AtomTy t
     | VProd elems -> Prod (List.map (go d) elems)
     | VProdTy elems -> ProdTy (List.map (go d) elems)
+    | VRefTy a -> RefTy (go d a)
+    | VRef _ -> raise (UnifyError (CannotUnify "cannot quote ref during unification"))
     | VModule { entries; partial = _ } ->
         let fields = module_entry_fields entries in
         let bindings =
@@ -205,6 +207,8 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
                      go d (Nbe.eval mc else_.env else_.body))
         | FProj i -> Proj (acc, i)
         | FDot name -> Dot (acc, name)
+        | FRefGet -> RefGet acc
+        | FRefSet value -> RefSet (acc, go d value)
         | FMatch branches ->
             Match
               ( acc,
@@ -238,6 +242,8 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter (fun eff -> occurs_check (Nbe.eval mc (var :: effects.env) eff)) effects.effects;
             occurs_check (Nbe.closure_apply mc clo var)
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
+        | VRefTy a -> occurs_check a
+        | VRef _ -> raise (UnifyError (CannotUnify "cannot unify ref cell"))
         | VModule { entries; partial = _ } ->
             List.iter
               (function
@@ -264,7 +270,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VCon { spine; nominal; _ } -> List.iter occurs_check spine; occurs_check nominal
         | VNeutral { neutral = { frames; _ }; _ } ->
             List.iter (fun f -> match f with
-              | FApp v -> occurs_check v
+              | FApp v | FRefSet v -> occurs_check v
               | _ -> ()) frames
         | VU | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ -> ()
       in
@@ -306,6 +312,8 @@ let value_form = function
   | VLam _ -> "lambda"
   | VProd _ -> "tuple value"
   | VProdTy _ -> "tuple type"
+  | VRefTy _ -> "ref type"
+  | VRef _ -> "ref cell"
   | VModule _ -> "module value"
   | VStruct _ -> "struct type"
   | VTrait t -> "trait " ^ t.trait_name
@@ -351,6 +359,7 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       if List.length elems1 <> List.length elems2 then
         raise (UnifyError TupleLengthMismatch);
       List.iter2 (unify mc env depth) elems1 elems2
+  | VRefTy a1, VRefTy a2 -> unify mc env depth a1 a2
   | VModule { entries = es1; partial = p1 }, VModule { entries = es2; partial = p2 } ->
       let fs1 = module_entry_fields es1 in
       let fs2 = module_entry_fields es2 in
@@ -504,6 +513,11 @@ and unify_frames (mc : MetaContext.t) (env : env) (depth : lvl) (fs1 : frame lis
   | FProj i1 :: rest1, FProj i2 :: rest2 when i1 = i2 ->
       unify_frames mc env depth rest1 rest2
   | FDot n1 :: rest1, FDot n2 :: rest2 when String.equal n1 n2 ->
+      unify_frames mc env depth rest1 rest2
+  | FRefGet :: rest1, FRefGet :: rest2 ->
+      unify_frames mc env depth rest1 rest2
+  | FRefSet v1 :: rest1, FRefSet v2 :: rest2 ->
+      unify mc env depth v1 v2;
       unify_frames mc env depth rest1 rest2
   | FMatch bs1 :: rest1, FMatch bs2 :: rest2 ->
       if List.length bs1 <> List.length bs2 then

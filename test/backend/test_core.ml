@@ -148,6 +148,23 @@ let test_eval_module_signature_functor () =
     "let F = fun (M : module let x = I64 end) -> module pub let doubled = M.x + M.x end in (F (module pub let x = 21 end)).doubled"
     ()
 
+let test_ref_read_initial () =
+  check_i64 "ref read initial" 1L "let r = ref 1 in !r" ()
+
+let test_ref_write_read () =
+  check_i64 "ref write read" 2L "let r = ref 1 in let _ = r := 2 in !r" ()
+
+let test_ref_aliases_share_cell () =
+  check_i64 "ref aliases share cell" 3L "let r = ref 1 in let alias = r in let _ = alias := 3 in !r" ()
+
+let test_ref_closure_observes_later_write () =
+  check_i64 "ref closure observes later write" 4L "let r = ref 0 in let f = fun _ -> !r in let _ = r := 4 in f ()" ()
+
+let test_ref_repeated_closure_increments () =
+  check_i64 "ref repeated closure increments" 2L
+    "let r = ref 0 in let inc = fun _ -> let n = !r in let _ = r := n + 1 in !r in let _ = inc () in inc ()"
+    ()
+
 (* -- neutral tests (require manual construction) ------------------------- *)
 
 let test_neutral_var () =
@@ -841,6 +858,11 @@ let () =
           Alcotest.test_case "module signature extra field" `Quick test_eval_module_signature_extra_field;
           Alcotest.test_case "signature sugar argument" `Quick test_eval_signature_sugar_argument;
           Alcotest.test_case "module signature functor" `Quick test_eval_module_signature_functor;
+          Alcotest.test_case "ref read initial" `Quick test_ref_read_initial;
+          Alcotest.test_case "ref write read" `Quick test_ref_write_read;
+          Alcotest.test_case "ref aliases share cell" `Quick test_ref_aliases_share_cell;
+          Alcotest.test_case "ref closure observes later write" `Quick test_ref_closure_observes_later_write;
+          Alcotest.test_case "ref repeated closure increments" `Quick test_ref_repeated_closure_increments;
           Alcotest.test_case "pi" `Quick test_eval_pi;
           Alcotest.test_case "eq i64" `Quick (check_bool "eq i64" true "1 == 1");
           Alcotest.test_case "neq i64" `Quick (check_bool "neq i64" true "1 != 2");

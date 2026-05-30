@@ -16,7 +16,7 @@ The old HM/typecheck/interpreter pipeline has been replaced by `core_tt`:
 Surface.t → elaboration → Core.term + semantic type → NbE evaluation
 ```
 
-This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, imports, traits, and algebraic effects.
+This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, imports, traits, algebraic effects, and mutable references.
 
 ## Ordered work
 
@@ -83,7 +83,15 @@ Optimization, VM, and CPS lowering are not part of the current effects plan.
 
 ### 5. References
 
-Mutable ref cells should capture the cell, not the current value, inside closures. They will affect closure conversion and runtime value representation, so they should wait until the current evaluator and core behavior are better covered by tests.
+Mutable references are implemented in the OCaml prototype. The language now supports `Ref A`, `ref e`, `!r`, and `r := e` without exposing reference operations in user-visible effect rows.
+
+Completed milestones:
+
+- added parser, AST, core, elaboration, NbE, unification, and debug-printer support for reference types and operations;
+- represented runtime references as opaque mutable cells;
+- preserved aliasing and closure-capture semantics so closures capture the cell, not a snapshot of the current value;
+- prevented reference allocation/read/write from being pre-evaluated during elaboration through the internal compile-time-safety check;
+- added syntax, semantic, and backend regression coverage for parsing, typing, rejection cases, aliasing, mutation, and closure-observed writes.
 
 ### 6. UFCS
 

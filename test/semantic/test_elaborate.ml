@@ -1317,6 +1317,17 @@ let imports =
         | _ -> Alcotest.fail "expected import loader error");
   ]
 
+let references =
+  [
+    Alcotest.test_case "Ref I64 is Type" `Quick (check_type "Ref I64" U);
+    Alcotest.test_case "ref annotation" `Quick (elab_ok "(ref 1 : Ref I64)");
+    Alcotest.test_case "deref type" `Quick (check_type "let r = ref 1 in !r" (AtomTy TI64));
+    Alcotest.test_case "assignment type" `Quick (check_type "let r = ref 1 in r := 2" (AtomTy TUnit));
+    Alcotest.test_case "wrong assignment rejected" `Quick (elab_fail "let r = ref 1 in r := true");
+    Alcotest.test_case "deref non-ref rejected" `Quick (elab_fail "!1");
+    Alcotest.test_case "assign non-ref rejected" `Quick (elab_fail "1 := 2");
+  ]
+
 let let_rec =
   [
     Alcotest.test_case "recursive function annotated" `Quick
@@ -1355,5 +1366,6 @@ let () =
       ("traits", traits);
       ("effects", effects);
       ("imports", imports);
+      ("references", references);
       ("let_rec", let_rec);
     ]

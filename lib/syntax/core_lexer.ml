@@ -29,6 +29,7 @@ let rec token buf =
   | "can" -> CAN
   | "perform" -> PERFORM
   | "resume" -> RESUME
+  | "ref" -> REF
   | "method" -> METHOD
   | "import" -> IMPORT
   | "self" -> SELF
@@ -39,6 +40,7 @@ let rec token buf =
   | "()" -> UNIT
   | "==" -> CMP_OP "=="
   | "!=" -> CMP_OP "!="
+  | ":=" -> ASSIGN
   | ">=" -> CMP_OP ">="
   | "<=" -> CMP_OP "<="
   | ">" -> CMP_OP ">"
@@ -54,6 +56,7 @@ let rec token buf =
   | ")" -> RPAREN
   | "=" -> EQUALS
   | ":" -> COLON
+  | "!" -> BANG
   | "." -> DOT
   | "," -> COMMA
   | ";" -> SEMI
