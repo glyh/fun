@@ -574,3 +574,13 @@ and unify_frames (mc : MetaContext.t) (env : env) (depth : lvl) (fs1 : frame lis
       unify_frames mc env depth rest1 rest2
   | _ ->
       raise (UnifyError FrameMismatch)
+
+let try_unify mc env depth v1 v2 =
+  (* Effect-row matching probes multiple candidates; failed probes must not leak meta solutions. *)
+  let snapshot = MetaContext.snapshot mc in
+  try
+    unify mc env depth v1 v2;
+    true
+  with UnifyError _ ->
+    MetaContext.restore mc snapshot;
+    false
