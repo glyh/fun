@@ -102,25 +102,19 @@ Completed milestones:
 - prevented reference allocation/read/write from being pre-evaluated during elaboration through the internal compile-time-safety check;
 - added syntax, semantic, and backend regression coverage for parsing, typing, rejection cases, aliasing, mutation, and closure-observed writes.
 
-### 6. UFCS
+### 6. Macro system
 
-Uniform function call syntax remains desirable once method and field access semantics settle. This is smaller than macros, but it should wait until existing method semantics are well covered and the surface syntax direction is clearer.
+The macro system is the main remaining language-design item in the OCaml prototype. It should settle the model for user-defined syntax extensions before any broad surface syntax redesign.
 
-### 7. Native bindings
-
-FFI support should allow `fun` code to call native functionality without compromising the core evaluator's invariants. This is useful, but it is not a prototype priority until the language core stabilizes further.
-
-### 8. Macro system
-
-User-defined syntax extensions are still open design territory and should wait until the core language behavior is better understood. The macro plan is much larger than the effects plan because it requires syntax objects, hygiene, enforestation, phase-aware modules, and eventually type-integrated expansion.
+The macro plan is larger than the recent semantic features because it requires syntax objects, hygiene, enforestation, phase-aware modules, and eventually type-integrated expansion.
 
 Parser syntax redesign is blocked on this work: the parser should not be expanded aggressively toward final user-facing syntax before the macro system direction is clear.
 
-### 9. CLR/C# rewrite target
+### 7. CLR/C# rewrite target
 
-A future rewrite should target the CLR and be implemented in C#. This is now preferred over a Zig rewrite because the CLR provides major runtime pieces for free: GC, JIT, mature tooling, packaging, debugging/profiling support, and a practical native interop story.
+The CLR/C# rewrite is now part of the active agenda rather than a distant cleanup item. The current OCaml implementation remains the design prototype, but most remaining non-macro items are either minor or can plausibly be implemented in the language instead of the compiler.
 
-The current OCaml implementation remains the design prototype. The rewrite should wait until the dependent core, implicit resolution story, type-case direction, effect semantics, and macro direction are better understood.
+A future rewrite should target the CLR and be implemented in C#. This is preferred over a Zig rewrite because the CLR provides major runtime pieces for free: GC, JIT, mature tooling, packaging, debugging/profiling support, and a practical native interop story.
 
 Likely rewrite goals:
 
@@ -128,9 +122,13 @@ Likely rewrite goals:
 - use C# for the compiler/runtime implementation;
 - target CLR execution rather than building a custom VM first;
 - preserve room for algebraic effects through CPS/trampolining/runtime encoding if needed;
-- defer larger surface syntax redesign until the rewrite, including possible Ruby/Elixir-style `do ... end` blocks and less ML-flavored syntax.
+- use the macro-system design to guide larger surface syntax changes, including possible Ruby/Elixir-style `do ... end` blocks and less ML-flavored syntax.
 
-### 10. Post-rewrite diagnostics polish
+### 8. Deferred/minor items
+
+UFCS remains desirable, and FFI/native bindings remain useful, but neither should drive the prototype agenda now. Prefer implementing protocol-style conveniences, deriving/fallback behavior, and small ergonomic improvements in the language where possible rather than adding more compiler machinery before the macro design and rewrite direction are clear.
+
+### 9. Post-rewrite diagnostics polish
 
 Diagnostics for parse, elaboration, unification, exhaustiveness, macro expansion, and runtime errors should be polished after the CLR/C# rewrite, when the implementation shape is less likely to be thrown away.
 
