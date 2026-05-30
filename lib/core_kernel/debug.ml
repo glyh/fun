@@ -1,6 +1,12 @@
 open Core
 
-let rec pp_term (t : term) : string =
+let rec pp_effect_row (row : effect_row) =
+  let effects = List.map pp_term row.effects in
+  match row.tail with
+  | None -> String.concat ", " effects
+  | Some tail -> String.concat ", " effects ^ " | " ^ pp_term tail
+
+and pp_term (t : term) : string =
   match t with
   | Var ix -> Printf.sprintf "Var(%d)" ix
   | Lam body -> Printf.sprintf "Lam(%s)" (pp_term body)
@@ -19,6 +25,8 @@ let rec pp_term (t : term) : string =
       | Explicit ->
           Printf.sprintf "Pi(%s, %s%s)" (pp_term domain) (pp_term codomain) row)
   | U -> "U"
+  | EffectRowTy -> "EffectRowTy"
+  | EffectRowLit row -> Printf.sprintf "EffectRowLit(%s)" (pp_effect_row row)
   | Atom _ -> "Atom"
   | AtomTy _ -> "AtomTy"
   | Meta id -> Printf.sprintf "Meta(%d)" id
@@ -45,6 +53,12 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     if depth > 4 then "..." else
     match v with
     | VU -> "U"
+    | VEffectRowTy -> "EffectRow"
+    | VEffectRow row ->
+        let effects = List.map (go (depth + 1)) row.effect_values in
+        let tail = Option.map (go (depth + 1)) row.tail_value in
+        Printf.sprintf "{%s%s}" (String.concat ", " effects)
+          (match tail with None -> "" | Some tail -> " | " ^ tail)
     | VAtom (I64 n) -> Int64.to_string n
     | VAtom (Bool b) -> string_of_bool b
     | VAtom Unit -> "()"

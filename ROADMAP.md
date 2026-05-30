@@ -16,7 +16,7 @@ The old HM/typecheck/interpreter pipeline has been replaced by `core_tt`:
 Surface.t → elaboration → Core.term + semantic type → NbE evaluation
 ```
 
-This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, imports, traits, algebraic effects, and mutable references.
+This gives the language a single implementation path for dependent typing, implicit arguments, nominal ADTs, structural records/modules, pattern matching, imports, traits, algebraic effects with open rows, and mutable references.
 
 ## Ordered work
 
@@ -75,9 +75,18 @@ The near-term design details live in `docs/11.trait_plan.md`.
 
 ### 4. Algebraic effects hardening
 
-Algebraic effects now have nominal effect families, closed latent rows, `perform`, match-based handlers, and `resume`. Handler semantics are hardened for closed rows: handlers are deep, value branches and branch bodies run through the active handler loop, parameterized effect instances are distinguished during branch coverage and dispatch, lexical `resume` is allowed inside nested branch-local lambdas, and continuations remain one-shot.
+Algebraic effects now have nominal effect families, latent rows with open row tails, `perform`, match-based handlers, and `resume`. Handler semantics are hardened: handlers are deep, value branches and branch bodies run through the active handler loop, parameterized effect instances are distinguished during branch coverage and dispatch, lexical `resume` is allowed inside nested branch-local lambdas, and continuations remain one-shot.
 
-The remaining near-term effect work in `docs/7.algebraic_effects_plan.md` is open effect rows / effect polymorphism.
+Completed milestones:
+
+- added first-class `EffectRow` and row literals in the core/NbE pipeline;
+- added explicit open-row syntax with `can {IO | r}`, `can {IO, State I64 | r}`, and `can {| r}`;
+- added explicit pure-row syntax with `can {}`;
+- changed omitted effect annotations to infer/thread row tails by default;
+- extended row unification, conversion, quotation, and debug printing;
+- propagated callback latent effects through higher-order applications;
+- preserved handler residual row tails while removing handled concrete effects;
+- added syntax, semantic, and backend regression coverage for closed rows, open rows, effect threading, handlers, and row failures.
 
 Optimization, VM, and CPS lowering are not part of the current effects plan.
 

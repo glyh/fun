@@ -320,8 +320,17 @@ type_atom:
 effect_row:
   | CAN; eff = effect_row_entry
     { { effects = [ eff ]; tail = None } }
+  | CAN; LBRACE; RBRACE
+    { { effects = []; tail = None } }
   | CAN; LBRACE; effs = separated_nonempty_list(COMMA, effect_row_entry); RBRACE
     { { effects = effs; tail = None } }
+  | CAN; LBRACE; effs = separated_nonempty_list(COMMA, effect_row_entry); BAR; tail = effect_row_tail; RBRACE
+    { { effects = effs; tail = Some tail } }
+  | CAN; LBRACE; BAR; tail = effect_row_tail; RBRACE
+    { { effects = []; tail = Some tail } }
+
+effect_row_tail:
+  | e = expr_arrow { e }
 
 effect_row_entry:
   | f = effect_row_entry; a = expr_proj { Ap (f, Explicit, a) }
@@ -377,7 +386,7 @@ expr_app:
     { let effect_path, op = split_operation_path (fst name) (snd name) in Perform { effect_path; op; arg } }
   | RESUME; arg = expr_proj { Resume arg }
   | REF; arg = expr_proj { RefNew arg }
-  | BANG; arg = expr_app { RefGet arg }
+  | BANG; arg = expr_proj { RefGet arg }
   | e = expr_proj { e }
 
 record_expr_field:

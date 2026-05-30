@@ -96,12 +96,10 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         Lam (go (d + 1) (Nbe.closure_apply mc clo var))
     | VPi { explicitness = expl; domain = a; effects; codomain = clo } ->
         let var = VRigid { lvl = d; spine = [] } in
+        let row_value = Nbe.eval_effect_row_closure mc effects var in
         let row =
-          match effects.tail with
-          | Some _ -> raise (UnifyError EffectRowMismatch)
-          | None ->
-              { effects = List.map (fun eff -> go (d + 1) (Nbe.eval mc (var :: effects.env) eff)) effects.effects;
-                tail = None }
+          { effects = List.map (go (d + 1)) row_value.effect_values;
+            tail = Option.map (go (d + 1)) row_value.tail_value }
         in
         Pi
           { explicitness = expl;
@@ -109,6 +107,11 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             effects = row;
             codomain = go (d + 1) (Nbe.closure_apply mc clo var) }
     | VU -> U
+    | VEffectRowTy -> EffectRowTy
+    | VEffectRow row ->
+        EffectRowLit
+          { effects = List.map (go d) row.effect_values;
+            tail = Option.map (go d) row.tail_value }
     | VAtom a -> Atom a
     | VAtomTy t -> AtomTy t
     | VProd elems -> Prod (List.map (go d) elems)
@@ -229,8 +232,16 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     3. [wrap] the renamed RHS in lambdas (one per spine argument).
     4. Evaluate the result at depth 0 and install it as the solution. *)
 let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : value) : unit =
+  let same_flex value =
+    match Nbe.force mc value with
+    | VFlex { id = id'; spine } -> id' = id && List.length spine = List.length sp && List.for_all2 (Nbe.conv mc (List.length env)) spine sp
+    | _ -> false
+  in
   match sp with
   | [] ->
+      (match Nbe.force mc rhs with
+      | VEffectRow { effect_values = []; tail_value = Some tail } when same_flex tail -> ()
+      | _ ->
       let rec occurs_check v =
         match Nbe.force mc v with
         | VFlex { id = id'; spine } ->
@@ -239,9 +250,14 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VPi { domain = a; effects; codomain = clo; _ } ->
             occurs_check a;
             let var = VRigid { lvl = 0; spine = [] } in
-            List.iter (fun eff -> occurs_check (Nbe.eval mc (var :: effects.env) eff)) effects.effects;
+            let row = Nbe.eval_effect_row_closure mc effects var in
+            List.iter occurs_check row.effect_values;
+            Option.iter occurs_check row.tail_value;
             occurs_check (Nbe.closure_apply mc clo var)
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
+        | VEffectRow row ->
+            List.iter occurs_check row.effect_values;
+            Option.iter occurs_check row.tail_value
         | VRefTy a -> occurs_check a
         | VRef _ -> raise (UnifyError (CannotUnify "cannot unify ref cell"))
         | VModule { entries; partial = _ } ->
@@ -272,10 +288,10 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter (fun f -> match f with
               | FApp v | FRefSet v -> occurs_check v
               | _ -> ()) frames
-        | VU | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ -> ()
+        | VU | VEffectRowTy | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ -> ()
       in
       occurs_check rhs;
-      MetaContext.solve mc id rhs
+      MetaContext.solve mc id rhs)
   | _ ->
       let ren = Renaming.of_spine sp in
       let sp_len = List.length sp in
@@ -298,6 +314,8 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
      - Otherwise → [CannotUnify]. *)
 let value_form = function
   | VU -> "Type"
+  | VEffectRowTy -> "EffectRow"
+  | VEffectRow _ -> "effect row"
   | VAtom atom -> "atom " ^ Atom.pp atom
   | VAtomTy atom_ty ->
       "atom type "
@@ -334,6 +352,8 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
   let v2 = Nbe.force mc v2 in
   match (v1, v2) with
   | VU, VU -> ()
+  | VEffectRowTy, VEffectRowTy -> ()
+  | VEffectRow row1, VEffectRow row2 -> unify_effect_rows mc env depth row1 row2
   | VAtom a1, VAtom a2 when Atom.equal a1 a2 -> ()
   | VAtomTy t1, VAtomTy t2 when equal_atom_ty t1 t2 -> ()
   | ( VPi { explicitness = e1; domain = a1; effects = effs1; codomain = clo1 },
@@ -466,17 +486,39 @@ and unify_spine (mc : MetaContext.t) (env : env) (depth : lvl) (sp1 : spine) (sp
   List.iter2 (unify mc env depth) sp1 sp2
 
 and unify_effect_rows (mc : MetaContext.t) (env : env) (depth : lvl)
-    (row1 : value list) (row2 : value list) : unit =
+    (row1 : effect_row_value) (row2 : effect_row_value) : unit =
   let rec remove_match eff = function
-    | [] -> raise (UnifyError EffectRowMismatch)
+    | [] -> None
     | candidate :: rest -> (
+        let snapshot = MetaContext.snapshot mc in
         try
           unify mc env depth eff candidate;
-          rest
-        with UnifyError _ -> candidate :: remove_match eff rest)
+          Some rest
+        with UnifyError _ ->
+          MetaContext.restore mc snapshot;
+          Option.map (fun rest -> candidate :: rest) (remove_match eff rest))
   in
-  if List.length row1 <> List.length row2 then raise (UnifyError EffectRowMismatch);
-  ignore (List.fold_left (fun remaining eff -> remove_match eff remaining) row2 row1)
+  let remaining =
+    List.fold_left
+      (fun remaining eff -> Option.bind remaining (remove_match eff))
+      (Some row2.effect_values) row1.effect_values
+  in
+  match remaining with
+  | None -> raise (UnifyError EffectRowMismatch)
+  | Some remaining2 ->
+      let remaining1 =
+        List.filter
+          (fun eff -> not (List.exists (fun other -> Nbe.conv mc depth eff other) row2.effect_values))
+          row1.effect_values
+      in
+      match remaining1, remaining2, row1.tail_value, row2.tail_value with
+      | [], [], None, None -> ()
+      | [], [], Some lhs, Some rhs -> unify mc env depth lhs rhs
+      | [], leftovers, Some tail, None -> unify mc env depth tail (VEffectRow { effect_values = leftovers; tail_value = None })
+      | leftovers, [], None, Some tail -> unify mc env depth (VEffectRow { effect_values = leftovers; tail_value = None }) tail
+      | [], leftovers, Some tail1, Some tail2 -> unify mc env depth tail1 (VEffectRow { effect_values = leftovers; tail_value = Some tail2 })
+      | leftovers, [], Some tail1, Some tail2 -> unify mc env depth (VEffectRow { effect_values = leftovers; tail_value = Some tail1 }) tail2
+      | _ -> raise (UnifyError EffectRowMismatch)
 
 (** Unify two stuck computations. First check the heads match (same
     variable level, same metavariable id, or same primitive name),

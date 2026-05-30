@@ -185,6 +185,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
              codomain = { env; body = codomain };
            })
   | U -> Done VU
+  | EffectRowTy -> Done VEffectRowTy
+  | EffectRowLit row -> Done (eval_effect_row_literal mc env row)
   | Atom a -> Done (VAtom a)
   | AtomTy t -> Done (VAtomTy t)
   | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))
@@ -542,6 +544,11 @@ and try_prim_reduce (head : head) (frames : frame list) : value option =
         | None -> None)
   | _ -> None
 
+and eval_effect_row_literal (mc : MetaContext.t) (env : env) (row : effect_row) : value =
+  let effects = List.map (eval mc env) row.effects in
+  let tail = Option.map (eval mc env) row.tail in
+  VEffectRow { effect_values = effects; tail_value = tail }
+
 and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   match vf with
   | VLam { body = clo; _ } -> eval_result mc (va :: clo.env) clo.body
@@ -578,10 +585,21 @@ and apply_ty (mc : MetaContext.t) (ty : value) (va : value) : value =
   | _ -> VU
 
 and eval_effect_row_closure (mc : MetaContext.t) (row : effect_row_closure)
-    (binder : value) : value list =
-  match row.tail with
-  | Some _ -> raise (EvalError "open effect rows are not implemented")
-  | None -> List.map (eval mc (binder :: row.env)) row.effects
+    (binder : value) : effect_row_value =
+  let env = binder :: row.env in
+  let row_value =
+    { effect_values = List.map (eval mc env) row.effects;
+      tail_value = Option.map (eval mc env) row.tail }
+  in
+  normalize_effect_row_value mc row_value
+
+and normalize_effect_row_value (mc : MetaContext.t) (row : effect_row_value) : effect_row_value =
+  match Option.map (force mc) row.tail_value with
+  | Some (VEffectRow tail_row) ->
+      let tail_row = normalize_effect_row_value mc tail_row in
+      { effect_values = row.effect_values @ tail_row.effect_values;
+        tail_value = tail_row.tail_value }
+  | tail_value -> { row with tail_value }
 
 and eval_if (mc : MetaContext.t) (env : env) (vc : value) (then_ : term)
     (else_ : term) : result =
@@ -613,6 +631,7 @@ and eval_meta (mc : MetaContext.t) (id : meta_id) : value =
   match MetaContext.lookup mc id with
   | Solved v -> v
   | Unsolved -> VFlex { id; spine = [] }
+  | exception Invalid_argument _ -> VFlex { id; spine = [] }
 
 (* Apply an InsertedMeta to the bound variables in scope, skipping defined ones *)
 and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
@@ -1126,7 +1145,8 @@ and force (mc : MetaContext.t) (v : value) : value =
       | Solved v ->
           let applied = List.fold_left (fun f a -> apply mc f a) v sp in
           force mc applied
-      | Unsolved -> VFlex { id; spine = sp })
+      | Unsolved -> VFlex { id; spine = sp }
+      | exception Invalid_argument _ -> VFlex { id; spine = sp })
   | _ -> v
 
 let lvl_to_ix (depth : lvl) (l : lvl) : ix = depth - l - 1
@@ -1139,14 +1159,10 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
       Lam (quote mc (depth + 1) (closure_apply mc clo var))
   | VPi { explicitness; domain; effects; codomain } ->
       let var = VRigid { lvl = depth; spine = [] } in
+      let row_value = eval_effect_row_closure mc effects var in
       let row =
-        {
-          effects =
-            List.map
-              (quote mc (depth + 1))
-              (eval_effect_row_closure mc effects var);
-          tail = None;
-        }
+        { effects = List.map (quote mc (depth + 1)) row_value.effect_values;
+          tail = Option.map (quote mc (depth + 1)) row_value.tail_value }
       in
       Pi
         {
@@ -1156,6 +1172,11 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           codomain = quote mc (depth + 1) (closure_apply mc codomain var);
         }
   | VU -> U
+  | VEffectRowTy -> EffectRowTy
+  | VEffectRow row ->
+      EffectRowLit
+        { effects = List.map (quote mc depth) row.effect_values;
+          tail = Option.map (quote mc depth) row.tail_value }
   | VAtom a -> Atom a
   | VAtomTy t -> AtomTy t
   | VProd elems -> Prod (List.map (quote mc depth) elems)
@@ -1284,6 +1305,8 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
   let v2 = force mc v2 in
   match (v1, v2) with
   | VU, VU -> true
+  | VEffectRowTy, VEffectRowTy -> true
+  | VEffectRow row1, VEffectRow row2 -> conv_effect_rows mc depth row1 row2
   | VAtom a1, VAtom a2 -> Atom.equal a1 a2
   | VAtomTy t1, VAtomTy t2 -> equal_atom_ty t1 t2
   | ( VPi { explicitness = e1; domain = a1; effects = effs1; codomain = clo1 },
@@ -1413,19 +1436,25 @@ and conv_spine (mc : MetaContext.t) (depth : lvl) (sp1 : spine) (sp2 : spine) :
     bool =
   List.length sp1 = List.length sp2 && List.for_all2 (conv mc depth) sp1 sp2
 
-and conv_effect_rows (mc : MetaContext.t) (depth : lvl) (row1 : value list)
-    (row2 : value list) : bool =
+and conv_effect_rows (mc : MetaContext.t) (depth : lvl) (row1 : effect_row_value)
+    (row2 : effect_row_value) : bool =
   let rec remove_match eff = function
     | [] -> None
     | candidate :: rest when conv mc depth eff candidate -> Some rest
     | candidate :: rest ->
         Option.map (fun rest -> candidate :: rest) (remove_match eff rest)
   in
-  List.length row1 = List.length row2
+  List.length row1.effect_values = List.length row2.effect_values
   && Option.is_some
        (List.fold_left
           (fun remaining eff -> Option.bind remaining (remove_match eff))
-          (Some row2) row1)
+          (Some row2.effect_values) row1.effect_values)
+  && match row1.tail_value, row2.tail_value with
+     | None, None -> true
+     | Some (VFlex { spine = []; _ }), None | None, Some (VFlex { spine = []; _ }) -> true
+     | Some (VFlex { spine = []; _ }), Some (VFlex { spine = []; _ }) -> true
+     | Some lhs, Some rhs -> conv mc depth lhs rhs
+     | _ -> false
 
 and conv_neutral (mc : MetaContext.t) (depth : lvl) (n1 : neutral)
     (n2 : neutral) : bool =

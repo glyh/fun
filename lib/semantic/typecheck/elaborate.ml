@@ -239,10 +239,12 @@ let atom_ty_of_atom = function
   | String _ -> TString
 
 type expr_effect = { core : term; value : value }
-type expr_effects = expr_effect list
+type expr_effects = { effects : expr_effect list; tail : expr_effect option }
 
-let empty_expr_effects = []
-let singleton_expr_effect core value = [ { core; value } ]
+let empty_expr_effects = { effects = []; tail = None }
+let singleton_expr_effect core value = { effects = [ { core; value } ]; tail = None }
+let singleton_expr_effect_tail core value = { effects = []; tail = Some { core; value } }
+let is_empty_expr_effects effects = List.is_empty effects.effects && Option.is_none effects.tail
 
 let prims =
   let arithemetic = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TI64 in
@@ -313,7 +315,7 @@ let find_record_field fields name =
 
 let rec is_type_like_value ctx value =
   match Nbe.force ctx.Ctx.metas value with
-  | VU | VAtomTy _ | VPi _ | VProdTy _ | VNominal _ | VEffect _ | VTraitDict _ | VRefTy _ -> true
+  | VU | VEffectRowTy | VAtomTy _ | VPi _ | VProdTy _ | VNominal _ | VEffect _ | VTraitDict _ | VRefTy _ -> true
   | VModule { entries; partial = true } ->
       let fields = module_entry_fields entries in
       validate_module_fields fields;
@@ -625,6 +627,10 @@ let term_mentions_var target term =
         || go (target + 1) codomain
     | If (cond, then_, else_) -> go target cond || go target then_ || go target else_
     | Prod elems | ProdTy elems -> List.exists (go target) elems
+    | EffectRowTy -> false
+    | EffectRowLit row ->
+        List.exists (go target) row.effects
+        || Option.fold ~none:false ~some:(go target) row.tail
     | RefTy a | RefNew a | RefGet a -> go target a
     | RefSet (r, e) -> go target r || go target e
     | Proj (e, _) | Dot (e, _) | Open (e, _) -> go target e
@@ -678,6 +684,10 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
       VPi { explicitness; domain; effects; codomain = subst_closure_var mc target replacement codomain }
   | VProd elems -> VProd (List.map (subst_value_var mc target replacement) elems)
   | VProdTy elems -> VProdTy (List.map (subst_value_var mc target replacement) elems)
+  | VEffectRow row ->
+      VEffectRow
+        { effect_values = List.map (subst_value_var mc target replacement) row.effect_values;
+          tail_value = Option.map (subst_value_var mc target replacement) row.tail_value }
   | VModule { entries; partial } ->
       let entries =
         List.map
@@ -717,7 +727,7 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
   | VFlex { id; spine } -> VFlex { id; spine = List.map (subst_value_var mc target replacement) spine }
   | VRigid { lvl; spine } -> VRigid { lvl; spine = List.map (subst_value_var mc target replacement) spine }
   | VLam _ | VFix _ | VCont _ as v -> v
-  | VU | VAtom _ | VAtomTy _ as v -> v
+  | VU | VEffectRowTy | VAtom _ | VAtomTy _ as v -> v
 
 and subst_closure_var mc target replacement clo =
   { clo with env = List.map (subst_value_var mc target replacement) clo.env }
@@ -783,11 +793,18 @@ let close_recursive_payload_term nominal_name num_params =
             Pi
               { explicitness;
                 domain = go cutoff domain;
-                effects = { effects with effects = List.map (go (cutoff + 1)) effects.effects };
+                effects =
+                  { effects = List.map (go (cutoff + 1)) effects.effects;
+                    tail = Option.map (go (cutoff + 1)) effects.tail };
                 codomain = go (cutoff + 1) codomain }
         | If (cond, then_, else_) -> If (go cutoff cond, go cutoff then_, go cutoff else_)
         | Prod elems -> Prod (List.map (go cutoff) elems)
         | ProdTy elems -> ProdTy (List.map (go cutoff) elems)
+        | EffectRowTy -> EffectRowTy
+        | EffectRowLit row ->
+            EffectRowLit
+              { effects = List.map (go cutoff) row.effects;
+                tail = Option.map (go cutoff) row.tail }
         | RefTy a -> RefTy (go cutoff a)
         | RefNew e -> RefNew (go cutoff e)
         | RefGet e -> RefGet (go cutoff e)
@@ -1085,34 +1102,75 @@ let union_expr_effects ctx lhs rhs =
   let add acc eff =
     if List.exists (fun existing -> Ctx.conv ctx existing.value eff.value) acc then acc else eff :: acc
   in
-  List.rev (List.fold_left add (List.rev lhs) rhs)
+  let tail =
+    match lhs.tail, rhs.tail with
+    | None, tail | tail, None -> tail
+    | Some lhs_tail, Some rhs_tail when Ctx.conv ctx lhs_tail.value rhs_tail.value -> Some lhs_tail
+    | Some lhs_tail, Some rhs_tail ->
+        let row = VEffectRow { effect_values = List.map (fun eff -> eff.value) rhs.effects; tail_value = Some rhs_tail.value } in
+        Ctx.unify ctx lhs_tail.value row;
+        Some lhs_tail
+  in
+  { effects = List.rev (List.fold_left add (List.rev lhs.effects) rhs.effects); tail }
 
 let union_many_expr_effects ctx effs = List.fold_left (union_expr_effects ctx) empty_expr_effects effs
 
-let require_empty_effects effects =
-  if effects <> [] then raise (ElabError UnhandledEffects)
+let require_empty_effects ctx effects =
+  match effects.effects, effects.tail with
+  | [], None -> ()
+  | [], Some tail -> Ctx.unify ctx tail.value (VEffectRow { effect_values = []; tail_value = None })
+  | _ :: _, _ -> raise (ElabError UnhandledEffects)
 
 let effect_row_values ctx row binder =
-  match row.tail with
-  | Some _ -> raise (ElabError UnhandledEffects)
-  | None -> List.map (fun eff -> Nbe.eval ctx.Ctx.metas (binder :: row.env) eff) row.effects
+  Nbe.eval_effect_row_closure ctx.Ctx.metas row binder
 
-let check_effect_subset ctx actual expected =
-  List.iter
-    (fun eff ->
-      if not
-           (List.exists
-              (fun expected ->
-                try
-                  Ctx.unify ctx eff.value expected;
-                  true
-                with Unify.UnifyError _ -> false)
-              expected)
-      then raise (ElabError UnhandledEffects))
-    actual
+let expr_effects_of_row_values ctx row =
+  { effects = List.map (fun value -> { core = Ctx.quote ctx value; value }) row.effect_values;
+    tail = Option.map (fun value -> { core = Ctx.quote ctx value; value }) row.tail_value }
 
-let effect_row_of_expr_effects ctx effects =
-  { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects; tail = None }
+let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value) =
+  let same_flex lhs rhs =
+    match Nbe.force ctx.Ctx.metas lhs, Nbe.force ctx.Ctx.metas rhs with
+    | VFlex { id = lhs_id; spine = lhs_spine }, VFlex { id = rhs_id; spine = rhs_spine } ->
+        lhs_id = rhs_id && List.length lhs_spine = List.length rhs_spine && List.for_all2 (Ctx.conv ctx) lhs_spine rhs_spine
+    | _ -> false
+  in
+  let rec remove_match eff = function
+    | [] -> None
+    | candidate :: rest -> (
+        let snapshot = MetaContext.snapshot ctx.Ctx.metas in
+        try
+          Ctx.unify ctx eff.value candidate;
+          Some rest
+        with Unify.UnifyError _ ->
+          MetaContext.restore ctx.Ctx.metas snapshot;
+          Option.map (fun rest -> candidate :: rest) (remove_match eff rest))
+  in
+  let unmatched =
+    List.fold_left
+      (fun unmatched eff ->
+        match remove_match eff expected.effect_values with
+        | Some _ -> unmatched
+        | None -> eff :: unmatched)
+      [] actual.effects
+    |> List.rev
+  in
+  match unmatched, actual.tail, expected.tail_value with
+  | [], None, _ -> ()
+  | [], Some actual_tail, Some expected_tail when same_flex actual_tail.value expected_tail || Ctx.conv ctx actual_tail.value expected_tail -> ()
+  | [], Some actual_tail, Some expected_tail -> Ctx.unify ctx actual_tail.value expected_tail
+  | leftovers, None, Some expected_tail ->
+      Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = None })
+  | leftovers, Some actual_tail, Some expected_tail when same_flex actual_tail.value expected_tail || Ctx.conv ctx actual_tail.value expected_tail ->
+      Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = Some expected_tail })
+  | leftovers, Some actual_tail, Some expected_tail ->
+      Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = Some actual_tail.value })
+  | [], Some actual_tail, None -> Ctx.unify ctx actual_tail.value (VEffectRow { effect_values = []; tail_value = None })
+  | _ :: _, _, None -> raise (ElabError UnhandledEffects)
+
+let effect_row_of_expr_effects ctx (effects : expr_effects) : effect_row =
+  { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects.effects;
+    tail = Option.map (fun eff -> Ctx.quote ctx eff.value) effects.tail }
 
 let rec surface_trait_bound_names = function
   | Surface.Var name -> Some [ name ]
@@ -1280,8 +1338,19 @@ let surface_effect_branches branches =
 
 let expr_effect_of_value ctx value = { core = Ctx.quote ctx value; value }
 
+let effect_values_match ctx lhs rhs =
+  if Ctx.conv ctx lhs rhs then true
+  else
+    let snapshot = MetaContext.snapshot ctx.Ctx.metas in
+    try
+      Ctx.unify ctx lhs rhs;
+      true
+    with Unify.UnifyError _ ->
+      MetaContext.restore ctx.Ctx.metas snapshot;
+      false
+
 let remove_expr_effect ctx handled effects =
-  List.filter (fun candidate -> not (Ctx.conv ctx candidate.value handled.value)) effects
+  { effects with effects = List.filter (fun candidate -> not (effect_values_match ctx candidate.value handled.value)) effects.effects }
 
 let effect_instance_ops = function
   | VEffect eff -> List.map (fun (name, _, _) -> name) eff.operations
@@ -1369,8 +1438,8 @@ let rec type_value_of_expr ctx expr =
       check_type_like ctx ty value;
       (core, ty, value)
 
-and elaborate_effect_row (ctx : Ctx.t) = function
-  | None -> empty_effect_row
+and elaborate_effect_row (ctx : Ctx.t) : Surface.effect_row option -> effect_row = function
+  | None -> { effects = []; tail = Some (Meta (MetaContext.fresh ctx.Ctx.metas)) }
   | Some (row : Surface.effect_row) ->
       let entries =
         List.map
@@ -1391,7 +1460,15 @@ and elaborate_effect_row (ctx : Ctx.t) = function
             check_unique rest
       in
       check_unique entries;
-      { effects = List.map fst entries; tail = None }
+      let tail =
+        Option.map
+          (fun tail_expr ->
+            let tail_core, tail_ty = infer ctx tail_expr in
+            Ctx.unify ctx tail_ty VEffectRowTy;
+            tail_core)
+          row.tail
+      in
+      { effects = List.map fst entries; tail }
 
 and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
   match expr with
@@ -1415,7 +1492,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
               | [], None -> empty_expr_effects
               | _ ->
                   let arg_val = Ctx.eval ctx arg_core in
-                  List.map (fun value -> { core = Ctx.quote ctx value; value }) (effect_row_values ctx effects arg_val)
+                  expr_effects_of_row_values ctx (effect_row_values ctx effects arg_val)
             in
             (latent, arg_core)
         | _ -> (empty_expr_effects, Atom Atom.Unit)
@@ -1433,7 +1510,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
               | [], None -> empty_expr_effects
               | _ ->
                   let arg_val = Ctx.eval ctx arg_core in
-                  List.map (fun value -> { core = Ctx.quote ctx value; value }) (effect_row_values ctx effects arg_val)
+                  expr_effects_of_row_values ctx (effect_row_values ctx effects arg_val)
             in
             (latent, arg_core)
         | _ -> (empty_expr_effects, Atom Atom.Unit)
@@ -1445,14 +1522,14 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let value_core, value_ty =
         match type_ with
         | Some ty_expr ->
-            require_empty_effects (collect_effects ctx ty_expr);
+            require_empty_effects ctx (collect_effects ctx ty_expr);
             let _ty_core, _ty_ty, ty_val = type_value_of_expr ctx ty_expr in
             (check ctx value ty_val, ty_val)
         | None -> infer ctx value
       in
       let gen_value_core, gen_value_ty = generalize ctx value_core value_ty in
       let body_ctx =
-        if value_effects = [] && compile_time_safe value then Ctx.define ctx name gen_value_ty (Ctx.eval ctx gen_value_core)
+        if is_empty_expr_effects value_effects && compile_time_safe value then Ctx.define ctx name gen_value_ty (Ctx.eval ctx gen_value_core)
         else Ctx.bind ctx name gen_value_ty
       in
       let body_effects = collect_effects body_ctx body in
@@ -1461,7 +1538,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let rec_ty =
         match type_ with
         | Some ty_expr ->
-            require_empty_effects (collect_effects ctx ty_expr);
+            require_empty_effects ctx (collect_effects ctx ty_expr);
             let _ty_core, _ty_ty, ty_val = type_value_of_expr ctx ty_expr in
             ty_val
         | None -> Ctx.raw_meta ctx
@@ -1472,7 +1549,7 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
   | Surface.If { cond; then_; else_ } ->
       union_many_expr_effects ctx [ collect_effects ctx cond; collect_effects ctx then_; collect_effects ctx else_ ]
   | Surface.Annotated { inner; typ } ->
-      require_empty_effects (collect_effects ctx typ);
+      require_empty_effects ctx (collect_effects ctx typ);
       collect_effects ctx inner
   | Surface.Prod elems | Surface.ProdTy elems -> union_many_expr_effects ctx (List.map (collect_effects ctx) elems)
   | Surface.Arrow (Surface.Implicit, Some name, a, row, b) -> (
@@ -1496,21 +1573,21 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
                 Ctx.add_trait_evidence c' evidence)
               type_ctx trait_names
           in
-          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects dict_ctx eff)) row.effects) row;
-          require_empty_effects (collect_effects dict_ctx b)
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects dict_ctx (collect_effects dict_ctx eff)) row.effects; Option.iter (fun tail -> require_empty_effects dict_ctx (collect_effects dict_ctx tail)) row.tail) row;
+          require_empty_effects dict_ctx (collect_effects dict_ctx b)
       | _ ->
-          require_empty_effects (collect_effects ctx a);
+          require_empty_effects ctx (collect_effects ctx a);
           let _a_core, _a_ty, a_val = type_value_of_expr ctx a in
           let ctx' = Ctx.bind ctx name a_val in
-          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) row;
-          require_empty_effects (collect_effects ctx' b));
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (collect_effects ctx' tail)) row.tail) row;
+          require_empty_effects ctx' (collect_effects ctx' b));
       empty_expr_effects
   | Surface.Arrow (_, name, a, row, b) ->
-      require_empty_effects (collect_effects ctx a);
+      require_empty_effects ctx (collect_effects ctx a);
       let _a_core, _a_ty, a_val = type_value_of_expr ctx a in
       let ctx' = Ctx.bind ctx (Option.value name ~default:"_") a_val in
-      Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) row;
-      require_empty_effects (collect_effects ctx' b);
+      Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (collect_effects ctx' tail)) row.tail) row;
+      require_empty_effects ctx' (collect_effects ctx' b);
       empty_expr_effects
   | Surface.FieldAccess (e, _) | Surface.Proj (e, _) -> collect_effects ctx e
   | Surface.RecordConstruct { typ; fields } ->
@@ -1521,14 +1598,20 @@ and collect_effects (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       (match Nbe.force ctx.Ctx.metas value with
       | VModule { entries; partial = _ } ->
           module_entry_fields entries
-          |> List.filter_map (fun (_, _, value) -> match Nbe.force ctx.Ctx.metas value with VPi { effects; _ } -> Some effects.effects | _ -> None)
-          |> List.concat
-          |> List.map (fun core -> { core; value = Ctx.eval ctx core })
+          |> List.filter_map
+               (fun (_, _, value) ->
+                 match Nbe.force ctx.Ctx.metas value with
+                 | VPi { effects; _ } -> Some (expr_effects_of_row_values ctx (effect_row_values ctx effects (VRigid { lvl = ctx.Ctx.lvl; spine = [] })))
+                 | _ -> None)
+          |> union_many_expr_effects ctx
       | VStruct { entries; _ } ->
           struct_entry_fields entries
-          |> List.filter_map (fun (_, _, value) -> match Nbe.force ctx.Ctx.metas value with VPi { effects; _ } -> Some effects.effects | _ -> None)
-          |> List.concat
-          |> List.map (fun core -> { core; value = Ctx.eval ctx core })
+          |> List.filter_map
+               (fun (_, _, value) ->
+                 match Nbe.force ctx.Ctx.metas value with
+                 | VPi { effects; _ } -> Some (expr_effects_of_row_values ctx (effect_row_values ctx effects (VRigid { lvl = ctx.Ctx.lvl; spine = [] })))
+                 | _ -> None)
+          |> union_many_expr_effects ctx
       | _ -> empty_expr_effects)
   | Surface.Open (name, body) ->
       let ix, ty = Ctx.lookup ctx name in
@@ -1648,6 +1731,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Atom Unit -> (Atom Unit, VAtomTy TUnit)
   | Atom (Char c) -> (Atom (Char c), VAtomTy TChar)
   | Atom (String s) -> (Atom (String s), VAtomTy TString)
+  | Var "EffectRow" -> (EffectRowTy, VU)
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
       (Var ix, ty)
@@ -1685,7 +1769,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | If { cond; then_; else_ } -> infer_if ctx cond then_ else_
   | Lam (param, body) -> infer_lam ctx param body
   | Annotated { inner; typ } ->
-      require_empty_effects (collect_effects ctx typ);
+      require_empty_effects ctx (collect_effects ctx typ);
       let _ty_core, _ty_ty, ty_val = type_value_of_expr ctx typ in
       let core = check ctx inner ty_val in
       (core, ty_val)
@@ -1698,7 +1782,7 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let core_elems =
         List.map
           (fun elem ->
-            require_empty_effects (collect_effects ctx elem);
+            require_empty_effects ctx (collect_effects ctx elem);
             let elem_core, elem_ty = infer ctx elem in
             check_type_like ctx elem_ty (Ctx.eval ctx elem_core);
             elem_core)
@@ -1727,9 +1811,9 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
                 (Ctx.add_trait_evidence c' evidence, layers @ [ dict_core ]))
               (type_ctx, []) trait_names
           in
-          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects dict_ctx eff)) row.effects) effects;
-          let effects = elaborate_effect_row dict_ctx effects in
-          require_empty_effects (collect_effects dict_ctx b);
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects type_ctx (collect_effects type_ctx eff)) row.effects; Option.iter (fun tail -> require_empty_effects type_ctx (collect_effects type_ctx tail)) row.tail) effects;
+          let effects = elaborate_effect_row type_ctx effects in
+          require_empty_effects dict_ctx (collect_effects dict_ctx b);
           let b_core, b_ty = infer dict_ctx b in
           check_type_like dict_ctx b_ty (Ctx.eval dict_ctx b_core);
           let core =
@@ -1745,22 +1829,22 @@ and infer (ctx : Ctx.t) (expr : Surface.t) : term * value =
           in
           (core, VU)
       | _ ->
-          require_empty_effects (collect_effects ctx a);
+          require_empty_effects ctx (collect_effects ctx a);
           let a_core, _a_ty, a_val = type_value_of_expr ctx a in
           let ctx' = Ctx.bind ctx name a_val in
-          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) effects;
+          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (collect_effects ctx' tail)) row.tail) effects;
           let effects = elaborate_effect_row ctx' effects in
-          require_empty_effects (collect_effects ctx' b);
+          require_empty_effects ctx' (collect_effects ctx' b);
           let b_core, b_ty = infer ctx' b in
           check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
           (Pi { explicitness = Implicit; domain = a_core; effects; codomain = b_core }, VU))
   | Arrow (expl, name, a, effects, b) ->
-      require_empty_effects (collect_effects ctx a);
+      require_empty_effects ctx (collect_effects ctx a);
       let a_core, _a_ty, a_val = type_value_of_expr ctx a in
       let ctx' = Ctx.bind ctx (Option.value name ~default:"_") a_val in
-      Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects (collect_effects ctx' eff)) row.effects) effects;
+      Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (collect_effects ctx' tail)) row.tail) effects;
       let effects = elaborate_effect_row ctx' effects in
-      require_empty_effects (collect_effects ctx' b);
+      require_empty_effects ctx' (collect_effects ctx' b);
       let b_core, b_ty = infer ctx' b in
       check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
       (Pi { explicitness = expl_of_surface expl; domain = a_core; effects; codomain = b_core }, VU)
@@ -2474,7 +2558,7 @@ and resolve_effect_branch_operation ctx scrutinee_effects branch =
   let adopt_matched_effect matched =
     (matched.core, matched.value, Nbe.force ctx.Ctx.metas input_ty, Nbe.force ctx.Ctx.metas output_ty)
   in
-  match List.find_opt (fun performed -> Ctx.conv ctx performed.value effect_value) scrutinee_effects with
+  match List.find_opt (fun performed -> Ctx.conv ctx performed.value effect_value) scrutinee_effects.effects with
   | Some matched -> adopt_matched_effect matched
   | None -> (
       let same_effect_family performed =
@@ -2482,7 +2566,7 @@ and resolve_effect_branch_operation ctx scrutinee_effects branch =
         | VEffect performed_eff, VEffect branch_eff -> performed_eff.id = branch_eff.id
         | _ -> false
       in
-      match List.filter same_effect_family scrutinee_effects with
+      match List.filter same_effect_family scrutinee_effects.effects with
       | [ matched ] -> adopt_matched_effect matched
       | _ -> (effect_core, effect_value, input_ty, output_ty))
 
@@ -2501,7 +2585,7 @@ and handled_effects ctx scrutinee_effects branches =
       if
         List.exists
           (fun (handled_effect, handled_op) ->
-            String.equal branch.op handled_op && Ctx.conv ctx effect_value handled_effect)
+            String.equal branch.op handled_op && effect_values_match ctx effect_value handled_effect)
           !handled
       then raise (ElabError (DuplicateEffectBranch branch.op));
       handled := (effect_value, branch.op) :: !handled)
@@ -2510,16 +2594,16 @@ and handled_effects ctx scrutinee_effects branches =
     (fun eff_expr ->
       match Nbe.force ctx.Ctx.metas eff_expr.value with
       | VEffect eff ->
-          List.exists (fun performed -> Ctx.conv ctx performed.value eff_expr.value) scrutinee_effects
+          List.exists (fun performed -> effect_values_match ctx performed.value eff_expr.value) scrutinee_effects.effects
           && List.for_all
                (fun (op_name, _, _) ->
                  List.exists
                    (fun (handled_effect, handled_op) ->
-                     String.equal op_name handled_op && Ctx.conv ctx eff_expr.value handled_effect)
+                     String.equal op_name handled_op && effect_values_match ctx eff_expr.value handled_effect)
                    !handled)
                eff.operations
       | _ -> false)
-    scrutinee_effects
+    scrutinee_effects.effects
 
 and residual_effects ctx scrutinee_effects effect_branches =
   List.fold_left (fun effects handled -> remove_expr_effect ctx handled effects)
@@ -2696,6 +2780,10 @@ and generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
         && closed_under (depth + 1) codomain
     | If (cond, then_, else_) -> closed_under depth cond && closed_under depth then_ && closed_under depth else_
     | Prod elems | ProdTy elems -> List.for_all (closed_under depth) elems
+    | EffectRowTy -> true
+    | EffectRowLit row ->
+        List.for_all (closed_under depth) row.effects
+        && Option.fold ~none:true ~some:(closed_under depth) row.tail
     | RefTy a | RefNew a | RefGet a -> closed_under depth a
     | RefSet (r, e) -> closed_under depth r && closed_under depth e
     | Proj (e, _) | Dot (e, _) -> closed_under depth e
@@ -2972,7 +3060,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let scrutinee_effects = collect_effects ctx scrutinee in
       let effect_branches = surface_effect_branches branches in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
-      require_empty_effects residual;
+      require_empty_effects ctx residual;
       let scrut_core = check ctx scrutinee VU in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let value_branches = surface_value_branches branches in
@@ -3028,7 +3116,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
         let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
         let ty_term = Ctx.quote ctx gen_val_ty in
         let ctx' =
-          if collect_effects ctx value = [] && compile_time_safe value then Ctx.define ctx name gen_val_ty (Ctx.eval ctx gen_val_core)
+          if is_empty_expr_effects (collect_effects ctx value) && compile_time_safe value then Ctx.define ctx name gen_val_ty (Ctx.eval ctx gen_val_core)
           else Ctx.bind ctx name gen_val_ty
         in
         let body_core = check ctx' body expected in
@@ -3042,7 +3130,7 @@ and check (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let scrutinee_effects = collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
-      require_empty_effects residual;
+      require_empty_effects ctx residual;
       let value_branches' =
         List.map (fun (pat, body) ->
           let branch_ctx = refine_branch_context ctx refinement_target pat in
@@ -3090,6 +3178,7 @@ let init_ctx () : Ctx.t =
   let ctx = add_type ctx "String" (VAtomTy TString) in
   let ctx = add_type ctx "Absurd" (VAtomTy TAbsurd) in
   let ctx = Ctx.define ctx "Type" VU VU in
+  let ctx = Ctx.define ctx "EffectRow" VU VEffectRowTy in
   let ref_ty = VPi { explicitness = Explicit; domain = VU; effects = effect_row_closure ctx.env empty_effect_row; codomain = { env = ctx.env; body = U } } in
   let ctx = Ctx.define ctx "Ref" ref_ty (VLam { body = { env = ctx.env; body = RefTy (Var 0) } }) in
   let ctx =

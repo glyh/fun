@@ -28,6 +28,8 @@ and term =
     }
       (* (x : A) -> B or {x : A} -> B, with latent effects *)
   | U (* Type : Type *)
+  | EffectRowTy
+  | EffectRowLit of effect_row
   | Atom of Atom.t
   | AtomTy of atom_ty
   | If of term * term * term
@@ -194,6 +196,8 @@ and env = value list (* head = most recently bound *)
 
 and effect_row_closure = { env : env; effects : term list; tail : term option }
 
+and effect_row_value = { effect_values : value list; tail_value : value option }
+
 (*
    Notation used in the [value] constructor comments:
 
@@ -223,6 +227,8 @@ and value =
       codomain : closure;
     }
   | VU
+  | VEffectRowTy
+  | VEffectRow of effect_row_value
   | VAtom of Atom.t
   | VAtomTy of atom_ty
   | VProd of value list (* value-level tuple *)
@@ -379,6 +385,15 @@ module MetaContext = struct
 
   let lookup (mc : t) (id : meta_id) : entry =
     Dynarray.get mc id
+
+  let snapshot (mc : t) : entry array =
+    Array.init (Dynarray.length mc) (Dynarray.get mc)
+
+  let restore (mc : t) (snapshot : entry array) : unit =
+    while Dynarray.length mc > Array.length snapshot do
+      ignore (Dynarray.pop_last mc)
+    done;
+    Array.iteri (Dynarray.set mc) snapshot
 end
 
 (** Global counter for fresh nominal type identities.

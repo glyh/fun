@@ -1055,6 +1055,16 @@ let effects =
       (check_type
          "let State S = effect get : Unit -> S end in let IO = effect read : Unit -> I64 end in Unit -> I64 can {State I64, IO}"
          U);
+    Alcotest.test_case "EffectRow has type Type" `Quick
+      (check_type "EffectRow" U);
+    Alcotest.test_case "open effect row has type Type" `Quick
+      (check_type
+         "let IO = effect read : Unit -> I64 end in {r : EffectRow} -> (Unit -> I64 can {IO | r})"
+         U);
+    Alcotest.test_case "tail-only effect row has type Type" `Quick
+      (check_type
+         "{r : EffectRow} -> (Unit -> I64 can {| r})"
+         U);
     Alcotest.test_case "lambda checks against effectful function type" `Quick
       (elab_ok
          "let IO = effect read : Unit -> I64 end in (fun x -> x : I64 -> I64 can IO)");
@@ -1081,16 +1091,34 @@ let effects =
          "let State S = effect put : S -> Unit end in (fun _ -> perform State.put true : Unit -> Unit can State I64)");
     Alcotest.test_case "pure lambda rejects perform" `Quick
       (elab_fail
-         "let State S = effect get : Unit -> S end in (fun _ -> perform State.get () : Unit -> I64)");
+         "let State S = effect get : Unit -> S end in (fun _ -> perform State.get () : Unit -> I64 can {})");
     Alcotest.test_case "pure lambda still checks against effectful type" `Quick
       (elab_ok
          "let State S = effect get : Unit -> S end in (fun _ -> 1 : Unit -> I64 can State I64)");
     Alcotest.test_case "effectful call must be accounted for" `Quick
       (elab_fail
-         "let State S = effect get : Unit -> S end in let f : Unit -> I64 can State I64 = fun _ -> perform State.get () in (fun _ -> f () : Unit -> I64)");
+         "let State S = effect get : Unit -> S end in let f : Unit -> I64 can State I64 = fun _ -> perform State.get () in (fun _ -> f () : Unit -> I64 can {})");
     Alcotest.test_case "effectful call propagates latent row" `Quick
       (elab_ok
          "let State S = effect get : Unit -> S end in let f : Unit -> I64 can State I64 = fun _ -> perform State.get () in (fun _ -> f () : Unit -> I64 can State I64)");
+    Alcotest.test_case "unannotated higher-order wrapper threads effects" `Quick
+      (elab_ok
+         "let State S = effect get : Unit -> S end in \
+          let f : Unit -> I64 can State I64 = fun _ -> perform State.get () in \
+          let wrap : (Unit -> I64) -> Unit -> I64 = fun g -> fun _ -> g () in \
+          (fun _ -> wrap f () : Unit -> I64 can State I64)");
+    Alcotest.test_case "open row accepts concrete prefix effect" `Quick
+      (elab_ok
+         "let IO = effect read : Unit -> I64 end in \
+          ((fun {r : EffectRow} -> fun _ -> perform IO.read ()) : {r : EffectRow} -> (Unit -> I64 can {IO | r}))");
+    Alcotest.test_case "tail-only row accepts empty tail" `Quick
+      (elab_ok
+         "((fun {r : EffectRow} -> fun _ -> 1) : {r : EffectRow} -> (Unit -> I64 can {| r}))");
+    Alcotest.test_case "extra effect rejects against rigid explicit row" `Quick
+      (elab_fail
+         "let IO = effect read : Unit -> I64 end in \
+          let State S = effect get : Unit -> S end in \
+          ((fun {r : EffectRow} -> fun _ -> let _ = perform IO.read () in perform State.get ()) : {r : EffectRow} -> (Unit -> I64 can {IO | r}))");
     Alcotest.test_case "inferred perform lambda exposes latent effect" `Quick
       (fun () ->
         let expr = Core_lexer.parse_expr "let State S = effect get : Unit -> S end in fun _ -> perform State.get ()" in
