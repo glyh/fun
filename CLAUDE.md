@@ -12,11 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 dune build                     # build
 dune test                      # run all tests
 dune exec fun                  # launch REPL
-dune build @fmt --auto-promote # format OCaml/dune files with ocamlformat
-dune build @doc                # build odoc documentation
 ```
 
-There is no dedicated lint target; use `dune build`, `dune test`, and `dune build @fmt --auto-promote` as the standard validation loop.
+There is no dedicated lint target; use `dune build` and `dune test` as the standard validation loop.
 
 Run a single test suite:
 
