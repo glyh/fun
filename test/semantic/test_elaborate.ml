@@ -1184,11 +1184,31 @@ let imports =
     Alcotest.test_case "nested import" `Quick
       (check_import_type [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ]
          "let W = import \"wrapper\" in W.M.x" (AtomTy TI64));
+    Alcotest.test_case "open imported module exposes public value" `Quick
+      (check_import_type [ ("math", "pub let x = 42") ]
+         "let M = import \"math\" in open M in x" (AtomTy TI64));
+    Alcotest.test_case "open imported module hides private value" `Quick
+      (import_elab_fail [ ("m", "let secret = 1; pub let exposed = 2") ]
+         "let M = import \"m\" in open M in secret");
+    Alcotest.test_case "open imported nested module" `Quick
+      (check_import_type [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ]
+         "let W = import \"wrapper\" in open W in open M in x" (AtomTy TI64));
+    Alcotest.test_case "open imported module does not re-export" `Quick
+      (import_elab_fail
+         [ ("base", "pub let x = 41"); ("wrapper", "let B = import \"base\"; pub let y = open B in x + 1") ]
+         "let W = import \"wrapper\" in W.x");
     Alcotest.test_case "imported ADT match" `Quick
       (check_import_type
          [ ("color", "pub type Color = Red | Green | Blue; pub let default = Green") ]
          "let C = import \"color\" in match C.default with C.Red -> 1 | C.Green -> 2 | C.Blue -> 3 end"
          (AtomTy TI64));
+    Alcotest.test_case "open imported module exposes constructors" `Quick
+      (check_import_type [ ("color", "pub type Color = Red | Green") ]
+         "let C = import \"color\" in open C in match Red with Red -> 1 | Green -> 2 end"
+         (AtomTy TI64));
+    Alcotest.test_case "open imported module hides private constructors" `Quick
+      (import_elab_fail [ ("secret", "type Hidden = Wrap I64; pub let value = Wrap 1") ]
+         "let S = import \"secret\" in open S in match value with Wrap(n) -> n end");
     Alcotest.test_case "repeated import" `Quick
       (check_import_type [ ("m", "pub let x = 21") ]
          "let A = import \"m\" in let B = import \"m\" in A.x + B.x" (AtomTy TI64));
@@ -1228,6 +1248,10 @@ let imports =
     Alcotest.test_case "imported public effect handler" `Quick
       (check_import_type [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ]
          "let E = import \"effects\" in match perform E.Exc.raise 1 with x -> x | effect E.Exc.raise n -> n + 1 end"
+         (AtomTy TI64));
+    Alcotest.test_case "open imported module exposes effect" `Quick
+      (check_import_type [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ]
+         "let E = import \"effects\" in open E in match perform Exc.raise 1 with x -> x | effect Exc.raise n -> n + 1 end"
          (AtomTy TI64));
     Alcotest.test_case "imported public parameterized effect handler" `Quick
       (check_import_type [ ("effects", "pub let State S = effect get : Unit -> S end") ]

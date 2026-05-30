@@ -1019,6 +1019,24 @@ let find_nominal_template ctx path name =
 let starts_lowercase name =
   String.length name > 0 && Char.lowercase_ascii name.[0] = name.[0]
 
+let unqualified_constructor_in_scope ctx name nominal =
+  let same_nominal_id ctor_nominal =
+    match (Nbe.force ctx.Ctx.metas ctor_nominal, Nbe.force ctx.Ctx.metas nominal) with
+    | VNominal ctor_n, VNominal n -> ctor_n.id = n.id
+    | _ -> false
+  in
+  match resolve_path_value ctx [] name with
+  | value, ty -> (
+      match Nbe.force ctx.Ctx.metas value with
+      | VCon { name = ctor_name; nominal = ctor_nominal; _ } ->
+          String.equal ctor_name name && same_nominal_id ctor_nominal
+      | VLam _ | VFix _ -> (
+          match nominal_from_constructor_type ctx ty with
+          | ctor_nominal -> same_nominal_id ctor_nominal
+          | exception ElabError _ -> false)
+      | _ -> false)
+  | exception ElabError (UnboundVariable _) -> false
+
 let rec refinement_for_nominal_head ctx = function
   | Surface.PatCon (path, name, _) -> (
       try
@@ -2348,6 +2366,8 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           (match Nbe.force ctx.metas scrutinee_ty with
           | VNominal n ->
               Option.iter (Ctx.unify ctx scrutinee_ty) resolved_nominal;
+              if path = [] && not (unqualified_constructor_in_scope ctx name scrutinee_ty) then
+                raise (ElabError (UnknownConstructor name));
               (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
               | Some (_, payload_opt) ->
                   let num_type_params = List.length n.params in

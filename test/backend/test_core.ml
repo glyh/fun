@@ -1112,6 +1112,18 @@ let () =
             (check_import_i64 "nested import"
                [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ] 42L
                "let W = import \"wrapper\" in W.M.x");
+          Alcotest.test_case "open imported module exposes public value" `Quick
+            (check_import_i64 "open imported module exposes public value" [ ("math", "pub let x = 42") ] 42L
+               "let M = import \"math\" in open M in x");
+          Alcotest.test_case "open imported nested module" `Quick
+            (check_import_i64 "open imported nested module"
+               [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ] 42L
+               "let W = import \"wrapper\" in open W in open M in x");
+          Alcotest.test_case "open imported module local only" `Quick
+            (check_import_i64 "open imported module local only"
+               [ ("base", "pub let x = 41"); ("wrapper", "let B = import \"base\"; pub let y = open B in x + 1") ]
+               42L
+               "let W = import \"wrapper\" in W.y");
           Alcotest.test_case "repeated import" `Quick
             (check_import_i64 "repeated import" [ ("m", "pub let x = 21") ] 42L
                "let A = import \"m\" in let B = import \"m\" in A.x + B.x");
@@ -1119,6 +1131,10 @@ let () =
             (check_import_i64 "imported ADT match"
                [ ("color", "pub type Color = Red | Green | Blue; pub let default = Green") ] 2L
                "let C = import \"color\" in match C.default with C.Red -> 1 | C.Green -> 2 | C.Blue -> 3 end");
+          Alcotest.test_case "open imported module exposes constructors" `Quick
+            (check_import_i64 "open imported module exposes constructors"
+               [ ("color", "pub type Color = Red | Green") ] 1L
+               "let C = import \"color\" in open C in match Red with Red -> 1 | Green -> 2 end");
           Alcotest.test_case "imported record field access" `Quick
             (check_import_i64 "imported record field access"
                [ ("shapes", "pub type Point = {x: I64; y: I64}") ] 1L
@@ -1158,6 +1174,10 @@ let () =
             (check_import_i64 "imported public effect handler"
                [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ] 2L
                "let E = import \"effects\" in match perform E.Exc.raise 1 with x -> x | effect E.Exc.raise n -> n + 1 end");
+          Alcotest.test_case "open imported module exposes effect" `Quick
+            (check_import_i64 "open imported module exposes effect"
+               [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ] 2L
+               "let E = import \"effects\" in open E in match perform Exc.raise 1 with x -> x | effect Exc.raise n -> n + 1 end");
           Alcotest.test_case "imported public parameterized effect handler" `Quick
             (check_import_i64 "imported public parameterized effect handler"
                [ ("effects", "pub let State S = effect get : Unit -> S end") ] 42L
