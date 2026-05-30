@@ -1158,6 +1158,32 @@ let () =
             (check_import_i64 "imported public effect handler"
                [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ] 2L
                "let E = import \"effects\" in match perform E.Exc.raise 1 with x -> x | effect E.Exc.raise n -> n + 1 end");
+          Alcotest.test_case "imported public parameterized effect handler" `Quick
+            (check_import_i64 "imported public parameterized effect handler"
+               [ ("effects", "pub let State S = effect get : Unit -> S end") ] 42L
+               "let E = import \"effects\" in \
+                let StateI64 = E.State I64 in \
+                match perform StateI64.get () with x -> x | effect StateI64.get () -> 42 end");
+          Alcotest.test_case "imported latent effect function" `Quick
+            (check_import_i64 "imported latent effect function"
+               [ ( "effects",
+                   "pub let State S = effect get : Unit -> S end; \
+                    pub let read : Unit -> I64 can State I64 = fun _ -> perform State.get ()" ) ]
+               7L
+               "let E = import \"effects\" in \
+                let StateI64 = E.State I64 in \
+                match E.read () with x -> x | effect StateI64.get () -> 7 end");
+          Alcotest.test_case "imported parameterized handler distinguishes instances" `Quick
+            (check_import_i64 "imported parameterized handler distinguishes instances"
+               [ ("effects", "pub let State S = effect get : Unit -> S end") ] 1L
+               "let E = import \"effects\" in \
+                let StateI64 = E.State I64 in \
+                let StateBool = E.State Bool in \
+                match (if perform StateBool.get () then perform StateI64.get () else 0) with \
+                  x -> x \
+                | effect StateI64.get () -> resume 1 \
+                | effect StateBool.get () -> resume true \
+                end");
         ] );
       ( "conv",
         [

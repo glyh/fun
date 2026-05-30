@@ -1229,6 +1229,41 @@ let imports =
       (check_import_type [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ]
          "let E = import \"effects\" in match perform E.Exc.raise 1 with x -> x | effect E.Exc.raise n -> n + 1 end"
          (AtomTy TI64));
+    Alcotest.test_case "imported public parameterized effect handler" `Quick
+      (check_import_type [ ("effects", "pub let State S = effect get : Unit -> S end") ]
+         "let E = import \"effects\" in \
+          let StateI64 = E.State I64 in \
+          match perform StateI64.get () with x -> x | effect StateI64.get () -> 42 end"
+         (AtomTy TI64));
+    Alcotest.test_case "imported private effect hidden" `Quick
+      (import_elab_fail
+         [ ( "effects",
+             "let Hidden S = effect get : Unit -> S end; \
+              pub let read : Unit -> I64 can Hidden I64 = fun _ -> perform Hidden.get ()" ) ]
+         "let E = import \"effects\" in \
+          match E.read () with x -> x | effect E.Hidden.get () -> 0 end");
+    Alcotest.test_case "imported latent effect function" `Quick
+      (check_import_type
+         [ ( "effects",
+             "pub let State S = effect get : Unit -> S end; \
+              pub let read : Unit -> I64 can State I64 = fun _ -> perform State.get ()" ) ]
+         "let E = import \"effects\" in \
+          let StateI64 = E.State I64 in \
+          match E.read () with x -> x | effect StateI64.get () -> 7 end"
+         (AtomTy TI64));
+    Alcotest.test_case "imported parameterized handler distinguishes instances" `Quick
+      (check_import_type [ ("effects", "pub let State S = effect get : Unit -> S end") ]
+         "let E = import \"effects\" in \
+          let StateI64 = E.State I64 in \
+          let StateBool = E.State Bool in \
+          (fun _ -> \
+            match (if perform StateBool.get () then perform StateI64.get () else 0) with \
+              x -> x \
+            | effect StateI64.get () -> resume 1 \
+            | effect StateBool.get () -> resume true \
+            end \
+           : Unit -> I64)"
+         (Pi { explicitness = Explicit; domain = AtomTy TUnit; effects = empty_effect_row; codomain = AtomTy TI64 }));
     Alcotest.test_case "imported private constructor hidden" `Quick
       (import_elab_fail [ ("secret", "type Hidden = Wrap I64; pub let value = Wrap 1") ]
          "let S = import \"secret\" in match S.value with S.Wrap(n) -> n end");
