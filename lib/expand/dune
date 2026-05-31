@@ -1,0 +1,6 @@
+(library
+ (name core_tt_expand)
+ (wrapped false)
+ (libraries core_tt_kernel core_tt_syntax)
+ (preprocess
+  (pps ppx_deriving.std)))

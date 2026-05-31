@@ -1,5 +1,10 @@
 open Core_parser
 
+type spanned_token = {
+  token : Core_parser.token;
+  span : Source_span.t;
+}
+
 let id =
   [%sedlex.regexp?
     ( ('a' .. 'z' | 'A' .. 'Z' | '_'),
@@ -104,3 +109,20 @@ let parse_module source =
   let lexbuf = Sedlexing.Utf8.from_string source in
   let lexer = Sedlexing.with_tokenizer token lexbuf in
   MenhirLib.Convert.Simplified.traditional2revised Core_parser.module_eof lexer
+
+let spanned_token ?file buf =
+  let token = token buf in
+  let start_pos, end_pos = Sedlexing.lexing_bytes_positions buf in
+  let span = Source_span.of_lexing_positions ?file start_pos end_pos in
+  { token; span }
+
+let tokens_with_spans ?file source =
+  let lexbuf = Sedlexing.Utf8.from_string source in
+  Option.iter (Sedlexing.set_filename lexbuf) file;
+  let rec loop acc =
+    let tok = spanned_token ?file lexbuf in
+    match tok.token with
+    | EOF -> List.rev (tok :: acc)
+    | _ -> loop (tok :: acc)
+  in
+  loop []

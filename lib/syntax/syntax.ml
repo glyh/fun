@@ -1,0 +1,142 @@
+type id = {
+  name : string;
+  span : Source_span.t;
+  scope : Scope_set.t;
+}
+
+type trait_bound = { trait_path : string list; trait_name : string }
+
+type param = {
+  name : id;
+  type_ : t option;
+  trait_bounds : trait_bound list;
+  explicitness : Surface.explicitness;
+}
+
+and effect_op = { name : string; input : t; output : t }
+
+and effect_row = { effects : t list; tail : t option }
+
+and struct_binding =
+  | LetBinding of { name : id; value : t; public : bool }
+  | MethodBinding of { name : id; params : param list; body : t; public : bool }
+  | TypeBinding of {
+      name : id;
+      params : string list;
+      ctors : (string * t option) list;
+      public : bool;
+    }
+  | RecordTypeBinding of {
+      name : id;
+      params : string list;
+      fields : (string * t) list;
+      public : bool;
+    }
+  | EffectBinding of {
+      name : id;
+      params : string list;
+      ops : effect_op list;
+      public : bool;
+    }
+  | TraitBinding of {
+      name : id;
+      params : string list;
+      fields : (string * t) list;
+      public : bool;
+    }
+  | ImplBinding of {
+      trait_path : string list;
+      trait_name : string;
+      args : t list;
+      fields : (string * t) list;
+      public : bool;
+    }
+
+and t = {
+  kind : kind;
+  span : Source_span.t;
+}
+
+and kind =
+  | Atom of Atom.t
+  | Var of id
+  | Self
+  | SelfType
+  | Ap of t * Surface.explicitness * t
+  | Lam of param * t
+  | Let of { name : id; type_ : t option; value : t; body : t; recursive : bool }
+  | If of { cond : t; then_ : t; else_ : t }
+  | Annotated of { inner : t; typ : t }
+  | Prod of t list
+  | ProdTy of t list
+  | Arrow of Surface.explicitness * string option * t * effect_row option * t
+  | FieldAccess of t * string
+  | Proj of t * int
+  | RecordConstruct of { typ : t; fields : (string * t) list }
+  | Struct of {
+      con_fields : (string * t) list;
+      bindings : struct_binding list;
+    }
+  | Module of { bindings : struct_binding list }
+  | Import of string
+  | Open of string * t
+  | RecordTypeDef of {
+      name : string;
+      params : string list;
+      fields : (string * t) list;
+      body : t;
+    }
+  | TypeDef of {
+      name : string;
+      params : string list;
+      ctors : (string * t option) list;
+      body : t;
+    }
+  | EffectDef of {
+      name : string;
+      params : string list;
+      ops : effect_op list;
+      body : t;
+    }
+  | TraitDef of {
+      name : string;
+      params : string list;
+      fields : (string * t) list;
+      body : t;
+    }
+  | ImplDef of {
+      trait_path : string list;
+      trait_name : string;
+      args : t list;
+      fields : (string * t) list;
+      body : t;
+    }
+  | Perform of { effect_path : string list; op : string; arg : t }
+  | Resume of t
+  | RefNew of t
+  | RefGet of t
+  | RefSet of t * t
+  | Match of t * match_branch list
+
+and match_branch =
+  | ValueBranch of pat * t
+  | EffectBranch of {
+      effect_path : string list;
+      op : string;
+      arg_pat : pat;
+      body : t;
+    }
+
+and pat =
+  | PatCon of string list * string * pat list
+  | PatRecord of { typ_path : string list; typ : string; fields : (string * pat option) list; partial : bool }
+  | PatStructType of { fields : (string * pat) list; partial : bool }
+  | PatOr of pat * pat
+  | PatProd of pat list
+  | PatAtom of Atom.t
+  | PatType of Core.atom_ty
+  | PatWild
+  | PatBind of id
+
+let fresh_id ?(span = Source_span.synthetic) ?(scope = Scope_set.empty) name =
+  { name; span; scope }

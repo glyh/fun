@@ -598,7 +598,7 @@ Add targeted suites as the system grows:
 Representative single-suite commands should follow existing project conventions, for example:
 
 ```sh
-dune exec test/syntax/test_match_parse.exe
+dune exec test/syntax/test_syntax.exe
 dune exec test/semantic/test_elaborate.exe
 ```
 
@@ -636,12 +636,20 @@ This milestone is large enough to validate the architecture but small enough to 
 
 Concrete first PR/commit sequence:
 
-1. Add source spans and token-with-span support behind new APIs.
-2. Add `Syntax` and `Scope_set` modules with unit tests.
-3. Add scope-set binding resolution tests.
-4. Add an expander context and lower a tiny expression subset to `Surface.t`.
-5. Add compatibility tests comparing old parser output with new expansion output for that subset.
-6. Extend the built-in expander form-by-form until it covers current `Surface.t`.
-7. Switch tests or parser entrypoints to exercise the new path once coverage is equivalent.
+1. [x] Add source spans and token-with-span support behind new APIs.
+2. [x] Add `Syntax` and `Scope_set` modules with unit tests.
+3. [x] Add scope-set binding resolution tests.
+4. [x] Add an expander context and lower a tiny expression subset to `Surface.t`.
+5. [x] Add compatibility tests comparing old parser output with new expansion output for that subset.
+6. [x] Extend the built-in expander form-by-form until it covers current `Surface.t`.
+7. [ ] Switch tests or parser entrypoints to exercise the new path once coverage is equivalent.
+
+Implemented this round:
+
+- `Source_span`, `Raw_syntax`, `Scope_set`, and `Syntax` modules in `lib/syntax/`.
+- `Core_lexer.tokens_with_spans` and `Core_lexer.spanned_token`, with existing parser entrypoints preserved.
+- `core_tt_expand` library with binding resolution, expander context, built-in expander, lowering to `Surface.t`, and a `Surface.t -> Syntax.t` compatibility adapter.
+- Single `test/syntax/test_syntax.exe` Alcotest executable with parser suites split by topic, plus span, scope-set, binding-resolution, and expand/lower compatibility tests.
+- Updated syntax test command references from `test_match_parse.exe` to `test_syntax.exe`.
 
 Only after that should user macro syntax be added.

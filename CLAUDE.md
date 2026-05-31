@@ -21,7 +21,7 @@ Run a single test suite:
 ```sh
 dune exec test/backend/test_core.exe
 dune exec test/semantic/test_elaborate.exe
-dune exec test/syntax/test_match_parse.exe
+dune exec test/syntax/test_syntax.exe
 ```
 
 Run a single test case with Alcotest's test filter syntax when needed:

@@ -1,5 +1,5 @@
 (test
- (name test_match_parse)
- (libraries core_tt_syntax alcotest menhirLib)
+ (name test_syntax)
+ (libraries core_tt_syntax core_tt_expand alcotest menhirLib)
  (preprocess
   (pps ppx_deriving.std)))
