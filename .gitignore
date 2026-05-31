@@ -36,3 +36,4 @@ setup.log
 _opam/
 
 .claude/
+.opencode/
