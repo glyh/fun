@@ -1,35 +1,76 @@
-# Macro implementation plan
+# Macro Implementation Plan
 
 ## Goal
 
 Build a hygienic, regular-syntax, type-integrated macro system for `fun` without committing the prototype to a dead-end parser or a surface-only rewrite pass.
 
-The macro system should eventually support:
+The final system should support:
 
 - syntax objects with source spans, scope sets, and phase information;
-- hygienic expansion by default, with explicit controlled capture tools;
-- regular syntax extension through enforestation rather than Lisp-only syntax;
+- hygienic expansion by default, with explicit controlled-capture tools later;
+- regular syntax extension through enforestation rather than more Menhir grammar growth;
 - phase-aware modules/imports so compile-time dependencies stay separate from runtime dependencies;
 - first-class compile-time macro values;
-- problem-aware, type-aware, and type-providing macros that can cooperate with bidirectional elaboration.
+- problem-aware, type-aware, and type-providing macros that cooperate with bidirectional elaboration.
 
-The safe path is to first build the frontend and hygiene substrate with no user-defined macros, then expose macro authoring only after the compiler has a stable expansion boundary.
+The safe path is incremental:
 
-## Non-goals for the OCaml prototype
+1. [x] Build the syntax/hygiene substrate.
+2. [x] Route all existing programs through the expansion boundary without behavior changes.
+3. [ ] Add minimal user macros only after the boundary is stable.
+4. [ ] Add phase-aware imports before imported macros.
+5. [ ] Add enforestation before general syntax extension.
+6. [ ] Add type-aware and stuck macros after basic expansion is proven deterministic.
 
-These are important, but should not block the first working macro implementation:
+## Current Status
 
-- polished macro diagnostics beyond what is needed to debug tests;
-- final user-facing syntax redesign;
-- IDE integration;
-- macro optimizer/specializer;
-- full Turnstile-style user-defined type systems;
-- compile-time package management;
-- broad stdlib macro library.
+Completed:
 
-The OCaml compiler is the design prototype. Favor clear invariants and regression coverage over production polish.
+- [x] `Source_span`, `Raw_syntax`, `Scope_set`, and `Syntax` modules exist in `lib/syntax/`.
+- [x] `Core_lexer.tokens_with_spans` and `Core_lexer.spanned_token` exist.
+- [x] `core_tt_expand` exists with binding resolution, expander context, built-in expander, lowering to `Surface.t`, and `Surface.t -> Syntax.t` compatibility conversion.
+- [x] `Parse_expand.parse_expr` and `Parse_expand.parse_module` are the downstream parser entrypoints.
+- [x] REPL, loader, stdlib prelude parsing, semantic tests, backend tests, and syntax parser-shape tests use `Parse_expand`.
+- [x] The old direct `Core_lexer.parse_expr` / `Core_lexer.parse_module` pipeline was removed.
+- [x] Syntax tests are a single Alcotest executable: `dune exec test/syntax/test_syntax.exe`.
 
-## Architectural target
+Next phase:
+
+- [ ] Stage 4: move all name introduction into expansion robustly and prove lowered identifiers preserve lexical hygiene before user macros exist.
+
+## Validation Commands
+
+Run these after every stage:
+
+```sh
+dune build
+dune test
+```
+
+Useful focused commands:
+
+```sh
+dune exec test/syntax/test_syntax.exe
+dune exec test/semantic/test_elaborate.exe
+dune exec test/backend/test_core.exe
+```
+
+## Architecture Target
+
+Current implemented pipeline:
+
+```text
+source text
+  -> Core_lexer tokens
+  -> Core_parser Menhir Surface.t
+  -> Surface_to_syntax.expr
+  -> Expand.expand_expr / expand_module
+  -> Lower_surface.lower_expr
+  -> Surface.t
+  -> Elaborate.on_expr
+  -> Core.term + semantic type
+  -> NbE/backend
+```
 
 Long-term pipeline:
 
@@ -49,471 +90,487 @@ source text
   -> NbE/backend
 ```
 
-For the prototype, preserve the existing post-expansion boundary:
+Keep `Surface.t` as the elaborator-facing boundary until surface macros are stable. Only bypass `Surface.t` for typed/core fragments in Stage 11.
 
-```text
-expanded syntax -> Surface.t -> Elaborate.on_expr -> Core.term
-```
+## Design Invariants
 
-Only bypass `Surface.t` for typed/core fragments after the surface macro path is working and tested.
+These are non-negotiable unless this document is updated with a replacement invariant.
 
-## Core design decisions
-
-### 1. Add a pre-surface syntax layer
-
-`Surface.t` is too committed for macros. It has already lost token shape, source spans, concrete delimiters, and lexical binding context. Keep it as the elaborator-facing AST, but introduce a richer macro-facing syntax representation.
-
-Initial modules should live under `lib/syntax/` or a new staged library such as `lib/expand/`:
-
-- `Syntax` — syntax objects, identifiers, spans, syntax datum/tree shape;
-- `Scope_set` — compact scope-set representation and operations;
-- `Binding` or `Resolve` — scope-set-aware identifier binding and lookup;
-- `Raw_syntax` — parser output before macro expansion;
-- `Expand` — hygienic expansion from raw/syntax objects to `Surface.t`.
-
-### 2. Use scope-set hygiene from the start
-
-Do not implement temporary textual renaming. It will produce false confidence and make later type-aware macros harder.
+1. Hygiene is scope-set based, not textual renaming.
+2. Alpha-renamed strings may be used only as a lowering encoding for `Surface.Var` compatibility.
+3. User macros must not run through the runtime import path as ordinary values.
+4. Expansion and typechecking interleavings must be deterministic.
+5. Menhir can remain as a compatibility parser, but new final syntax features should go through enforestation.
+6. No user-defined macros should be exposed before Stage 4 is solid.
 
 Identifier resolution rule:
 
-1. every identifier occurrence has a written name and a scope set;
-2. every binding has a written name and a binding scope set;
-3. candidates are bindings with the same written name whose scope set is a subset of the identifier's scope set;
-4. choose the candidate with the largest scope set;
-5. reject no candidate or ambiguous best candidates.
+1. Each identifier occurrence has a written name and a scope set.
+2. Each binding has a written name and a binding scope set.
+3. Candidates are bindings with the same written name whose binding scope set is a subset of the occurrence scope set.
+4. Choose the candidate with the largest compatible scope set.
+5. Reject no candidate where required, or ambiguous incomparable best candidates.
 
-This should be used first for a small desugaring/built-in expander before user macros exist.
+## Stage 0: Baseline Regression Lock
 
-### 3. Keep expansion deterministic
+Status: Done.
 
-Interleaving expansion and typechecking must not make results depend on scheduler order. Any future task graph should satisfy:
+Purpose:
 
-- a task writes exactly one expansion/type variable;
-- competing writes are an error;
-- blocked tasks depend on explicit variables/problems;
-- the final result is independent of which unblocked task ran first.
+- Preserve current language behavior before macro infrastructure changes.
 
-This should be tested once stuck macros exist.
+Implemented:
 
-### 4. Phase-aware modules are required before real imported macros
-
-Current imports load `<cwd>/path.fun`, parse the module, cache by path, and detect circular imports by path. Macros require a richer loader state:
-
-- runtime import cache;
-- compile-time visit cache;
-- phase-indexed active stack for circularity;
-- exported binding tables annotated with phase;
-- compile-time evaluation of macro definitions before expanding dependent modules.
-
-Do not bolt macro imports onto the current `Core_loader.load` path as ordinary runtime imports.
-
-### 5. Regular syntax comes after hygiene basics
-
-Enforestation is necessary for the final language shape, but it should not be first. First prove that syntax objects, scopes, and built-in expansion can reproduce today's language. Then replace the committed Menhir grammar piece by piece with raw syntax plus enforestation.
-
-## Implementation stages
-
-### Stage 0: Baseline regression lock
-
-Purpose: make sure the macro substrate does not accidentally change the language.
-
-Work:
-
-1. Add focused parser/elaboration/backend tests for current syntax that macros will touch:
-   - nested `let`, `type`, `trait`, `impl`, `effect`, `module`, `struct`, `open`, `import`;
-   - qualified paths and field access;
-   - match branches and patterns;
-   - record construction/patterns;
-   - implicit binders and trait bounds;
-   - effect rows and reference syntax.
-2. Keep parser entrypoints working:
-   - `Parse_expand.parse_expr`;
-   - `Parse_expand.parse_module`;
-   - `dune exec fun`.
-3. Capture pretty-printer or debug snapshots only where existing tests already depend on output shape.
+- [x] Existing syntax, semantic, and backend test suites still pass.
+- [x] Syntax tests were reorganized by topic under `test/syntax/`.
+- [x] Downstream parser entrypoint is now `Parse_expand`.
 
 Exit criteria:
 
-- `dune test` passes;
-- representative current programs parse/elaborate/evaluate before any macro refactor begins.
+- [x] `dune build` passes.
+- [x] `dune test` passes.
+- [x] REPL and loader parse through `Parse_expand`.
 
-### Stage 1: Source spans and raw syntax
+## Stage 1: Source Spans And Raw Syntax
 
-Purpose: introduce a syntax representation that can carry macro information while still lowering to existing `Surface.t`.
+Status: Done for the compatibility-parser milestone.
 
-Work:
+Purpose:
 
-1. Add source span types:
-   - file/module path;
-   - start/end byte offsets;
-   - start/end line/column if cheap to track;
-   - synthetic span marker for generated syntax.
-2. Extend lexing to optionally produce tokens with spans.
-3. Add raw syntax data structures:
-   - identifiers;
-   - literals;
-   - delimiter groups;
-   - punctuators/operators;
-   - keyword tokens;
-   - raw forms for module bodies and expression bodies when Menhir still handles the final parse.
-4. Keep the old Menhir parser as the compatibility parser.
-5. Add tests that tokenization preserves spans and delimiters.
+- Introduce syntax representations that can carry macro information while preserving existing parser behavior.
 
-Suggested files:
+Implemented files:
 
-- `lib/syntax/source_span.ml`
-- `lib/syntax/raw_syntax.ml`
-- `lib/syntax/syntax.ml`
-- `lib/syntax/core_lexer.ml`
-- `test/syntax/`
+- [x] `lib/syntax/source_span.ml`
+- [x] `lib/syntax/raw_syntax.ml`
+- [x] `lib/syntax/syntax.ml`
+- [x] `lib/syntax/core_lexer.ml`
+
+Implemented tasks:
+
+- [x] Source span type with file, byte offsets, line/column positions, and synthetic marker.
+- [x] Token-with-span API behind `Core_lexer.tokens_with_spans`.
+- [x] Raw syntax token/group data structures.
+- [x] Compatibility parser remains Menhir-backed through `Parse_expand`.
+
+Remaining optional follow-ups:
+
+- [ ] Add line/column span tests for multi-line inputs.
+- [ ] Add raw delimiter-group construction tests once raw token-tree parsing begins.
 
 Exit criteria:
 
-- new span/token APIs exist;
-- old parser behavior is unchanged;
-- no user-visible macro syntax yet.
+- [x] Span/token APIs exist.
+- [x] Old direct parse entrypoints are not used downstream.
+- [x] Existing language behavior is unchanged.
 
-### Stage 2: Syntax objects and scope sets
+## Stage 2: Syntax Objects And Scope Sets
 
-Purpose: build the hygiene substrate before any macro authoring API.
+Status: Done for resolver substrate.
 
-Work:
+Purpose:
 
-1. Define syntax objects:
-   - datum/tree;
-   - source span;
-   - scope set;
-   - phase;
-   - optional properties for later expansion metadata.
-2. Define identifier operations:
-   - written name;
-   - scope-set access;
-   - add/remove/flip scope;
-   - same written name;
-   - bound-identifier equality;
-   - free-identifier equality once binding tables exist.
-3. Implement binding tables and scope-set resolution.
-4. Add a small resolver test suite independent of the parser:
-   - lexical shadowing chooses largest scope set;
-   - macro-introduced names do not capture user names;
-   - user names do not capture macro-introduced names;
-   - ambiguous best binding is rejected.
+- Build hygiene primitives before user macro authoring exists.
 
-Suggested files:
+Implemented files:
 
-- `lib/syntax/scope_set.ml`
-- `lib/expand/binding.ml` or `lib/syntax/binding.ml`
-- `test/syntax/test_scope_sets.ml`
+- [x] `lib/syntax/scope_set.ml`
+- [x] `lib/syntax/syntax.ml`
+- [x] `lib/expand/binding.ml`
+- [x] `test/syntax/test_scope_sets.ml`
+
+Implemented tasks:
+
+- [x] Scope-set representation and operations.
+- [x] Syntax identifiers with written name, source span, and scope set.
+- [x] Binding table with scope-set-aware resolution.
+- [x] Tests for lexical shadowing, non-capture, and ambiguous best binding rejection.
+
+Remaining optional follow-ups:
+
+- [ ] Add property-style tests for scope-set subset/union laws if the representation changes.
+- [ ] Add tests for nested generated scopes once user macros can introduce identifiers.
 
 Exit criteria:
 
-- hygiene behavior is testable without changing elaboration;
-- no textual gensym-renaming is used as the binding model.
+- [x] Hygiene behavior is testable without elaboration.
+- [x] Binding resolution does not use gensym/textual renaming as the authoritative model.
 
-### Stage 3: Built-in hygienic expander to existing `Surface.t`
+## Stage 3: Built-In Hygienic Expander To Surface.t
 
-Purpose: create the expansion boundary while preserving current language semantics.
+Status: Done for the compatibility-parser milestone.
 
-Work:
+Purpose:
 
-1. Add an expander context:
-   - lexical binding table;
-   - current phase;
-   - scope allocator;
-   - expansion environment for built-in forms;
-   - loader handle for future module expansion.
-2. Implement built-in expansion for a small expression subset first:
-   - variables;
-   - atoms;
-   - application;
-   - lambda;
-   - let;
-   - annotation;
-   - field access.
-3. Lower expanded syntax to `Surface.t`.
-4. Add parser entrypoints in parallel with old ones:
-   - parse using old path;
-   - parse raw/syntax path then expand/lower;
-   - assert both produce equivalent `Surface.t` for covered forms.
-5. Gradually add the rest of current surface forms:
-   - records/modules/structs;
-   - ADTs/effects/traits/impls;
-   - match and patterns;
-   - refs;
-   - imports/open/export behavior as currently defined.
+- Establish the expansion boundary while preserving existing semantics.
+
+Implemented files:
+
+- [x] `lib/expand/dune`
+- [x] `lib/expand/expand_ctx.ml`
+- [x] `lib/expand/expand.ml`
+- [x] `lib/expand/lower_surface.ml`
+- [x] `lib/expand/surface_to_syntax.ml`
+- [x] `lib/expand/parse_expand.ml`
+- [x] `test/syntax/test_expand_compat.ml`
+
+Implemented tasks:
+
+- [x] Expander context with binding table, phase, scope allocator, and future loader slot.
+- [x] Built-in expansion walk over current `Syntax.t` forms.
+- [x] Lowering from expanded `Syntax.t` to `Surface.t`.
+- [x] `Parse_expand.parse_expr` and `Parse_expand.parse_module` as public downstream parse entrypoints.
+- [x] REPL, loader, stdlib prelude, semantic tests, backend tests, and syntax parser-shape tests use `Parse_expand`.
+- [x] Direct `Core_lexer.parse_expr` and `Core_lexer.parse_module` removed.
+
+Current limitations:
+
+- [ ] Menhir still produces `Surface.t` first, then `Surface_to_syntax` converts into macro-facing syntax.
+- [ ] No raw token-tree parser yet.
+- [ ] No user-defined macros yet.
+
+Exit criteria:
+
+- [x] All current programs parse through the expansion boundary.
+- [x] `dune build` and `dune test` pass.
+
+## Stage 4: Move Name Introduction Into Expansion
+
+Status: Next.
+
+Purpose:
+
+- Make lexical identity authoritative before user macros can introduce identifiers.
+
+Prerequisites:
+
+- [x] Stages 1 through 3 complete.
+- [x] All downstream consumers use `Parse_expand`.
+
+Concrete tasks:
+
+- [ ] Audit every binding form currently represented in `Syntax.t`:
+   - lambda parameters;
+   - let and let-rec names;
+   - type names;
+   - constructor names;
+   - effect family names;
+   - trait names;
+   - impl-local method names;
+   - module/struct public and private members;
+   - method parameters;
+   - pattern binders.
+- [ ] For each binding form, define exactly where the introduced scope applies:
+   - binder itself;
+   - type annotation;
+   - value RHS;
+   - body;
+   - sibling declarations in modules/structs;
+   - patterns and branch bodies.
+- [ ] Make `Expand.expand` allocate scopes according to that definition.
+- [ ] Stop relying on final string names for correctness.
+- [ ] Add lowering-time stable internal names if `Surface.t` cannot preserve resolved identity.
+- [ ] Add regression tests for lexical hygiene through elaboration/evaluation.
 
 Suggested files:
 
 - `lib/expand/expand.ml`
 - `lib/expand/lower_surface.ml`
-- `lib/expand/expand_ctx.ml`
-- `test/syntax/test_expand_compat.ml`
+- `test/syntax/test_scope_sets.ml`
+- `test/semantic/test_elaborate.ml`
+- `test/backend/test_core.ml`
+
+Tests to add:
+
+- [ ] Nested same-name lets resolve to the innermost binding.
+- [ ] Lambda parameter shadows an outer let with the same name.
+- [ ] Let-rec RHS sees the recursive binding but non-rec let RHS does not.
+- [ ] Pattern binders shadow outer names only inside their branch body.
+- [ ] Or-pattern alternatives bind the same names and reject incompatible binder sets at the existing layer.
+- [ ] Struct/module private members do not capture fields outside their intended scope.
+- [ ] Generated fresh scopes in tests do not accidentally capture user identifiers.
 
 Exit criteria:
 
-- all existing syntax can be parsed through the new expander and lowered to `Surface.t`;
-- old parser can be kept temporarily as a fallback, but tests should exercise the new path;
-- `dune test` passes.
+- [ ] Scope-set resolution is the authoritative lexical model before elaboration.
+- [ ] Lowering preserves resolved identity well enough for the existing string-based elaborator.
+- [ ] All existing tests pass.
 
-### Stage 4: Move name introduction into expansion
+## Stage 5: Minimal Local Macro Definitions
 
-Purpose: make lexical scope explicit before user macros introduce identifiers.
+Status: Not started.
 
-Work:
+Purpose:
 
-1. When expanding binding forms, allocate fresh scopes for introduced binders:
-   - lambda parameters;
-   - let names;
-   - recursive let names;
-   - type/constructor names;
-   - trait/impl names where applicable;
-   - module/struct public fields;
-   - pattern binders.
-2. Attach scopes to identifier occurrences in bodies.
-3. Lower resolved identifiers to the existing `Surface.Var` names only as a compatibility layer.
-4. Add a generated stable internal name or binding id if `Surface.t` cannot represent resolved identity enough to preserve hygiene.
-5. Decide whether `Surface.Var of string` needs to become `Surface.Var of ident_ref` or whether the lowering layer can safely alpha-rename after scope-set resolution.
+- Expose first user-defined macros only after Stage 4 proves hygiene.
 
-Recommendation:
-
-- For the OCaml prototype, alpha-rename during lowering if that is substantially faster.
-- Keep the authoritative model as scope sets, not alpha-renamed strings.
-- Treat alpha-renaming as a backend encoding of resolved identifiers.
-
-Exit criteria:
-
-- hygienic lexical binding is represented before elaboration;
-- tests prove expansion/lowering preserves shadowing and avoids accidental capture.
-
-### Stage 5: Minimal compile-time values and macro definitions
-
-Purpose: expose the first user-defined macros, but only after the built-in expander is stable.
-
-First scope:
+First supported shape:
 
 ```fun
 macro name = fun stx -> ...
 ```
 
-or module-level only:
+or, if simpler:
 
 ```fun
 pub macro name = fun stx -> ...
 ```
 
-The exact syntax can remain provisional. The important semantic shape is:
+Keep this syntax provisional.
 
-```text
-Syntax -> Macro Syntax
-```
+Concrete tasks:
 
-Work:
-
-1. Add surface/module AST support for macro declarations or keep macro declarations in the raw expansion layer if they should not reach `Surface.t`.
-2. Add compile-time value representation for macros:
+- [ ] Decide whether macro declarations live only in raw/expanded syntax or also appear in `Surface.t`.
+- [ ] Add compile-time macro value representation:
    - macro closure;
-   - macro primitive operations;
+   - primitive macro operations;
    - syntax value;
-   - macro result/error.
-3. Add a small macro evaluation engine.
-   - Prefer reusing the existing evaluator only if phase separation is explicit.
-   - Do not let runtime refs/effects leak directly into macro evaluation.
-4. Add macro monad primitives:
+   - macro result;
+   - macro error.
+- [ ] Add a minimal macro evaluator that cannot run arbitrary runtime refs/effects.
+- [ ] Add macro API primitives:
    - return syntax;
    - raise syntax error;
    - inspect syntax kind;
-   - construct identifiers/literals/lists/groups;
-   - compare identifiers using hygiene-aware operations.
-5. Restrict the first macro invocation shape to a simple prefix form so this stage does not require full enforestation.
+   - construct identifiers/literals/groups;
+   - compare identifiers by hygiene-aware operations.
+- [ ] Support one invocation shape only, for example `name!(...)`.
+- [ ] Expand simple local macro calls in expression position.
 
-Possible first invocation syntax:
+Suggested files:
 
-```fun
-name!(...)
-```
+- `lib/expand/macro_value.ml`
+- `lib/expand/macro_eval.ml`
+- `lib/expand/expand.ml`
+- `test/syntax/test_macros.ml`
 
-or a reserved built-in form:
+Tests to add:
 
-```fun
-macroexpand name (...)
-```
-
-Do not treat this syntax choice as final language design.
+- [ ] Local macro expands to a literal.
+- [ ] Local macro expands to an application.
+- [ ] Macro-generated identifier does not capture user binding.
+- [ ] User identifier does not capture macro-generated binding.
+- [ ] Macro error includes a useful span.
 
 Exit criteria:
 
-- local macro definitions expand simple syntax;
-- generated identifiers are hygienic by default;
-- macro errors report a useful source span;
-- no type-aware macro behavior yet.
+- [ ] Local macros expand simple syntax.
+- [ ] Generated identifiers are hygienic by default.
+- [ ] No imported macros yet.
+- [ ] No type-aware macros yet.
 
-### Stage 6: Phase-aware module loading
+## Stage 6: Phase-Aware Module Loading
 
-Purpose: make imported macros correct without conflating runtime imports and compile-time visits.
+Status: Not started.
 
-Work:
+Purpose:
 
-1. Replace `Core_loader`'s single parsed-module cache with phase-aware states:
-   - parsed raw module cache;
-   - expanded module cache per phase/context as needed;
+- Support imported macros without conflating compile-time visits and runtime imports.
+
+Prerequisites:
+
+- [ ] Stage 5 local macros work.
+
+Concrete tasks:
+
+- [ ] Replace `Core_loader`'s single parsed-module cache with phase-aware states:
+   - parsed module cache;
+   - expanded runtime module cache;
    - elaborated runtime module cache;
-   - visited compile-time module cache.
-2. Distinguish import modes:
-   - runtime import for values/types available at runtime/elaboration;
-   - compile-time import/visit for macro bindings;
-   - future phase shifts for macros that define macros.
-3. Annotate exported module members with phase:
-   - runtime value/type/trait/effect/impl;
+   - compile-time visited module cache.
+- [ ] Add import modes:
+   - runtime import for values/types;
+   - compile-time visit for macros;
+   - future phase shifts for macros defining macros.
+- [ ] Annotate exported members by phase:
+   - runtime value/type/effect/trait/impl;
    - compile-time macro;
    - both only if explicitly supported.
-4. Update circular import detection to include phase.
-5. Add tests:
-   - imported macro expands in another file;
-   - compile-time-only dependency is not exposed as runtime value;
-   - runtime circular imports and compile-time circular visits are reported separately;
-   - macro-generated imports do not bypass phase checks.
+- [ ] Make circular import detection phase-indexed.
+- [ ] Ensure macro-generated imports still go through phase checks.
 
 Suggested files:
 
 - `lib/loader/core_loader.ml`
 - `lib/expand/module_expand.ml`
-- `test/semantic/` or new `test/expand/`
+- `test/semantic/test_elaborate.ml`
+- `test/syntax/test_macros.ml`
+
+Tests to add:
+
+- [ ] Imported macro expands in another file.
+- [ ] Compile-time-only dependency is not exposed as runtime value.
+- [ ] Runtime circular imports and compile-time circular visits report separately.
+- [ ] Macro-generated imports cannot bypass phase checks.
 
 Exit criteria:
 
-- imported macros work;
-- phase errors are deterministic;
-- existing runtime imports still behave as before.
+- [ ] Imported macros work.
+- [ ] Runtime imports behave as before.
+- [ ] Phase errors are deterministic.
 
-### Stage 7: Enforestation and regular syntax extension
+## Stage 7: Enforestation And Regular Syntax Extension
 
-Purpose: support non-Lisp syntax extension and use the enforestation boundary as the right time to apply the planned surface-syntax redesign, instead of redesigning the parser before the macro substrate exists.
+Status: Not started.
 
-This is the first stage where final user-facing syntax should be seriously changed. Earlier stages should preserve today's syntax as a compatibility target so hygiene, phases, and macro expansion can be validated independently. Once enforestation owns grouping, precedence, and syntax classes, the surface redesign can be implemented as a new set of built-in syntax forms/operators rather than another round of Menhir grammar growth.
+Purpose:
 
-Work:
+- Stop growing Menhir as the final surface grammar and enable regular syntax extension.
+- Use the enforestation boundary as the point to implement the planned surface-syntax redesign instead of doing another committed Menhir redesign first.
 
-1. Add an enforestation pass over token/syntax streams.
-2. Represent syntax classes:
+Prerequisites:
+
+- [ ] Stage 6 if imported syntax extensions are desired.
+- [ ] Stage 5 is enough for local-only syntax experiments.
+
+Concrete tasks:
+
+- [ ] Add an enforestation pass over token/syntax streams.
+- [ ] Represent syntax classes:
    - expression;
    - type;
    - pattern;
    - declaration/module item;
-   - block/body;
-   - custom syntax classes later.
-3. Represent operator declarations:
+   - block/body.
+- [ ] Represent operator declarations:
    - fixity;
    - precedence;
    - associativity;
    - expansion function.
-4. Move existing operator parsing into enforestation tables:
+- [ ] Move current operator parsing into enforestation tables:
    - application;
    - field access;
    - prefix forms such as `ref`, `!`, `perform`, `resume`;
    - infix arithmetic/comparison/assignment;
    - arrows/effect rows where appropriate.
-5. Introduce the planned surface-syntax redesign through enforestation tables and built-in syntax classes.
-   - Keep the old syntax accepted during the transition when practical, but treat the redesigned syntax as the direction to test and document.
-   - Prefer implementing redesign features as ordinary built-in macro/enforestation entries so user macros exercise the same path.
-   - Use this stage for larger block/form experiments such as Ruby/Elixir-style `do ... end` shapes if they are still desired.
-6. Keep Menhir for delimiter/token recovery if useful, but stop growing it as the final surface grammar.
-7. Add tests for macro-defined operators, redesigned built-in syntax, and precedence interactions.
+- [ ] Reintroduce the planned surface-syntax redesign through enforestation tables and built-in syntax entries.
+- [ ] Keep old syntax accepted during transition where practical, but make redesigned syntax the documented/tested direction.
+- [ ] Prefer implementing redesigned constructs as built-in macro/enforestation entries so user macros exercise the same mechanism.
+- [ ] Use this stage for larger block/form experiments, including Ruby/Elixir-style `do ... end` shapes if still desired.
+- [ ] Keep Menhir only for compatibility parsing, delimiter handling, or recovery if useful; do not grow it as the final grammar.
+- [ ] Implement at least one macro-defined prefix form and one macro-defined infix operator.
+
+Suggested files:
+
+- `lib/syntax/raw_syntax.ml`
+- `lib/expand/enforest.ml`
+- `lib/expand/syntax_class.ml`
+- `lib/expand/operator_env.ml`
+- `test/syntax/test_enforest.ml`
+
+Tests to add:
+
+- [ ] Existing operator precedence remains compatible or intentionally changes with migration tests.
+- [ ] Redesigned built-in syntax has parser/enforestation tests.
+- [ ] Old and redesigned syntax coexist where transition compatibility is intentional.
+- [ ] Ruby/Elixir-style block syntax examples either work or are explicitly deferred with rationale.
+- [ ] Macro-defined prefix form works.
+- [ ] Macro-defined infix operator works.
+- [ ] Syntax extension composes with module/import scoping.
 
 Exit criteria:
 
-- the redesigned surface syntax has an initial implemented slice through enforestation;
-- at least one user-defined prefix form and one user-defined infix operator work;
-- existing operator precedence either remains compatible or has an intentional migration test;
-- syntax extension composes with module/import scoping.
+- [ ] Initial redesigned syntax slice works through enforestation.
+- [ ] Menhir is no longer the place new final syntax features are added.
 
-### Stage 8: Problem-aware macros
+## Stage 8: Problem-Aware Macros
 
-Purpose: let a macro know what syntactic judgment it is expanding for.
+Status: Not started.
+
+Purpose:
+
+- Let macros know which syntactic judgment they are expanding for.
 
 Problem kinds:
 
 - expression inference;
-- expression checking against an expected type;
+- expression checking;
 - type expression;
 - pattern;
 - declaration/module item;
-- effect row if it becomes useful;
-- trait/impl item if needed.
+- effect row if useful;
+- trait/impl item if useful.
 
-Work:
+Concrete tasks:
 
-1. Thread expansion problem information through the expander.
-2. Add macro API to inspect the current problem.
-3. Allow the same macro binding to expand differently by problem kind.
-4. Integrate with current bidirectional elaboration boundaries:
-   - `infer` can request expression expansion with no expected type;
-   - `check` can request expression expansion with an expected type;
-   - pattern elaboration can request pattern expansion;
-   - module elaboration can request declaration expansion.
-5. Add tests modeled after Klister's `which-problem` examples.
+- [ ] Thread problem information through expansion.
+- [ ] Add macro API to inspect the current problem.
+- [ ] Allow a macro binding to expand differently by problem kind.
+- [ ] Integrate with bidirectional elaboration:
+   - `infer` requests expression expansion with no expected type;
+   - `check` requests expression expansion with expected type;
+   - pattern elaboration requests pattern expansion;
+   - module elaboration requests declaration expansion.
+
+Tests to add:
+
+- [ ] A macro distinguishes expression/type/pattern/declaration contexts.
+- [ ] A checked-expression macro can observe that it is in checking mode.
+- [ ] Expansion remains deterministic.
 
 Exit criteria:
 
-- a macro can distinguish type/expression/pattern/declaration contexts;
-- a checked-expression macro can see the expected type;
-- expansion remains deterministic.
+- [ ] Problem kind is visible to macros.
+- [ ] No type reflection yet.
 
-### Stage 9: Type-aware macros without stuck expansion
+## Stage 9: Type-Aware Macros Without Stuck Expansion
 
-Purpose: expose useful type information before building the full blocked-task scheduler.
+Status: Not started.
 
-Work:
+Purpose:
 
-1. Let expression macros in checking mode inspect the expected semantic type.
-2. Let macros inspect stable reflected type heads:
+- Expose useful expected-type information without building the full scheduler.
+
+Concrete tasks:
+
+- [ ] Let expression macros in checking mode inspect expected semantic type.
+- [ ] Add stable reflected type heads:
    - primitive types;
    - nominal type constructors and arguments;
-   - structural record fields where current type-case already supports reflection.
-3. Keep this read-only and non-stuck:
-   - if the expected type is unknown/unsolved, the macro gets `unknown` or fails with a clear error;
-   - do not suspend/resume yet.
-4. Add tests:
-   - type-directed defaulting;
-   - type-directed wrapper generation;
-   - record-field-based code generation;
-   - graceful failure when expected type is unavailable.
+   - structural record fields where current type-case supports reflection.
+- [ ] Keep this read-only and non-stuck:
+   - unknown expected type returns `unknown` or a clear error;
+   - no suspension/resumption yet.
+
+Tests to add:
+
+- [ ] Type-directed defaulting.
+- [ ] Type-directed wrapper generation.
+- [ ] Record-field-based code generation.
+- [ ] Graceful failure when expected type is unavailable.
 
 Exit criteria:
 
-- useful type-aware macros exist;
-- no scheduler/interleaving machinery is required yet;
-- reflection API aligns with existing type-case design.
+- [ ] Useful type-aware macros exist.
+- [ ] No scheduler required.
 
-### Stage 10: Expansion variables and stuck macro scheduler
+## Stage 10: Expansion Variables And Stuck Macro Scheduler
 
-Purpose: support Klister-style interleaving where expansion and typechecking can wait on each other.
+Status: Not started.
 
-Work:
+Purpose:
 
-1. Add expansion variables analogous to metavariables.
-2. Add task records:
+- Support expansion/typechecking interleavings where either side can wait on the other.
+
+Concrete tasks:
+
+- [ ] Add expansion variables analogous to metavariables.
+- [ ] Add task records:
    - task id;
    - problem kind;
    - inputs/dependencies;
    - output variable;
    - continuation/action.
-3. Add scheduler:
+- [ ] Add deterministic scheduler:
    - run unblocked tasks;
    - mark tasks blocked on type metas or expansion variables;
    - detect no-progress states;
-   - produce dependency-cycle diagnostics.
-4. Expose elaboration operations as tasks where needed:
+   - report dependency cycles.
+- [ ] Expose elaboration operations as tasks where needed:
    - infer type of expanded expression;
    - check expression against expected type;
    - solve unification constraints;
    - resume blocked macro once reflected type is known.
-5. Keep scheduler deterministic by construction.
-6. Add tests:
-   - macro waits for expected type;
-   - typechecker waits for macro expansion;
-   - independent tasks produce same result regardless of order;
-   - deadlock/cycle reports waiting problems.
 
 Suggested files:
 
@@ -522,135 +579,93 @@ Suggested files:
 - `lib/semantic/typecheck/elaborate.ml`
 - `lib/semantic/typecheck/unify.ml`
 
+Tests to add:
+
+- [ ] Macro waits for expected type.
+- [ ] Typechecker waits for macro expansion.
+- [ ] Independent tasks produce same result regardless of order.
+- [ ] Deadlock/cycle reports waiting problems.
+
 Exit criteria:
 
-- stuck macros work for small examples;
-- dependency failures are understandable enough for prototype work;
-- existing non-macro elaboration remains unchanged.
+- [ ] Stuck macros work for small examples.
+- [ ] Dependency failures are understandable enough for prototype work.
+- [ ] Non-macro elaboration behavior remains unchanged.
 
-### Stage 11: Type-providing macros and typed expansion fragments
+## Stage 11: Type-Providing Macros And Typed Fragments
 
-Purpose: allow macros to provide enough type information for surrounding elaboration before their full expansion is known.
+Status: Not started.
 
-Work:
+Purpose:
 
-1. Extend macro result forms:
+- Allow macros to provide type information before full expansion is known.
+
+Concrete tasks:
+
+- [ ] Extend macro result forms:
    - expanded syntax only;
    - provided type plus delayed expansion;
    - checked typed fragment;
    - core term plus semantic type, if needed.
-2. Define which fragments may bypass `Surface.t`.
-3. Preserve hygiene for fragments that introduce binders or references to lexical names.
-4. Integrate with metavariable solving:
+- [ ] Define which fragments may bypass `Surface.t`.
+- [ ] Preserve hygiene for fragments introducing binders or lexical references.
+- [ ] Integrate with metavariable solving:
    - provided types may contain metas;
    - delayed expansion may depend on solved metas;
-   - unification failures should point back to macro source spans.
-5. Add tests:
-   - macro provides a type so surrounding application/checking proceeds;
-   - macro expansion later agrees with provided type;
-   - disagreement is rejected;
-   - macro-generated binders remain hygienic.
+   - unification failures point back to macro spans.
+
+Tests to add:
+
+- [ ] Macro provides a type so surrounding application/checking proceeds.
+- [ ] Later expansion agrees with provided type.
+- [ ] Disagreement is rejected.
+- [ ] Macro-generated binders remain hygienic.
 
 Exit criteria:
 
-- type-providing macros work in at least one realistic example;
-- typed/core fragments have a clear hygiene story;
-- this stage does not require replacing the whole elaborator.
+- [ ] Type-providing macros work in at least one realistic example.
+- [ ] Typed/core fragments have a clear hygiene story.
 
-### Stage 12: Macro-powered language features
+## Stage 12: Macro-Powered Language Features
 
-Purpose: validate the system by moving suitable compiler features into macros or macro-like libraries.
+Status: Not started.
+
+Purpose:
+
+- Validate the macro system by moving suitable compiler features into macros or macro-like libraries.
 
 Candidate validations:
 
-1. derived helpers using type-case/reflection;
-2. record/ADT deriving scaffolding;
-3. DSL block syntax;
-4. custom pattern forms;
-5. protocol-style boilerplate over traits;
-6. future parser syntax experiments such as Ruby/Elixir-style `do ... end` blocks.
+- [ ] Derived helpers using type-case/reflection.
+- [ ] Record/ADT deriving scaffolding.
+- [ ] DSL block syntax.
+- [ ] Custom pattern forms.
+- [ ] Protocol-style boilerplate over traits.
+- [ ] Future syntax experiments such as Ruby/Elixir-style `do ... end` blocks.
 
 Exit criteria:
 
-- at least one feature that would otherwise require parser/compiler changes can be implemented as a macro;
-- the macro implementation is simpler than adding bespoke compiler machinery;
-- shortcomings feed back into the macro API before the CLR/C# rewrite.
+- [ ] At least one feature that would otherwise require parser/compiler changes is implemented as a macro.
+- [ ] The macro implementation is simpler than bespoke compiler machinery.
+- [ ] Shortcomings feed back into the macro API before any rewrite.
 
-## Validation strategy
+## Dead-End Avoidance Checklist
 
-Run the normal validation loop throughout:
+Do not:
 
-```sh
-dune build
-dune test
-```
-
-Add targeted suites as the system grows:
-
-- syntax object and scope-set unit tests;
-- expander compatibility tests against current parser output;
-- hygiene tests;
-- macro expansion tests;
-- phase/import tests;
-- type-aware macro tests;
-- stuck scheduler tests.
-
-Representative single-suite commands should follow existing project conventions, for example:
-
-```sh
-dune exec test/syntax/test_syntax.exe
-dune exec test/semantic/test_elaborate.exe
-```
-
-If a new test executable is added for expansion, document the command in `CLAUDE.md` or this directory once it exists.
-
-## Dead-end avoidance checklist
-
-Avoid these shortcuts:
-
-- implementing macros as string substitution;
-- implementing hygiene only as gensym renaming;
-- adding user macros directly on `Surface.t` as the only macro representation;
-- expanding Menhir with final-syntax experiments before enforestation exists;
-- treating compile-time imports as ordinary runtime imports;
-- letting macro evaluation freely run runtime effects/refs;
-- making type-aware macros require a strict expansion-before-elaboration phase order;
-- exposing unstable OCaml internals as the long-term macro API;
-- adding broad diagnostic polish before the architecture is settled.
+- implement macros as string substitution;
+- implement hygiene only as gensym renaming;
+- add user macros directly on `Surface.t` as the only representation;
+- grow Menhir for final syntax experiments before enforestation;
+- treat compile-time imports as runtime imports;
+- let macro evaluation freely run runtime effects/refs;
+- force type-aware macros into strict expansion-before-elaboration ordering;
+- expose unstable OCaml internals as the long-term macro API.
 
 Acceptable temporary shortcuts:
 
-- lower resolved hygienic identifiers to alpha-renamed `Surface.Var` strings while the elaborator still expects strings;
-- keep Menhir as a compatibility parser while raw syntax/enforestation is introduced;
+- lower resolved hygienic identifiers to alpha-renamed `Surface.Var` strings while elaboration still expects strings;
+- keep Menhir as the compatibility parser while raw syntax/enforestation is introduced;
 - start with prefix-only macro invocation before general regular-syntax macros;
 - expose only read-only expected-type reflection before stuck macros exist;
 - keep typed/core macro fragments out of scope until surface-expanding macros are stable.
-
-## Recommended near-term milestone
-
-The first implementation milestone should be:
-
-> A syntax-object and scope-set layer plus a built-in hygienic expander that reproduces today's language and lowers to `Surface.t`, with no user-defined macros yet.
-
-This milestone is large enough to validate the architecture but small enough to avoid entangling macro evaluation, phases, and dependent elaboration all at once.
-
-Concrete first PR/commit sequence:
-
-1. [x] Add source spans and token-with-span support behind new APIs.
-2. [x] Add `Syntax` and `Scope_set` modules with unit tests.
-3. [x] Add scope-set binding resolution tests.
-4. [x] Add an expander context and lower a tiny expression subset to `Surface.t`.
-5. [x] Add compatibility tests comparing old parser output with new expansion output for that subset.
-6. [x] Extend the built-in expander form-by-form until it covers current `Surface.t`.
-7. [x] Switch tests or parser entrypoints to exercise the new path once coverage is equivalent.
-
-Implemented this round:
-
-- `Source_span`, `Raw_syntax`, `Scope_set`, and `Syntax` modules in `lib/syntax/`.
-- `Core_lexer.tokens_with_spans` and `Core_lexer.spanned_token`, with existing parser entrypoints preserved.
-- `core_tt_expand` library with binding resolution, expander context, built-in expander, lowering to `Surface.t`, and a `Surface.t -> Syntax.t` compatibility adapter.
-- Single `test/syntax/test_syntax.exe` Alcotest executable with parser suites split by topic, plus span, scope-set, binding-resolution, and expand/lower compatibility tests.
-- Updated syntax test command references from `test_match_parse.exe` to `test_syntax.exe`.
-- REPL, loader, stdlib prelude parsing, semantic tests, backend tests, and syntax parser-shape tests now use the expanded parser path through `Parse_expand`.
-
-Only after that should user macro syntax be added.
