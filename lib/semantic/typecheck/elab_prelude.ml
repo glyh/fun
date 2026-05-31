@@ -44,6 +44,7 @@ let prims =
     ("stx_make_string", VAtomTy Atom_ty.TString ^-> U);
     ("stx_make_bool", VAtomTy Atom_ty.TBool ^-> U);
     ("stx_kind", VU ^-> AtomTy Atom_ty.TString);
+    ("stx_id_eq", VU ^-> U ^->> AtomTy Atom_ty.TBool);
   ]
   |> NameMap.of_list
 

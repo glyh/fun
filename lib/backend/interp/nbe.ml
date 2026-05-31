@@ -116,6 +116,13 @@ module Stx = struct
           | _ -> "other" in
         Some (VAtom (String s))
     | _ -> None
+  let id_eq = function
+    | [VStx { kind = Var a; _ }; VStx { kind = Var b; _ }] ->
+        let eq = String.equal a.name b.name
+                 && (Scope_set.subset a.scope b.scope
+                     || Scope_set.subset b.scope a.scope) in
+        Some (VAtom (Bool eq))
+    | _ -> None
 end
 
 let stx_prim_table : (string, value list -> value option) Hashtbl.t =
@@ -127,6 +134,7 @@ let stx_prim_table : (string, value list -> value option) Hashtbl.t =
     ("stx_make_string", Stx.make_string);
     ("stx_make_bool",   Stx.make_bool);
     ("stx_kind",        Stx.kind);
+    ("stx_id_eq",       Stx.id_eq);
   ]
   |> List.to_seq |> Hashtbl.of_seq
 
@@ -585,9 +593,7 @@ and try_prim_reduce (head : head) (frames : frame list) : value option =
         | Some f -> Option.map (fun a -> VAtom a) (f atoms)
         | None ->
           let args = List.filter_map (function FApp v -> Some v | _ -> None) frames in
-          if List.length args = List.length frames
-          then Option.bind (Hashtbl.find_opt stx_prim_table name) (fun f -> f args)
-          else None
+          Option.bind (Hashtbl.find_opt stx_prim_table name) (fun f -> f args)
       else
         let args = List.filter_map (function FApp v -> Some v | _ -> None) frames in
         if List.length args = List.length frames

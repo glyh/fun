@@ -360,7 +360,7 @@ Concrete tasks:
    - [x] return syntax (the final expression in the macro body is the return value);
    - [x] raise syntax error (use existing `panic` built-in);
    - [x] inspect syntax kind (`stx_kind : Stx -> String`);
-   - [ ] compare identifiers by hygiene-aware operations.
+   - [x] compare identifiers by hygiene-aware operations (`stx_id_eq : Stx -> Stx -> Bool` — same name + compatible scope sets).
 - [x] Support one invocation shape only, `name @ ( expr )`.
 - [x] Expand simple local macro calls in expression position.
 
