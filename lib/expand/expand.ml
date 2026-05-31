@@ -130,12 +130,12 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | Atom _ | Self | SelfType | Import _ -> stx
   | Lam (param, body) ->
     let pname = param_name param in
-    let scope = Expand_ctx.extend ctx ~name:pname ~resolved_name:pname in
+    let scope = Expand_ctx.extend_at ctx ~name:pname ~base_scope:param.name.scope ~resolved_name:pname in
     let body = expand ctx (add_scope scope body) in
     { stx with kind = Lam (map_param scope (expand ctx) param, body) }
   | Let { name; type_; value; body; recursive } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let value = if recursive then expand ctx (add_scope scope value) else expand ctx value in
     let body = expand ctx (add_scope scope body) in
     let name = add_id_scope scope name in
@@ -197,37 +197,37 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   match binding with
   | LetBinding { name; value; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     LetBinding { name = add_id_scope scope name;
                  value = expand ctx value; public }
   | MethodBinding { name; params; body; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     MethodBinding { name = add_id_scope scope name;
                     params = List.map (fun p ->
                         let pname = param_name p in
-                        let ps = Expand_ctx.extend ctx ~name:pname ~resolved_name:pname in
+                        let ps = Expand_ctx.extend_at ctx ~name:pname ~base_scope:p.name.scope ~resolved_name:pname in
                         map_param ps (expand ctx) p) params;
                     body = expand ctx body; public }
   | TypeBinding { name; params; ctors; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     List.iter (fun (cname, _) -> ignore (Expand_ctx.extend ctx ~name:cname ~resolved_name:cname)) ctors;
     TypeBinding { name = add_id_scope scope name;
                   params; ctors = List.map (fun (n, p) -> (n, Option.map (expand ctx) p)) ctors; public }
   | RecordTypeBinding { name; params; fields; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     RecordTypeBinding { name = add_id_scope scope name;
                         params; fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public }
   | EffectBinding { name; params; ops; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     EffectBinding { name = add_id_scope scope name;
                     params; ops = List.map (fun op -> { op with input = expand ctx op.input; output = expand ctx op.output }) ops; public }
   | TraitBinding { name; params; fields; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     TraitBinding { name = add_id_scope scope name;
                    params; fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public }
   | ImplBinding { trait_path; trait_name; args; fields; public } ->
@@ -247,7 +247,7 @@ and expand_match_branch ctx = function
 and expand_pat_binders ctx = function
   | PatBind id ->
     let binding_name = id.name in
-    ignore (Expand_ctx.extend ctx ~name:binding_name ~resolved_name:binding_name)
+    ignore (Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:id.scope ~resolved_name:binding_name)
   | PatCon (_, _, ps) -> List.iter (expand_pat_binders ctx) ps
   | PatRecord { fields; _ } ->
     List.iter (fun (_, p) -> Option.iter (expand_pat_binders ctx) p) fields

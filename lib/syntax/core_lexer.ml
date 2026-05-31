@@ -100,16 +100,6 @@ and read_string buf acc =
       read_string buf acc
   | _ -> failwith ("unexpected string token: " ^ Sedlexing.Utf8.lexeme buf)
 
-let parse_expr source =
-  let lexbuf = Sedlexing.Utf8.from_string source in
-  let lexer = Sedlexing.with_tokenizer token lexbuf in
-  MenhirLib.Convert.Simplified.traditional2revised Core_parser.expr_eof lexer
-
-let parse_module source =
-  let lexbuf = Sedlexing.Utf8.from_string source in
-  let lexer = Sedlexing.with_tokenizer token lexbuf in
-  MenhirLib.Convert.Simplified.traditional2revised Core_parser.module_eof lexer
-
 let spanned_token ?file buf =
   let token = token buf in
   let start_pos, end_pos = Sedlexing.lexing_bytes_positions buf in

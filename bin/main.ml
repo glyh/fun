@@ -5,7 +5,7 @@ let rec user_input prompt callback =
          user_input prompt callback)
 
 let run source =
-  let expr = Core_lexer.parse_expr source in
+  let expr = Parse_expand.parse_expr source in
   let loader = Core_loader.create ~base_dir:(Sys.getcwd ()) in
   let ctx = Elaborate.init_ctx () in
   let core, ty = Elaborate.on_expr ~loader ctx expr in

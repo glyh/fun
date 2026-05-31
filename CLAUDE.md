@@ -35,6 +35,7 @@ dune exec test/backend/test_core.exe -- test eval -e 'factorial'
 ```
 Source string
   → Core_lexer / Core_parser
+  → Parse_expand
   → Surface.t
   → Elaborate.on_expr
   → Core.term + Core.value type
@@ -42,13 +43,14 @@ Source string
   → Debug.pp_value_short
 ```
 
-`bin/main.ml` wires the REPL directly through the staged libraries. It parses each input expression, creates a `Core_loader` rooted at `Sys.getcwd ()`, elaborates through `Elaborate.on_expr ~loader`, evaluates with `Elaborate.Ctx.eval`, and prints `value: type`. Exceptions are caught per input so the REPL stays alive after parse, elaboration, or runtime errors.
+`bin/main.ml` wires the REPL directly through the staged libraries. It parses each input expression through `Parse_expand.parse_expr`, creates a `Core_loader` rooted at `Sys.getcwd ()`, elaborates through `Elaborate.on_expr ~loader`, evaluates with `Elaborate.Ctx.eval`, and prints `value: type`. Exceptions are caught per input so the REPL stays alive after parse, elaboration, or runtime errors.
 
 ## Source layout
 
 The implementation is split by pipeline stage, with each source folder owning its own Dune library.
 
 - `lib/syntax/` — `Surface`, `Core_parser`, and `Core_lexer` for the surface AST and parser.
+- `lib/expand/` — `Parse_expand`, hygiene/binding infrastructure, and lowering from macro-facing syntax back to `Surface.t`.
 - `lib/core_kernel/` — `Atom`, `Core`, and `Debug` for primitive atoms, core terms, semantic values, metas, and pretty-printers.
 - `lib/semantic/match/` — `Core_decision_tree` and `Core_match_compile` for pattern matrix compilation and exhaustiveness checking.
 - `lib/semantic/typecheck/` — `Elaborate` and `Unify` for bidirectional elaboration and metavariable solving.
@@ -61,6 +63,7 @@ The implementation is split by pipeline stage, with each source folder owning it
 - `bin/main.ml` — executable REPL wiring for parse/elaborate/eval/print.
 - `lib/syntax/core_lexer.ml` and `lib/syntax/core_parser.mly` — sedlex/menhir parser for expressions and `.fun` module files.
 - `lib/syntax/surface.ml` — surface AST consumed by elaboration.
+- `lib/expand/parse_expand.ml` — current parser entrypoint for downstream consumers; runs Menhir parsing, syntax conversion, built-in expansion, and lowering to `Surface.t`.
 - `lib/semantic/typecheck/elaborate.ml` — bidirectional elaborator, context management, implicit insertion, pattern elaboration, and match exhaustiveness checks.
 - `lib/backend/interp/nbe.ml` — normalization-by-evaluation, primitive evaluation, quoting, conversion, and runtime match evaluation.
 - `lib/semantic/typecheck/unify.ml` — higher-order metavariable unification.
@@ -152,6 +155,9 @@ core_tt_syntax
   ├─ menhirLib
   └─ sedlex
 
+core_tt_expand
+  └─ core_tt_syntax
+
 core_tt_match
   └─ core_tt_kernel
 
@@ -160,11 +166,13 @@ core_tt_interp
   └─ core_tt_match
 
 core_tt_loader
-  └─ core_tt_syntax
+  ├─ core_tt_syntax
+  └─ core_tt_expand
 
 core_tt_typecheck
   ├─ core_tt_kernel
   ├─ core_tt_syntax
+  ├─ core_tt_expand
   ├─ core_tt_match
   ├─ core_tt_interp
   └─ core_tt_loader
@@ -172,6 +180,7 @@ core_tt_typecheck
 fun executable
   ├─ linenoise
   ├─ core_tt_syntax
+  ├─ core_tt_expand
   ├─ core_tt_loader
   ├─ core_tt_typecheck
   └─ core_tt_kernel

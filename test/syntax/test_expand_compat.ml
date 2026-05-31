@@ -5,7 +5,7 @@ let expand_lower surface =
   |> Lower_surface.lower_expr
 
 let check_compat source () =
-  let parsed = Core_lexer.parse_expr source in
+  let parsed = Parse_expand.parse_expr source in
   Alcotest.(check pass) source parsed (expand_lower parsed)
 
 let token_spans () =
@@ -24,7 +24,7 @@ let token_spans () =
   | _ -> Alcotest.fail "unexpected token stream"
 
 let module_compat () =
-  let parsed = Core_lexer.parse_module "pub let x = 1; pub type Option A = Some A | None" in
+  let parsed = Parse_expand.parse_module "pub let x = 1; pub type Option A = Some A | None" in
   Alcotest.(check pass) "module compat" parsed (expand_lower parsed)
 
 let suites =

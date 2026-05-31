@@ -21,7 +21,7 @@ let load t path f =
     | Some (Parsed surface) -> surface
     | None ->
         let source = In_channel.with_open_text resolved In_channel.input_all in
-        let surface = Core_lexer.parse_module source in
+        let surface = Parse_expand.parse_module source in
         Hashtbl.replace t.cache resolved (Parsed surface);
         surface
   in

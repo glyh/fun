@@ -26,6 +26,11 @@ let extend (ctx : t) ~name ~resolved_name =
   Binding.extend ctx.binding_table ~name ~scope ~resolved_name;
   scope
 
+let extend_at (ctx : t) ~name ~base_scope ~resolved_name =
+  let scope = fresh_scope_set ctx in
+  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~resolved_name;
+  scope
+
 let copy (ctx : t) : t =
   { binding_table = Binding.copy ctx.binding_table;
     phase = ctx.phase;

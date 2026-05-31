@@ -41,7 +41,7 @@ let mc () = MetaContext.create ()
 let pure_effects = effect_row_closure [] empty_effect_row
 
 let parse_expr source =
-  Core_lexer.parse_expr source
+  Parse_expand.parse_expr source
 
 let eval_source source =
   let expr = parse_expr source in

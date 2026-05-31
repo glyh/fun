@@ -3,8 +3,9 @@
  (wrapped false)
  (libraries
   core_tt_kernel
-  core_tt_syntax
-  core_tt_match
+   core_tt_syntax
+   core_tt_expand
+   core_tt_match
   core_tt_interp
   core_tt_loader)
  (preprocess

@@ -56,4 +56,4 @@ pub let (!=) : {A : Eq} -> A -> A -> Bool =
   fun {A : Type} lhs rhs -> not ((==) {A} lhs rhs)
 |}
 
-let parsed_stdlib = lazy (Core_lexer.parse_module stdlib_source)
+let parsed_stdlib = lazy (Parse_expand.parse_module stdlib_source)

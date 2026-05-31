@@ -53,7 +53,7 @@ let () =
           | EffectRowMismatch -> "EffectRowMismatch"))
     | _ -> None)
 
-let parse_expr = Core_lexer.parse_expr
+let parse_expr = Parse_expand.parse_expr
 let pi explicitness domain codomain = Pi { explicitness; domain; effects = empty_effect_row; codomain }
 
 let elab source =
@@ -1121,7 +1121,7 @@ let effects =
           ((fun {r : EffectRow} -> fun _ -> let _ = perform IO.read () in perform State.get ()) : {r : EffectRow} -> (Unit -> I64 can {IO | r}))");
     Alcotest.test_case "inferred perform lambda exposes latent effect" `Quick
       (fun () ->
-        let expr = Core_lexer.parse_expr "let State S = effect get : Unit -> S end in fun _ -> perform State.get ()" in
+        let expr = Parse_expand.parse_expr "let State S = effect get : Unit -> S end in fun _ -> perform State.get ()" in
         let ctx = Elaborate.init_ctx () in
         let _core, ty, _effects = Elaborate.on_expr_effects ctx expr in
         match Nbe.force ctx.Elaborate.Ctx.metas ty with
@@ -1162,7 +1162,7 @@ let effects =
       (elab_fail "resume 1");
     Alcotest.test_case "resume without argument rejected" `Quick
       (fun () ->
-        match Core_lexer.parse_expr "resume" with
+        match Parse_expand.parse_expr "resume" with
         | exception _ -> ()
         | _ -> Alcotest.fail "expected parse failure");
     Alcotest.test_case "full multi-operation handler removes effect" `Quick

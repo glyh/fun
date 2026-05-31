@@ -1,4 +1,4 @@
 (library
  (name core_tt_loader)
  (wrapped false)
- (libraries core_tt_syntax))
+ (libraries core_tt_syntax core_tt_expand))

@@ -127,9 +127,9 @@ Work:
    - record construction/patterns;
    - implicit binders and trait bounds;
    - effect rows and reference syntax.
-2. Keep existing parser entrypoints working:
-   - `Core_lexer.parse_expr`;
-   - `Core_lexer.parse_module`;
+2. Keep parser entrypoints working:
+   - `Parse_expand.parse_expr`;
+   - `Parse_expand.parse_module`;
    - `dune exec fun`.
 3. Capture pretty-printer or debug snapshots only where existing tests already depend on output shape.
 
@@ -642,7 +642,7 @@ Concrete first PR/commit sequence:
 4. [x] Add an expander context and lower a tiny expression subset to `Surface.t`.
 5. [x] Add compatibility tests comparing old parser output with new expansion output for that subset.
 6. [x] Extend the built-in expander form-by-form until it covers current `Surface.t`.
-7. [ ] Switch tests or parser entrypoints to exercise the new path once coverage is equivalent.
+7. [x] Switch tests or parser entrypoints to exercise the new path once coverage is equivalent.
 
 Implemented this round:
 
@@ -651,5 +651,6 @@ Implemented this round:
 - `core_tt_expand` library with binding resolution, expander context, built-in expander, lowering to `Surface.t`, and a `Surface.t -> Syntax.t` compatibility adapter.
 - Single `test/syntax/test_syntax.exe` Alcotest executable with parser suites split by topic, plus span, scope-set, binding-resolution, and expand/lower compatibility tests.
 - Updated syntax test command references from `test_match_parse.exe` to `test_syntax.exe`.
+- REPL, loader, stdlib prelude parsing, semantic tests, backend tests, and syntax parser-shape tests now use the expanded parser path through `Parse_expand`.
 
 Only after that should user macro syntax be added.

@@ -1,27 +1,27 @@
 open Surface
 
 let nominal_type_pattern_app_shape () =
-  match Core_lexer.parse_expr "match T with Option x -> x | _ -> I64 end" with
+  match Parse_expand.parse_expr "match T with Option x -> x | _ -> I64 end" with
   | Match (_, [ ValueBranch (PatCon ([], "Option", [ PatBind "x" ]), Var "x"); _ ]) -> ()
   | _ -> Alcotest.fail "expected nominal type pattern application"
 
 let nominal_type_pattern_complex_arg_shape () =
-  match Core_lexer.parse_expr "match T with Option (Option I64 | I64) -> I64 | _ -> Bool end" with
+  match Parse_expand.parse_expr "match T with Option (Option I64 | I64) -> I64 | _ -> Bool end" with
   | Match (_, [ ValueBranch (PatCon ([], "Option", [ PatOr (PatCon ([], "Option", [ PatType Core.TI64 ]), PatType Core.TI64) ]), _); _ ]) -> ()
   | _ -> Alcotest.fail "expected complex nominal type pattern argument"
 
 let struct_type_pattern_open_shape () =
-  match Core_lexer.parse_expr "match T with struct x: p; _ end -> p | _ -> I64 end" with
+  match Parse_expand.parse_expr "match T with struct x: p; _ end -> p | _ -> I64 end" with
   | Match (_, [ ValueBranch (PatStructType { fields = [ ("x", PatBind "p") ]; partial = true }, Var "p"); _ ]) -> ()
   | _ -> Alcotest.fail "expected open struct type pattern"
 
 let struct_type_pattern_closed_shape () =
-  match Core_lexer.parse_expr "match T with struct x: I64; y: Bool end -> I64 | _ -> Bool end" with
+  match Parse_expand.parse_expr "match T with struct x: I64; y: Bool end -> I64 | _ -> Bool end" with
   | Match (_, [ ValueBranch (PatStructType { fields = [ ("x", PatType Core.TI64); ("y", PatType Core.TBool) ]; partial = false }, _); _ ]) -> ()
   | _ -> Alcotest.fail "expected closed struct type pattern"
 
 let struct_type_pattern_nominal_field_shape () =
-  match Core_lexer.parse_expr "match T with struct value: Option x; _ end -> x | _ -> I64 end" with
+  match Parse_expand.parse_expr "match T with struct value: Option x; _ end -> x | _ -> I64 end" with
   | Match (_, [ ValueBranch (PatStructType { fields = [ ("value", PatCon ([], "Option", [ PatBind "x" ])) ]; partial = true }, Var "x"); _ ]) -> ()
   | _ -> Alcotest.fail "expected struct type pattern with nominal field pattern"
 
