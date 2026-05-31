@@ -104,6 +104,18 @@ module Stx = struct
     | [VAtom (Bool b)] ->
         Some (VStx { kind = Atom (Bool b); span = Source_span.synthetic })
     | _ -> None
+  let kind = function
+    | [VStx stx] ->
+        let s = match stx.kind with
+          | Var _ -> "var" | Atom _ -> "atom" | Ap _ -> "ap" | Lam _ -> "lam"
+          | Let _ -> "let" | If _ -> "if" | Prod _ -> "prod" | ProdTy _ -> "prodty"
+          | Arrow _ -> "arrow" | RecordConstruct _ -> "record_construct"
+          | Struct _ -> "struct" | Module _ -> "module"
+          | TypeDef _ -> "type_def" | EffectDef _ -> "effect_def"
+          | Match _ -> "match" | Self -> "self" | SelfType -> "selftype"
+          | _ -> "other" in
+        Some (VAtom (String s))
+    | _ -> None
 end
 
 let stx_prim_table : (string, value list -> value option) Hashtbl.t =
@@ -114,6 +126,7 @@ let stx_prim_table : (string, value list -> value option) Hashtbl.t =
     ("stx_make_i64",    Stx.make_i64);
     ("stx_make_string", Stx.make_string);
     ("stx_make_bool",   Stx.make_bool);
+    ("stx_kind",        Stx.kind);
   ]
   |> List.to_seq |> Hashtbl.of_seq
 

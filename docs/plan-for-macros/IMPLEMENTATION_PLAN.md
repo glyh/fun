@@ -353,13 +353,13 @@ Concrete tasks:
 - [x] Add a minimal macro evaluator that cannot run arbitrary runtime refs/effects.
     (Macro bodies are elaborated to `Core.term` and evaluated by NBE, which does not support
     refs or effects in a compile-time context.)
-- [x] Add macro API primitives (6 of 8 implemented):
+- [x] Add macro API primitives (7 of 8 implemented):
    - [x] construct identifiers (`stx_make_var : String -> Stx`);
    - [x] construct literals (`stx_make_i64`, `stx_make_bool`, `stx_make_string`);
    - [x] construct groups — application (`stx_make_ap`) and lambda (`stx_make_lam`);
    - [x] return syntax (the final expression in the macro body is the return value);
    - [x] raise syntax error (use existing `panic` built-in);
-   - [ ] inspect syntax kind (`stx_kind` primitive);
+   - [x] inspect syntax kind (`stx_kind : Stx -> String`);
    - [ ] compare identifiers by hygiene-aware operations.
 - [x] Support one invocation shape only, `name @ ( expr )`.
 - [x] Expand simple local macro calls in expression position.
