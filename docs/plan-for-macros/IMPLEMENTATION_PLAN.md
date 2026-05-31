@@ -403,14 +403,14 @@ Tests added:
 - [x] stx_make_i64 literal construction.
 - [x] stx_make_ap expression construction (1 + 2 via primitives).
 - [x] stx_make_lam + stx_make_var identity lambda construction.
-- [ ] Macro-generated identifier does not capture user binding.
-- [ ] User identifier does not capture macro-generated binding.
-- [ ] Macro error includes a useful span (already works via `panic`, pending explicit test).
+- [x] Macro-generated identifier does not capture user binding.
+- [x] User identifier does not capture macro-generated binding.
+- [x] Macro error includes a useful span (panic message propagates).
 
 Exit criteria:
 
 - [x] Local macros expand simple syntax.
-- [ ] Generated identifiers are hygienic by default (pending hygiene-specific tests).
+- [x] Generated identifiers are hygienic by default.
 - [x] No imported macros yet.
 - [x] No type-aware macros yet.
 

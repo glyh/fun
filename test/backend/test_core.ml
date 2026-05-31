@@ -837,6 +837,43 @@ let test_eval_continuation_reuse_error () =
       | _ -> Alcotest.fail "expected continuation reuse error")
   | _ -> Alcotest.fail "unexpected continuation result"
 
+let eval_with_macros source =
+  let elaborate expr =
+    let ctx = Elaborate.init_ctx () in
+    let core, _ty = Elaborate.on_expr ctx expr in
+    Elaborate.Ctx.eval ctx core
+  in
+  let eval_and_apply fn arg =
+    let mc = MetaContext.create () in
+    Nbe.apply mc fn arg
+  in
+  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply source in
+  let ctx = Elaborate.init_ctx () in
+  let core, _ty = Elaborate.on_expr ctx expr in
+  Elaborate.Ctx.eval ctx core
+
+let check_i64_macro label expected source () =
+  match eval_with_macros source with
+  | VAtom (I64 n) -> Alcotest.(check int64) label expected n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+
+let test_macro_hygiene_no_capture_user () =
+  check_i64_macro "no capture" 1L
+    "let x = 1 in macro m = fun _ -> stx_make_lam \"x\" (stx_make_var \"x\") in (m @ (0)) x" ()
+
+let test_macro_hygiene_user_no_capture_macro () =
+  check_i64_macro "no capture" 1L
+    "macro m = fun _ -> stx_make_lam \"x\" (stx_make_var \"x\") in let x = 1 in (m @ (0)) x" ()
+
+let test_macro_panic_has_message () =
+  match eval_with_macros "macro bad = fun _ -> panic {I64} \"boom\" in bad @ (0)" with
+  | exception EvalError msg ->
+      Alcotest.(check bool) "panic message contains 'boom'" true (String.contains msg 'b')
+  | _ -> Alcotest.fail "expected panic"
+
 let () =
   Alcotest.run "core"
     [
@@ -1286,5 +1323,11 @@ let () =
           Alcotest.test_case "effect row order" `Quick test_unify_effect_row_order;
           Alcotest.test_case "effect row mismatch" `Quick test_unify_effect_row_mismatch;
           Alcotest.test_case "mismatch" `Quick test_unify_mismatch;
+        ] );
+      ( "macros",
+        [
+          Alcotest.test_case "hygiene: macro binder does not capture user" `Quick test_macro_hygiene_no_capture_user;
+          Alcotest.test_case "hygiene: user binder does not capture macro" `Quick test_macro_hygiene_user_no_capture_macro;
+          Alcotest.test_case "panic message propagates" `Quick test_macro_panic_has_message;
         ] );
     ]
