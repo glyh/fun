@@ -77,6 +77,46 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
   ]
   |> List.to_seq |> Hashtbl.of_seq
 
+module Stx = struct
+  open Syntax
+  let make_var = function
+    | [VAtom (String name)] ->
+        Some (VStx { kind = Var (fresh_id name); span = Source_span.synthetic })
+    | _ -> None
+  let make_ap = function
+    | [VStx f; VStx a] ->
+        Some (VStx { kind = Ap (f, Explicit, a); span = Source_span.synthetic })
+    | _ -> None
+  let make_lam = function
+    | [VAtom (String name); VStx body] ->
+        let p = { name = fresh_id name; type_ = None; trait_bounds = []; explicitness = Explicit } in
+        Some (VStx { kind = Lam (p, body); span = Source_span.synthetic })
+    | _ -> None
+  let make_i64 = function
+    | [VAtom (I64 n)] ->
+        Some (VStx { kind = Atom (I64 n); span = Source_span.synthetic })
+    | _ -> None
+  let make_string = function
+    | [VAtom (String s)] ->
+        Some (VStx { kind = Atom (String s); span = Source_span.synthetic })
+    | _ -> None
+  let make_bool = function
+    | [VAtom (Bool b)] ->
+        Some (VStx { kind = Atom (Bool b); span = Source_span.synthetic })
+    | _ -> None
+end
+
+let stx_prim_table : (string, value list -> value option) Hashtbl.t =
+  [
+    ("stx_make_var",    Stx.make_var);
+    ("stx_make_ap",     Stx.make_ap);
+    ("stx_make_lam",    Stx.make_lam);
+    ("stx_make_i64",    Stx.make_i64);
+    ("stx_make_string", Stx.make_string);
+    ("stx_make_bool",   Stx.make_bool);
+  ]
+  |> List.to_seq |> Hashtbl.of_seq
+
 let visible_kind = function
   | Private | PrivateMethod -> false
   | Field | Public | Method -> true
@@ -527,11 +567,19 @@ and try_prim_reduce (head : head) (frames : frame list) : value option =
       let atoms =
         List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames
       in
-      if List.length atoms <> List.length frames then None
-      else
+      if List.length atoms = List.length frames then
         match Hashtbl.find_opt prim_table name with
         | Some f -> Option.map (fun a -> VAtom a) (f atoms)
-        | None -> None)
+        | None ->
+          let args = List.filter_map (function FApp v -> Some v | _ -> None) frames in
+          if List.length args = List.length frames
+          then Option.bind (Hashtbl.find_opt stx_prim_table name) (fun f -> f args)
+          else None
+      else
+        let args = List.filter_map (function FApp v -> Some v | _ -> None) frames in
+        if List.length args = List.length frames
+        then Option.bind (Hashtbl.find_opt stx_prim_table name) (fun f -> f args)
+        else None)
   | _ -> None
 
 and eval_effect_row_literal (mc : MetaContext.t) (env : env) (row : effect_row) : value =

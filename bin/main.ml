@@ -1,3 +1,13 @@
+let () =
+  Printexc.register_printer (function
+    | Elaborate.ElabError e ->
+        let open Elaborate in
+        Some (Printf.sprintf "ElabError(%s)" (match e with
+          | UnboundVariable n -> "UnboundVariable " ^ n
+          | ApplyingNonFunction -> "ApplyingNonFunction"
+          | _ -> "other"))
+    | _ -> None)
+
 let rec user_input prompt callback =
   LNoise.linenoise prompt
   |> Option.iter (fun input ->

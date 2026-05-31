@@ -37,6 +37,12 @@ let prims =
     ("<=", i64_comparator);
     (">=", i64_comparator);
     ("not", VAtomTy Atom_ty.TBool ^-> AtomTy Atom_ty.TBool);
+    ("stx_make_var", VAtomTy Atom_ty.TString ^-> U);
+    ("stx_make_ap", VU ^-> U ^->> U);
+    ("stx_make_lam", VAtomTy Atom_ty.TString ^-> U ^->> U);
+    ("stx_make_i64", VAtomTy Atom_ty.TI64 ^-> U);
+    ("stx_make_string", VAtomTy Atom_ty.TString ^-> U);
+    ("stx_make_bool", VAtomTy Atom_ty.TBool ^-> U);
   ]
   |> NameMap.of_list
 
