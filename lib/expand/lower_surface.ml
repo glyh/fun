@@ -38,7 +38,7 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.Prod xs -> Surface.Prod (List.map lower_expr xs)
   | Syntax.ProdTy xs -> Surface.ProdTy (List.map lower_expr xs)
   | Syntax.Arrow (expl, name, dom, eff, cod) ->
-    Surface.Arrow (expl, name, lower_expr dom,
+    Surface.Arrow (expl, Option.map lower_id name, lower_expr dom,
                    Option.map lower_effect_row eff,
                    lower_expr cod)
   | Syntax.FieldAccess (e, n) -> Surface.FieldAccess (lower_expr e, n)
@@ -51,15 +51,15 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.Module { bindings } ->
     Surface.Module { bindings = List.map lower_struct_binding bindings }
   | Syntax.Import s -> Surface.Import s
-  | Syntax.Open (m, body) -> Surface.Open (m, lower_expr body)
+  | Syntax.Open (m, body) -> Surface.Open (lower_id m, lower_expr body)
   | Syntax.RecordTypeDef { name; params; fields; body } ->
-    Surface.RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
+    Surface.RecordTypeDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.TypeDef { name; params; ctors; body } ->
-    Surface.TypeDef { name; params; ctors = List.map (fun (n, p) -> (n, Option.map lower_expr p)) ctors; body = lower_expr body }
+    Surface.TypeDef { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, p) -> (lower_id n, Option.map lower_expr p)) ctors; body = lower_expr body }
   | Syntax.EffectDef { name; params; ops; body } ->
-    Surface.EffectDef { name; params; ops = List.map lower_effect_op ops; body = lower_expr body }
+    Surface.EffectDef { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; body = lower_expr body }
   | Syntax.TraitDef { name; params; fields; body } ->
-    Surface.TraitDef { name; params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
+    Surface.TraitDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.ImplDef { trait_path; trait_name; args; fields; body } ->
     Surface.ImplDef { trait_path; trait_name; args = List.map lower_expr args;
                       fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
@@ -78,13 +78,13 @@ and lower_struct_binding = function
   | Syntax.MethodBinding { name; params; body; public } ->
     Surface.MethodBinding { name = lower_id name; params = List.map lower_param params; body = lower_expr body; public }
   | Syntax.TypeBinding { name; params; ctors; public } ->
-    Surface.TypeBinding { name = lower_id name; params; ctors = List.map (fun (n, p) -> (n, Option.map lower_expr p)) ctors; public }
+    Surface.TypeBinding { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, p) -> (lower_id n, Option.map lower_expr p)) ctors; public }
   | Syntax.RecordTypeBinding { name; params; fields; public } ->
-    Surface.RecordTypeBinding { name = lower_id name; params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
+    Surface.RecordTypeBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.EffectBinding { name; params; ops; public } ->
-    Surface.EffectBinding { name = lower_id name; params; ops = List.map lower_effect_op ops; public }
+    Surface.EffectBinding { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; public }
   | Syntax.TraitBinding { name; params; fields; public } ->
-    Surface.TraitBinding { name = lower_id name; params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
+    Surface.TraitBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.ImplBinding { trait_path; trait_name; args; fields; public } ->
     Surface.ImplBinding { trait_path; trait_name; args = List.map lower_expr args;
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }

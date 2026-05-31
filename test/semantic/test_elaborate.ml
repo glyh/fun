@@ -137,6 +137,10 @@ let let_bindings =
       (check_type "let b = true in b" (AtomTy TBool));
     Alcotest.test_case "let shadowing" `Quick
       (check_type "let x = true in let x = 1 in x" (AtomTy TI64));
+    Alcotest.test_case "lambda shadows outer let" `Quick
+      (check_type "let x = true in (fun x -> x : I64 -> I64) 1" (AtomTy TI64));
+    Alcotest.test_case "non-rec let rhs sees outer binding" `Quick
+      (check_type "let x = 1 in let x = x in x" (AtomTy TI64));
   ]
 
 let conditionals =
@@ -748,6 +752,8 @@ let match_tests =
         "type Color = Red | Green in \
          (match Red with x -> 1 end : I64)"
         (AtomTy TI64));
+    Alcotest.test_case "pattern binder shadows outer name" `Quick
+      (check_type "let x = true in match 1 with x -> x end" (AtomTy TI64));
     Alcotest.test_case "match non ADT wildcard" `Quick
       (check_type "match 42 with _ -> 0 end" (AtomTy TI64));
     Alcotest.test_case "match int literal" `Quick

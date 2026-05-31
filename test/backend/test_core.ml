@@ -849,6 +849,12 @@ let () =
                "let twice : (I64 -> I64) -> I64 -> I64 = fun f -> fun x -> f (f x) in \
                 let inc : I64 -> I64 = fun n -> n + 1 in twice inc 3");
           Alcotest.test_case "let" `Quick (check_i64 "let" 5L "let x : I64 = 5 in x");
+          Alcotest.test_case "let shadowing" `Quick
+            (check_i64 "let shadowing" 2L "let x = 1 in let x = 2 in x");
+          Alcotest.test_case "non-rec let rhs sees outer" `Quick
+            (check_i64 "non-rec let rhs sees outer" 1L "let x = 1 in let x = x in x");
+          Alcotest.test_case "lambda shadows outer let" `Quick
+            (check_i64 "lambda shadows outer let" 7L "let x = 1 in (fun x -> x : I64 -> I64) 7");
           Alcotest.test_case "if true" `Quick (check_i64 "if true" 1L "if true then 1 else 2");
           Alcotest.test_case "if false" `Quick (check_i64 "if false" 2L "if false then 1 else 2");
           Alcotest.test_case "prod" `Quick test_eval_prod;
@@ -953,7 +959,10 @@ let () =
           Alcotest.test_case "match bind" `Quick
             (check_i64 "match bind" 42L
                "type Option a = Some a | None in \
-                match Some 42 with Some(x) -> x | None -> 0 end");
+                 match Some 42 with Some(x) -> x | None -> 0 end");
+          Alcotest.test_case "match binder shadows outer" `Quick
+            (check_i64 "match binder shadows outer" 7L
+               "let x = 99 in match 7 with x -> x end");
           Alcotest.test_case "match constructor or-pattern binding" `Quick
             (check_i64 "match constructor or-pattern binding" 5L
                "type E = A I64 | B I64 in \

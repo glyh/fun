@@ -37,7 +37,7 @@ and expr (e : Surface.t) : Syntax.t =
     | Prod xs -> Syntax.Prod (List.map expr xs)
     | ProdTy xs -> Syntax.ProdTy (List.map expr xs)
     | Arrow (expl, name, domain, effects, codomain) ->
-      Syntax.Arrow (explicitness expl, name, expr domain, Option.map effect_row effects, expr codomain)
+      Syntax.Arrow (explicitness expl, Option.map id name, expr domain, Option.map effect_row effects, expr codomain)
     | FieldAccess (inner, field) -> Syntax.FieldAccess (expr inner, field)
     | Proj (inner, index) -> Syntax.Proj (expr inner, index)
     | RecordConstruct { typ; fields } ->
@@ -48,15 +48,15 @@ and expr (e : Surface.t) : Syntax.t =
     | Module { bindings } ->
       Syntax.Module { bindings = List.map struct_binding bindings }
     | Import path -> Syntax.Import path
-    | Open (name, body) -> Syntax.Open (name, expr body)
+    | Open (name, body) -> Syntax.Open (id name, expr body)
     | RecordTypeDef { name; params; fields; body } ->
-      Syntax.RecordTypeDef { name; params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; body = expr body }
+      Syntax.RecordTypeDef { name = id name; params = List.map id params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; body = expr body }
     | TypeDef { name; params; ctors; body } ->
-      Syntax.TypeDef { name; params; ctors = List.map (fun (name, payload) -> (name, Option.map expr payload)) ctors; body = expr body }
+      Syntax.TypeDef { name = id name; params = List.map id params; ctors = List.map (fun (name, payload) -> (id name, Option.map expr payload)) ctors; body = expr body }
     | EffectDef { name; params; ops; body } ->
-      Syntax.EffectDef { name; params; ops = List.map effect_op ops; body = expr body }
+      Syntax.EffectDef { name = id name; params = List.map id params; ops = List.map effect_op ops; body = expr body }
     | TraitDef { name; params; fields; body } ->
-      Syntax.TraitDef { name; params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; body = expr body }
+      Syntax.TraitDef { name = id name; params = List.map id params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; body = expr body }
     | ImplDef { trait_path; trait_name; args; fields; body } ->
       Syntax.ImplDef { trait_path; trait_name; args = List.map expr args;
                        fields = List.map (fun (name, value) -> (name, expr value)) fields; body = expr body }
@@ -77,13 +77,13 @@ and struct_binding = function
   | Surface.MethodBinding { name; params; body; public } ->
     Syntax.MethodBinding { name = id name; params = List.map param params; body = expr body; public }
   | Surface.TypeBinding { name; params; ctors; public } ->
-    Syntax.TypeBinding { name = id name; params; ctors = List.map (fun (name, payload) -> (name, Option.map expr payload)) ctors; public }
+    Syntax.TypeBinding { name = id name; params = List.map id params; ctors = List.map (fun (name, payload) -> (id name, Option.map expr payload)) ctors; public }
   | Surface.RecordTypeBinding { name; params; fields; public } ->
-    Syntax.RecordTypeBinding { name = id name; params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; public }
+    Syntax.RecordTypeBinding { name = id name; params = List.map id params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; public }
   | Surface.EffectBinding { name; params; ops; public } ->
-    Syntax.EffectBinding { name = id name; params; ops = List.map effect_op ops; public }
+    Syntax.EffectBinding { name = id name; params = List.map id params; ops = List.map effect_op ops; public }
   | Surface.TraitBinding { name; params; fields; public } ->
-    Syntax.TraitBinding { name = id name; params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; public }
+    Syntax.TraitBinding { name = id name; params = List.map id params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; public }
   | Surface.ImplBinding { trait_path; trait_name; args; fields; public } ->
     Syntax.ImplBinding { trait_path; trait_name; args = List.map expr args;
                          fields = List.map (fun (name, value) -> (name, expr value)) fields; public }

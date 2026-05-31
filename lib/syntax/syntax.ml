@@ -22,25 +22,25 @@ and struct_binding =
   | MethodBinding of { name : id; params : param list; body : t; public : bool }
   | TypeBinding of {
       name : id;
-      params : string list;
-      ctors : (string * t option) list;
+      params : id list;
+      ctors : (id * t option) list;
       public : bool;
     }
   | RecordTypeBinding of {
       name : id;
-      params : string list;
+      params : id list;
       fields : (string * t) list;
       public : bool;
     }
   | EffectBinding of {
       name : id;
-      params : string list;
+      params : id list;
       ops : effect_op list;
       public : bool;
     }
   | TraitBinding of {
       name : id;
-      params : string list;
+      params : id list;
       fields : (string * t) list;
       public : bool;
     }
@@ -69,7 +69,7 @@ and kind =
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
-  | Arrow of Surface.explicitness * string option * t * effect_row option * t
+  | Arrow of Surface.explicitness * id option * t * effect_row option * t
   | FieldAccess of t * string
   | Proj of t * int
   | RecordConstruct of { typ : t; fields : (string * t) list }
@@ -79,28 +79,28 @@ and kind =
     }
   | Module of { bindings : struct_binding list }
   | Import of string
-  | Open of string * t
+  | Open of id * t
   | RecordTypeDef of {
-      name : string;
-      params : string list;
+      name : id;
+      params : id list;
       fields : (string * t) list;
       body : t;
     }
   | TypeDef of {
-      name : string;
-      params : string list;
-      ctors : (string * t option) list;
+      name : id;
+      params : id list;
+      ctors : (id * t option) list;
       body : t;
     }
   | EffectDef of {
-      name : string;
-      params : string list;
+      name : id;
+      params : id list;
       ops : effect_op list;
       body : t;
     }
   | TraitDef of {
-      name : string;
-      params : string list;
+      name : id;
+      params : id list;
       fields : (string * t) list;
       body : t;
     }

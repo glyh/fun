@@ -17,6 +17,8 @@ let extend (tbl : t) ~name ~scope ~resolved_name =
   let existing = try Hashtbl.find tbl name with Not_found -> [] in
   Hashtbl.replace tbl name (info :: existing)
 
+let has_name (tbl : t) name = Hashtbl.mem tbl name
+
 (** Add a binding. Bindings for the same written name are stacked;
     during resolution the one with the largest subset-scope wins. *)
 

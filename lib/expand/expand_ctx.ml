@@ -4,6 +4,7 @@ type t = {
   binding_table : Binding.t;
   phase : phase;
   mutable scope_counter : int;
+  mutable name_counter : int;
   loader : unit option;
 }
 
@@ -11,6 +12,7 @@ let create ?loader () =
   { binding_table = Binding.create ();
     phase = Runtime;
     scope_counter = 0;
+    name_counter = 0;
     loader }
 
 let fresh_scope (ctx : t) : int =
@@ -21,25 +23,47 @@ let fresh_scope (ctx : t) : int =
 let fresh_scope_set (ctx : t) : Scope_set.t =
   Scope_set.singleton (fresh_scope ctx)
 
+(** Suffix a fresh internal name (e.g. "x__0") when a binder shadows a
+    previously seen written name.  This is only for debugging / lowering
+    hygiene tests: the elaborator's own sequential [Ctx.define]/[lookup]
+    already handles shadowing correctly regardless of the lowered string.
+    Scope-set resolution remains the authoritative hygiene model. *)
+let fresh_resolved_name (ctx : t) name =
+  if Binding.has_name ctx.binding_table name then begin
+    let i = ctx.name_counter in
+    ctx.name_counter <- i + 1;
+    Printf.sprintf "%s__%d" name i
+  end else
+    name
+
 let extend (ctx : t) ~name ~resolved_name =
   let scope = fresh_scope_set ctx in
   Binding.extend ctx.binding_table ~name ~scope ~resolved_name;
   scope
+
+let extend_fresh (ctx : t) ~name =
+  let resolved_name = fresh_resolved_name ctx name in
+  let scope = fresh_scope_set ctx in
+  Binding.extend ctx.binding_table ~name ~scope ~resolved_name;
+  (scope, resolved_name)
 
 let extend_at (ctx : t) ~name ~base_scope ~resolved_name =
   let scope = fresh_scope_set ctx in
   Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~resolved_name;
   scope
 
+let extend_at_fresh (ctx : t) ~name ~base_scope =
+  let resolved_name = fresh_resolved_name ctx name in
+  let scope = fresh_scope_set ctx in
+  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~resolved_name;
+  (scope, resolved_name)
+
 let copy (ctx : t) : t =
   { binding_table = Binding.copy ctx.binding_table;
     phase = ctx.phase;
     scope_counter = ctx.scope_counter;
+    name_counter = ctx.name_counter;
     loader = ctx.loader }
-
-let with_binding (ctx : t) ~name ~resolved_name ~f =
-  let scope = extend ctx ~name ~resolved_name in
-  f scope ctx
 
 let resolve (ctx : t) (id : Syntax.id) : Binding.binding_info option =
   Binding.resolve ctx.binding_table id

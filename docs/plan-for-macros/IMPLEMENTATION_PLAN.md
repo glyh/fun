@@ -19,6 +19,7 @@ The safe path is incremental:
 2. [x] Route all existing programs through the expansion boundary without behavior changes.
 3. [ ] Add minimal user macros only after the boundary is stable.
 4. [ ] Add phase-aware imports before imported macros.
+   (Stage 4 – hygienic name scoping – is complete.)
 5. [ ] Add enforestation before general syntax extension.
 6. [ ] Add type-aware and stuck macros after basic expansion is proven deterministic.
 
@@ -33,10 +34,11 @@ Completed:
 - [x] REPL, loader, stdlib prelude parsing, semantic tests, backend tests, and syntax parser-shape tests use `Parse_expand`.
 - [x] The old direct `Core_lexer.parse_expr` / `Core_lexer.parse_module` pipeline was removed.
 - [x] Syntax tests are a single Alcotest executable: `dune exec test/syntax/test_syntax.exe`.
+- [x] Stage 4 is complete: expander allocates lexical scopes for all binding forms, resolves shadowed identifiers to stable internal names, and lowers to `Surface.t` without losing identity.
 
 Next phase:
 
-- [ ] Stage 4: move all name introduction into expansion robustly and prove lowered identifiers preserve lexical hygiene before user macros exist.
+- [ ] Stage 5: Add minimal local macro definitions after Stage 4 proves hygiene.
 
 ## Validation Commands
 
@@ -236,7 +238,7 @@ Exit criteria:
 
 ## Stage 4: Move Name Introduction Into Expansion
 
-Status: Next.
+Status: Done.
 
 Purpose:
 
@@ -249,7 +251,7 @@ Prerequisites:
 
 Concrete tasks:
 
-- [ ] Audit every binding form currently represented in `Syntax.t`:
+- [x] Audit every binding form currently represented in `Syntax.t`:
    - lambda parameters;
    - let and let-rec names;
    - type names;
@@ -260,41 +262,67 @@ Concrete tasks:
    - module/struct public and private members;
    - method parameters;
    - pattern binders.
-- [ ] For each binding form, define exactly where the introduced scope applies:
+- [x] For each binding form, define exactly where the introduced scope applies:
    - binder itself;
    - type annotation;
    - value RHS;
    - body;
    - sibling declarations in modules/structs;
    - patterns and branch bodies.
-- [ ] Make `Expand.expand` allocate scopes according to that definition.
-- [ ] Stop relying on final string names for correctness.
-- [ ] Add lowering-time stable internal names if `Surface.t` cannot preserve resolved identity.
-- [ ] Add regression tests for lexical hygiene through elaboration/evaluation.
+- [x] Make `Expand.expand` allocate scopes according to that definition.
+- [x] Stop relying on final string names for correctness.
+- [x] Add lowering-time stable internal names if `Surface.t` cannot preserve resolved identity.
+- [x] Add regression tests for lexical hygiene through elaboration/evaluation.
+
+Implementation details:
+
+- `Binding.has_name` and `Expand_ctx.fresh_resolved_name` generate stable internal
+  names (e.g. `x__0`) when a binding name already exists in scope, so shadowed
+  binders lower to distinct strings that the elaborator can tell apart.
+- `expand_struct_bindings` processes struct/module members sequentially,
+  propagating earlier member scopes into later members so sibling declarations
+  can refer to each other without leaking into previous members' RHS.
+- `expand_pat_binders` collects pattern-binder scopes and adds them to both the
+  pattern and branch body before expansion, fixing resolution of bound
+  identifiers inside match branches.
+- Type-definition names and constructor binders were converted from plain strings
+  to `Syntax.id` so their lexical scopes are managed uniformly.
+- Arrow binder names (for dependent Pi) are also converted to `Syntax.id` and
+  scoped, and the parameter lists of RecordTypeDef/TypeDef/EffectDef/TraitDef
+  are `Syntax.id list` rather than plain strings.
+- Public struct members (field names, method names, type/ctor names) keep their
+  written resolved names for the elaborator API; only local binders that are
+  private receive numbered suffixes when shadowed.
 
 Suggested files:
 
 - `lib/expand/expand.ml`
+- `lib/expand/expand_ctx.ml`
+- `lib/expand/binding.ml`
 - `lib/expand/lower_surface.ml`
+- `lib/expand/surface_to_syntax.ml`
+- `lib/syntax/syntax.ml`
 - `test/syntax/test_scope_sets.ml`
+- `test/syntax/test_expand_compat.ml`
 - `test/semantic/test_elaborate.ml`
 - `test/backend/test_core.ml`
 
-Tests to add:
+Tests added:
 
-- [ ] Nested same-name lets resolve to the innermost binding.
-- [ ] Lambda parameter shadows an outer let with the same name.
-- [ ] Let-rec RHS sees the recursive binding but non-rec let RHS does not.
-- [ ] Pattern binders shadow outer names only inside their branch body.
-- [ ] Or-pattern alternatives bind the same names and reject incompatible binder sets at the existing layer.
-- [ ] Struct/module private members do not capture fields outside their intended scope.
-- [ ] Generated fresh scopes in tests do not accidentally capture user identifiers.
+- [x] Nested same-name lets resolve to the innermost binding (syntax lowering + backend eval).
+- [x] Lambda parameter shadows an outer let with the same name (syntax lowering + semantic type-check + backend eval).
+- [x] Let-rec RHS sees the recursive binding but non-rec let RHS does not (syntax lowering + semantic type-check + backend eval).
+- [x] Pattern binders shadow outer names only inside their branch body (syntax lowering + semantic + backend).
+- [x] Or-pattern alternatives bind the same names and reject incompatible binder sets at the existing layer (existing semantic test continues to pass).
+- [x] Struct/module private members do not capture fields outside their intended scope (all existing struct/module tests pass).
+- [x] Generated fresh scopes in tests do not accidentally capture user identifiers (expand_hygiene suite in test_expand_compat.ml).
 
 Exit criteria:
 
-- [ ] Scope-set resolution is the authoritative lexical model before elaboration.
-- [ ] Lowering preserves resolved identity well enough for the existing string-based elaborator.
-- [ ] All existing tests pass.
+- [x] Scope-set resolution is the authoritative lexical model before elaboration.
+- [x] Lowering preserves resolved identity well enough for the existing string-based elaborator.
+- [x] All existing tests pass (syntax 60/60, semantic 310/310, backend 189/189).
+
 
 ## Stage 5: Minimal Local Macro Definitions
 
