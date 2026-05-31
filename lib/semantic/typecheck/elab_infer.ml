@@ -18,11 +18,11 @@ open Elab_ops
 
 let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   match expr with
-  | Atom (I64 n) -> (Atom (I64 n), VAtomTy TI64)
-  | Atom (Bool b) -> (Atom (Bool b), VAtomTy TBool)
-  | Atom Unit -> (Atom Unit, VAtomTy TUnit)
-  | Atom (Char c) -> (Atom (Char c), VAtomTy TChar)
-  | Atom (String s) -> (Atom (String s), VAtomTy TString)
+  | Atom (I64 n) -> (Atom (I64 n), VAtomTy Atom_ty.TI64)
+  | Atom (Bool b) -> (Atom (Bool b), VAtomTy Atom_ty.TBool)
+  | Atom Unit -> (Atom Unit, VAtomTy Atom_ty.TUnit)
+  | Atom (Char c) -> (Atom (Char c), VAtomTy Atom_ty.TChar)
+  | Atom (String s) -> (Atom (String s), VAtomTy Atom_ty.TString)
   | Var "EffectRow" -> (EffectRowTy, VU)
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
@@ -52,10 +52,10 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       (match Nbe.force ctx.metas r_ty with
       | VRefTy elem_ty ->
           let e_core = ops.check ctx e elem_ty in
-          (RefSet (r_core, e_core), VAtomTy TUnit)
+          (RefSet (r_core, e_core), VAtomTy Atom_ty.TUnit)
       | _ -> raise (ElabError ApplyingNonFunction))
-  | Ap (f, Surface.Explicit, a) -> infer_ap ops ctx f a
-  | Ap (f, Surface.Implicit, a) -> infer_ap_implicit ops ctx f a
+  | Ap (f, Explicitness.Explicit, a) -> infer_ap ops ctx f a
+  | Ap (f, Explicitness.Implicit, a) -> infer_ap_implicit ops ctx f a
   | Let { name; type_; value; body; recursive } ->
       if recursive then begin
         let rec_ty =
@@ -90,7 +90,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         (Let (ty_term, gen_val_core, body_core), body_ty)
       end
   | If { cond; then_; else_ } ->
-      let cond_core = ops.check ctx cond (VAtomTy TBool) in
+      let cond_core = ops.check ctx cond (VAtomTy Atom_ty.TBool) in
       let then_core, then_ty = ops.infer ctx then_ in
       let else_core = ops.check ctx else_ then_ty in
       (If (cond_core, then_core, else_core), then_ty)
@@ -116,7 +116,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
           elems
       in
       (ProdTy core_elems, VU)
-  | Arrow (Surface.Implicit, Some name, a, effects, b) -> (
+  | Arrow (Explicitness.Implicit, Some name, a, effects, b) -> (
       match surface_trait_bound_names a with
       | Some trait_names when List.for_all (fun trait_name -> NameMap.mem trait_name ctx.Ctx.traits) trait_names ->
           let type_ctx = Ctx.bind ctx name VU in
@@ -732,3 +732,5 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
+  | MacroDef _ | MacroCall _ ->
+      failwith "MacroDef/MacroCall should not reach elaboration"

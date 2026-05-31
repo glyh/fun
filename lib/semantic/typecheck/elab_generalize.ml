@@ -65,7 +65,7 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
                | ImplBind (_, value, _) -> closed_under depth value
                | TypeBind _ | EffectBind _ -> true)
              bindings
-    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Perform _ -> true
+    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Perform _ | Stx _ -> true
   in
   let has_bound = List.exists (fun bd -> bd = Bound) ctx.bds in
   let eligible = match val_core with

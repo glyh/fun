@@ -3,7 +3,6 @@ type lvl = int (* de Bruijn level: distance from outermost scope *)
 type meta_id = int
 type nominal_id = int (* unique identity for each nominal type definition *)
 type effect_id = int (* unique identity for each effect family definition *)
-type atom_ty = TI64 | TBool | TUnit | TChar | TString | TAbsurd [@@deriving eq]
 
 (* Bound = introduced by lambda/pi, Defined = introduced by let.
    InsertedMeta uses this to know which scope vars to abstract over. *)
@@ -31,7 +30,7 @@ and term =
   | EffectRowTy
   | EffectRowLit of effect_row
   | Atom of Atom.t
-  | AtomTy of atom_ty
+  | AtomTy of Atom_ty.t
   | If of term * term * term
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
@@ -128,6 +127,7 @@ and term =
   | RefNew of term
   | RefGet of term
   | RefSet of term * term
+  | Stx of Syntax.t
 
 and match_branch =
   | ValueBranch of core_pat * term
@@ -145,7 +145,7 @@ and core_pat =
           matching), [sub_pats] bind the payload elements. *)
   | CPatAtom of Atom.t
       (** Literal atom pattern. *)
-  | CPatType of atom_ty
+  | CPatType of Atom_ty.t
       (** Primitive type-head pattern. *)
   | CPatProd of core_pat list
       (** Tuple pattern. *)
@@ -230,7 +230,7 @@ and value =
   | VEffectRowTy
   | VEffectRow of effect_row_value
   | VAtom of Atom.t
-  | VAtomTy of atom_ty
+  | VAtomTy of Atom_ty.t
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)
   | VFix of { body : closure }
@@ -266,7 +266,7 @@ and value =
       (** Nominal ADT type. Unifies by [id] equality. [num_params] is the
           arity of type parameters for the template (unapplied) nominal.
           [params] are the applied type arguments, e.g. [Option I64] has
-          params = [VAtomTy TI64]. [constructors] maps each constructor name
+          params = [VAtomTy Atom_ty.TI64]. [constructors] maps each constructor name
           to its payload type closure. *)
   | VEffect of {
       id : effect_id;
@@ -298,8 +298,10 @@ and value =
           [nominal] is the fully-applied nominal type this constructor
           belongs to. Pattern matching (Phase 5) dispatches on [name] and
           binds [spine] elements to sub-patterns. *)
-  | VCont of Obj.t
+  | VCont of cont
       (** Interpreter-only one-shot continuation token for algebraic effect handlers. *)
+  | VStx of Syntax.t
+      (** Compile-time syntax value used by macro expansion. *)
   | VNeutral of { ty : value; neutral : neutral }
       (** Stuck computation with a primitive or a variable/metavariable wrapped in
           elimination frames ([FIf], [FProj]). Unification decomposes these:
@@ -340,6 +342,17 @@ and value =
 and neutral = { head : head; frames : frame list }
 and head = HVar of lvl | HMeta of meta_id | HPrim of string
 and spine = value list
+
+and cont = { mutable used : bool; resume : value -> result }
+
+and result = Done of value | Effect of effect_request
+
+and effect_request = {
+  eff : value;
+  op : string;
+  arg : value;
+  k : value -> result;
+}
 
 (* Elimination frames on stuck terms *)
 and frame =

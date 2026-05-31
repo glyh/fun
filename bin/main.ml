@@ -5,7 +5,17 @@ let rec user_input prompt callback =
          user_input prompt callback)
 
 let run source =
-  let expr = Parse_expand.parse_expr source in
+  let elaborate expr =
+    let loader = Core_loader.create ~base_dir:(Sys.getcwd ()) in
+    let ctx = Elaborate.init_ctx () in
+    let core, _ty = Elaborate.on_expr ~loader ctx expr in
+    Elaborate.Ctx.eval ctx core
+  in
+  let eval_and_apply fn arg =
+    let mc = Core.MetaContext.create () in
+    Nbe.apply mc fn arg
+  in
+  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply source in
   let loader = Core_loader.create ~base_dir:(Sys.getcwd ()) in
   let ctx = Elaborate.init_ctx () in
   let core, ty = Elaborate.on_expr ~loader ctx expr in

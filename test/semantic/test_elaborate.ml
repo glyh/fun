@@ -100,9 +100,9 @@ let check_type source expected () =
          (let mc2 = MetaContext.create () in
           let q = Nbe.quote mc2 0 ty in
           match q with
-          | AtomTy TI64 -> "I64"
-          | AtomTy TBool -> "Bool"
-          | AtomTy TUnit -> "Unit"
+          | AtomTy Atom_ty.TI64 -> "I64"
+          | AtomTy Atom_ty.TBool -> "Bool"
+          | AtomTy Atom_ty.TUnit -> "Unit"
           | Pi _ -> "<pi>"
           | ProdTy _ -> "<prod>"
           | _ -> "<other>"))
@@ -119,12 +119,12 @@ let elab_fail source () =
 
 let constants =
   [
-    Alcotest.test_case "int" `Quick (check_type "42" (AtomTy TI64));
-    Alcotest.test_case "unit" `Quick (check_type "()" (AtomTy TUnit));
-    Alcotest.test_case "true" `Quick (check_type "true" (AtomTy TBool));
-    Alcotest.test_case "false" `Quick (check_type "false" (AtomTy TBool));
-    Alcotest.test_case "char" `Quick (check_type "'a'" (AtomTy TChar));
-    Alcotest.test_case "string" `Quick (check_type "\"hello\"" (AtomTy TString));
+    Alcotest.test_case "int" `Quick (check_type "42" (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "unit" `Quick (check_type "()" (AtomTy Atom_ty.TUnit));
+    Alcotest.test_case "true" `Quick (check_type "true" (AtomTy Atom_ty.TBool));
+    Alcotest.test_case "false" `Quick (check_type "false" (AtomTy Atom_ty.TBool));
+    Alcotest.test_case "char" `Quick (check_type "'a'" (AtomTy Atom_ty.TChar));
+    Alcotest.test_case "string" `Quick (check_type "\"hello\"" (AtomTy Atom_ty.TString));
     Alcotest.test_case "string type" `Quick (check_type "String" U);
     Alcotest.test_case "absurd type" `Quick (check_type "Absurd" U);
   ]
@@ -132,82 +132,82 @@ let constants =
 let let_bindings =
   [
     Alcotest.test_case "simple let" `Quick
-      (check_type "let x = 1 in x" (AtomTy TI64));
+      (check_type "let x = 1 in x" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "let bool" `Quick
-      (check_type "let b = true in b" (AtomTy TBool));
+      (check_type "let b = true in b" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "let shadowing" `Quick
-      (check_type "let x = true in let x = 1 in x" (AtomTy TI64));
+      (check_type "let x = true in let x = 1 in x" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "lambda shadows outer let" `Quick
-      (check_type "let x = true in (fun x -> x : I64 -> I64) 1" (AtomTy TI64));
+      (check_type "let x = true in (fun x -> x : I64 -> I64) 1" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "non-rec let rhs sees outer binding" `Quick
-      (check_type "let x = 1 in let x = x in x" (AtomTy TI64));
+      (check_type "let x = 1 in let x = x in x" (AtomTy Atom_ty.TI64));
   ]
 
 let conditionals =
   [
     Alcotest.test_case "simple if" `Quick
-      (check_type "if true then 1 else 2" (AtomTy TI64));
+      (check_type "if true then 1 else 2" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "if branches must match" `Quick
       (elab_fail "if true then 1 else false");
     Alcotest.test_case "nested if" `Quick
-      (check_type "if true then if false then 1 else 2 else 3" (AtomTy TI64));
+      (check_type "if true then if false then 1 else 2 else 3" (AtomTy Atom_ty.TI64));
   ]
 
 let lambdas =
   [
     Alcotest.test_case "application" `Quick
-      (check_type "((fun x -> x) : I64 -> I64) 42" (AtomTy TI64));
+      (check_type "((fun x -> x) : I64 -> I64) 42" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "apply non-function" `Quick
       (elab_fail "1 2");
     Alcotest.test_case "annotated identity" `Quick
       (check_type "(fun x -> x : I64 -> I64)"
-         (pi Explicit (AtomTy TI64) (AtomTy TI64)));
+         (pi Explicit (AtomTy Atom_ty.TI64) (AtomTy Atom_ty.TI64)));
     Alcotest.test_case "bool function" `Quick
       (check_type "(fun x -> x : Bool -> Bool)"
-         (pi Explicit (AtomTy TBool) (AtomTy TBool)));
+         (pi Explicit (AtomTy Atom_ty.TBool) (AtomTy Atom_ty.TBool)));
     Alcotest.test_case "higher-order twice" `Quick
       (check_type
          "let twice : (I64 -> I64) -> I64 -> I64 = fun f -> fun x -> f (f x) in twice"
          (pi Explicit
-            (pi Explicit (AtomTy TI64) (AtomTy TI64))
-            (pi Explicit (AtomTy TI64) (AtomTy TI64))));
+            (pi Explicit (AtomTy Atom_ty.TI64) (AtomTy Atom_ty.TI64))
+            (pi Explicit (AtomTy Atom_ty.TI64) (AtomTy Atom_ty.TI64))));
   ]
 
 let annotations =
   [
     Alcotest.test_case "int annotation" `Quick
-      (check_type "(42 : I64)" (AtomTy TI64));
+      (check_type "(42 : I64)" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "bool annotation" `Quick
-      (check_type "(true : Bool)" (AtomTy TBool));
+      (check_type "(true : Bool)" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "char annotation" `Quick
-      (check_type "('a' : Char)" (AtomTy TChar));
+      (check_type "('a' : Char)" (AtomTy Atom_ty.TChar));
     Alcotest.test_case "let with annotation" `Quick
-      (check_type "let x : I64 = 42 in x" (AtomTy TI64));
+      (check_type "let x : I64 = 42 in x" (AtomTy Atom_ty.TI64));
   ]
 
 let tuples =
   [
     Alcotest.test_case "pair" `Quick
-      (check_type "(1, true)" (ProdTy [ AtomTy TI64; AtomTy TBool ]));
+      (check_type "(1, true)" (ProdTy [ AtomTy Atom_ty.TI64; AtomTy Atom_ty.TBool ]));
     Alcotest.test_case "triple" `Quick
       (check_type "(1, 2, 3)"
-         (ProdTy [ AtomTy TI64; AtomTy TI64; AtomTy TI64 ]));
+         (ProdTy [ AtomTy Atom_ty.TI64; AtomTy Atom_ty.TI64; AtomTy Atom_ty.TI64 ]));
   ]
 
 let operators =
   [
-    Alcotest.test_case "add" `Quick (check_type "1 + 2" (AtomTy TI64));
-    Alcotest.test_case "compare" `Quick (check_type "1 == 2" (AtomTy TBool));
-    Alcotest.test_case "bool equality" `Quick (check_type "true == false" (AtomTy TBool));
-    Alcotest.test_case "char equality" `Quick (check_type "'a' == 'a'" (AtomTy TBool));
-    Alcotest.test_case "unit equality" `Quick (check_type "() == ()" (AtomTy TBool));
+    Alcotest.test_case "add" `Quick (check_type "1 + 2" (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "compare" `Quick (check_type "1 == 2" (AtomTy Atom_ty.TBool));
+    Alcotest.test_case "bool equality" `Quick (check_type "true == false" (AtomTy Atom_ty.TBool));
+    Alcotest.test_case "char equality" `Quick (check_type "'a' == 'a'" (AtomTy Atom_ty.TBool));
+    Alcotest.test_case "unit equality" `Quick (check_type "() == ()" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "type alias equality" `Quick
-      (check_type "let MyInt = I64 in (1 : MyInt) == (2 : MyInt)" (AtomTy TBool));
-    Alcotest.test_case "operator as value" `Quick (check_type "(==) 1 1" (AtomTy TBool));
+      (check_type "let MyInt = I64 in (1 : MyInt) == (2 : MyInt)" (AtomTy Atom_ty.TBool));
+    Alcotest.test_case "operator as value" `Quick (check_type "(==) 1 1" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "polymorphic helper" `Quick
-      (check_type "let same : {A : Type} -> A -> A -> Bool = fun {A : Type} -> (==) {A} in same 1 1" (AtomTy TBool));
+      (check_type "let same : {A : Type} -> A -> A -> Bool = fun {A : Type} -> (==) {A} in same 1 1" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "complex" `Quick
-      (check_type "let x = 1 + 2 in x * 3" (AtomTy TI64));
+      (check_type "let x = 1 + 2 in x * 3" (AtomTy Atom_ty.TI64));
   ]
 
 let equality_rejections =
@@ -224,15 +224,15 @@ let dependent =
     Alcotest.test_case "Type as value" `Quick
       (check_type "(I64 : Type)" U);
     Alcotest.test_case "type-head match I64" `Quick
-      (check_type "match I64 with I64 -> 1 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match I64 with I64 -> 1 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "type-head match Bool" `Quick
-      (check_type "match Bool with Bool -> 1 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match Bool with Bool -> 1 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "type-head match Char" `Quick
-      (check_type "match Char with Char -> 1 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match Char with Char -> 1 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "type-head match Unit" `Quick
-      (check_type "match Unit with Unit -> 1 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match Unit with Unit -> 1 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open Type match fallback" `Quick
-      (check_type "let classify : Type -> I64 = fun T -> match T with I64 -> 1 | _ -> 0 end in classify Bool" (AtomTy TI64));
+      (check_type "let classify : Type -> I64 = fun T -> match T with I64 -> 1 | _ -> 0 end in classify Bool" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "type-case refines dependent argument" `Quick
       (check_type
          "let is_zeroish : {T : Type} -> T -> Bool = fun {T : Type} -> fun x -> \
@@ -244,7 +244,7 @@ let dependent =
           | _ -> false \
           end \
           in is_zeroish"
-         (Pi { explicitness = Implicit; domain = U; effects = empty_effect_row; codomain = Pi { explicitness = Explicit; domain = Var 0; effects = empty_effect_row; codomain = AtomTy TBool } }));
+         (Pi { explicitness = Implicit; domain = U; effects = empty_effect_row; codomain = Pi { explicitness = Explicit; domain = Var 0; effects = empty_effect_row; codomain = AtomTy Atom_ty.TBool } }));
     Alcotest.test_case "type-case rejects invalid refined branch" `Quick
       (elab_fail
          "let bad : (T : Type) -> T -> Bool = fun (T : Type) -> fun x -> \
@@ -348,12 +348,12 @@ let dependent =
 let meta_solving =
   [
     Alcotest.test_case "infer identity arg" `Quick
-      (check_type "((fun x -> x) : I64 -> I64) 42" (AtomTy TI64));
+      (check_type "((fun x -> x) : I64 -> I64) 42" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "infer through let" `Quick
-      (check_type "let f : I64 -> I64 = fun x -> x in f 42" (AtomTy TI64));
+      (check_type "let f : I64 -> I64 = fun x -> x in f 42" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "infer lambda param from body" `Quick
       (check_type "(fun x -> x + 1 : I64 -> I64)"
-         (pi Explicit (AtomTy TI64) (AtomTy TI64)));
+         (pi Explicit (AtomTy Atom_ty.TI64) (AtomTy Atom_ty.TI64)));
   ]
 
 let structs =
@@ -363,7 +363,7 @@ let structs =
     Alcotest.test_case "open module" `Quick
       (check_type
          "let S = module pub let x = 42 end in open S in x"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open struct constructors" `Quick
       (elab_ok
          "let Color = module pub type Color = Red | Green | Blue end in \
@@ -374,22 +374,22 @@ let structs =
     Alcotest.test_case "nested struct open" `Quick
       (check_type
          "let Outer = module pub let Inner = module pub let val = 42 end end in open Outer in open Inner in val"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open only imports pub" `Quick
       (elab_fail
          "let S = module let x = 42 end in open S in x");
     Alcotest.test_case "field access" `Quick
       (check_type
          "let S = module pub let x = 42 end in S.x"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "field access boolean" `Quick
       (check_type
          "let S = module pub let x = 1; pub let y = true end in S.y"
-         (AtomTy TBool));
+         (AtomTy Atom_ty.TBool));
     Alcotest.test_case "nested field access" `Quick
       (check_type
          "let Outer = module pub let Inner = module pub let val = 42 end end in Outer.Inner.val"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "field not found" `Quick
       (elab_fail "let S = module pub let x = 1 end in S.y");
     Alcotest.test_case "private not accessible" `Quick
@@ -404,15 +404,15 @@ let structs =
     Alcotest.test_case "module signature argument" `Quick
       (check_type
          "(fun (m : module let x = I64 end) -> m.x) (module pub let x = 1 end)"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "module signature allows extra fields" `Quick
       (check_type
          "(fun (m : module let x = I64 end) -> m.x) (module pub let x = 1; pub let y = true end)"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "signature sugar argument" `Quick
       (check_type
          "(fun (m : sig x : I64 end) -> m.x) (module pub let x = 1 end)"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "module signature missing field rejected" `Quick
       (elab_fail
          "(fun (m : module let x = I64 end) -> m.x) (module pub let y = 1 end)");
@@ -428,41 +428,41 @@ let structs =
     Alcotest.test_case "private used by pub" `Quick
       (check_type
          "let S = module let helper = 42; pub let x = helper end in S.x"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record construction" `Quick
       (check_type
          "let Point = struct x: I64; y: I64; end in Point {x = 1; y = 2}"
-         (Struct { con_fields = [ ("x", AtomTy TI64); ("y", AtomTy TI64) ]; bindings = []; partial = false }));
+         (Struct { con_fields = [ ("x", AtomTy Atom_ty.TI64); ("y", AtomTy Atom_ty.TI64) ]; bindings = []; partial = false }));
     Alcotest.test_case "record field access" `Quick
       (check_type
          "let Point = struct x: I64; y: I64; end in (Point {x = 1; y = 2}).x"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "parameterized record construction" `Quick
       (elab_ok
          "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; end in (Pair {fst = 1; snd = true}).snd");
     Alcotest.test_case "record type declaration" `Quick
       (check_type
          "type Point = {x: I64; y: I64} in (Point {x = 1; y = 2}).x"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "parameterized record type declaration" `Quick
       (check_type
          "type Pair A B = {fst: A; snd: B} in (Pair {fst = 1; snd = true}).snd"
-         (AtomTy TBool));
+         (AtomTy Atom_ty.TBool));
     Alcotest.test_case "record type declaration pattern" `Quick
       (check_type
          "type Point = {x: I64; y: I64} in match Point {x = 1; y = 2} with Point {x; y} -> x + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record construction field order" `Quick
       (check_type
          "type Point = {x: I64; y: I64} in let p = Point {y = 20; x = 10} in p.x + p.y"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "polymorphic record multiple instantiations" `Quick
       (check_type
          "type Pair A B = {fst: A; snd: B} in \
           let p1 = Pair {fst = 10; snd = 20} in \
           let p2 = Pair {fst = true; snd = 3} in \
           if p2.fst then p1.fst + p2.snd else 0"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record type declaration missing field" `Quick
       (elab_fail "type Point = {x: I64; y: I64} in Point {x = 1}");
     Alcotest.test_case "record type declaration unknown field" `Quick
@@ -486,19 +486,19 @@ let structs =
     Alcotest.test_case "method uses self" `Quick
       (check_type
          "let Box = fun {A : Type} -> struct value: A; pub method get -> self.value end in Box.get (Box {value = 1})"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "parameterized method uses self" `Quick
       (check_type
          "let Pair = fun {A : Type} {B : Type} -> struct fst: A; snd: B; pub method swap -> (self.snd, self.fst) end in (Pair.swap (Pair {fst = 1; snd = true})).0"
-         (AtomTy TBool));
+         (AtomTy Atom_ty.TBool));
     Alcotest.test_case "method extra parameter" `Quick
       (check_type
          "let Counter = struct value: I64; pub method add x -> self.value + x end in Counter.add (Counter {value = 1}) 2"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "method uses Self type" `Quick
       (check_type
          "let Box = fun {A : Type} -> struct value: A; pub method id (other : Self) -> other.value end in Box.id (Box {value = 1}) (Box {value = 2})"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "Self in let binding" `Quick
       (elab_ok
          "let Box = struct value: I64; pub let id = fun (b : Self) -> b.value end in Box.id (Box {value = 1})");
@@ -519,14 +519,14 @@ let functors =
     Alcotest.test_case "identity functor" `Quick
       (check_type
          "let Double = fun (M : module let x = I64 end) -> module pub let doubled = M.x + M.x end in (Double (module pub let x = 21 end)).doubled"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "functor pass through" `Quick
       (elab_ok
          "let F = fun (M : module let x = I64 end) -> module pub let y = M.x end in let A = module pub let x = 1 end in let B = F A in B.y");
     Alcotest.test_case "functor with private helper" `Quick
       (check_type
          "let F = fun (M : module let x = I64 end) -> module let tmp = M.x; pub let y = tmp + 1 end in (F (module pub let x = 1 end)).y"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "compose functors" `Quick
       (elab_ok
          "let F = fun (M : module let x = I64 end) -> module pub let a = M.x end in let G = fun (N : module let a = I64 end) -> module pub let b = N.a end in (G (F (module pub let x = 1 end))).b");
@@ -538,15 +538,15 @@ let functors =
 let tuple_proj =
   [
     Alcotest.test_case "proj first" `Quick
-      (check_type "(1, true).0" (AtomTy TI64));
+      (check_type "(1, true).0" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "proj second" `Quick
-      (check_type "(1, true).1" (AtomTy TBool));
+      (check_type "(1, true).1" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "proj triple" `Quick
-      (check_type "(1, 2, 3).2" (AtomTy TI64));
+      (check_type "(1, 2, 3).2" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "proj chain" `Quick
-      (check_type "((1, true), 42).0.1" (AtomTy TBool));
+      (check_type "((1, true), 42).0.1" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "proj from let" `Quick
-      (check_type "let p = (1, true) in p.0" (AtomTy TI64));
+      (check_type "let p = (1, true) in p.0" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "proj type error" `Quick
       (elab_fail "42.0");
   ]
@@ -727,7 +727,7 @@ let adts =
       (check_type
          "type List a = Cons (a * List a) | Nil in \
           match Cons (1, Nil) with Cons(p) -> p.0 | Nil -> 0 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
   ]
 
 let match_tests =
@@ -736,36 +736,36 @@ let match_tests =
       (check_type
         "type Color = Red | Green | Blue in \
          (match Red with Red -> 1 | Green -> 2 | Blue -> 3 end : I64)"
-        (AtomTy TI64));
+        (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match with payload" `Quick
       (check_type
         "type Option a = Some a | None in \
          (match Some {I64} 42 with Some(x) -> x | None -> 0 end : I64)"
-        (AtomTy TI64));
+        (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match with wildcard" `Quick
       (check_type
         "type Color = Red | Green | Blue in \
          (match Red with Red -> 1 | _ -> 0 end : I64)"
-        (AtomTy TI64));
+        (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match bind variable" `Quick
       (check_type
         "type Color = Red | Green in \
          (match Red with x -> 1 end : I64)"
-        (AtomTy TI64));
+        (AtomTy Atom_ty.TI64));
     Alcotest.test_case "pattern binder shadows outer name" `Quick
-      (check_type "let x = true in match 1 with x -> x end" (AtomTy TI64));
+      (check_type "let x = true in match 1 with x -> x end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match non ADT wildcard" `Quick
-      (check_type "match 42 with _ -> 0 end" (AtomTy TI64));
+      (check_type "match 42 with _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match int literal" `Quick
-      (check_type "match 42 with 42 -> 1 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match 42 with 42 -> 1 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match bool literals" `Quick
-      (check_type "match true with true -> 1 | false -> 0 end" (AtomTy TI64));
+      (check_type "match true with true -> 1 | false -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match unit literal" `Quick
-      (check_type "match () with () -> 1 end" (AtomTy TI64));
+      (check_type "match () with () -> 1 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match char literal" `Quick
-      (check_type "match 'a' with 'a' -> 1 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match 'a' with 'a' -> 1 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match escaped char literal" `Quick
-      (check_type "match '\\n' with '\\n' -> 1 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match '\\n' with '\\n' -> 1 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "literal type mismatch" `Quick
       (elab_fail "match 1 with true -> 0 | _ -> 1 end");
     Alcotest.test_case "char literal type mismatch" `Quick
@@ -777,19 +777,19 @@ let match_tests =
     Alcotest.test_case "non-exhaustive char literal" `Quick
       (elab_fail "match 'a' with 'a' -> 1 end");
     Alcotest.test_case "match literal or-pattern" `Quick
-      (check_type "match 1 with 0 | 1 -> 42 | _ -> 0 end" (AtomTy TI64));
+      (check_type "match 1 with 0 | 1 -> 42 | _ -> 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "or-pattern covers bool" `Quick
-      (check_type "match true with true | false -> 1 end" (AtomTy TI64));
+      (check_type "match true with true | false -> 1 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "constructor or-pattern" `Quick
       (check_type
          "type Color = Red | Green | Blue in \
           match Red with Red | Green -> 1 | Blue -> 2 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "constructor or-pattern binding" `Quick
       (check_type
          "type E = A I64 | B I64 in \
           match A 1 with A(x) | B(x) -> x end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "or-pattern binding name mismatch" `Quick
       (elab_fail
          "type E = A I64 | B I64 in \
@@ -803,13 +803,13 @@ let match_tests =
          "type Color = Red | Green | Blue in \
           match Red with Red | Green -> 1 end");
     Alcotest.test_case "match tuple pattern" `Quick
-      (check_type "match (1, true) with (x, b) -> if b then x else 0 end" (AtomTy TI64));
+      (check_type "match (1, true) with (x, b) -> if b then x else 0 end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "tuple or-pattern" `Quick
       (check_type
          "match (true, 1) with (true, x) | (false, x) -> x end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match nested tuple pattern" `Quick
-      (check_type "match ((1, true), 2) with ((x, _), y) -> x + y end" (AtomTy TI64));
+      (check_type "match ((1, true), 2) with ((x, _), y) -> x + y end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "tuple pattern arity mismatch" `Quick
       (elab_fail "match (1, true) with (x, y, z) -> x end");
     Alcotest.test_case "tuple literal type mismatch" `Quick
@@ -846,27 +846,27 @@ let match_tests =
       (check_type
         "type Color = Red | Green | Blue in \
          (match Red with Red -> 1 | _ -> 0 end : I64)"
-        (AtomTy TI64));
+        (AtomTy Atom_ty.TI64));
     Alcotest.test_case "exhaustive all ctors" `Quick
       (check_type
         "type Color = Red | Green | Blue in \
          (match Red with Red -> 1 | Green -> 2 | Blue -> 3 end : I64)"
-        (AtomTy TI64));
+        (AtomTy Atom_ty.TI64));
     Alcotest.test_case "qualified constructor pattern" `Quick
       (check_type
          "let S = module pub type Color = Red | Green end in \
           match S.Red with S.Red -> 1 | S.Green -> 2 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "qualified nested constructor pattern" `Quick
       (check_type
          "let A = module pub let B = module pub type T = X I64 | Y end end in \
           match A.B.X 7 with A.B.X(n) -> n | A.B.Y -> 0 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "qualified constructor pattern alias" `Quick
       (check_type
          "let S = module pub type Color = Red | Green end in \
           let N = S in match S.Red with N.Red -> 1 | N.Green -> 2 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "qualified constructor pattern private" `Quick
       (elab_fail
          "let S = module type Color = Red | Green end in \
@@ -880,38 +880,38 @@ let match_tests =
       (check_type
          "let Point = struct x: I64; y: I64; end in \
           match Point {x = 1; y = 2} with Point {x; y} -> x + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record pattern reordered" `Quick
       (check_type
          "let Point = struct x: I64; y: I64; end in \
           match Point {x = 1; y = 2} with Point {y; x} -> x + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record pattern renamed" `Quick
       (check_type
          "let Point = struct x: I64; y: I64; end in \
           match Point {x = 1; y = 2} with Point {x = n; y} -> n + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record pattern partial" `Quick
       (check_type
          "let Point = struct x: I64; y: I64; end in \
           match Point {x = 1; y = 2} with Point {x; _} -> x end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record pattern literal dispatch" `Quick
       (check_type
          "let Flag = struct flag: Bool; value: I64; end in \
           match Flag {flag = false; value = 3} with \
           Flag {flag = true; value} -> value | Flag {flag = false; value} -> value + 1 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "qualified record pattern" `Quick
       (check_type
          "let M = module pub let Point = struct x: I64; y: I64; end end in \
           match M.Point {x = 1; y = 2} with M.Point {x; y} -> x + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "qualified record pattern alias" `Quick
       (check_type
          "let M = module pub let Point = struct x: I64; y: I64; end end in \
           let N = M in match M.Point {x = 1; y = 2} with N.Point {x; y} -> x + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record pattern incomplete" `Quick
       (elab_fail
          "let Point = struct x: I64; y: I64; end in \
@@ -977,13 +977,13 @@ let traits =
       (check_type
          "trait Eq A = struct eq : A -> A -> Bool end in \
           impl Eq I64 = struct let eq x y = x == y end in Eq.eq 1 1"
-         (AtomTy TBool));
+         (AtomTy Atom_ty.TBool));
     Alcotest.test_case "trait bound dispatch" `Quick
       (check_type
          "trait Eq A = struct eq : A -> A -> Bool end in \
           impl Eq I64 = struct let eq x y = x == y end in \
           let same : {A : Eq} -> A -> A -> Bool = fun {A : Type} x y -> Eq.eq x y in same 1 1"
-         (AtomTy TBool));
+         (AtomTy Atom_ty.TBool));
     Alcotest.test_case "missing impl rejected" `Quick
       (elab_fail
          "trait Eq A = struct eq : A -> A -> Bool end in \
@@ -999,7 +999,7 @@ let traits =
             pub impl Eq Self = struct let eq lhs rhs = lhs.x == rhs.x end \
           end in \
           Point {x = 1} == Point {x = 1}"
-         (AtomTy TBool));
+         (AtomTy Atom_ty.TBool));
   ]
 
 let effects =
@@ -1208,25 +1208,25 @@ let imports =
   [
     Alcotest.test_case "basic import" `Quick
       (check_import_type [ ("math", "pub let x = 41; pub let y = x + 1") ]
-         "let M = import \"math\" in M.y" (AtomTy TI64));
+         "let M = import \"math\" in M.y" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "private import member hidden" `Quick
       (import_elab_fail [ ("m", "let secret = 1; pub let exposed = secret + 1") ]
          "let M = import \"m\" in M.secret");
     Alcotest.test_case "private import member usable internally" `Quick
       (check_import_type [ ("m", "let secret = 1; pub let exposed = secret + 1") ]
-         "let M = import \"m\" in M.exposed" (AtomTy TI64));
+         "let M = import \"m\" in M.exposed" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "nested import" `Quick
       (check_import_type [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ]
-         "let W = import \"wrapper\" in W.M.x" (AtomTy TI64));
+         "let W = import \"wrapper\" in W.M.x" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module exposes public value" `Quick
       (check_import_type [ ("math", "pub let x = 42") ]
-         "let M = import \"math\" in open M in x" (AtomTy TI64));
+         "let M = import \"math\" in open M in x" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module hides private value" `Quick
       (import_elab_fail [ ("m", "let secret = 1; pub let exposed = 2") ]
          "let M = import \"m\" in open M in secret");
     Alcotest.test_case "open imported nested module" `Quick
       (check_import_type [ ("base", "pub let x = 42"); ("wrapper", "pub let M = import \"base\"") ]
-         "let W = import \"wrapper\" in open W in open M in x" (AtomTy TI64));
+         "let W = import \"wrapper\" in open W in open M in x" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module does not re-export" `Quick
       (import_elab_fail
          [ ("base", "pub let x = 41"); ("wrapper", "let B = import \"base\"; pub let y = open B in x + 1") ]
@@ -1235,46 +1235,46 @@ let imports =
       (check_import_type
          [ ("color", "pub type Color = Red | Green | Blue; pub let default = Green") ]
          "let C = import \"color\" in match C.default with C.Red -> 1 | C.Green -> 2 | C.Blue -> 3 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module exposes constructors" `Quick
       (check_import_type [ ("color", "pub type Color = Red | Green") ]
          "let C = import \"color\" in open C in match Red with Red -> 1 | Green -> 2 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module hides private constructors" `Quick
       (import_elab_fail [ ("secret", "type Hidden = Wrap I64; pub let value = Wrap 1") ]
          "let S = import \"secret\" in open S in match value with Wrap(n) -> n end");
     Alcotest.test_case "repeated import" `Quick
       (check_import_type [ ("m", "pub let x = 21") ]
-         "let A = import \"m\" in let B = import \"m\" in A.x + B.x" (AtomTy TI64));
+         "let A = import \"m\" in let B = import \"m\" in A.x + B.x" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported record field access" `Quick
       (check_import_type [ ("shapes", "pub type Point = {x: I64; y: I64}") ]
-         "let S = import \"shapes\" in (S.Point {x = 1; y = 2}).x" (AtomTy TI64));
+         "let S = import \"shapes\" in (S.Point {x = 1; y = 2}).x" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported record pattern" `Quick
       (check_import_type [ ("shapes", "pub type Point = {x: I64; y: I64}") ]
          "let S = import \"shapes\" in match S.Point {x = 1; y = 2} with S.Point {x; y} -> x + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported record pattern alias" `Quick
       (check_import_type [ ("shapes", "pub type Point = {x: I64; y: I64}") ]
          "let S = import \"shapes\" in let Alias = S in match S.Point {x = 1; y = 2} with Alias.Point {x; y} -> x + y end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported method uses self" `Quick
       (check_import_type
          [ ("box", "pub let Box = struct value: I64; pub method get -> self.value end") ]
-         "let B = import \"box\" in B.Box.get (B.Box {value = 1})" (AtomTy TI64));
+         "let B = import \"box\" in B.Box.get (B.Box {value = 1})" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported method uses Self" `Quick
       (check_import_type
          [ ("box", "pub let Box = struct value: I64; pub method copy (other : Self) -> other.value end") ]
          "let B = import \"box\" in B.Box.copy (B.Box {value = 1}) (B.Box {value = 2})"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported nested constructor pattern" `Quick
       (check_import_type
          [ ("nested", "pub let M = module pub type T = X I64 | Y end") ]
          "let N = import \"nested\" in match N.M.X 7 with N.M.X(n) -> n | N.M.Y -> 0 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported module alias pattern" `Quick
       (check_import_type [ ("color", "pub type Color = Red | Green") ]
          "let C = import \"color\" in let Alias = C in match C.Red with Alias.Red -> 1 | Alias.Green -> 2 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "wrong-nominal imported constructor pattern" `Quick
       (import_elab_fail
          [ ("a", "pub type Color = Red"); ("b", "pub type Color = Red") ]
@@ -1282,17 +1282,17 @@ let imports =
     Alcotest.test_case "imported public effect handler" `Quick
       (check_import_type [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ]
          "let E = import \"effects\" in match perform E.Exc.raise 1 with x -> x | effect E.Exc.raise n -> n + 1 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module exposes effect" `Quick
       (check_import_type [ ("effects", "pub let Exc = effect raise : I64 -> I64 end") ]
          "let E = import \"effects\" in open E in match perform Exc.raise 1 with x -> x | effect Exc.raise n -> n + 1 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported public parameterized effect handler" `Quick
       (check_import_type [ ("effects", "pub let State S = effect get : Unit -> S end") ]
          "let E = import \"effects\" in \
           let StateI64 = E.State I64 in \
           match perform StateI64.get () with x -> x | effect StateI64.get () -> 42 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported private effect hidden" `Quick
       (import_elab_fail
          [ ( "effects",
@@ -1308,7 +1308,7 @@ let imports =
          "let E = import \"effects\" in \
           let StateI64 = E.State I64 in \
           match E.read () with x -> x | effect StateI64.get () -> 7 end"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported parameterized handler distinguishes instances" `Quick
       (check_import_type [ ("effects", "pub let State S = effect get : Unit -> S end") ]
          "let E = import \"effects\" in \
@@ -1321,7 +1321,7 @@ let imports =
             | effect StateBool.get () -> resume true \
             end \
            : Unit -> I64)"
-         (Pi { explicitness = Explicit; domain = AtomTy TUnit; effects = empty_effect_row; codomain = AtomTy TI64 }));
+         (Pi { explicitness = Explicit; domain = AtomTy Atom_ty.TUnit; effects = empty_effect_row; codomain = AtomTy Atom_ty.TI64 }));
     Alcotest.test_case "imported private constructor hidden" `Quick
       (import_elab_fail [ ("secret", "type Hidden = Wrap I64; pub let value = Wrap 1") ]
          "let S = import \"secret\" in match S.value with S.Wrap(n) -> n end");
@@ -1355,8 +1355,8 @@ let references =
   [
     Alcotest.test_case "Ref I64 is Type" `Quick (check_type "Ref I64" U);
     Alcotest.test_case "ref annotation" `Quick (elab_ok "(ref 1 : Ref I64)");
-    Alcotest.test_case "deref type" `Quick (check_type "let r = ref 1 in !r" (AtomTy TI64));
-    Alcotest.test_case "assignment type" `Quick (check_type "let r = ref 1 in r := 2" (AtomTy TUnit));
+    Alcotest.test_case "deref type" `Quick (check_type "let r = ref 1 in !r" (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "assignment type" `Quick (check_type "let r = ref 1 in r := 2" (AtomTy Atom_ty.TUnit));
     Alcotest.test_case "wrong assignment rejected" `Quick (elab_fail "let r = ref 1 in r := true");
     Alcotest.test_case "deref non-ref rejected" `Quick (elab_fail "!1");
     Alcotest.test_case "assign non-ref rejected" `Quick (elab_fail "1 := 2");
@@ -1367,15 +1367,15 @@ let let_rec =
     Alcotest.test_case "recursive function annotated" `Quick
       (check_type
          "let rec f : I64 -> I64 = fun n -> if n == 0 then 0 else n + f (n - 1) in f 5"
-         (AtomTy TI64));
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "recursive identity" `Quick
       (check_type
          "let rec f : I64 -> I64 = fun n -> if n == 0 then n else f (n - 1) in f"
-         (pi Explicit (AtomTy TI64) (AtomTy TI64)));
+         (pi Explicit (AtomTy Atom_ty.TI64) (AtomTy Atom_ty.TI64)));
     Alcotest.test_case "recursive bool" `Quick
       (check_type
          "let rec f : I64 -> Bool = fun n -> if n == 0 then true else f (n - 1) in f 3"
-         (AtomTy TBool));
+         (AtomTy Atom_ty.TBool));
   ]
 
 let () =

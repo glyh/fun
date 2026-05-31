@@ -2,19 +2,8 @@ open Core
 
 exception EvalError of string
 
-type result = Done of value | Effect of effect_request
-
-and effect_request = {
-  eff : value;
-  op : string;
-  arg : value;
-  k : value -> result;
-}
-
-type continuation = { mutable used : bool; resume : value -> result }
-
-let make_cont resume = VCont (Obj.repr { used = false; resume })
-let get_cont obj : continuation = Obj.obj obj
+let make_cont resume = VCont { used = false; resume }
+let get_cont = function VCont c -> c | _ -> raise (EvalError "expected VCont")
 
 let rec bind_result result f =
   match result with
@@ -56,11 +45,11 @@ module Prim = struct
 end
 
 let atom_ty_of_atom = function
-  | Atom.I64 _ -> TI64
-  | Bool _ -> TBool
-  | Unit -> TUnit
-  | Char _ -> TChar
-  | String _ -> TString
+  | Atom.I64 _ -> Atom_ty.TI64
+  | Bool _ -> Atom_ty.TBool
+  | Unit -> Atom_ty.TUnit
+  | Char _ -> Atom_ty.TChar
+  | String _ -> Atom_ty.TString
 
 let prim_table : (string, Prim.reducer) Hashtbl.t =
   let open Prim in
@@ -189,6 +178,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | EffectRowLit row -> Done (eval_effect_row_literal mc env row)
   | Atom a -> Done (VAtom a)
   | AtomTy t -> Done (VAtomTy t)
+  | Stx stx -> Done (VStx stx)
   | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))
   | RefNew e ->
       bind_result (eval_result mc env e) (fun value -> Done (VRef (ref value)))
@@ -240,7 +230,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                   Done
                     (VNeutral
                        {
-                         ty = VAtomTy TUnit;
+                         ty = VAtomTy Atom_ty.TUnit;
                          neutral =
                            {
                              neutral with
@@ -252,7 +242,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                   Done
                     (VNeutral
                        {
-                         ty = VAtomTy TUnit;
+                         ty = VAtomTy Atom_ty.TUnit;
                          neutral =
                            {
                              head = HMeta id;
@@ -264,7 +254,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                   Done
                     (VNeutral
                        {
-                         ty = VAtomTy TUnit;
+                         ty = VAtomTy Atom_ty.TUnit;
                          neutral =
                            {
                              head = HVar lvl;
@@ -556,8 +546,8 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
       let self = VFix { body = clo } in
       let unfolded = eval mc (self :: clo.env) clo.body in
       apply_result mc unfolded va
-  | VCont obj ->
-      let cont = get_cont obj in
+  | VCont c ->
+      let cont = c in
       if cont.used then raise (EvalError "continuation already used");
       cont.used <- true;
       cont.resume va
@@ -729,7 +719,7 @@ and runtime_value_equal mc lhs rhs =
       && List.length n1.params = List.length n2.params
       && List.for_all2 (runtime_value_equal mc) n1.params n2.params
   | VAtom a, VAtom b -> Atom.equal a b
-  | VAtomTy a, VAtomTy b -> equal_atom_ty a b
+  | VAtomTy a, VAtomTy b -> Atom_ty.equal a b
   | VU, VU -> true
   | _ -> false
 
@@ -767,7 +757,7 @@ and match_core_pat mc pat value =
   | CPatWild, _ -> Some []
   | CPatBind, v -> Some [ v ]
   | CPatAtom expected, VAtom actual when Atom.equal expected actual -> Some []
-  | CPatType expected, VAtomTy actual when equal_atom_ty expected actual ->
+  | CPatType expected, VAtomTy actual when Atom_ty.equal expected actual ->
       Some []
   | CPatProd pats, VProd values when List.length pats = List.length values ->
       match_core_pats mc pats values
@@ -1254,6 +1244,7 @@ let rec quote (mc : MetaContext.t) (depth : lvl) (v : value) : term =
         }
   | VSelfType args -> SelfTypeRef (List.map (quote mc depth) args)
   | VRefTy a -> RefTy (quote mc depth a)
+  | VStx stx -> Stx stx
   | VRef _ -> raise (EvalError "cannot quote ref")
   | VCon { name; spine; _ } -> quote_spine mc depth (Con name) spine
   | VCont _ -> raise (EvalError "cannot quote continuation")
@@ -1308,7 +1299,7 @@ let rec conv (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool
   | VEffectRowTy, VEffectRowTy -> true
   | VEffectRow row1, VEffectRow row2 -> conv_effect_rows mc depth row1 row2
   | VAtom a1, VAtom a2 -> Atom.equal a1 a2
-  | VAtomTy t1, VAtomTy t2 -> equal_atom_ty t1 t2
+  | VAtomTy t1, VAtomTy t2 -> Atom_ty.equal t1 t2
   | ( VPi { explicitness = e1; domain = a1; effects = effs1; codomain = clo1 },
       VPi { explicitness = e2; domain = a2; effects = effs2; codomain = clo2 } )
     when e1 = e2 ->

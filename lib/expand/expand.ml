@@ -76,6 +76,10 @@ and go_kind (s : Scope_set.t) (k : kind) : kind =
   | RefSet (l, r) -> RefSet (go l, go r)
   | Match (scrut, brs) ->
     Match (go scrut, List.map (go_match_branch s) brs)
+  | MacroDef { name; value; body } ->
+    MacroDef { name = add_id_scope s name; value = go value; body = go body }
+  | MacroCall (f, a) ->
+    MacroCall (go f, go a)
 
 and go_struct_binding (s : Scope_set.t) (binding : Syntax.struct_binding) : Syntax.struct_binding =
   match binding with
@@ -251,6 +255,35 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind =
         Match (expand ctx scrut,
                List.map (expand_match_branch ctx) brs) }
+  | MacroDef { name; value; body } ->
+    begin match ctx.Expand_ctx.elaborate with
+    | Some elab ->
+      let lowered = Lower_surface.lower_expr value in
+      let macro_fn = elab lowered in
+      Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
+      expand ctx body
+    | None ->
+      failwith "macro definition requires an elaboration callback in expand context"
+    end
+  | MacroCall (f, a) ->
+    begin match f.kind with
+    | Var id ->
+      begin match Expand_ctx.lookup_macro ctx id.name with
+      | Some macro_fn ->
+        begin match ctx.Expand_ctx.eval_and_apply with
+        | Some apply_fn ->
+          let arg_stx = Macro_eval.wrap_stx a in
+          let result = apply_fn macro_fn arg_stx in
+          begin match Macro_eval.unwrap_stx result with
+          | Some expanded -> expand ctx expanded
+          | None -> failwith "macro did not return a syntax value"
+          end
+        | None -> failwith "macro call requires an apply callback in expand context"
+        end
+      | None -> { stx with kind = MacroCall (expand ctx f, expand ctx a) }
+      end
+    | _ -> { stx with kind = MacroCall (expand ctx f, expand ctx a) }
+    end
 
 and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc = function

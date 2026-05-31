@@ -1,12 +1,9 @@
-type explicitness = Implicit | Explicit
-
-type trait_bound = { trait_path : string list; trait_name : string }
 
 type param = {
   name : string;
   type_ : t option;
-  trait_bounds : trait_bound list;
-  explicitness : explicitness;
+  trait_bounds : Trait_bound.t list;
+  explicitness : Explicitness.t;
 }
 
 and effect_op = { name : string; input : t; output : t }
@@ -53,14 +50,14 @@ and t =
   | Var of string
   | Self
   | SelfType
-  | Ap of t * explicitness * t
+  | Ap of t * Explicitness.t * t
   | Lam of param * t
   | Let of { name : string; type_ : t option; value : t; body : t; recursive : bool }
   | If of { cond : t; then_ : t; else_ : t }
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
-  | Arrow of explicitness * string option * t * effect_row option * t
+  | Arrow of Explicitness.t * string option * t * effect_row option * t
   | FieldAccess of t * string
   | Proj of t * int
   | RecordConstruct of { typ : t; fields : (string * t) list }
@@ -108,6 +105,8 @@ and t =
   | RefGet of t
   | RefSet of t * t
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
+  | MacroDef of { name : string; value : t; body : t }
+  | MacroCall of t * t
 
 and match_branch =
   | ValueBranch of pat * t
@@ -125,6 +124,6 @@ and pat =
   | PatOr of pat * pat
   | PatProd of pat list
   | PatAtom of Atom.t
-  | PatType of Core.atom_ty
+  | PatType of Atom_ty.t
   | PatWild                       (* _ *)
   | PatBind of string             (* variable binding *)

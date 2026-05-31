@@ -37,6 +37,7 @@ let rec token buf =
   | "ref" -> REF
   | "method" -> METHOD
   | "import" -> IMPORT
+  | "macro" -> MACRO
   | "self" -> SELF
   | "Self" -> SELF_TYPE
   | "true" -> TRUE
@@ -57,6 +58,7 @@ let rec token buf =
   | "%" -> MUL_OP "%"
   | "{" -> LBRACE
   | "}" -> RBRACE
+  | "@" -> AT
   | "(" -> LPAREN
   | ")" -> RPAREN
   | "=" -> EQUALS

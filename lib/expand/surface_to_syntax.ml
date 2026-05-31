@@ -2,9 +2,9 @@ let span = Source_span.synthetic
 
 let id name = Syntax.fresh_id name
 
-let rec explicitness (e : Surface.explicitness) = e
+let rec explicitness (e : Explicitness.t) = e
 
-and trait_bound (b : Surface.trait_bound) : Syntax.trait_bound =
+and trait_bound (b : Trait_bound.t) : Trait_bound.t =
   { trait_path = b.trait_path; trait_name = b.trait_name }
 
 and param (p : Surface.param) : Syntax.param =
@@ -68,6 +68,10 @@ and expr (e : Surface.t) : Syntax.t =
     | RefSet (lhs, rhs) -> Syntax.RefSet (expr lhs, expr rhs)
     | Match (scrut, branches) ->
       Syntax.Match (expr scrut, List.map match_branch branches)
+    | MacroDef { name; value; body } ->
+      Syntax.MacroDef { name = id name; value = expr value; body = expr body }
+    | MacroCall (f, a) ->
+      Syntax.MacroCall (expr f, expr a)
   in
   { Syntax.kind; span }
 

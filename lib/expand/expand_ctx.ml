@@ -5,6 +5,9 @@ type t = {
   phase : phase;
   mutable scope_counter : int;
   mutable name_counter : int;
+  mutable macro_table : (string, Core.value) Hashtbl.t;
+  mutable elaborate : (Surface.t -> Core.value) option;
+  mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
   loader : unit option;
 }
 
@@ -13,6 +16,9 @@ let create ?loader () =
     phase = Runtime;
     scope_counter = 0;
     name_counter = 0;
+    macro_table = Hashtbl.create 8;
+    elaborate = None;
+    eval_and_apply = None;
     loader }
 
 let fresh_scope (ctx : t) : int =
@@ -63,7 +69,16 @@ let copy (ctx : t) : t =
     phase = ctx.phase;
     scope_counter = ctx.scope_counter;
     name_counter = ctx.name_counter;
+    macro_table = Hashtbl.copy ctx.macro_table;
+    elaborate = ctx.elaborate;
+    eval_and_apply = ctx.eval_and_apply;
     loader = ctx.loader }
+
+let register_macro (ctx : t) ~name ~value =
+  Hashtbl.replace ctx.macro_table name value
+
+let lookup_macro (ctx : t) name =
+  Hashtbl.find_opt ctx.macro_table name
 
 let resolve (ctx : t) (id : Syntax.id) : Binding.binding_info option =
   Binding.resolve ctx.binding_table id

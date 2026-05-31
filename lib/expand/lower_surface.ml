@@ -2,7 +2,7 @@
     already been alpha-resolved; we can use it directly as the Var name. *)
 let lower_id (id : Syntax.id) : string = id.name
 
-let lower_trait_bound (b : Syntax.trait_bound) : Surface.trait_bound =
+let lower_trait_bound (b : Trait_bound.t) : Trait_bound.t =
   { trait_path = b.trait_path; trait_name = b.trait_name }
 
 let rec lower_param (p : Syntax.param) : Surface.param =
@@ -71,6 +71,8 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.RefSet (l, r) -> Surface.RefSet (lower_expr l, lower_expr r)
   | Syntax.Match (scrut, brs) ->
     Surface.Match (lower_expr scrut, List.map lower_match_branch brs)
+  | Syntax.MacroDef _ | Syntax.MacroCall _ ->
+    failwith "MacroDef/MacroCall should have been expanded away before lowering"
 
 and lower_struct_binding = function
   | Syntax.LetBinding { name; value; public } ->

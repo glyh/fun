@@ -64,12 +64,12 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VAtom Unit -> "()"
     | VAtom (Char c) -> Atom.pp (Char c)
     | VAtom (String s) -> Atom.pp (String s)
-    | VAtomTy TI64 -> "I64"
-    | VAtomTy TBool -> "Bool"
-    | VAtomTy TUnit -> "Unit"
-    | VAtomTy TChar -> "Char"
-    | VAtomTy TString -> "String"
-    | VAtomTy TAbsurd -> "Absurd"
+    | VAtomTy Atom_ty.TI64 -> "I64"
+    | VAtomTy Atom_ty.TBool -> "Bool"
+    | VAtomTy Atom_ty.TUnit -> "Unit"
+    | VAtomTy Atom_ty.TChar -> "Char"
+    | VAtomTy Atom_ty.TString -> "String"
+    | VAtomTy Atom_ty.TAbsurd -> "Absurd"
     | VFlex { id; spine } ->
         let base = Printf.sprintf "?%d" id in
         let solved = match MetaContext.lookup mc id with
@@ -127,6 +127,7 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VCont _ -> "<continuation>"
     | VFix _ -> "<fix>"
     | VNeutral _ -> "<neutral>"
+    | VStx _ -> "<stx>"
   in
   go 0 v
 

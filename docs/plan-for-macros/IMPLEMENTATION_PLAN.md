@@ -17,9 +17,8 @@ The safe path is incremental:
 
 1. [x] Build the syntax/hygiene substrate.
 2. [x] Route all existing programs through the expansion boundary without behavior changes.
-3. [ ] Add minimal user macros only after the boundary is stable.
+3. [x] Add minimal user macros only after the boundary is stable.
 4. [ ] Add phase-aware imports before imported macros.
-   (Stage 4 – hygienic name scoping – is complete.)
 5. [ ] Add enforestation before general syntax extension.
 6. [ ] Add type-aware and stuck macros after basic expansion is proven deterministic.
 
@@ -27,7 +26,7 @@ The safe path is incremental:
 
 Completed:
 
-- [x] `Source_span`, `Raw_syntax`, `Scope_set`, and `Syntax` modules exist in `lib/syntax/`.
+- [x] `Source_span`, `Raw_syntax`, `Scope_set`, and `Syntax` modules exist in `lib/core_kernel/` (moved from `lib/syntax/` to break dependency cycle for `VStx`).
 - [x] `Core_lexer.tokens_with_spans` and `Core_lexer.spanned_token` exist.
 - [x] `core_tt_expand` exists with binding resolution, expander context, built-in expander, lowering to `Surface.t`, and `Surface.t -> Syntax.t` compatibility conversion.
 - [x] `Parse_expand.parse_expr` and `Parse_expand.parse_module` are the downstream parser entrypoints.
@@ -35,10 +34,11 @@ Completed:
 - [x] The old direct `Core_lexer.parse_expr` / `Core_lexer.parse_module` pipeline was removed.
 - [x] Syntax tests are a single Alcotest executable: `dune exec test/syntax/test_syntax.exe`.
 - [x] Stage 4 is complete: expander allocates lexical scopes for all binding forms, resolves shadowed identifiers to stable internal names, and lowers to `Surface.t` without losing identity.
+- [ ] Stage 5 in progress: local macro definitions work (identity macros via NBE integration); macro API primitives and hygiene tests pending.
 
 Next phase:
 
-- [ ] Stage 5: Add minimal local macro definitions after Stage 4 proves hygiene.
+- [ ] Finish Stage 5: add macro API primitives (syntax inspection, identifier construction, error reporting) and hygiene regression tests.
 
 ## Validation Commands
 
@@ -326,7 +326,7 @@ Exit criteria:
 
 ## Stage 5: Minimal Local Macro Definitions
 
-Status: Not started.
+Status: In progress.
 
 Purpose:
 
@@ -335,57 +335,79 @@ Purpose:
 First supported shape:
 
 ```fun
-macro name = fun stx -> ...
+macro name = fun stx -> body in ...
 ```
 
-or, if simpler:
-
-```fun
-pub macro name = fun stx -> ...
-```
+Invocation: `name @ ( arg )` using the `@` token.
 
 Keep this syntax provisional.
 
 Concrete tasks:
 
-- [ ] Decide whether macro declarations live only in raw/expanded syntax or also appear in `Surface.t`.
-- [ ] Add compile-time macro value representation:
-   - macro closure;
-   - primitive macro operations;
-   - syntax value;
-   - macro result;
-   - macro error.
-- [ ] Add a minimal macro evaluator that cannot run arbitrary runtime refs/effects.
+- [x] Decide whether macro declarations live only in raw/expanded syntax or also appear in `Surface.t`.
+    (Live in both Surface.t and Syntax.t; expanded away before elaboration.)
+- [x] Add compile-time macro value representation:
+   - macro closure implemented via NBE-evaluated `Core.term` → `Core.value` (specifically `VLam`).
+   - syntax value: `VStx of Syntax.t` in Core.value, `Stx of Syntax.t` in Core.term.
+   - macro errors propagate as exceptions in the expander.
+- [x] Add a minimal macro evaluator that cannot run arbitrary runtime refs/effects.
+    (Macro bodies are elaborated to `Core.term` and evaluated by NBE, which does not support
+    refs or effects in a compile-time context.)
 - [ ] Add macro API primitives:
-   - return syntax;
+   - return syntax (identity case works, but explicit `return-syntax` primitive not yet added);
    - raise syntax error;
    - inspect syntax kind;
    - construct identifiers/literals/groups;
    - compare identifiers by hygiene-aware operations.
-- [ ] Support one invocation shape only, for example `name!(...)`.
-- [ ] Expand simple local macro calls in expression position.
+- [x] Support one invocation shape only, `name @ ( expr )`.
+- [x] Expand simple local macro calls in expression position.
+
+Implementation details:
+
+- `macro name = fun stx -> body` is parsed as `Surface.MacroDef` → `Syntax.MacroDef`.
+  The expander lowers the body to `Surface.t`, elaborates via the `elaborate` callback
+  (provided by `Expand_ctx`; wired to `Elaborate.on_expr` + `Nbe.eval` in the REPL),
+  and registers the resulting `Core.value` (a `VLam`) in `Expand_ctx.macro_table`.
+- `name @ ( arg )` is parsed as `Surface.MacroCall` → `Syntax.MacroCall`.
+  The expander looks up the macro, wraps the argument `Syntax.t` as `VStx`, applies
+  the closure via the `eval_and_apply` callback (`Nbe.apply`), unwraps `VStx` from
+  the result, and splices the expanded syntax back into the expansion tree.
+- `VStx` and `Stx` are opaque to NBE: `Stx` evaluates to `VStx`, `VStx` quotes back
+  to `Stx`, and two `VStx` values are always considered convertible.
+- `cont`, `result`, `effect_request` moved from NBE to `core.ml` so `VCont` can
+  hold `cont` directly (zero `Obj.t` anywhere in the codebase).
+- All shared type definitions (`explicitness`, `trait_bound`, `atom_ty`) extracted
+  to dedicated kernel modules; no duplicated aliases.
 
 Suggested files:
 
 - `lib/expand/macro_value.ml`
 - `lib/expand/macro_eval.ml`
 - `lib/expand/expand.ml`
+- `lib/expand/expand_ctx.ml`
+- `lib/expand/parse_expand.ml`
+- `lib/core_kernel/core.ml`
+- `lib/core_kernel/syntax.ml`
+- `lib/core_kernel/explicitness.ml`
+- `lib/core_kernel/trait_bound.ml`
+- `lib/core_kernel/atom_ty.ml`
+- `bin/main.ml`
 - `test/syntax/test_macros.ml`
 
-Tests to add:
+Tests added:
 
-- [ ] Local macro expands to a literal.
-- [ ] Local macro expands to an application.
+- [x] Local macro expands to an atom (identity macro: `macro id = fun stx -> stx in id @ (42)`).
+- [x] Local macro expands to an application (identity over `1 + 2`).
 - [ ] Macro-generated identifier does not capture user binding.
 - [ ] User identifier does not capture macro-generated binding.
 - [ ] Macro error includes a useful span.
 
 Exit criteria:
 
-- [ ] Local macros expand simple syntax.
-- [ ] Generated identifiers are hygienic by default.
-- [ ] No imported macros yet.
-- [ ] No type-aware macros yet.
+- [x] Local macros expand simple syntax.
+- [ ] Generated identifiers are hygienic by default (pending hygiene-specific tests).
+- [x] No imported macros yet.
+- [x] No type-aware macros yet.
 
 ## Stage 6: Phase-Aware Module Loading
 

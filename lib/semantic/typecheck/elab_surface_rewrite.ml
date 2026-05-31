@@ -8,7 +8,7 @@ let rewrite_record_self_refs record_name params expr =
             ("recursive record references must be same-instantiation uses of " ^ record_name)))
   in
   let rec collect_apps acc = function
-    | Surface.Ap (f, Surface.Explicit, a) -> collect_apps (a :: acc) f
+    | Surface.Ap (f, Explicitness.Explicit, a) -> collect_apps (a :: acc) f
     | f -> (f, acc)
   in
   let shadowed bound name = List.exists (String.equal name) bound in
@@ -169,13 +169,14 @@ let rewrite_record_self_refs record_name params expr =
                   Surface.EffectBranch { effect_path; op; arg_pat; body = go bound body }
             in
             Surface.Match (go bound scrutinee, List.map go_branch branches)
-        | Atom _ | Var _ | Self | SelfType -> expr)
+        | Atom _ | Var _ | Self | SelfType -> expr
+        | MacroDef _ | MacroCall _ -> failwith "MacroDef/MacroCall should not reach elaboration")
   in
   go [] expr
 
 let rec surface_trait_bound_names = function
   | Surface.Var name -> Some [ name ]
-  | Surface.Ap (Surface.Ap (Surface.Var "+", Surface.Explicit, lhs), Surface.Explicit, rhs) -> (
+  | Surface.Ap (Surface.Ap (Surface.Var "+", Explicitness.Explicit, lhs), Explicitness.Explicit, rhs) -> (
       match surface_trait_bound_names lhs, surface_trait_bound_names rhs with
       | Some lhs, Some rhs -> Some (lhs @ rhs)
       | _ -> None)

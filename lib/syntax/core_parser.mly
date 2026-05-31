@@ -35,7 +35,7 @@ let split_struct_type_pat_entries entries =
 let bare_pat_name path name =
   if String.equal name "_" then PatWild
   else match name with
-  | "I64" when path = [] -> PatType Core.TI64
+  | "I64" when path = [] -> PatType Atom_ty.TI64
   | "Bool" when path = [] -> PatType TBool
   | "Unit" when path = [] -> PatType TUnit
   | "Char" when path = [] -> PatType TChar
@@ -69,10 +69,10 @@ let annotated_binding value typ =
 %token <string> STRING
 %token TRUE FALSE UNIT
 %token LET REC IN FUN IF THEN ELSE MATCH WITH
-%token MODULE SIG STRUCT END OPEN PUB TYPE EFFECT TRAIT IMPL METHOD IMPORT SELF SELF_TYPE CAN PERFORM RESUME REF
+%token MODULE SIG STRUCT END OPEN PUB TYPE EFFECT TRAIT IMPL METHOD IMPORT MACRO SELF SELF_TYPE CAN PERFORM RESUME REF
 %token ARROW COLON EQUALS ASSIGN SEMI
 %token LPAREN RPAREN COMMA DOT BAR
-%token LBRACE RBRACE BANG
+%token LBRACE RBRACE BANG AT
 %token <string> CMP_OP ADD_OP MUL_OP
 %token EOF
 %nonassoc ARROW_BODY
@@ -91,6 +91,8 @@ module_eof:
     { Module { bindings = bnds } }
 
 expr:
+  | MACRO; name = ID; EQUALS; value = expr; IN; body = expr
+    { MacroDef { name; value; body } }
   | LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs; IN; body = expr
     { match rhs with
       | `Value value -> Let { name; type_ = ty; value; body; recursive = false }
@@ -385,6 +387,9 @@ expr_app:
   | PERFORM; name = dotted_id; arg = expr_proj
     { let effect_path, op = split_operation_path (fst name) (snd name) in Perform { effect_path; op; arg } }
   | RESUME; arg = expr_proj { Resume arg }
+  | MACRO; name = ID; EQUALS; value = expr; IN; body = expr
+    { MacroDef { name; value; body } }
+  | f = expr_app; AT; LPAREN; a = expr; RPAREN { MacroCall (f, a) }
   | REF; arg = expr_proj { RefNew arg }
   | BANG; arg = expr_proj { RefGet arg }
   | e = expr_proj { e }

@@ -1,6 +1,6 @@
 open Core
 
-let expl_of_surface = function Surface.Explicit -> Explicit | Surface.Implicit -> Implicit
+let expl_of_surface = function Explicitness.Explicit -> Explicit | Explicitness.Implicit -> Implicit
 
 module NameMap = Map.Make (String)
 

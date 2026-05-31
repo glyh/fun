@@ -2,19 +2,19 @@ open Core
 open Elab_common
 
 let atom_ty_of_atom = function
-  | Atom.I64 _ -> TI64
-  | Bool _ -> TBool
-  | Unit -> TUnit
-  | Char _ -> TChar
-  | String _ -> TString
+  | Atom.I64 _ -> Atom_ty.TI64
+  | Bool _ -> Atom_ty.TBool
+  | Unit -> Atom_ty.TUnit
+  | Char _ -> Atom_ty.TChar
+  | String _ -> Atom_ty.TString
 
 let prims =
-  let arithemetic = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TI64 in
-  let i64_comparator = VAtomTy TI64 ^-> AtomTy TI64 ^->> AtomTy TBool in
-  let bool_comparator = VAtomTy TBool ^-> AtomTy TBool ^->> AtomTy TBool in
-  let char_comparator = VAtomTy TChar ^-> AtomTy TChar ^->> AtomTy TBool in
-  let unit_comparator = VAtomTy TUnit ^-> AtomTy TUnit ^->> AtomTy TBool in
-  let string_comparator = VAtomTy TString ^-> AtomTy TString ^->> AtomTy TBool in
+  let arithemetic = VAtomTy Atom_ty.TI64 ^-> AtomTy Atom_ty.TI64 ^->> AtomTy Atom_ty.TI64 in
+  let i64_comparator = VAtomTy Atom_ty.TI64 ^-> AtomTy Atom_ty.TI64 ^->> AtomTy Atom_ty.TBool in
+  let bool_comparator = VAtomTy Atom_ty.TBool ^-> AtomTy Atom_ty.TBool ^->> AtomTy Atom_ty.TBool in
+  let char_comparator = VAtomTy Atom_ty.TChar ^-> AtomTy Atom_ty.TChar ^->> AtomTy Atom_ty.TBool in
+  let unit_comparator = VAtomTy Atom_ty.TUnit ^-> AtomTy Atom_ty.TUnit ^->> AtomTy Atom_ty.TBool in
+  let string_comparator = VAtomTy Atom_ty.TString ^-> AtomTy Atom_ty.TString ^->> AtomTy Atom_ty.TBool in
   [
     ("+", arithemetic);
     ("-", arithemetic);
@@ -31,12 +31,12 @@ let prims =
     ("neq_unit", unit_comparator);
     ("eq_string", string_comparator);
     ("neq_string", string_comparator);
-    ("panic", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = AtomTy TString ^->> Var 1 } });
+    ("panic", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TString ^->> Var 1 } });
     ("<", i64_comparator);
     (">", i64_comparator);
     ("<=", i64_comparator);
     (">=", i64_comparator);
-    ("not", VAtomTy TBool ^-> AtomTy TBool);
+    ("not", VAtomTy Atom_ty.TBool ^-> AtomTy Atom_ty.TBool);
   ]
   |> NameMap.of_list
 

@@ -120,7 +120,7 @@ let test_eval_prod () =
 
 let test_eval_pi () =
   match eval_source "I64 -> Bool" with
-  | VPi { domain = VAtomTy TI64; _ } -> ()
+  | VPi { domain = VAtomTy Atom_ty.TI64; _ } -> ()
   | _ -> Alcotest.fail "expected VPi"
 
 let test_eval_dot () =
@@ -196,16 +196,16 @@ let test_meta_solve () =
   let id = MetaContext.fresh mc in
   let v = eval mc [] (Meta id) in
   (match v with VFlex { id = 0; spine = [] } -> () | _ -> Alcotest.fail "expected VFlex");
-  MetaContext.solve mc id (VAtomTy TI64);
+  MetaContext.solve mc id (VAtomTy Atom_ty.TI64);
   let v2 = force mc v in
-  match v2 with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected VAtomTy after solve"
+  match v2 with VAtomTy Atom_ty.TI64 -> () | _ -> Alcotest.fail "expected VAtomTy after solve"
 
 let test_meta_conv () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  MetaContext.solve mc id (VAtomTy TI64);
+  MetaContext.solve mc id (VAtomTy Atom_ty.TI64);
   let v1 = eval mc [] (Meta id) in
-  let v2 = VAtomTy TI64 in
+  let v2 = VAtomTy Atom_ty.TI64 in
   Alcotest.(check bool) "meta conv" true (conv mc 0 v1 v2)
 
 let test_inserted_meta () =
@@ -226,31 +226,31 @@ let test_unify_simple () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [] } in
-  let v2 = VAtomTy TI64 in
+  let v2 = VAtomTy Atom_ty.TI64 in
   unify mc [] 0 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
-  match solved with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected TI64"
+  match solved with VAtomTy Atom_ty.TI64 -> () | _ -> Alcotest.fail "expected Atom_ty.TI64"
 
 let test_unify_pi () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy TBool } } in
-  let v2 = VPi { explicitness = Explicit; domain = VAtomTy TI64; effects = pure_effects; codomain = { env = []; body = AtomTy TBool } } in
+  let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TBool } } in
+  let v2 = VPi { explicitness = Explicit; domain = VAtomTy Atom_ty.TI64; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TBool } } in
   unify mc [] 0 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
-  match solved with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected TI64 in pi domain"
+  match solved with VAtomTy Atom_ty.TI64 -> () | _ -> Alcotest.fail "expected Atom_ty.TI64 in pi domain"
 
 let test_unify_spine () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [ VRigid { lvl = 0; spine = [] } ] } in
-  let v2 = VAtomTy TI64 in
+  let v2 = VAtomTy Atom_ty.TI64 in
   unify mc [] 1 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = clo; _ } ->
-      let result = closure_apply mc clo (VAtomTy TBool) in
-      (match result with VAtomTy TI64 -> () | _ -> Alcotest.fail "expected constant function")
+      let result = closure_apply mc clo (VAtomTy Atom_ty.TBool) in
+      (match result with VAtomTy Atom_ty.TI64 -> () | _ -> Alcotest.fail "expected constant function")
   | _ -> Alcotest.fail "expected VLam"
 
 let test_unify_rename_id () =
@@ -262,9 +262,9 @@ let test_unify_rename_id () =
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = clo; _ } ->
-      let result = closure_apply mc clo (VAtomTy TI64) in
+      let result = closure_apply mc clo (VAtomTy Atom_ty.TI64) in
       Alcotest.(check bool) "rename id" true
-        (match result with VAtomTy TI64 -> true | _ -> false)
+        (match result with VAtomTy Atom_ty.TI64 -> true | _ -> false)
   | _ -> Alcotest.fail "expected VLam"
 
 let test_unify_rename_fst () =
@@ -276,12 +276,12 @@ let test_unify_rename_fst () =
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = outer_clo; _ } -> (
-      let v_fst = closure_apply mc outer_clo (VAtomTy TI64) in
+      let v_fst = closure_apply mc outer_clo (VAtomTy Atom_ty.TI64) in
       match v_fst with
       | VLam { body = inner_clo; _ } ->
-          let result = closure_apply mc inner_clo (VAtomTy TBool) in
+          let result = closure_apply mc inner_clo (VAtomTy Atom_ty.TBool) in
           Alcotest.(check bool) "rename fst" true
-            (match result with VAtomTy TI64 -> true | _ -> false)
+            (match result with VAtomTy Atom_ty.TI64 -> true | _ -> false)
       | _ -> Alcotest.fail "expected inner VLam")
   | _ -> Alcotest.fail "expected VLam"
 
@@ -294,12 +294,12 @@ let test_unify_rename_snd () =
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = outer_clo; _ } -> (
-      let v_fst = closure_apply mc outer_clo (VAtomTy TI64) in
+      let v_fst = closure_apply mc outer_clo (VAtomTy Atom_ty.TI64) in
       match v_fst with
       | VLam { body = inner_clo; _ } ->
-          let result = closure_apply mc inner_clo (VAtomTy TBool) in
+          let result = closure_apply mc inner_clo (VAtomTy Atom_ty.TBool) in
           Alcotest.(check bool) "rename snd" true
-            (match result with VAtomTy TBool -> true | _ -> false)
+            (match result with VAtomTy Atom_ty.TBool -> true | _ -> false)
       | _ -> Alcotest.fail "expected inner VLam")
   | _ -> Alcotest.fail "expected VLam"
 
@@ -307,7 +307,7 @@ let test_unify_occurs_check () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [] } in
-  let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy TBool } } in
+  let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TBool } } in
   match unify mc [] 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected occurs check error"
@@ -319,7 +319,7 @@ let test_unify_nonlinear_spine () =
     VRigid { lvl = 2; spine = [] };
     VRigid { lvl = 2; spine = [] }
   ]} in
-  let v2 = VAtomTy TI64 in
+  let v2 = VAtomTy Atom_ty.TI64 in
   match unify mc [] 3 v1 v2 with
   | exception UnifyError NonLinearSpine -> ()
   | exception UnifyError _ -> Alcotest.fail "wrong unify error (expected NonLinearSpine)"
@@ -327,38 +327,38 @@ let test_unify_nonlinear_spine () =
 
 let test_unify_mismatch () =
   let mc = mc () in
-  let v1 = VAtomTy TI64 in
-  let v2 = VAtomTy TBool in
+  let v1 = VAtomTy Atom_ty.TI64 in
+  let v2 = VAtomTy Atom_ty.TBool in
   match unify mc [] 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected unify error"
 
 let test_unify_nominal_params () =
   let mc = mc () in
-  let nom1 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy TI64 ]; constructors = [] } in
-  let nom2 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy TBool ]; constructors = [] } in
+  let nom1 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy Atom_ty.TI64 ]; constructors = [] } in
+  let nom2 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy Atom_ty.TBool ]; constructors = [] } in
   match unify mc [] 0 nom1 nom2 with
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different nominal params"
 
 let test_unify_effect_same_id_same_params () =
   let mc = mc () in
-  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
-  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
   unify mc [] 0 eff1 eff2
 
 let test_unify_effect_same_id_different_params () =
   let mc = mc () in
-  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
-  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy TBool ]; operations = [] } in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TBool ]; operations = [] } in
   match unify mc [] 0 eff1 eff2 with
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different effect params"
 
 let test_unify_effect_different_ids () =
   let mc = mc () in
-  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
-  let eff2 = VEffect { id = 8; name = "Env"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 8; name = "Env"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
   match unify mc [] 0 eff1 eff2 with
   | exception UnifyError (EffectMismatch ("State", "Env")) -> ()
   | exception UnifyError _ -> Alcotest.fail "wrong unify error"
@@ -366,26 +366,26 @@ let test_unify_effect_different_ids () =
 
 let test_conv_effect_same_id_same_params () =
   let mc = mc () in
-  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
-  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
   Alcotest.(check bool) "effect conv" true (conv mc 0 eff1 eff2)
 
 let test_conv_effect_different_ids () =
   let mc = mc () in
-  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
-  let eff2 = VEffect { id = 8; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
+  let eff2 = VEffect { id = 8; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
   Alcotest.(check bool) "effect conv" false (conv mc 0 eff1 eff2)
 
 let effect_row_env () =
   [ VEffect { id = 1; name = "IO"; params = []; operations = [] };
-    VEffect { id = 2; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } ]
+    VEffect { id = 2; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } ]
 
 let effectful_pi effects =
   VPi
     { explicitness = Explicit;
-      domain = VAtomTy TI64;
+      domain = VAtomTy Atom_ty.TI64;
       effects = { env = effect_row_env (); effects; tail = None };
-      codomain = { env = []; body = AtomTy TI64 } }
+      codomain = { env = []; body = AtomTy Atom_ty.TI64 } }
 
 let test_conv_effect_row_order () =
   let mc = mc () in
@@ -415,11 +415,11 @@ let test_debug_effectful_pi () =
 
 let test_debug_effect () =
   let mc = mc () in
-  let text = Debug.pp_value_short mc (VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] }) in
+  let text = Debug.pp_value_short mc (VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] }) in
   Alcotest.(check string) "debug effect" "effect State(I64)" text
 
 let test_eval_unhandled_perform () =
-  let state = VEffect { id = 7; name = "State"; params = [ VAtomTy TI64 ]; operations = [] } in
+  let state = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
   let term = Perform { eff = Var 0; op = "put"; arg = Atom (I64 42L) } in
   match Nbe.eval (mc ()) [ state ] term with
   | exception Nbe.EvalError msg ->
@@ -427,7 +427,7 @@ let test_eval_unhandled_perform () =
   | _ -> Alcotest.fail "expected unhandled perform error"
 
 let test_debug_perform () =
-  let text = Debug.pp_term (Perform { eff = EffectRef ("State", [ AtomTy TI64 ]); op = "get"; arg = Atom Unit }) in
+  let text = Debug.pp_term (Perform { eff = EffectRef ("State", [ AtomTy Atom_ty.TI64 ]); op = "get"; arg = Atom Unit }) in
   if not (String.contains text 'g') then Alcotest.fail ("expected perform debug output, got " ^ text)
 
 let test_eval_handler_ignores_continuation () =

@@ -53,6 +53,7 @@ let rec compile_time_safe (expr : Surface.t) : bool =
   | Surface.ImplDef { args; fields; body; _ } ->
       List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields && compile_time_safe body
   | Surface.Perform _ | Surface.Resume _ | Surface.Match _ -> false
+  | Surface.MacroDef _ | Surface.MacroCall _ -> failwith "MacroDef/MacroCall should not reach elaboration"
 
 and compile_time_safe_struct_binding = function
   | Surface.LetBinding { value; _ } -> compile_time_safe value
@@ -75,7 +76,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
   | Surface.Resume arg -> ops.collect_effects ctx arg
   | Surface.RefNew e | Surface.RefGet e -> ops.collect_effects ctx e
   | Surface.RefSet (r, e) -> union_expr_effects ctx (ops.collect_effects ctx r) (ops.collect_effects ctx e)
-  | Surface.Ap (f, Surface.Explicit, a) ->
+  | Surface.Ap (f, Explicitness.Explicit, a) ->
       let f_core, f_ty = ops.infer ctx f in
       let _f_core, f_ty = insert_implicit_args ctx f_core f_ty in
       let f_ty = Nbe.force ctx.Ctx.metas f_ty in
@@ -94,7 +95,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         | _ -> (empty_expr_effects, Atom Atom.Unit)
       in
       union_many_expr_effects ctx [ ops.collect_effects ctx f; ops.collect_effects ctx a; latent ]
-  | Surface.Ap (f, Surface.Implicit, a) ->
+  | Surface.Ap (f, Explicitness.Implicit, a) ->
       let _f_core, f_ty = ops.infer ctx f in
       let f_ty = Nbe.force ctx.Ctx.metas f_ty in
       let latent, _arg_core =
@@ -148,7 +149,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       require_empty_effects ctx (ops.collect_effects ctx typ);
       ops.collect_effects ctx inner
   | Surface.Prod elems | Surface.ProdTy elems -> union_many_expr_effects ctx (List.map (ops.collect_effects ctx) elems)
-  | Surface.Arrow (Surface.Implicit, Some name, a, row, b) -> (
+  | Surface.Arrow (Explicitness.Implicit, Some name, a, row, b) -> (
       match surface_trait_bound_names a with
       | Some trait_names when List.for_all (fun trait_name -> NameMap.mem trait_name ctx.Ctx.traits) trait_names ->
           let type_ctx = Ctx.bind ctx name VU in
@@ -267,4 +268,5 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       in
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
   | Atom _ | Var _ | Self | SelfType | Import _ -> empty_expr_effects
+  | MacroDef _ | MacroCall _ -> failwith "MacroDef/MacroCall should not reach elaboration"
 

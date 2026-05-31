@@ -62,6 +62,7 @@ let term_mentions_var target term =
     | EffectDef { ops; body; _ } ->
         List.exists (fun (_, input, output) -> go target input || go target output) ops || go target body
     | Perform { eff; arg; _ } -> go target eff || go target arg
+    | Stx _ -> false
     | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ -> false
   in
   go target term
@@ -118,7 +119,7 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
       VNeutral { ty = subst_value_var mc target replacement ty; neutral = subst_neutral_var mc target replacement neutral }
   | VFlex { id; spine } -> VFlex { id; spine = List.map (subst_value_var mc target replacement) spine }
   | VRigid { lvl; spine } -> VRigid { lvl; spine = List.map (subst_value_var mc target replacement) spine }
-  | VLam _ | VFix _ | VCont _ as v -> v
+  | VLam _ | VFix _ | VCont _ | VStx _ as v -> v
   | VU | VEffectRowTy | VAtom _ | VAtomTy _ as v -> v
 
 and subst_closure_var mc target replacement clo =
@@ -254,7 +255,7 @@ let close_recursive_payload_term nominal_name num_params =
                 ops = List.map (fun (op, input, output) -> (op, go cutoff input, go cutoff output)) ops;
                 body = go cutoff body }
         | Perform { eff; op; arg } -> Perform { eff = go cutoff eff; op; arg = go cutoff arg }
-        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ as term -> term)
+        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | Stx _ as term -> term)
   in
   go 0
 

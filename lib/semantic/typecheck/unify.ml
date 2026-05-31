@@ -180,6 +180,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
     | VCont _ -> raise (UnifyError (CannotUnify "cannot quote continuation during unification"))
+    | VStx _ -> raise (UnifyError (CannotUnify "cannot quote syntax value during unification"))
     | VNeutral { neutral = neu; _ } -> go_neutral d neu
   and go_spine (d : lvl) (head : term) (sp : spine) : term =
     List.fold_left (fun acc v -> Ap (acc, Explicit, go d v)) head sp
@@ -288,7 +289,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter (fun f -> match f with
               | FApp v | FRefSet v -> occurs_check v
               | _ -> ()) frames
-        | VU | VEffectRowTy | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ -> ()
+        | VU | VEffectRowTy | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ | VStx _ -> ()
       in
       occurs_check rhs;
       MetaContext.solve mc id rhs)
@@ -320,12 +321,12 @@ let value_form = function
   | VAtomTy atom_ty ->
       "atom type "
       ^ (match atom_ty with
-        | TI64 -> "I64"
-        | TBool -> "Bool"
-        | TUnit -> "Unit"
-        | TChar -> "Char"
-        | TString -> "String"
-        | TAbsurd -> "Absurd")
+        | Atom_ty.TI64 -> "I64"
+        | Atom_ty.TBool -> "Bool"
+        | Atom_ty.TUnit -> "Unit"
+        | Atom_ty.TChar -> "Char"
+        | Atom_ty.TString -> "String"
+        | Atom_ty.TAbsurd -> "Absurd")
   | VPi _ -> "function type"
   | VLam _ -> "lambda"
   | VProd _ -> "tuple value"
@@ -346,6 +347,7 @@ let value_form = function
   | VNeutral _ -> "neutral"
   | VFix _ -> "fixpoint"
   | VCont _ -> "continuation"
+  | VStx _ -> "syntax"
 
 let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : value) : unit =
   let v1 = Nbe.force mc v1 in
@@ -355,7 +357,7 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
   | VEffectRowTy, VEffectRowTy -> ()
   | VEffectRow row1, VEffectRow row2 -> unify_effect_rows mc env depth row1 row2
   | VAtom a1, VAtom a2 when Atom.equal a1 a2 -> ()
-  | VAtomTy t1, VAtomTy t2 when equal_atom_ty t1 t2 -> ()
+  | VAtomTy t1, VAtomTy t2 when Atom_ty.equal t1 t2 -> ()
   | ( VPi { explicitness = e1; domain = a1; effects = effs1; codomain = clo1 },
       VPi { explicitness = e2; domain = a2; effects = effs2; codomain = clo2 } )
     when e1 = e2 ->

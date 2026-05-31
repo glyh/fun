@@ -12,12 +12,12 @@ open Elab_resolve
 let init_ctx () : Ctx.t =
   let ctx = Ctx.empty () in
   let add_type ctx name v = Ctx.define ctx name VU v in
-  let ctx = add_type ctx "I64" (VAtomTy TI64) in
-  let ctx = add_type ctx "Bool" (VAtomTy TBool) in
-  let ctx = add_type ctx "Unit" (VAtomTy TUnit) in
-  let ctx = add_type ctx "Char" (VAtomTy TChar) in
-  let ctx = add_type ctx "String" (VAtomTy TString) in
-  let ctx = add_type ctx "Absurd" (VAtomTy TAbsurd) in
+  let ctx = add_type ctx "I64" (VAtomTy Atom_ty.TI64) in
+  let ctx = add_type ctx "Bool" (VAtomTy Atom_ty.TBool) in
+  let ctx = add_type ctx "Unit" (VAtomTy Atom_ty.TUnit) in
+  let ctx = add_type ctx "Char" (VAtomTy Atom_ty.TChar) in
+  let ctx = add_type ctx "String" (VAtomTy Atom_ty.TString) in
+  let ctx = add_type ctx "Absurd" (VAtomTy Atom_ty.TAbsurd) in
   let ctx = Ctx.define ctx "Type" VU VU in
   let ctx = Ctx.define ctx "EffectRow" VU VEffectRowTy in
   let ref_ty = VPi { explicitness = Explicit; domain = VU; effects = effect_row_closure ctx.env empty_effect_row; codomain = { env = ctx.env; body = U } } in

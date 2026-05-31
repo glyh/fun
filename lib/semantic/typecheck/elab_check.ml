@@ -70,7 +70,7 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       check_match_exhaustive ctx VU (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
   | If { cond; then_; else_ }, _ ->
-      let cond_core = ops.check ctx cond (VAtomTy TBool) in
+      let cond_core = ops.check ctx cond (VAtomTy Atom_ty.TBool) in
       let then_core = ops.check ctx then_ expected in
       let else_core = ops.check ctx else_ expected in
       If (cond_core, then_core, else_core)

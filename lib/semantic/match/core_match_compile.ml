@@ -1,7 +1,7 @@
 open Core
 module DT = Core_decision_tree
 
-type domain = Nominal of (string * int * bool) list | Atom of atom_ty | Type | Product of int | Record of string list | Unknown
+type domain = Nominal of (string * int * bool) list | Atom of Atom_ty.t | Type | Product of int | Record of string list | Unknown
 
 type missing_pat = MWild | MCon of string * missing_pat option
 
@@ -174,7 +174,7 @@ let specialize_switch m key =
         match (r.pats.(0), key) with
         | CPatAtom atom, DT.KAtom atom' when Atom.equal atom atom' ->
             Some { r with pats = rest }
-        | CPatType atom_ty, DT.KType atom_ty' when equal_atom_ty atom_ty atom_ty' ->
+        | CPatType atom_ty, DT.KType atom_ty' when Atom_ty.equal atom_ty atom_ty' ->
             Some { r with pats = rest }
         | CPatNominalHead { id; param_pats; _ }, DT.KNominal id' when id = id' ->
             Some { r with pats = Array.append (Array.of_list param_pats) rest }
@@ -297,10 +297,10 @@ let collect_leaf_bindings m =
   r.bindings @ extra
 
 let all_atoms = function
-  | TBool -> Some [ Atom.Bool true; Bool false ]
-  | TUnit -> Some [ Unit ]
-  | TAbsurd -> Some []
-  | TI64 | TChar | TString -> None
+  | Atom_ty.TBool -> Some [ Atom.Bool true; Bool false ]
+  | Atom_ty.TUnit -> Some [ Unit ]
+  | Atom_ty.TAbsurd -> Some []
+  | Atom_ty.TI64 | Atom_ty.TChar | Atom_ty.TString -> None
 
 let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
   let module DTB = DT.Make () in

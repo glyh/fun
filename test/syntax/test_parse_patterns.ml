@@ -7,7 +7,7 @@ let nominal_type_pattern_app_shape () =
 
 let nominal_type_pattern_complex_arg_shape () =
   match Parse_expand.parse_expr "match T with Option (Option I64 | I64) -> I64 | _ -> Bool end" with
-  | Match (_, [ ValueBranch (PatCon ([], "Option", [ PatOr (PatCon ([], "Option", [ PatType Core.TI64 ]), PatType Core.TI64) ]), _); _ ]) -> ()
+  | Match (_, [ ValueBranch (PatCon ([], "Option", [ PatOr (PatCon ([], "Option", [ PatType Atom_ty.TI64 ]), PatType Atom_ty.TI64) ]), _); _ ]) -> ()
   | _ -> Alcotest.fail "expected complex nominal type pattern argument"
 
 let struct_type_pattern_open_shape () =
@@ -17,7 +17,7 @@ let struct_type_pattern_open_shape () =
 
 let struct_type_pattern_closed_shape () =
   match Parse_expand.parse_expr "match T with struct x: I64; y: Bool end -> I64 | _ -> Bool end" with
-  | Match (_, [ ValueBranch (PatStructType { fields = [ ("x", PatType Core.TI64); ("y", PatType Core.TBool) ]; partial = false }, _); _ ]) -> ()
+  | Match (_, [ ValueBranch (PatStructType { fields = [ ("x", PatType Atom_ty.TI64); ("y", PatType Atom_ty.TBool) ]; partial = false }, _); _ ]) -> ()
   | _ -> Alcotest.fail "expected closed struct type pattern"
 
 let struct_type_pattern_nominal_field_shape () =
