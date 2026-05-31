@@ -353,12 +353,14 @@ Concrete tasks:
 - [x] Add a minimal macro evaluator that cannot run arbitrary runtime refs/effects.
     (Macro bodies are elaborated to `Core.term` and evaluated by NBE, which does not support
     refs or effects in a compile-time context.)
-- [ ] Add macro API primitives:
-   - return syntax (identity case works, but explicit `return-syntax` primitive not yet added);
-   - raise syntax error;
-   - inspect syntax kind;
-   - construct identifiers/literals/groups;
-   - compare identifiers by hygiene-aware operations.
+- [x] Add macro API primitives (6 of 8 implemented):
+   - [x] construct identifiers (`stx_make_var : String -> Stx`);
+   - [x] construct literals (`stx_make_i64`, `stx_make_bool`, `stx_make_string`);
+   - [x] construct groups — application (`stx_make_ap`) and lambda (`stx_make_lam`);
+   - [x] return syntax (the final expression in the macro body is the return value);
+   - [x] raise syntax error (use existing `panic` built-in);
+   - [ ] inspect syntax kind (`stx_kind` primitive);
+   - [ ] compare identifiers by hygiene-aware operations.
 - [x] Support one invocation shape only, `name @ ( expr )`.
 - [x] Expand simple local macro calls in expression position.
 
@@ -398,9 +400,12 @@ Tests added:
 
 - [x] Local macro expands to an atom (identity macro: `macro id = fun stx -> stx in id @ (42)`).
 - [x] Local macro expands to an application (identity over `1 + 2`).
+- [x] stx_make_i64 literal construction.
+- [x] stx_make_ap expression construction (1 + 2 via primitives).
+- [x] stx_make_lam + stx_make_var identity lambda construction.
 - [ ] Macro-generated identifier does not capture user binding.
 - [ ] User identifier does not capture macro-generated binding.
-- [ ] Macro error includes a useful span.
+- [ ] Macro error includes a useful span (already works via `panic`, pending explicit test).
 
 Exit criteria:
 
