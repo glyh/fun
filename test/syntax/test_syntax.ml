@@ -6,5 +6,6 @@ let suites =
   @ Test_scope_sets.suites
   @ Test_expand_compat.suites
   @ Test_macros.suites
+  @ Test_enforest.suites
 
 let () = Alcotest.run "syntax" suites

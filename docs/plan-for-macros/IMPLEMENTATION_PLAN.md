@@ -39,7 +39,7 @@ Completed:
 
 Next phase:
 
-- [ ] Start Stage 7: add enforestation and regular syntax extension on top of the imported macro/module substrate.
+- [x] Start Stage 7: add enforestation and regular syntax extension on top of the imported macro/module substrate.
 
 ## Validation Commands
 
@@ -471,7 +471,7 @@ Exit criteria:
 
 ## Stage 7: Enforestation And Regular Syntax Extension
 
-Status: Not started.
+Status: Started. Phase 7A is implemented for the initial raw-reader and expression-enforestation slice.
 
 Purpose:
 
@@ -480,13 +480,13 @@ Purpose:
 
 Prerequisites:
 
-- [ ] Stage 6 if imported syntax extensions are desired.
-- [ ] Stage 5 is enough for local-only syntax experiments.
+- [x] Stage 6 if imported syntax extensions are desired.
+- [x] Stage 5 is enough for local-only syntax experiments.
 
 Concrete tasks:
 
-- [ ] Add an enforestation pass over token/syntax streams.
-- [ ] Represent syntax classes:
+- [x] Add an enforestation pass over token/syntax streams.
+- [x] Represent syntax classes:
    - expression;
    - type;
    - pattern;
@@ -520,17 +520,17 @@ Suggested files:
 
 Tests to add:
 
-- [ ] Existing operator precedence remains compatible or intentionally changes with migration tests.
-- [ ] Redesigned built-in syntax has parser/enforestation tests.
-- [ ] Old and redesigned syntax coexist where transition compatibility is intentional.
-- [ ] Ruby/Elixir-style block syntax examples either work or are explicitly deferred with rationale.
+- [x] Existing operator precedence remains compatible or intentionally changes with migration tests.
+- [x] Redesigned built-in syntax has parser/enforestation tests.
+- [x] Old and redesigned syntax coexist where transition compatibility is intentional.
+- [x] Ruby/Elixir-style block syntax examples either work or are explicitly deferred with rationale.
 - [ ] Macro-defined prefix form works.
 - [ ] Macro-defined infix operator works.
 - [ ] Syntax extension composes with module/import scoping.
 
 Exit criteria:
 
-- [ ] Initial redesigned syntax slice works through enforestation.
+- [x] Initial redesigned syntax slice works through enforestation.
 - [ ] Menhir is no longer the place new final syntax features are added.
 
 ## Stage 8: Problem-Aware Macros

@@ -59,6 +59,8 @@ During the transition, `Parse_expand.parse_expr` should try the enforestation pa
 
 ## Phase 7A: Raw Reader And Minimal Expression Enforesting
 
+Status: Implemented.
+
 ### Purpose
 
 Create the minimum useful enforestation path without changing existing language behavior.
@@ -364,16 +366,16 @@ Enforestation may create `Syntax.id` values with source spans, but it should not
 4. Route `Parse_expand.parse_expr` through enforestation with Menhir fallback.
 5. Add `do ... end` binding/final-expression support.
 6. Run `dune exec test/syntax/test_syntax.exe` and `dune build`.
-7. Update `IMPLEMENTATION_PLAN.md` Stage 7 status from "Not started" to "Started" only after Phase 7A is committed.
+7. Update `IMPLEMENTATION_PLAN.md` Stage 7 status from "Not started" to "Started" only after Phase 7A is implemented.
 
 ## Phase 7A Acceptance Checklist
 
-- [ ] `test/syntax/test_enforest.ml` exists and is included in `test/syntax/test_syntax.ml`.
-- [ ] `lib/expand/enforest.ml` exists.
-- [ ] `lib/expand/operator_env.ml` exists.
-- [ ] `lib/expand/syntax_class.ml` exists.
-- [ ] `Parse_expand.parse_expr` can parse the Phase 7A redesigned expression slice.
-- [ ] Existing old syntax still parses through the fallback path.
-- [ ] `core_parser.mly` is not extended for Phase 7A syntax.
-- [ ] `dune exec test/syntax/test_syntax.exe` passes.
-- [ ] `dune build` passes.
+- [x] `test/syntax/test_enforest.ml` exists and is included in `test/syntax/test_syntax.ml`.
+- [x] `lib/expand/enforest.ml` exists.
+- [x] `lib/expand/operator_env.ml` exists.
+- [x] `lib/expand/syntax_class.ml` exists.
+- [x] `Parse_expand.parse_expr` can parse the Phase 7A redesigned expression slice.
+- [x] Existing old syntax still parses through the fallback path.
+- [x] `core_parser.mly` is not extended for Phase 7A syntax.
+- [x] `dune exec test/syntax/test_syntax.exe` passes.
+- [x] `dune build` passes.
