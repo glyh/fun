@@ -6,6 +6,7 @@ This directory collects references for a future `fun` macro system. It keeps the
 
 - [`SUMMARY.md`](SUMMARY.md) — synthesized design summary for `fun`: hygienic regular-syntax macros, type-aware/type-providing macros, stuck expansion, phases, and compiler-structure impact.
 - [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — staged implementation path for building the macro system without committing to parser or expansion dead ends.
+- [`STAGE_7_ENFORESTATION_PLAN.md`](STAGE_7_ENFORESTATION_PLAN.md) — concrete implementation plan for Stage 7 enforestation and regular syntax extension.
 
 ## Papers
 
