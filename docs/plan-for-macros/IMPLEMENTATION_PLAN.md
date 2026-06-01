@@ -35,11 +35,11 @@ Completed:
 - [x] Syntax tests are a single Alcotest executable: `dune exec test/syntax/test_syntax.exe`.
 - [x] Stage 4 is complete: expander allocates lexical scopes for all binding forms, resolves shadowed identifiers to stable internal names, and lowers to `Surface.t` without losing identity.
 - [x] Stage 5 is complete: local macro definitions, macro API primitives, hygiene tests, and panic propagation work through NBE integration.
-- [ ] Stage 6 in progress: `pub macro` module/struct bindings parse, compile-time macro bindings are registered during expansion and dropped before elaboration, and the REPL has a provisional imported-macro loading hook.
+- [ ] Stage 6 in progress: `pub macro` module/struct bindings parse, compile-time macro bindings are registered during expansion and dropped before elaboration, and `Core_loader.visit_macros` provides the first compile-time visit path.
 
 Next phase:
 
-- [ ] Finish Stage 6: replace the provisional imported-macro hook with phase-aware module loading/caching, add imported macro tests, and keep compile-time dependencies separate from runtime imports.
+- [ ] Finish Stage 6: replace the provisional compile-time visit path with fully phase-aware module loading/caching and keep compile-time dependencies separate from runtime imports.
 
 ## Validation Commands
 
@@ -432,13 +432,14 @@ Concrete tasks:
 - [x] Add `macro` / `pub macro` as module and struct bindings in `Surface.t`, `Syntax.t`, parser conversion, expansion, and lowering.
 - [x] Register macro bindings during expansion when an elaboration callback is available.
 - [x] Drop macro bindings before elaboration so compile-time-only macros are not exposed as runtime module/struct members.
-- [x] Add a provisional REPL hook that visits imported source files and registers their public macro bindings.
-- [ ] Replace `Core_loader`'s single parsed-module cache with phase-aware states:
-   - parsed module cache;
-   - expanded runtime module cache;
+- [x] Add `Core_loader.visit_macros` as a provisional compile-time visit path for imported public macro bindings.
+- [x] Wire REPL imported macro loading through `Core_loader.visit_macros` instead of an ad-hoc local loader.
+- [x] Add backend regressions for imported macro expansion and compile-time-only non-exposure as runtime fields.
+- [x] Split `Core_loader`'s old single parsed-module cache into raw parsed-module and expanded runtime-module caches.
+- [ ] Finish phase-aware loader states:
    - elaborated runtime module cache;
    - compile-time visited module cache.
-- [ ] Replace the provisional REPL hook with real import modes:
+- [ ] Replace the provisional compile-time visit path with real import modes:
    - runtime import for values/types;
    - compile-time visit for macros;
    - future phase shifts for macros defining macros.
@@ -458,15 +459,15 @@ Suggested files:
 
 Tests to add:
 
-- [ ] Imported macro expands in another file.
-- [ ] Compile-time-only dependency is not exposed as runtime value.
+- [x] Imported macro expands in another file.
+- [x] Compile-time-only macro is not exposed as runtime value.
 - [ ] Runtime circular imports and compile-time circular visits report separately.
 - [ ] Macro-generated imports cannot bypass phase checks.
 
 Exit criteria:
 
-- [ ] Imported macros work.
-- [ ] Runtime imports behave as before.
+- [x] Imported macros work for simple public macro bindings.
+- [x] Runtime imports behave as before.
 - [ ] Phase errors are deterministic.
 
 ## Stage 7: Enforestation And Regular Syntax Extension

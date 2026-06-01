@@ -852,6 +852,28 @@ let eval_with_macros source =
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
+let eval_with_imported_macros modules source =
+  with_modules modules (fun loader ->
+      let elaborate expr =
+        let ctx = Elaborate.init_ctx () in
+        let core, _ty = Elaborate.on_expr ~loader ctx expr in
+        Elaborate.Ctx.eval ctx core
+      in
+      let eval_and_apply fn arg =
+        let mc = MetaContext.create () in
+        Nbe.apply mc fn arg
+      in
+      let expr =
+        Parse_expand.parse_expr
+          ~elaborate
+          ~eval_and_apply
+          ~load_macros:(Core_loader.visit_macros loader)
+          source
+      in
+      let ctx = Elaborate.init_ctx () in
+      let core, _ty = Elaborate.on_expr ~loader ctx expr in
+      Elaborate.Ctx.eval ctx core)
+
 let check_i64_macro label expected source () =
   match eval_with_macros source with
   | VAtom (I64 n) -> Alcotest.(check int64) label expected n
@@ -873,6 +895,29 @@ let test_macro_panic_has_message () =
   | exception EvalError msg ->
       Alcotest.(check bool) "panic message contains 'boom'" true (String.contains msg 'b')
   | _ -> Alcotest.fail "expected panic"
+
+let test_imported_macro_expands () =
+  match
+    eval_with_imported_macros
+      [ ("macros", "pub macro answer = fun _ -> stx_make_i64 42") ]
+      "let M = import \"macros\" in answer @ (0)"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "imported macro" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "imported macro: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "imported macro: %s" (Printexc.to_string e))
+
+let test_imported_macro_not_runtime_field () =
+  match
+    eval_with_imported_macros
+      [ ("macros", "pub macro answer = fun _ -> stx_make_i64 42") ]
+      "let M = import \"macros\" in M.answer"
+  with
+  | exception Elaborate.ElabError _ -> ()
+  | exception Nbe.EvalError _ -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
+  | _ -> Alcotest.fail "expected imported macro to be compile-time only"
 
 let () =
   Alcotest.run "core"
@@ -1329,5 +1374,7 @@ let () =
           Alcotest.test_case "hygiene: macro binder does not capture user" `Quick test_macro_hygiene_no_capture_user;
           Alcotest.test_case "hygiene: user binder does not capture macro" `Quick test_macro_hygiene_user_no_capture_macro;
           Alcotest.test_case "panic message propagates" `Quick test_macro_panic_has_message;
+          Alcotest.test_case "imported macro expands" `Quick test_imported_macro_expands;
+          Alcotest.test_case "imported macro not runtime field" `Quick test_imported_macro_not_runtime_field;
         ] );
     ]
