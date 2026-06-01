@@ -265,6 +265,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let rec go ctx (acc_binds, acc_entries) = function
         | [] -> (ctx, List.rev acc_binds, List.rev acc_entries)
         | Surface.MethodBinding _ :: _ -> failwith "module binding cannot be method"
+        | Surface.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Surface.LetBinding { name; value; public } :: rest ->
             let value_ctx = Ctx.clear_self_scope ctx in
             let val_core, val_ty = ops.infer value_ctx value in
@@ -433,6 +434,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       in
       let rec go ctx (acc_binds, acc_entries) = function
         | [] -> (List.rev acc_binds, List.rev acc_entries)
+        | Surface.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Surface.LetBinding { name; value; public } :: rest ->
             let value_ctx = Ctx.clear_self ctx in
             let val_core, val_ty = ops.infer value_ctx value in

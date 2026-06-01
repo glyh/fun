@@ -8,6 +8,7 @@ type t = {
   mutable macro_table : (string, Core.value) Hashtbl.t;
   mutable elaborate : (Surface.t -> Core.value) option;
   mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
+  mutable load_macros : (t -> string -> unit) option;
   loader : unit option;
 }
 
@@ -19,6 +20,7 @@ let create ?loader () =
     macro_table = Hashtbl.create 8;
     elaborate = None;
     eval_and_apply = None;
+    load_macros = None;
     loader }
 
 let fresh_scope (ctx : t) : int =
@@ -72,6 +74,7 @@ let copy (ctx : t) : t =
     macro_table = Hashtbl.copy ctx.macro_table;
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
+    load_macros = ctx.load_macros;
     loader = ctx.loader }
 
 let register_macro (ctx : t) ~name ~value =

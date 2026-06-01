@@ -49,6 +49,7 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
+  | MacroBinding of { name : id; value : t; public : bool }
 
 and t = {
   kind : kind;

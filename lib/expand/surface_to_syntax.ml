@@ -91,6 +91,8 @@ and struct_binding = function
   | Surface.ImplBinding { trait_path; trait_name; args; fields; public } ->
     Syntax.ImplBinding { trait_path; trait_name; args = List.map expr args;
                          fields = List.map (fun (name, value) -> (name, expr value)) fields; public }
+  | Surface.MacroBinding { name; value; public } ->
+    Syntax.MacroBinding { name = id name; value = expr value; public }
 
 and match_branch = function
   | Surface.ValueBranch (pat, body) -> Syntax.ValueBranch (pat_ pat, expr body)

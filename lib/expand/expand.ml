@@ -106,6 +106,8 @@ and go_struct_binding (s : Scope_set.t) (binding : Syntax.struct_binding) : Synt
   | ImplBinding { trait_path; trait_name; args; fields; public } ->
     ImplBinding { trait_path; trait_name; args = List.map (add_scope s) args;
                   fields = List.map (fun (n, e) -> (n, add_scope s e)) fields; public }
+  | MacroBinding { name; value; public } ->
+    MacroBinding { name = add_id_scope s name; value = add_scope s value; public }
 
 and go_match_branch s = function
   | ValueBranch (p, body) -> ValueBranch (go_pat s p, add_scope s body)
@@ -166,7 +168,10 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | Some info -> { stx with kind = Var { id with name = info.resolved_name } }
     | None -> stx
     end
-  | Atom _ | Self | SelfType | Import _ -> stx
+  | Atom _ | Self | SelfType -> stx
+  | Import path ->
+    Option.iter (fun f -> f ctx path) ctx.Expand_ctx.load_macros;
+    stx
   | Lam (param, body) ->
     let pname = param_name param in
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~name:pname ~base_scope:param.name.scope in
@@ -291,7 +296,11 @@ and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
     | binding :: rest ->
       let binding = add_struct_binding_scopes active_scopes binding in
       let binding, introduced_scopes = expand_struct_binding ctx binding in
-      go (active_scopes @ introduced_scopes) (binding :: acc) rest
+      let acc = match binding with
+        | Syntax.MacroBinding _ -> acc
+        | _ -> binding :: acc
+      in
+      go (active_scopes @ introduced_scopes) acc rest
   in
   go [] [] bindings
 
@@ -361,6 +370,19 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     (ImplBinding { trait_path; trait_name; args = List.map (expand ctx) args;
                    fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public },
      [])
+  | MacroBinding { name; value; public } ->
+    begin match ctx.Expand_ctx.elaborate with
+    | Some elab ->
+      let lowered = Lower_surface.lower_expr value in
+      let macro_fn = elab lowered in
+      let binding_name = id_name name in
+      let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+      Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
+      (MacroBinding { name = add_id_scope scope name; value = expand ctx value; public },
+       [ scope ])
+    | None ->
+      (MacroBinding { name; value = expand ctx value; public }, [])
+    end
 
 and expand_match_branch ctx = function
   | ValueBranch (p, body) ->

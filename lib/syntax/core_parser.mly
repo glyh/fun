@@ -208,6 +208,8 @@ let_rhs:
   | value = expr { `Value value }
 
 module_binding:
+  | PUB; MACRO; name = ID; EQUALS; value = expr
+    { MacroBinding { name; value; public = true } }
   | PUB; LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs
     { match rhs with
       | `Value value -> LetBinding { name; value = annotated_binding value ty; public = true }
@@ -232,6 +234,8 @@ module_binding:
   | LET; name = ID; params = nonempty_list(ID); EQUALS; EFFECT;
     ops = separated_nonempty_list(SEMI, effect_op_decl); END
     { EffectBinding { name; params; ops; public = false } }
+  | MACRO; name = ID; EQUALS; value = expr
+    { MacroBinding { name; value; public = false } }
   | TRAIT; name = ID; params = list(ID); EQUALS; STRUCT;
     fields = separated_list(SEMI, trait_field_decl); END
     { TraitBinding { name; params; fields; public = false } }
@@ -252,6 +256,8 @@ module_binding:
     { TypeBinding { name; params; ctors; public = false } }
 
 struct_binding:
+  | PUB; MACRO; name = ID; EQUALS; value = expr
+    { MacroBinding { name; value; public = true } }
   | PUB; LET; name = binding_name; ty = option(preceded(COLON, expr)); EQUALS; rhs = let_rhs
     { match rhs with
       | `Value value -> LetBinding { name; value = annotated_binding value ty; public = true }
@@ -282,6 +288,8 @@ struct_binding:
   | IMPL; trait_name = dotted_id; args = list(type_atom); EQUALS; STRUCT;
     fields = separated_list(SEMI, impl_field_decl); END
     { let trait_path, trait_name = trait_name in ImplBinding { trait_path; trait_name; args; fields; public = false } }
+  | MACRO; name = ID; EQUALS; value = expr
+    { MacroBinding { name; value; public = false } }
   | PUB; METHOD; name = ID; params = list(param); ARROW; body = expr
     { MethodBinding { name; params; body; public = true } }
   | METHOD; name = ID; params = list(param); ARROW; body = expr

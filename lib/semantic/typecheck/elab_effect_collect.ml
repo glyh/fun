@@ -66,6 +66,7 @@ and compile_time_safe_struct_binding = function
   | Surface.TraitBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
   | Surface.ImplBinding { args; fields; _ } ->
       List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields
+  | Surface.MacroBinding _ -> true
 
 let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
   match expr with
@@ -269,4 +270,3 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
   | Atom _ | Var _ | Self | SelfType | Import _ -> empty_expr_effects
   | MacroDef _ | MacroCall _ -> failwith "MacroDef/MacroCall should not reach elaboration"
-

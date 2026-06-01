@@ -34,11 +34,12 @@ Completed:
 - [x] The old direct `Core_lexer.parse_expr` / `Core_lexer.parse_module` pipeline was removed.
 - [x] Syntax tests are a single Alcotest executable: `dune exec test/syntax/test_syntax.exe`.
 - [x] Stage 4 is complete: expander allocates lexical scopes for all binding forms, resolves shadowed identifiers to stable internal names, and lowers to `Surface.t` without losing identity.
-- [ ] Stage 5 in progress: local macro definitions work (identity macros via NBE integration); macro API primitives and hygiene tests pending.
+- [x] Stage 5 is complete: local macro definitions, macro API primitives, hygiene tests, and panic propagation work through NBE integration.
+- [ ] Stage 6 in progress: `pub macro` module/struct bindings parse, compile-time macro bindings are registered during expansion and dropped before elaboration, and the REPL has a provisional imported-macro loading hook.
 
 Next phase:
 
-- [ ] Finish Stage 5: add macro API primitives (syntax inspection, identifier construction, error reporting) and hygiene regression tests.
+- [ ] Finish Stage 6: replace the provisional imported-macro hook with phase-aware module loading/caching, add imported macro tests, and keep compile-time dependencies separate from runtime imports.
 
 ## Validation Commands
 
@@ -326,7 +327,7 @@ Exit criteria:
 
 ## Stage 5: Minimal Local Macro Definitions
 
-Status: In progress.
+Status: Done for local expression macros.
 
 Purpose:
 
@@ -416,7 +417,7 @@ Exit criteria:
 
 ## Stage 6: Phase-Aware Module Loading
 
-Status: Not started.
+Status: In progress.
 
 Purpose:
 
@@ -424,16 +425,20 @@ Purpose:
 
 Prerequisites:
 
-- [ ] Stage 5 local macros work.
+- [x] Stage 5 local macros work.
 
 Concrete tasks:
 
+- [x] Add `macro` / `pub macro` as module and struct bindings in `Surface.t`, `Syntax.t`, parser conversion, expansion, and lowering.
+- [x] Register macro bindings during expansion when an elaboration callback is available.
+- [x] Drop macro bindings before elaboration so compile-time-only macros are not exposed as runtime module/struct members.
+- [x] Add a provisional REPL hook that visits imported source files and registers their public macro bindings.
 - [ ] Replace `Core_loader`'s single parsed-module cache with phase-aware states:
    - parsed module cache;
    - expanded runtime module cache;
    - elaborated runtime module cache;
    - compile-time visited module cache.
-- [ ] Add import modes:
+- [ ] Replace the provisional REPL hook with real import modes:
    - runtime import for values/types;
    - compile-time visit for macros;
    - future phase shifts for macros defining macros.

@@ -44,6 +44,7 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
+  | MacroBinding of { name : string; value : t; public : bool }
 
 and t =
   | Atom of Atom.t
