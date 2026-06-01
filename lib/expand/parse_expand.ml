@@ -21,4 +21,7 @@ let parse_expr ?elaborate ?eval_and_apply ?load_macros source =
     parse_with Core_parser.expr_eof source |> expand_lower ?elaborate ?eval_and_apply ?load_macros
 
 let parse_module ?elaborate ?eval_and_apply ?load_macros source =
-  parse_with Core_parser.module_eof source |> expand_lower ?elaborate ?eval_and_apply ?load_macros
+  try
+    Enforest.parse_module source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros
+  with Enforest.Unsupported _ ->
+    parse_with Core_parser.module_eof source |> expand_lower ?elaborate ?eval_and_apply ?load_macros

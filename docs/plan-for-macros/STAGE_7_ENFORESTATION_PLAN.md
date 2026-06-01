@@ -195,6 +195,8 @@ fn () -> 1
 
 ## Phase 7C: Declarations And Modules
 
+Status: Implemented for the initial declaration/module parsing slice. Full Honu-style two-pass binding discovery is still deferred until user-visible syntax-extension bindings need it.
+
 ### Purpose
 
 Introduce declaration/module-item syntax classes so top-level and block parsing can discover bindings before parsing all nested bodies.
@@ -203,14 +205,14 @@ Introduce declaration/module-item syntax classes so top-level and block parsing 
 
 Support redesigned declaration forms:
 
-- `x = expr`;
-- `x : Type = expr`;
-- `rec x = expr`;
-- `fn f(params) ...` sugar;
-- `pub` modifiers at top-level/module/struct positions;
-- `macro name(params) ...` as syntax for existing macro values, if compatible;
-- `module name? do ... end`;
-- `struct do ... end` with field declarations and bindings.
+- [x] `x = expr`;
+- [x] `x : Type = expr`;
+- [x] `rec fn f(params) ...` in expression `do` blocks;
+- [x] `fn f(params) ...` sugar;
+- [x] `pub` modifiers at top-level/module/struct positions;
+- [x] `macro name = expr` as the current macro-binding syntax in redesigned modules;
+- [x] `module name? do ... end`;
+- [x] `struct do ... end` with field declarations and bindings.
 
 The important architectural point is two-pass scope handling:
 
@@ -218,6 +220,8 @@ The important architectural point is two-pass scope handling:
 - pass 2 enforests nested bodies using the completed scope for that block.
 
 This mirrors the Honu parse1/parse2 split and prevents order-sensitive macro behavior inside blocks.
+
+The implemented 7C slice parses declarations into `Syntax.t` and still leaves authoritative binding-scope introduction to `Expand.expand`, matching the Stage 7 hygiene boundary. A full pre-enforestation parse1/parse2-style binding discovery pass remains a follow-up for Stage 7E/user-visible syntax extensions, where syntax-extension bindings must affect later enforestation.
 
 ### Files
 
@@ -229,17 +233,17 @@ This mirrors the Honu parse1/parse2 split and prevents order-sensitive macro beh
 
 ### Tests
 
-- top-level `pub x = 1` in `parse_module`;
-- `do x = 1; x end`;
-- `rec fn fact(n : I64) ...` after the expression subset can express the body;
-- module member visibility matches existing `Module`/`Struct` lowering;
-- macro declarations are not exposed as runtime fields.
+- [x] top-level `pub x = 1` in `parse_module`;
+- [x] `do x = 1; x end`;
+- [x] `rec fn fact(n : I64) ...` after the expression subset can express the body;
+- [x] module member visibility matches existing `Module`/`Struct` lowering;
+- [x] macro declarations are not exposed as runtime fields.
 
 ### Exit Criteria
 
-- `parse_module` can parse a small redesigned module body through enforestation.
-- Binding scopes are still introduced by `Expand.expand`; enforestation should not replace hygiene.
-- Old module files keep parsing through Menhir compatibility.
+- [x] `parse_module` can parse a small redesigned module body through enforestation.
+- [x] Binding scopes are still introduced by `Expand.expand`; enforestation should not replace hygiene.
+- [x] Old module files keep parsing through Menhir compatibility.
 
 ## Phase 7D: Type And Pattern Syntax Classes
 

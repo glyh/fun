@@ -1,6 +1,13 @@
 exception Unsupported of string
 exception Error of string
 
+type value_decl = {
+  decl_name : Syntax.id;
+  decl_type : Syntax.t option;
+  decl_value : Syntax.t;
+  decl_recursive : bool;
+}
+
 let unsupported msg = raise (Unsupported msg)
 let error msg = raise (Error msg)
 
@@ -148,6 +155,11 @@ let collect_until_end start_span terms =
     | term :: rest -> go depth (term :: acc) rest
   in
   go 0 [] terms
+
+let ensure_no_rest what rest =
+  match drop_separators rest with
+  | [] -> ()
+  | _ -> error (what ^ " has trailing terms")
 
 let rec parse_args terms =
   match split_commas terms with
@@ -359,6 +371,22 @@ and parse_import start_span terms =
       (stx ~span:(span_between start_span span) (Syntax.Import path), rest)
   | _ -> error "import requires a string path"
 
+and parse_module_expr start_span terms =
+  match drop_separators terms with
+  | do_kw :: body_rest when token_kind KwDo do_kw ->
+      let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+      let bindings = parse_module_bindings body_terms in
+      (stx ~span:(span_between start_span span) (Syntax.Module { bindings }), rest)
+  | _ -> unsupported "old module syntax is handled by the compatibility parser"
+
+and parse_struct_expr start_span terms =
+  match drop_separators terms with
+  | do_kw :: body_rest when token_kind KwDo do_kw ->
+      let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+      let con_fields, bindings = parse_struct_items body_terms in
+      (stx ~span:(span_between start_span span) (Syntax.Struct { con_fields; bindings }), rest)
+  | _ -> unsupported "old struct syntax is handled by the compatibility parser"
+
 and parse_primary terms =
   match drop_separators terms with
   | [] -> error "expected expression"
@@ -381,6 +409,8 @@ and parse_primary terms =
       | Token { kind = KwDeref; _ } -> parse_deref term.span rest
       | Token { kind = KwResume; _ } -> parse_resume term.span rest
       | Token { kind = KwImport; _ } -> parse_import term.span rest
+      | Token { kind = KwModule; _ } -> parse_module_expr term.span rest
+      | Token { kind = KwStruct; _ } -> parse_struct_expr term.span rest
       | Token { kind = Ident name; _ } -> (
           match Operator_env.find_prefix name with
           | Some op ->
@@ -469,24 +499,51 @@ and collect_do_body start_span terms =
   go 0 [] terms
 
 and split_statements terms =
-  split_commas terms
-  |> List.concat_map (fun comma_part ->
-         let rec go current acc = function
-           | [] -> List.rev (List.rev current :: acc)
-           | term :: rest when is_separator term -> go [] (List.rev current :: acc) rest
-           | term :: rest -> go (term :: current) acc rest
-         in
-         go [] [] comma_part)
+  let is_statement_separator depth term =
+    depth = 0 && (is_separator term || token_kind Comma term)
+  in
+  let rec go depth current acc = function
+    | [] -> List.rev (List.rev current :: acc)
+    | term :: rest when is_statement_separator depth term -> go depth [] (List.rev current :: acc) rest
+    | term :: rest when token_kind KwDo term -> go (depth + 1) (term :: current) acc rest
+    | term :: rest when token_kind KwEnd term && depth > 0 -> go (depth - 1) (term :: current) acc rest
+    | term :: rest -> go depth (term :: current) acc rest
+  in
+  go 0 [] [] terms
   |> List.filter (fun stmt -> not (List.for_all is_separator stmt || stmt = []))
 
 and parse_binding_statement stmt =
+  match parse_value_decl_statement stmt with
+  | Some decl -> Some decl
+  | None -> None
+
+and parse_value_decl_statement stmt =
   match stmt with
   | [ { datum = Token { kind = Ident name; _ }; span = name_span }; eq ] when token_kind Equals eq ->
       error ("missing value for binding: " ^ name ^ " at " ^ Format.asprintf "%a" Source_span.pp name_span)
-  | { datum = Token { kind = Ident name; _ }; span = name_span } :: eq :: value_terms
-    when token_kind Equals eq ->
-      let value = parse_all (fun ts -> parse_expr_prec 0 ts) value_terms in
-      Some (id ~span:name_span name, value)
+  | { datum = Token { kind = KwRec; _ }; _ } :: rest -> parse_value_decl_after_prefix ~recursive:true rest
+  | rest -> parse_value_decl_after_prefix ~recursive:false rest
+
+and parse_value_decl_after_prefix ~recursive stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwFn; _ }; span = fn_span }
+    :: { datum = Token { kind = Ident name; _ }; span = name_span }
+       :: rest ->
+      let value, rest = parse_fn fn_span rest in
+      ensure_no_rest "function declaration" rest;
+      Some { decl_name = id ~span:name_span name; decl_type = None; decl_value = value; decl_recursive = recursive }
+  | { datum = Token { kind = Ident name; _ }; span = name_span } :: rest -> (
+      match split_at_token Equals rest with
+      | Some (before_eq, _, value_terms) ->
+          let decl_type =
+            match drop_separators before_eq with
+            | [] -> None
+            | colon :: typ_terms when token_kind Colon colon -> Some (parse_type_terms typ_terms)
+            | _ -> unsupported "unsupported declaration shape"
+          in
+          let decl_value = parse_all (fun ts -> parse_expr_prec 0 ts) value_terms in
+          Some { decl_name = id ~span:name_span name; decl_type; decl_value; decl_recursive = recursive }
+      | None -> None)
   | _ -> None
 
 and parse_open_statement stmt =
@@ -505,9 +562,9 @@ and parse_do_body_terms span body_terms =
       List.fold_right
         (fun stmt acc ->
           match parse_binding_statement stmt with
-          | Some (name, value) ->
+          | Some { decl_name = name; decl_type = type_; decl_value = value; decl_recursive = recursive } ->
               stx ~span
-                (Syntax.Let { name; type_ = None; value; body = acc; recursive = false })
+                (Syntax.Let { name; type_; value; body = acc; recursive })
           | None -> (
               match parse_open_statement stmt with
               | Some name -> stx ~span (Syntax.Open (name, acc))
@@ -520,8 +577,116 @@ and parse_do start_span terms =
   let body_terms, rest, span = collect_do_body start_span terms in
   (parse_do_body_terms span body_terms, rest)
 
+and parse_public_prefix stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwPub; _ }; _ } :: rest -> (true, rest)
+  | rest -> (false, rest)
+
+and parse_macro_binding public stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwMacro; _ }; _ }
+    :: { datum = Token { kind = Ident name; _ }; span = name_span }
+       :: eq :: value_terms
+    when token_kind Equals eq ->
+      let value = parse_all (fun ts -> parse_expr_prec 0 ts) value_terms in
+      Some (Syntax.MacroBinding { name = id ~span:name_span name; value; public })
+  | _ -> None
+
+and parse_named_module_binding public stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwModule; _ }; span = module_span }
+    :: { datum = Token { kind = Ident name; _ }; span = name_span }
+       :: do_kw :: body_rest
+    when token_kind KwDo do_kw ->
+      let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+      ensure_no_rest "module declaration" rest;
+      let bindings = parse_module_bindings body_terms in
+      let value = stx ~span:(span_between module_span span) (Syntax.Module { bindings }) in
+      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public })
+  | _ -> None
+
+and parse_module_binding stmt =
+  let public, stmt = parse_public_prefix stmt in
+  match parse_macro_binding public stmt with
+  | Some binding -> binding
+  | None -> (
+      match parse_named_module_binding public stmt with
+      | Some binding -> binding
+      | None -> (
+          match parse_value_decl_statement stmt with
+          | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
+              if decl_recursive then error "recursive module bindings are not supported in Phase 7C modules";
+              let value =
+                match decl_type with
+                | Some typ -> stx ~span:(syntax_span stmt) (Syntax.Annotated { inner = decl_value; typ })
+                | None -> decl_value
+              in
+              Syntax.LetBinding { name; value; public }
+          | None -> unsupported "unsupported Phase 7C module item"))
+
+and parse_module_bindings body_terms =
+  split_statements body_terms |> List.map parse_module_binding
+
+and parse_struct_field stmt =
+  match drop_separators stmt with
+  | [ { datum = Token { kind = Ident name; _ }; _ }; colon ] when token_kind Colon colon ->
+      error ("missing type for struct field: " ^ name)
+  | { datum = Token { kind = Ident name; _ }; _ } :: colon :: typ_terms when token_kind Colon colon ->
+      if List.exists (token_kind Equals) typ_terms then None else Some (name, parse_type_terms typ_terms)
+  | _ -> None
+
+and parse_named_struct_binding public stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwStruct; _ }; span = struct_span }
+    :: { datum = Token { kind = Ident name; _ }; span = name_span }
+       :: do_kw :: body_rest
+    when token_kind KwDo do_kw ->
+      let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+      ensure_no_rest "struct declaration" rest;
+      let con_fields, bindings = parse_struct_items body_terms in
+      let value = stx ~span:(span_between struct_span span) (Syntax.Struct { con_fields; bindings }) in
+      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public })
+  | _ -> None
+
+and parse_struct_binding stmt =
+  let public, stmt = parse_public_prefix stmt in
+  match parse_macro_binding public stmt with
+  | Some binding -> binding
+  | None -> (
+      match parse_named_module_binding public stmt with
+      | Some binding -> binding
+      | None -> (
+          match parse_named_struct_binding public stmt with
+          | Some binding -> binding
+          | None -> (
+              match parse_value_decl_statement stmt with
+              | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
+                  if decl_recursive then error "recursive struct bindings are not supported in Phase 7C structs";
+                  let value =
+                    match decl_type with
+                    | Some typ -> stx ~span:(syntax_span stmt) (Syntax.Annotated { inner = decl_value; typ })
+                    | None -> decl_value
+                  in
+                  Syntax.LetBinding { name; value; public }
+              | None -> unsupported "unsupported Phase 7C struct item")))
+
+and parse_struct_items body_terms =
+  split_statements body_terms
+  |> List.fold_left
+       (fun (fields, bindings) stmt ->
+         match parse_struct_field stmt with
+         | Some field -> (fields @ [ field ], bindings)
+         | None -> (fields, bindings @ [ parse_struct_binding stmt ]))
+       ([], [])
+
 let parse_terms terms = parse_all (fun ts -> parse_expr_prec 0 ts) terms
 
 let parse_expr ?file source =
   try Raw_syntax.read ?file source |> parse_terms with
   | Raw_syntax.Error msg -> error msg
+
+let parse_module ?file source =
+  try
+    let bindings = Raw_syntax.read ?file source |> parse_module_bindings in
+    stx (Syntax.Module { bindings })
+  with Raw_syntax.Error msg -> error msg

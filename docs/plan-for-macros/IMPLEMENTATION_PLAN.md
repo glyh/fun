@@ -471,7 +471,7 @@ Exit criteria:
 
 ## Stage 7: Enforestation And Regular Syntax Extension
 
-Status: Started. Phases 7A and 7B are implemented for the initial raw-reader, expression-enforestation slice, and built-in prefix forms.
+Status: Started. Phases 7A, 7B, and the initial 7C declaration/module parsing slice are implemented.
 
 Purpose:
 
@@ -499,6 +499,14 @@ Concrete tasks:
    - `ref(expr)`, `deref(expr)`, `resume(expr)`, and `resume()`;
    - `import "path"`;
    - `open M` statements inside `do` blocks.
+- [x] Add redesigned declaration/module-item parsing through enforestation:
+   - top-level `parse_module` support for `pub x = expr`, `x : Type = expr`, `fn f(params) ...`, `macro name = expr`, and named `module M do ... end`;
+   - expression `do` support for typed declarations and recursive function declarations;
+   - expression `module do ... end` and `struct do ... end` support;
+   - old module syntax remains accepted by Menhir fallback.
+- [ ] Generalize Stage 7C into a full Honu-style two-pass declaration pass before user-visible syntax-extension bindings:
+   - pass 1 detects all binding names and syntax-extension bindings in a block/module;
+   - pass 2 enforests nested bodies with the completed scope.
 - [ ] Represent operator declarations:
    - fixity;
    - precedence;
@@ -532,6 +540,7 @@ Tests to add:
 - [x] Old and redesigned syntax coexist where transition compatibility is intentional.
 - [x] Ruby/Elixir-style block syntax examples either work or are explicitly deferred with rationale.
 - [x] Built-in prefix forms parse through enforestation without Menhir grammar growth.
+- [x] Initial redesigned declaration/module syntax has parser/enforestation tests.
 - [ ] Macro-defined prefix form works.
 - [ ] Macro-defined infix operator works.
 - [ ] Syntax extension composes with module/import scoping.

@@ -1,6 +1,7 @@
 open Surface
 
 let parse = Parse_expand.parse_expr
+let parse_module = Parse_expand.parse_module
 
 let raw_grouping () =
   match Raw_syntax.read "(a, [b], {c})" with
@@ -179,6 +180,84 @@ let open_in_do_block () =
   | Open ("M", Var "x") -> ()
   | _ -> Alcotest.fail "expected open statement in do block"
 
+let module_pub_value_decl () =
+  match parse_module "pub x = 1" with
+  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
+  | _ -> Alcotest.fail "expected redesigned public module value"
+
+let module_typed_value_decl () =
+  match parse_module "x : I64 = 1" with
+  | Module
+      {
+        bindings =
+          [ LetBinding
+              {
+                name = "x";
+                value = Annotated { inner = Atom (Atom.I64 1L); typ = Var "I64" };
+                public = false;
+              } ];
+      } ->
+      ()
+  | _ -> Alcotest.fail "expected typed module value to lower to annotated binding"
+
+let do_typed_and_recursive_decls () =
+  match parse "do
+  x : I64 = 1
+  rec fn id(n : I64) -> n
+  id(x)
+end" with
+  | Let
+      {
+        name = "x";
+        type_ = Some (Var "I64");
+        value = Atom (Atom.I64 1L);
+        body = Let { name = "id"; recursive = true; value = Lam ({ name = "n"; _ }, Var "n"); body = Ap (Var "id", Explicit, Var "x"); _ };
+        _;
+      } ->
+      ()
+  | _ -> Alcotest.fail "expected typed and recursive declarations in do block"
+
+let module_fn_sugar () =
+  match parse_module "pub fn id(x : I64) -> x" with
+  | Module { bindings = [ LetBinding { name = "id"; value = Lam ({ name = "x"; type_ = Some (Var "I64"); _ }, Var "x"); public = true } ] } -> ()
+  | _ -> Alcotest.fail "expected module fn sugar to lower to lambda binding"
+
+let named_module_decl () =
+  match parse_module "pub module M do
+  pub x = 1
+end" with
+  | Module
+      {
+        bindings =
+          [ LetBinding
+              {
+                name = "M";
+                public = true;
+                value = Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] };
+              } ];
+      } ->
+      ()
+  | _ -> Alcotest.fail "expected named module declaration"
+
+let struct_do_expr () =
+  match parse "struct do
+  x : I64
+  pub y = 2
+end" with
+  | Struct { con_fields = [ ("x", Var "I64") ]; bindings = [ LetBinding { name = "y"; value = Atom (Atom.I64 2L); public = true } ] } -> ()
+  | _ -> Alcotest.fail "expected redesigned struct expression"
+
+let module_old_syntax_fallback () =
+  match parse_module "pub let x = 1" with
+  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
+  | _ -> Alcotest.fail "expected old module syntax to keep parsing through fallback"
+
+let module_macro_not_runtime_field () =
+  match parse_module "macro id = fn (stx : Stx) -> stx
+pub x = 1" with
+  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
+  | _ -> Alcotest.fail "expected macro declaration to be dropped from runtime module bindings"
+
 let suites =
   [ ( "enforest",
       [ Alcotest.test_case "raw grouping" `Quick raw_grouping;
@@ -207,5 +286,13 @@ let suites =
         Alcotest.test_case "resume unit call" `Quick resume_unit_call;
         Alcotest.test_case "import shape" `Quick import_shape;
         Alcotest.test_case "open in do block" `Quick open_in_do_block;
+        Alcotest.test_case "module pub value decl" `Quick module_pub_value_decl;
+        Alcotest.test_case "module typed value decl" `Quick module_typed_value_decl;
+        Alcotest.test_case "do typed and recursive decls" `Quick do_typed_and_recursive_decls;
+        Alcotest.test_case "module fn sugar" `Quick module_fn_sugar;
+        Alcotest.test_case "named module decl" `Quick named_module_decl;
+        Alcotest.test_case "struct do expr" `Quick struct_do_expr;
+        Alcotest.test_case "module old syntax fallback" `Quick module_old_syntax_fallback;
+        Alcotest.test_case "module macro not runtime field" `Quick module_macro_not_runtime_field;
       ] );
   ]
