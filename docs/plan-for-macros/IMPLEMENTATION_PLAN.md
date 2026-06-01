@@ -18,7 +18,7 @@ The safe path is incremental:
 1. [x] Build the syntax/hygiene substrate.
 2. [x] Route all existing programs through the expansion boundary without behavior changes.
 3. [x] Add minimal user macros only after the boundary is stable.
-4. [ ] Add phase-aware imports before imported macros.
+4. [x] Add phase-aware imports before imported macros.
 5. [ ] Add enforestation before general syntax extension.
 6. [ ] Add type-aware and stuck macros after basic expansion is proven deterministic.
 
@@ -35,11 +35,11 @@ Completed:
 - [x] Syntax tests are a single Alcotest executable: `dune exec test/syntax/test_syntax.exe`.
 - [x] Stage 4 is complete: expander allocates lexical scopes for all binding forms, resolves shadowed identifiers to stable internal names, and lowers to `Surface.t` without losing identity.
 - [x] Stage 5 is complete: local macro definitions, macro API primitives, hygiene tests, and panic propagation work through NBE integration.
-- [ ] Stage 6 in progress: `pub macro` module/struct bindings parse, compile-time macro bindings are registered during expansion and dropped before elaboration, and `Core_loader.visit_macros` provides the first compile-time visit path.
+- [x] Stage 6 is complete for imported expression macros: runtime imports and compile-time macro visits use separate loader states/caches, imported public macros expand, and macro-generated imports go through phase checks.
 
 Next phase:
 
-- [ ] Finish Stage 6: replace the provisional compile-time visit path with fully phase-aware module loading/caching and keep compile-time dependencies separate from runtime imports.
+- [ ] Start Stage 7: add enforestation and regular syntax extension on top of the imported macro/module substrate.
 
 ## Validation Commands
 
@@ -417,7 +417,7 @@ Exit criteria:
 
 ## Stage 6: Phase-Aware Module Loading
 
-Status: In progress.
+Status: Done for imported expression macros.
 
 Purpose:
 
@@ -436,19 +436,18 @@ Concrete tasks:
 - [x] Wire REPL imported macro loading through `Core_loader.visit_macros` instead of an ad-hoc local loader.
 - [x] Add backend regressions for imported macro expansion and compile-time-only non-exposure as runtime fields.
 - [x] Split `Core_loader`'s old single parsed-module cache into raw parsed-module and expanded runtime-module caches.
-- [ ] Finish phase-aware loader states:
-   - elaborated runtime module cache;
-   - compile-time visited module cache.
-- [ ] Replace the provisional compile-time visit path with real import modes:
+- [x] Add a compile-time visited macro cache for public imported macro values.
+- [x] Add an elaborated runtime module cache for imported module core/type/value triples.
+- [x] Replace the provisional compile-time visit path with phase-indexed import modes:
    - runtime import for values/types;
    - compile-time visit for macros;
-   - future phase shifts for macros defining macros.
-- [ ] Annotate exported members by phase:
+   - future phase shifts for macros defining macros are deferred until nested macro phases are implemented.
+- [x] Annotate exported members by phase:
    - runtime value/type/effect/trait/impl;
    - compile-time macro;
-   - both only if explicitly supported.
-- [ ] Make circular import detection phase-indexed.
-- [ ] Ensure macro-generated imports still go through phase checks.
+   - both only if explicitly supported by adding both a runtime binding and a macro binding.
+- [x] Make circular import detection phase-indexed for runtime imports versus compile-time macro visits.
+- [x] Ensure macro-generated imports still go through phase checks.
 
 Suggested files:
 
@@ -461,14 +460,14 @@ Tests to add:
 
 - [x] Imported macro expands in another file.
 - [x] Compile-time-only macro is not exposed as runtime value.
-- [ ] Runtime circular imports and compile-time circular visits report separately.
-- [ ] Macro-generated imports cannot bypass phase checks.
+- [x] Runtime circular imports and compile-time circular visits report separately.
+- [x] Macro-generated imports cannot bypass phase checks.
 
 Exit criteria:
 
 - [x] Imported macros work for simple public macro bindings.
 - [x] Runtime imports behave as before.
-- [ ] Phase errors are deterministic.
+- [x] Phase errors are deterministic for current runtime import and compile-time macro visit phases.
 
 ## Stage 7: Enforestation And Regular Syntax Extension
 

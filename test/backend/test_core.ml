@@ -919,6 +919,53 @@ let test_imported_macro_not_runtime_field () =
   | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
   | _ -> Alcotest.fail "expected imported macro to be compile-time only"
 
+let test_imported_macro_circular_visit () =
+  match
+    eval_with_imported_macros
+      [ ("a", "pub macro ma = fun _ -> let B = import \"b\" in stx_make_i64 1");
+        ("b", "pub macro mb = fun _ -> let A = import \"a\" in stx_make_i64 2") ]
+      "let A = import \"a\" in ma @ (0)"
+  with
+  | exception Core_loader.CircularMacroVisit "a" -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
+  | _ -> Alcotest.fail "expected circular macro visit"
+
+let test_macro_generated_import_loads_macros () =
+  match
+    eval_with_imported_macros
+      [ ("loader", "pub macro through = fun stx -> stx");
+        ("target", "pub macro answer = fun _ -> stx_make_i64 42") ]
+      "let L = import \"loader\" in let T = through @ (import \"target\") in answer @ (0)"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "macro-generated import" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "macro-generated import: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "macro-generated import: %s" (Printexc.to_string e))
+
+let test_macro_generated_import_checks_missing () =
+  match
+    eval_with_imported_macros
+      [ ("loader", "pub macro through = fun stx -> stx") ]
+      "let L = import \"loader\" in through @ (import \"missing\")"
+  with
+  | exception Core_loader.ImportNotFound "missing" -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
+  | _ -> Alcotest.fail "expected missing macro-generated import"
+
+let test_imported_macro_calls_regular_function () =
+  match
+    eval_with_imported_macros
+      [ ("helper", "pub let make_answer = fun stx -> stx_make_i64 42");
+        ("macros", "pub macro answer = fun stx -> let H = import \"helper\" in H.make_answer stx") ]
+      "let M = import \"macros\" in answer @ (0)"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "macro calls function" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "macro calls function: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "macro calls function: %s" (Printexc.to_string e))
+
 let () =
   Alcotest.run "core"
     [
@@ -1376,5 +1423,9 @@ let () =
           Alcotest.test_case "panic message propagates" `Quick test_macro_panic_has_message;
           Alcotest.test_case "imported macro expands" `Quick test_imported_macro_expands;
           Alcotest.test_case "imported macro not runtime field" `Quick test_imported_macro_not_runtime_field;
+          Alcotest.test_case "imported macro circular visit" `Quick test_imported_macro_circular_visit;
+          Alcotest.test_case "macro-generated import loads macros" `Quick test_macro_generated_import_loads_macros;
+          Alcotest.test_case "macro-generated import checks missing" `Quick test_macro_generated_import_checks_missing;
+          Alcotest.test_case "imported macro calls regular function" `Quick test_imported_macro_calls_regular_function;
         ] );
     ]
