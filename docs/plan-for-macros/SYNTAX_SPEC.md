@@ -239,7 +239,7 @@ TODO: old forms that need mapping or removal:
 (* <old expr>           -> <new expr>                              *)
 (* let x: T = v in b   -> do x : T = v; b end                     *)
 (* type T A = ... in b -> do type T(a) = ... ; b end              *)
-(* !r                  -> r.deref                                   *)
+(* !r                  -> deref(r); postfix r.deref is future UFCS  *)
 (* r := v              -> r <- v                                    *)
 (* resume arg          -> resume(arg)                               *)
 (* let rec f x = ...   -> rec fn f(x) do ... end                *)

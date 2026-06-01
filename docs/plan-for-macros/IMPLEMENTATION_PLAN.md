@@ -471,7 +471,7 @@ Exit criteria:
 
 ## Stage 7: Enforestation And Regular Syntax Extension
 
-Status: Started. Phase 7A is implemented for the initial raw-reader and expression-enforestation slice.
+Status: Started. Phases 7A and 7B are implemented for the initial raw-reader, expression-enforestation slice, and built-in prefix forms.
 
 Purpose:
 
@@ -492,6 +492,13 @@ Concrete tasks:
    - pattern;
    - declaration/module item;
    - block/body.
+- [x] Add redesigned built-in prefix forms through enforestation entries:
+   - `fn` anonymous functions with explicit `()` and implicit `[]` params;
+   - `if cond do ... else ... end`;
+   - simple `match scrut do | pat -> body ... end` value branches;
+   - `ref(expr)`, `deref(expr)`, `resume(expr)`, and `resume()`;
+   - `import "path"`;
+   - `open M` statements inside `do` blocks.
 - [ ] Represent operator declarations:
    - fixity;
    - precedence;
@@ -524,6 +531,7 @@ Tests to add:
 - [x] Redesigned built-in syntax has parser/enforestation tests.
 - [x] Old and redesigned syntax coexist where transition compatibility is intentional.
 - [x] Ruby/Elixir-style block syntax examples either work or are explicitly deferred with rationale.
+- [x] Built-in prefix forms parse through enforestation without Menhir grammar growth.
 - [ ] Macro-defined prefix form works.
 - [ ] Macro-defined infix operator works.
 - [ ] Syntax extension composes with module/import scoping.

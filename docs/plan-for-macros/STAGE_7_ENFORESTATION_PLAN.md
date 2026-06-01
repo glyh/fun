@@ -140,6 +140,8 @@ Add syntax tests for:
 
 ## Phase 7B: Built-In Prefix Forms
 
+Status: Implemented.
+
 ### Purpose
 
 Move redesigned built-in expression forms out of Menhir grammar growth and into enforestation entries.
@@ -148,15 +150,15 @@ Move redesigned built-in expression forms out of Menhir grammar growth and into 
 
 Add built-in first-token dispatch for:
 
-- `fn` anonymous functions with `()` explicit params and `[]` implicit params;
-- `if cond do ... else ... end`;
-- `match scrut do ... end` for the simplest existing value-branch patterns;
-- `ref(expr)` and `.deref` syntax;
-- `resume(expr)` and `resume()`;
-- `import "path"`;
-- `open M` inside `do` blocks.
+- [x] `fn` anonymous functions with `()` explicit params and `[]` implicit params;
+- [x] `if cond do ... else ... end`;
+- [x] `match scrut do ... end` for the simplest existing value-branch patterns;
+- [x] `ref(expr)` and `deref(expr)` syntax;
+- [x] `resume(expr)` and `resume()`;
+- [x] `import "path"`;
+- [x] `open M` inside `do` blocks.
 
-`fn` should initially support:
+`fn` initially supports:
 
 ```fun
 fn (x : I64) -> x
@@ -176,18 +178,20 @@ fn () -> 1
 
 ### Tests
 
-- `fn` arrow body and block body;
-- implicit params must precede explicit params;
-- `if ... do ... else ... end` lowers to `If`;
-- `ref(1).deref` lowers to `RefGet (RefNew ...)` shape;
-- `resume()` lowers to `Resume Unit`;
-- `import "x"` shape remains `Import "x"`.
+- [x] `fn` arrow body and block body;
+- [x] implicit params must precede explicit params;
+- [x] `if ... do ... else ... end` lowers to `If`;
+- [x] simple `match ... do ... end` value branches lower to `Match`;
+- [x] `deref(ref(1))` lowers to `RefGet (RefNew ...)` shape;
+- [x] `resume()` lowers to `Resume Unit`;
+- [x] `import "x"` shape remains `Import "x"`;
+- [x] `open M` works as a statement inside `do` blocks.
 
 ### Exit Criteria
 
-- No new final syntax is added to Menhir for these forms.
-- Existing old syntax remains compatible.
-- The redesigned examples parse to expected `Surface.t` shapes.
+- [x] No new final syntax is added to Menhir for these forms.
+- [x] Existing old syntax remains compatible.
+- [x] The redesigned examples parse to expected `Surface.t` shapes.
 
 ## Phase 7C: Declarations And Modules
 
