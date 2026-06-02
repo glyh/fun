@@ -58,7 +58,7 @@ let term_mentions_var target term =
                | EffectBranch { body; _ } -> go target body)
              branches
     | NominalDef { ctors; body; _ } ->
-        List.exists (fun (_, payload) -> match payload with Some payload -> go target payload | None -> false) ctors || go target body
+        List.exists (fun (_, payloads) -> List.exists (go target) payloads) ctors || go target body
     | EffectDef { ops; body; _ } ->
         List.exists (fun (_, input, output) -> go target input || go target output) ops || go target body
     | Perform { eff; arg; _ } -> go target eff || go target arg
@@ -247,7 +247,7 @@ let close_recursive_payload_term nominal_name num_params =
         | NominalDef { id; name; num_params; ctors; body } ->
             NominalDef
               { id; name; num_params;
-                ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go cutoff) payload)) ctors;
+                ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go cutoff) payloads)) ctors;
                 body = go cutoff body }
         | EffectDef { id; name; num_params; ops; body } ->
             EffectDef

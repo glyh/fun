@@ -50,18 +50,14 @@ let prims =
 
 let stdlib_source =
   {|
-pub trait Eq A = struct
-  eq : A -> A -> Bool
-end;
-pub impl Eq I64 = struct let eq x y = eq_i64 x y end;
-pub impl Eq Bool = struct let eq x y = eq_bool x y end;
-pub impl Eq Char = struct let eq x y = eq_char x y end;
-pub impl Eq Unit = struct let eq x y = eq_unit x y end;
-pub impl Eq String = struct let eq x y = eq_string x y end;
-pub let (==) : {A : Eq} -> A -> A -> Bool =
-  fun {A : Type} lhs rhs -> Eq.eq lhs rhs;
-pub let (!=) : {A : Eq} -> A -> A -> Bool =
-  fun {A : Type} lhs rhs -> not ((==) {A} lhs rhs)
+pub trait Eq(A) = sig eq : A -> A -> Bool end;
+pub impl Eq(I64) = module fn eq(x, y) -> eq_i64(x, y) end;
+pub impl Eq(Bool) = module fn eq(x, y) -> eq_bool(x, y) end;
+pub impl Eq(Char) = module fn eq(x, y) -> eq_char(x, y) end;
+pub impl Eq(Unit) = module fn eq(x, y) -> eq_unit(x, y) end;
+pub impl Eq(String) = module fn eq(x, y) -> eq_string(x, y) end;
+pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
+pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs))
 |}
 
 let parsed_stdlib = lazy (Parse_expand.parse_module stdlib_source)

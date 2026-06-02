@@ -106,7 +106,7 @@ and term =
       id : nominal_id;
       name : string;
       num_params : int;
-      ctors : (string * term option) list;
+      ctors : (string * term list) list;
       body : term;
     }
       (** Nominal type definition. Evaluator creates a fresh VNominal, builds
@@ -256,11 +256,11 @@ and value =
       name : string;
       num_params : int;
       params : value list;
-      constructors : (string * closure option) list;
-          (** (ctor_name, payload_type_closure option). [None] = nullary.
-              The closure's env is the definition env (without type params);
-              its body is the payload type term with de Bruijn indices 0..n-1
-              referencing the type params. Instantiate by evaluating with
+      constructors : (string * closure list) list;
+          (** (ctor_name, payload_type_closures). [[]] = nullary. Each closure's
+              env is the definition env (without type params); its body is the
+              payload type term with de Bruijn indices 0..n-1 referencing the
+              type params. Instantiate by evaluating with
               [List.rev actual_params @ clo.env]. *)
     }
       (** Nominal ADT type. Unifies by [id] equality. [num_params] is the

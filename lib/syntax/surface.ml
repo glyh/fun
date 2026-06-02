@@ -16,7 +16,7 @@ and struct_binding =
   | TypeBinding of {
       name : string;
       params : string list;
-      ctors : (string * t option) list;  (* (ctor_name, payload_type option) *)
+      ctors : (string * t list) list;  (* (ctor_name, payload_types) *)
       public : bool;
     }
   | RecordTypeBinding of {
@@ -78,7 +78,7 @@ and t =
   | TypeDef of {
       name : string;
       params : string list;
-      ctors : (string * t option) list;  (* (ctor_name, payload_type option) *)
+      ctors : (string * t list) list;  (* (ctor_name, payload_types) *)
       body : t;
     }
   | EffectDef of {

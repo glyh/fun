@@ -2,12 +2,20 @@ exception CircularImport of string
 exception CircularMacroVisit of string
 exception ImportNotFound of string
 
+let () =
+  Printexc.register_printer (function
+    | CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
+    | CircularMacroVisit path -> Some ("CircularMacroVisit \"" ^ path ^ "\"")
+    | ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
+    | _ -> None)
+
 type t = {
   base_dir : string;
   parsed_cache : (string, Surface.t) Hashtbl.t;
   runtime_surface_cache : (string, Surface.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
   macro_cache : (string, (string * Core.value) list) Hashtbl.t;
+  syntax_cache : (string, Operator_env.export list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
   macro_active : (string, string) Hashtbl.t;
 }
@@ -18,6 +26,7 @@ let create ~base_dir =
     runtime_surface_cache = Hashtbl.create 16;
     runtime_elab_cache = Hashtbl.create 16;
     macro_cache = Hashtbl.create 16;
+    syntax_cache = Hashtbl.create 16;
     active = Hashtbl.create 16;
     macro_active = Hashtbl.create 16 }
 
@@ -27,6 +36,27 @@ let resolved_path t path =
 let read_module_source resolved =
   In_channel.with_open_text resolved In_channel.input_all
 
+let rec load_syntax_exports t path =
+  let resolved = resolved_path t path in
+  if not (Sys.file_exists resolved) then raise (ImportNotFound path);
+  match Hashtbl.find_opt t.syntax_cache resolved with
+  | Some exports -> exports
+  | None ->
+      if Hashtbl.mem t.macro_active resolved then raise (CircularMacroVisit path);
+      Hashtbl.replace t.macro_active resolved path;
+      let exports =
+        Fun.protect
+          ~finally:(fun () -> Hashtbl.remove t.macro_active resolved)
+          (fun () ->
+             read_module_source resolved
+             |> Enforest.parse_public_syntax_exports ~load_syntax:(load_syntax_exports t))
+      in
+      Hashtbl.replace t.syntax_cache resolved exports;
+      exports
+
+let parse_raw_module_source t source =
+  Enforest.parse_module ~load_syntax:(load_syntax_exports t) source |> Lower_surface.lower_expr
+
 let parse_raw_module t path =
   let resolved = resolved_path t path in
   if not (Sys.file_exists resolved) then raise (ImportNotFound path);
@@ -34,7 +64,7 @@ let parse_raw_module t path =
   | Some surface -> surface
   | None ->
       let source = read_module_source resolved in
-      let surface = Parse_expand.parse_with Core_parser.module_eof source in
+      let surface = parse_raw_module_source t source in
       Hashtbl.replace t.parsed_cache resolved surface;
       surface
 
@@ -45,7 +75,7 @@ let parse_runtime_module t path =
   | Some surface -> surface
   | None ->
       let source = read_module_source resolved in
-      let surface = Parse_expand.parse_module source in
+      let surface = Parse_expand.parse_module ~load_syntax:(load_syntax_exports t) source in
       Hashtbl.replace t.runtime_surface_cache resolved surface;
       surface
 

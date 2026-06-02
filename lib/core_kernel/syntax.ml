@@ -21,7 +21,7 @@ and struct_binding =
   | TypeBinding of {
       name : id;
       params : id list;
-      ctors : (id * t option) list;
+      ctors : (id * t list) list;
       public : bool;
     }
   | RecordTypeBinding of {
@@ -88,7 +88,7 @@ and kind =
   | TypeDef of {
       name : id;
       params : id list;
-      ctors : (id * t option) list;
+      ctors : (id * t list) list;
       body : t;
     }
   | EffectDef of {

@@ -19,8 +19,8 @@ let module_signature_sugar_shape () =
   | _ -> Alcotest.fail "expected signature sugar as public type module"
 
 let module_signature_param_shape () =
-  match Parse_expand.parse_expr "fun (m : module let x = I64 end) -> m.x" with
-  | Lam ({ name = "m"; type_ = Some (Module { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = false } ] }); _ }, FieldAccess (Var "m", "x")) -> ()
+  match Parse_expand.parse_expr "fn(m : sig x : I64 end) -> m.x" with
+  | Lam ({ name = "m"; type_ = Some (Module { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = true } ] }); _ }, FieldAccess (Var "m", "x")) -> ()
   | _ -> Alcotest.fail "expected module signature parameter"
 
 let neq_still_parses_shape () =
@@ -32,8 +32,8 @@ let suites =
   [
     ( "parse_smoke",
       [
-        Alcotest.test_case "match" `Quick (parse_ok "match 1 with x -> 2 end");
-        Alcotest.test_case "adt match" `Quick (parse_ok "type Color = Red in match Red with x -> 1 end");
+        Alcotest.test_case "match" `Quick (parse_ok "match 1 do x -> 2 end");
+        Alcotest.test_case "adt match" `Quick (parse_ok "do type Color = Red; match Red do x -> 1 end end");
         Alcotest.test_case "dotted field shape" `Quick dotted_field_shape;
         Alcotest.test_case "module signature sugar shape" `Quick module_signature_sugar_shape;
         Alcotest.test_case "module signature parameter shape" `Quick module_signature_param_shape;

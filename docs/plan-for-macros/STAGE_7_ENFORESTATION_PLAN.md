@@ -216,7 +216,7 @@ Support redesigned declaration forms:
 - [x] `fn f(params) -> expr` named arrow-body sugar without a trailing `end`;
 - [x] `fn f(params) do ... end` named block-body sugar;
 - [x] `fn f[implicit-params] do ... end` named implicit-only block-body sugar;
-- [x] `pub fn method(params) ...` and `pub fn method do ... end` inside structs lower to method bindings with `self`/`Self` in scope;
+- [x] `pub method name(params) -> expr` and `pub method name(params) do ... end` inside structs lower to method bindings with `self`/`Self` in scope;
 - [x] `pub` modifiers at top-level/module/struct positions;
 - [x] `macro name = expr` as the current macro-binding syntax in redesigned modules;
 - [x] `module name? do ... end`;
@@ -244,7 +244,7 @@ The implemented 7C slice parses declarations into `Syntax.t` and still leaves au
 - [x] top-level `pub x = 1` in `parse_module`;
 - [x] `do x = 1; x end`;
 - [x] `rec fn fact(n : I64) ...` after the expression subset can express the body;
-- [x] struct methods using named `fn`, including zero-extra-argument methods such as `pub fn get do self.value end`;
+- [x] struct methods using `method`, including zero-extra-argument methods such as `pub method get() do self.value end`;
 - [x] module member visibility matches existing `Module`/`Struct` lowering;
 - [x] macro declarations are not exposed as runtime fields.
 

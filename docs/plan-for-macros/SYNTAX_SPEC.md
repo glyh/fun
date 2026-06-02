@@ -110,11 +110,9 @@ hbindingi    ::= (pub)? 'rec'? hnamei ':' htypei '=' hexpressioni    (* annotate
                | (pub)? 'type' htype-namei '(' htype-parami (',' htype-parami)* ')' '='
                     hctori ('|' hctori)*                              (* ADT declaration *)
                | (pub)? 'type' htype-namei '=' hctori ('|' hctori)*  (* ADT, no params *)
-               | (pub)? 'effect' htype-namei htype-parami* '='
-                    hop-namei ':' htypei '->' htypei ('|' hop-namei ':' htypei '->' htypei)*
-               | (pub)? 'trait' htype-namei htype-parami* '='
-                    hnamei ':' htypei (',' hnamei ':' htypei)*
-               | (pub)? 'impl' htype-namei htype-pathi (htype-atomi)* 'do' hbindingi* 'end'
+               | (pub)? 'effect' htype-namei ('(' htype-parami (',' htype-parami)* ')')? '=' hsignature-modulei
+               | (pub)? 'trait' htype-namei '(' htype-parami ')' '=' hsignature-modulei
+               | (pub)? 'impl' htype-pathi '(' htypei ')' '=' 'module' hbindingi* 'end'
                | (pub)? 'module' hnamei 'do' hbindingi* 'end'
                | (pub)? 'struct' hnamei 'do' hstruct-fieldi* hbindingi* 'end'
                | (pub)? 'macro' hnamei hfn-parami* hfn-bodyi
@@ -127,6 +125,33 @@ Binding keywords are declaration forms only. They appear at the top level, insid
 do
   type Option A = Some A | None
   Option(I64)
+end
+```
+
+hsignature-modulei ::= 'module' hsignature-module-fieldi+ 'end'
+                     | 'sig' hsignature-sig-fieldi+ 'end'
+hsignature-module-fieldi ::= hnamei '=' htypei          (* must be a Pi/function type *)
+hsignature-sig-fieldi    ::= hnamei ':' htypei          (* sugar for module name = Type *)
+
+Effects with no parameters omit the parameter list: `effect Exc = module ... end`. Parameterized effects use a non-empty parenthesized parameter list: `effect State(S) = module ... end`. Empty parameter lists such as `effect Exc() = ...` are invalid.
+
+Traits always take exactly one type parameter: `trait Eq(A) = module ... end`.
+
+`sig ... end` is accepted as syntax sugar for a module whose fields are type values. `sig x : T end` means the same effect/trait signature field as `module x = T end`:
+
+```fun
+effect State(S) = module
+  get = Unit -> S
+  put = S -> Unit
+end
+
+effect State(S) = sig
+  get : Unit -> S
+  put : S -> Unit
+end
+
+trait Eq(A) = sig
+  eq : A -> A -> Bool
 end
 ```
 
@@ -216,7 +241,7 @@ hexpressioni ::= hliterali
                | 'Self'                                (* struct type reference *)
                | 'fn' hfn-parami* (':' htypei)? hfn-bodyi   (* anonymous function *)
                | 'if' hexpressioni 'do' hexpressioni* 'else' hexpressioni* 'end'
-               | 'match' hexpressioni 'do' hmatch-clausei ('|' hmatch-clausei)* 'end'
+               | 'match' hexpressioni 'do' ('|')? hmatch-clausei ('|' hmatch-clausei)* 'end'
                 | 'do' hexpressioni+ 'end'              (* block — sequence, value is last expr *)
 
                | 'ref' '(' hexpressioni ')'             (* reference creation; function-like exception *)
@@ -246,9 +271,9 @@ Removed legacy expression forms:
 ```
 let x: T = v in b       # use: do x : T = v; b end
 type T A = ... in b     # use: do type T A = ...; b end
-effect E = ... in b     # use: do effect E = ...; b end
-trait T A = ... in b    # use: do trait T A = ...; b end
-impl T A do ... end in b # use: do impl T A do ... end; b end
+effect E = sig ... end in b     # use: do effect E = sig ... end; b end
+trait T(A) = sig ... end in b    # use: do trait T(A) = sig ... end; b end
+impl T(A) = module ... end in b # use: do impl T(A) = module ... end; b end
 open M in b             # use: do open M; b end
 import "m" in b         # use: do M = import "m"; b end
 ```
@@ -281,6 +306,15 @@ hctori       ::= htype-pathi '.' hnamei                 (* qualified *)
                | hnamei '(' hpati (',' hpati)* ')'      (* with tuple payload *)
                | hnamei '(' htypei (',' htypei)* ')'    (* with comma-separated type arguments *)
 ```
+
+Branch-leading `|` is recommended for readability. A `|` before a branch arrow remains part of the pattern, so unparenthesized or-patterns are accepted:
+
+```fun
+match value do
+| 0 | 1 -> 42
+| _ -> 0
+end
+```
 ```
 # Example: recursive ADT with comma-separated payloads
 type List(a) = Cons(a, List(a)) | Nil
@@ -293,9 +327,10 @@ type List(a) = Cons(a, List(a)) | Nil
 ```
 htypei       ::= htype-atomi
                | htypei '->' htypei                     (* pure arrow — explicit Pi *)
+               | '(' hnamei ':' htypei ')' '->' htypei  (* named explicit Pi *)
                | '[' hparami (',' hparami)* ']' '->' htypei  (* implicit Pi *)
                | htypei '*' htypei                      (* tuple/product type, binds tighter than -> *)
-               | htypei 'can' htypei (',' htypei)* '...'? (* effectful arrow *)
+               | htypei 'can' heffect-rowi               (* effectful arrow *)
 
 htype-atomi  ::= hidentifieri                            (* nominal type *)
                | hidentifieri '(' htypei (',' htypei)* ')'   (* applied nominal *)
@@ -305,6 +340,24 @@ htype-atomi  ::= hidentifieri                            (* nominal type *)
                | 'EffectRow'
                | '(' htypei ')'                         (* parenthesized *)
                | htype-pathi '.' hnamei                 (* qualified type *)
+
+heffect-rowi ::= htypei                                  (* single closed effect *)
+               | '{' '}'                                 (* explicitly pure row *)
+               | '{' htypei (',' htypei)* '}'            (* closed effect row *)
+               | '{' htypei (',' htypei)* '|' hnamei '}' (* open row with prefix effects *)
+               | '{' '|' hnamei '}'                      (* tail-only open row *)
+```
+
+Implicit Pi binders use brackets, not braces:
+
+```fun
+[r : EffectRow] -> Unit -> I64 can {IO, Log | r}
+```
+
+Named explicit Pi binders use parentheses:
+
+```fun
+(r : EffectRow) -> Unit -> I64 can {| r}
 ```
 
 ---

@@ -6,6 +6,10 @@ type token_kind =
   | Char of char
   | String of string
   | Unit
+  | KwLet
+  | KwFun
+  | KwThen
+  | KwSig
   | KwFn
   | KwDo
   | KwEnd
@@ -80,9 +84,13 @@ let id =
     ( ('a' .. 'z' | 'A' .. 'Z' | '_'),
       Star ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9' | '?' | '!') )]
 
-let operator_chars = [%sedlex.regexp? Plus ('+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '@')]
+let operator_chars = [%sedlex.regexp? Plus ('+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '@' | '~')]
 
 let keyword = function
+  | "let" -> Some KwLet
+  | "fun" -> Some KwFun
+  | "then" -> Some KwThen
+  | "sig" -> Some KwSig
   | "fn" -> Some KwFn
   | "do" -> Some KwDo
   | "end" -> Some KwEnd
@@ -241,6 +249,10 @@ let read ?file source =
     | At -> "@"
     | DatumComment -> "#_"
     | Ident s | Operator s -> s
+    | KwLet -> "let"
+    | KwFun -> "fun"
+    | KwThen -> "then"
+    | KwSig -> "sig"
     | KwFn -> "fn"
     | KwDo -> "do"
     | KwEnd -> "end"

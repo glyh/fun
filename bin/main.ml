@@ -1,13 +1,3 @@
-let () =
-  Printexc.register_printer (function
-    | Elaborate.ElabError e ->
-        let open Elaborate in
-        Some (Printf.sprintf "ElabError(%s)" (match e with
-          | UnboundVariable n -> "UnboundVariable " ^ n
-          | ApplyingNonFunction -> "ApplyingNonFunction"
-          | _ -> "other"))
-    | _ -> None)
-
 let rec user_input prompt callback =
   LNoise.linenoise prompt
   |> Option.iter (fun input ->
@@ -31,6 +21,7 @@ let run source =
       ~elaborate
       ~eval_and_apply
       ~load_macros:(Core_loader.visit_macros loader)
+      ~load_syntax:(Core_loader.load_syntax_exports loader)
       source
   in
   let ctx = Elaborate.init_ctx () in

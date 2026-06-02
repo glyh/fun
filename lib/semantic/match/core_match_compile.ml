@@ -1,7 +1,7 @@
 open Core
 module DT = Core_decision_tree
 
-type domain = Nominal of (string * int * bool) list | Atom of Atom_ty.t | Type | Product of int | Record of string list | Unknown
+type domain = Nominal of (string * int * int) list | Atom of Atom_ty.t | Type | Product of int | Record of string list | Unknown
 
 type missing_pat = MWild | MCon of string * missing_pat option
 
@@ -355,8 +355,8 @@ let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
                     match
                       List.find_opt (fun (n, _, _) -> String.equal n tag) constructors
                     with
-                    | Some (_, ntp, has_payload) ->
-                        (ntp, if has_payload then 1 else 0)
+                    | Some (_, ntp, arity) ->
+                        (ntp, arity)
                     | None -> (0, 0)
                   in
                   let sub = specialize_destruct m tag ~num_type_params ~arity in
@@ -381,12 +381,12 @@ let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
                     (Non_exhaustive
                        (MCon
                           ( List.hd missing_ctors,
-                            let _, _, has_payload =
-                              List.find
-                                (fun (n, _, _) -> String.equal n (List.hd missing_ctors))
-                                constructors
-                            in
-                            if has_payload then Some MWild else None )))
+                             let _, _, arity =
+                               List.find
+                                 (fun (n, _, _) -> String.equal n (List.hd missing_ctors))
+                                 constructors
+                             in
+                             if arity > 0 then Some MWild else None )))
                 else Some (go dm)
             in
             let cases_with_arity = List.map (fun (tag, arity, dt) -> (tag, arity, dt)) cases in

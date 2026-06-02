@@ -345,13 +345,16 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
             if params <> [] then raise (ElabError NotANominalType);
             let elaborated_ctors =
               List.map
-                (fun (cname, payload_opt) ->
-                  match payload_opt with
-                  | None -> (cname, None)
-                  | Some payload_expr ->
+                (fun (cname, payloads) ->
+                  let payload_clos =
+                    List.map
+                      (fun payload_expr ->
                       let payload_core, payload_ty = ops.infer ctx payload_expr in
                       check_type_like ctx payload_ty (Ctx.eval ctx payload_core);
-                      (cname, Some { env = ctx.env; body = payload_core }))
+                      { env = ctx.env; body = payload_core })
+                      payloads
+                  in
+                  (cname, payload_clos))
                 ctors
             in
             let nominal = VNominal { id = NominalId.fresh (); name; num_params = 0; params = []; constructors = elaborated_ctors } in
@@ -521,13 +524,16 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
             if params <> [] then raise (ElabError NotANominalType);
             let elaborated_ctors =
               List.map
-                (fun (cname, payload_opt) ->
-                  match payload_opt with
-                  | None -> (cname, None)
-                  | Some payload_expr ->
+                (fun (cname, payloads) ->
+                  let payload_clos =
+                    List.map
+                      (fun payload_expr ->
                       let payload_core, payload_ty = ops.infer ctx payload_expr in
                       check_type_like ctx payload_ty (Ctx.eval ctx payload_core);
-                      (cname, Some { env = ctx.env; body = payload_core }))
+                      { env = ctx.env; body = payload_core })
+                      payloads
+                  in
+                  (cname, payload_clos))
                 ctors
             in
             let nominal = VNominal { id = NominalId.fresh (); name; num_params = 0; params = []; constructors = elaborated_ctors } in
@@ -634,14 +640,17 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       in
       let elaborated_ctors =
         List.map
-          (fun (cname, payload_opt) ->
-            match payload_opt with
-            | None -> (cname, None)
-            | Some payload_expr ->
+          (fun (cname, payloads) ->
+            let payload_clos =
+              List.map
+                (fun payload_expr ->
                 let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
                 check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
                 let payload_core = close_recursive_payload_term name num_params payload_core in
-                (cname, Some { env = ctx.env @ [ nominal_placeholder ]; body = payload_core }))
+                { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
+                payloads
+            in
+            (cname, payload_clos))
           ctors
       in
       let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
@@ -679,22 +688,25 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let env = nominal :: body_ctx.env in
       let body_ctx =
         List.fold_left2
-          (fun ctx (cname, _payload_surface) payload_clo_opt ->
+          (fun ctx (cname, _payload_surface) payload_clos ->
             let ctor_val, ctor_ty =
-              build_ctor body_ctx.metas env name cname num_params payload_clo_opt in
+              build_ctor body_ctx.metas env name cname num_params payload_clos in
             Ctx.define ctx cname ctor_ty ctor_val)
           body_ctx ctors (List.map snd elaborated_ctors)
       in
       let body_core, body_ty = ops.infer body_ctx body in
       let ctor_payload_terms =
         List.map
-          (fun (cname, payload_opt) ->
-            match payload_opt with
-            | None -> (cname, None)
-            | Some payload_expr ->
+          (fun (cname, payloads) ->
+            let payload_terms =
+              List.map
+                (fun payload_expr ->
                 let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
                 check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
-                (cname, Some (close_recursive_payload_term name num_params payload_core)))
+                close_recursive_payload_term name num_params payload_core)
+                payloads
+            in
+            (cname, payload_terms))
           ctors
       in
       (NominalDef { id = nominal_id; name; num_params; ctors = ctor_payload_terms; body = body_core },

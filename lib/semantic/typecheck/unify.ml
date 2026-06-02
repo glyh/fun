@@ -18,6 +18,28 @@ type unify_error =
 
 exception UnifyError of unify_error
 
+let () =
+  Printexc.register_printer (function
+    | UnifyError e ->
+        Some
+          (Printf.sprintf "UnifyError(%s)"
+             (match e with
+             | NonLinearSpine -> "NonLinearSpine"
+             | NonVariableInSpine -> "NonVariableInSpine"
+             | VarNotInSpine l -> Printf.sprintf "VarNotInSpine(%d)" l
+             | NeutralVarNotInSpine l -> Printf.sprintf "NeutralVarNotInSpine(%d)" l
+             | OccursCheck -> "OccursCheck"
+             | CannotUnify s -> "CannotUnify(" ^ s ^ ")"
+             | TupleLengthMismatch -> "TupleLengthMismatch"
+             | SpineLengthMismatch -> "SpineLengthMismatch"
+             | NeutralHeadMismatch -> "NeutralHeadMismatch"
+             | FrameMismatch -> "FrameMismatch"
+             | StructFieldMismatch -> "StructFieldMismatch"
+             | NominalMismatch (a, b) -> Printf.sprintf "NominalMismatch(%s, %s)" a b
+             | EffectMismatch (a, b) -> Printf.sprintf "EffectMismatch(%s, %s)" a b
+             | EffectRowMismatch -> "EffectRowMismatch"))
+    | _ -> None)
+
 (** Renaming from original variable levels to solution lambda levels.
 
     In [λa. λb. λc. ?M a c], the environment is [c=2, b=1, a=0]. The spine

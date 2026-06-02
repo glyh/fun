@@ -507,8 +507,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | NominalDef { id; name; num_params; ctors; body } ->
       let elaborated_ctors =
         List.map
-          (fun (cname, payload_opt) ->
-            (cname, Option.map (fun t -> { env; body = t }) payload_opt))
+          (fun (cname, payloads) ->
+            (cname, List.map (fun t -> { env; body = t }) payloads))
           ctors
       in
       let nominal =
@@ -530,9 +530,9 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       let env = if num_params > 0 then nominal :: env else env in
       let env =
         List.fold_left
-          (fun env (cname, payload_clo_opt) ->
-            let has_payload = Option.is_some payload_clo_opt in
-            let total_args = num_params + if has_payload then 1 else 0 in
+          (fun env (cname, payload_clos) ->
+            let payload_count = List.length payload_clos in
+            let total_args = num_params + payload_count in
             if total_args = 0 then
               VCon { name = cname; spine = []; nominal } :: env
             else
@@ -540,11 +540,11 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                 let param_vars =
                   List.init num_params (fun i -> Var (total_args - 1 - i))
                 in
-                let payload_var = if has_payload then [ Var 0 ] else [] in
+                let payload_vars = List.init payload_count (fun i -> Var (payload_count - 1 - i)) in
                 Ctor
                   {
                     name = cname;
-                    spine = param_vars @ payload_var;
+                    spine = param_vars @ payload_vars;
                     nominal_name = name;
                     nominal_spine = param_vars;
                   }
@@ -1085,12 +1085,12 @@ and eval_match_direct_result (mc : MetaContext.t) (env : env)
       | None -> eval_match_direct_result mc env scrutinee rest)
 
 and nominal_constructors (mc : MetaContext.t) (nom : value) :
-    (string * int * bool) list =
+    (string * int * int) list =
   match force mc nom with
   | VNominal { params; constructors; _ } ->
       let ntp = List.length params in
       List.map
-        (fun (name, payload) -> (name, ntp, Option.is_some payload))
+        (fun (name, payloads) -> (name, ntp, List.length payloads))
         constructors
   | _ -> raise (EvalError "match scrutinee type is not a nominal")
 

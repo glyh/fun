@@ -191,16 +191,18 @@ Tests depend on the staged libraries they exercise and `alcotest`.
 ## Language syntax notes
 
 - Built-in types: `I64`, `Bool`, `Unit`, `Char`, `Type`.
-- Type parameters are ordinary binders in dependent function types; implicit arguments use braces.
-- Explicit function type: `(x : A) -> B`; implicit function type: `{x : A} -> B`.
-- Explicit application: `f x`; explicit implicit application: `f {A}`.
+- Type parameters are ordinary binders in dependent function types; implicit arguments use brackets.
+- Explicit function type: `(x : A) -> B`; implicit function type: `[x : A] -> B`.
+- Explicit application: `f(x)`; explicit implicit application: `f[A]`.
 - ADTs: `type Option A = Some A | None in ...`.
 - Records: `let Point = struct x: I64; y: I64; end in Point {x = 1; y = 2}`.
 - Field access: `expr.field`.
 - Record patterns: `Point {x; y}`, `Point {x = n; _}`, and qualified forms such as `M.Point {x}`.
 - Structs: `struct ... end` with `let`, `pub let`, `type`, `pub type`, `open`, and `export` members.
+- Methods use `pub method name(...) -> expr` or `pub method name(...) do ... end`.
 - `self` names the receiver inside methods; `Self` names the enclosing record type after field declarations.
 - `open M in expr` brings public members into expression scope.
 - Match: `match expr with | pat -> body | pat -> body end`.
+- Effects: `effect State(S) = sig get : Unit -> S; put : S -> Unit end`.
 - Recursive values use `let rec`.
 - Comments: `(* ... *)` with nesting.

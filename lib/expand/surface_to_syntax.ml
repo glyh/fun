@@ -52,7 +52,7 @@ and expr (e : Surface.t) : Syntax.t =
     | RecordTypeDef { name; params; fields; body } ->
       Syntax.RecordTypeDef { name = id name; params = List.map id params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; body = expr body }
     | TypeDef { name; params; ctors; body } ->
-      Syntax.TypeDef { name = id name; params = List.map id params; ctors = List.map (fun (name, payload) -> (id name, Option.map expr payload)) ctors; body = expr body }
+      Syntax.TypeDef { name = id name; params = List.map id params; ctors = List.map (fun (name, payloads) -> (id name, List.map expr payloads)) ctors; body = expr body }
     | EffectDef { name; params; ops; body } ->
       Syntax.EffectDef { name = id name; params = List.map id params; ops = List.map effect_op ops; body = expr body }
     | TraitDef { name; params; fields; body } ->
@@ -81,7 +81,7 @@ and struct_binding = function
   | Surface.MethodBinding { name; params; body; public } ->
     Syntax.MethodBinding { name = id name; params = List.map param params; body = expr body; public }
   | Surface.TypeBinding { name; params; ctors; public } ->
-    Syntax.TypeBinding { name = id name; params = List.map id params; ctors = List.map (fun (name, payload) -> (id name, Option.map expr payload)) ctors; public }
+    Syntax.TypeBinding { name = id name; params = List.map id params; ctors = List.map (fun (name, payloads) -> (id name, List.map expr payloads)) ctors; public }
   | Surface.RecordTypeBinding { name; params; fields; public } ->
     Syntax.RecordTypeBinding { name = id name; params = List.map id params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; public }
   | Surface.EffectBinding { name; params; ops; public } ->

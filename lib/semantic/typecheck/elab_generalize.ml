@@ -47,7 +47,7 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
                | EffectBranch { body; _ } -> closed_under depth body)
              branches
     | NominalDef { ctors; body; _ } ->
-        List.for_all (fun (_, payload) -> Option.fold ~none:true ~some:(closed_under depth) payload) ctors && closed_under depth body
+        List.for_all (fun (_, payloads) -> List.for_all (closed_under depth) payloads) ctors && closed_under depth body
     | EffectDef { ops; body; _ } ->
         List.for_all (fun (_, input, output) -> closed_under depth input && closed_under depth output) ops && closed_under depth body
     | Module { bindings } ->

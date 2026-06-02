@@ -55,7 +55,7 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.RecordTypeDef { name; params; fields; body } ->
     Surface.RecordTypeDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.TypeDef { name; params; ctors; body } ->
-    Surface.TypeDef { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, p) -> (lower_id n, Option.map lower_expr p)) ctors; body = lower_expr body }
+    Surface.TypeDef { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors; body = lower_expr body }
   | Syntax.EffectDef { name; params; ops; body } ->
     Surface.EffectDef { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; body = lower_expr body }
   | Syntax.TraitDef { name; params; fields; body } ->
@@ -80,7 +80,7 @@ and lower_struct_binding = function
   | Syntax.MethodBinding { name; params; body; public } ->
     Surface.MethodBinding { name = lower_id name; params = List.map lower_param params; body = lower_expr body; public }
   | Syntax.TypeBinding { name; params; ctors; public } ->
-    Surface.TypeBinding { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, p) -> (lower_id n, Option.map lower_expr p)) ctors; public }
+    Surface.TypeBinding { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors; public }
   | Syntax.RecordTypeBinding { name; params; fields; public } ->
     Surface.RecordTypeBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.EffectBinding { name; params; ops; public } ->

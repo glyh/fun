@@ -59,7 +59,7 @@ let rewrite_record_self_refs record_name params expr =
               | Surface.TypeBinding { name; params; ctors; public } ->
                   Surface.TypeBinding
                     { name; params;
-                      ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
+                      ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go (params @ bound)) payloads)) ctors;
                       public }
               | Surface.RecordTypeBinding { name; params; fields; public } ->
                   Surface.RecordTypeBinding
@@ -98,7 +98,7 @@ let rewrite_record_self_refs record_name params expr =
               | Surface.TypeBinding { name; params; ctors; public } ->
                   Surface.TypeBinding
                     { name; params;
-                      ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
+                      ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go (params @ bound)) payloads)) ctors;
                       public }
               | Surface.RecordTypeBinding { name; params; fields; public } ->
                   Surface.RecordTypeBinding
@@ -145,7 +145,7 @@ let rewrite_record_self_refs record_name params expr =
         | Surface.TypeDef { name; params; ctors; body } ->
             Surface.TypeDef
               { name; params;
-                ctors = List.map (fun (ctor, payload) -> (ctor, Option.map (go (params @ bound)) payload)) ctors;
+                ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go (params @ bound)) payloads)) ctors;
                 body = go (name :: bound) body }
         | Surface.EffectDef { name; params; ops; body } ->
             Surface.EffectDef

@@ -137,16 +137,19 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
               if path = [] && not (unqualified_constructor_in_scope ctx name scrutinee_ty) then
                 raise (ElabError (UnknownConstructor name));
               (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
-              | Some (_, payload_opt) ->
+              | Some (_, payloads) ->
                   let num_type_params = List.length n.params in
-                  (match (sub_pats, payload_opt) with
-                  | [], None -> (CPatCon (name, num_type_params, []), [])
-                  | [sub_pat], Some payload_clo ->
-                      let payload_ty =
-                        Nbe.eval ctx.metas (List.rev n.params @ payload_clo.env) payload_clo.body in
-                      let core_sub, binders = elaborate_pat_binders ctx sub_pat payload_ty in
-                      (CPatCon (name, num_type_params, [core_sub]), binders)
-                  | _ ->
-                      raise (ElabError PatternArityMismatch))
+                  if List.length sub_pats <> List.length payloads then
+                    raise (ElabError PatternArityMismatch);
+                  let core_subs, binders =
+                    List.fold_left2
+                      (fun (core_acc, binder_acc) sub_pat payload_clo ->
+                        let payload_ty =
+                          Nbe.eval ctx.metas (List.rev n.params @ payload_clo.env) payload_clo.body in
+                        let core_sub, binders = elaborate_pat_binders ctx sub_pat payload_ty in
+                        (core_sub :: core_acc, binders @ binder_acc))
+                      ([], []) sub_pats payloads
+                  in
+                  (CPatCon (name, num_type_params, List.rev core_subs), List.rev binders)
               | None -> raise (ElabError (UnknownConstructor name)))
           | _ -> raise (ElabError NotANominalType)))

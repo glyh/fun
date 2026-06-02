@@ -9,19 +9,8 @@ let expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros stx =
 let expand_lower ?elaborate ?eval_and_apply ?load_macros surface =
   Surface_to_syntax.expr surface |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros
 
-let parse_with parser source =
-  let lexbuf = Sedlexing.Utf8.from_string source in
-  let lexer = Sedlexing.with_tokenizer Core_lexer.token lexbuf in
-  MenhirLib.Convert.Simplified.traditional2revised parser lexer
+let parse_expr ?elaborate ?eval_and_apply ?load_macros ?load_syntax source =
+  Enforest.parse_expr ?load_syntax source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros
 
-let parse_expr ?elaborate ?eval_and_apply ?load_macros source =
-  try
-    Enforest.parse_expr source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros
-  with Enforest.Unsupported _ ->
-    parse_with Core_parser.expr_eof source |> expand_lower ?elaborate ?eval_and_apply ?load_macros
-
-let parse_module ?elaborate ?eval_and_apply ?load_macros source =
-  try
-    Enforest.parse_module source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros
-  with Enforest.Unsupported _ ->
-    parse_with Core_parser.module_eof source |> expand_lower ?elaborate ?eval_and_apply ?load_macros
+let parse_module ?elaborate ?eval_and_apply ?load_macros ?load_syntax source =
+  Enforest.parse_module ?load_syntax source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros

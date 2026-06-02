@@ -61,7 +61,7 @@ and go_kind (s : Scope_set.t) (k : kind) : kind =
   | RecordTypeDef { name; params; fields; body } ->
     RecordTypeDef { name = add_id_scope s name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | TypeDef { name; params; ctors; body } ->
-    TypeDef { name = add_id_scope s name; params; ctors = List.map (fun (n, p) -> (add_id_scope s n, Option.map go p)) ctors; body = go body }
+    TypeDef { name = add_id_scope s name; params; ctors = List.map (fun (n, ps) -> (add_id_scope s n, List.map go ps)) ctors; body = go body }
   | EffectDef { name; params; ops; body } ->
     EffectDef { name = add_id_scope s name; params; ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; body = go body }
   | TraitDef { name; params; fields; body } ->
@@ -93,7 +93,7 @@ and go_struct_binding (s : Scope_set.t) (binding : Syntax.struct_binding) : Synt
                     body = add_scope s body; public }
   | TypeBinding { name; params; ctors; public } ->
     TypeBinding { name = add_id_scope s name;
-                  params; ctors = List.map (fun (n, p) -> (n, Option.map (add_scope s) p)) ctors; public }
+                  params; ctors = List.map (fun (n, ps) -> (n, List.map (add_scope s) ps)) ctors; public }
   | RecordTypeBinding { name; params; fields; public } ->
     RecordTypeBinding { name = add_id_scope s name;
                         params; fields = List.map (fun (n, e) -> (n, add_scope s e)) fields; public }
@@ -235,7 +235,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
              ((add_id_scope ctor_scope cname, payload), ctor_scope))
            ctors)
     in
-    { stx with kind = TypeDef { name; params; ctors = List.map (fun (n, p) -> (n, Option.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) p)) ctors; body = expand ctx (add_scopes (scope :: ctor_scopes) body) } }
+    { stx with kind = TypeDef { name; params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) ps)) ctors; body = expand ctx (add_scopes (scope :: ctor_scopes) body) } }
   | EffectDef { name; params; ops; body } ->
     let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
     let name = add_id_scope scope name in
@@ -265,8 +265,14 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | Some elab ->
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
+      let previous = Expand_ctx.lookup_macro ctx name.name in
       Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
-      expand ctx body
+      Fun.protect
+        ~finally:(fun () ->
+          match previous with
+          | Some value -> Expand_ctx.register_macro ctx ~name:name.name ~value
+          | None -> Hashtbl.remove ctx.Expand_ctx.macro_table name.name)
+        (fun () -> expand ctx body)
     | None ->
       failwith "macro definition requires an elaboration callback in expand context"
     end
@@ -343,7 +349,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
            ctors)
     in
     (TypeBinding { name = add_id_scope scope name;
-                   params; ctors = List.map (fun (n, p) -> (n, Option.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) p)) ctors; public },
+                    params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) ps)) ctors; public },
      scope :: ctor_scopes)
   | RecordTypeBinding { name; params; fields; public } ->
     let binding_name = id_name name in

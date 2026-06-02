@@ -45,7 +45,7 @@ let rec compile_time_safe (expr : Surface.t) : bool =
   | Surface.RecordTypeDef { fields; body; _ } ->
       List.for_all (fun (_, ty) -> compile_time_safe ty) fields && compile_time_safe body
   | Surface.TypeDef { ctors; body; _ } ->
-      List.for_all (fun (_, payload) -> Option.fold ~none:true ~some:compile_time_safe payload) ctors && compile_time_safe body
+      List.for_all (fun (_, payloads) -> List.for_all compile_time_safe payloads) ctors && compile_time_safe body
   | Surface.EffectDef { ops; body; _ } ->
       List.for_all (fun (op : Surface.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops && compile_time_safe body
   | Surface.TraitDef { fields; body; _ } ->
@@ -59,7 +59,7 @@ and compile_time_safe_struct_binding = function
   | Surface.LetBinding { value; _ } -> compile_time_safe value
   | Surface.MethodBinding { body; _ } -> compile_time_safe body
   | Surface.TypeBinding { ctors; _ } ->
-      List.for_all (fun (_, payload) -> Option.fold ~none:true ~some:compile_time_safe payload) ctors
+      List.for_all (fun (_, payloads) -> List.for_all compile_time_safe payloads) ctors
   | Surface.RecordTypeBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
   | Surface.EffectBinding { ops; _ } ->
       List.for_all (fun (op : Surface.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops
@@ -218,7 +218,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
   | Surface.RecordTypeDef { fields; body; _ } ->
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects ctx body ])
   | Surface.TypeDef { ctors; body; _ } ->
-      union_many_expr_effects ctx (List.filter_map (fun (_, payload) -> Option.map (ops.collect_effects ctx) payload) ctors @ [ ops.collect_effects ctx body ])
+      union_many_expr_effects ctx (List.concat_map (fun (_, payloads) -> List.map (ops.collect_effects ctx) payloads) ctors @ [ ops.collect_effects ctx body ])
   | Surface.EffectDef { name; params; ops = eff_ops; body } ->
       let _effect_id, eff, eff_ty, _elaborated_ops = elaborate_eff_family ops ctx name params eff_ops in
       let op_effects = List.concat_map (fun (op : Surface.effect_op) -> [ ops.collect_effects ctx op.input; ops.collect_effects ctx op.output ]) eff_ops in
