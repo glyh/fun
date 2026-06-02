@@ -87,6 +87,8 @@ Implement an expression enforester that supports only:
 - zero-argument call syntax `f()` as `f(())`;
 - curried implicit call syntax `f[A, B]` as `f {A} {B}` internally;
 - field access `expr.name`;
+- record construction as a postfix brace form, e.g. `Point{x = 1}`;
+- record construction after type-function instantiation, e.g. `Pair[I64, Bool]{fst = 1; snd = true}`;
 - prefix `not expr`;
 - binary arithmetic/comparison operators from the current prelude;
 - assignment `<-` lowering to `RefSet` where supported;
@@ -128,6 +130,7 @@ Add syntax tests for:
 - zero-argument call: `f()`;
 - implicit call: `id[I64](1)`;
 - simple `do` block with two bindings and final expression;
+- module bodies where newlines separate declarations;
 - unsupported new syntax falls back or fails deterministically.
 
 ### Exit Criteria
@@ -154,7 +157,7 @@ Add built-in first-token dispatch for:
 - [x] `if cond do ... else ... end`;
 - [x] `match scrut do ... end` for the simplest existing value-branch patterns;
 - [x] `ref(expr)` and `deref(expr)` syntax;
-- [x] `resume(expr)` and `resume()`;
+- [x] `resume expr` and `resume ()`;
 - [x] `import "path"`;
 - [x] `open M` inside `do` blocks.
 
@@ -164,10 +167,11 @@ Add built-in first-token dispatch for:
 fn (x : I64) -> x
 fn (x : I64) do x end
 fn [A : Type] (x : A) -> x
+fn [A : Type] -> struct value: A; end
 fn () -> 1
 ```
 
-`fn ()` lowers to a single explicit `Unit` parameter and `f()` lowers to application to unit.
+Anonymous functions with only implicit parameters do not require an empty explicit `()` parameter list. `fn ()` lowers to a single explicit `Unit` parameter and `f()` lowers to application to unit. References use `deref(r)` for reads; postfix `.deref` is ordinary field access and is not ref syntax.
 
 ### Files
 
@@ -183,7 +187,7 @@ fn () -> 1
 - [x] `if ... do ... else ... end` lowers to `If`;
 - [x] simple `match ... do ... end` value branches lower to `Match`;
 - [x] `deref(ref(1))` lowers to `RefGet (RefNew ...)` shape;
-- [x] `resume()` lowers to `Resume Unit`;
+- [x] `resume ()` lowers to `Resume Unit`;
 - [x] `import "x"` shape remains `Import "x"`;
 - [x] `open M` works as a statement inside `do` blocks.
 
@@ -209,6 +213,10 @@ Support redesigned declaration forms:
 - [x] `x : Type = expr`;
 - [x] `rec fn f(params) ...` in expression `do` blocks;
 - [x] `fn f(params) ...` sugar;
+- [x] `fn f(params) -> expr` named arrow-body sugar without a trailing `end`;
+- [x] `fn f(params) do ... end` named block-body sugar;
+- [x] `fn f[implicit-params] do ... end` named implicit-only block-body sugar;
+- [x] `pub fn method(params) ...` and `pub fn method do ... end` inside structs lower to method bindings with `self`/`Self` in scope;
 - [x] `pub` modifiers at top-level/module/struct positions;
 - [x] `macro name = expr` as the current macro-binding syntax in redesigned modules;
 - [x] `module name? do ... end`;
@@ -236,6 +244,7 @@ The implemented 7C slice parses declarations into `Syntax.t` and still leaves au
 - [x] top-level `pub x = 1` in `parse_module`;
 - [x] `do x = 1; x end`;
 - [x] `rec fn fact(n : I64) ...` after the expression subset can express the body;
+- [x] struct methods using named `fn`, including zero-extra-argument methods such as `pub fn get do self.value end`;
 - [x] module member visibility matches existing `Module`/`Struct` lowering;
 - [x] macro declarations are not exposed as runtime fields.
 
@@ -247,6 +256,8 @@ The implemented 7C slice parses declarations into `Syntax.t` and still leaves au
 
 ## Phase 7D: Type And Pattern Syntax Classes
 
+Status: Implemented.
+
 ### Purpose
 
 Separate expression parsing from type and pattern parsing so macros can eventually be problem-aware.
@@ -255,24 +266,33 @@ Separate expression parsing from type and pattern parsing so macros can eventual
 
 Add syntax classes for:
 
-- type expressions: arrows, implicit Pi `[A : Type] -> ...`, applied nominal types `Option(I64)`, qualified types;
-- patterns: wildcard, binders, literals, constructors, tuples, records, or-patterns;
-- match clauses.
+- [x] type expressions: arrows, implicit Pi `[A : Type] -> ...`, applied nominal types `Option(I64)`, qualified types;
+- [x] patterns: wildcard, binders, literals, constructors, qualified constructors, tuples, records, qualified records, or-patterns;
+- [x] match clauses.
 
-The type parser should initially cover the syntax-spec examples that have direct current `Surface.t` equivalents.
+The type parser covers the syntax-spec examples that have direct current `Surface.t` equivalents.
+
+`Enforest` now exports three per-class entrypoints: `parse_expr`, `parse_type`, and `parse_pat`.
+Type parsing handles `->` as a right-associative arrow with per-class precedence in `Enforest`
+(rather than reusing the expression operator table). Record-pattern brace groups are recognized
+in `parse_pat_postfix`, dotted pattern postfixes support qualified constructor and record heads such as `C.Red`, `N.M.X(n)`, and `Alias.Point {x}`, and `parse_type` is used by parameter annotations in `parse_fn`.
 
 ### Tests
 
-- `fn (m : sig x : I64 end) -> m.x` if signature sugar is in scope;
-- `[A : Type] -> A -> A`;
-- `Option(I64)` lowers to application;
-- `match x do | Some(y) -> y | None -> 0 end` when constructor payload syntax is ready;
-- record pattern shorthand and renamed fields.
+- [x] `fn (x : Option(I64)) -> x` lowers to type application `Ap(Option, Explicit, I64)`;
+- [x] `fn (f : I64 -> Bool) -> f(1)` parses arrow type in param annotation;
+- [x] `fn (f : (I64, Bool) -> Bool) -> f(1, true)` parses product type `ProdTy`;
+- [x] `match x do Some(y) -> y | None -> 0 end` parses constructor payload in match;
+- [x] `match x do M.Some(y) -> y | M.None -> 0 end` parses qualified constructor patterns;
+- [x] `match p do Point{x; y} -> x end` parses record pattern shorthand;
+- [x] `match p do M.Point{x; y} -> x end` parses qualified record patterns;
+- [x] `match p do Point{x = n; _} -> n end` parses record pattern renamed field with partial;
+- [ ] `fn (m : sig x : I64 end) -> m.x` is deferred; signature sugar requires old module syntax.
 
 ### Exit Criteria
 
-- Enforestation can request expression/type/pattern parsing explicitly.
-- The code has a single place that defines operator precedence per syntax class.
+- [x] Enforestation can request expression/type/pattern parsing explicitly.
+- [x] The code has a single place that defines operator precedence per syntax class.
 
 ## Phase 7E: User-Visible Syntax Extension
 

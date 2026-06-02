@@ -471,7 +471,7 @@ Exit criteria:
 
 ## Stage 7: Enforestation And Regular Syntax Extension
 
-Status: Started. Phases 7A, 7B, and the initial 7C declaration/module parsing slice are implemented.
+Status: Started. Phases 7A, 7B, 7C, and 7D are implemented. 7E remains not started.
 
 Purpose:
 
@@ -495,8 +495,8 @@ Concrete tasks:
 - [x] Add redesigned built-in prefix forms through enforestation entries:
    - `fn` anonymous functions with explicit `()` and implicit `[]` params;
    - `if cond do ... else ... end`;
-   - simple `match scrut do | pat -> body ... end` value branches;
-   - `ref(expr)`, `deref(expr)`, `resume(expr)`, and `resume()`;
+   - simple `match scrut do pat -> body | ... end` value branches;
+   - `ref(expr)`, `deref(expr)`, `resume expr`, and `resume ()`;
    - `import "path"`;
    - `open M` statements inside `do` blocks.
 - [x] Add redesigned declaration/module-item parsing through enforestation:
@@ -507,6 +507,10 @@ Concrete tasks:
 - [ ] Generalize Stage 7C into a full Honu-style two-pass declaration pass before user-visible syntax-extension bindings:
    - pass 1 detects all binding names and syntax-extension bindings in a block/module;
    - pass 2 enforests nested bodies with the completed scope.
+- [x] Separate type/pattern/expression parsing through per-class entrypoints:
+   - `Enforest.parse_type` for type expressions with arrows, implicit Pi, type application, products;
+   - `Enforest.parse_pat` for patterns with record fields, constructor payloads;
+   - `Enforest.parse_expr` for expression forms.
 - [ ] Represent operator declarations:
    - fixity;
    - precedence;
@@ -515,7 +519,7 @@ Concrete tasks:
 - [ ] Move current operator parsing into enforestation tables:
    - application;
    - field access;
-   - prefix forms such as `ref`, `!`, `perform`, `resume`;
+   - prefix forms such as `ref`, `deref`, `perform`, `resume`;
    - infix arithmetic/comparison/assignment;
    - arrows/effect rows where appropriate.
 - [ ] Reintroduce the planned surface-syntax redesign through enforestation tables and built-in syntax entries.
@@ -541,6 +545,7 @@ Tests to add:
 - [x] Ruby/Elixir-style block syntax examples either work or are explicitly deferred with rationale.
 - [x] Built-in prefix forms parse through enforestation without Menhir grammar growth.
 - [x] Initial redesigned declaration/module syntax has parser/enforestation tests.
+- [x] Type/pattern/expression syntax classes have per-class parser/enforestation tests.
 - [ ] Macro-defined prefix form works.
 - [ ] Macro-defined infix operator works.
 - [ ] Syntax extension composes with module/import scoping.

@@ -7,7 +7,7 @@
 - Lexical scoping, curried functions, algebraic data types, pattern matching, effects/handlers.
 - Hygienic macros via enforestation — extensible forms are recognized by first-token dispatch.
 - Honu-style enforestation: reader flattens delimiters, enforest consumes one form per call.
-- Indentation is not significant. Newlines are significant as expression/statement separators.
+- Indentation is not significant. Newlines are the primary expression/statement separators. Semicolons (`;`) are supported for inline use but not recommended.
 
 ---
 
@@ -40,9 +40,9 @@ hthinarrow   ::= ->
 Keywords (not reserved; can be shadowed):
 
 ```
-fn  do  end  if  else  match  with  effect  type  module
-struct  impl  trait  pub  import  open  macro  self  Self
-ref  deref  <-  _  true  false  Unit
+fn  do  end  if  else  match  with  effect  perform  resume
+type  module  struct  impl  trait  pub  import  open  macro
+self  Self  ref  deref  can  <-  _  true  false  Unit
 ```
 
 Built-in type keywords:
@@ -60,6 +60,14 @@ hcommenti    ::= '#' hnon-newlinei*
 ```
 
 Line continuation: `\` at end of line suppresses newline.
+
+Literals:
+
+```
+hliterali     ::= hnumberi | hstringi | hchari | 'true' | 'false' | '()'
+```
+
+`()` is the Unit value and Unit pattern. `Unit` is the Unit type.
 
 ---
 
@@ -99,16 +107,27 @@ Binding modifiers (`pub`, `rec`) appear in fixed order: `pub` before `rec`.
 hbindingi    ::= (pub)? 'rec'? hnamei ':' htypei '=' hexpressioni    (* annotated assignment *)
                | (pub)? 'rec'? hnamei '=' hexpressioni               (* simple assignment *)
                | (pub)? 'rec'? 'fn' hnamei hfn-parami* (':' htypei)? hfn-bodyi   (* fn sugar *)
-               | (pub)? 'type' htype-namei htype-parami* '=' hctori ('|' hctori)*
+               | (pub)? 'type' htype-namei '(' htype-parami (',' htype-parami)* ')' '='
+                    hctori ('|' hctori)*                              (* ADT declaration *)
+               | (pub)? 'type' htype-namei '=' hctori ('|' hctori)*  (* ADT, no params *)
                | (pub)? 'effect' htype-namei htype-parami* '='
                     hop-namei ':' htypei '->' htypei ('|' hop-namei ':' htypei '->' htypei)*
                | (pub)? 'trait' htype-namei htype-parami* '='
                     hnamei ':' htypei (',' hnamei ':' htypei)*
                | (pub)? 'impl' htype-namei htype-pathi (htype-atomi)* 'do' hbindingi* 'end'
-               | (pub)? 'module' hnamei? 'do' hbindingi* 'end'
-               | (pub)? 'struct' 'do' hstruct-fieldi* hbindingi* 'end'
+               | (pub)? 'module' hnamei 'do' hbindingi* 'end'
+               | (pub)? 'struct' hnamei 'do' hstruct-fieldi* hbindingi* 'end'
                | (pub)? 'macro' hnamei hfn-parami* hfn-bodyi
                | (pub)? 'import' hstringi     (* returns module value *)
+```
+
+Binding keywords are declaration forms only. They appear at the top level, inside `do ... end`, and inside module/struct bodies. There is no `KEYWORD <binding> in <expression>` expression syntax; write a `do` block instead:
+
+```fun
+do
+  type Option A = Some A | None
+  Option(I64)
+end
 ```
 
 ### Function params
@@ -160,17 +179,17 @@ end
 rec x = x + 1    # infinite loop at definition time, but valid
 
 # mutually recursive
-rec f = fn (x) do ... g(x) ... end
-rec g = fn (x) do ... f(x) ... end
+rec f = fn(x) do ... g(x) ... end
+rec g = fn(x) do ... f(x) ... end
 ```
 
 ### Module type (signature) sugar
 
-`sig x : I64 end` is sugar for `module do pub x = I64 end`. Only declarations, no computed bindings.
+`sig x : I64 end` is sugar for `module pub x = I64 end`. Only declarations, no computed bindings.
 
 ```
-sig x : I64; y : Bool end         # type: module do pub x = I64; pub y = Bool end
-module do pub x : I64 = 1 end     # has type: sig x : I64 end
+sig x : I64; y : Bool end         # type: module pub x = I64; pub y = Bool end
+module pub x : I64 = 1 end        # has type: sig x : I64 end
 
 # module type used as type annotation
 fn (m : sig x : I64 end) : I64 do m.x end
@@ -197,66 +216,57 @@ hexpressioni ::= hliterali
                | 'Self'                                (* struct type reference *)
                | 'fn' hfn-parami* (':' htypei)? hfn-bodyi   (* anonymous function *)
                | 'if' hexpressioni 'do' hexpressioni* 'else' hexpressioni* 'end'
-               | 'match' hexpressioni 'do' (hmatch-clausei)* 'end'
+               | 'match' hexpressioni 'do' hmatch-clausei ('|' hmatch-clausei)* 'end'
                 | 'do' hexpressioni+ 'end'              (* block — sequence, value is last expr *)
 
-               | 'ref' '(' hexpressioni ')'             (* reference creation *)
-               | '!' hexpressioni                       (* ref deref — legacy, remove? *)
-               | '(' hexpressioni (',' hexpressioni)* ')'   (* tuple *)
+               | 'ref' '(' hexpressioni ')'             (* reference creation; function-like exception *)
+               | 'deref' '(' hexpressioni ')'           (* reference read; function-like exception *)
+               | '()'                                  (* Unit value *)
+               | '(' hexpressioni (',' hexpressioni)* ')'   (* tuple value *)
                | '(' hexpressioni ')'                  (* parenthesized expression *)
                | '{' hrecord-entryi (',' hrecord-entryi)* '}'   (* record constructor *)
                | 'import' hstringi                     (* returns module value *)
                 | 'open' hexpressioni                   (* opens module scope for subsequent exprs *)
-               | 'module' hnamei? 'do' hbindingi* 'end'    (* module expression *)
-               | 'struct' 'do' hstruct-fieldi* hbindingi* 'end'  (* struct expression *)
-               | 'type' htype-namei htype-parami* '='
-                    hctori ('|' hctori)*               (* ADT expression *)
-               | 'effect' htype-namei htype-parami* '='
-                    hop-namei ':' htypei '->' htypei
-                    ('|' hop-namei ':' htypei '->' htypei)*  (* effect expression *)
-               | 'trait' htype-namei htype-parami* '='
-                    hnamei ':' htypei (',' hnamei ':' htypei)*  (* trait expression *)
-               | 'impl' htype-namei htype-pathi (htype-atomi)* 'do' hbindingi* 'end'  (* impl expression *)
-               | 'macro' hnamei hfn-parami* hfn-bodyi   (* macro definition — expand-time *)
-               | 'perform' htype-pathi '.' hop-namei hcall-argsi  (* effect perform *)
-                | 'resume' '(' hexpressioni ')'       (* resume continuation — k implicit from effect branch *)
-                | 'resume' '(' ')'                   (* resume with no value *)
+               | 'module' hbindingi* 'end'                (* anonymous module expression *)
+               | 'struct' hstruct-fieldi* hbindingi* 'end' (* anonymous struct expression *)
+               | 'perform' htype-pathi '.' hop-namei hexpressioni  (* effect perform *)
+                 | 'resume' hexpressioni              (* resume continuation; use resume () for Unit *)
                | hexpressioni ':' htypei               (* type annotation *)
-               | '(' htypei (',' htypei)* ')'           (* product type *)
                | hexpressioni '.' hnamei               (* field access *)
                 | hexpressioni '(' hcall-argsi ')'      (* explicit application *)
                 | hexpressioni '(' ')'                (* application to Unit *)
                 | hexpressioni '[' hcall-argsi ']'      (* implicit application *)
-               | hexpressioni '.' 'deref'               (* ref dereference *)
                  | 'rec'? hexpressioni '<-' hexpressioni          (* ref assignment — rec for cyclic structures *)
                | hunary-operatori hexpressioni          (* unary operator *)
                | hexpressioni hbinary-operatori hexpressioni  (* binary operator *)
                | hexpressioni '@' '(' hexpressioni ')'  (* macro invocation — provisional *)
 ```
 
-TODO: old forms that need mapping or removal:
+Removed legacy expression forms:
 ```
-(* <old expr>           -> <new expr>                              *)
-(* let x: T = v in b   -> do x : T = v; b end                     *)
-(* type T A = ... in b -> do type T(a) = ... ; b end              *)
-(* !r                  -> deref(r); postfix r.deref is future UFCS  *)
-(* r := v              -> r <- v                                    *)
-(* resume arg          -> resume(arg)                               *)
-(* let rec f x = ...   -> rec fn f(x) do ... end                *)
-(* sig x : I64 end     -> module do pub x = I64 end                *)
+let x: T = v in b       # use: do x : T = v; b end
+type T A = ... in b     # use: do type T A = ...; b end
+effect E = ... in b     # use: do effect E = ...; b end
+trait T A = ... in b    # use: do trait T A = ...; b end
+impl T A do ... end in b # use: do impl T A do ... end; b end
+open M in b             # use: do open M; b end
+import "m" in b         # use: do M = import "m"; b end
 ```
+
+`ref(expr)` and `deref(expr)` are intentionally function-like built-ins. `resume` and `perform` are keyword prefix forms, not keyword calls.
 
 ---
 
 ## Patterns (for match clauses)
 
 ```
-hmatch-clausei ::= '|' hpati '->' hexpressioni*
-                 | '|' 'effect' htype-pathi '.' hop-namei hpati '->' hexpressioni*
+hmatch-clausei ::= hpati '->' hexpressioni*
+                 | 'effect' htype-pathi '.' hop-namei hpati '->' hexpressioni*
 
 hpati        ::= '_'                                    (* wildcard *)
                | hnamei                                 (* binder *)
                | hliterali                              (* literal *)
+               | '()'                                   (* Unit value pattern *)
                | hctori                                 (* constructor pattern *)
                | '(' hpati (',' hpati)* ')'             (* tuple *)
                | '{' hpat-fieldi (',' hpat-fieldi)* '}' (* record pattern *)
@@ -268,7 +278,12 @@ hpat-fieldi  ::= hnamei '=' hpati                       (* named field match *)
 
 hctori       ::= htype-pathi '.' hnamei                 (* qualified *)
                | hnamei                                 (* unqualified *)
-               | hnamei '(' hpati (',' hpati)* ')'      (* with payload *)
+               | hnamei '(' hpati (',' hpati)* ')'      (* with tuple payload *)
+               | hnamei '(' htypei (',' htypei)* ')'    (* with comma-separated type arguments *)
+```
+```
+# Example: recursive ADT with comma-separated payloads
+type List(a) = Cons(a, List(a)) | Nil
 ```
 
 ---
@@ -279,6 +294,7 @@ hctori       ::= htype-pathi '.' hnamei                 (* qualified *)
 htypei       ::= htype-atomi
                | htypei '->' htypei                     (* pure arrow — explicit Pi *)
                | '[' hparami (',' hparami)* ']' '->' htypei  (* implicit Pi *)
+               | htypei '*' htypei                      (* tuple/product type, binds tighter than -> *)
                | htypei 'can' htypei (',' htypei)* '...'? (* effectful arrow *)
 
 htype-atomi  ::= hidentifieri                            (* nominal type *)
@@ -355,7 +371,7 @@ f()                                # desugars to: f(())
 
 - **Module vs Struct**: `module` is for namespace and access-control (public/private members, signatures via `sig` sugar). `struct` is for data records with named fields, optional methods, and `self`/`Self` references. A struct value does not double as a module signature.
 
-- **Signatures**: `sig x : I64 end` desugars to `module do pub x = I64 end`. Only field-name : type pairs; no computed bindings.
+- **Signatures**: `sig x : I64 end` desugars to `module pub x = I64 end`. Only field-name : type pairs; no computed bindings.
 
 - **Braces `{}`**: Used exclusively for record construction and record patterns. Not used for blocks (use `do/end`), not used for implicit params (use `[]`), not used for sets or anything else.
 
@@ -370,6 +386,8 @@ end
 
   The restriction applies only to the immediate parameter list of a single `fn` form. The return type `[B : Type] -> ...` is a valid Pi type anywhere, so the eventual call site can use `g[A](x)[B](f)`.
 
-- **Open**: `open M` is an expression that brings `M`'s public members into scope for all subsequent expressions in the enclosing `do ... end` block.
+- **Open**: `open M` brings `M`'s public members into scope for all subsequent expressions in the enclosing `do ... end` block. There is no `open M in expr` form.
+
+- **Import**: `import "path"` returns a module value. Bind it in a `do` block when later expressions need it: `do M = import "path"; M.x end`. There is no `import "path" in expr` form.
 
 - **Module type as annotation**: Module types (`sig ... end`) can appear anywhere a type annotation is expected, e.g. `fn (m : sig x : I64 end) : I64 do m.x end`.
