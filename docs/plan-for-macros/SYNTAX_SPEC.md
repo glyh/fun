@@ -123,7 +123,7 @@ Binding keywords are declaration forms only. They appear at the top level, insid
 
 ```fun
 do
-  type Option A = Some A | None
+  type Option(A) = Some(A) | None
   Option(I64)
 end
 ```
@@ -169,10 +169,10 @@ All implicit params must come before any explicit params.
 
 ```
 # valid
-fn [A : Type] (x : A) do ... end
+fn[A : Type](x : A) do ... end
 
 # invalid — implicit param in the middle
-fn (x : A) [B : Type] do ... end
+fn(x : A)[B : Type] do ... end
 ```
 
 ### Function bodies
@@ -217,14 +217,10 @@ sig x : I64; y : Bool end         # type: module pub x = I64; pub y = Bool end
 module pub x : I64 = 1 end        # has type: sig x : I64 end
 
 # module type used as type annotation
-fn (m : sig x : I64 end) : I64 do m.x end
+fn(m : sig x : I64 end) : I64 do m.x end
 ```
 
 ### Struct field declarations
-
-```
-hstruct-fieldi ::= hnamei ':' htypei ';'
-```
 
 ```
 hstruct-fieldi ::= hnamei ':' htypei ';'
@@ -254,8 +250,8 @@ hexpressioni ::= hliterali
                 | 'open' hexpressioni                   (* opens module scope for subsequent exprs *)
                | 'module' hbindingi* 'end'                (* anonymous module expression *)
                | 'struct' hstruct-fieldi* hbindingi* 'end' (* anonymous struct expression *)
-               | 'perform' htype-pathi '.' hop-namei hexpressioni  (* effect perform *)
-                 | 'resume' hexpressioni              (* resume continuation; use resume () for Unit *)
+               | 'perform' htype-pathi '.' hop-namei hexpressioni  (* effect perform, e.g. perform State.get() *)
+               | 'resume' hexpressioni              (* resume continuation; use resume () for Unit *)
                | hexpressioni ':' htypei               (* type annotation *)
                | hexpressioni '.' hnamei               (* field access *)
                 | hexpressioni '(' hcall-argsi ')'      (* explicit application *)
@@ -270,7 +266,7 @@ hexpressioni ::= hliterali
 Removed legacy expression forms:
 ```
 let x: T = v in b       # use: do x : T = v; b end
-type T A = ... in b     # use: do type T A = ...; b end
+type T(A) = ... in b     # use: do type T(A) = ...; b end
 effect E = sig ... end in b     # use: do effect E = sig ... end; b end
 trait T(A) = sig ... end in b    # use: do trait T(A) = sig ... end; b end
 impl T(A) = module ... end in b # use: do impl T(A) = module ... end; b end
@@ -432,8 +428,8 @@ f()                                # desugars to: f(())
 
 ```fun
 # fn's own params: all implicit [] before explicit ()
-fn [A : Type] (x : A) : [B : Type] -> (fn (f : A -> B) -> f(x)) do
-  fn (f) -> f(x)
+fn[A : Type](x : A) : [B : Type] -> (A -> B) -> B do
+  fn(f) -> f(x)
 end
 ```
 
@@ -443,4 +439,4 @@ end
 
 - **Import**: `import "path"` returns a module value. Bind it in a `do` block when later expressions need it: `do M = import "path"; M.x end`. There is no `import "path" in expr` form.
 
-- **Module type as annotation**: Module types (`sig ... end`) can appear anywhere a type annotation is expected, e.g. `fn (m : sig x : I64 end) : I64 do m.x end`.
+- **Module type as annotation**: Module types (`sig ... end`) can appear anywhere a type annotation is expected, e.g. `fn(m : sig x : I64 end) : I64 do m.x end`.

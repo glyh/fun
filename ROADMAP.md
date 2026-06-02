@@ -62,7 +62,7 @@ Completed milestones:
 - added public module impl/trait evidence through `open`/imports while preserving module binding order;
 - kept nominal ADT equality explicit: ADTs do not derive `Eq` automatically;
 - kept record/struct `Eq` explicit by default: records reject `==` unless suitable evidence exists;
-- added ordered struct impl evidence, including `pub impl Eq Self` inside a struct body;
+- added ordered struct impl evidence, including `pub impl Eq(Self) = module ... end` inside a struct body;
 - added imported struct-local impl coverage, so an exported struct can carry public `Self` evidence across module imports;
 - added semantic and backend tests for trait declaration, implementation checking, method dispatch, bound dispatch, missing impls, duplicate fields, missing fields, explicit record equality rejection, struct-local `Self` impls, and imported struct-local `Self` impls.
 
@@ -80,7 +80,7 @@ Algebraic effects now have nominal effect families, latent rows with open row ta
 Completed milestones:
 
 - added first-class `EffectRow` and row literals in the core/NbE pipeline;
-- added explicit open-row syntax with `can {IO | r}`, `can {IO, State I64 | r}`, and `can {| r}`;
+- added explicit open-row syntax with `can {IO | r}`, `can {IO, State(I64) | r}`, and `can {| r}`;
 - added explicit pure-row syntax with `can {}`;
 - changed omitted effect annotations to infer/thread row tails by default;
 - extended row unification, conversion, quotation, and debug printing;
@@ -92,7 +92,7 @@ Optimization, VM, and CPS lowering are not part of the current effects plan.
 
 ### 5. References
 
-Mutable references are implemented in the OCaml prototype. The language now supports `Ref A`, `ref e`, `!r`, and `r := e` without exposing reference operations in user-visible effect rows.
+Mutable references are implemented in the OCaml prototype. The language now supports `Ref(A)`, `ref(e)`, `deref(r)`, and `r <- e` without exposing reference operations in user-visible effect rows.
 
 Completed milestones:
 
@@ -108,7 +108,7 @@ The macro system is the main remaining language-design item in the OCaml prototy
 
 The macro plan is larger than the recent semantic features because it requires syntax objects, hygiene, enforestation, phase-aware modules, and eventually type-integrated expansion.
 
-Parser syntax redesign is blocked on this work: the parser should not be expanded aggressively toward final user-facing syntax before the macro system direction is clear.
+The syntax redesign now enters through reader/enforestation rather than Menhir grammar growth, with macro syntax extension continuing on top of that boundary.
 
 ### 7. CLR/C# rewrite target
 

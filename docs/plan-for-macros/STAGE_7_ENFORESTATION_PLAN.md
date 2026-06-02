@@ -2,7 +2,7 @@
 
 ## Goal
 
-Stage 7 introduces enforestation as the parsing boundary for the redesigned `fun` surface syntax described in `SYNTAX_SPEC.md`, while keeping the existing Menhir parser as a compatibility path.
+Stage 7 introduces enforestation as the parsing boundary for the redesigned `fun` surface syntax described in `SYNTAX_SPEC.md`.
 
 This stage should not try to implement every redesigned syntax form at once. The primary goal is to establish the architecture that future syntax extension can build on:
 
@@ -21,7 +21,6 @@ This stage should not try to implement every redesigned syntax form at once. The
 
 ## Non-Goals For Stage 7
 
-- Do not remove Menhir.
 - Do not rewrite elaboration around a new AST.
 - Do not implement type-aware, problem-aware, stuck, or type-providing macros.
 - Do not add arbitrary user-defined grammar productions yet.
@@ -44,18 +43,7 @@ source text
   -> existing elaborator/backend
 ```
 
-The compatibility path remains:
-
-```text
-source text
-  -> Menhir Surface.t
-  -> Surface_to_syntax.expr
-  -> existing hygienic Expand.expand
-  -> Lower_surface.lower_expr
-  -> Surface.t
-```
-
-During the transition, `Parse_expand.parse_expr` should try the enforestation path for supported redesigned syntax and fall back to Menhir when the input is outside the implemented Stage 7 slice.
+The old Menhir compatibility path has been removed. `Parse_expand.parse_expr` and `Parse_expand.parse_module` now route through enforestation directly.
 
 ## Phase 7A: Raw Reader And Minimal Expression Enforesting
 
@@ -136,8 +124,8 @@ Add syntax tests for:
 ### Exit Criteria
 
 - Existing syntax tests still pass.
-- Existing Menhir-supported programs still parse through `Parse_expand`.
-- The supported redesigned expression slice parses without touching `core_parser.mly`.
+- Existing parser-entrypoint users still parse through `Parse_expand`.
+- The supported redesigned expression slice parses through `lib/expand/enforest.ml`.
 - `dune exec test/syntax/test_syntax.exe` passes.
 - `dune build` passes.
 
@@ -164,14 +152,14 @@ Add built-in first-token dispatch for:
 `fn` initially supports:
 
 ```fun
-fn (x : I64) -> x
-fn (x : I64) do x end
-fn [A : Type] (x : A) -> x
-fn [A : Type] -> struct value: A; end
-fn () -> 1
+fn(x : I64) -> x
+fn(x : I64) do x end
+fn[A : Type](x : A) -> x
+fn[A : Type] -> struct value: A; end
+fn() -> 1
 ```
 
-Anonymous functions with only implicit parameters do not require an empty explicit `()` parameter list. `fn ()` lowers to a single explicit `Unit` parameter and `f()` lowers to application to unit. References use `deref(r)` for reads; postfix `.deref` is ordinary field access and is not ref syntax.
+Anonymous functions with only implicit parameters do not require an empty explicit `()` parameter list. `fn()` lowers to a single explicit `Unit` parameter and `f()` lowers to application to unit. References use `deref(r)` for reads; postfix `.deref` is ordinary field access and is not ref syntax.
 
 ### Files
 
@@ -252,7 +240,7 @@ The implemented 7C slice parses declarations into `Syntax.t` and still leaves au
 
 - [x] `parse_module` can parse a small redesigned module body through enforestation.
 - [x] Binding scopes are still introduced by `Expand.expand`; enforestation should not replace hygiene.
-- [x] Old module files keep parsing through Menhir compatibility.
+- [x] Module files parse through enforestation.
 
 ## Phase 7D: Type And Pattern Syntax Classes
 
@@ -275,19 +263,19 @@ The type parser covers the syntax-spec examples that have direct current `Surfac
 `Enforest` now exports three per-class entrypoints: `parse_expr`, `parse_type`, and `parse_pat`.
 Type parsing handles `->` as a right-associative arrow with per-class precedence in `Enforest`
 (rather than reusing the expression operator table). Record-pattern brace groups are recognized
-in `parse_pat_postfix`, dotted pattern postfixes support qualified constructor and record heads such as `C.Red`, `N.M.X(n)`, and `Alias.Point {x}`, and `parse_type` is used by parameter annotations in `parse_fn`.
+in `parse_pat_postfix`, dotted pattern postfixes support qualified constructor and record heads such as `C.Red`, `N.M.X(n)`, and `Alias.Point {x}`, and `parse_type_terms` is used by parameter annotations in `parse_fn`.
 
 ### Tests
 
-- [x] `fn (x : Option(I64)) -> x` lowers to type application `Ap(Option, Explicit, I64)`;
-- [x] `fn (f : I64 -> Bool) -> f(1)` parses arrow type in param annotation;
-- [x] `fn (f : (I64, Bool) -> Bool) -> f(1, true)` parses product type `ProdTy`;
+- [x] `fn(x : Option(I64)) -> x` lowers to type application `Ap(Option, Explicit, I64)`;
+- [x] `fn(f : I64 -> Bool) -> f(1)` parses arrow type in param annotation;
+- [x] `fn(f : I64 * Bool -> Bool) -> f(1, true)` parses product type `ProdTy`;
 - [x] `match x do Some(y) -> y | None -> 0 end` parses constructor payload in match;
 - [x] `match x do M.Some(y) -> y | M.None -> 0 end` parses qualified constructor patterns;
 - [x] `match p do Point{x; y} -> x end` parses record pattern shorthand;
 - [x] `match p do M.Point{x; y} -> x end` parses qualified record patterns;
 - [x] `match p do Point{x = n; _} -> n end` parses record pattern renamed field with partial;
-- [ ] `fn (m : sig x : I64 end) -> m.x` is deferred; signature sugar requires old module syntax.
+- [x] `fn(m : sig x : I64 end) -> m.x` parses signature sugar in parameter annotations.
 
 ### Exit Criteria
 
@@ -327,9 +315,8 @@ This phase should be deliberately small. A reasonable first API is not the final
 ## Compatibility Rules
 
 - `Parse_expand.parse_expr` and `Parse_expand.parse_module` remain the only downstream entrypoints.
-- Existing tests should not switch to direct Menhir parsing.
-- Menhir remains available for old syntax until the redesigned syntax covers enough of the language.
-- New final syntax features should be added through enforestation, not `core_parser.mly`, unless they are required for compatibility fallback.
+- Existing tests should not use a parser entrypoint below `Parse_expand` unless they are specifically testing the reader/enforester.
+- New final syntax features should be added through enforestation.
 - Lowering to `Surface.t` remains the elaborator-facing boundary for Stage 7.
 
 ## Error Handling Rules
@@ -339,7 +326,7 @@ Stage 7 should produce simple but deterministic errors. Good enough for this pha
 - unmatched delimiters report the delimiter and source span when available;
 - unsupported forms report that they are outside the current enforestation slice;
 - operator parse failures report the operator and expected operand position;
-- fallback to Menhir should happen only when the enforester cannot parse the input at all, not after it has partially accepted a redesigned form and found a real syntax error.
+- unsupported redesigned forms should fail deterministically rather than silently choosing another parser.
 
 ## Implementation Notes
 
@@ -391,7 +378,7 @@ Enforestation may create `Syntax.id` values with source spans, but it should not
 1. Add `test/syntax/test_enforest.ml` with pending/failing tests for Phase 7A shapes.
 2. Add raw reader support and make the reader tests pass.
 3. Add `Operator_env` and expression enforest support for literals, identifiers, parentheses, calls, fields, and operators.
-4. Route `Parse_expand.parse_expr` through enforestation with Menhir fallback.
+4. Route `Parse_expand.parse_expr` through enforestation.
 5. Add `do ... end` binding/final-expression support.
 6. Run `dune exec test/syntax/test_syntax.exe` and `dune build`.
 7. Update `IMPLEMENTATION_PLAN.md` Stage 7 status from "Not started" to "Started" only after Phase 7A is implemented.
@@ -403,7 +390,7 @@ Enforestation may create `Syntax.id` values with source spans, but it should not
 - [x] `lib/expand/operator_env.ml` exists.
 - [x] `lib/expand/syntax_class.ml` exists.
 - [x] `Parse_expand.parse_expr` can parse the Phase 7A redesigned expression slice.
-- [x] Existing old syntax still parses through the fallback path.
-- [x] `core_parser.mly` is not extended for Phase 7A syntax.
+- [x] Parser-entrypoint users route through `Parse_expand`.
+- [x] The old `core_parser.mly` parser is removed rather than extended for Phase 7A syntax.
 - [x] `dune exec test/syntax/test_syntax.exe` passes.
 - [x] `dune build` passes.

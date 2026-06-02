@@ -27,11 +27,11 @@ The safe path is incremental:
 Completed:
 
 - [x] `Source_span`, `Raw_syntax`, `Scope_set`, and `Syntax` modules exist in `lib/core_kernel/` (moved from `lib/syntax/` to break dependency cycle for `VStx`).
-- [x] `Core_lexer.tokens_with_spans` and `Core_lexer.spanned_token` exist.
-- [x] `core_tt_expand` exists with binding resolution, expander context, built-in expander, lowering to `Surface.t`, and `Surface.t -> Syntax.t` compatibility conversion.
+- [x] Raw syntax reader terms and enforestation exist.
+- [x] `core_tt_expand` exists with binding resolution, expander context, built-in expander, enforestation, lowering to `Surface.t`, and `Surface.t -> Syntax.t` compatibility conversion.
 - [x] `Parse_expand.parse_expr` and `Parse_expand.parse_module` are the downstream parser entrypoints.
 - [x] REPL, loader, stdlib prelude parsing, semantic tests, backend tests, and syntax parser-shape tests use `Parse_expand`.
-- [x] The old direct `Core_lexer.parse_expr` / `Core_lexer.parse_module` pipeline was removed.
+- [x] The old direct `Core_lexer.parse_expr` / `Core_lexer.parse_module` pipeline and Menhir parser files were removed.
 - [x] Syntax tests are a single Alcotest executable: `dune exec test/syntax/test_syntax.exe`.
 - [x] Stage 4 is complete: expander allocates lexical scopes for all binding forms, resolves shadowed identifiers to stable internal names, and lowers to `Surface.t` without losing identity.
 - [x] Stage 5 is complete: local macro definitions, macro API primitives, hygiene tests, and panic propagation work through NBE integration.
@@ -64,9 +64,8 @@ Current implemented pipeline:
 
 ```text
 source text
-  -> Core_lexer tokens
-  -> Core_parser Menhir Surface.t
-  -> Surface_to_syntax.expr
+  -> Raw_syntax reader terms
+  -> Enforest Syntax.t
   -> Expand.expand_expr / expand_module
   -> Lower_surface.lower_expr
   -> Surface.t
@@ -103,7 +102,7 @@ These are non-negotiable unless this document is updated with a replacement inva
 2. Alpha-renamed strings may be used only as a lowering encoding for `Surface.Var` compatibility.
 3. User macros must not run through the runtime import path as ordinary values.
 4. Expansion and typechecking interleavings must be deterministic.
-5. Menhir can remain as a compatibility parser, but new final syntax features should go through enforestation.
+5. New final syntax features should go through enforestation.
 6. No user-defined macros should be exposed before Stage 4 is solid.
 
 Identifier resolution rule:
@@ -144,17 +143,17 @@ Purpose:
 
 Implemented files:
 
-- [x] `lib/syntax/source_span.ml`
+- [x] `lib/core_kernel/source_span.ml`
 - [x] `lib/syntax/raw_syntax.ml`
-- [x] `lib/syntax/syntax.ml`
-- [x] `lib/syntax/core_lexer.ml`
+- [x] `lib/core_kernel/syntax.ml`
+- [x] `lib/expand/enforest.ml`
 
 Implemented tasks:
 
 - [x] Source span type with file, byte offsets, line/column positions, and synthetic marker.
-- [x] Token-with-span API behind `Core_lexer.tokens_with_spans`.
+- [x] Raw reader produces span-preserving terms.
 - [x] Raw syntax token/group data structures.
-- [x] Compatibility parser remains Menhir-backed through `Parse_expand`.
+- [x] Parser entrypoints route through reader/enforestation and `Parse_expand`.
 
 Remaining optional follow-ups:
 
@@ -177,8 +176,8 @@ Purpose:
 
 Implemented files:
 
-- [x] `lib/syntax/scope_set.ml`
-- [x] `lib/syntax/syntax.ml`
+- [x] `lib/core_kernel/scope_set.ml`
+- [x] `lib/core_kernel/syntax.ml`
 - [x] `lib/expand/binding.ml`
 - [x] `test/syntax/test_scope_sets.ml`
 
@@ -225,12 +224,12 @@ Implemented tasks:
 - [x] `Parse_expand.parse_expr` and `Parse_expand.parse_module` as public downstream parse entrypoints.
 - [x] REPL, loader, stdlib prelude, semantic tests, backend tests, and syntax parser-shape tests use `Parse_expand`.
 - [x] Direct `Core_lexer.parse_expr` and `Core_lexer.parse_module` removed.
+- [x] Menhir parser files removed after enforestation became the parser entrypoint.
 
 Current limitations:
 
-- [ ] Menhir still produces `Surface.t` first, then `Surface_to_syntax` converts into macro-facing syntax.
-- [ ] No raw token-tree parser yet.
-- [ ] No user-defined macros yet.
+- [ ] User-defined syntax extensions are still constrained to the implemented prefix/infix operator-extension slice.
+- [ ] Type-aware and stuck/problem-aware macros are not implemented yet.
 
 Exit criteria:
 
@@ -336,7 +335,7 @@ Purpose:
 First supported shape:
 
 ```fun
-macro name = fun stx -> body in ...
+do macro name(stx) -> body; ... end
 ```
 
 Invocation: `name @ ( arg )` using the `@` token.
@@ -367,7 +366,7 @@ Concrete tasks:
 
 Implementation details:
 
-- `macro name = fun stx -> body` is parsed as `Surface.MacroDef` → `Syntax.MacroDef`.
+- `macro name(stx) -> body` is parsed as `Surface.MacroDef` → `Syntax.MacroDef`.
   The expander lowers the body to `Surface.t`, elaborates via the `elaborate` callback
   (provided by `Expand_ctx`; wired to `Elaborate.on_expr` + `Nbe.eval` in the REPL),
   and registers the resulting `Core.value` (a `VLam`) in `Expand_ctx.macro_table`.
@@ -399,7 +398,7 @@ Suggested files:
 
 Tests added:
 
-- [x] Local macro expands to an atom (identity macro: `macro id = fun stx -> stx in id @ (42)`).
+- [x] Local macro expands to an atom (identity macro: `do macro id(stx) -> stx; id @ (42) end`).
 - [x] Local macro expands to an application (identity over `1 + 2`).
 - [x] stx_make_i64 literal construction.
 - [x] stx_make_ap expression construction (1 + 2 via primitives).
@@ -471,7 +470,7 @@ Exit criteria:
 
 ## Stage 7: Enforestation And Regular Syntax Extension
 
-Status: Started. Phases 7A, 7B, 7C, and 7D are implemented. 7E remains not started.
+Status: Implemented through the first user-visible syntax-extension slice.
 
 Purpose:
 
@@ -500,10 +499,9 @@ Concrete tasks:
    - `import "path"`;
    - `open M` statements inside `do` blocks.
 - [x] Add redesigned declaration/module-item parsing through enforestation:
-   - top-level `parse_module` support for `pub x = expr`, `x : Type = expr`, `fn f(params) ...`, `macro name = expr`, and named `module M do ... end`;
+   - top-level `parse_module` support for `pub x = expr`, `x : Type = expr`, `fn f(params) ...`, `macro name(params) -> expr`, and named `M = module ... end`;
    - expression `do` support for typed declarations and recursive function declarations;
-   - expression `module do ... end` and `struct do ... end` support;
-   - old module syntax remains accepted by Menhir fallback.
+   - expression `module ... end` and `struct ... end` support.
 - [ ] Generalize Stage 7C into a full Honu-style two-pass declaration pass before user-visible syntax-extension bindings:
    - pass 1 detects all binding names and syntax-extension bindings in a block/module;
    - pass 2 enforests nested bodies with the completed scope.
@@ -526,8 +524,8 @@ Concrete tasks:
 - [ ] Keep old syntax accepted during transition where practical, but make redesigned syntax the documented/tested direction.
 - [ ] Prefer implementing redesigned constructs as built-in macro/enforestation entries so user macros exercise the same mechanism.
 - [ ] Use this stage for larger block/form experiments, including Ruby/Elixir-style `do ... end` shapes if still desired.
-- [ ] Keep Menhir only for compatibility parsing, delimiter handling, or recovery if useful; do not grow it as the final grammar.
-- [ ] Implement at least one macro-defined prefix form and one macro-defined infix operator.
+- [x] Removed the Menhir parser files after enforestation covered the tested language surface.
+- [x] Implemented at least one macro-defined prefix form and one macro-defined infix operator.
 
 Suggested files:
 
@@ -541,19 +539,19 @@ Tests to add:
 
 - [x] Existing operator precedence remains compatible or intentionally changes with migration tests.
 - [x] Redesigned built-in syntax has parser/enforestation tests.
-- [x] Old and redesigned syntax coexist where transition compatibility is intentional.
+- [x] Redesigned syntax is the documented/tested direction.
 - [x] Ruby/Elixir-style block syntax examples either work or are explicitly deferred with rationale.
 - [x] Built-in prefix forms parse through enforestation without Menhir grammar growth.
 - [x] Initial redesigned declaration/module syntax has parser/enforestation tests.
 - [x] Type/pattern/expression syntax classes have per-class parser/enforestation tests.
-- [ ] Macro-defined prefix form works.
-- [ ] Macro-defined infix operator works.
-- [ ] Syntax extension composes with module/import scoping.
+- [x] Macro-defined prefix form works.
+- [x] Macro-defined infix operator works.
+- [x] Syntax extension composes with module/import scoping.
 
 Exit criteria:
 
 - [x] Initial redesigned syntax slice works through enforestation.
-- [ ] Menhir is no longer the place new final syntax features are added.
+- [x] Menhir is no longer the place new final syntax features are added.
 
 ## Stage 8: Problem-Aware Macros
 
@@ -738,7 +736,7 @@ Do not:
 - implement macros as string substitution;
 - implement hygiene only as gensym renaming;
 - add user macros directly on `Surface.t` as the only representation;
-- grow Menhir for final syntax experiments before enforestation;
+- reintroduce parser-generator grammar growth for final syntax experiments instead of enforestation;
 - treat compile-time imports as runtime imports;
 - let macro evaluation freely run runtime effects/refs;
 - force type-aware macros into strict expansion-before-elaboration ordering;
@@ -747,7 +745,7 @@ Do not:
 Acceptable temporary shortcuts:
 
 - lower resolved hygienic identifiers to alpha-renamed `Surface.Var` strings while elaboration still expects strings;
-- keep Menhir as the compatibility parser while raw syntax/enforestation is introduced;
+- keep compatibility shims only when they are exercised through `Parse_expand`;
 - start with prefix-only macro invocation before general regular-syntax macros;
 - expose only read-only expected-type reflection before stuck macros exist;
 - keep typed/core macro fragments out of scope until surface-expanding macros are stable.

@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```sh
 dune build                     # build
 dune test                      # run all tests
-dune exec fun                  # launch REPL
+dune exec bin/main.exe         # launch REPL
 ```
 
 There is no dedicated lint target; use `dune build` and `dune test` as the standard validation loop.
@@ -34,8 +34,8 @@ dune exec test/backend/test_core.exe -- test eval -e 'factorial'
 
 ```
 Source string
-  → Core_lexer / Core_parser
-  → Parse_expand
+  → Raw_syntax reader / Enforest
+  → Parse_expand expansion/lowering
   → Surface.t
   → Elaborate.on_expr
   → Core.term + Core.value type
@@ -49,8 +49,8 @@ Source string
 
 The implementation is split by pipeline stage, with each source folder owning its own Dune library.
 
-- `lib/syntax/` — `Surface`, `Core_parser`, and `Core_lexer` for the surface AST and parser.
-- `lib/expand/` — `Parse_expand`, hygiene/binding infrastructure, and lowering from macro-facing syntax back to `Surface.t`.
+- `lib/syntax/` — `Surface` and raw reader syntax types for the surface AST and parser boundary.
+- `lib/expand/` — `Enforest`, `Parse_expand`, hygiene/binding infrastructure, and lowering from macro-facing syntax back to `Surface.t`.
 - `lib/core_kernel/` — `Atom`, `Core`, and `Debug` for primitive atoms, core terms, semantic values, metas, and pretty-printers.
 - `lib/semantic/match/` — `Core_decision_tree` and `Core_match_compile` for pattern matrix compilation and exhaustiveness checking.
 - `lib/semantic/typecheck/` — `Elaborate` and `Unify` for bidirectional elaboration and metavariable solving.
@@ -61,9 +61,9 @@ The implementation is split by pipeline stage, with each source folder owning it
 ## Important entrypoints
 
 - `bin/main.ml` — executable REPL wiring for parse/elaborate/eval/print.
-- `lib/syntax/core_lexer.ml` and `lib/syntax/core_parser.mly` — sedlex/menhir parser for expressions and `.fun` module files.
+- `lib/expand/enforest.ml` — reader/enforester for expressions and `.fun` module files.
 - `lib/syntax/surface.ml` — surface AST consumed by elaboration.
-- `lib/expand/parse_expand.ml` — current parser entrypoint for downstream consumers; runs Menhir parsing, syntax conversion, built-in expansion, and lowering to `Surface.t`.
+- `lib/expand/parse_expand.ml` — current parser entrypoint for downstream consumers; runs enforestation, built-in expansion, and lowering to `Surface.t`.
 - `lib/semantic/typecheck/elaborate.ml` — bidirectional elaborator, context management, implicit insertion, pattern elaboration, and match exhaustiveness checks.
 - `lib/backend/interp/nbe.ml` — normalization-by-evaluation, primitive evaluation, quoting, conversion, and runtime match evaluation.
 - `lib/semantic/typecheck/unify.ml` — higher-order metavariable unification.
@@ -91,8 +91,8 @@ Metavariable solving uses Miller-style pattern unification in `unify.ml`. `MetaC
 `struct ... end` is the universal structural value for records, modules, and namespaces. A struct can contain:
 
 - field declarations: `x: I64;`
-- computed public fields: `pub let x = expr`
-- private bindings: `let x = expr`
+- computed public fields: `pub x = expr`
+- private bindings: `x = expr`
 - nested public/private type bindings
 - `open` / `export` members for scoped imports and re-exports
 - methods with `self` and `Self` support for record-like structs
@@ -100,14 +100,16 @@ Metavariable solving uses Miller-style pattern unification in `unify.ml`. `MetaC
 Record construction uses a struct type value:
 
 ```fun
-let Point = struct x: I64; y: I64; end in
-Point {x = 1; y = 2}
+do
+  Point = struct x: I64; y: I64; end
+  Point{x = 1; y = 2}
+end
 ```
 
 Record patterns destructure by field name:
 
 ```fun
-match p with
+match p do
 | Point {x; y} -> x + y
 end
 ```
@@ -115,10 +117,12 @@ end
 ADTs are nominal and are introduced with `type`:
 
 ```fun
-type Option A = Some A | None in
-match Some 1 with
-| Some x -> x
+do
+  type Option(A) = Some(A) | None
+  match Some(1) do
+| Some(x) -> x
 | None -> 0
+end
 end
 ```
 
@@ -151,9 +155,7 @@ core_tt_kernel
   └─ primitive atoms, core terms, debug helpers
 
 core_tt_syntax
-  ├─ core_tt_kernel
-  ├─ menhirLib
-  └─ sedlex
+  └─ core_tt_kernel
 
 core_tt_expand
   └─ core_tt_syntax
@@ -194,15 +196,15 @@ Tests depend on the staged libraries they exercise and `alcotest`.
 - Type parameters are ordinary binders in dependent function types; implicit arguments use brackets.
 - Explicit function type: `(x : A) -> B`; implicit function type: `[x : A] -> B`.
 - Explicit application: `f(x)`; explicit implicit application: `f[A]`.
-- ADTs: `type Option A = Some A | None in ...`.
-- Records: `let Point = struct x: I64; y: I64; end in Point {x = 1; y = 2}`.
+- ADTs: `do type Option(A) = Some(A) | None; ... end`.
+- Records: `do Point = struct x: I64; y: I64; end; Point{x = 1; y = 2} end`.
 - Field access: `expr.field`.
 - Record patterns: `Point {x; y}`, `Point {x = n; _}`, and qualified forms such as `M.Point {x}`.
-- Structs: `struct ... end` with `let`, `pub let`, `type`, `pub type`, `open`, and `export` members.
+- Structs: `struct ... end` with value bindings, `pub` value bindings, `type`, `pub type`, `open`, and `export` members.
 - Methods use `pub method name(...) -> expr` or `pub method name(...) do ... end`.
 - `self` names the receiver inside methods; `Self` names the enclosing record type after field declarations.
-- `open M in expr` brings public members into expression scope.
-- Match: `match expr with | pat -> body | pat -> body end`.
+- `open M` brings public members into scope for subsequent expressions in the enclosing block.
+- Match: `match expr do | pat -> body | pat -> body end`.
 - Effects: `effect State(S) = sig get : Unit -> S; put : S -> Unit end`.
 - Recursive values use `let rec`.
 - Comments: `(* ... *)` with nesting.
