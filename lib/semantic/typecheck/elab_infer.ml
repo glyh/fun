@@ -752,5 +752,5 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
-  | MacroDef _ | MacroCall _ ->
-      failwith "MacroDef/MacroCall should not reach elaboration"
+  | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ ->
+      failwith "macro-only syntax should not reach elaboration"

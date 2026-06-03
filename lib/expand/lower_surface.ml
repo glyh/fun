@@ -71,8 +71,12 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.RefSet (l, r) -> Surface.RefSet (lower_expr l, lower_expr r)
   | Syntax.Match (scrut, brs) ->
     Surface.Match (lower_expr scrut, List.map lower_match_branch brs)
-  | Syntax.MacroDef _ | Syntax.MacroCall _ | Syntax.SyntaxOperatorUse _ ->
-    failwith "macro-only syntax should have been expanded away before lowering"
+  | Syntax.MacroDef { name; value; body } ->
+    Surface.MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body }
+  | Syntax.MacroCall (f, a) -> Surface.MacroCall (lower_expr f, lower_expr a)
+  | Syntax.SyntaxOperatorUse { operator; fixity; operands } ->
+    let fixity = match fixity with Syntax.PrefixOp -> Surface.PrefixOp | Syntax.InfixOp -> Surface.InfixOp in
+    Surface.SyntaxOperatorUse { operator = lower_id operator; fixity; operands = List.map lower_expr operands }
 
 and lower_struct_binding = function
   | Syntax.LetBinding { name; value; public } ->

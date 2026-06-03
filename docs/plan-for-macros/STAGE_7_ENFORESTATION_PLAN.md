@@ -356,7 +356,7 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 ### Macro Integration
 
 - [ ] Make syntax-extension expansion report useful source spans for the operator declaration and the use site.
-- [ ] Check that syntax-extension macro RHS values are expanded/evaluated through the same phase-aware path as `macro` / `pub macro` declarations in every supported module/block position.
+- [x] Check that syntax-extension macro RHS values are expanded/evaluated through the same phase-aware path as `macro` / `pub macro` declarations in every supported module/block position.
 - [x] Add negative tests for imported syntax-extension cycles that are distinct from runtime circular imports and ordinary macro visits.
 - [x] Add tests for unsupported syntax-extension shapes so failures stay deterministic as the parser grows.
 

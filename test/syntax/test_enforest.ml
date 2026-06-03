@@ -408,6 +408,15 @@ pub test = do twice 1 end" with
               } ] } -> ()
   | _ -> Alcotest.fail "expected operator prefix declaration and usage in module"
 
+let operator_rhs_can_use_earlier_macro () =
+  match parse_with_macros "do
+  macro one_body(_) -> stx_make_ap(stx_make_var(\"stx_make_i64\"), stx_make_i64(1))
+  operator prefix choose(stx) -> one_body @ (0)
+  choose 0
+end" with
+  | Atom (Atom.I64 1L) -> ()
+  | _ -> Alcotest.fail "expected operator RHS to expand through the macro path"
+
 let operator_infix_associativity () =
   match parse_with_macros "do
   operator infix ~ 15 right(stx) -> if stx_kind(stx) == \"syntax_operator_use\" do stx_make_i64(1) else stx_make_i64(0) end
@@ -561,6 +570,7 @@ let suites =
         Alcotest.test_case "operator prefix simple do" `Quick operator_prefix_simple_do;
         Alcotest.test_case "operator infix in do block" `Quick operator_infix_in_do_block;
         Alcotest.test_case "operator prefix in module" `Quick operator_prefix_in_module;
+        Alcotest.test_case "operator RHS can use earlier macro" `Quick operator_rhs_can_use_earlier_macro;
         Alcotest.test_case "operator infix associativity" `Quick operator_infix_associativity;
         Alcotest.test_case "operator declaration is sequential" `Quick operator_declaration_is_sequential;
         Alcotest.test_case "duplicate operator later wins" `Quick duplicate_operator_later_wins;

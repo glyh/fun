@@ -956,6 +956,14 @@ let test_operator_infix_macro_expands () =
     "do
        operator infix ~ 15 left(stx) -> stx_make_i64(9)
        1 ~ 2
+       end" ()
+
+let test_operator_rhs_can_use_earlier_macro () =
+  check_i64_macro "operator RHS macro path" 5L
+    "do
+       macro answer_body(_) -> stx_make_ap(stx_make_var(\"stx_make_i64\"), stx_make_i64(5))
+       operator prefix answer(stx) -> answer_body @ (0)
+       answer 0
       end" ()
 
 let test_operator_prefix_receives_structured_input () =
@@ -1468,6 +1476,7 @@ let () =
           Alcotest.test_case "imported macro calls regular function" `Quick test_imported_macro_calls_regular_function;
           Alcotest.test_case "operator prefix macro expands" `Quick test_operator_prefix_macro_expands;
           Alcotest.test_case "operator infix macro expands" `Quick test_operator_infix_macro_expands;
+          Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;

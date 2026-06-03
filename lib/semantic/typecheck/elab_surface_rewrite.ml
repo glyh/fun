@@ -174,7 +174,7 @@ let rewrite_record_self_refs record_name params expr =
             in
             Surface.Match (go bound scrutinee, List.map go_branch branches)
         | Atom _ | Var _ | Self | SelfType -> expr
-        | MacroDef _ | MacroCall _ -> failwith "MacroDef/MacroCall should not reach elaboration")
+        | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ -> failwith "macro-only syntax should not reach elaboration")
   in
   go [] expr
 

@@ -53,7 +53,8 @@ let rec compile_time_safe (expr : Surface.t) : bool =
   | Surface.ImplDef { args; fields; body; _ } ->
       List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields && compile_time_safe body
   | Surface.Perform _ | Surface.Resume _ | Surface.Match _ -> false
-  | Surface.MacroDef _ | Surface.MacroCall _ -> failwith "MacroDef/MacroCall should not reach elaboration"
+  | Surface.MacroDef _ | Surface.MacroCall _ | Surface.SyntaxOperatorUse _ ->
+      failwith "macro-only syntax should not reach elaboration"
 
 and compile_time_safe_struct_binding = function
   | Surface.LetBinding { value; _ } -> compile_time_safe value
@@ -269,4 +270,4 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       in
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
   | Atom _ | Var _ | Self | SelfType | Import _ -> empty_expr_effects
-  | MacroDef _ | MacroCall _ -> failwith "MacroDef/MacroCall should not reach elaboration"
+  | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ -> failwith "macro-only syntax should not reach elaboration"

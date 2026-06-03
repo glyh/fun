@@ -265,6 +265,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | MacroDef { name; value; body } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
+      let value = expand ctx value in
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
       let previous = Expand_ctx.lookup_macro ctx name.name in
@@ -383,12 +384,13 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   | MacroBinding { name; value; public } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
+      let value = expand ctx value in
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
       let binding_name = id_name name in
       let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
       Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
-      (MacroBinding { name = add_id_scope scope name; value = expand ctx value; public },
+      (MacroBinding { name = add_id_scope scope name; value; public },
        [ scope ])
     | None ->
       (MacroBinding { name; value = expand ctx value; public }, [])
