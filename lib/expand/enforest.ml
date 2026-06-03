@@ -747,7 +747,7 @@ and parse_syntax_decl env stmt =
       let prec = 50 in
       env.operators <- Operator_env.add_prefix env.operators name prec;
       let value = parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms in
-      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.Prefix { symbol = name; precedence = prec } }
+      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_prefix name prec }
   | { datum = Token { kind = Ident s; _ }; _ }
     :: { datum = Token { kind = Ident ifx; _ }; _ }
        :: name_term
@@ -764,7 +764,7 @@ and parse_syntax_decl env stmt =
       in
       env.operators <- Operator_env.add_infix env.operators name prec assoc;
       let value = parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms in
-      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.Infix { symbol = name; precedence = prec; associativity = assoc } }
+      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_infix name prec assoc }
   | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
       unsupported "unsupported syntax declaration shape"
   | _ -> None

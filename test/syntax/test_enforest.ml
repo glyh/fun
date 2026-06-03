@@ -452,6 +452,13 @@ pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
 
+let syntax_exports_include_operator_metadata () =
+  match Enforest.parse_public_syntax_exports "pub syntax infix ~ 15 right = fn(stx) -> stx" with
+  | [ { symbol = "~"; fixity = Operator_env.Infix; precedence = 15; associativity = Operator_env.Right;
+        syntax_class = Syntax_class.Expr; expansion = Operator_env.Macro } ] ->
+      ()
+  | _ -> Alcotest.fail "expected public syntax export to include operator metadata"
+
 let syntax_postfix_rejected_in_module () =
   match parse_module "syntax postfix foo = fn(stx) -> stx" with
   | exception Enforest.Unsupported "unsupported syntax declaration shape" -> ()
@@ -536,6 +543,7 @@ let suites =
         Alcotest.test_case "syntax extension cross module" `Quick syntax_extension_cross_module;
         Alcotest.test_case "syntax import does not leak between parses" `Quick syntax_import_does_not_leak_between_parses;
         Alcotest.test_case "syntax extension not runtime field" `Quick syntax_extension_not_runtime_field;
+        Alcotest.test_case "syntax exports include operator metadata" `Quick syntax_exports_include_operator_metadata;
         Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
         Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;
         Alcotest.test_case "syntax infix bad assoc rejected" `Quick syntax_infix_bad_assoc_rejected;
