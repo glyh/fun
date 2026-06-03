@@ -39,7 +39,11 @@ Completed:
 
 Current focus:
 
-- [x] Stage 7 is complete, including the cleanup/debt tracked in `STAGE_7_ENFORESTATION_PLAN.md`.
+- [x] Stage 7 enforestation infrastructure is complete through the constrained prefix/infix syntax-extension slice.
+- [ ] Add Stage 7F practical macro authoring: `syntax <head-token> do | pattern -> replacement end`, infix-only precedence-aware `operator` forms, and at least one non-dummy enforestation-backed macro.
+- [ ] Add Stage 7H module/struct declaration templates: `decl` holes, `multi ... end` declaration-template output, and declaration-template contexts for value and typed value bindings with optional `pub`.
+- [ ] Add Stage 7G computed hygienic macro authoring: documented syntax-object inspection, hygienic AST builders/deconstructors, and explicit identifier provenance without requiring quote/unquote or user-visible symgen.
+- [ ] Add Stage 7I macros generating macros: macros that produce `macro`, `syntax`, and `operator` declarations, with correct scoping and export.
 - [ ] Start Stage 8: problem-aware macros.
 
 ## Validation Commands
@@ -730,6 +734,33 @@ Exit criteria:
 - [ ] At least one feature that would otherwise require parser/compiler changes is implemented as a macro.
 - [ ] The macro implementation is simpler than bespoke compiler machinery.
 - [ ] Shortcomings feed back into the macro API before any rewrite.
+
+## Stage 13: Macro Diagnostics And Expansion UX
+
+Status: Not started.
+
+Purpose:
+
+- Add the user-facing reliability and debugging tools that become necessary once untyped, problem-aware, type-aware, stuck, and type-providing macro phases exist.
+
+Concrete tasks:
+
+- [ ] Add macro-authored diagnostic APIs, such as syntax errors attached to explicit syntax spans.
+- [ ] Add syntax-object pretty-printing and macro expansion debugging/tracing tools.
+- [ ] Define recursive expansion limits and deterministic cycle explanations.
+- [ ] Improve no-match, ambiguous syntax, and failed expansion messages using the complete macro context.
+- [ ] Document the debugging workflow for downstream macro authors.
+
+Tests to add:
+
+- [ ] Macro-authored syntax errors report intended spans.
+- [ ] Recursive macro expansion failures are deterministic and understandable.
+- [ ] Expansion traces are stable enough for debugging without becoming golden-output noise.
+
+Exit criteria:
+
+- [ ] Macro authors can debug practical failed expansions without reading compiler internals.
+- [ ] Diagnostics preserve hygiene and phase context in their explanations.
 
 ## Dead-End Avoidance Checklist
 

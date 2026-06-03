@@ -330,9 +330,362 @@ Current implementation notes:
 - [x] The implementation composes with the existing phase-aware loader.
 - [x] Ambiguous or unsupported syntax-extension cases produce deterministic errors for the implemented slice.
 
+## Phase 7F: Practical Macro Authoring
+
+Status: Planned. The preceding Stage 7 slices validate the enforestation and syntax-extension plumbing, but the supported macros are still too low-level to be satisfying user-facing macros.
+
+### Purpose
+
+Make Stage 7 syntax extension useful for real macro authors, not just parser plumbing tests. The current `stx_make_*` constructor API is intentionally small but makes every example look like a dummy macro.
+
+This phase should start with all-hygienic syntax-pattern rewrites rather than general quasiquote/unquote. Macro authors should be able to write syntax definitions in the same branch-oriented style as ordinary pattern matching, where pattern holes preserve use-site syntax and replacement identifiers are introduced hygienically.
+
+### Scope
+
+Add a macro authoring layer with:
+
+- [ ] `syntax <head-token> do | <form-template> -> <replacement-template> end` declarations for named/head-position syntax forms, replacing the Stage 7E `operator prefix` spelling;
+- [ ] hygienic form-template variables spelled `$name` for simple holes and `$(name: kind)` for explicitly typed holes, capturing use-site syntax for reuse in the replacement;
+- [ ] replacement templates that look like ordinary target syntax, without requiring explicit quote/unquote in the common case;
+- [ ] a minimal syntax destructuring or inspection API beyond `stx_kind`, enough to consume structured operator-use values when dropping down to computed macro code is necessary;
+- [ ] at least one nontrivial syntax-extension macro whose input shape is created by enforestation rather than ordinary function-call syntax.
+
+Named syntax definitions should mirror existing `match` branch syntax:
+
+```fun
+syntax unless do
+| unless $cond $branch ->
+    if $cond do
+      ()
+    else
+      $branch
+    end
+end
+
+syntax when do
+| when $cond $branch else $fallback ->
+    if $cond do
+      $branch
+    else
+      $fallback
+    end
+end
+```
+
+Prefix operators are removed in this phase. Prefix/head-position extensions use `syntax <head-token> ...` instead. Infix operators remain a separate `operator` form because the enforester needs precedence and associativity before parsing the operator use. Infix operator declarations do not use `| pattern ->` branch matching because the operator is already known; they take direct operand parameters instead:
+
+```fun
+operator infix |> 3 left($lhs, $rhs) -> pipe_apply($lhs, $rhs)
+```
+
+Hole spelling for Stage 7F is `$name` for simple holes and `$(name: kind)` when the hole kind must be explicit. General quasiquote/unquote can remain a later usability layer if syntax-pattern replacement templates cover the common cases.
+
+Hygiene rule for this phase:
+
+- pattern variables such as `$cond` and `$branch` preserve use-site syntax and scopes;
+- macros expand with their definition lexical environment for introduced identifiers and compile-time dependencies;
+- replacement identifiers written without `$` are definition-site identifiers with a fresh expansion scope per macro invocation;
+- binders captured from pattern variables bind where they are placed in the replacement;
+- literal introduced binders and literal introduced references in the same replacement can bind each other;
+- introduced binders from separate macro invocations do not accidentally share local binding identity;
+- introduced binders are hygienic unless a future explicit escape hatch says otherwise.
+
+Stage 7F semantics:
+
+- `syntax` declarations are expression-form macros in Stage 7; type, pattern, declaration, and module-item macro contexts are deferred to Stage 8 problem-aware macros;
+- `syntax` declarations are allowed anywhere existing compile-time macro/operator declarations are allowed: modules, structs, and local `do` blocks;
+- `pub syntax` exports compile-time syntax only from importable module/module-file positions and does not create a runtime field;
+- `pub syntax` inside an ordinary runtime `struct ... end` expression is rejected in Stage 7 because it has no meaningful runtime-field interpretation;
+- syntax and value declarations share the same source namespace; a later declaration, whether syntax or value, always wins over earlier declarations of the same name;
+- a visible syntax binding owns its head position; if no branch matches, expansion reports a syntax error rather than falling back to a same-named value binding;
+- a later value declaration with the same name shadows the syntax binding and restores ordinary value lookup;
+- public value and syntax exports also use the same source-namespace rule: if both are exported with the same name, later-wins determines the active imported binding and the shadowed binding is not brought into scope by `open`;
+- syntax macro expansion may recursively produce another syntax macro use; robust recursion/cycle UX is deferred to Stage 13;
+- syntax patterns match raw/enforestation terms owned by the syntax head, not already-lowered `Surface.t`;
+- `syntax <head-token>` heads are identifiers only in Stage 7F; keyword overriding and qualified heads are deferred;
+- each branch pattern must begin with the declared syntax head token; a branch whose first literal does not match the declared head is a declaration-time error;
+- infix operator tokens are handled only by the separate `operator infix` form;
+- literal tokens in syntax patterns may be identifiers, keywords, operators, or delimiters; they match by raw token spelling at the same nesting depth and are not hygienically resolved identifiers;
+- branches are tried in source order and the first matching branch wins;
+- duplicate or overlapping patterns within the same `syntax` declaration are not an ambiguity error because first match wins;
+- if a branch match fails, matching continues with the next branch;
+- if no branch matches, report a deterministic syntax error naming the syntax head and pointing at the use site plus the declaration span;
+- ambiguity across separately visible syntax forms is an error only when the enforester cannot resolve which syntax binding owns the use.
+- replacement right-hand sides are parsed in expression-template mode in Stage 7F; broader template contexts are deferred to Stage 8.
+- `$name` holes may be used more than once in a replacement; repeated hole names in patterns remain deferred;
+- binder holes are not restricted in replacement position in Stage 7; questionable duplicate-binder output can become a warning in a future diagnostics pass;
+- reusing an expression hole duplicates syntax rather than sharing evaluation, so any effects in the captured expression happen once per inserted copy;
+- `$name` holes used in replacements must have been captured by the branch pattern; otherwise the syntax declaration fails with an unbound template-hole error;
+- captured holes that are not used in a replacement are allowed, like unused variables in ordinary pattern matching; warnings are deferred;
+- `$name` hole kinds are inferred as `binder` in binder positions, `ident` in identifier-only positions, and `expr` otherwise; ambiguous holes require explicit `$(name: kind)` annotations.
+
+Initial hole kinds:
+
+- expression holes for one expression;
+- binder holes for identifiers in binding positions;
+- identifier holes for non-binding identifier syntax.
+
+Hole kinds may be inferred from unambiguous pattern positions, but ambiguous holes must use explicit `$(name: kind)` syntax. Initial explicit kinds are `expr`, `binder`, and `ident`.
+
+`do ... end` is not a separate body hole kind in Stage 7F. It remains an expression form equivalent to sequencing/nesting expressions, so an expression hole can capture a whole `do ... end` expression. The pattern form `do $expr end` is allowed and captures the block-body expression represented by the `do ... end` contents. Module/struct declaration holes and declaration-template replacement contexts are split into Phase 7H.
+
+`$` is always parsed as a separate token, not fused with the following identifier. This simplifies tokenization and is useful for macros that generate macros (Phase 7I).
+
+Hole consumption rules in Stage 7F:
+
+- adjacent expression holes are illegal unless separated by literal tokens or delimiters;
+- a hole consumes raw terms until the next literal token in the pattern at the same nesting depth;
+- expression holes consume the shortest token slice that parses as one expression and still lets the rest of the branch pattern match;
+- if more than one successful capture remains genuinely possible, matching fails with an ambiguous-hole error and the macro author must add delimiters or literal separators;
+- if the next token after a hole start is `(`, `[`, `{`, or `do`, the hole consumes the balanced content up to the matching `)`, `]`, `}`, or `end`, respecting nesting;
+- binder holes cannot appear in expression locations in either pattern or replacement templates;
+- a binder hole can only appear in binding positions; an ident hole cannot appear in binder positions.
+
+Deferred from Stage 7F:
+
+- repeated pattern holes and ellipses;
+- type, pattern, declaration, and module-item syntax macro contexts;
+- explicit non-hygienic escape hatches.
+
+### Tests
+
+- [ ] named `syntax` declarations parse with one or more `| pattern -> replacement` branches;
+- [ ] branch patterns must start with the declared syntax head and mismatches are declaration-time errors;
+- [ ] `$name` and `$(name: kind)` holes parse, capture use-site syntax, and replacement holes splice it unchanged;
+- [ ] captured holes can be used more than once in replacements;
+- [ ] binder holes can be reused in replacements without a Stage 7 hard error;
+- [ ] reusing expression holes duplicates evaluation after expansion;
+- [ ] replacement holes that were not captured by the branch pattern are rejected at declaration time;
+- [ ] captured holes that are unused in a replacement are accepted;
+- [ ] ambiguous holes require explicit `$(name: kind)` annotations;
+- [ ] expression, binder, and identifier holes each have focused parser and rewrite tests;
+- [ ] expression holes can capture `do ... end` expressions without a separate body hole kind;
+- [ ] adjacent expression holes are rejected with a deterministic error;
+- [ ] expression holes use shortest successful expression capture and report genuinely ambiguous captures;
+- [ ] `(`, `[`, `{`, and `do` after a hole start consume balanced content up to the matching closing delimiter;
+- [ ] binder holes are rejected in expression positions in both pattern and replacement templates;
+- [ ] `$` is tokenized separately from the following identifier;
+- [ ] literal pattern tokens can be identifiers, keywords, operators, and delimiters;
+- [ ] later declarations, whether syntax or value, shadow earlier declarations of the same name;
+- [ ] a visible syntax head with no matching branch errors instead of falling back to a same-named value;
+- [ ] same-name public value/syntax exports obey later-wins import behavior;
+- [ ] `pub syntax` exports compile-time syntax without creating runtime fields;
+- [ ] `pub syntax` in an ordinary runtime `struct ... end` expression is rejected deterministically;
+- [ ] failed branch matches continue to later branches, and first successful branch wins;
+- [ ] no-match errors name the syntax head and include use-site/declaration spans;
+- [ ] replacement templates can construct literals, variables, applications, lambdas, and blocks without raw `stx_make_*` calls;
+- [ ] replacement templates preserve hygiene for introduced binders and do not capture user bindings;
+- [ ] introduced binders are fresh per macro invocation while introduced references in the same replacement resolve to them;
+- [ ] `operator prefix` declarations are rejected or migrated to `syntax <head-token>`;
+- [ ] an infix `operator` declaration uses direct operand parameters, not `| pattern ->` branches;
+- [ ] a named `syntax` macro and an infix `operator` macro each rewrite a real expression using syntax-pattern templates;
+- [ ] a macro-generated expression elaborates and evaluates without using raw `stx_make_*` constructors in the macro body.
+
+### Exit Criteria
+
+- [ ] At least one checked-in macro example would be meaningfully worse without enforestation.
+- [ ] Macro authoring examples are readable enough to serve as documentation.
+- [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+
+## Phase 7H: Module And Struct Declaration Templates
+
+Status: Planned. Phase 7F handles expression-template syntax macros. This phase adds declaration-template support for module and struct bodies without taking on full Stage 8 problem-aware macro contexts.
+
+### Purpose
+
+Allow syntax macros to match and generate a small, well-defined subset of module/struct declaration terms. Module and struct bodies contain item-like terms that are not ordinary expressions, so they need a separate template context from expression templates.
+
+Stage 7H does not add user-facing same-head expression/declaration overloading. The implementation may store syntax bindings by syntax class internally, but if the same head is declared as both an expression macro and a declaration macro in one visible namespace, the ordinary later-wins rule still decides which declaration is active. Separate expression/declaration bindings for the same head are deferred to Stage 8 problem-aware macro contexts.
+
+### Scope
+
+Add declaration-template support with:
+
+- [ ] `decl` holes for one module/struct declaration term;
+- [ ] declaration-template replacement parsing for module/struct contexts;
+- [ ] support for public and private value bindings;
+- [ ] support for typed value bindings;
+- [ ] `decl` holes capture `pub` visibility modifiers and preserve them in replacements;
+- [ ] declaration-template macros can expand to multiple declarations in a module/struct body.
+
+Initial `decl` coverage:
+
+```fun
+x = expr
+x : Type = expr
+pub x = expr
+pub x : Type = expr
+```
+
+`pub` is captured and preserved. For example, if a `$(d: decl)` captures `pub x = 1`, placing `$d` in a replacement decl body produces `pub x = 1`. A declaration-template macro's branch may produce multiple declarations; the expander flattens them into the enclosing module/struct body.
+
+Multi-declaration replacement templates use a declaration-template-only wrapper, `multi ... end`, rather than ordinary expression `do ... end`. This avoids reusing expression-block syntax for a value that should expand to several sibling declarations:
+
+```fun
+syntax make_pair do
+| make_pair $x $y ->
+    multi
+      pub first = $x
+      pub second = $y
+    end
+end
+```
+
+Bare declaration replacements remain valid for single-declaration output. `multi ... end` is not an expression form and is rejected in expression-template contexts.
+
+Declarations produced by `multi ... end` are spliced as sibling declarations at the macro use site in written order. Later declarations in the same `multi ... end` output can see earlier generated declarations according to the ordinary sequential declaration rules, including generated syntax, macro, and operator declarations once Phase 7I is implemented. No generated declaration is retroactively visible before the macro use site.
+
+Deferred from Stage 7H:
+
+- struct field declarations;
+- type/effect/trait/impl declarations;
+- macro/syntax/operator declarations generated by macros;
+- repeated declaration holes and ellipses.
+
+### Tests
+
+- [ ] `$(name: decl)` captures a module value binding with its `pub` modifier;
+- [ ] `$(name: decl)` captures a struct value binding with its `pub` modifier;
+- [ ] typed value declarations and `pub` modifiers are preserved through declaration templates;
+- [ ] declaration-template replacements can generate public and private value bindings;
+- [ ] declaration-template macros can expand to multiple declarations;
+- [ ] multi-declaration replacements use `multi ... end` and are rejected in expression-template contexts;
+- [ ] `multi ... end` declarations are spliced in written order at the use site;
+- [ ] struct field declarations are rejected or explicitly deferred in declaration-template macros.
+
+### Exit Criteria
+
+- [ ] Module and struct declaration-template macros work for value and typed value bindings.
+- [ ] Declaration-template contexts remain separate from expression-template contexts.
+- [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+
+## Phase 7G: Computed Hygienic Macro API
+
+Status: Planned. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation.
+
+### Purpose
+
+Support real computed macros in addition to pattern-matching-style syntax rewrites. Macro authors should be able to construct, inspect, and transform syntax objects directly without relying only on fixed rewrite templates or the current tiny `stx_make_*` constructor set.
+
+Computed macros in this phase should still be hygienic by default. Freshness should come from scoped syntax objects and explicit identifier provenance, not from user-visible `gensym`/`symgen` APIs.
+
+This phase should not replace Phase 7F. The intended layering is:
+
+- 7F: readable all-hygienic syntax-pattern rewrites for common cases;
+- 7G: hygienic syntax-object primitives for computed macros and advanced AST manipulation.
+
+### Scope
+
+Add a computed macro authoring layer with:
+
+- [ ] a stable syntax-object inspection API for downstream macro authors;
+- [ ] hygienic AST builder/deconstructor primitives that cover the supported Stage 7 surface forms;
+- [ ] explicit identifier-provenance APIs for introduced identifiers, preserved input identifiers, and caller-supplied binders;
+- [ ] syntax traversal helpers for common transforms, where a raw constructor/deconstructor API would be too painful;
+- [ ] computed macro examples that do not use quote/unquote or user-visible symbol generation;
+- [ ] documentation that explains when to use 7F pattern/template syntax versus 7G computed macro APIs.
+
+Stage 7G computed macros are still expression macros. Computed type, pattern, declaration, and module-item macros are deferred to Stage 8 problem-aware macro contexts.
+
+Candidate surface examples:
+
+```fun
+macro inc(stx) ->
+  Syntax.infix("+", stx, Syntax.i64(1))
+
+macro log_call(stx) ->
+  do
+    name = Syntax.head_name(stx)
+    Syntax.do([
+      Syntax.call(Syntax.intro_id("print"), Syntax.string("calling " + name)),
+      stx,
+    ])
+  end
+```
+
+The public API should use `Syntax.*` names, implemented as a module in the standard library with no special compiler treatment unless strictly necessary. Existing `stx_*` primitives are temporary compatibility/internal names and should be removed or hidden as part of this phase. Quasiquote/unquote can remain future sugar over this API if the builder API is still too verbose. They are not Stage 7G requirements.
+
+### Syntax Object Primitive Families
+
+The primitive API should be organized enough that downstream users can write macros without reverse-engineering internal constructors:
+
+- [ ] classification: `stx_kind`, operator-use kind checks, atom/identifier checks;
+- [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers, preserve input identifiers, and place caller-supplied identifiers in binder positions;
+- [ ] literals: construct and inspect integer, bool, char, string, and unit syntax;
+- [ ] application/lambda/let: construct and deconstruct common expression forms;
+- [ ] blocks/modules/structs: inspect and build staged surface containers where supported;
+- [ ] patterns/types: expose only the subset needed before Stage 8 problem-aware macros, or document why they are deferred;
+- [ ] source spans: preserve use-site spans where possible and expose enough span information for diagnostics.
+
+### Hygiene Requirements
+
+- [ ] identifiers built with introduction APIs are introduced at the macro-definition site;
+- [ ] syntax values captured from macro input preserve their existing scopes and source spans where practical;
+- [ ] introduced binders do not capture user references accidentally;
+- [ ] caller-supplied binders bind in the output position where they are placed;
+- [ ] explicit non-hygienic escapes are not added in Stage 7G unless there is a concrete tested need.
+
+Deferred from Stage 7G until the macro system has all major phases implemented:
+
+- user-facing macro diagnostic APIs beyond deterministic expansion errors;
+- macro expansion debugging and tracing tools;
+- recursion limits, cycle explanations, and expansion-control UX beyond existing deterministic failures.
+
+### Tests
+
+- [ ] hygienic builders can construct literals, variables, applications, lambdas, lets, and `do` blocks;
+- [ ] preserved input syntax can be inserted into builder-created output unchanged;
+- [ ] computed builders preserve hygiene for both introduced and use-site identifiers;
+- [ ] syntax-object inspection can destructure a structured `syntax_operator_use` argument;
+- [ ] a computed macro rewrites an enforested operator use without using only fixed pattern/template syntax;
+- [ ] downstream-style macro examples use documented primitives rather than private implementation details.
+
+### Exit Criteria
+
+- [ ] At least one macro cannot be expressed cleanly with 7F pattern/template syntax alone;
+- [ ] The public syntax-object API is documented and covered by tests;
+- [ ] Public examples use `Syntax.*` rather than `stx_*` primitives;
+- [ ] Existing 7F pattern/template examples remain simpler than their equivalent computed macro versions;
+- [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+
+## Phase 7I: Macros Generating Macros
+
+Status: Planned. Phases 7F and 7H give macros the ability to produce expression and declaration templates. This phase extends that to allow macros to generate new macro, syntax, and operator declarations, so that macros can compose and build on each other.
+
+### Purpose
+
+Enable macros to produce `macro`, `syntax`, and `operator` declarations. This makes the macro system self-extending: a macro can define new compile-time behavior that is then available to later code in the same expansion scope. It relies on `$` being parsed as a separate token (decided in 7F), which keeps macro-expansion tokenization deterministic even when generated syntax contains holes.
+
+### Scope
+
+Add macro-generating-macro support with:
+
+- [ ] a macro, syntax macro, or operator macro can produce a `macro`, `syntax`, or `operator infix` declaration in its expansion output;
+- [ ] generated syntax declarations are registered in the operator environment during expansion so that later forms in the same block/module can use them;
+- [ ] generated syntax declarations respect the same lexical scope, later-wins, and export rules as hand-written ones;
+- [ ] `pub` on a generated macro, syntax, or operator declaration works like `pub` on a hand-written one;
+- [ ] generated `pub` declarations are rejected deterministically in contexts that cannot export, such as local `do` blocks and ordinary runtime `struct ... end` expressions;
+- [ ] generated computed macros (`macro` / `pub macro`) are phase-visited and elaborated through the same path as hand-written macros.
+
+### Tests
+
+- [ ] a syntax macro can generate another syntax macro and the generated syntax is usable later in the same expansion;
+- [ ] a syntax macro can generate an `operator infix` declaration with correct precedence and associativity;
+- [ ] a macro can generate another computed `macro` declaration and the generated macro is usable later in the same expansion;
+- [ ] generated syntax declarations exported with `pub` are visible across module imports;
+- [ ] generated `pub` declarations in non-exporting contexts are rejected deterministically;
+- [ ] hygiene is preserved when generated syntax contains introduced identifiers;
+- [ ] macro-generation cycles produce deterministic errors.
+
+### Exit Criteria
+
+- [ ] At least one macro-generated syntax form is tested end-to-end.
+- [ ] Generated macro, syntax, and operator declarations compose with imported syntax extensions.
+- [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+
 ## Remaining Stage 7 Work Tracker
 
-These items are the known Stage 7 debt before treating enforestation as a stable foundation for Stage 8 problem-aware macros.
+These items are the resolved infrastructure debt for the original Stage 7 enforestation slice. Phases 7F through 7I above are now the remaining Stage 7 usability work before treating the macro surface as practically useful.
 
 ### Architecture
 
