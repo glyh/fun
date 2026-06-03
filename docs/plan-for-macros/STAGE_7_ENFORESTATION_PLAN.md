@@ -63,7 +63,7 @@ Implement a raw reader that recognizes syntax-spec reader terms:
 - newlines as separators;
 - line comments `# ...`;
 - nested block comments `#| ... |#`;
-- datum comments `#_ term` if straightforward, otherwise explicitly defer.
+- datum comments `#_ term`.
 
 Implement an expression enforester that supports only:
 
@@ -217,7 +217,7 @@ The important architectural point is two-pass scope handling:
 
 This mirrors the Honu parse1/parse2 split and prevents order-sensitive macro behavior inside blocks.
 
-The implemented 7C slice parses declarations into `Syntax.t` and still leaves authoritative binding-scope introduction to `Expand.expand`, matching the Stage 7 hygiene boundary. A full pre-enforestation parse1/parse2-style binding discovery pass remains a follow-up for Stage 7E/user-visible syntax extensions, where syntax-extension bindings must affect later enforestation.
+The implemented 7C slice parses declarations into `Syntax.t` and still leaves authoritative binding-scope introduction to `Expand.expand`, matching the Stage 7 hygiene boundary. A full pre-enforestation parse1/parse2-style binding discovery pass remains a follow-up before expanding beyond the initial Stage 7E syntax-extension slice.
 
 ### Files
 
@@ -284,6 +284,8 @@ in `parse_pat_postfix`, dotted pattern postfixes support qualified constructor a
 
 ## Phase 7E: User-Visible Syntax Extension
 
+Status: Implemented for the first constrained prefix/infix slice. General Honu-style syntax extension remains future work.
+
 ### Purpose
 
 Validate that enforestation is not merely a hard-coded parser replacement.
@@ -292,25 +294,75 @@ Validate that enforestation is not merely a hard-coded parser replacement.
 
 Implement the first constrained syntax-extension bindings:
 
-- one macro-defined prefix form;
-- one macro-defined infix operator with precedence and associativity;
-- imported syntax extensions use Stage 6 phase-aware macro visits.
+- [x] one macro-defined prefix form;
+- [x] one macro-defined infix operator with precedence and associativity;
+- [x] imported syntax extensions use Stage 6 phase-aware macro visits.
 
-This phase should be deliberately small. A reasonable first API is not the final macro syntax. It can be an internal/built-in declaration form if that lets tests exercise the operator table safely.
+This phase is deliberately small. The current API is not the final macro syntax:
+
+```fun
+syntax prefix name = fn(stx) -> ...
+syntax infix op precedence left = fn(stx) -> ...
+syntax infix op precedence right = fn(stx) -> ...
+```
+
+The declaration registers a prefix or infix operator during enforestation and expands uses as ordinary macro calls. Prefix syntax passes the parsed operand syntax to the macro. Infix syntax passes a two-element product syntax containing the left and right operands.
+
+Current implementation notes:
+
+- Dynamic operators live in `Operator_env` and are scoped with snapshot/restore around `do` blocks and module parsing.
+- `pub syntax ...` exports operator declarations through `Core_loader.load_syntax_exports` without exposing them as runtime fields.
+- The RHS macro value is parsed and later expanded through the existing `MacroBinding` path; syntax-extension declarations do not introduce arbitrary grammar productions yet.
 
 ### Tests
 
-- local prefix syntax extension works;
-- local infix operator groups by declared precedence;
-- imported public syntax extension works at compile time;
-- runtime imports do not expose compile-time syntax-extension bindings as values;
-- syntax-extension shadowing is lexical and deterministic.
+- [x] local prefix syntax extension works;
+- [x] local infix operator groups by declared precedence;
+- [x] imported public syntax extension works at compile time;
+- [x] runtime imports do not expose compile-time syntax-extension bindings as values;
+- [x] syntax-extension shadowing is lexical and deterministic.
 
 ### Exit Criteria
 
-- At least one prefix form and one infix operator are defined outside hard-coded parser branches.
-- The implementation composes with the existing phase-aware loader.
-- Ambiguous or unsupported syntax-extension cases produce deterministic errors.
+- [x] At least one prefix form and one infix operator are defined outside hard-coded parser branches.
+- [x] The implementation composes with the existing phase-aware loader.
+- [x] Ambiguous or unsupported syntax-extension cases produce deterministic errors for the implemented slice.
+
+## Remaining Stage 7 Work Tracker
+
+These items are the known Stage 7 debt before treating enforestation as a stable foundation for Stage 8 problem-aware macros.
+
+### Architecture
+
+- [ ] Generalize the current statement pre-scan into a real Honu-style two-pass declaration pass:
+  - pass 1 discovers value/type/module names and syntax-extension bindings for a block/module;
+  - pass 2 enforests nested bodies with the completed binding and syntax-extension environment.
+- [ ] Replace the process-global dynamic operator refs in `Operator_env` with an explicit lexical operator environment threaded through enforestation.
+- [ ] Decide whether `Syntax_class.t` should become part of the parser API/context or be removed until Stage 8 needs it. It currently exists as a marker type, while the real separation is through `parse_expr`, `parse_type`, and `parse_pat` entrypoints.
+- [ ] Represent operator declarations as first-class data with fixity, precedence, associativity, syntax class, and expansion behavior instead of only prefix/infix helper registration.
+- [ ] Move more built-in operator handling into the same operator-table machinery used by syntax extensions where practical, especially arithmetic/comparison operators and assignment.
+
+### Syntax Extension Semantics
+
+- [ ] Define the final user-facing syntax-extension declaration syntax, or explicitly mark the current `syntax prefix` / `syntax infix` forms as provisional in user docs.
+- [ ] Specify shadowing and import precedence rules for multiple syntax extensions with the same symbol.
+- [ ] Add deterministic ambiguity errors for incomparable syntax-extension candidates once operator environments become lexical rather than global snapshots.
+- [ ] Support syntax-extension declarations that affect later forms in the same block/module without relying on order-sensitive ad hoc scans.
+- [ ] Decide whether syntax extensions can be defined for type, pattern, declaration, module-item, and block syntax classes before Stage 8 exposes problem-aware macros.
+
+### Macro Integration
+
+- [ ] Make syntax-extension expansion report useful source spans for the operator declaration and the use site.
+- [ ] Check that syntax-extension macro RHS values are expanded/evaluated through the same phase-aware path as `macro` / `pub macro` declarations in every supported module/block position.
+- [ ] Add negative tests for imported syntax-extension cycles that are distinct from runtime circular imports and ordinary macro visits.
+- [ ] Add tests for unsupported syntax-extension shapes so failures stay deterministic as the parser grows.
+
+### Cleanup And Documentation
+
+- [x] Update `SYNTAX_SPEC.md`, `IMPLEMENTATION_PLAN.md`, and `CLAUDE.md` so they agree on current comment syntax, Stage 7 status, and provisional syntax-extension forms.
+- [ ] Remove stale Menhir-related test dependencies if they are no longer needed by the semantic/backend test stanzas.
+- [ ] Document the current parser boundary: raw reader -> enforestation -> hygienic expansion -> lowering to `Surface.t`.
+- [ ] Keep `Surface.t` as the elaborator-facing boundary until Stage 8+ proves an interleaved expansion/elaboration design.
 
 ## Compatibility Rules
 
@@ -373,15 +425,15 @@ This keeps Stage 8 problem-aware macros from needing to reverse-engineer parser 
 
 Enforestation may create `Syntax.id` values with source spans, but it should not become the authoritative name-resolution pass. Scope introduction and resolution should remain in `Expand.expand` and `Expand_ctx`.
 
-## Suggested Work Order
+## Completed Initial Work Order
 
-1. Add `test/syntax/test_enforest.ml` with pending/failing tests for Phase 7A shapes.
-2. Add raw reader support and make the reader tests pass.
-3. Add `Operator_env` and expression enforest support for literals, identifiers, parentheses, calls, fields, and operators.
-4. Route `Parse_expand.parse_expr` through enforestation.
-5. Add `do ... end` binding/final-expression support.
-6. Run `dune exec test/syntax/test_syntax.exe` and `dune build`.
-7. Update `IMPLEMENTATION_PLAN.md` Stage 7 status from "Not started" to "Started" only after Phase 7A is implemented.
+1. [x] Add `test/syntax/test_enforest.ml` with tests for Phase 7A shapes.
+2. [x] Add raw reader support and make the reader tests pass.
+3. [x] Add `Operator_env` and expression enforest support for literals, identifiers, parentheses, calls, fields, and operators.
+4. [x] Route `Parse_expand.parse_expr` through enforestation.
+5. [x] Add `do ... end` binding/final-expression support.
+6. [x] Run `dune exec test/syntax/test_syntax.exe` and `dune build`.
+7. [x] Update `IMPLEMENTATION_PLAN.md` Stage 7 status after Phase 7A and the later Stage 7 slices were implemented.
 
 ## Phase 7A Acceptance Checklist
 

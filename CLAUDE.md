@@ -94,7 +94,6 @@ Metavariable solving uses Miller-style pattern unification in `unify.ml`. `MetaC
 - computed public fields: `pub x = expr`
 - private bindings: `x = expr`
 - nested public/private type bindings
-- `open` / `export` members for scoped imports and re-exports
 - methods with `self` and `Self` support for record-like structs
 
 Record construction uses a struct type value:
@@ -200,11 +199,11 @@ Tests depend on the staged libraries they exercise and `alcotest`.
 - Records: `do Point = struct x: I64; y: I64; end; Point{x = 1; y = 2} end`.
 - Field access: `expr.field`.
 - Record patterns: `Point {x; y}`, `Point {x = n; _}`, and qualified forms such as `M.Point {x}`.
-- Structs: `struct ... end` with value bindings, `pub` value bindings, `type`, `pub type`, `open`, and `export` members.
+- Structs: `struct ... end` with value bindings, `pub` value bindings, `type`, `pub type`, and methods.
 - Methods use `pub method name(...) -> expr` or `pub method name(...) do ... end`.
 - `self` names the receiver inside methods; `Self` names the enclosing record type after field declarations.
 - `open M` brings public members into scope for subsequent expressions in the enclosing block.
 - Match: `match expr do | pat -> body | pat -> body end`.
 - Effects: `effect State(S) = sig get : Unit -> S; put : S -> Unit end`.
-- Recursive values use `let rec`.
-- Comments: `(* ... *)` with nesting.
+- Recursive values use `rec` bindings, such as `rec fn f(...) -> ...` inside `do` blocks.
+- Comments: `# ...` line comments, nested `#| ... |#` block comments, and `#_ term` datum comments.

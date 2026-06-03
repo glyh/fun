@@ -19,7 +19,7 @@ The safe path is incremental:
 2. [x] Route all existing programs through the expansion boundary without behavior changes.
 3. [x] Add minimal user macros only after the boundary is stable.
 4. [x] Add phase-aware imports before imported macros.
-5. [ ] Add enforestation before general syntax extension.
+5. [x] Add enforestation before general syntax extension.
 6. [ ] Add type-aware and stuck macros after basic expansion is proven deterministic.
 
 ## Current Status
@@ -37,9 +37,11 @@ Completed:
 - [x] Stage 5 is complete: local macro definitions, macro API primitives, hygiene tests, and panic propagation work through NBE integration.
 - [x] Stage 6 is complete for imported expression macros: runtime imports and compile-time macro visits use separate loader states/caches, imported public macros expand, and macro-generated imports go through phase checks.
 
-Next phase:
+Current focus:
 
-- [x] Start Stage 7: add enforestation and regular syntax extension on top of the imported macro/module substrate.
+- [x] Stage 7 is implemented through the first user-visible syntax-extension slice.
+- [ ] Finish the remaining Stage 7 cleanup/debt tracked in `STAGE_7_ENFORESTATION_PLAN.md` before treating enforestation as a stable Stage 8 foundation.
+- [ ] Start Stage 8: problem-aware macros.
 
 ## Validation Commands
 
@@ -502,7 +504,7 @@ Concrete tasks:
    - top-level `parse_module` support for `pub x = expr`, `x : Type = expr`, `fn f(params) ...`, `macro name(params) -> expr`, and named `M = module ... end`;
    - expression `do` support for typed declarations and recursive function declarations;
    - expression `module ... end` and `struct ... end` support.
-- [ ] Generalize Stage 7C into a full Honu-style two-pass declaration pass before user-visible syntax-extension bindings:
+- [ ] Generalize Stage 7C into a full Honu-style two-pass declaration pass before expanding beyond the initial user-visible syntax-extension slice:
    - pass 1 detects all binding names and syntax-extension bindings in a block/module;
    - pass 2 enforests nested bodies with the completed scope.
 - [x] Separate type/pattern/expression parsing through per-class entrypoints:
@@ -520,8 +522,8 @@ Concrete tasks:
    - prefix forms such as `ref`, `deref`, `perform`, `resume`;
    - infix arithmetic/comparison/assignment;
    - arrows/effect rows where appropriate.
-- [ ] Reintroduce the planned surface-syntax redesign through enforestation tables and built-in syntax entries.
-- [ ] Keep old syntax accepted during transition where practical, but make redesigned syntax the documented/tested direction.
+- [x] Reintroduce the initial planned surface-syntax redesign through enforestation tables and built-in syntax entries.
+- [ ] Decide which legacy syntactic forms should remain accepted, which should stay rejected, and document the redesigned syntax as the tested direction.
 - [ ] Prefer implementing redesigned constructs as built-in macro/enforestation entries so user macros exercise the same mechanism.
 - [ ] Use this stage for larger block/form experiments, including Ruby/Elixir-style `do ... end` shapes if still desired.
 - [x] Removed the Menhir parser files after enforestation covered the tested language surface.

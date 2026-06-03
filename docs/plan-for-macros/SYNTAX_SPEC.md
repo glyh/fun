@@ -116,6 +116,8 @@ hbindingi    ::= (pub)? 'rec'? hnamei ':' htypei '=' hexpressioni    (* annotate
                | (pub)? 'module' hnamei 'do' hbindingi* 'end'
                | (pub)? 'struct' hnamei 'do' hstruct-fieldi* hbindingi* 'end'
                | (pub)? 'macro' hnamei hfn-parami* hfn-bodyi
+               | (pub)? 'syntax' 'prefix' hsyntax-namei '=' hexpressioni
+               | (pub)? 'syntax' 'infix' hsyntax-namei hnumberi ('left' | 'right') '=' hexpressioni
                | (pub)? 'import' hstringi     (* returns module value *)
 ```
 
@@ -136,6 +138,8 @@ hsignature-sig-fieldi    ::= hnamei ':' htypei          (* sugar for module name
 Effects with no parameters omit the parameter list: `effect Exc = module ... end`. Parameterized effects use a non-empty parenthesized parameter list: `effect State(S) = module ... end`. Empty parameter lists such as `effect Exc() = ...` are invalid.
 
 Traits always take exactly one type parameter: `trait Eq(A) = module ... end`.
+
+Syntax-extension declarations are provisional Stage 7 forms. A `syntax prefix` declaration registers a prefix operator whose use expands as a macro call with the parsed operand syntax. A `syntax infix` declaration registers an infix operator with the given precedence and associativity; use sites expand as macro calls whose argument is a two-element product syntax containing the left and right operands. `pub syntax ...` exports the syntax extension at compile time without exposing it as a runtime module field.
 
 `sig ... end` is accepted as syntax sugar for a module whose fields are type values. `sig x : T end` means the same effect/trait signature field as `module x = T end`:
 
@@ -375,6 +379,13 @@ not
 ```
 
 All operators are reserved names in the prelude; they work via the enforestation operator table.
+
+Provisional user-defined syntax extensions use the same enforestation operator path for the first supported slice:
+
+```fun
+syntax prefix twice = fn(stx) -> stx
+syntax infix ~ 15 left = fn(stx) -> stx
+```
 
 ---
 
