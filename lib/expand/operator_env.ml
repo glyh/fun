@@ -2,7 +2,7 @@ type associativity = Left | Right
 
 type fixity = Prefix | Infix
 
-type expansion = Builtin | Macro
+type expansion = BuiltinApply | BuiltinRefSet | Macro
 
 type operator = {
   symbol : string;
@@ -21,10 +21,13 @@ let operator ~symbol ~fixity ~precedence ~associativity ~expansion =
   { symbol; fixity; precedence; associativity; syntax_class = Syntax_class.Expr; expansion }
 
 let builtin_prefix symbol precedence =
-  operator ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:Builtin
+  operator ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:BuiltinApply
 
 let builtin_infix symbol precedence associativity =
-  operator ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:Builtin
+  operator ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:BuiltinApply
+
+let builtin_ref_set symbol precedence associativity =
+  operator ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:BuiltinRefSet
 
 let macro_prefix symbol precedence =
   operator ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:Macro
@@ -33,7 +36,7 @@ let macro_infix symbol precedence associativity =
   operator ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:Macro
 
 let infix_table =
-  [ builtin_infix "<-" 1 Right;
+  [ builtin_ref_set "<-" 1 Right;
     builtin_infix "==" 5 Left;
     builtin_infix "!=" 5 Left;
     builtin_infix "<" 5 Left;

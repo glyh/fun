@@ -515,11 +515,12 @@ and parse_postfix_infix env min_prec lhs terms =
               let rhs, rest = parse_expr_prec env next_min rest in
               let span = span_between lhs.span rhs.span in
               let lhs =
-                if String.equal op.symbol "<-" then stx ~span (Syntax.RefSet (lhs, rhs))
-                else if Operator_env.is_extension_infix env.operators op.symbol then
+                match op.expansion with
+                | Operator_env.BuiltinRefSet -> stx ~span (Syntax.RefSet (lhs, rhs))
+                | Macro ->
                   let arg = stx ~span (Syntax.Prod [ lhs; rhs ]) in
                   stx ~span (Syntax.MacroCall (var ~span:term.span op.symbol, arg))
-                else
+                | BuiltinApply ->
                   ap ~span
                     (ap ~span (var ~span:term.span op.symbol) Explicitness.Explicit lhs)
                     Explicitness.Explicit rhs

@@ -340,7 +340,7 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 - [x] Replace the process-global dynamic operator refs in `Operator_env` with an explicit lexical operator environment threaded through enforestation.
 - [ ] Decide whether `Syntax_class.t` should become part of the parser API/context or be removed until Stage 8 needs it. It currently exists as a marker type, while the real separation is through `parse_expr`, `parse_type`, and `parse_pat` entrypoints.
 - [x] Represent operator declarations as first-class data with fixity, precedence, associativity, syntax class, and expansion behavior instead of only prefix/infix helper registration.
-- [ ] Move more built-in operator handling into the same operator-table machinery used by syntax extensions where practical, especially arithmetic/comparison operators and assignment.
+- [x] Move more built-in operator handling into the same operator-table machinery used by syntax extensions where practical, especially arithmetic/comparison operators and assignment. Arithmetic/comparison and assignment now use operator declaration data; delimiter-driven postfix forms remain hard-coded for now.
 
 ### Syntax Extension Semantics
 
