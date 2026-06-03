@@ -1,312 +1,10 @@
-exception Unsupported of string
-exception Error of string
-
-type value_decl = {
-  decl_name : Syntax.id;
-  decl_type : Syntax.t option;
-  decl_value : Syntax.t;
-  decl_recursive : bool;
-}
-
-type syntax_decl = {
-  syntax_name : Syntax.id;
-  syntax_value : Syntax.t;
-  syntax_export : Operator_env.export;
-}
-
-let unsupported msg = raise (Unsupported msg)
-let error msg = raise (Error msg)
+exception Unsupported = Enforest_util.Unsupported
+exception Error = Enforest_util.Error
 
 open Raw_syntax
+open Enforest_util
 
-let id ?span name =
-  match span with
-  | Some span -> Syntax.fresh_id ~span name
-  | None -> Syntax.fresh_id name
-
-let stx ?(span = Source_span.synthetic) kind = { Syntax.kind; span }
-
-let atom ?span atom = stx ?span (Syntax.Atom atom)
-let var ?span name = stx ?span (Syntax.Var (id ?span name))
-
-let span_between (a : Source_span.t) (b : Source_span.t) =
-  if a.synthetic || b.synthetic then Source_span.synthetic
-  else
-    Source_span.make ?file:a.file ~start_byte:a.start_byte ~end_byte:b.end_byte
-      ?start_line:a.start_line ?start_col:a.start_col ?end_line:b.end_line
-      ?end_col:b.end_col ()
-
-let syntax_span (terms : Raw_syntax.t list) =
-  match terms with
-  | [] -> Source_span.synthetic
-  | first :: rest ->
-      let last = List.fold_left (fun _ t -> t) first rest in
-      span_between first.span last.span
-
-let is_separator (term : Raw_syntax.t) =
-  match term.datum with
-  | Token { kind = Semi; _ } -> true
-  | _ -> false
-
-let rec drop_separators = function
-  | term :: rest when is_separator term -> drop_separators rest
-  | terms -> terms
-
-let token_text (term : Raw_syntax.t) =
-  match term.datum with
-  | Token { kind = Ident s | Operator s; _ } -> Some s
-  | Token { kind = KwDeref; _ } -> Some "deref"
-  | Token { kind = KwRef; _ } -> Some "ref"
-  | Token { kind = KwModule; _ } -> Some "module"
-  | Token { kind = KwStruct; _ } -> Some "struct"
-  | Token { kind = KwType; _ } -> Some "type"
-  | Token { kind = KwEffect; _ } -> Some "effect"
-  | Token { kind = KwTrait; _ } -> Some "trait"
-  | Token { kind = KwImpl; _ } -> Some "impl"
-  | _ -> None
-
-let token_kind kind term =
-  match term.datum with
-  | Token { kind = k; _ } -> k = kind
-  | _ -> false
-
-let keyword_name = function
-  | KwFn -> Some "fn"
-  | KwEnd -> Some "end"
-  | KwLet -> Some "let"
-  | KwFun -> Some "fun"
-  | KwThen -> Some "then"
-  | KwSig -> Some "sig"
-  | KwIf -> Some "if"
-  | KwElse -> Some "else"
-  | KwMatch -> Some "match"
-  | KwWith -> Some "with"
-  | KwEffect -> Some "effect"
-  | KwType -> Some "type"
-  | KwModule -> Some "module"
-  | KwStruct -> Some "struct"
-  | KwImpl -> Some "impl"
-  | KwTrait -> Some "trait"
-  | KwPub -> Some "pub"
-  | KwImport -> Some "import"
-  | KwOpen -> Some "open"
-  | KwMacro -> Some "macro"
-  | KwSelf -> Some "self"
-  | KwSelfType -> Some "Self"
-  | KwRef -> Some "ref"
-  | KwDeref -> Some "deref"
-  | KwRec -> Some "rec"
-  | KwCan -> Some "can"
-  | KwPerform -> Some "perform"
-  | KwResume -> Some "resume"
-  | KwMethod -> Some "method"
-  | _ -> None
-
-let punct_name = function
-  | LParen -> Some "("
-  | RParen -> Some ")"
-  | LBracket -> Some "["
-  | RBracket -> Some "]"
-  | LBrace -> Some "{"
-  | RBrace -> Some "}"
-  | Comma -> Some ","
-  | Dot -> Some "."
-  | Colon -> Some ":"
-  | Equals -> Some "="
-  | Semi -> Some ";"
-  | Bar -> Some "|"
-  | ThinArrow -> Some "->"
-  | At -> Some "@"
-  | DatumComment -> Some "#_"
-  | _ -> None
-
-let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
-
-let is_expr_start term =
-  match term.datum with
-  | Token { kind = Int _ | Char _ | String _ | Unit | KwTrue | KwFalse | KwUnit | KwSelf | KwSelfType | KwDo | KwFn | KwIf | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
-  | Token { kind = Operator s; _ } -> Option.is_some (Operator_env.find_prefix s)
-  | Group (Raw_syntax.Paren, _, _) -> true
-  | _ -> false
-
-let is_adjacent_postfix (lhs : Syntax.t) (term : Raw_syntax.t) =
-  lhs.span.synthetic || term.span.synthetic || lhs.span.end_byte = term.span.start_byte
-
-let spans_adjacent (lhs : Source_span.t) (rhs : Source_span.t) =
-  lhs.synthetic || rhs.synthetic || lhs.end_byte = rhs.start_byte
-
-let require_adjacent_postfix lhs term what =
-  if not (is_adjacent_postfix lhs term) then
-    error (what ^ " must be adjacent to the callee; whitespace application is not supported")
-
-let require_adjacent_span lhs rhs what =
-  if not (spans_adjacent lhs rhs) then
-    error (what ^ " must be adjacent; whitespace form is not supported")
-
-let split_last_expr terms =
-  let rec go acc = function
-    | [] -> error "expected trailing expression"
-    | [ last ] -> (List.rev acc, [ last ])
-    | term :: rest -> go (term :: acc) rest
-  in
-  go [] (drop_separators terms)
-
-let dotted_id_from_terms terms =
-  let rec go path = function
-    | { datum = Token { kind = Ident name; _ }; _ } :: dot :: rest when token_kind Dot dot ->
-        go (path @ [ name ]) rest
-    | { datum = Token { kind = Ident name; _ }; _ } :: rest -> ((path, name), rest)
-    | _ -> error "expected dotted identifier"
-  in
-  go [] (drop_separators terms)
-
-let binding_name_term = function
-  | { datum = Token { kind = Ident name; _ }; span } -> Some (id ~span name)
-  | { datum = Group (Raw_syntax.Paren, [ { datum = Token { kind = Operator name; _ }; span } ], _); _ } ->
-      Some (id ~span name)
-  | { datum = Group (Raw_syntax.Paren, [ { datum = Token { kind = Ident name; _ }; span } ], _); _ } ->
-      Some (id ~span name)
-  | _ -> None
-
-let unit ?span () = atom ?span Atom.Unit
-
-let unit_type ?span () = var ?span "Unit"
-
-let param ?span ?type_ explicitness name =
-  { Syntax.name = id ?span name; type_; trait_bounds = []; explicitness }
-
-let split_commas terms =
-  let rec go current acc = function
-    | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when token_kind Comma term -> go [] (List.rev current :: acc) rest
-    | term :: rest -> go (term :: current) acc rest
-  in
-  go [] [] terms
-
-let parse_all parse terms =
-  let terms = drop_separators terms in
-  match terms with
-  | [] -> error "expected expression"
-  | _ ->
-      let expr, rest = parse terms in
-      let rest = drop_separators rest in
-      if rest = [] then expr else unsupported "unconsumed terms after expression"
-
-let rec split_at_pred pred acc = function
-  | [] -> None
-  | term :: rest when pred term -> Some (List.rev acc, term, rest)
-  | term :: rest -> split_at_pred pred (term :: acc) rest
-
-let split_at_token kind terms = split_at_pred (token_kind kind) [] terms
-
-let split_at_arrow terms = split_at_token ThinArrow terms
-
-let starts_named_do_block terms =
-  match drop_separators terms with
-  | { datum = Token { kind = Ident _; _ }; _ } :: do_kw :: _ when token_kind KwDo do_kw -> true
-  | _ -> false
-
-let split_by_top_level_bar terms =
-  let rec go depth current acc = function
-    | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when depth = 0 && token_kind Bar term -> go depth [] (List.rev current :: acc) rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term -> go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwModule term ->
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwStruct term ->
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwEnd term && depth > 0 -> go (depth - 1) (term :: current) acc rest
-    | term :: rest -> go depth (term :: current) acc rest
-  in
-  go 0 [] [] terms |> List.filter (fun part -> drop_separators part <> [])
-
-let split_match_branches terms =
-  let rec go depth seen_arrow current acc = function
-    | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when depth = 0 && token_kind Bar term && drop_separators current = [] ->
-        go depth false current acc rest
-    | term :: rest when depth = 0 && token_kind Bar term && seen_arrow ->
-        go depth false [] (List.rev current :: acc) rest
-    | term :: rest when depth = 0 && token_kind ThinArrow term ->
-        go depth true (term :: current) acc rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term ->
-        go (depth + 1) seen_arrow (term :: current) acc rest
-    | term :: rest when token_kind KwModule term ->
-        if starts_named_do_block rest then go depth seen_arrow (term :: current) acc rest
-        else go (depth + 1) seen_arrow (term :: current) acc rest
-    | term :: rest when token_kind KwStruct term ->
-        if starts_named_do_block rest then go depth seen_arrow (term :: current) acc rest
-        else go (depth + 1) seen_arrow (term :: current) acc rest
-    | term :: rest when token_kind KwEnd term && depth > 0 ->
-        go (depth - 1) seen_arrow (term :: current) acc rest
-    | term :: rest -> go depth seen_arrow (term :: current) acc rest
-  in
-  go 0 false [] [] terms |> List.filter (fun part -> drop_separators part <> [])
-
-let collect_until_end start_span terms =
-  let rec go depth acc = function
-    | [] -> error "unterminated block"
-    | term :: rest
-      when token_kind KwDo term || token_kind KwSig term
-           || ((token_kind KwStruct term || token_kind KwModule term) && not (starts_named_do_block rest)) ->
-        go (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then (List.rev acc, rest, span_between start_span term.span)
-        else go (depth - 1) (term :: acc) rest
-    | term :: rest -> go depth (term :: acc) rest
-  in
-  go 0 [] terms
-
-let collect_match_until_end start_span terms =
-  let rec go depth acc = function
-    | [] -> error "unterminated match block"
-    | term :: rest
-      when token_kind KwDo term || token_kind KwStruct term || token_kind KwModule term
-           || token_kind KwSig term || token_kind KwMatch term || token_kind KwTrait term
-           || token_kind KwImpl term ->
-        go (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then (List.rev acc, rest, span_between start_span term.span)
-        else go (depth - 1) (term :: acc) rest
-    | term :: rest -> go depth (term :: acc) rest
-  in
-  go 0 [] terms
-
-let ensure_no_rest what rest =
-  match drop_separators rest with
-  | [] -> ()
-  | _ -> error (what ^ " has trailing terms")
-
-let with_operator_scope f =
-  let snapshot = Operator_env.snapshot () in
-  Fun.protect ~finally:(fun () -> Operator_env.restore snapshot) f
-
-let syntax_name term = token_text term
-
-let current_load_syntax : (string -> Operator_env.export list) option ref = ref None
-
-let with_syntax_loader load_syntax f =
-  let previous = !current_load_syntax in
-  current_load_syntax := load_syntax;
-  Fun.protect ~finally:(fun () -> current_load_syntax := previous) f
-
-let load_syntax_exports path =
-  match !current_load_syntax with
-  | None -> ()
-  | Some load -> Operator_env.apply_exports (load path)
-
-let rec load_imports_in_terms = function
-  | { datum = Token { kind = KwImport; _ }; _ }
-    :: { datum = Token { kind = String path; _ }; _ } :: rest ->
-      load_syntax_exports path;
-      load_imports_in_terms rest
-  | { datum = Group (_, items, _); _ } :: rest ->
-      load_imports_in_terms items;
-      load_imports_in_terms rest
-  | _ :: rest -> load_imports_in_terms rest
-  | [] -> ()
+let parse_pat_terms = Enforest_pat.parse_pat_terms
 
 let rec parse_args terms =
   match split_commas terms with
@@ -572,327 +270,57 @@ and parse_method_binding public stmt =
   | _ -> None
 
 and parse_module_type_fields what terms =
-  let module_syntax, body_terms =
-    match drop_separators terms with
-    | { datum = Token { kind = KwSig; _ }; span } :: rest ->
-        let body_terms, rest, _span = collect_until_end span rest in
-        ensure_no_rest what rest;
-        (false, body_terms)
-    | { datum = Token { kind = KwModule; _ }; span } :: rest ->
-        let body_terms, rest, _span = collect_until_end span rest in
-        ensure_no_rest what rest;
-        (true, body_terms)
-    | _ -> error (what ^ " requires a module ... end or sig ... end block")
-  in
-  split_statements body_terms
-  |> List.map (fun stmt ->
-         let name, typ_terms =
-           match drop_separators stmt with
-           | { datum = Token { kind = Ident name; _ }; _ } :: sep :: typ_terms
-             when (module_syntax && token_kind Equals sep) || ((not module_syntax) && token_kind Colon sep) ->
-               (name, typ_terms)
-           | _ ->
-               if module_syntax then error ("expected " ^ what ^ " module field of the form name = Type")
-               else error ("expected " ^ what ^ " sig field of the form name : Type")
-         in
-         let (typ : Syntax.t) = parse_type_terms typ_terms in
-         match typ.kind with
-         | Syntax.Arrow _ -> (name, typ)
-         | _ -> error (what ^ " fields must be function types"))
+  Enforest_decl_helpers.parse_module_type_fields parse_type_terms what terms
 
 and parse_effect_ops op_terms =
-  parse_module_type_fields "effect" op_terms
-  |> List.map (fun (name, (typ : Syntax.t)) ->
-         match typ.kind with
-         | Syntax.Arrow (Explicitness.Explicit, _, input, None, output) ->
-             { Syntax.name; input; output }
-         | Syntax.Arrow (_, _, _, Some _, _) -> error "effect operation types cannot have latent effects"
-         | Syntax.Arrow _ -> error "effect operation types must be explicit function types"
-         | _ -> error "effect operation requires a function type")
+  Enforest_decl_helpers.parse_effect_ops parse_type_terms op_terms
 
 and parse_trait_fields field_terms =
-  parse_module_type_fields "trait" field_terms
+  Enforest_decl_helpers.parse_trait_fields parse_type_terms field_terms
 
 and parse_decl_type_params what name_span param_terms =
-  match drop_separators param_terms with
-  | [] -> []
-  | [ ({ datum = Group (Raw_syntax.Paren, items, _); _ } as group) ] ->
-      require_adjacent_span name_span group.span (what ^ " parameter list");
-      let items = drop_separators items in
-      if items = [] then error (what ^ " parameter list cannot be empty")
-      else
-      split_commas items
-      |> List.map (fun item ->
-             match drop_separators item with
-             | [ { datum = Token { kind = Ident p; _ }; span } ] -> id ~span p
-             | _ -> error (what ^ " parameter list expects identifiers"))
-  | _ -> error (what ^ " parameters must be written as (A, B)")
+  Enforest_decl_helpers.parse_decl_type_params what name_span param_terms
+
+and form_callbacks () =
+  {
+    Enforest_forms.parse_expr_prec;
+    parse_expr_terms = (fun ts -> parse_all (fun ts -> parse_expr_prec 0 ts) ts);
+    parse_do_body_terms;
+    parse_pat_terms;
+  }
 
 and parse_if start_span terms =
-  match split_at_token KwDo terms with
-  | None -> error "if requires do/else/end syntax"
-  | Some (cond_terms, do_kw, rest) ->
-      let cond = parse_all (fun ts -> parse_expr_prec 0 ts) cond_terms in
-      let then_terms, else_terms, rest, end_span = collect_if_branches do_kw.span rest in
-      let then_ = parse_do_body_terms (syntax_span then_terms) then_terms in
-      let else_ = parse_do_body_terms (syntax_span else_terms) else_terms in
-      (stx ~span:(span_between start_span end_span) (Syntax.If { cond; then_; else_ }), rest)
+  Enforest_forms.parse_if (form_callbacks ()) start_span terms
 
-and collect_if_branches _do_span terms =
-  let rec collect_then depth acc = function
-    | [] -> error "unterminated if block"
-    | term :: rest when token_kind KwDo term -> collect_then (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then error "if block requires else"
-        else collect_then (depth - 1) (term :: acc) rest
-    | term :: rest when token_kind KwElse term && depth = 0 ->
-        let then_terms = List.rev acc in
-        let else_terms, rest, end_span = collect_else 0 [] rest in
-        (then_terms, else_terms, rest, end_span)
-    | term :: rest -> collect_then depth (term :: acc) rest
-  and collect_else depth acc = function
-    | [] -> error "unterminated else block"
-    | term :: rest when token_kind KwDo term -> collect_else (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then (List.rev acc, rest, term.span)
-        else collect_else (depth - 1) (term :: acc) rest
-    | term :: rest -> collect_else depth (term :: acc) rest
-  in
-  collect_then 0 [] terms
-
-and parse_pat_terms terms =
-  let rec parse_pat_atom terms =
-    match drop_separators terms with
-    | [] -> error "expected pattern"
-    | term :: rest -> (
-        match term.datum with
-        | Token { kind = Int n; _ } -> (Syntax.PatAtom (Atom.I64 n), rest)
-        | Token { kind = Char c; _ } -> (Syntax.PatAtom (Atom.Char c), rest)
-        | Token { kind = Unit; _ } -> (Syntax.PatAtom Atom.Unit, rest)
-        | Token { kind = KwUnit; _ } -> (Syntax.PatType Atom_ty.TUnit, rest)
-        | Token { kind = KwTrue; _ } -> (Syntax.PatAtom (Atom.Bool true), rest)
-        | Token { kind = KwFalse; _ } -> (Syntax.PatAtom (Atom.Bool false), rest)
-        | Token { kind = Ident name; _ } ->
-            let pat =
-              match name with
-              | "_" -> Syntax.PatWild
-              | "I64" -> Syntax.PatType Atom_ty.TI64
-              | "Bool" -> Syntax.PatType Atom_ty.TBool
-              | "Unit" -> Syntax.PatType Atom_ty.TUnit
-              | "Char" -> Syntax.PatType Atom_ty.TChar
-              | "String" -> Syntax.PatType Atom_ty.TString
-              | "Absurd" -> Syntax.PatType Atom_ty.TAbsurd
-              | _ when name <> "" && Char.uppercase_ascii name.[0] = name.[0] ->
-                  Syntax.PatCon ([], name, [])
-              | _ -> Syntax.PatBind (id ~span:term.span name)
-            in
-            (pat, rest)
-        | Group (Raw_syntax.Paren, items, _) -> (
-            match drop_separators items with
-            | [] -> (Syntax.PatAtom Atom.Unit, rest)
-            | items -> (match split_commas items with
-            | [ only ] -> (parse_pat_all only, rest)
-            | parts -> (Syntax.PatProd (List.map parse_pat_all parts), rest)) )
-        | Token { kind = KwStruct; _ } ->
-            let body_terms, rest, _span = collect_until_end term.span rest in
-            let fields, partial = parse_pat_struct_type_fields body_terms in
-            (Syntax.PatStructType { fields; partial }, rest)
-        | _ -> error "unsupported pattern in Phase 7B match")
-  and parse_pat_postfix lhs terms =
-    match drop_separators terms with
-    | dot :: field :: rest when token_kind Dot dot ->
-        let field_name =
-          match token_text field with
-          | Some name -> name
-          | None -> error "expected pattern name after '.'"
-        in
-        let lhs =
-          match lhs with
-          | Syntax.PatCon (path, name, []) -> Syntax.PatCon (path @ [ name ], field_name, [])
-          | Syntax.PatBind name -> Syntax.PatCon ([ name.name ], field_name, [])
-          | _ -> error "only constructor patterns can be qualified"
-        in
-        parse_pat_postfix lhs rest
-    | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
-        let args =
-          match drop_separators items with
-          | [] -> []
-          | _ -> List.map parse_pat_all (split_commas items)
-        in
-        let lhs =
-          match lhs with
-          | Syntax.PatCon (path, name, []) -> Syntax.PatCon (path, name, args)
-          | _ -> error "only constructor patterns can take arguments"
-        in
-        parse_pat_postfix lhs rest
-    | { datum = Group (Raw_syntax.Brace, items, _); _ } :: rest ->
-        let fields, partial = parse_pat_record_fields items in
-        let lhs =
-          match lhs with
-          | Syntax.PatCon (path, name, []) ->
-              Syntax.PatRecord { typ_path = path; typ = name; fields; partial }
-          | _ -> error "record pattern fields must follow a type name"
-        in
-        parse_pat_postfix lhs rest
-    | term :: rest when is_expr_start term ->
-        let arg, rest = parse_pat_atom (term :: rest) in
-        let lhs =
-          match lhs with
-          | Syntax.PatCon (path, name, args) -> Syntax.PatCon (path, name, args @ [ arg ])
-          | _ -> error "only constructor patterns can take arguments"
-        in
-        parse_pat_postfix lhs rest
-    | rest -> (lhs, rest)
-
-  and parse_pat_struct_type_fields items =
-    let fields, partial =
-      split_statements items
-      |> List.fold_left
-           (fun (fields, partial) part ->
-             match drop_separators part with
-             | [ { datum = Token { kind = Ident "_"; _ }; _ } ] -> (fields, true)
-             | { datum = Token { kind = Ident name; _ }; _ } :: colon :: pat_terms when token_kind Colon colon ->
-                 (fields @ [ (name, parse_pat_all pat_terms) ], partial)
-             | _ -> error "expected struct type pattern field")
-           ([], false)
-    in
-    (fields, partial)
-
-  and parse_pat_record_fields items =
-    let split_record_fields terms =
-      let rec go current acc = function
-        | [] -> List.rev (List.rev current :: acc)
-        | { datum = Token { kind = Comma; _ } | Token { kind = Semi; _ }; _ } as term :: rest
-          when is_separator term || token_kind Comma term ->
-            go [] (List.rev current :: acc) rest
-        | term :: rest -> go (term :: current) acc rest
-      in
-      go [] [] terms |> List.filter (fun part -> not (List.for_all is_separator part || part = []))
-    in
-    let fields =
-      split_record_fields (drop_separators items)
-      |> List.map (fun part ->
-             match drop_separators part with
-             | [ { datum = Token { kind = Ident name; _ }; _ } ] ->
-                 (name, None)
-             | { datum = Token { kind = Ident name; _ }; _ } :: eq :: pat_terms
-               when token_kind Equals eq ->
-                 (name, Some (parse_pat_all pat_terms))
-             | _ -> error "expected record pattern field of the form name or name = pat")
-    in
-    let partial =
-      List.exists
-        (fun (name, pat_opt) -> String.equal name "_" && Option.is_none pat_opt)
-        fields
-    in
-    let fields = List.filter (fun (name, pat_opt) -> not (String.equal name "_" && Option.is_none pat_opt)) fields in
-    (fields, partial)
-  and parse_pat_or terms =
-    match split_at_token Bar terms with
-    | Some (lhs_terms, _, rhs_terms) -> Syntax.PatOr (parse_pat_all lhs_terms, parse_pat_all rhs_terms)
-    | None ->
-        let lhs, rest = parse_pat_atom terms in
-        let lhs, rest = parse_pat_postfix lhs rest in
-        let rest = drop_separators rest in
-        if rest = [] then lhs else error "unconsumed terms after pattern"
-  and parse_pat_all terms = parse_pat_or terms in
-  parse_pat_all terms
 
 and parse_match start_span terms =
-  match split_at_token KwDo terms with
-  | None -> error "match requires do/end syntax"
-  | Some (scrut_terms, do_kw, rest) ->
-      let scrut = parse_all (fun ts -> parse_expr_prec 0 ts) scrut_terms in
-      let body_terms, rest, span = collect_until_end do_kw.span rest in
-      let branches =
-        split_match_branches body_terms
-        |> List.map (fun branch_terms ->
-               match split_at_arrow branch_terms with
-               | Some ({ datum = Token { kind = KwEffect; _ }; _ } :: effect_terms, _, body_terms) ->
-                   let (path, op), arg_terms = dotted_id_from_terms effect_terms in
-                   let arg_pat = parse_pat_terms arg_terms in
-                   let body = parse_all (fun ts -> parse_expr_prec 0 ts) body_terms in
-                   Syntax.EffectBranch { effect_path = path; op; arg_pat; body }
-               | Some (pat_terms, _, body_terms) ->
-                   let pat = parse_pat_terms pat_terms in
-                   let body = parse_all (fun ts -> parse_expr_prec 0 ts) body_terms in
-                   Syntax.ValueBranch (pat, body)
-               | None -> error "match branch requires ->")
-      in
-      if branches = [] then error "match requires at least one branch";
-      (stx ~span:(span_between start_span span) (Syntax.Match (scrut, branches)), rest)
+  Enforest_forms.parse_match (form_callbacks ()) start_span terms
 
 and parse_group_arg items =
-  match drop_separators items with
-  | [] -> unit ()
-  | _ -> parse_all (fun ts -> parse_expr_prec 0 ts) items
+  Enforest_forms.parse_group_arg (form_callbacks ()) items
 
 and parse_effect_row_terms terms =
-  match drop_separators terms with
-  | [] -> { Syntax.effects = []; tail = None }
-  | _ -> (
-      match split_at_token Bar terms with
-      | Some (effect_terms, _, tail_terms) ->
-          let effects =
-            match drop_separators effect_terms with
-            | [] -> []
-            | _ -> List.map (parse_all (fun ts -> parse_expr_prec 0 ts)) (split_commas effect_terms)
-          in
-          { Syntax.effects = effects; tail = Some (parse_all (fun ts -> parse_expr_prec 0 ts) tail_terms) }
-      | None ->
-          { Syntax.effects = List.map (parse_all (fun ts -> parse_expr_prec 0 ts)) (split_commas terms); tail = None })
+  Enforest_forms.parse_effect_row_terms (form_callbacks ()) terms
 
 and parse_can_effect_row terms =
-  match drop_separators terms with
-  | { datum = Group (Raw_syntax.Brace, items, _); _ } :: rest -> (parse_effect_row_terms items, rest)
-  | rest ->
-      let eff, rest = parse_expr_prec 40 rest in
-      ({ Syntax.effects = [ eff ]; tail = None }, rest)
+  Enforest_forms.parse_can_effect_row (form_callbacks ()) terms
 
-and attach_effects (lhs : Syntax.t) eff =
-  match lhs.kind with
-  | Syntax.Arrow (expl, name, dom, None, cod) -> { lhs with kind = Syntax.Arrow (expl, name, dom, Some eff, cod) }
-  | Syntax.Arrow _ -> error "duplicate effect annotation"
-  | _ -> error "can annotation requires an arrow"
+and attach_effects lhs eff = Enforest_forms.attach_effects lhs eff
 
 and parse_ref start_span terms =
-  match drop_separators terms with
-  | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
-      let arg = parse_group_arg items in
-      (stx ~span:(span_between start_span span) (Syntax.RefNew arg), rest)
-  | term :: _ when is_expr_start term ->
-      let arg, rest = parse_expr_prec 41 terms in
-      (stx ~span:(span_between start_span arg.span) (Syntax.RefNew arg), rest)
-  | _ -> error "ref requires an argument"
+  Enforest_forms.parse_ref (form_callbacks ()) start_span terms
 
 and parse_deref start_span terms =
-  match drop_separators terms with
-  | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
-      let arg = parse_group_arg items in
-      (stx ~span:(span_between start_span span) (Syntax.RefGet arg), rest)
-  | _ -> error "deref requires a parenthesized argument"
+  Enforest_forms.parse_deref (form_callbacks ()) start_span terms
 
 and parse_resume start_span terms =
-  match drop_separators terms with
-  | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
-      let arg = parse_group_arg items in
-      (stx ~span:(span_between start_span span) (Syntax.Resume arg), rest)
-  | term :: _ when is_expr_start term ->
-      let arg, rest = parse_expr_prec 41 terms in
-      (stx ~span:(span_between start_span arg.span) (Syntax.Resume arg), rest)
-  | _ -> error "resume requires an argument"
+  Enforest_forms.parse_resume (form_callbacks ()) start_span terms
 
 and parse_perform start_span terms =
-  let (path, op), rest = dotted_id_from_terms terms in
-  let arg, rest = parse_expr_prec 41 rest in
-  (stx ~span:(span_between start_span arg.span) (Syntax.Perform { effect_path = path; op; arg }), rest)
+  Enforest_forms.parse_perform (form_callbacks ()) start_span terms
 
 and parse_import start_span terms =
-  match drop_separators terms with
-  | { datum = Token { kind = String path; _ }; span } :: rest ->
-      load_syntax_exports path;
-      (stx ~span:(span_between start_span span) (Syntax.Import path), rest)
-  | _ -> error "import requires a string path"
+  Enforest_forms.parse_import start_span terms
 
 and parse_module_expr start_span terms =
   match drop_separators terms with
@@ -1116,29 +544,6 @@ and collect_do_body start_span terms =
   in
   go 0 [] terms
 
-and split_statements terms =
-  let is_statement_separator depth term =
-    depth = 0 && (is_separator term || token_kind Comma term)
-  in
-  let rec go depth current acc = function
-    | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when is_statement_separator depth term -> go depth [] (List.rev current :: acc) rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term ->
-        go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwModule term ->
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwStruct term -> (
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else
-          match drop_separators rest with
-          | next :: _ when token_kind KwDo next -> go depth (term :: current) acc rest
-          | _ -> go (depth + 1) (term :: current) acc rest)
-    | term :: rest when token_kind KwEnd term && depth > 0 -> go (depth - 1) (term :: current) acc rest
-    | term :: rest -> go depth (term :: current) acc rest
-  in
-  go 0 [] [] terms
-  |> List.filter (fun stmt -> not (List.for_all is_separator stmt || stmt = []))
 
 and parse_binding_statement stmt =
   match parse_value_decl_statement stmt with
@@ -1463,39 +868,34 @@ and parse_named_module_binding public stmt =
       Some (Syntax.LetBinding { name = id ~span:name_span name; value; public })
   | _ -> None
 
+and parse_value_binding public recursive_error stmt =
+  match parse_value_decl_statement stmt with
+  | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
+      if decl_recursive then error recursive_error;
+      let value =
+        match decl_type with
+        | Some typ -> stx ~span:(syntax_span stmt) (Syntax.Annotated { inner = decl_value; typ })
+        | None -> decl_value
+      in
+      Some (Syntax.LetBinding { name; value; public })
+  | None -> None
+
 and parse_module_binding stmt =
   let public, stmt = parse_public_prefix stmt in
-  match parse_syntax_binding public stmt with
+  match
+    first_some
+      [ parse_syntax_binding public;
+        parse_macro_binding public;
+        parse_type_binding public;
+        parse_effect_binding public;
+        parse_trait_binding public;
+        parse_impl_binding public;
+        parse_named_module_binding public;
+        parse_value_binding public "recursive module bindings are not supported in Phase 7C modules" ]
+      stmt
+  with
   | Some binding -> binding
-  | None -> (
-          match parse_macro_binding public stmt with
-          | Some binding -> binding
-          | None -> (
-              match parse_type_binding public stmt with
-              | Some binding -> binding
-              | None -> (
-                  match parse_effect_binding public stmt with
-                  | Some binding -> binding
-                  | None -> (
-                      match parse_trait_binding public stmt with
-                      | Some binding -> binding
-                      | None -> (
-                          match parse_impl_binding public stmt with
-                          | Some binding -> binding
-                          | None -> (
-                              match parse_named_module_binding public stmt with
-                              | Some binding -> binding
-                              | None -> (
-                                  match parse_value_decl_statement stmt with
-                                  | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
-                                      if decl_recursive then error "recursive module bindings are not supported in Phase 7C modules";
-                                      let value =
-                                        match decl_type with
-                                        | Some typ -> stx ~span:(syntax_span stmt) (Syntax.Annotated { inner = decl_value; typ })
-                                        | None -> decl_value
-                                      in
-                                      Syntax.LetBinding { name; value; public }
-                                  | None -> unsupported "unsupported Phase 7C module item")))))))
+  | None -> unsupported "unsupported Phase 7C module item"
 
 and parse_module_bindings body_terms =
   with_operator_scope (fun () ->
@@ -1531,43 +931,22 @@ and parse_named_struct_binding public stmt =
 
 and parse_struct_binding stmt =
   let public, stmt = parse_public_prefix stmt in
-  match parse_method_binding public stmt with
+  match
+    first_some
+      [ parse_method_binding public;
+        parse_syntax_binding public;
+        parse_macro_binding public;
+        parse_type_binding public;
+        parse_effect_binding public;
+        parse_trait_binding public;
+        parse_impl_binding public;
+        parse_named_module_binding public;
+        parse_named_struct_binding public;
+        parse_value_binding public "recursive struct bindings are not supported in Phase 7C structs" ]
+      stmt
+  with
   | Some binding -> binding
-  | None -> (
-  match parse_syntax_binding public stmt with
-  | Some binding -> binding
-  | None -> (
-      match parse_macro_binding public stmt with
-      | Some binding -> binding
-      | None -> (
-          match parse_type_binding public stmt with
-          | Some binding -> binding
-          | None -> (
-              match parse_effect_binding public stmt with
-              | Some binding -> binding
-              | None -> (
-                  match parse_trait_binding public stmt with
-                  | Some binding -> binding
-                  | None -> (
-                      match parse_impl_binding public stmt with
-                      | Some binding -> binding
-                      | None -> (
-                          match parse_named_module_binding public stmt with
-                          | Some binding -> binding
-                          | None -> (
-                              match parse_named_struct_binding public stmt with
-                              | Some binding -> binding
-                              | None -> (
-                                  match parse_value_decl_statement stmt with
-                                  | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
-                                      if decl_recursive then error "recursive struct bindings are not supported in Phase 7C structs";
-                                      let value =
-                                        match decl_type with
-                                        | Some typ -> stx ~span:(syntax_span stmt) (Syntax.Annotated { inner = decl_value; typ })
-                                        | None -> decl_value
-                                      in
-                                      Syntax.LetBinding { name; value; public }
-                                   | None -> unsupported "unsupported Phase 7C struct item")))))))))
+  | None -> unsupported "unsupported Phase 7C struct item"
 
 and parse_struct_items body_terms =
   split_statements body_terms
