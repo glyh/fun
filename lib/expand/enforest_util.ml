@@ -14,6 +14,13 @@ type syntax_decl = {
   syntax_export : Operator_env.export;
 }
 
+type env = {
+  mutable operators : Operator_env.t;
+  load_syntax : (string -> Operator_env.export list) option;
+}
+
+let env ?load_syntax () = { operators = Operator_env.empty; load_syntax }
+
 let unsupported msg = raise (Unsupported msg)
 let error msg = raise (Error msg)
 
@@ -130,10 +137,10 @@ let punct_name = function
 
 let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 
-let is_expr_start term =
+let is_expr_start env term =
   match term.datum with
   | Token { kind = Int _ | Char _ | String _ | Unit | KwTrue | KwFalse | KwUnit | KwSelf | KwSelfType | KwDo | KwFn | KwIf | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
-  | Token { kind = Operator s; _ } -> Option.is_some (Operator_env.find_prefix s)
+  | Token { kind = Operator s; _ } -> Option.is_some (Operator_env.find_prefix env.operators s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false
 
@@ -287,33 +294,25 @@ let ensure_no_rest what rest =
   | [] -> ()
   | _ -> error (what ^ " has trailing terms")
 
-let with_operator_scope f =
-  let snapshot = Operator_env.snapshot () in
-  Fun.protect ~finally:(fun () -> Operator_env.restore snapshot) f
+let with_operator_scope env f =
+  f { env with operators = env.operators }
 
 let syntax_name term = token_text term
 
-let current_load_syntax : (string -> Operator_env.export list) option ref = ref None
-
-let with_syntax_loader load_syntax f =
-  let previous = !current_load_syntax in
-  current_load_syntax := load_syntax;
-  Fun.protect ~finally:(fun () -> current_load_syntax := previous) f
-
-let load_syntax_exports path =
-  match !current_load_syntax with
+let load_syntax_exports env path =
+  match env.load_syntax with
   | None -> ()
-  | Some load -> Operator_env.apply_exports (load path)
+  | Some load -> env.operators <- Operator_env.apply_exports env.operators (load path)
 
-let rec load_imports_in_terms = function
+let rec load_imports_in_terms env = function
   | { datum = Token { kind = KwImport; _ }; _ }
     :: { datum = Token { kind = String path; _ }; _ } :: rest ->
-      load_syntax_exports path;
-      load_imports_in_terms rest
+      load_syntax_exports env path;
+      load_imports_in_terms env rest
   | { datum = Group (_, items, _); _ } :: rest ->
-      load_imports_in_terms items;
-      load_imports_in_terms rest
-  | _ :: rest -> load_imports_in_terms rest
+      load_imports_in_terms env items;
+      load_imports_in_terms env rest
+  | _ :: rest -> load_imports_in_terms env rest
   | [] -> ()
 
 

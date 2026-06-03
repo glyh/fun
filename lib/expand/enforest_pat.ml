@@ -75,7 +75,7 @@ let parse_pat_terms terms =
           | _ -> error "record pattern fields must follow a type name"
         in
         parse_pat_postfix lhs rest
-    | term :: rest when is_expr_start term ->
+    | term :: rest when is_expr_start (env ()) term ->
         let arg, rest = parse_pat_atom (term :: rest) in
         let lhs =
           match lhs with

@@ -6,6 +6,7 @@ type callbacks = {
   parse_expr_terms : Raw_syntax.t list -> Syntax.t;
   parse_do_body_terms : Source_span.t -> Raw_syntax.t list -> Syntax.t;
   parse_pat_terms : Raw_syntax.t list -> Syntax.pat;
+  is_expr_start : Raw_syntax.t -> bool;
 }
 
 let parse_group_arg callbacks items =
@@ -102,7 +103,7 @@ let parse_ref callbacks start_span terms =
   | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
       let arg = parse_group_arg callbacks items in
       (stx ~span:(span_between start_span span) (Syntax.RefNew arg), rest)
-  | term :: _ when is_expr_start term ->
+  | term :: _ when callbacks.is_expr_start term ->
       let arg, rest = callbacks.parse_expr_prec 41 terms in
       (stx ~span:(span_between start_span arg.span) (Syntax.RefNew arg), rest)
   | _ -> error "ref requires an argument"
@@ -119,7 +120,7 @@ let parse_resume callbacks start_span terms =
   | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
       let arg = parse_group_arg callbacks items in
       (stx ~span:(span_between start_span span) (Syntax.Resume arg), rest)
-  | term :: _ when is_expr_start term ->
+  | term :: _ when callbacks.is_expr_start term ->
       let arg, rest = callbacks.parse_expr_prec 41 terms in
       (stx ~span:(span_between start_span arg.span) (Syntax.Resume arg), rest)
   | _ -> error "resume requires an argument"
@@ -129,9 +130,9 @@ let parse_perform callbacks start_span terms =
   let arg, rest = callbacks.parse_expr_prec 41 rest in
   (stx ~span:(span_between start_span arg.span) (Syntax.Perform { effect_path = path; op; arg }), rest)
 
-let parse_import start_span terms =
+let parse_import env start_span terms =
   match drop_separators terms with
   | { datum = Token { kind = String path; _ }; span } :: rest ->
-      load_syntax_exports path;
+      load_syntax_exports env path;
       (stx ~span:(span_between start_span span) (Syntax.Import path), rest)
   | _ -> error "import requires a string path"

@@ -433,6 +433,19 @@ end"
       | Let { name = "Ops"; value = Import "syntax_ops"; body = Atom (Atom.I64 2L); _ } -> ()
       | _ -> Alcotest.fail "expected syntax extension from parsed module to be available")
 
+let syntax_import_does_not_leak_between_parses () =
+  with_modules
+    [ ("syntax_ops", "pub syntax prefix inc = fn(stx) -> stx") ]
+    (fun loader ->
+      let _ =
+        parse_with_macros
+          ~load_syntax:(Core_loader.load_syntax_exports loader)
+          "import \"syntax_ops\""
+      in
+      match parse_with_macros "inc 1" with
+      | exception _ -> ()
+      | _ -> Alcotest.fail "expected imported syntax extension to stay local to its parse")
+
 let syntax_extension_not_runtime_field () =
   match parse_module "syntax prefix hidden = fn(stx : Stx) -> stx
 pub x = 1" with
@@ -521,6 +534,7 @@ let suites =
         Alcotest.test_case "syntax prefix in module" `Quick syntax_prefix_in_module;
         Alcotest.test_case "syntax infix associativity" `Quick syntax_infix_associativity;
         Alcotest.test_case "syntax extension cross module" `Quick syntax_extension_cross_module;
+        Alcotest.test_case "syntax import does not leak between parses" `Quick syntax_import_does_not_leak_between_parses;
         Alcotest.test_case "syntax extension not runtime field" `Quick syntax_extension_not_runtime_field;
         Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
         Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;

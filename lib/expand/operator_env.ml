@@ -24,21 +24,14 @@ let infix_table =
 
 let prefix_table = [ { symbol = "not"; precedence = 30 } ]
 
-let dynamic_prefixes : prefix list ref = ref []
-let dynamic_infixes : infix list ref = ref []
-
-type snapshot = {
+type t = {
   prefixes : prefix list;
   infixes : infix list;
 }
 
 type export = Prefix of prefix | Infix of infix
 
-let snapshot () = { prefixes = !dynamic_prefixes; infixes = !dynamic_infixes }
-
-let restore snapshot =
-  dynamic_prefixes := snapshot.prefixes;
-  dynamic_infixes := snapshot.infixes
+let empty = { prefixes = []; infixes = [] }
 
 let without_prefix symbol prefixes =
   List.filter (fun (op : prefix) -> not (String.equal op.symbol symbol)) prefixes
@@ -46,45 +39,30 @@ let without_prefix symbol prefixes =
 let without_infix symbol infixes =
   List.filter (fun (op : infix) -> not (String.equal op.symbol symbol)) infixes
 
-let register_prefix symbol precedence =
-  dynamic_prefixes := { symbol; precedence } :: without_prefix symbol !dynamic_prefixes
+let add_prefix t symbol precedence =
+  { t with prefixes = { symbol; precedence } :: without_prefix symbol t.prefixes }
 
-let register_infix symbol precedence associativity =
-  dynamic_infixes := { symbol; precedence; associativity } :: without_infix symbol !dynamic_infixes
+let add_infix t symbol precedence associativity =
+  { t with infixes = { symbol; precedence; associativity } :: without_infix symbol t.infixes }
 
-let exports_since snapshot =
-  let prefix_exports =
-    !dynamic_prefixes
-    |> List.filter (fun (op : prefix) ->
-           not (List.exists (fun (old : prefix) -> String.equal old.symbol op.symbol) snapshot.prefixes))
-    |> List.map (fun op -> Prefix op)
-  in
-  let infix_exports =
-    !dynamic_infixes
-    |> List.filter (fun (op : infix) ->
-           not (List.exists (fun (old : infix) -> String.equal old.symbol op.symbol) snapshot.infixes))
-    |> List.map (fun op -> Infix op)
-  in
-  List.rev_append prefix_exports infix_exports
+let apply_export t = function
+  | Prefix op -> add_prefix t op.symbol op.precedence
+  | Infix op -> add_infix t op.symbol op.precedence op.associativity
 
-let apply_export = function
-  | Prefix op -> register_prefix op.symbol op.precedence
-  | Infix op -> register_infix op.symbol op.precedence op.associativity
+let apply_exports t exports = List.fold_left apply_export t exports
 
-let apply_exports exports = List.iter apply_export exports
+let is_extension_prefix t symbol =
+  List.exists (fun (op : prefix) -> String.equal op.symbol symbol) t.prefixes
 
-let is_dynamic_prefix symbol =
-  List.exists (fun (op : prefix) -> String.equal op.symbol symbol) !dynamic_prefixes
+let is_extension_infix t symbol =
+  List.exists (fun (op : infix) -> String.equal op.symbol symbol) t.infixes
 
-let is_dynamic_infix symbol =
-  List.exists (fun (op : infix) -> String.equal op.symbol symbol) !dynamic_infixes
-
-let find_infix symbol =
-  match List.find_opt (fun (op : infix) -> String.equal op.symbol symbol) !dynamic_infixes with
+let find_infix t symbol =
+  match List.find_opt (fun (op : infix) -> String.equal op.symbol symbol) t.infixes with
   | Some op -> Some op
   | None -> List.find_opt (fun (op : infix) -> String.equal op.symbol symbol) infix_table
 
-let find_prefix symbol =
-  match List.find_opt (fun (op : prefix) -> String.equal op.symbol symbol) !dynamic_prefixes with
+let find_prefix t symbol =
+  match List.find_opt (fun (op : prefix) -> String.equal op.symbol symbol) t.prefixes with
   | Some op -> Some op
   | None -> List.find_opt (fun (op : prefix) -> String.equal op.symbol symbol) prefix_table

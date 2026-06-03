@@ -6,17 +6,17 @@ open Enforest_util
 
 let parse_pat_terms = Enforest_pat.parse_pat_terms
 
-let rec parse_args terms =
+let rec parse_args env terms =
   match split_commas terms with
   | [ [] ] -> []
   | parts ->
       List.map
         (fun part ->
           if List.for_all is_separator part then error "empty argument";
-          parse_all (fun ts -> parse_expr_prec 0 ts) part)
+          parse_all (fun ts -> parse_expr_prec env 0 ts) part)
         parts
 
-and parse_group_expr delimiter items span =
+and parse_group_expr env delimiter items span =
   match delimiter with
   | Raw_syntax.Paren -> (
       let items = drop_separators items in
@@ -26,78 +26,78 @@ and parse_group_expr delimiter items span =
       | _ -> (
           match split_at_token Colon items with
           | Some (expr_terms, _, typ_terms) ->
-              stx ~span (Syntax.Annotated { inner = parse_all (fun ts -> parse_expr_prec 0 ts) expr_terms; typ = parse_type_terms typ_terms })
+              stx ~span (Syntax.Annotated { inner = parse_all (fun ts -> parse_expr_prec env 0 ts) expr_terms; typ = parse_type_terms env typ_terms })
           | None ->
           match split_commas items with
-          | [ only ] -> { (parse_all (fun ts -> parse_expr_prec 0 ts) only) with span }
+          | [ only ] -> { (parse_all (fun ts -> parse_expr_prec env 0 ts) only) with span }
           | parts ->
-              let exprs = List.map (parse_all (fun ts -> parse_expr_prec 0 ts)) parts in
+              let exprs = List.map (parse_all (fun ts -> parse_expr_prec env 0 ts)) parts in
               stx ~span (Syntax.Prod exprs)))
   | Bracket -> unsupported "bare bracket expression is not in Phase 7A"
   | Brace -> unsupported "bare brace expression is not in Phase 7A"
 
-and parse_record_expr_fields items =
+and parse_record_expr_fields env items =
   split_statements items
   |> List.map (fun part ->
          match drop_separators part with
          | { datum = Token { kind = Ident name; _ }; _ } :: eq :: value_terms when token_kind Equals eq ->
-             (name, parse_all (fun ts -> parse_expr_prec 0 ts) value_terms)
+              (name, parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms)
          | _ -> error "expected record field of the form name = expr")
 
-and parse_type_terms terms = parse_all parse_type_entry terms
+and parse_type_terms env terms = parse_all (parse_type_entry env) terms
 
-and parse_type_entry (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list = parse_type_arrow terms
+and parse_type_entry env (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list = parse_type_arrow env terms
 
-and parse_type_arrow (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
-  let lhs, rest = parse_type_plus terms in
+and parse_type_arrow env (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+  let lhs, rest = parse_type_plus env terms in
   match drop_separators rest with
   | { datum = Token { kind = ThinArrow; _ }; _ } :: rest ->
-      let cod, rest = parse_type_arrow (drop_separators rest) in
+      let cod, rest = parse_type_arrow env (drop_separators rest) in
       let lhs = stx ~span:(span_between lhs.span cod.span) (Syntax.Arrow (Explicitness.Explicit, None, lhs, None, cod)) in
-      parse_type_arrow_effect lhs rest
-  | rest -> parse_type_arrow_effect lhs rest
+      parse_type_arrow_effect env lhs rest
+  | rest -> parse_type_arrow_effect env lhs rest
 
-and parse_type_arrow_effect (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+and parse_type_arrow_effect env (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
   match drop_separators terms with
   | { datum = Token { kind = KwCan; _ }; _ } :: rest -> (
       match lhs.kind with
       | Syntax.Arrow _ ->
-          let eff, rest = parse_can_effect_row rest in
-          parse_type_arrow_effect (attach_effects lhs eff) rest
+          let eff, rest = parse_can_effect_row env rest in
+          parse_type_arrow_effect env (attach_effects lhs eff) rest
       | _ -> (lhs, terms))
   | terms -> (lhs, terms)
 
-and parse_type_plus (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
-  let lhs, rest = parse_type_product terms in
-  parse_type_plus_tail lhs rest
+and parse_type_plus env (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+  let lhs, rest = parse_type_product env terms in
+  parse_type_plus_tail env lhs rest
 
-and parse_type_plus_tail (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+and parse_type_plus_tail env (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
   match drop_separators terms with
   | { datum = Token { kind = Operator "+"; _ }; span = op_span } :: rest ->
-      let rhs, rest = parse_type_product rest in
+      let rhs, rest = parse_type_product env rest in
       let span = span_between lhs.span rhs.span in
       let lhs = ap ~span (ap ~span (var ~span:op_span "+") Explicitness.Explicit lhs) Explicitness.Explicit rhs in
-      parse_type_plus_tail lhs rest
+      parse_type_plus_tail env lhs rest
   | rest -> (lhs, rest)
 
-and parse_type_product (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
-  let lhs, rest = parse_type_atom terms in
-  let lhs, rest = parse_type_postfix lhs rest in
-  parse_type_product_tail lhs rest
+and parse_type_product env (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+  let lhs, rest = parse_type_atom env terms in
+  let lhs, rest = parse_type_postfix env lhs rest in
+  parse_type_product_tail env lhs rest
 
-and parse_type_product_tail (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+and parse_type_product_tail env (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
   match drop_separators terms with
   | { datum = Token { kind = Operator "*"; _ }; _ } :: rest ->
-      let rhs, rest = parse_type_atom rest in
-      let rhs, rest = parse_type_postfix rhs rest in
+      let rhs, rest = parse_type_atom env rest in
+      let rhs, rest = parse_type_postfix env rhs rest in
       let elems =
         (match lhs.kind with Syntax.ProdTy xs -> xs | _ -> [ lhs ])
         @ (match rhs.kind with Syntax.ProdTy xs -> xs | _ -> [ rhs ])
       in
-      parse_type_product_tail (stx ~span:(span_between lhs.span rhs.span) (Syntax.ProdTy elems)) rest
+      parse_type_product_tail env (stx ~span:(span_between lhs.span rhs.span) (Syntax.ProdTy elems)) rest
   | rest -> (lhs, rest)
 
-and parse_type_atom (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+and parse_type_atom env (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
   match drop_separators terms with
   | [] -> error "expected type"
   | { datum = Token { kind = Ident name; _ }; span } :: rest ->
@@ -106,10 +106,10 @@ and parse_type_atom (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
       (var ~span "Unit", rest)
   | { datum = Token { kind = KwSelfType; _ }; span } :: rest ->
       (stx ~span Syntax.SelfType, rest)
-  | { datum = Token { kind = KwFn; _ }; span } :: rest -> parse_fn span rest
-  | { datum = Token { kind = KwModule; _ }; span } :: rest -> parse_module_expr span rest
-  | { datum = Token { kind = KwSig; _ }; span } :: rest -> parse_sig_expr span rest
-  | { datum = Token { kind = KwStruct; _ }; span } :: rest -> parse_struct_expr span rest
+  | { datum = Token { kind = KwFn; _ }; span } :: rest -> parse_fn env span rest
+  | { datum = Token { kind = KwModule; _ }; span } :: rest -> parse_module_expr env span rest
+  | { datum = Token { kind = KwSig; _ }; span } :: rest -> parse_sig_expr env span rest
+  | { datum = Token { kind = KwStruct; _ }; span } :: rest -> parse_struct_expr env span rest
   | { datum = Token { kind; _ }; _ } :: _ ->
       let name = keyword_name kind in
       if Option.is_some name then
@@ -127,8 +127,8 @@ and parse_type_atom (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
       else error "expected type atom"
   | { datum = Group (Raw_syntax.Paren, items, span); _ } :: arrow :: rest
     when token_kind ThinArrow arrow && List.exists (token_kind Colon) items ->
-      let params = parse_param_group Explicitness.Explicit items in
-      let (cod : Syntax.t), rest = parse_type_arrow rest in
+      let params = parse_param_group env Explicitness.Explicit items in
+      let (cod : Syntax.t), rest = parse_type_arrow env rest in
       let (result : Syntax.t) =
         List.fold_right
           (fun (p : Syntax.param) (acc : Syntax.t) ->
@@ -142,18 +142,18 @@ and parse_type_atom (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
       let items = drop_separators items in
       let ty =
         match split_commas items with
-        | [ only ] -> parse_all parse_type_entry only
+        | [ only ] -> parse_all (parse_type_entry env) only
         | _ -> error "tuple/product types use * syntax, not comma syntax"
       in
       (ty, rest)
   | { datum = Group (Raw_syntax.Bracket, items, _); _ } :: rest ->
-      let (params : Syntax.param list) = parse_param_group Explicitness.Implicit items in
+      let (params : Syntax.param list) = parse_param_group env Explicitness.Implicit items in
       let cod_items, rest =
         match drop_separators rest with
         | arrow :: cod_terms when token_kind ThinArrow arrow -> (cod_terms, [])
         | _ -> error "expected -> after implicit Pi parameters"
       in
-      let cod = parse_all parse_type_entry cod_items in
+      let cod = parse_all (parse_type_entry env) cod_items in
       let result =
         List.fold_right
           (fun (p : Syntax.param) acc ->
@@ -166,23 +166,23 @@ and parse_type_atom (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
   | { datum = Group (Raw_syntax.Brace, _, _); _ } :: _ ->
       unsupported "bare brace type syntax is only supported in effect rows after can"
 
-and parse_type_postfix (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
+and parse_type_postfix env (lhs : Syntax.t) (terms : Raw_syntax.t list) : Syntax.t * Raw_syntax.t list =
   match terms with
   | { datum = Group (Raw_syntax.Paren, items, _); span = group_span } :: rest ->
-      let args = parse_args items in
+      let args = parse_args env items in
       let call_span = span_between lhs.span group_span in
       let lhs = List.fold_left (fun f arg -> ap ~span:call_span f Explicitness.Explicit arg) lhs args in
-      parse_type_postfix lhs rest
+      parse_type_postfix env lhs rest
   | dot :: field :: rest when token_kind Dot dot -> (
       match token_text field with
       | Some name ->
           let span = span_between lhs.span field.span in
           let lhs = stx ~span (Syntax.FieldAccess (lhs, name)) in
-          parse_type_postfix lhs rest
+           parse_type_postfix env lhs rest
       | None -> unsupported "numeric projection in type is handled by the compatibility parser")
   | _ -> (lhs, terms)
 
-and parse_param_item explicitness terms =
+and parse_param_item env explicitness terms =
   let terms = drop_separators terms in
   match terms with
   | [] when explicitness = Explicitness.Explicit ->
@@ -190,24 +190,24 @@ and parse_param_item explicitness terms =
   | [ { datum = Token { kind = Ident name; _ }; span } ] ->
       param ~span explicitness name
   | { datum = Token { kind = Ident name; _ }; span } :: colon :: typ_terms when token_kind Colon colon ->
-      param ~span ~type_:(parse_type_terms typ_terms) explicitness name
+      param ~span ~type_:(parse_type_terms env typ_terms) explicitness name
   | _ -> error "expected parameter of the form name or name : Type"
 
-and parse_param_group explicitness items =
+and parse_param_group env explicitness items =
   let items = drop_separators items in
   match items with
   | [] when explicitness = Explicitness.Explicit ->
       [ param ~type_:(unit_type ()) Explicitness.Explicit "_" ]
   | [] -> error "empty implicit parameter list"
-  | _ -> List.map (parse_param_item explicitness) (split_commas items)
+  | _ -> List.map (parse_param_item env explicitness) (split_commas items)
 
-and parse_fn_parts ?(allow_empty = false) start_span terms =
+and parse_fn_parts env ?(allow_empty = false) start_span terms =
   let terms = drop_separators terms in
   let implicit_params, rest =
     match terms with
     | ({ datum = Group (Raw_syntax.Bracket, items, _); _ } as group) :: rest ->
         require_adjacent_span start_span group.span "implicit fn parameter list";
-        (parse_param_group Explicitness.Implicit items, rest)
+        (parse_param_group env Explicitness.Implicit items, rest)
     | rest -> ([], rest)
   in
   let explicit_params, rest =
@@ -219,7 +219,7 @@ and parse_fn_parts ?(allow_empty = false) start_span terms =
           | _ -> start_span
         in
         require_adjacent_span previous_span group.span "explicit fn parameter list";
-        (parse_param_group Explicitness.Explicit items, rest)
+        (parse_param_group env Explicitness.Explicit items, rest)
     | rest when implicit_params <> [] || allow_empty -> ([], rest)
     | _ -> error "fn requires at least one parameter list"
   in
@@ -227,39 +227,39 @@ and parse_fn_parts ?(allow_empty = false) start_span terms =
   let body, rest, span =
     match drop_separators rest with
     | arrow :: body_terms when token_kind ThinArrow arrow ->
-        let body = parse_all (fun ts -> parse_expr_prec 0 ts) body_terms in
+        let body = parse_all (fun ts -> parse_expr_prec env 0 ts) body_terms in
         (body, [], span_between start_span body.span)
     | do_kw :: body_rest when token_kind KwDo do_kw ->
         let body_terms, rest, span = collect_until_end do_kw.span body_rest in
-        let body = parse_do_body_terms span body_terms in
+        let body = parse_do_body_terms env span body_terms in
         (body, rest, span_between start_span span)
     | _ -> error "expected -> or do after fn parameters"
   in
   (params, body, rest, span)
 
-and parse_fn start_span terms =
-  let params, body, rest, span = parse_fn_parts start_span terms in
+and parse_fn env start_span terms =
+  let params, body, rest, span = parse_fn_parts env start_span terms in
   (List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body, rest)
 
-and parse_method_params items =
+and parse_method_params env items =
   let items = drop_separators items in
-  if items = [] then [] else parse_param_group Explicitness.Explicit items
+  if items = [] then [] else parse_param_group env Explicitness.Explicit items
 
-and parse_method_binding public stmt =
+and parse_method_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwMethod; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
        :: ({ datum = Group (Raw_syntax.Paren, items, _); _ } as params_group)
           :: rest ->
       require_adjacent_span name_span params_group.span "method parameter list";
-      let params = parse_method_params items in
+      let params = parse_method_params env items in
       let body, rest =
         match drop_separators rest with
         | arrow :: body_terms when token_kind ThinArrow arrow ->
-            (parse_all (fun ts -> parse_expr_prec 0 ts) body_terms, [])
+            (parse_all (fun ts -> parse_expr_prec env 0 ts) body_terms, [])
         | do_kw :: body_rest when token_kind KwDo do_kw ->
             let body_terms, rest, span = collect_until_end do_kw.span body_rest in
-            (parse_do_body_terms span body_terms, rest)
+            (parse_do_body_terms env span body_terms, rest)
         | _ -> error "expected -> or do after method parameters"
       in
       ensure_no_rest "method declaration" rest;
@@ -269,90 +269,91 @@ and parse_method_binding public stmt =
       error ("method declaration requires a parenthesized parameter list: " ^ name)
   | _ -> None
 
-and parse_module_type_fields what terms =
-  Enforest_decl_helpers.parse_module_type_fields parse_type_terms what terms
+and parse_module_type_fields env what terms =
+  Enforest_decl_helpers.parse_module_type_fields (parse_type_terms env) what terms
 
-and parse_effect_ops op_terms =
-  Enforest_decl_helpers.parse_effect_ops parse_type_terms op_terms
+and parse_effect_ops env op_terms =
+  Enforest_decl_helpers.parse_effect_ops (parse_type_terms env) op_terms
 
-and parse_trait_fields field_terms =
-  Enforest_decl_helpers.parse_trait_fields parse_type_terms field_terms
+and parse_trait_fields env field_terms =
+  Enforest_decl_helpers.parse_trait_fields (parse_type_terms env) field_terms
 
 and parse_decl_type_params what name_span param_terms =
   Enforest_decl_helpers.parse_decl_type_params what name_span param_terms
 
-and form_callbacks () =
+and form_callbacks env =
   {
-    Enforest_forms.parse_expr_prec;
-    parse_expr_terms = (fun ts -> parse_all (fun ts -> parse_expr_prec 0 ts) ts);
-    parse_do_body_terms;
+    Enforest_forms.parse_expr_prec = parse_expr_prec env;
+    parse_expr_terms = (fun ts -> parse_all (fun ts -> parse_expr_prec env 0 ts) ts);
+    parse_do_body_terms = parse_do_body_terms env;
     parse_pat_terms;
+    is_expr_start = is_expr_start env;
   }
 
-and parse_if start_span terms =
-  Enforest_forms.parse_if (form_callbacks ()) start_span terms
+and parse_if env start_span terms =
+  Enforest_forms.parse_if (form_callbacks env) start_span terms
 
 
-and parse_match start_span terms =
-  Enforest_forms.parse_match (form_callbacks ()) start_span terms
+and parse_match env start_span terms =
+  Enforest_forms.parse_match (form_callbacks env) start_span terms
 
-and parse_group_arg items =
-  Enforest_forms.parse_group_arg (form_callbacks ()) items
+and parse_group_arg env items =
+  Enforest_forms.parse_group_arg (form_callbacks env) items
 
-and parse_effect_row_terms terms =
-  Enforest_forms.parse_effect_row_terms (form_callbacks ()) terms
+and parse_effect_row_terms env terms =
+  Enforest_forms.parse_effect_row_terms (form_callbacks env) terms
 
-and parse_can_effect_row terms =
-  Enforest_forms.parse_can_effect_row (form_callbacks ()) terms
+and parse_can_effect_row env terms =
+  Enforest_forms.parse_can_effect_row (form_callbacks env) terms
 
 and attach_effects lhs eff = Enforest_forms.attach_effects lhs eff
 
-and parse_ref start_span terms =
-  Enforest_forms.parse_ref (form_callbacks ()) start_span terms
+and parse_ref env start_span terms =
+  Enforest_forms.parse_ref (form_callbacks env) start_span terms
 
-and parse_deref start_span terms =
-  Enforest_forms.parse_deref (form_callbacks ()) start_span terms
+and parse_deref env start_span terms =
+  Enforest_forms.parse_deref (form_callbacks env) start_span terms
 
-and parse_resume start_span terms =
-  Enforest_forms.parse_resume (form_callbacks ()) start_span terms
+and parse_resume env start_span terms =
+  Enforest_forms.parse_resume (form_callbacks env) start_span terms
 
-and parse_perform start_span terms =
-  Enforest_forms.parse_perform (form_callbacks ()) start_span terms
+and parse_perform env start_span terms =
+  Enforest_forms.parse_perform (form_callbacks env) start_span terms
 
-and parse_import start_span terms =
-  Enforest_forms.parse_import start_span terms
+and parse_import env start_span terms =
+  Enforest_forms.parse_import env start_span terms
 
-and parse_module_expr start_span terms =
+and parse_module_expr env start_span terms =
   match drop_separators terms with
   | do_kw :: _ when token_kind KwDo do_kw ->
       error "module do syntax is not supported; use module ... end"
   | _ ->
       let body_terms, rest, span = collect_until_end start_span terms in
-      let bindings = parse_module_bindings body_terms in
+      let bindings = parse_module_bindings env body_terms in
       (stx ~span:(span_between start_span span) (Syntax.Module { bindings }), rest)
 
-and parse_sig_expr start_span terms =
+and parse_sig_expr env start_span terms =
   let body_terms, rest, span = collect_until_end start_span terms in
   let bindings =
     split_statements body_terms
     |> List.map (fun stmt ->
            match drop_separators stmt with
            | { datum = Token { kind = Ident name; _ }; span = name_span } :: colon :: typ_terms when token_kind Colon colon ->
-               Syntax.LetBinding { name = id ~span:name_span name; value = parse_type_terms typ_terms; public = true }
+                Syntax.LetBinding { name = id ~span:name_span name; value = parse_type_terms env typ_terms; public = true }
            | _ -> error "expected signature field name : type")
   in
   (stx ~span:(span_between start_span span) (Syntax.Module { bindings }), rest)
 
-and parse_struct_expr start_span terms =
+and parse_struct_expr env start_span terms =
   match drop_separators terms with
   | do_kw :: _ when token_kind KwDo do_kw ->
       error "struct do syntax is not supported; use struct ... end"
   | _ ->
       let body_terms, rest, span = collect_until_end start_span terms in
-      let con_fields, bindings = parse_struct_items body_terms in
+      let con_fields, bindings = parse_struct_items env body_terms in
       (stx ~span:(span_between start_span span) (Syntax.Struct { con_fields; bindings }), rest)
 
-and parse_primary terms =
+and parse_primary env terms =
   match drop_separators terms with
   | [] -> error "expected expression"
   | term :: rest -> (
@@ -372,38 +373,38 @@ and parse_primary terms =
       | Token { kind = KwType; _ } -> error "type ... in syntax is not supported; use do blocks and type declarations"
       | Token { kind = KwTrait; _ } -> error "trait ... in syntax is not supported; use do blocks and trait declarations"
       | Token { kind = KwImpl; _ } -> error "impl ... in syntax is not supported; use do blocks and impl declarations"
-      | Token { kind = KwDo; _ } -> parse_do term.span rest
-      | Token { kind = KwFn; _ } -> parse_fn term.span rest
-      | Token { kind = KwIf; _ } -> parse_if term.span rest
-      | Token { kind = KwMatch; _ } -> parse_match term.span rest
-      | Token { kind = KwRef; _ } -> parse_ref term.span rest
-      | Token { kind = KwDeref; _ } -> parse_deref term.span rest
-      | Token { kind = KwResume; _ } -> parse_resume term.span rest
-      | Token { kind = KwPerform; _ } -> parse_perform term.span rest
-      | Token { kind = KwImport; _ } -> parse_import term.span rest
-      | Token { kind = KwModule; _ } -> parse_module_expr term.span rest
-      | Token { kind = KwSig; _ } -> parse_sig_expr term.span rest
-      | Token { kind = KwStruct; _ } -> parse_struct_expr term.span rest
+      | Token { kind = KwDo; _ } -> parse_do env term.span rest
+      | Token { kind = KwFn; _ } -> parse_fn env term.span rest
+      | Token { kind = KwIf; _ } -> parse_if env term.span rest
+      | Token { kind = KwMatch; _ } -> parse_match env term.span rest
+      | Token { kind = KwRef; _ } -> parse_ref env term.span rest
+      | Token { kind = KwDeref; _ } -> parse_deref env term.span rest
+      | Token { kind = KwResume; _ } -> parse_resume env term.span rest
+      | Token { kind = KwPerform; _ } -> parse_perform env term.span rest
+      | Token { kind = KwImport; _ } -> parse_import env term.span rest
+      | Token { kind = KwModule; _ } -> parse_module_expr env term.span rest
+      | Token { kind = KwSig; _ } -> parse_sig_expr env term.span rest
+      | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
       | Token { kind = Ident name; _ } -> (
-          match Operator_env.find_prefix name with
+          match Operator_env.find_prefix env.operators name with
           | Some op ->
-              let rhs, rest = parse_expr_prec op.precedence rest in
+              let rhs, rest = parse_expr_prec env op.precedence rest in
               let span = span_between term.span rhs.span in
               let f = var ~span:term.span name in
               let expr =
-                if Operator_env.is_dynamic_prefix name then stx ~span (Syntax.MacroCall (f, rhs))
+                if Operator_env.is_extension_prefix env.operators name then stx ~span (Syntax.MacroCall (f, rhs))
                 else ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
           | None -> (var ~span:term.span name, rest))
       | Token { kind = Operator name; _ } -> (
-          match Operator_env.find_prefix name with
+          match Operator_env.find_prefix env.operators name with
           | Some op ->
-              let rhs, rest = parse_expr_prec op.precedence rest in
+              let rhs, rest = parse_expr_prec env op.precedence rest in
               let span = span_between term.span rhs.span in
               let f = var ~span:term.span name in
               let expr =
-                if Operator_env.is_dynamic_prefix name then stx ~span (Syntax.MacroCall (f, rhs))
+                if Operator_env.is_extension_prefix env.operators name then stx ~span (Syntax.MacroCall (f, rhs))
                 else ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
@@ -419,8 +420,8 @@ and parse_primary terms =
       | Group (Raw_syntax.Bracket, items, span) -> (
           match drop_separators rest with
           | arrow :: cod_terms when token_kind ThinArrow arrow ->
-              let params = parse_param_group Explicitness.Implicit items in
-              let cod : Syntax.t = parse_all (fun ts -> parse_expr_prec 0 ts) cod_terms in
+              let params = parse_param_group env Explicitness.Implicit items in
+              let cod : Syntax.t = parse_all (fun ts -> parse_expr_prec env 0 ts) cod_terms in
               let result =
                 List.fold_right
                   (fun (p : Syntax.param) (acc : Syntax.t) ->
@@ -430,18 +431,18 @@ and parse_primary terms =
                   params cod
               in
               (result, [])
-          | _ -> (parse_group_expr Raw_syntax.Bracket items span, rest))
-      | Group (delimiter, items, span) -> (parse_group_expr delimiter items span, rest))
+          | _ -> (parse_group_expr env Raw_syntax.Bracket items span, rest))
+      | Group (delimiter, items, span) -> (parse_group_expr env delimiter items span, rest))
 
-and parse_expr_prec min_prec terms =
-  let lhs, rest = parse_primary terms in
-  parse_postfix_infix min_prec lhs rest
+and parse_expr_prec env min_prec terms =
+  let lhs, rest = parse_primary env terms in
+  parse_postfix_infix env min_prec lhs rest
 
-and parse_postfix_infix min_prec lhs terms =
+and parse_postfix_infix env min_prec lhs terms =
   match terms with
   | term :: _ when is_separator term -> (lhs, terms)
   | term :: rest when token_kind ThinArrow term && min_prec <= 1 ->
-      let rhs, rest = parse_expr_prec 1 rest in
+      let rhs, rest = parse_expr_prec env 1 rest in
       let span = span_between lhs.span rhs.span in
       let lhs =
         match lhs.kind with
@@ -449,73 +450,73 @@ and parse_postfix_infix min_prec lhs terms =
             stx ~span (Syntax.Arrow (Explicitness.Explicit, Some name, typ, None, rhs))
         | _ -> stx ~span (Syntax.Arrow (Explicitness.Explicit, None, lhs, None, rhs))
       in
-      parse_postfix_infix min_prec lhs rest
+      parse_postfix_infix env min_prec lhs rest
   | term :: rest when token_kind KwCan term && (min_prec <= 0 || match lhs.kind with Syntax.Arrow _ -> true | _ -> false) ->
-      let eff, rest = parse_can_effect_row rest in
-      parse_postfix_infix min_prec (attach_effects lhs eff) rest
+      let eff, rest = parse_can_effect_row env rest in
+      parse_postfix_infix env min_prec (attach_effects lhs eff) rest
   | term :: rest when token_kind Colon term ->
-      let typ, rest = parse_type_entry rest in
+      let typ, rest = parse_type_entry env rest in
       let lhs = stx ~span:(span_between lhs.span typ.span) (Syntax.Annotated { inner = lhs; typ }) in
-      parse_postfix_infix min_prec lhs rest
+      parse_postfix_infix env min_prec lhs rest
   | at :: { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest when token_kind At at ->
-      let arg = parse_group_arg items in
+      let arg = parse_group_arg env items in
       let lhs = stx ~span:(span_between lhs.span span) (Syntax.MacroCall (lhs, arg)) in
-      parse_postfix_infix min_prec lhs rest
+      parse_postfix_infix env min_prec lhs rest
   | ({ datum = Group (Raw_syntax.Paren, items, span); _ } as term) :: rest ->
       require_adjacent_postfix lhs term "function call";
       let args =
         match drop_separators items with
         | [] -> [ unit ~span () ]
-        | _ -> parse_args items
+        | _ -> parse_args env items
       in
       let call_span = span_between lhs.span term.span in
       let lhs = List.fold_left (fun f arg -> ap ~span:call_span f Explicitness.Explicit arg) lhs args in
-      parse_postfix_infix min_prec lhs rest
+      parse_postfix_infix env min_prec lhs rest
   | ({ datum = Group (Raw_syntax.Bracket, items, _); _ } as term) :: rest ->
       require_adjacent_postfix lhs term "implicit argument list";
-      let args = parse_args items in
+      let args = parse_args env items in
       let call_span = span_between lhs.span term.span in
       let lhs = List.fold_left (fun f arg -> ap ~span:call_span f Explicitness.Implicit arg) lhs args in
-      parse_postfix_infix min_prec lhs rest
+      parse_postfix_infix env min_prec lhs rest
   | ({ datum = Group (Raw_syntax.Brace, items, _); _ } as term) :: rest ->
       require_adjacent_postfix lhs term "record construction";
       let items = drop_separators items in
       let call_span = span_between lhs.span term.span in
       let lhs =
         if List.exists (token_kind Equals) items then
-          stx ~span:call_span (Syntax.RecordConstruct { typ = lhs; fields = parse_record_expr_fields items })
+          stx ~span:call_span (Syntax.RecordConstruct { typ = lhs; fields = parse_record_expr_fields env items })
         else
-          let arg = parse_all (fun ts -> parse_expr_prec 0 ts) items in
+          let arg = parse_all (fun ts -> parse_expr_prec env 0 ts) items in
           ap ~span:call_span lhs Explicitness.Implicit arg
       in
-      parse_postfix_infix min_prec lhs rest
+      parse_postfix_infix env min_prec lhs rest
   | term :: field :: rest when token_kind Dot term -> (
       match field.datum with
       | Token { kind = Int i; _ } ->
           let span = span_between lhs.span field.span in
           let lhs = stx ~span (Syntax.Proj (lhs, Int64.to_int i)) in
-          parse_postfix_infix min_prec lhs rest
+          parse_postfix_infix env min_prec lhs rest
       | _ -> (match token_text field with
       | Some name ->
           let span = span_between lhs.span field.span in
           let lhs = stx ~span (Syntax.FieldAccess (lhs, name)) in
-          parse_postfix_infix min_prec lhs rest
+          parse_postfix_infix env min_prec lhs rest
       | None -> error "expected field name or projection after '.'"))
   | term :: rest -> (
       match token_text term with
       | Some symbol -> (
-          match Operator_env.find_infix symbol with
+          match Operator_env.find_infix env.operators symbol with
           | Some op when op.precedence >= min_prec ->
               let next_min =
                 match op.associativity with
                 | Left -> op.precedence + 1
                 | Right -> op.precedence
               in
-              let rhs, rest = parse_expr_prec next_min rest in
+              let rhs, rest = parse_expr_prec env next_min rest in
               let span = span_between lhs.span rhs.span in
               let lhs =
                 if String.equal op.symbol "<-" then stx ~span (Syntax.RefSet (lhs, rhs))
-                else if Operator_env.is_dynamic_infix op.symbol then
+                else if Operator_env.is_extension_infix env.operators op.symbol then
                   let arg = stx ~span (Syntax.Prod [ lhs; rhs ]) in
                   stx ~span (Syntax.MacroCall (var ~span:term.span op.symbol, arg))
                 else
@@ -523,7 +524,7 @@ and parse_postfix_infix min_prec lhs terms =
                     (ap ~span (var ~span:term.span op.symbol) Explicitness.Explicit lhs)
                     Explicitness.Explicit rhs
               in
-              parse_postfix_infix min_prec lhs rest
+              parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
         | None ->
             (lhs, term :: rest))
@@ -545,24 +546,24 @@ and collect_do_body start_span terms =
   go 0 [] terms
 
 
-and parse_binding_statement stmt =
-  match parse_value_decl_statement stmt with
+and parse_binding_statement env stmt =
+  match parse_value_decl_statement env stmt with
   | Some decl -> Some decl
   | None -> None
 
-and parse_value_decl_statement stmt =
+and parse_value_decl_statement env stmt =
   match stmt with
   | [ { datum = Token { kind = Ident name; _ }; span = name_span }; eq ] when token_kind Equals eq ->
       error ("missing value for binding: " ^ name ^ " at " ^ Format.asprintf "%a" Source_span.pp name_span)
-  | { datum = Token { kind = KwRec; _ }; _ } :: rest -> parse_value_decl_after_prefix ~recursive:true rest
-  | rest -> parse_value_decl_after_prefix ~recursive:false rest
+  | { datum = Token { kind = KwRec; _ }; _ } :: rest -> parse_value_decl_after_prefix env ~recursive:true rest
+  | rest -> parse_value_decl_after_prefix env ~recursive:false rest
 
-and parse_value_decl_after_prefix ~recursive stmt =
+and parse_value_decl_after_prefix env ~recursive stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwFn; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
        :: rest ->
-      let value, rest = parse_fn name_span rest in
+      let value, rest = parse_fn env name_span rest in
       ensure_no_rest "function declaration" rest;
       Some { decl_name = id ~span:name_span name; decl_type = None; decl_value = value; decl_recursive = recursive }
   | name_term :: rest when Option.is_some (binding_name_term name_term) -> (
@@ -573,16 +574,16 @@ and parse_value_decl_after_prefix ~recursive stmt =
           let decl_type =
             match drop_separators before_eq with
             | [] -> None
-            | colon :: typ_terms when token_kind Colon colon -> Some (parse_type_terms typ_terms)
+            | colon :: typ_terms when token_kind Colon colon -> Some (parse_type_terms env typ_terms)
             | _ -> error "binding parameters are not supported; use fn name(params) syntax"
           in
-          let decl_value = parse_all (fun ts -> parse_expr_prec 0 ts) value_terms in
+          let decl_value = parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms in
           let decl_value = decl_value in
           Some { decl_name = name_id; decl_type; decl_value; decl_recursive = recursive }
       | None -> None)
   | _ -> None
 
-and parse_type_binding public stmt =
+and parse_type_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwType; _ }; _ } :: { datum = Token { kind = Ident name; _ }; span = name_span } :: rest -> (
       match split_at_token Equals rest with
@@ -604,7 +605,7 @@ and parse_type_binding public stmt =
             |> List.map (fun field ->
                    match drop_separators field with
                    | { datum = Token { kind = Ident fname; _ }; _ } :: colon :: typ_terms when token_kind Colon colon ->
-                       (fname, parse_type_terms typ_terms)
+                        (fname, parse_type_terms env typ_terms)
                    | _ -> error "expected record type field")
           in
           Some (Syntax.RecordTypeBinding { name = id ~span:name_span name; params; fields; public })
@@ -630,10 +631,10 @@ and parse_type_binding public stmt =
                         | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest when List.exists (token_kind Comma) items ->
                             let rest = drop_separators rest in
                             if rest <> [] then error "unexpected terms after constructor payload";
-                            let types = List.map (fun ts -> parse_all parse_type_entry ts) (split_commas (drop_separators items)) in
+                            let types = List.map (fun ts -> parse_all (parse_type_entry env) ts) (split_commas (drop_separators items)) in
                             (id ~span cname, types)
                         | _ ->
-                            let payload = match drop_separators payload_terms with [] -> [] | terms -> [ parse_type_terms terms ] in
+                            let payload = match drop_separators payload_terms with [] -> [] | terms -> [ parse_type_terms env terms ] in
                             (id ~span cname, payload))
                     | _ -> error "expected constructor declaration")
           in
@@ -641,17 +642,17 @@ and parse_type_binding public stmt =
       | None -> error "type binding requires =")
   | _ -> None
 
-and parse_effect_binding public stmt =
+and parse_effect_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwEffect; _ }; _ } :: { datum = Token { kind = Ident name; _ }; span = name_span } :: rest -> (
       match split_at_token Equals rest with
       | Some (param_terms, _, op_terms) ->
           let params = parse_decl_type_params "effect" name_span param_terms in
-          Some (Syntax.EffectBinding { name = id ~span:name_span name; params; ops = parse_effect_ops op_terms; public })
+          Some (Syntax.EffectBinding { name = id ~span:name_span name; params; ops = parse_effect_ops env op_terms; public })
       | None -> error "effect binding requires =")
   | _ -> None
 
-and parse_trait_binding public stmt =
+and parse_trait_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwTrait; _ }; _ } :: { datum = Token { kind = Ident name; _ }; span = name_span } :: rest -> (
       match split_at_token Equals rest with
@@ -662,12 +663,12 @@ and parse_trait_binding public stmt =
             | [] -> error "trait declaration requires exactly one parameter"
             | _ -> error "trait declaration accepts exactly one parameter"
           in
-          let fields = parse_trait_fields field_terms in
+          let fields = parse_trait_fields env field_terms in
           Some (Syntax.TraitBinding { name = id ~span:name_span name; params; fields; public })
       | None -> error "trait binding requires =")
   | _ -> None
 
-and parse_impl_binding public stmt =
+and parse_impl_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwImpl; _ }; _ } :: rest -> (
       match split_at_token Equals rest with
@@ -678,7 +679,7 @@ and parse_impl_binding public stmt =
             | [ { datum = Group (Raw_syntax.Paren, items, _); _ } ] -> (
                 let items = drop_separators items in
                 if items = [] then error "impl argument list cannot be empty";
-                match List.map parse_type_terms (split_commas items) with
+                match List.map (parse_type_terms env) (split_commas items) with
                 | [ arg ] -> [ arg ]
                 | _ -> error "impl declaration accepts exactly one trait argument")
             | [] -> error "impl declaration requires a parenthesized trait argument"
@@ -689,7 +690,7 @@ and parse_impl_binding public stmt =
           let fields =
             split_statements field_terms
             |> List.map (fun field ->
-                   match parse_value_decl_statement field with
+                   match parse_value_decl_statement env field with
                    | Some { decl_name; decl_value; _ } -> (decl_name.name, decl_value)
                    | None -> error "expected impl let field")
           in
@@ -704,7 +705,7 @@ and parse_open_statement stmt =
       Some (id ~span name)
   | _ -> None
 
-and parse_syntax_do_statement stmt =
+and parse_syntax_do_statement env stmt =
   match drop_separators stmt with
   | { datum = Token { kind = Ident s; _ }; _ }
     :: { datum = Token { kind = Ident pfx; _ }; _ }
@@ -712,8 +713,8 @@ and parse_syntax_do_statement stmt =
           :: eq :: value_terms
     when String.equal s "syntax" && String.equal pfx "prefix" && token_kind Equals eq ->
       let name = match syntax_name name_term with Some name -> name | None -> error "syntax prefix requires an operator or identifier name" in
-      Operator_env.register_prefix name 50;
-      ignore (parse_all (fun ts -> parse_expr_prec 0 ts) value_terms);
+      env.operators <- Operator_env.add_prefix env.operators name 50;
+      ignore (parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms);
       true
   | { datum = Token { kind = Ident s; _ }; _ }
     :: { datum = Token { kind = Ident ifx; _ }; _ }
@@ -728,14 +729,14 @@ and parse_syntax_do_statement stmt =
         | "right" -> Operator_env.Right
         | _ -> error "syntax infix associativity must be 'left' or 'right'"
       in
-      Operator_env.register_infix name (Int64.to_int p) assoc;
-      ignore (parse_all (fun ts -> parse_expr_prec 0 ts) value_terms);
+      env.operators <- Operator_env.add_infix env.operators name (Int64.to_int p) assoc;
+      ignore (parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms);
       true
   | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
       error "unsupported syntax declaration shape in do block"
   | _ -> false
 
-and parse_syntax_decl stmt =
+and parse_syntax_decl env stmt =
   match drop_separators stmt with
   | { datum = Token { kind = Ident s; _ }; _ }
     :: { datum = Token { kind = Ident pfx; _ }; _ }
@@ -744,8 +745,8 @@ and parse_syntax_decl stmt =
     when String.equal s "syntax" && String.equal pfx "prefix" && token_kind Equals eq ->
       let name = match syntax_name name_term with Some name -> name | None -> error "syntax prefix requires an operator or identifier name" in
       let prec = 50 in
-      Operator_env.register_prefix name prec;
-      let value = parse_all (fun ts -> parse_expr_prec 0 ts) value_terms in
+      env.operators <- Operator_env.add_prefix env.operators name prec;
+      let value = parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms in
       Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.Prefix { symbol = name; precedence = prec } }
   | { datum = Token { kind = Ident s; _ }; _ }
     :: { datum = Token { kind = Ident ifx; _ }; _ }
@@ -761,41 +762,41 @@ and parse_syntax_decl stmt =
         | "right" -> Operator_env.Right
         | _ -> error "syntax infix associativity must be 'left' or 'right'"
       in
-      Operator_env.register_infix name prec assoc;
-      let value = parse_all (fun ts -> parse_expr_prec 0 ts) value_terms in
+      env.operators <- Operator_env.add_infix env.operators name prec assoc;
+      let value = parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms in
       Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.Infix { symbol = name; precedence = prec; associativity = assoc } }
   | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
       unsupported "unsupported syntax declaration shape"
   | _ -> None
 
-and scoped_binding_to_expr span stmt body =
+and scoped_binding_to_expr env span stmt body =
   let public, stmt = parse_public_prefix stmt in
   if public then error "pub is not supported inside do blocks";
-  match parse_type_binding false stmt with
+  match parse_type_binding env false stmt with
   | Some (Syntax.TypeBinding { name; params; ctors; _ }) ->
       stx ~span (Syntax.TypeDef { name; params; ctors; body })
   | Some (Syntax.RecordTypeBinding { name; params; fields; _ }) ->
       stx ~span (Syntax.RecordTypeDef { name; params; fields; body })
   | Some _ -> error "unexpected non-type binding"
   | None -> (
-      match parse_effect_binding false stmt with
+      match parse_effect_binding env false stmt with
       | Some (Syntax.EffectBinding { name; params; ops; _ }) ->
           stx ~span (Syntax.EffectDef { name; params; ops; body })
       | Some _ -> error "unexpected non-effect binding"
       | None -> (
-          match parse_trait_binding false stmt with
+          match parse_trait_binding env false stmt with
           | Some (Syntax.TraitBinding { name; params; fields; _ }) ->
               stx ~span (Syntax.TraitDef { name; params; fields; body })
           | Some _ -> error "unexpected non-trait binding"
           | None -> (
-              match parse_impl_binding false stmt with
+              match parse_impl_binding env false stmt with
               | Some (Syntax.ImplBinding { trait_path; trait_name; args; fields; _ }) ->
                   stx ~span (Syntax.ImplDef { trait_path; trait_name; args; fields; body })
               | Some _ -> error "unexpected non-impl binding"
               | None -> error "not a scoped binding")))
 
-and parse_do_body_terms span body_terms =
-  with_operator_scope (fun () ->
+and parse_do_body_terms env span body_terms =
+  with_operator_scope env (fun env ->
       let statements = split_statements body_terms in
       match List.rev statements with
       | [] -> error "empty do block"
@@ -803,23 +804,23 @@ and parse_do_body_terms span body_terms =
           let statements = List.rev rev_statements in
           List.iter
             (fun stmt ->
-              if not (parse_syntax_do_statement stmt) then load_imports_in_terms stmt)
+              if not (parse_syntax_do_statement env stmt) then load_imports_in_terms env stmt)
             statements;
-          let body = parse_all (fun ts -> parse_expr_prec 0 ts) final_stmt in
+          let body = parse_all (fun ts -> parse_expr_prec env 0 ts) final_stmt in
           List.fold_right
             (fun stmt acc ->
-              match parse_syntax_decl stmt with
+              match parse_syntax_decl env stmt with
               | Some { syntax_name = name; syntax_value = value; _ } ->
                   stx ~span (Syntax.MacroDef { name; value; body = acc })
               | None ->
-                match parse_macro_binding false stmt with
+                match parse_macro_binding env false stmt with
                 | Some (Syntax.MacroBinding { name; value; public = false }) ->
                     stx ~span (Syntax.MacroDef { name; value; body = acc })
                 | Some (Syntax.MacroBinding { public = true; _ }) ->
                     error "pub macro is not supported inside do blocks"
                 | Some _ -> error "unexpected non-macro binding"
                 | None ->
-                match parse_binding_statement stmt with
+                match parse_binding_statement env stmt with
                 | Some { decl_name = name; decl_type = type_; decl_value = value; decl_recursive = recursive } ->
                     stx ~span
                       (Syntax.Let { name; type_; value; body = acc; recursive })
@@ -827,35 +828,35 @@ and parse_do_body_terms span body_terms =
                     match parse_open_statement stmt with
                     | Some name -> stx ~span (Syntax.Open (name, acc))
                     | None ->
-                        scoped_binding_to_expr span stmt acc))
+                        scoped_binding_to_expr env span stmt acc))
             statements body)
 
-and parse_do start_span terms =
+and parse_do env start_span terms =
   let body_terms, rest, span = collect_do_body start_span terms in
-  (parse_do_body_terms span body_terms, rest)
+  (parse_do_body_terms env span body_terms, rest)
 
 and parse_public_prefix stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwPub; _ }; _ } :: rest -> (true, rest)
   | rest -> (false, rest)
 
-and parse_syntax_binding public stmt =
-  match parse_syntax_decl stmt with
+and parse_syntax_binding env public stmt =
+  match parse_syntax_decl env stmt with
   | Some { syntax_name = name; syntax_value = value; _ } ->
       Some (Syntax.MacroBinding { name; value; public })
   | None -> None
 
-and parse_macro_binding public stmt =
+and parse_macro_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwMacro; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
        :: rest ->
-      let value, rest = parse_fn name_span rest in
+      let value, rest = parse_fn env name_span rest in
       ensure_no_rest "macro binding" rest;
       Some (Syntax.MacroBinding { name = id ~span:name_span name; value; public })
   | _ -> None
 
-and parse_named_module_binding public stmt =
+and parse_named_module_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwModule; _ }; span = module_span }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
@@ -863,13 +864,13 @@ and parse_named_module_binding public stmt =
     when token_kind KwDo do_kw ->
       let body_terms, rest, span = collect_until_end do_kw.span body_rest in
       ensure_no_rest "module declaration" rest;
-      let bindings = parse_module_bindings body_terms in
+      let bindings = parse_module_bindings env body_terms in
       let value = stx ~span:(span_between module_span span) (Syntax.Module { bindings }) in
       Some (Syntax.LetBinding { name = id ~span:name_span name; value; public })
   | _ -> None
 
-and parse_value_binding public recursive_error stmt =
-  match parse_value_decl_statement stmt with
+and parse_value_binding env public recursive_error stmt =
+  match parse_value_decl_statement env stmt with
   | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
       if decl_recursive then error recursive_error;
       let value =
@@ -880,43 +881,43 @@ and parse_value_binding public recursive_error stmt =
       Some (Syntax.LetBinding { name; value; public })
   | None -> None
 
-and parse_module_binding stmt =
+and parse_module_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match
     first_some
-      [ parse_syntax_binding public;
-        parse_macro_binding public;
-        parse_type_binding public;
-        parse_effect_binding public;
-        parse_trait_binding public;
-        parse_impl_binding public;
-        parse_named_module_binding public;
-        parse_value_binding public "recursive module bindings are not supported in Phase 7C modules" ]
+      [ parse_syntax_binding env public;
+        parse_macro_binding env public;
+        parse_type_binding env public;
+        parse_effect_binding env public;
+        parse_trait_binding env public;
+        parse_impl_binding env public;
+        parse_named_module_binding env public;
+        parse_value_binding env public "recursive module bindings are not supported in Phase 7C modules" ]
       stmt
   with
   | Some binding -> binding
   | None -> unsupported "unsupported Phase 7C module item"
 
-and parse_module_bindings body_terms =
-  with_operator_scope (fun () ->
+and parse_module_bindings env body_terms =
+  with_operator_scope env (fun env ->
       let statements = split_statements body_terms in
       List.iter
         (fun stmt ->
-          match parse_syntax_decl stmt with
+          match parse_syntax_decl env stmt with
           | Some _ -> ()
-          | None -> load_imports_in_terms stmt)
+          | None -> load_imports_in_terms env stmt)
         statements;
-      List.map parse_module_binding statements)
+      List.map (parse_module_binding env) statements)
 
-and parse_struct_field stmt =
+and parse_struct_field env stmt =
   match drop_separators stmt with
   | [ { datum = Token { kind = Ident name; _ }; _ }; colon ] when token_kind Colon colon ->
       error ("missing type for struct field: " ^ name)
   | { datum = Token { kind = Ident name; _ }; _ } :: colon :: typ_terms when token_kind Colon colon ->
-      if List.exists (token_kind Equals) typ_terms then None else Some (name, parse_type_terms typ_terms)
+      if List.exists (token_kind Equals) typ_terms then None else Some (name, parse_type_terms env typ_terms)
   | _ -> None
 
-and parse_named_struct_binding public stmt =
+and parse_named_struct_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwStruct; _ }; span = struct_span }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
@@ -924,49 +925,49 @@ and parse_named_struct_binding public stmt =
     when token_kind KwDo do_kw ->
       let body_terms, rest, span = collect_until_end do_kw.span body_rest in
       ensure_no_rest "struct declaration" rest;
-      let con_fields, bindings = parse_struct_items body_terms in
+      let con_fields, bindings = parse_struct_items env body_terms in
       let value = stx ~span:(span_between struct_span span) (Syntax.Struct { con_fields; bindings }) in
       Some (Syntax.LetBinding { name = id ~span:name_span name; value; public })
   | _ -> None
 
-and parse_struct_binding stmt =
+and parse_struct_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match
     first_some
-      [ parse_method_binding public;
-        parse_syntax_binding public;
-        parse_macro_binding public;
-        parse_type_binding public;
-        parse_effect_binding public;
-        parse_trait_binding public;
-        parse_impl_binding public;
-        parse_named_module_binding public;
-        parse_named_struct_binding public;
-        parse_value_binding public "recursive struct bindings are not supported in Phase 7C structs" ]
+      [ parse_method_binding env public;
+        parse_syntax_binding env public;
+        parse_macro_binding env public;
+        parse_type_binding env public;
+        parse_effect_binding env public;
+        parse_trait_binding env public;
+        parse_impl_binding env public;
+        parse_named_module_binding env public;
+        parse_named_struct_binding env public;
+        parse_value_binding env public "recursive struct bindings are not supported in Phase 7C structs" ]
       stmt
   with
   | Some binding -> binding
   | None -> unsupported "unsupported Phase 7C struct item"
 
-and parse_struct_items body_terms =
+and parse_struct_items env body_terms =
   split_statements body_terms
   |> List.fold_left
        (fun (fields, bindings) stmt ->
-         match parse_struct_field stmt with
-         | Some field -> (fields @ [ field ], bindings)
-         | None -> (fields, bindings @ [ parse_struct_binding stmt ]))
+          match parse_struct_field env stmt with
+          | Some field -> (fields @ [ field ], bindings)
+          | None -> (fields, bindings @ [ parse_struct_binding env stmt ]))
        ([], [])
 
-let parse_terms terms = parse_all (fun ts -> parse_expr_prec 0 ts) terms
+let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms
 
 let parse_expr ?file ?load_syntax source =
-  with_syntax_loader load_syntax (fun () ->
-  try Raw_syntax.read ?file source |> parse_terms with
+  let env = env ?load_syntax () in
+  try Raw_syntax.read ?file source |> parse_terms env with
   | Raw_syntax.Error msg -> error msg
-  )
 
 let parse_type ?file source =
-  try Raw_syntax.read ?file source |> parse_all parse_type_entry with
+  let env = env () in
+  try Raw_syntax.read ?file source |> parse_all (parse_type_entry env) with
   | Raw_syntax.Error msg -> error msg
 
 let parse_pat ?file source =
@@ -974,21 +975,20 @@ let parse_pat ?file source =
   | Raw_syntax.Error msg -> error msg
 
 let parse_public_syntax_exports ?file ?load_syntax source =
-  with_syntax_loader load_syntax (fun () ->
-      with_operator_scope (fun () ->
-          try
-            Raw_syntax.read ?file source
-            |> split_statements
-            |> List.filter_map (fun stmt ->
-                   let public, stmt = parse_public_prefix stmt in
-                   if public then Option.map (fun decl -> decl.syntax_export) (parse_syntax_decl stmt)
-                   else None)
-          with Raw_syntax.Error msg -> error msg))
+  let env = env ?load_syntax () in
+  with_operator_scope env (fun env ->
+      try
+        Raw_syntax.read ?file source
+        |> split_statements
+        |> List.filter_map (fun stmt ->
+               let public, stmt = parse_public_prefix stmt in
+               if public then Option.map (fun decl -> decl.syntax_export) (parse_syntax_decl env stmt)
+               else None)
+      with Raw_syntax.Error msg -> error msg)
 
 let parse_module ?file ?load_syntax source =
-  with_syntax_loader load_syntax (fun () ->
+  let env = env ?load_syntax () in
   try
-    let bindings = Raw_syntax.read ?file source |> parse_module_bindings in
+    let bindings = Raw_syntax.read ?file source |> parse_module_bindings env in
     stx (Syntax.Module { bindings })
   with Raw_syntax.Error msg -> error msg
-  )

@@ -310,7 +310,7 @@ The declaration registers a prefix or infix operator during enforestation and ex
 
 Current implementation notes:
 
-- Dynamic operators live in `Operator_env` and are scoped with snapshot/restore around `do` blocks and module parsing.
+- Dynamic operators live in a per-parse `Operator_env.t` threaded through enforestation and copied for nested `do` blocks/modules so syntax-extension imports do not leak across independent parses.
 - `pub syntax ...` exports operator declarations through `Core_loader.load_syntax_exports` without exposing them as runtime fields.
 - The RHS macro value is parsed and later expanded through the existing `MacroBinding` path; syntax-extension declarations do not introduce arbitrary grammar productions yet.
 
@@ -337,7 +337,7 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 - [ ] Generalize the current statement pre-scan into a real Honu-style two-pass declaration pass:
   - pass 1 discovers value/type/module names and syntax-extension bindings for a block/module;
   - pass 2 enforests nested bodies with the completed binding and syntax-extension environment.
-- [ ] Replace the process-global dynamic operator refs in `Operator_env` with an explicit lexical operator environment threaded through enforestation.
+- [x] Replace the process-global dynamic operator refs in `Operator_env` with an explicit lexical operator environment threaded through enforestation.
 - [ ] Decide whether `Syntax_class.t` should become part of the parser API/context or be removed until Stage 8 needs it. It currently exists as a marker type, while the real separation is through `parse_expr`, `parse_type`, and `parse_pat` entrypoints.
 - [ ] Represent operator declarations as first-class data with fixity, precedence, associativity, syntax class, and expansion behavior instead of only prefix/infix helper registration.
 - [ ] Move more built-in operator handling into the same operator-table machinery used by syntax extensions where practical, especially arithmetic/comparison operators and assignment.
@@ -346,7 +346,7 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 
 - [ ] Define the final user-facing syntax-extension declaration syntax, or explicitly mark the current `syntax prefix` / `syntax infix` forms as provisional in user docs.
 - [ ] Specify shadowing and import precedence rules for multiple syntax extensions with the same symbol.
-- [ ] Add deterministic ambiguity errors for incomparable syntax-extension candidates once operator environments become lexical rather than global snapshots.
+- [ ] Add deterministic ambiguity errors for incomparable syntax-extension candidates now that operator environments are lexical rather than global snapshots.
 - [ ] Support syntax-extension declarations that affect later forms in the same block/module without relying on order-sensitive ad hoc scans.
 - [ ] Decide whether syntax extensions can be defined for type, pattern, declaration, module-item, and block syntax classes before Stage 8 exposes problem-aware macros.
 
@@ -361,7 +361,7 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 
 - [x] Update `SYNTAX_SPEC.md`, `IMPLEMENTATION_PLAN.md`, and `CLAUDE.md` so they agree on current comment syntax, Stage 7 status, and provisional syntax-extension forms.
 - [x] Remove stale Menhir-related test dependencies if they are no longer needed by the semantic/backend test stanzas.
-- [ ] Document the current parser boundary: raw reader -> enforestation -> hygienic expansion -> lowering to `Surface.t`.
+- [x] Document the current parser boundary: raw reader -> enforestation -> hygienic expansion -> lowering to `Surface.t`.
 - [ ] Keep `Surface.t` as the elaborator-facing boundary until Stage 8+ proves an interleaved expansion/elaboration design.
 
 ## Compatibility Rules
