@@ -108,7 +108,13 @@ and t =
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
   | MacroDef of { name : string; value : t; body : t }
   | MacroCall of t * t
-  | SyntaxOperatorUse of { operator : string; fixity : operator_fixity; operands : t list }
+  | SyntaxOperatorUse of {
+      operator : string;
+      fixity : operator_fixity;
+      operands : t list;
+      declaration_span : Source_span.t;
+      use_span : Source_span.t;
+    }
 
 and operator_fixity = PrefixOp | InfixOp
 

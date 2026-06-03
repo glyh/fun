@@ -852,6 +852,15 @@ let eval_with_imported_macros modules source =
       let core, _ty = Elaborate.on_expr ~loader ctx expr in
       Elaborate.Ctx.eval ctx core)
 
+let string_contains text needle =
+  let needle_len = String.length needle in
+  let text_len = String.length text in
+  let rec go i =
+    i + needle_len <= text_len
+    && (String.equal (String.sub text i needle_len) needle || go (i + 1))
+  in
+  String.equal needle "" || go 0
+
 let check_i64_macro label expected source () =
   match eval_with_macros source with
   | VAtom (I64 n) -> Alcotest.(check int64) label expected n
@@ -971,7 +980,22 @@ let test_operator_prefix_receives_structured_input () =
     "do
        operator prefix answer(stx) -> if stx_kind(stx) == \"syntax_operator_use\" do stx_make_i64(1) else stx_make_i64(0) end
        answer 0
-     end" ()
+      end" ()
+
+let test_operator_macro_error_reports_spans () =
+  match
+    eval_with_macros
+      "do
+         operator prefix bad(stx) -> 1
+         bad 0
+       end"
+  with
+  | exception Failure msg ->
+      Alcotest.(check bool) "mentions operator" true (string_contains msg "syntax operator");
+      Alcotest.(check bool) "mentions use span" true (string_contains msg "used at");
+      Alcotest.(check bool) "mentions declaration span" true (string_contains msg "declared at")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected syntax operator macro expansion failure"
 
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
@@ -1478,6 +1502,7 @@ let () =
           Alcotest.test_case "operator infix macro expands" `Quick test_operator_infix_macro_expands;
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
+          Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;

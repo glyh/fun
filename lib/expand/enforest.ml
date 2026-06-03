@@ -386,28 +386,28 @@ and parse_primary env terms =
       | Token { kind = KwSig; _ } -> parse_sig_expr env term.span rest
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
       | Token { kind = Ident name; _ } -> (
-          match Operator_env.find_prefix env.operators name with
+          match Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators name with
           | Some op ->
               let rhs, rest = parse_expr_prec env op.precedence rest in
               let span = span_between term.span rhs.span in
               let f = var ~span:term.span name in
               let expr =
-                if Operator_env.is_extension_prefix env.operators name then
-                  stx ~span (Syntax.MacroCall (f, syntax_operator_arg ~span op [ rhs ]))
-                else ap ~span f Explicitness.Explicit rhs
+                match op.expansion with
+                | Operator_env.Macro -> stx ~span (Syntax.MacroCall (f, syntax_operator_arg ~span ~use_span:term.span op [ rhs ]))
+                | _ -> ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
           | None -> (var ~span:term.span name, rest))
       | Token { kind = Operator name; _ } -> (
-          match Operator_env.find_prefix env.operators name with
+          match Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators name with
           | Some op ->
               let rhs, rest = parse_expr_prec env op.precedence rest in
               let span = span_between term.span rhs.span in
               let f = var ~span:term.span name in
               let expr =
-                if Operator_env.is_extension_prefix env.operators name then
-                  stx ~span (Syntax.MacroCall (f, syntax_operator_arg ~span op [ rhs ]))
-                else ap ~span f Explicitness.Explicit rhs
+                match op.expansion with
+                | Operator_env.Macro -> stx ~span (Syntax.MacroCall (f, syntax_operator_arg ~span ~use_span:term.span op [ rhs ]))
+                | _ -> ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
           | None -> unsupported ("unsupported prefix operator: " ^ name))
@@ -507,7 +507,7 @@ and parse_postfix_infix env min_prec lhs terms =
   | term :: rest -> (
       match token_text term with
       | Some symbol -> (
-          match Operator_env.find_infix env.operators symbol with
+          match Operator_env.find_infix ~syntax_class:env.syntax_class env.operators symbol with
           | Some op when op.precedence >= min_prec ->
               let next_min =
                 match op.associativity with
@@ -520,7 +520,7 @@ and parse_postfix_infix env min_prec lhs terms =
                 match op.expansion with
                 | Operator_env.BuiltinRefSet -> stx ~span (Syntax.RefSet (lhs, rhs))
                 | Macro ->
-                  let arg = syntax_operator_arg ~span op [ lhs; rhs ] in
+                  let arg = syntax_operator_arg ~span ~use_span:term.span op [ lhs; rhs ] in
                   stx ~span (Syntax.MacroCall (var ~span:term.span op.symbol, arg))
                 | BuiltinApply ->
                   ap ~span
@@ -742,13 +742,13 @@ and parse_operator_decl env stmt =
       let prec = 50 in
       let value, rest = parse_operator_value env name_term.span value_terms in
       ensure_no_rest "operator prefix declaration" rest;
-      env.operators <- Operator_env.add_prefix env.operators name prec;
-      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_prefix name prec }
+      env.operators <- Operator_env.add_prefix ~declaration_span:name_term.span env.operators name prec;
+      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_prefix ~declaration_span:name_term.span name prec }
   | Some (`Infix (name_term, name, prec, assoc, assoc_span, value_terms)) ->
       let value, rest = parse_operator_value env assoc_span value_terms in
       ensure_no_rest "operator infix declaration" rest;
-      env.operators <- Operator_env.add_infix env.operators name prec assoc;
-      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_infix name prec assoc }
+      env.operators <- Operator_env.add_infix ~declaration_span:name_term.span env.operators name prec assoc;
+      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_infix ~declaration_span:name_term.span name prec assoc }
   | None -> (
       match drop_separators stmt with
       | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
@@ -962,7 +962,7 @@ let parse_expr ?file ?load_syntax source =
   | Raw_syntax.Error msg -> error msg
 
 let parse_type ?file source =
-  let env = env () in
+  let env = env ~syntax_class:Syntax_class.TypeExpr () in
   try Raw_syntax.read ?file source |> parse_all (parse_type_entry env) with
   | Raw_syntax.Error msg -> error msg
 
@@ -974,12 +974,16 @@ let parse_public_syntax_exports ?file ?load_syntax source =
   let env = env ?load_syntax () in
   with_operator_scope env (fun env ->
       try
-        Raw_syntax.read ?file source
-        |> split_statements
-        |> List.filter_map (fun stmt ->
-               let public, stmt = parse_public_prefix stmt in
-               if public then Option.map (fun decl -> decl.syntax_export) (parse_operator_decl env stmt)
-               else None)
+        let exports =
+          Raw_syntax.read ?file source
+          |> split_statements
+          |> List.filter_map (fun stmt ->
+                 let public, stmt = parse_public_prefix stmt in
+                 if public then Option.map (fun decl -> decl.syntax_export) (parse_operator_decl env stmt)
+                 else None)
+        in
+        (match Operator_env.duplicate_exports_message exports with Some msg -> error msg | None -> ());
+        exports
       with Raw_syntax.Error msg -> error msg)
 
 let parse_module ?file ?load_syntax source =

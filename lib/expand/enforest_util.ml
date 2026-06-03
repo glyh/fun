@@ -17,9 +17,10 @@ type syntax_decl = {
 type env = {
   mutable operators : Operator_env.t;
   load_syntax : (string -> Operator_env.export list) option;
+  syntax_class : Syntax_class.t;
 }
 
-let env ?load_syntax () = { operators = Operator_env.empty; load_syntax }
+let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () = { operators = Operator_env.empty; load_syntax; syntax_class }
 
 let unsupported msg = raise (Unsupported msg)
 let error msg = raise (Error msg)
@@ -44,9 +45,15 @@ let stx ?(span = Source_span.synthetic) kind = { Syntax.kind; span }
 let atom ?span atom = stx ?span (Syntax.Atom atom)
 let var ?span name = stx ?span (Syntax.Var (id ?span name))
 
-let syntax_operator_arg ~span (op : Operator_env.operator) operands =
+let syntax_operator_arg ~span ~use_span (op : Operator_env.operator) operands =
   let fixity = match op.fixity with Operator_env.Prefix -> Syntax.PrefixOp | Operator_env.Infix -> Syntax.InfixOp in
-  stx ~span (Syntax.SyntaxOperatorUse { operator = id ~span op.symbol; fixity; operands })
+  stx ~span
+    (Syntax.SyntaxOperatorUse
+       { operator = id ~span:use_span op.symbol;
+         fixity;
+         operands;
+         declaration_span = op.declaration_span;
+         use_span })
 
 let span_between (a : Source_span.t) (b : Source_span.t) =
   if a.synthetic || b.synthetic then Source_span.synthetic
@@ -144,7 +151,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 let is_expr_start env term =
   match term.datum with
   | Token { kind = Int _ | Char _ | String _ | Unit | KwTrue | KwFalse | KwUnit | KwSelf | KwSelfType | KwDo | KwFn | KwIf | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
-  | Token { kind = Operator s; _ } -> Option.is_some (Operator_env.find_prefix env.operators s)
+  | Token { kind = Operator s; _ } -> Option.is_some (Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false
 
@@ -309,7 +316,10 @@ let required_syntax_name term what =
 let load_syntax_exports env path =
   match env.load_syntax with
   | None -> ()
-  | Some load -> env.operators <- Operator_env.apply_exports env.operators (load path)
+  | Some load ->
+      let exports = load path in
+      (match Operator_env.duplicate_exports_message exports with Some msg -> error msg | None -> ());
+      env.operators <- Operator_env.apply_exports env.operators exports
 
 let rec load_imports_in_terms env = function
   | { datum = Token { kind = KwImport; _ }; _ }

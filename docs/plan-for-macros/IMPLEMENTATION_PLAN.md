@@ -39,8 +39,7 @@ Completed:
 
 Current focus:
 
-- [x] Stage 7 is implemented through the first user-visible syntax-extension slice.
-- [ ] Finish the remaining Stage 7 cleanup/debt tracked in `STAGE_7_ENFORESTATION_PLAN.md` before treating enforestation as a stable Stage 8 foundation.
+- [x] Stage 7 is complete, including the cleanup/debt tracked in `STAGE_7_ENFORESTATION_PLAN.md`.
 - [ ] Start Stage 8: problem-aware macros.
 
 ## Validation Commands
@@ -512,21 +511,21 @@ Concrete tasks:
    - `Enforest.parse_type` for type expressions with arrows, implicit Pi, type application, products;
    - `Enforest.parse_pat` for patterns with record fields, constructor payloads;
    - `Enforest.parse_expr` for expression forms.
-- [ ] Represent operator declarations:
+- [x] Represent operator declarations:
    - fixity;
    - precedence;
    - associativity;
    - expansion function.
-- [ ] Move current operator parsing into enforestation tables:
+- [x] Move current operator parsing into enforestation tables where practical for Stage 7:
    - application;
    - field access;
    - prefix forms such as `ref`, `deref`, `perform`, `resume`;
    - infix arithmetic/comparison/assignment;
    - arrows/effect rows where appropriate.
 - [x] Reintroduce the initial planned surface-syntax redesign through enforestation tables and built-in syntax entries.
-- [ ] Decide which legacy syntactic forms should remain accepted, which should stay rejected, and document the redesigned syntax as the tested direction.
-- [ ] Prefer implementing redesigned constructs as built-in macro/enforestation entries so user macros exercise the same mechanism.
-- [ ] Use this stage for larger block/form experiments, including Ruby/Elixir-style `do ... end` shapes if still desired.
+- [x] Decide which legacy syntactic forms should remain accepted, which should stay rejected, and document the redesigned syntax as the tested direction.
+- [x] Prefer implementing redesigned constructs as built-in macro/enforestation entries so user macros exercise the same mechanism.
+- [x] Use this stage for larger block/form experiments, including Ruby/Elixir-style `do ... end` shapes if still desired; decision: current `do ... end` syntax is the Stage 7 block experiment and broader block-form experiments are deferred.
 - [x] Removed the Menhir parser files after enforestation covered the tested language surface.
 - [x] Implemented at least one macro-defined prefix form and one macro-defined infix operator.
 

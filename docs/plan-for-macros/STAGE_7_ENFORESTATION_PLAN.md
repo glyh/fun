@@ -337,11 +337,11 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 ### Architecture
 
 - [x] Generalize the current statement pre-scan decision: Stage 7 intentionally uses sequential declaration handling rather than a full Honu-style two-pass declaration pass because syntax extensions affect only later forms.
-- [ ] Revisit a real Honu-style two-pass declaration pass only if future syntax extensions need whole-block scope:
+- [x] Revisit a real Honu-style two-pass declaration pass only if future syntax extensions need whole-block scope; decision: keep Stage 7 sequential declaration handling and defer a full two-pass pass until a future syntax-extension form actually needs whole-block scope:
   - pass 1 discovers value/type/module names and syntax-extension bindings for a block/module;
   - pass 2 enforests nested bodies with the completed binding and syntax-extension environment.
 - [x] Replace the process-global dynamic operator refs in `Operator_env` with an explicit lexical operator environment threaded through enforestation.
-- [ ] Decide whether `Syntax_class.t` should become part of the parser API/context or be removed until Stage 8 needs it. It currently exists as a marker type, while the real separation is through `parse_expr`, `parse_type`, and `parse_pat` entrypoints.
+- [x] Decide whether `Syntax_class.t` should become part of the parser API/context or be removed until Stage 8 needs it. Decision: keep it as parser/operator context data; operator lookup is syntax-class-aware while public entrypoints remain `parse_expr`, `parse_type`, and `parse_pat`.
 - [x] Represent operator declarations as first-class data with fixity, precedence, associativity, syntax class, and expansion behavior instead of only prefix/infix helper registration.
 - [x] Move more built-in operator handling into the same operator-table machinery used by syntax extensions where practical, especially arithmetic/comparison operators and assignment. Arithmetic/comparison and assignment now use operator declaration data; delimiter-driven postfix forms remain hard-coded for now.
 
@@ -349,13 +349,13 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 
 - [x] Define the Stage 7 user-facing syntax-extension declaration syntax as `operator prefix` / `operator infix`.
 - [x] Specify shadowing and import precedence rules for multiple syntax extensions with the same symbol: later declarations/imports win deterministically.
-- [ ] Add deterministic ambiguity errors for incomparable syntax-extension candidates now that operator environments are lexical rather than global snapshots.
+- [x] Add deterministic ambiguity errors for incomparable syntax-extension candidates now that operator environments are lexical rather than global snapshots.
 - [x] Support syntax-extension declarations that affect later forms in the same block/module with sequential operator-environment updates.
 - [x] Decide whether syntax extensions can be defined for type, pattern, declaration, module-item, and block syntax classes before Stage 8 exposes problem-aware macros: Stage 7 exposes expression syntax extensions only.
 
 ### Macro Integration
 
-- [ ] Make syntax-extension expansion report useful source spans for the operator declaration and the use site.
+- [x] Make syntax-extension expansion report useful source spans for the operator declaration and the use site.
 - [x] Check that syntax-extension macro RHS values are expanded/evaluated through the same phase-aware path as `macro` / `pub macro` declarations in every supported module/block position.
 - [x] Add negative tests for imported syntax-extension cycles that are distinct from runtime circular imports and ordinary macro visits.
 - [x] Add tests for unsupported syntax-extension shapes so failures stay deterministic as the parser grows.
@@ -365,7 +365,7 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 - [x] Update `SYNTAX_SPEC.md`, `IMPLEMENTATION_PLAN.md`, and `CLAUDE.md` so they agree on current comment syntax, Stage 7 status, and provisional syntax-extension forms.
 - [x] Remove stale Menhir-related test dependencies if they are no longer needed by the semantic/backend test stanzas.
 - [x] Document the current parser boundary: raw reader -> enforestation -> hygienic expansion -> lowering to `Surface.t`.
-- [ ] Keep `Surface.t` as the elaborator-facing boundary until Stage 8+ proves an interleaved expansion/elaboration design.
+- [x] Keep `Surface.t` as the elaborator-facing boundary until Stage 8+ proves an interleaved expansion/elaboration design; decision: Stage 7 still lowers through `Surface.t`, with macro-only surface nodes preserved only for phase-aware expansion before elaboration.
 
 ## Compatibility Rules
 

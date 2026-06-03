@@ -3,6 +3,15 @@ open Surface
 let parse = Parse_expand.parse_expr
 let parse_module = Parse_expand.parse_module
 
+let string_contains text needle =
+  let needle_len = String.length needle in
+  let text_len = String.length text in
+  let rec go i =
+    i + needle_len <= text_len
+    && (String.equal (String.sub text i needle_len) needle || go (i + 1))
+  in
+  String.equal needle "" || go 0
+
 let parse_with_macros ?load_macros ?load_syntax source =
   let elaborate expr =
     let ctx = Elaborate.init_ctx () in
@@ -480,9 +489,18 @@ pub x = 1" with
 let syntax_exports_include_operator_metadata () =
   match Enforest.parse_public_syntax_exports "pub operator infix ~ 15 right(stx) -> stx" with
   | [ { symbol = "~"; fixity = Operator_env.Infix; precedence = 15; associativity = Operator_env.Right;
-        syntax_class = Syntax_class.Expr; expansion = Operator_env.Macro } ] ->
+        syntax_class = Syntax_class.Expr; expansion = Operator_env.Macro; _ } ] ->
       ()
   | _ -> Alcotest.fail "expected public syntax export to include operator metadata"
+
+let duplicate_public_syntax_exports_rejected () =
+  match
+    Enforest.parse_public_syntax_exports "pub operator prefix dup(stx) -> stx
+pub operator prefix dup(stx) -> stx"
+  with
+  | exception Enforest.Error msg when string_contains msg "ambiguous syntax extension candidates" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected duplicate public syntax exports to be rejected"
 
 let syntax_postfix_rejected_in_module () =
   match parse_module "operator postfix foo(stx) -> stx" with
@@ -578,6 +596,7 @@ let suites =
         Alcotest.test_case "syntax import does not leak between parses" `Quick syntax_import_does_not_leak_between_parses;
         Alcotest.test_case "syntax extension not runtime field" `Quick syntax_extension_not_runtime_field;
         Alcotest.test_case "syntax exports include operator metadata" `Quick syntax_exports_include_operator_metadata;
+        Alcotest.test_case "duplicate public syntax exports rejected" `Quick duplicate_public_syntax_exports_rejected;
         Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
         Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;
         Alcotest.test_case "old syntax declaration rejected" `Quick old_syntax_declaration_rejected;

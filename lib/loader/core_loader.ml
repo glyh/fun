@@ -53,13 +53,13 @@ let rec load_syntax_exports t path =
           ~finally:(fun () -> Hashtbl.remove t.syntax_active resolved)
           (fun () ->
              read_module_source resolved
-             |> Enforest.parse_public_syntax_exports ~load_syntax:(load_syntax_exports t))
+             |> Enforest.parse_public_syntax_exports ~file:resolved ~load_syntax:(load_syntax_exports t))
       in
       Hashtbl.replace t.syntax_cache resolved exports;
       exports
 
-let parse_raw_module_source t source =
-  Enforest.parse_module ~load_syntax:(load_syntax_exports t) source |> Lower_surface.lower_expr
+let parse_raw_module_source ?file t source =
+  Enforest.parse_module ?file ~load_syntax:(load_syntax_exports t) source |> Lower_surface.lower_expr
 
 let parse_raw_module t path =
   let resolved = resolved_path t path in
@@ -68,7 +68,7 @@ let parse_raw_module t path =
   | Some surface -> surface
   | None ->
       let source = read_module_source resolved in
-      let surface = parse_raw_module_source t source in
+      let surface = parse_raw_module_source ~file:resolved t source in
       Hashtbl.replace t.parsed_cache resolved surface;
       surface
 

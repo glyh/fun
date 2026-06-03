@@ -72,9 +72,9 @@ and expr (e : Surface.t) : Syntax.t =
       Syntax.MacroDef { name = id name; value = expr value; body = expr body }
     | MacroCall (f, a) ->
       Syntax.MacroCall (expr f, expr a)
-    | SyntaxOperatorUse { operator; fixity; operands } ->
+    | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
       let fixity = match fixity with Surface.PrefixOp -> Syntax.PrefixOp | Surface.InfixOp -> Syntax.InfixOp in
-      Syntax.SyntaxOperatorUse { operator = id operator; fixity; operands = List.map expr operands }
+      Syntax.SyntaxOperatorUse { operator = id operator; fixity; operands = List.map expr operands; declaration_span; use_span }
   in
   { Syntax.kind; span }
 

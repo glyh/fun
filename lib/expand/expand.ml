@@ -80,8 +80,8 @@ and go_kind (s : Scope_set.t) (k : kind) : kind =
     MacroDef { name = add_id_scope s name; value = go value; body = go body }
   | MacroCall (f, a) ->
     MacroCall (go f, go a)
-  | SyntaxOperatorUse { operator; fixity; operands } ->
-    SyntaxOperatorUse { operator = add_id_scope s operator; fixity; operands = List.map go operands }
+  | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
+    SyntaxOperatorUse { operator = add_id_scope s operator; fixity; operands = List.map go operands; declaration_span; use_span }
 
 and go_struct_binding (s : Scope_set.t) (binding : Syntax.struct_binding) : Syntax.struct_binding =
   match binding with
@@ -146,6 +146,27 @@ let add_struct_binding_scopes scopes binding =
   List.fold_left
     (fun binding scope -> go_struct_binding scope binding)
     binding scopes
+
+let syntax_operator_context (arg : Syntax.t) =
+  match arg.kind with
+  | SyntaxOperatorUse { operator; declaration_span; use_span; _ } ->
+      Some
+        (Printf.sprintf "syntax operator %S used at %s, declared at %s" operator.name
+           (Format.asprintf "%a" Source_span.pp use_span)
+           (Format.asprintf "%a" Source_span.pp declaration_span))
+  | _ -> None
+
+let syntax_operator_failure arg msg =
+  match syntax_operator_context arg with
+  | Some ctx -> ctx ^ ": " ^ msg
+  | None -> msg
+
+let with_syntax_operator_context arg f =
+  match syntax_operator_context arg with
+  | None -> f ()
+  | Some _ -> (
+      try f () with
+      | exn -> failwith (syntax_operator_failure arg (Printexc.to_string exn)))
 
 let expand_id_params (ctx : Expand_ctx.t) scopes params =
   let rec go active_scopes param_scopes acc = function
@@ -286,11 +307,14 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       | Some macro_fn ->
         begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
-          let arg_stx = Macro_eval.wrap_stx a in
-          let result = apply_fn macro_fn arg_stx in
+          let result =
+            with_syntax_operator_context a (fun () ->
+                let arg_stx = Macro_eval.wrap_stx a in
+                apply_fn macro_fn arg_stx)
+          in
           begin match Macro_eval.unwrap_stx result with
           | Some expanded -> expand ctx expanded
-          | None -> failwith "macro did not return a syntax value"
+          | None -> failwith (syntax_operator_failure a "macro did not return a syntax value")
           end
         | None -> failwith "macro call requires an apply callback in expand context"
         end
@@ -298,8 +322,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       end
     | _ -> { stx with kind = MacroCall (expand ctx f, expand ctx a) }
     end
-  | SyntaxOperatorUse { operator; fixity; operands } ->
-    { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands } }
+  | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
+    { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span } }
 
 and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc = function

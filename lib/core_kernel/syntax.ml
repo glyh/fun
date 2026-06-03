@@ -118,7 +118,13 @@ and kind =
   | Match of t * match_branch list
   | MacroDef of { name : id; value : t; body : t }
   | MacroCall of t * t
-  | SyntaxOperatorUse of { operator : id; fixity : operator_fixity; operands : t list }
+  | SyntaxOperatorUse of {
+      operator : id;
+      fixity : operator_fixity;
+      operands : t list;
+      declaration_span : Source_span.t;
+      use_span : Source_span.t;
+    }
 
 and operator_fixity = PrefixOp | InfixOp
 

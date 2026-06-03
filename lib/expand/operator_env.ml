@@ -11,29 +11,30 @@ type operator = {
   associativity : associativity;
   syntax_class : Syntax_class.t;
   expansion : expansion;
+  declaration_span : Source_span.t;
 }
 
 type prefix = operator
 type infix = operator
 type export = operator
 
-let operator ~symbol ~fixity ~precedence ~associativity ~expansion =
-  { symbol; fixity; precedence; associativity; syntax_class = Syntax_class.Expr; expansion }
+let operator ~syntax_class ~declaration_span ~symbol ~fixity ~precedence ~associativity ~expansion =
+  { symbol; fixity; precedence; associativity; syntax_class; expansion; declaration_span }
 
 let builtin_prefix symbol precedence =
-  operator ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:BuiltinApply
+  operator ~syntax_class:Syntax_class.Expr ~declaration_span:Source_span.synthetic ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:BuiltinApply
 
 let builtin_infix symbol precedence associativity =
-  operator ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:BuiltinApply
+  operator ~syntax_class:Syntax_class.Expr ~declaration_span:Source_span.synthetic ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:BuiltinApply
 
 let builtin_ref_set symbol precedence associativity =
-  operator ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:BuiltinRefSet
+  operator ~syntax_class:Syntax_class.Expr ~declaration_span:Source_span.synthetic ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:BuiltinRefSet
 
-let macro_prefix symbol precedence =
-  operator ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:Macro
+let macro_prefix ?(declaration_span = Source_span.synthetic) symbol precedence =
+  operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:Macro
 
-let macro_infix symbol precedence associativity =
-  operator ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:Macro
+let macro_infix ?(declaration_span = Source_span.synthetic) symbol precedence associativity =
+  operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:Macro
 
 let infix_table =
   [ builtin_ref_set "<-" 1 Right;
@@ -58,39 +59,56 @@ type t = {
 
 let empty = { prefixes = []; infixes = [] }
 
-let without_prefix symbol prefixes =
-  List.filter (fun (op : prefix) -> not (String.equal op.symbol symbol)) prefixes
+let same_operator_key a b =
+  String.equal a.symbol b.symbol && a.fixity = b.fixity && a.syntax_class = b.syntax_class
 
-let without_infix symbol infixes =
-  List.filter (fun (op : infix) -> not (String.equal op.symbol symbol)) infixes
+let without_operator op ops = List.filter (fun existing -> not (same_operator_key existing op)) ops
 
-let add_prefix t symbol precedence =
-  { t with prefixes = macro_prefix symbol precedence :: without_prefix symbol t.prefixes }
+let add_prefix ?declaration_span t symbol precedence =
+  let op = macro_prefix ?declaration_span symbol precedence in
+  { t with prefixes = op :: without_operator op t.prefixes }
 
-let add_infix t symbol precedence associativity =
-  { t with infixes = macro_infix symbol precedence associativity :: without_infix symbol t.infixes }
+let add_infix ?declaration_span t symbol precedence associativity =
+  let op = macro_infix ?declaration_span symbol precedence associativity in
+  { t with infixes = op :: without_operator op t.infixes }
 
 let add_operator t op =
   match op.fixity with
-  | Prefix -> { t with prefixes = op :: without_prefix op.symbol t.prefixes }
-  | Infix -> { t with infixes = op :: without_infix op.symbol t.infixes }
+  | Prefix -> { t with prefixes = op :: without_operator op t.prefixes }
+  | Infix -> { t with infixes = op :: without_operator op t.infixes }
 
 let apply_export t op = add_operator t op
 
 let apply_exports t exports = List.fold_left apply_export t exports
 
-let is_extension_prefix t symbol =
-  List.exists (fun (op : prefix) -> String.equal op.symbol symbol && op.expansion = Macro) t.prefixes
-
-let is_extension_infix t symbol =
-  List.exists (fun (op : infix) -> String.equal op.symbol symbol && op.expansion = Macro) t.infixes
-
-let find_infix t symbol =
-  match List.find_opt (fun (op : infix) -> String.equal op.symbol symbol) t.infixes with
+let find_infix ~syntax_class t symbol =
+  let matches op = String.equal op.symbol symbol && op.syntax_class = syntax_class in
+  match List.find_opt matches t.infixes with
   | Some op -> Some op
-  | None -> List.find_opt (fun (op : infix) -> String.equal op.symbol symbol) infix_table
+  | None -> List.find_opt matches infix_table
 
-let find_prefix t symbol =
-  match List.find_opt (fun (op : prefix) -> String.equal op.symbol symbol) t.prefixes with
+let find_prefix ~syntax_class t symbol =
+  let matches op = String.equal op.symbol symbol && op.syntax_class = syntax_class in
+  match List.find_opt matches t.prefixes with
   | Some op -> Some op
-  | None -> List.find_opt (fun (op : prefix) -> String.equal op.symbol symbol) prefix_table
+  | None -> List.find_opt matches prefix_table
+
+let fixity_name = function Prefix -> "prefix" | Infix -> "infix"
+
+let duplicate_exports_message exports =
+  let rec go seen = function
+    | [] -> None
+    | op :: rest -> (
+        match List.find_opt (same_operator_key op) seen with
+        | Some previous ->
+            Some
+              (Printf.sprintf
+                 "ambiguous syntax extension candidates for %s %s operator %S: declarations at %s and %s"
+                 (fixity_name op.fixity)
+                 (Syntax_class.to_string op.syntax_class)
+                 op.symbol
+                 (Format.asprintf "%a" Source_span.pp previous.declaration_span)
+                 (Format.asprintf "%a" Source_span.pp op.declaration_span))
+        | None -> go (op :: seen) rest)
+  in
+  go [] exports
