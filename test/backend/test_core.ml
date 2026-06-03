@@ -956,8 +956,8 @@ let test_imported_macro_calls_regular_function () =
 let test_operator_prefix_macro_expands () =
   check_i64_macro "operator prefix" 42L
     "do
-       operator prefix answer(stx) -> stx_make_i64(42)
-       answer 0
+       syntax answer do | answer -> 42 end
+       answer
      end" ()
 
 let test_operator_infix_macro_expands () =
@@ -970,25 +970,25 @@ let test_operator_infix_macro_expands () =
 let test_operator_rhs_can_use_earlier_macro () =
   check_i64_macro "operator RHS macro path" 5L
     "do
-       macro answer_body(_) -> stx_make_ap(stx_make_var(\"stx_make_i64\"), stx_make_i64(5))
-       operator prefix answer(stx) -> answer_body @ (0)
-       answer 0
+       macro answer_body(_) -> stx_make_i64(5)
+       syntax answer do | answer -> answer_body @ (0) end
+       answer
       end" ()
 
 let test_operator_prefix_receives_structured_input () =
-  check_i64_macro "operator prefix structured input" 1L
+  check_i64_macro "syntax template reuses hole" 4L
     "do
-       operator prefix answer(stx) -> if stx_kind(stx) == \"syntax_operator_use\" do stx_make_i64(1) else stx_make_i64(0) end
-       answer 0
+       syntax twice do | twice $x -> $x + $x end
+       twice 2
       end" ()
 
 let test_operator_macro_error_reports_spans () =
   match
     eval_with_macros
-      "do
-         operator prefix bad(stx) -> 1
-         bad 0
-       end"
+       "do
+          operator infix ~ 15 left(stx) -> 1
+          1 ~ 2
+        end"
   with
   | exception Failure msg ->
       Alcotest.(check bool) "mentions operator" true (string_contains msg "syntax operator");
@@ -1000,18 +1000,18 @@ let test_operator_macro_error_reports_spans () =
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
     "do
-       operator prefix discard(stx) -> stx_make_i64(7)
+       syntax discard do | discard $x -> 7 end
        discard perform Missing.get(())
-     end" ()
+      end" ()
 
 let test_imported_operator_prefix_expands () =
   match
     eval_with_imported_macros
-      [ ("ops", "pub operator prefix answer(stx) -> stx_make_i64(42)\npub x = 1") ]
+      [ ("ops", "pub syntax answer do | answer -> 42 end\npub x = 1") ]
       "do
          Ops = import \"ops\"
-         answer 0
-       end"
+          answer
+        end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "imported operator prefix" 42L n
   | v ->
@@ -1022,7 +1022,7 @@ let test_imported_operator_prefix_expands () =
 let test_imported_syntax_not_runtime_field () =
   match
     eval_with_imported_macros
-      [ ("ops", "pub operator prefix answer(stx) -> stx_make_i64(42)\npub x = 1") ]
+      [ ("ops", "pub syntax answer do | answer -> 42 end\npub x = 1") ]
       "do Ops = import \"ops\"; Ops.answer end"
   with
   | exception Elaborate.ElabError _ -> ()
@@ -1033,12 +1033,274 @@ let test_imported_syntax_not_runtime_field () =
 let test_operator_prefix_shadowing_is_lexical () =
   check_i64_macro "operator shadowing" 1L
     "do
-       operator prefix choose(stx) -> stx_make_i64(1)
+       syntax choose do | choose -> 1 end
        ignored = do
-         operator prefix choose(stx) -> stx_make_i64(2)
-         choose 0
+         syntax choose do | choose -> 2 end
+         choose
        end
-       choose 0
+       choose
+      end" ()
+
+let test_syntax_template_unless () =
+  check_i64_macro "unless false passes through" 10L
+    "do
+       syntax unless do
+       | unless $cond $branch -> if $cond do 0 else $branch end
+       end
+       unless false 10
+     end" ()
+
+let test_syntax_template_when_match () =
+  check_i64_macro "when false falls back" 0L
+    "do
+       syntax when do
+       | when $cond $branch else $fallback ->
+           if $cond do $branch else $fallback end
+       end
+       when false 42 else 0
+     end" ()
+
+let test_syntax_template_hole_reuse () =
+  check_i64_macro "twice hole reuse" 6L
+    "do
+       syntax twice do | twice $x -> $x + $x end
+       twice 3
+     end" ()
+
+let test_syntax_template_do_end_delimiters () =
+  check_i64_macro "extract expression from do block" 42L
+    "do
+       syntax extract do
+       | extract do $body end -> $body
+       end
+       extract do 42 end
+     end" ()
+
+let test_syntax_template_hygiene () =
+  check_i64_macro "hygiene: template binder does not capture use-site" 1L
+    "do
+       x = 1
+       syntax let_in do
+       | let_in $val $body -> do x = $val; $body end
+       end
+       let_in 2 x
+     end" ()
+
+let test_syntax_template_def_site_scope () =
+  check_i64_macro "definition-site scope for template refs" 2L
+    "do
+       y = 2
+       syntax get_y do | get_y -> y end
+       do
+         y = 99
+         get_y
+       end
+     end" ()
+
+let test_syntax_template_hole_keeps_use_site_scope () =
+  check_i64_macro "captured hole keeps use-site scope" 99L
+    "do
+       x = 1
+       syntax passthrough do | passthrough $body -> $body end
+       do
+         x = 99
+         passthrough x
+       end
+     end" ()
+
+let test_syntax_template_intro_binding_captures_intro_ref () =
+  check_i64_macro "introduced binder captures introduced reference" 7L
+    "do
+       x = 1
+       syntax local_x do | local_x -> do x = 7; x end end
+       do
+         x = 99
+         local_x
+       end
+     end" ()
+
+let test_syntax_template_def_site_scope_through_lambda () =
+  check_i64_macro "definition-site ref is not captured by lambda use site" 1L
+    "do
+       x = 1
+       syntax get_x do | get_x -> x end
+       (fn(x) -> get_x)(99)
+     end" ()
+
+let test_syntax_template_nested_def_site_scope () =
+  check_i64_macro "definition-site ref ignores nested use-site shadows" 3L
+    "do
+       z = 3
+       syntax get_z do | get_z -> z end
+       do
+         z = 4
+         do
+           z = 5
+           get_z
+         end
+       end
+     end" ()
+
+let test_syntax_template_generates_syntax_form () =
+  check_i64_macro "generated syntax forms are usable in generated body" 42L
+    "do
+       syntax build_choose do
+       | build_choose -> do
+           syntax flag do
+           | flag yes -> true
+           | flag no -> false
+           end
+           syntax choose do
+           | choose $cond then $branch else $fallback ->
+               if $cond do $branch else $fallback end
+           end
+           choose flag yes then 40 + 2 else 0
+         end
+       end
+       build_choose
+     end" ()
+
+let test_syntax_template_generated_syntax_closes_over_hole () =
+  check_i64_macro "generated syntax form can reuse outer hole" 16L
+    "do
+       syntax make_adder do
+       | make_adder $base -> do
+           syntax add_base do | add_base $x -> $x + $base end
+           add_base 5 + add_base 1
+         end
+       end
+       make_adder 5
+     end" ()
+
+let test_syntax_template_generated_syntax_scope_is_local () =
+  check_i64_macro "generated syntax form does not shadow caller syntax" 6L
+    "do
+       syntax tag do | tag $x -> $x + 1 end
+       syntax make_tag do
+       | make_tag -> do
+           syntax tag do | tag $x -> $x + 2 end
+           tag 2
+         end
+       end
+       make_tag + tag 1
+     end" ()
+
+let test_syntax_template_expands_to_template_use () =
+  check_i64_macro "syntax template can expand to another syntax use" 5L
+    "do
+       syntax five do | five -> 5 end
+       syntax call_five do | call_five -> five end
+       call_five
+     end" ()
+
+let test_syntax_template_generates_parameterized_syntax_form () =
+  check_i64_macro "generated syntax form can bind its own holes and branches" 11L
+    "do
+       syntax make_bounded do
+       | make_bounded $limit -> do
+           syntax bound do
+           | bound $x below -> if $x < $limit do $x else $limit end
+           | bound $x above -> if $x > $limit do $x else $limit end
+           end
+           bound 2 below + bound 9 above
+         end
+       end
+       make_bounded 5
+     end" ()
+
+let test_syntax_template_nested_callsite_parenthesized () =
+  check_i64_macro "nested syntax callsite inside parenthesized holes" 4L
+    "do
+       syntax is_zero do | is_zero $x -> $x == 0 end
+       syntax inc do | inc $x -> $x + 1 end
+       syntax wrap do | wrap $x -> $x + 1 end
+       syntax choose do
+       | choose $cond then $branch else $fallback ->
+           if $cond do $branch else $fallback end
+       end
+       choose (is_zero 0) then (wrap (inc 2)) else (wrap 10)
+     end" ()
+
+let test_syntax_template_nested_callsite_unparenthesized () =
+  check_i64_macro "nested syntax callsite inside unparenthesized holes" 7L
+    "do
+       syntax bool do
+       | bool yes -> true
+       | bool no -> false
+       end
+       syntax add2 do | add2 $x -> $x + 2 end
+       syntax pick do
+       | pick $cond then $branch otherwise $fallback ->
+           if $cond do $branch else $fallback end
+       end
+       pick bool yes then add2 5 otherwise add2 10
+     end" ()
+
+let test_syntax_template_nested_callsite_repeated_hole () =
+  check_i64_macro "nested syntax callsite in repeated hole" 12L
+    "do
+       syntax inc do | inc $x -> $x + 1 end
+       syntax triple do | triple $x -> $x + $x + $x end
+       triple (inc (inc 2))
+     end" ()
+
+let test_syntax_template_multi_branch () =
+  check_i64_macro "multi-branch: first-match disambiguation" 1L
+    "do
+       syntax choose do
+       | choose one -> 1
+       | choose two -> 2
+       end
+       choose one
+     end" ()
+
+let test_syntax_template_imported_pub_syntax () =
+  match
+    eval_with_imported_macros
+      [ ("syntax_lib",
+         "pub syntax inc do | inc $x -> $x + 1 end
+          pub x = 0") ]
+      "do
+         M = import \"syntax_lib\"
+         inc 3
+       end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "imported syntax template" 4L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "imported syntax template: %s" (Debug.pp_value_short mc v))
+  | exception e ->
+      Alcotest.fail (Printf.sprintf "imported syntax template: %s" (Printexc.to_string e))
+
+let test_syntax_template_imported_intro_binding_hygiene () =
+  match
+    eval_with_imported_macros
+      [ ("syntax_lib",
+         "pub syntax local_x do | local_x -> do x = 7; x end end
+          pub x = 0") ]
+      "do
+         M = import \"syntax_lib\"
+         x = 99
+         local_x
+       end"
+  with
+  | VAtom (I64 n) ->
+      Alcotest.(check int64) "imported syntax template intro binding hygiene" 7L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail
+        (Printf.sprintf "imported syntax template intro binding hygiene: %s"
+           (Debug.pp_value_short mc v))
+  | exception e ->
+      Alcotest.fail
+        (Printf.sprintf "imported syntax template intro binding hygiene: %s"
+           (Printexc.to_string e))
+
+let test_syntax_template_no_holes () =
+  check_i64_macro "syntax with no holes" 42L
+    "do
+       syntax answer do | answer -> 42 end
+       answer
      end" ()
 
 let () =
@@ -1507,5 +1769,27 @@ let () =
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
           Alcotest.test_case "operator prefix shadowing is lexical" `Quick test_operator_prefix_shadowing_is_lexical;
+          Alcotest.test_case "syntax template: unless guard" `Quick test_syntax_template_unless;
+          Alcotest.test_case "syntax template: when/else match" `Quick test_syntax_template_when_match;
+          Alcotest.test_case "syntax template: hole reuse duplicates effects" `Quick test_syntax_template_hole_reuse;
+          Alcotest.test_case "syntax template: do/end delimiters" `Quick test_syntax_template_do_end_delimiters;
+          Alcotest.test_case "syntax template: hygiene no capture" `Quick test_syntax_template_hygiene;
+          Alcotest.test_case "syntax template: def-site scope for template refs" `Quick test_syntax_template_def_site_scope;
+          Alcotest.test_case "syntax template: hole keeps use-site scope" `Quick test_syntax_template_hole_keeps_use_site_scope;
+          Alcotest.test_case "syntax template: introduced binder captures introduced ref" `Quick test_syntax_template_intro_binding_captures_intro_ref;
+          Alcotest.test_case "syntax template: def-site scope through lambda" `Quick test_syntax_template_def_site_scope_through_lambda;
+          Alcotest.test_case "syntax template: nested def-site scope" `Quick test_syntax_template_nested_def_site_scope;
+          Alcotest.test_case "syntax template: generates syntax form" `Quick test_syntax_template_generates_syntax_form;
+          Alcotest.test_case "syntax template: generated syntax closes over hole" `Quick test_syntax_template_generated_syntax_closes_over_hole;
+          Alcotest.test_case "syntax template: generated syntax scope is local" `Quick test_syntax_template_generated_syntax_scope_is_local;
+          Alcotest.test_case "syntax template: expands to template use" `Quick test_syntax_template_expands_to_template_use;
+          Alcotest.test_case "syntax template: generates parameterized syntax" `Quick test_syntax_template_generates_parameterized_syntax_form;
+          Alcotest.test_case "syntax template: nested callsite parenthesized" `Quick test_syntax_template_nested_callsite_parenthesized;
+          Alcotest.test_case "syntax template: nested callsite unparenthesized" `Quick test_syntax_template_nested_callsite_unparenthesized;
+          Alcotest.test_case "syntax template: nested callsite repeated hole" `Quick test_syntax_template_nested_callsite_repeated_hole;
+          Alcotest.test_case "syntax template: multi-branch disambiguation" `Quick test_syntax_template_multi_branch;
+          Alcotest.test_case "syntax template: imported pub syntax" `Quick test_syntax_template_imported_pub_syntax;
+          Alcotest.test_case "syntax template: imported intro binding hygiene" `Quick test_syntax_template_imported_intro_binding_hygiene;
+          Alcotest.test_case "syntax template: no holes" `Quick test_syntax_template_no_holes;
         ] );
     ]

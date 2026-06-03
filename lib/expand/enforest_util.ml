@@ -8,19 +8,26 @@ type value_decl = {
   decl_recursive : bool;
 }
 
-type syntax_decl = {
-  syntax_name : Syntax.id;
-  syntax_value : Syntax.t;
-  syntax_export : Operator_env.export;
-}
+type syntax_decl =
+  | MacroSyntaxDecl of {
+      syntax_name : Syntax.id;
+      syntax_value : Syntax.t;
+      syntax_export : Operator_env.export;
+    }
+  | TemplateSyntaxDecl of {
+      syntax_name : Syntax.id;
+      syntax_export : Operator_env.export;
+    }
 
 type env = {
   mutable operators : Operator_env.t;
+  mutable template_captures : (string * Syntax.t) list;
   load_syntax : (string -> Operator_env.export list) option;
   syntax_class : Syntax_class.t;
 }
 
-let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () = { operators = Operator_env.empty; load_syntax; syntax_class }
+let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () =
+  { operators = Operator_env.empty; template_captures = []; load_syntax; syntax_class }
 
 let unsupported msg = raise (Unsupported msg)
 let error msg = raise (Error msg)
@@ -306,7 +313,7 @@ let ensure_no_rest what rest =
   | _ -> error (what ^ " has trailing terms")
 
 let with_operator_scope env f =
-  f { env with operators = env.operators }
+  f { env with operators = env.operators; template_captures = env.template_captures }
 
 let syntax_name term = token_text term
 

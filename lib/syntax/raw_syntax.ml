@@ -171,6 +171,7 @@ let rec raw_token buf =
   | id ->
       let text = Sedlexing.Utf8.lexeme buf in
       (match keyword text with Some kind -> kind | None -> Ident text)
+  | "$" -> Operator "$"
   | operator_chars -> Operator (Sedlexing.Utf8.lexeme buf)
   | eof -> Eof
   | _ -> raise (Error ("unexpected character: " ^ Sedlexing.Utf8.lexeme buf))

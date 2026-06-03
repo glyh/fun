@@ -2,7 +2,7 @@ type associativity = Left | Right
 
 type fixity = Prefix | Infix
 
-type expansion = BuiltinApply | BuiltinRefSet | Macro
+type expansion = BuiltinApply | BuiltinRefSet | Macro | Template of Syntax_template.t
 
 type operator = {
   symbol : string;
@@ -32,6 +32,9 @@ let builtin_ref_set symbol precedence associativity =
 
 let macro_prefix ?(declaration_span = Source_span.synthetic) symbol precedence =
   operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:Macro
+
+let template_prefix ?(declaration_span = Source_span.synthetic) symbol template precedence =
+  operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:(Template template)
 
 let macro_infix ?(declaration_span = Source_span.synthetic) symbol precedence associativity =
   operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:Macro
@@ -66,6 +69,10 @@ let without_operator op ops = List.filter (fun existing -> not (same_operator_ke
 
 let add_prefix ?declaration_span t symbol precedence =
   let op = macro_prefix ?declaration_span symbol precedence in
+  { t with prefixes = op :: without_operator op t.prefixes }
+
+let add_template_prefix ?declaration_span t symbol template precedence =
+  let op = template_prefix ?declaration_span symbol template precedence in
   { t with prefixes = op :: without_operator op t.prefixes }
 
 let add_infix ?declaration_span t symbol precedence associativity =

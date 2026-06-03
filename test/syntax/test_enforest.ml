@@ -72,6 +72,11 @@ let datum_comment () =
   | Ap (Ap (Var "+", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.I64 2L)) -> ()
   | _ -> Alcotest.fail "expected datum comment to skip one term"
 
+let dollar_token_is_separate () =
+  match Raw_syntax.read "$x" with
+  | [ { datum = Token { kind = Operator "$"; _ }; _ }; { datum = Token { kind = Ident "x"; _ }; _ } ] -> ()
+  | _ -> Alcotest.fail "expected $ to be tokenized separately from the identifier"
+
 let operator_precedence () =
   match parse "1 + 2 * 3" with
   | Ap
@@ -383,7 +388,7 @@ let match_record_pattern_renamed_partial () =
 let operator_prefix_in_do_block () =
   match parse_with_macros "do
   x = 1
-  operator prefix twice(stx) -> stx_make_var(\"x\")
+  syntax twice do | twice $x -> $x end
   twice x
 end" with
   | Let { name = "x"; value = Atom (Atom.I64 1L); body = Var "x"; _ } -> ()
@@ -391,7 +396,7 @@ end" with
 
 let operator_prefix_simple_do () =
   match parse_with_macros "do
-  operator prefix twice(stx) -> stx_make_i64(1)
+  syntax twice do | twice $x -> 1 end
   twice 1
 end" with
   | Atom (Atom.I64 1L) -> ()
@@ -406,7 +411,7 @@ end" with
   | _ -> Alcotest.fail "expected operator infix with correct precedence grouping"
 
 let operator_prefix_in_module () =
-  match parse_module_with_macros "operator prefix twice(stx) -> stx_make_i64(1)
+  match parse_module_with_macros "syntax twice do | twice $x -> 1 end
 pub test = do twice 1 end" with
   | Module
       { bindings =
@@ -419,8 +424,8 @@ pub test = do twice 1 end" with
 
 let operator_rhs_can_use_earlier_macro () =
   match parse_with_macros "do
-  macro one_body(_) -> stx_make_ap(stx_make_var(\"stx_make_i64\"), stx_make_i64(1))
-  operator prefix choose(stx) -> one_body @ (0)
+  macro one_body(_) -> stx_make_i64(1)
+  syntax choose do | choose $x -> one_body @ (0) end
   choose 0
 end" with
   | Atom (Atom.I64 1L) -> ()
@@ -435,7 +440,7 @@ end" with
   | _ -> Alcotest.fail "expected operator infix to receive structured operator-use input"
 
 let operator_declaration_is_sequential () =
-  match parse_with_macros "do before = late 0; operator prefix late(stx) -> stx_make_i64(1); late 0 end" with
+  match parse_with_macros "do before = late 0; syntax late do | late $x -> 1 end; late 0 end" with
   | exception Enforest.Unsupported _ -> ()
   | exception Enforest.Error _ -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
@@ -443,9 +448,9 @@ let operator_declaration_is_sequential () =
 
 let duplicate_operator_later_wins () =
   match parse_with_macros "do
-  operator prefix choose(stx) -> stx_make_i64(1)
+  syntax choose do | choose $x -> 1 end
   first = choose 0
-  operator prefix choose(stx) -> stx_make_i64(2)
+  syntax choose do | choose $x -> 2 end
   choose 0
 end" with
   | Let { name = "first"; value = Atom (Atom.I64 1L); body = Atom (Atom.I64 2L); _ } -> ()
@@ -453,7 +458,7 @@ end" with
 
 let syntax_extension_cross_module () =
   with_modules
-    [ ("syntax_ops", "pub operator prefix inc(stx) -> stx_make_i64(2)\npub x = 1") ]
+    [ ("syntax_ops", "pub syntax inc do | inc $x -> 2 end\npub x = 1") ]
     (fun loader ->
       match
         parse_with_macros
@@ -469,7 +474,7 @@ end"
 
 let syntax_import_does_not_leak_between_parses () =
   with_modules
-    [ ("syntax_ops", "pub operator prefix inc(stx) -> stx_make_i64(1)") ]
+    [ ("syntax_ops", "pub syntax inc do | inc $x -> 1 end") ]
     (fun loader ->
       let _ =
         parse_with_macros
@@ -481,7 +486,7 @@ let syntax_import_does_not_leak_between_parses () =
       | _ -> Alcotest.fail "expected imported syntax extension to stay local to its parse")
 
 let syntax_extension_not_runtime_field () =
-  match parse_module "operator prefix hidden(stx : Stx) -> stx
+  match parse_module "syntax hidden do | hidden $x -> $x end
 pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
@@ -495,12 +500,24 @@ let syntax_exports_include_operator_metadata () =
 
 let duplicate_public_syntax_exports_rejected () =
   match
-    Enforest.parse_public_syntax_exports "pub operator prefix dup(stx) -> stx
-pub operator prefix dup(stx) -> stx"
+    Enforest.parse_public_syntax_exports "pub syntax dup do | dup $x -> $x end
+pub syntax dup do | dup $x -> $x end"
   with
   | exception Enforest.Error msg when string_contains msg "ambiguous syntax extension candidates" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected duplicate public syntax exports to be rejected"
+
+let syntax_branch_head_mismatch_rejected () =
+  match parse_module "syntax good do | bad $x -> $x end" with
+  | exception Enforest.Error msg when string_contains msg "must start with declared head" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected mismatched syntax branch head to be rejected"
+
+let syntax_unbound_replacement_hole_rejected () =
+  match parse_module "syntax good do | good $x -> $y end" with
+  | exception Enforest.Error msg when string_contains msg "unbound syntax template hole" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected unbound replacement hole to be rejected"
 
 let syntax_postfix_rejected_in_module () =
   match parse_module "operator postfix foo(stx) -> stx" with
@@ -515,8 +532,8 @@ let syntax_postfix_rejected_in_do_block () =
   | _ -> Alcotest.fail "expected unsupported do-block syntax declaration"
 
 let old_syntax_declaration_rejected () =
-  match parse_module "syntax prefix foo = fn(stx) -> stx" with
-  | exception Enforest.Unsupported "syntax declarations have been replaced by operator declarations" -> ()
+  match parse_module "operator prefix foo(stx) -> stx" with
+  | exception Enforest.Unsupported "unsupported operator declaration shape" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected old syntax declaration spelling to be rejected"
 
@@ -528,8 +545,8 @@ let operator_infix_bad_assoc_rejected () =
 
 let syntax_extension_circular_visit () =
   with_modules
-    [ ("a", "pub operator prefix aop(stx) -> do import \"b\"; stx end");
-      ("b", "pub operator prefix bop(stx) -> do import \"a\"; stx end") ]
+    [ ("a", "pub syntax aop do | aop $x -> do import \"b\"; $x end end");
+      ("b", "pub syntax bop do | bop $x -> do import \"a\"; $x end end") ]
     (fun loader ->
       match
         parse_with_macros
@@ -545,6 +562,7 @@ let suites =
       [ Alcotest.test_case "raw grouping" `Quick raw_grouping;
         Alcotest.test_case "comments" `Quick line_and_block_comments;
         Alcotest.test_case "datum comment" `Quick datum_comment;
+        Alcotest.test_case "$ token is separate" `Quick dollar_token_is_separate;
         Alcotest.test_case "operator precedence" `Quick operator_precedence;
         Alcotest.test_case "left associativity" `Quick left_associativity;
         Alcotest.test_case "prefix not" `Quick prefix_not;
@@ -597,6 +615,8 @@ let suites =
         Alcotest.test_case "syntax extension not runtime field" `Quick syntax_extension_not_runtime_field;
         Alcotest.test_case "syntax exports include operator metadata" `Quick syntax_exports_include_operator_metadata;
         Alcotest.test_case "duplicate public syntax exports rejected" `Quick duplicate_public_syntax_exports_rejected;
+        Alcotest.test_case "syntax branch head mismatch rejected" `Quick syntax_branch_head_mismatch_rejected;
+        Alcotest.test_case "syntax unbound replacement hole rejected" `Quick syntax_unbound_replacement_hole_rejected;
         Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
         Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;
         Alcotest.test_case "old syntax declaration rejected" `Quick old_syntax_declaration_rejected;

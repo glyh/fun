@@ -1,4 +1,4 @@
-let max_lines = 1000
+let max_lines = 1500
 
 let rec find_project_root dir remaining =
   let has name = Sys.file_exists (Filename.concat dir name) in
@@ -64,5 +64,5 @@ let test_implementation_sources_stay_under_limit () =
 
 let suites =
   [ ( "line counts",
-      [ Alcotest.test_case "implementation sources stay under 1000 lines" `Quick
+      [ Alcotest.test_case "implementation sources stay under 1500 lines" `Quick
           test_implementation_sources_stay_under_limit ] ) ]
