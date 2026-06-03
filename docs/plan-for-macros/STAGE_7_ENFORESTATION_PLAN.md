@@ -187,7 +187,7 @@ Anonymous functions with only implicit parameters do not require an empty explic
 
 ## Phase 7C: Declarations And Modules
 
-Status: Implemented for the initial declaration/module parsing slice. Full Honu-style two-pass binding discovery is still deferred until user-visible syntax-extension bindings need it.
+Status: Implemented for the initial declaration/module parsing slice. Full Honu-style two-pass binding discovery was considered and explicitly deferred; Stage 7 syntax-extension declarations are sequential and affect only later forms.
 
 ### Purpose
 
@@ -210,12 +210,14 @@ Support redesigned declaration forms:
 - [x] `module name? do ... end`;
 - [x] `struct do ... end` with field declarations and bindings.
 
-The important architectural point is two-pass scope handling:
+The original architectural note for this phase was two-pass scope handling:
 
 - pass 1 detects binding names and registers lexical scopes;
 - pass 2 enforests nested bodies using the completed scope for that block.
 
 This mirrors the Honu parse1/parse2 split and prevents order-sensitive macro behavior inside blocks.
+
+Current Stage 7 direction is intentionally simpler: syntax-extension declarations and imports are parsed sequentially, affect only later forms in the enclosing block/module, and use deterministic later-wins shadowing for duplicate operators. A full two-pass declaration pass remains unnecessary unless future syntax extensions need whole-block scope.
 
 The implemented 7C slice parses declarations into `Syntax.t` and still leaves authoritative binding-scope introduction to `Expand.expand`, matching the Stage 7 hygiene boundary. A full pre-enforestation parse1/parse2-style binding discovery pass remains a follow-up before expanding beyond the initial Stage 7E syntax-extension slice.
 
@@ -301,17 +303,17 @@ Implement the first constrained syntax-extension bindings:
 This phase is deliberately small. The current API is not the final macro syntax:
 
 ```fun
-syntax prefix name = fn(stx) -> ...
-syntax infix op precedence left = fn(stx) -> ...
-syntax infix op precedence right = fn(stx) -> ...
+operator prefix name(stx) -> ...
+operator infix op precedence left(stx) -> ...
+operator infix op precedence right(stx) -> ...
 ```
 
-The declaration registers a prefix or infix operator during enforestation and expands uses as ordinary macro calls. Prefix syntax passes the parsed operand syntax to the macro. Infix syntax passes a two-element product syntax containing the left and right operands.
+The declaration registers a prefix or infix operator during enforestation and expands uses as ordinary macro calls. Prefix and infix syntax pass a dedicated structured syntax-operator-use object to the macro, carrying the operator and parsed operands.
 
 Current implementation notes:
 
 - Dynamic operators live in a per-parse `Operator_env.t` threaded through enforestation and copied for nested `do` blocks/modules so syntax-extension imports do not leak across independent parses.
-- `pub syntax ...` exports operator declarations through `Core_loader.load_syntax_exports` without exposing them as runtime fields.
+- `pub operator ...` exports operator declarations through `Core_loader.load_syntax_exports` without exposing them as runtime fields.
 - The RHS macro value is parsed and later expanded through the existing `MacroBinding` path; syntax-extension declarations do not introduce arbitrary grammar productions yet.
 
 ### Tests
@@ -334,7 +336,8 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 
 ### Architecture
 
-- [ ] Generalize the current statement pre-scan into a real Honu-style two-pass declaration pass:
+- [x] Generalize the current statement pre-scan decision: Stage 7 intentionally uses sequential declaration handling rather than a full Honu-style two-pass declaration pass because syntax extensions affect only later forms.
+- [ ] Revisit a real Honu-style two-pass declaration pass only if future syntax extensions need whole-block scope:
   - pass 1 discovers value/type/module names and syntax-extension bindings for a block/module;
   - pass 2 enforests nested bodies with the completed binding and syntax-extension environment.
 - [x] Replace the process-global dynamic operator refs in `Operator_env` with an explicit lexical operator environment threaded through enforestation.
@@ -344,11 +347,11 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 
 ### Syntax Extension Semantics
 
-- [ ] Define the final user-facing syntax-extension declaration syntax, or explicitly mark the current `syntax prefix` / `syntax infix` forms as provisional in user docs.
-- [ ] Specify shadowing and import precedence rules for multiple syntax extensions with the same symbol.
+- [x] Define the Stage 7 user-facing syntax-extension declaration syntax as `operator prefix` / `operator infix`.
+- [x] Specify shadowing and import precedence rules for multiple syntax extensions with the same symbol: later declarations/imports win deterministically.
 - [ ] Add deterministic ambiguity errors for incomparable syntax-extension candidates now that operator environments are lexical rather than global snapshots.
-- [ ] Support syntax-extension declarations that affect later forms in the same block/module without relying on order-sensitive ad hoc scans.
-- [ ] Decide whether syntax extensions can be defined for type, pattern, declaration, module-item, and block syntax classes before Stage 8 exposes problem-aware macros.
+- [x] Support syntax-extension declarations that affect later forms in the same block/module with sequential operator-environment updates.
+- [x] Decide whether syntax extensions can be defined for type, pattern, declaration, module-item, and block syntax classes before Stage 8 exposes problem-aware macros: Stage 7 exposes expression syntax extensions only.
 
 ### Macro Integration
 

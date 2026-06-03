@@ -118,6 +118,7 @@ module Stx = struct
           | TypeDef _ -> "type_def"
           | EffectDef _ -> "effect_def"
           | Match _ -> "match"
+          | SyntaxOperatorUse _ -> "syntax_operator_use"
           | Self -> "self"
           | SelfType -> "selftype"
           | _ -> "other"

@@ -80,6 +80,8 @@ and go_kind (s : Scope_set.t) (k : kind) : kind =
     MacroDef { name = add_id_scope s name; value = go value; body = go body }
   | MacroCall (f, a) ->
     MacroCall (go f, go a)
+  | SyntaxOperatorUse { operator; fixity; operands } ->
+    SyntaxOperatorUse { operator = add_id_scope s operator; fixity; operands = List.map go operands }
 
 and go_struct_binding (s : Scope_set.t) (binding : Syntax.struct_binding) : Syntax.struct_binding =
   match binding with
@@ -295,6 +297,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       end
     | _ -> { stx with kind = MacroCall (expand ctx f, expand ctx a) }
     end
+  | SyntaxOperatorUse { operator; fixity; operands } ->
+    { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands } }
 
 and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc = function

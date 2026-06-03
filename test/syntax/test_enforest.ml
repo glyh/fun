@@ -371,34 +371,33 @@ let match_record_pattern_renamed_partial () =
             Var "n" ) ]) -> ()
   | _ -> Alcotest.fail "expected record pattern renamed field with partial"
 
-let syntax_prefix_in_do_block () =
+let operator_prefix_in_do_block () =
   match parse_with_macros "do
   x = 1
-  syntax prefix twice = fn(stx) -> stx
+  operator prefix twice(stx) -> stx_make_var(\"x\")
   twice x
 end" with
   | Let { name = "x"; value = Atom (Atom.I64 1L); body = Var "x"; _ } -> ()
-  | _ -> Alcotest.fail "expected syntax prefix to be usable in do block after binding"
+  | _ -> Alcotest.fail "expected operator prefix to be usable in do block after binding"
 
-let syntax_prefix_simple_do () =
+let operator_prefix_simple_do () =
   match parse_with_macros "do
-  syntax prefix twice = fn(stx) -> stx
+  operator prefix twice(stx) -> stx_make_i64(1)
   twice 1
 end" with
   | Atom (Atom.I64 1L) -> ()
-  | _ -> Alcotest.fail "expected bare syntax prefix in do block"
+  | _ -> Alcotest.fail "expected bare operator prefix in do block"
 
-let syntax_infix_in_do_block () =
+let operator_infix_in_do_block () =
   match parse_with_macros "do
-  syntax infix ~ 15 left = fn(stx) -> stx
+  operator infix ~ 15 left(stx) -> stx_make_i64(9)
   1 + 2 ~ 3
 end" with
-  | Ap (Ap (Var "+", Explicit, Atom (Atom.I64 1L)), Explicit,
-        Prod [Atom (Atom.I64 2L); Atom (Atom.I64 3L)]) -> ()
-  | _ -> Alcotest.fail "expected syntax infix with correct precedence grouping"
+  | Ap (Ap (Var "+", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.I64 9L)) -> ()
+  | _ -> Alcotest.fail "expected operator infix with correct precedence grouping"
 
-let syntax_prefix_in_module () =
-  match parse_module_with_macros "syntax prefix twice = fn(stx) -> stx
+let operator_prefix_in_module () =
+  match parse_module_with_macros "operator prefix twice(stx) -> stx_make_i64(1)
 pub test = do twice 1 end" with
   | Module
       { bindings =
@@ -407,19 +406,36 @@ pub test = do twice 1 end" with
                 value = Atom (Atom.I64 1L);
                 public = true;
               } ] } -> ()
-  | _ -> Alcotest.fail "expected syntax prefix declaration and usage in module"
+  | _ -> Alcotest.fail "expected operator prefix declaration and usage in module"
 
-let syntax_infix_associativity () =
+let operator_infix_associativity () =
   match parse_with_macros "do
-  syntax infix ~ 15 right = fn(stx) -> stx
+  operator infix ~ 15 right(stx) -> if stx_kind(stx) == \"syntax_operator_use\" do stx_make_i64(1) else stx_make_i64(0) end
   1 ~ 2 ~ 3
 end" with
-  | Prod [Atom (Atom.I64 1L); Prod [Atom (Atom.I64 2L); Atom (Atom.I64 3L)]] -> ()
-  | _ -> Alcotest.fail "expected right-associative syntax infix"
+  | Atom (Atom.I64 1L) -> ()
+  | _ -> Alcotest.fail "expected operator infix to receive structured operator-use input"
+
+let operator_declaration_is_sequential () =
+  match parse_with_macros "do before = late 0; operator prefix late(stx) -> stx_make_i64(1); late 0 end" with
+  | exception Enforest.Unsupported _ -> ()
+  | exception Enforest.Error _ -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected operator declaration to affect only later statements"
+
+let duplicate_operator_later_wins () =
+  match parse_with_macros "do
+  operator prefix choose(stx) -> stx_make_i64(1)
+  first = choose 0
+  operator prefix choose(stx) -> stx_make_i64(2)
+  choose 0
+end" with
+  | Let { name = "first"; value = Atom (Atom.I64 1L); body = Atom (Atom.I64 2L); _ } -> ()
+  | _ -> Alcotest.fail "expected later operator declaration to shadow earlier declaration"
 
 let syntax_extension_cross_module () =
   with_modules
-    [ ("syntax_ops", "pub syntax prefix inc = fn(stx) -> stx\npub x = 1") ]
+    [ ("syntax_ops", "pub operator prefix inc(stx) -> stx_make_i64(2)\npub x = 1") ]
     (fun loader ->
       match
         parse_with_macros
@@ -435,7 +451,7 @@ end"
 
 let syntax_import_does_not_leak_between_parses () =
   with_modules
-    [ ("syntax_ops", "pub syntax prefix inc = fn(stx) -> stx") ]
+    [ ("syntax_ops", "pub operator prefix inc(stx) -> stx_make_i64(1)") ]
     (fun loader ->
       let _ =
         parse_with_macros
@@ -447,40 +463,46 @@ let syntax_import_does_not_leak_between_parses () =
       | _ -> Alcotest.fail "expected imported syntax extension to stay local to its parse")
 
 let syntax_extension_not_runtime_field () =
-  match parse_module "syntax prefix hidden = fn(stx : Stx) -> stx
+  match parse_module "operator prefix hidden(stx : Stx) -> stx
 pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
 
 let syntax_exports_include_operator_metadata () =
-  match Enforest.parse_public_syntax_exports "pub syntax infix ~ 15 right = fn(stx) -> stx" with
+  match Enforest.parse_public_syntax_exports "pub operator infix ~ 15 right(stx) -> stx" with
   | [ { symbol = "~"; fixity = Operator_env.Infix; precedence = 15; associativity = Operator_env.Right;
         syntax_class = Syntax_class.Expr; expansion = Operator_env.Macro } ] ->
       ()
   | _ -> Alcotest.fail "expected public syntax export to include operator metadata"
 
 let syntax_postfix_rejected_in_module () =
-  match parse_module "syntax postfix foo = fn(stx) -> stx" with
-  | exception Enforest.Unsupported "unsupported syntax declaration shape" -> ()
+  match parse_module "operator postfix foo(stx) -> stx" with
+  | exception Enforest.Unsupported "unsupported operator declaration shape" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unsupported module syntax declaration"
 
 let syntax_postfix_rejected_in_do_block () =
-  match parse "do syntax postfix foo = fn(stx) -> stx; 0 end" with
-  | exception Enforest.Error "unsupported syntax declaration shape in do block" -> ()
+  match parse "do operator postfix foo(stx) -> stx; 0 end" with
+  | exception Enforest.Error "unsupported operator declaration shape in do block" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unsupported do-block syntax declaration"
 
-let syntax_infix_bad_assoc_rejected () =
-  match parse_module "syntax infix ~ 15 middle = fn(stx) -> stx" with
-  | exception Enforest.Error "syntax infix associativity must be 'left' or 'right'" -> ()
+let old_syntax_declaration_rejected () =
+  match parse_module "syntax prefix foo = fn(stx) -> stx" with
+  | exception Enforest.Unsupported "syntax declarations have been replaced by operator declarations" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected invalid syntax infix associativity to be rejected"
+  | _ -> Alcotest.fail "expected old syntax declaration spelling to be rejected"
+
+let operator_infix_bad_assoc_rejected () =
+  match parse_module "operator infix ~ 15 middle(stx) -> stx" with
+  | exception Enforest.Error "operator infix associativity must be 'left' or 'right'" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected invalid operator infix associativity to be rejected"
 
 let syntax_extension_circular_visit () =
   with_modules
-    [ ("a", "pub syntax prefix aop = fn(stx) -> do import \"b\"; stx end");
-      ("b", "pub syntax prefix bop = fn(stx) -> do import \"a\"; stx end") ]
+    [ ("a", "pub operator prefix aop(stx) -> do import \"b\"; stx end");
+      ("b", "pub operator prefix bop(stx) -> do import \"a\"; stx end") ]
     (fun loader ->
       match
         parse_with_macros
@@ -535,18 +557,21 @@ let suites =
         Alcotest.test_case "match constructor payload" `Quick match_constructor_payload;
         Alcotest.test_case "match record pattern shorthand" `Quick match_record_pattern_shorthand;
         Alcotest.test_case "match record pattern renamed partial" `Quick match_record_pattern_renamed_partial;
-        Alcotest.test_case "syntax prefix in do block" `Quick syntax_prefix_in_do_block;
-        Alcotest.test_case "syntax prefix simple do" `Quick syntax_prefix_simple_do;
-        Alcotest.test_case "syntax infix in do block" `Quick syntax_infix_in_do_block;
-        Alcotest.test_case "syntax prefix in module" `Quick syntax_prefix_in_module;
-        Alcotest.test_case "syntax infix associativity" `Quick syntax_infix_associativity;
+        Alcotest.test_case "operator prefix in do block" `Quick operator_prefix_in_do_block;
+        Alcotest.test_case "operator prefix simple do" `Quick operator_prefix_simple_do;
+        Alcotest.test_case "operator infix in do block" `Quick operator_infix_in_do_block;
+        Alcotest.test_case "operator prefix in module" `Quick operator_prefix_in_module;
+        Alcotest.test_case "operator infix associativity" `Quick operator_infix_associativity;
+        Alcotest.test_case "operator declaration is sequential" `Quick operator_declaration_is_sequential;
+        Alcotest.test_case "duplicate operator later wins" `Quick duplicate_operator_later_wins;
         Alcotest.test_case "syntax extension cross module" `Quick syntax_extension_cross_module;
         Alcotest.test_case "syntax import does not leak between parses" `Quick syntax_import_does_not_leak_between_parses;
         Alcotest.test_case "syntax extension not runtime field" `Quick syntax_extension_not_runtime_field;
         Alcotest.test_case "syntax exports include operator metadata" `Quick syntax_exports_include_operator_metadata;
         Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
         Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;
-        Alcotest.test_case "syntax infix bad assoc rejected" `Quick syntax_infix_bad_assoc_rejected;
+        Alcotest.test_case "old syntax declaration rejected" `Quick old_syntax_declaration_rejected;
+        Alcotest.test_case "operator infix bad assoc rejected" `Quick operator_infix_bad_assoc_rejected;
         Alcotest.test_case "syntax extension circular visit" `Quick syntax_extension_circular_visit;
       ] );
   ]

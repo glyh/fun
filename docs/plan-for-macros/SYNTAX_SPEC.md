@@ -139,7 +139,7 @@ Effects with no parameters omit the parameter list: `effect Exc = module ... end
 
 Traits always take exactly one type parameter: `trait Eq(A) = module ... end`.
 
-Syntax-extension declarations are provisional Stage 7 forms. A `syntax prefix` declaration registers a prefix operator whose use expands as a macro call with the parsed operand syntax. A `syntax infix` declaration registers an infix operator with the given precedence and associativity; use sites expand as macro calls whose argument is a two-element product syntax containing the left and right operands. `pub syntax ...` exports the syntax extension at compile time without exposing it as a runtime module field.
+Syntax-extension declarations are provisional Stage 7 forms. An `operator prefix` declaration registers a prefix operator whose use expands as a macro call with a structured syntax-operator-use argument. An `operator infix` declaration registers an infix operator with the given precedence and associativity; use sites expand as macro calls with a structured syntax-operator-use argument containing the operator and operands. `pub operator ...` exports the syntax extension at compile time without exposing it as a runtime module field. Syntax-extension declarations affect only later forms in the same block or module; duplicate declarations with the same symbol use the later declaration.
 
 `sig ... end` is accepted as syntax sugar for a module whose fields are type values. `sig x : T end` means the same effect/trait signature field as `module x = T end`:
 
@@ -383,8 +383,8 @@ All operators are reserved names in the prelude; they work via the enforestation
 Provisional user-defined syntax extensions use the same enforestation operator path for the first supported slice:
 
 ```fun
-syntax prefix twice = fn(stx) -> stx
-syntax infix ~ 15 left = fn(stx) -> stx
+operator prefix twice(stx) -> stx
+operator infix ~ 15 left(stx) -> stx
 ```
 
 ---

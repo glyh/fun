@@ -118,6 +118,9 @@ and kind =
   | Match of t * match_branch list
   | MacroDef of { name : id; value : t; body : t }
   | MacroCall of t * t
+  | SyntaxOperatorUse of { operator : id; fixity : operator_fixity; operands : t list }
+
+and operator_fixity = PrefixOp | InfixOp
 
 and match_branch =
   | ValueBranch of pat * t

@@ -504,9 +504,10 @@ Concrete tasks:
    - top-level `parse_module` support for `pub x = expr`, `x : Type = expr`, `fn f(params) ...`, `macro name(params) -> expr`, and named `M = module ... end`;
    - expression `do` support for typed declarations and recursive function declarations;
    - expression `module ... end` and `struct ... end` support.
-- [ ] Generalize Stage 7C into a full Honu-style two-pass declaration pass before expanding beyond the initial user-visible syntax-extension slice:
-   - pass 1 detects all binding names and syntax-extension bindings in a block/module;
-   - pass 2 enforests nested bodies with the completed scope.
+- [x] Decide the Stage 7 declaration-order model for syntax extensions:
+   - syntax extensions are sequential and affect only later forms;
+   - duplicate operators use deterministic later-wins shadowing;
+   - full Honu-style two-pass declaration discovery is deferred unless future syntax extensions need whole-block scope.
 - [x] Separate type/pattern/expression parsing through per-class entrypoints:
    - `Enforest.parse_type` for type expressions with arrows, implicit Pi, type application, products;
    - `Enforest.parse_pat` for patterns with record fields, constructor payloads;

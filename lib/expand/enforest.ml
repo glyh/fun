@@ -392,7 +392,8 @@ and parse_primary env terms =
               let span = span_between term.span rhs.span in
               let f = var ~span:term.span name in
               let expr =
-                if Operator_env.is_extension_prefix env.operators name then stx ~span (Syntax.MacroCall (f, rhs))
+                if Operator_env.is_extension_prefix env.operators name then
+                  stx ~span (Syntax.MacroCall (f, syntax_operator_arg ~span op [ rhs ]))
                 else ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
@@ -404,7 +405,8 @@ and parse_primary env terms =
               let span = span_between term.span rhs.span in
               let f = var ~span:term.span name in
               let expr =
-                if Operator_env.is_extension_prefix env.operators name then stx ~span (Syntax.MacroCall (f, rhs))
+                if Operator_env.is_extension_prefix env.operators name then
+                  stx ~span (Syntax.MacroCall (f, syntax_operator_arg ~span op [ rhs ]))
                 else ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
@@ -518,7 +520,7 @@ and parse_postfix_infix env min_prec lhs terms =
                 match op.expansion with
                 | Operator_env.BuiltinRefSet -> stx ~span (Syntax.RefSet (lhs, rhs))
                 | Macro ->
-                  let arg = stx ~span (Syntax.Prod [ lhs; rhs ]) in
+                  let arg = syntax_operator_arg ~span op [ lhs; rhs ] in
                   stx ~span (Syntax.MacroCall (var ~span:term.span op.symbol, arg))
                 | BuiltinApply ->
                   ap ~span
@@ -706,69 +708,65 @@ and parse_open_statement stmt =
       Some (id ~span name)
   | _ -> None
 
-and parse_syntax_do_statement env stmt =
+and parse_import_statement env stmt =
   match drop_separators stmt with
-  | { datum = Token { kind = Ident s; _ }; _ }
-    :: { datum = Token { kind = Ident pfx; _ }; _ }
-       :: name_term
-          :: eq :: value_terms
-    when String.equal s "syntax" && String.equal pfx "prefix" && token_kind Equals eq ->
-      let name = match syntax_name name_term with Some name -> name | None -> error "syntax prefix requires an operator or identifier name" in
-      env.operators <- Operator_env.add_prefix env.operators name 50;
-      ignore (parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms);
-      true
-  | { datum = Token { kind = Ident s; _ }; _ }
-    :: { datum = Token { kind = Ident ifx; _ }; _ }
-       :: name_term
-          :: { datum = Token { kind = Int p; _ }; _ }
-             :: { datum = Token { kind = Ident assoc_str; _ }; _ }
-                :: eq :: value_terms
-    when String.equal s "syntax" && String.equal ifx "infix" && token_kind Equals eq ->
-      let name = match syntax_name name_term with Some name -> name | None -> error "syntax infix requires an operator or identifier name" in
-      let assoc = match String.lowercase_ascii assoc_str with
-        | "left" -> Operator_env.Left
-        | "right" -> Operator_env.Right
-        | _ -> error "syntax infix associativity must be 'left' or 'right'"
-      in
-      env.operators <- Operator_env.add_infix env.operators name (Int64.to_int p) assoc;
-      ignore (parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms);
-      true
-  | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
-      error "unsupported syntax declaration shape in do block"
-  | _ -> false
-
-and parse_syntax_decl env stmt =
-  match drop_separators stmt with
-  | { datum = Token { kind = Ident s; _ }; _ }
-    :: { datum = Token { kind = Ident pfx; _ }; _ }
-       :: name_term
-          :: eq :: value_terms
-    when String.equal s "syntax" && String.equal pfx "prefix" && token_kind Equals eq ->
-      let name = match syntax_name name_term with Some name -> name | None -> error "syntax prefix requires an operator or identifier name" in
-      let prec = 50 in
-      env.operators <- Operator_env.add_prefix env.operators name prec;
-      let value = parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms in
-      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_prefix name prec }
-  | { datum = Token { kind = Ident s; _ }; _ }
-    :: { datum = Token { kind = Ident ifx; _ }; _ }
-       :: name_term
-          :: { datum = Token { kind = Int p; _ }; _ }
-             :: { datum = Token { kind = Ident assoc_str; _ }; _ }
-                :: eq :: value_terms
-    when String.equal s "syntax" && String.equal ifx "infix" && token_kind Equals eq ->
-      let name = match syntax_name name_term with Some name -> name | None -> error "syntax infix requires an operator or identifier name" in
-      let prec = Int64.to_int p in
-      let assoc = match String.lowercase_ascii assoc_str with
-        | "left" -> Operator_env.Left
-        | "right" -> Operator_env.Right
-        | _ -> error "syntax infix associativity must be 'left' or 'right'"
-      in
-      env.operators <- Operator_env.add_infix env.operators name prec assoc;
-      let value = parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms in
-      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_infix name prec assoc }
-  | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
-      unsupported "unsupported syntax declaration shape"
+  | { datum = Token { kind = KwImport; _ }; _ } :: _ -> Some (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
   | _ -> None
+
+and parse_operator_value env start_span terms =
+  let params, body, rest, span = parse_fn_parts env start_span terms in
+  (List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body, rest)
+
+and parse_operator_assoc assoc_str =
+  match String.lowercase_ascii assoc_str with
+  | "left" -> Operator_env.Left
+  | "right" -> Operator_env.Right
+  | _ -> error "operator infix associativity must be 'left' or 'right'"
+
+and parse_operator_shape stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = Ident op_kw; _ }; _ } :: { datum = Token { kind = Ident pfx; _ }; _ } :: name_term :: value_terms
+    when String.equal op_kw "operator" && String.equal pfx "prefix" ->
+      let name = required_syntax_name name_term "operator prefix" in
+      Some (`Prefix (name_term, name, value_terms))
+  | { datum = Token { kind = Ident op_kw; _ }; _ } :: { datum = Token { kind = Ident ifx; _ }; _ } :: name_term
+    :: { datum = Token { kind = Int p; _ }; _ } :: { datum = Token { kind = Ident assoc_str; _ }; span = assoc_span } :: value_terms
+    when String.equal op_kw "operator" && String.equal ifx "infix" ->
+      let name = required_syntax_name name_term "operator infix" in
+      Some (`Infix (name_term, name, Int64.to_int p, parse_operator_assoc assoc_str, assoc_span, value_terms))
+  | _ -> None
+
+and parse_operator_decl env stmt =
+  match parse_operator_shape stmt with
+  | Some (`Prefix (name_term, name, value_terms)) ->
+      let prec = 50 in
+      let value, rest = parse_operator_value env name_term.span value_terms in
+      ensure_no_rest "operator prefix declaration" rest;
+      env.operators <- Operator_env.add_prefix env.operators name prec;
+      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_prefix name prec }
+  | Some (`Infix (name_term, name, prec, assoc, assoc_span, value_terms)) ->
+      let value, rest = parse_operator_value env assoc_span value_terms in
+      ensure_no_rest "operator infix declaration" rest;
+      env.operators <- Operator_env.add_infix env.operators name prec assoc;
+      Some { syntax_name = id ~span:name_term.span name; syntax_value = value; syntax_export = Operator_env.macro_infix name prec assoc }
+  | None -> (
+      match drop_separators stmt with
+      | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
+          unsupported "syntax declarations have been replaced by operator declarations"
+      | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "operator" ->
+          unsupported "unsupported operator declaration shape"
+      | _ -> None)
+
+and parse_operator_decl_in_do env stmt =
+  match parse_operator_shape stmt with
+  | Some _ -> parse_operator_decl env stmt
+  | None -> (
+      match drop_separators stmt with
+      | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "syntax" ->
+          error "syntax declarations have been replaced by operator declarations"
+      | { datum = Token { kind = Ident s; _ }; _ } :: _ when String.equal s "operator" ->
+          error "unsupported operator declaration shape in do block"
+      | _ -> None)
 
 and scoped_binding_to_expr env span stmt body =
   let public, stmt = parse_public_prefix stmt in
@@ -803,34 +801,38 @@ and parse_do_body_terms env span body_terms =
       | [] -> error "empty do block"
       | final_stmt :: rev_statements ->
           let statements = List.rev rev_statements in
-          List.iter
-            (fun stmt ->
-              if not (parse_syntax_do_statement env stmt) then load_imports_in_terms env stmt)
-            statements;
-          let body = parse_all (fun ts -> parse_expr_prec env 0 ts) final_stmt in
-          List.fold_right
-            (fun stmt acc ->
-              match parse_syntax_decl env stmt with
-              | Some { syntax_name = name; syntax_value = value; _ } ->
-                  stx ~span (Syntax.MacroDef { name; value; body = acc })
-              | None ->
-                match parse_macro_binding env false stmt with
-                | Some (Syntax.MacroBinding { name; value; public = false }) ->
-                    stx ~span (Syntax.MacroDef { name; value; body = acc })
-                | Some (Syntax.MacroBinding { public = true; _ }) ->
-                    error "pub macro is not supported inside do blocks"
-                | Some _ -> error "unexpected non-macro binding"
-                | None ->
-                match parse_binding_statement env stmt with
-                | Some { decl_name = name; decl_type = type_; decl_value = value; decl_recursive = recursive } ->
-                    stx ~span
-                      (Syntax.Let { name; type_; value; body = acc; recursive })
+          let wrappers =
+            List.map
+              (fun stmt ->
+                match parse_operator_decl_in_do env stmt with
+                | Some { syntax_name = name; syntax_value = value; _ } ->
+                    fun acc -> stx ~span (Syntax.MacroDef { name; value; body = acc })
                 | None -> (
-                    match parse_open_statement stmt with
-                    | Some name -> stx ~span (Syntax.Open (name, acc))
-                    | None ->
-                        scoped_binding_to_expr env span stmt acc))
-            statements body)
+                    match parse_macro_binding env false stmt with
+                    | Some (Syntax.MacroBinding { name; value; public = false }) ->
+                        fun acc -> stx ~span (Syntax.MacroDef { name; value; body = acc })
+                    | Some (Syntax.MacroBinding { public = true; _ }) ->
+                        error "pub macro is not supported inside do blocks"
+                    | Some _ -> error "unexpected non-macro binding"
+                    | None -> (
+                        match parse_binding_statement env stmt with
+                        | Some { decl_name = name; decl_type = type_; decl_value = value; decl_recursive = recursive } ->
+                            fun acc -> stx ~span (Syntax.Let { name; type_; value; body = acc; recursive })
+                        | None -> (
+                            match parse_open_statement stmt with
+                            | Some name -> fun acc -> stx ~span (Syntax.Open (name, acc))
+                            | None -> (
+                                match parse_import_statement env stmt with
+                                | Some value ->
+                                    fun acc ->
+                                      stx ~span
+                                        (Syntax.Let
+                                           { name = id ~span:value.span "_"; type_ = None; value; body = acc; recursive = false })
+                                | None -> fun acc -> scoped_binding_to_expr env span stmt acc)))))
+              statements
+          in
+          let body = parse_all (fun ts -> parse_expr_prec env 0 ts) final_stmt in
+          List.fold_right (fun wrap acc -> wrap acc) wrappers body)
 
 and parse_do env start_span terms =
   let body_terms, rest, span = collect_do_body start_span terms in
@@ -842,7 +844,7 @@ and parse_public_prefix stmt =
   | rest -> (false, rest)
 
 and parse_syntax_binding env public stmt =
-  match parse_syntax_decl env stmt with
+  match parse_operator_decl env stmt with
   | Some { syntax_name = name; syntax_value = value; _ } ->
       Some (Syntax.MacroBinding { name; value; public })
   | None -> None
@@ -901,14 +903,7 @@ and parse_module_binding env stmt =
 
 and parse_module_bindings env body_terms =
   with_operator_scope env (fun env ->
-      let statements = split_statements body_terms in
-      List.iter
-        (fun stmt ->
-          match parse_syntax_decl env stmt with
-          | Some _ -> ()
-          | None -> load_imports_in_terms env stmt)
-        statements;
-      List.map (parse_module_binding env) statements)
+      split_statements body_terms |> List.map (parse_module_binding env))
 
 and parse_struct_field env stmt =
   match drop_separators stmt with
@@ -983,7 +978,7 @@ let parse_public_syntax_exports ?file ?load_syntax source =
         |> split_statements
         |> List.filter_map (fun stmt ->
                let public, stmt = parse_public_prefix stmt in
-               if public then Option.map (fun decl -> decl.syntax_export) (parse_syntax_decl env stmt)
+               if public then Option.map (fun decl -> decl.syntax_export) (parse_operator_decl env stmt)
                else None)
       with Raw_syntax.Error msg -> error msg)
 

@@ -944,39 +944,53 @@ let test_imported_macro_calls_regular_function () =
       Alcotest.fail (Printf.sprintf "macro calls function: %s" (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "macro calls function: %s" (Printexc.to_string e))
 
-let test_syntax_prefix_macro_expands () =
-  check_i64_macro "syntax prefix" 42L
+let test_operator_prefix_macro_expands () =
+  check_i64_macro "operator prefix" 42L
     "do
-       syntax prefix answer = fn(_) -> stx_make_i64(42)
+       operator prefix answer(stx) -> stx_make_i64(42)
        answer 0
      end" ()
 
-let test_syntax_infix_macro_expands () =
-  check_i64_macro "syntax infix" 9L
+let test_operator_infix_macro_expands () =
+  check_i64_macro "operator infix" 9L
     "do
-       syntax infix ~ 15 left = fn(_) -> stx_make_i64(9)
+       operator infix ~ 15 left(stx) -> stx_make_i64(9)
        1 ~ 2
+      end" ()
+
+let test_operator_prefix_receives_structured_input () =
+  check_i64_macro "operator prefix structured input" 1L
+    "do
+       operator prefix answer(stx) -> if stx_kind(stx) == \"syntax_operator_use\" do stx_make_i64(1) else stx_make_i64(0) end
+       answer 0
      end" ()
 
-let test_imported_syntax_prefix_expands () =
+let test_operator_macro_discards_unelaborated_perform_operand () =
+  check_i64_macro "operator macro discards perform operand before elaboration" 7L
+    "do
+       operator prefix discard(stx) -> stx_make_i64(7)
+       discard perform Missing.get(())
+     end" ()
+
+let test_imported_operator_prefix_expands () =
   match
     eval_with_imported_macros
-      [ ("ops", "pub syntax prefix answer = fn(_) -> stx_make_i64(42)\npub x = 1") ]
+      [ ("ops", "pub operator prefix answer(stx) -> stx_make_i64(42)\npub x = 1") ]
       "do
          Ops = import \"ops\"
          answer 0
        end"
   with
-  | VAtom (I64 n) -> Alcotest.(check int64) "imported syntax prefix" 42L n
+  | VAtom (I64 n) -> Alcotest.(check int64) "imported operator prefix" 42L n
   | v ->
       let mc = MetaContext.create () in
-      Alcotest.fail (Printf.sprintf "imported syntax prefix: %s" (Debug.pp_value_short mc v))
-  | exception e -> Alcotest.fail (Printf.sprintf "imported syntax prefix: %s" (Printexc.to_string e))
+      Alcotest.fail (Printf.sprintf "imported operator prefix: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "imported operator prefix: %s" (Printexc.to_string e))
 
 let test_imported_syntax_not_runtime_field () =
   match
     eval_with_imported_macros
-      [ ("ops", "pub syntax prefix answer = fn(_) -> stx_make_i64(42)\npub x = 1") ]
+      [ ("ops", "pub operator prefix answer(stx) -> stx_make_i64(42)\npub x = 1") ]
       "do Ops = import \"ops\"; Ops.answer end"
   with
   | exception Elaborate.ElabError _ -> ()
@@ -984,12 +998,12 @@ let test_imported_syntax_not_runtime_field () =
   | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
   | _ -> Alcotest.fail "expected imported syntax extension to be compile-time only"
 
-let test_syntax_prefix_shadowing_is_lexical () =
-  check_i64_macro "syntax shadowing" 1L
+let test_operator_prefix_shadowing_is_lexical () =
+  check_i64_macro "operator shadowing" 1L
     "do
-       syntax prefix choose = fn(_) -> stx_make_i64(1)
+       operator prefix choose(stx) -> stx_make_i64(1)
        ignored = do
-         syntax prefix choose = fn(_) -> stx_make_i64(2)
+         operator prefix choose(stx) -> stx_make_i64(2)
          choose 0
        end
        choose 0
@@ -1452,10 +1466,12 @@ let () =
           Alcotest.test_case "macro-generated import loads macros" `Quick test_macro_generated_import_loads_macros;
           Alcotest.test_case "macro-generated import checks missing" `Quick test_macro_generated_import_checks_missing;
           Alcotest.test_case "imported macro calls regular function" `Quick test_imported_macro_calls_regular_function;
-          Alcotest.test_case "syntax prefix macro expands" `Quick test_syntax_prefix_macro_expands;
-          Alcotest.test_case "syntax infix macro expands" `Quick test_syntax_infix_macro_expands;
-          Alcotest.test_case "imported syntax prefix expands" `Quick test_imported_syntax_prefix_expands;
+          Alcotest.test_case "operator prefix macro expands" `Quick test_operator_prefix_macro_expands;
+          Alcotest.test_case "operator infix macro expands" `Quick test_operator_infix_macro_expands;
+          Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
+          Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
+          Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
-          Alcotest.test_case "syntax prefix shadowing is lexical" `Quick test_syntax_prefix_shadowing_is_lexical;
+          Alcotest.test_case "operator prefix shadowing is lexical" `Quick test_operator_prefix_shadowing_is_lexical;
         ] );
     ]

@@ -44,6 +44,10 @@ let stx ?(span = Source_span.synthetic) kind = { Syntax.kind; span }
 let atom ?span atom = stx ?span (Syntax.Atom atom)
 let var ?span name = stx ?span (Syntax.Var (id ?span name))
 
+let syntax_operator_arg ~span (op : Operator_env.operator) operands =
+  let fixity = match op.fixity with Operator_env.Prefix -> Syntax.PrefixOp | Operator_env.Infix -> Syntax.InfixOp in
+  stx ~span (Syntax.SyntaxOperatorUse { operator = id ~span op.symbol; fixity; operands })
+
 let span_between (a : Source_span.t) (b : Source_span.t) =
   if a.synthetic || b.synthetic then Source_span.synthetic
   else
@@ -298,6 +302,9 @@ let with_operator_scope env f =
   f { env with operators = env.operators }
 
 let syntax_name term = token_text term
+
+let required_syntax_name term what =
+  match syntax_name term with Some name -> name | None -> error (what ^ " requires an operator or identifier name")
 
 let load_syntax_exports env path =
   match env.load_syntax with
