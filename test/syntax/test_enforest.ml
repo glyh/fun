@@ -439,6 +439,38 @@ pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
 
+let syntax_postfix_rejected_in_module () =
+  match parse_module "syntax postfix foo = fn(stx) -> stx" with
+  | exception Enforest.Unsupported "unsupported syntax declaration shape" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected unsupported module syntax declaration"
+
+let syntax_postfix_rejected_in_do_block () =
+  match parse "do syntax postfix foo = fn(stx) -> stx; 0 end" with
+  | exception Enforest.Error "unsupported syntax declaration shape in do block" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected unsupported do-block syntax declaration"
+
+let syntax_infix_bad_assoc_rejected () =
+  match parse_module "syntax infix ~ 15 middle = fn(stx) -> stx" with
+  | exception Enforest.Error "syntax infix associativity must be 'left' or 'right'" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected invalid syntax infix associativity to be rejected"
+
+let syntax_extension_circular_visit () =
+  with_modules
+    [ ("a", "pub syntax prefix aop = fn(stx) -> do import \"b\"; stx end");
+      ("b", "pub syntax prefix bop = fn(stx) -> do import \"a\"; stx end") ]
+    (fun loader ->
+      match
+        parse_with_macros
+          ~load_syntax:(Core_loader.load_syntax_exports loader)
+          "import \"a\""
+      with
+      | exception Core_loader.CircularSyntaxVisit "a" -> ()
+      | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+      | _ -> Alcotest.fail "expected circular syntax visit")
+
 let suites =
   [ ( "enforest",
       [ Alcotest.test_case "raw grouping" `Quick raw_grouping;
@@ -490,5 +522,9 @@ let suites =
         Alcotest.test_case "syntax infix associativity" `Quick syntax_infix_associativity;
         Alcotest.test_case "syntax extension cross module" `Quick syntax_extension_cross_module;
         Alcotest.test_case "syntax extension not runtime field" `Quick syntax_extension_not_runtime_field;
+        Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
+        Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;
+        Alcotest.test_case "syntax infix bad assoc rejected" `Quick syntax_infix_bad_assoc_rejected;
+        Alcotest.test_case "syntax extension circular visit" `Quick syntax_extension_circular_visit;
       ] );
   ]

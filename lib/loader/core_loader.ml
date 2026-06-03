@@ -1,11 +1,13 @@
 exception CircularImport of string
 exception CircularMacroVisit of string
+exception CircularSyntaxVisit of string
 exception ImportNotFound of string
 
 let () =
   Printexc.register_printer (function
     | CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
     | CircularMacroVisit path -> Some ("CircularMacroVisit \"" ^ path ^ "\"")
+    | CircularSyntaxVisit path -> Some ("CircularSyntaxVisit \"" ^ path ^ "\"")
     | ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
     | _ -> None)
 
@@ -18,6 +20,7 @@ type t = {
   syntax_cache : (string, Operator_env.export list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
   macro_active : (string, string) Hashtbl.t;
+  syntax_active : (string, string) Hashtbl.t;
 }
 
 let create ~base_dir =
@@ -28,7 +31,8 @@ let create ~base_dir =
     macro_cache = Hashtbl.create 16;
     syntax_cache = Hashtbl.create 16;
     active = Hashtbl.create 16;
-    macro_active = Hashtbl.create 16 }
+    macro_active = Hashtbl.create 16;
+    syntax_active = Hashtbl.create 16 }
 
 let resolved_path t path =
   Filename.concat t.base_dir (path ^ ".fun")
@@ -42,11 +46,11 @@ let rec load_syntax_exports t path =
   match Hashtbl.find_opt t.syntax_cache resolved with
   | Some exports -> exports
   | None ->
-      if Hashtbl.mem t.macro_active resolved then raise (CircularMacroVisit path);
-      Hashtbl.replace t.macro_active resolved path;
+      if Hashtbl.mem t.syntax_active resolved then raise (CircularSyntaxVisit path);
+      Hashtbl.replace t.syntax_active resolved path;
       let exports =
         Fun.protect
-          ~finally:(fun () -> Hashtbl.remove t.macro_active resolved)
+          ~finally:(fun () -> Hashtbl.remove t.syntax_active resolved)
           (fun () ->
              read_module_source resolved
              |> Enforest.parse_public_syntax_exports ~load_syntax:(load_syntax_exports t))

@@ -354,13 +354,13 @@ These items are the known Stage 7 debt before treating enforestation as a stable
 
 - [ ] Make syntax-extension expansion report useful source spans for the operator declaration and the use site.
 - [ ] Check that syntax-extension macro RHS values are expanded/evaluated through the same phase-aware path as `macro` / `pub macro` declarations in every supported module/block position.
-- [ ] Add negative tests for imported syntax-extension cycles that are distinct from runtime circular imports and ordinary macro visits.
-- [ ] Add tests for unsupported syntax-extension shapes so failures stay deterministic as the parser grows.
+- [x] Add negative tests for imported syntax-extension cycles that are distinct from runtime circular imports and ordinary macro visits.
+- [x] Add tests for unsupported syntax-extension shapes so failures stay deterministic as the parser grows.
 
 ### Cleanup And Documentation
 
 - [x] Update `SYNTAX_SPEC.md`, `IMPLEMENTATION_PLAN.md`, and `CLAUDE.md` so they agree on current comment syntax, Stage 7 status, and provisional syntax-extension forms.
-- [ ] Remove stale Menhir-related test dependencies if they are no longer needed by the semantic/backend test stanzas.
+- [x] Remove stale Menhir-related test dependencies if they are no longer needed by the semantic/backend test stanzas.
 - [ ] Document the current parser boundary: raw reader -> enforestation -> hygienic expansion -> lowering to `Surface.t`.
 - [ ] Keep `Surface.t` as the elaborator-facing boundary until Stage 8+ proves an interleaved expansion/elaboration design.
 
