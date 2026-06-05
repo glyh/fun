@@ -15,9 +15,14 @@ type branch = {
   span : Source_span.t;
 }
 
+type captured = {
+  syntax : Syntax.t;
+  kind : hole_kind;
+}
+
 type t = {
   head : string;
   branches : branch list;
   declaration_span : Source_span.t;
-  inherited_captures : (string * Syntax.t) list;
+  inherited_captures : (string * captured) list;
 }

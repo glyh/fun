@@ -1303,6 +1303,39 @@ let test_syntax_template_no_holes () =
        answer
      end" ()
 
+let test_syntax_template_binder_hole () =
+  check_i64_macro "binder hole can introduce use-site name" 3L
+    "do
+       syntax bind do
+       | bind $(name: binder) $value in $body -> do $name = $value; $body end
+       end
+       bind x 3 in x
+     end" ()
+
+let test_syntax_template_ident_hole () =
+  check_i64_macro "identifier hole can reference use-site name" 4L
+    "do
+       x = 4
+       syntax use do | use $(name: ident) -> $name end
+       use x
+     end" ()
+
+let test_syntax_template_unused_capture () =
+  check_i64_macro "unused captured hole is accepted" 7L
+    "do
+       syntax ignore do | ignore $unused -> 7 end
+       ignore MissingName
+     end" ()
+
+let test_syntax_template_reuse_duplicates_evaluation () =
+  check_i64_macro "reused expression hole duplicates evaluation" 3L
+    "do
+       r = ref(0)
+       inc = fn(_) -> do n = deref(r); _ = r <- n + 1; deref(r) end
+       syntax twice do | twice $x -> $x + $x end
+       twice (inc())
+     end" ()
+
 let () =
   Alcotest.run "core"
     [
@@ -1791,5 +1824,9 @@ let () =
           Alcotest.test_case "syntax template: imported pub syntax" `Quick test_syntax_template_imported_pub_syntax;
           Alcotest.test_case "syntax template: imported intro binding hygiene" `Quick test_syntax_template_imported_intro_binding_hygiene;
           Alcotest.test_case "syntax template: no holes" `Quick test_syntax_template_no_holes;
+          Alcotest.test_case "syntax template: binder hole" `Quick test_syntax_template_binder_hole;
+          Alcotest.test_case "syntax template: identifier hole" `Quick test_syntax_template_ident_hole;
+          Alcotest.test_case "syntax template: unused capture" `Quick test_syntax_template_unused_capture;
+          Alcotest.test_case "syntax template: reuse duplicates evaluation" `Quick test_syntax_template_reuse_duplicates_evaluation;
         ] );
     ]

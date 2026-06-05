@@ -3,7 +3,7 @@ open Enforest_util
 
 type callbacks = {
   parse_expr : Raw_syntax.t list -> Syntax.t;
-  parse_expr_with_captures : (string * Syntax.t) list -> Raw_syntax.t list -> Syntax.t;
+  parse_expr_with_captures : (string * Syntax_template.captured) list -> Raw_syntax.t list -> Syntax.t;
 }
 
 let intro_scope_counter = ref (-1)
@@ -118,9 +118,9 @@ let parse_branches ?(available = []) head body_terms =
   |> List.map (fun branch_terms ->
          match split_at_arrow branch_terms with
          | Some (pattern_terms, _, replacement) ->
-             let pattern = parse_template_pattern_parts pattern_terms in
+              let pattern = parse_template_pattern_parts pattern_terms in
               if not (template_pattern_starts_with head pattern) then
-                error ("syntax branch pattern must start with declared head: " ^ head);
+                 error ("syntax branch pattern must start with declared head: " ^ head);
               let captured = collect_pattern_holes pattern in
               validate_template_replacement available captured replacement;
               { Syntax_template.pattern; replacement; span = syntax_span branch_terms }
@@ -150,7 +150,12 @@ and match_template_parts callbacks captures pattern input =
       | Syntax_template.Binder | Syntax_template.Ident -> (
           match drop_separators input with
           | ({ datum = Token { kind = Ident _; _ }; span; _ } as term) :: input_rest ->
-              let captured = var ~span (Option.get (raw_token_spelling term)) in
+              let captured =
+                {
+                  Syntax_template.syntax = var ~span (Option.get (raw_token_spelling term));
+                  kind;
+                }
+              in
               match_template_parts callbacks ((name, captured) :: captures) rest input_rest
           | _ -> None)
       | Syntax_template.Expr ->
@@ -161,7 +166,10 @@ and match_template_parts callbacks captures pattern input =
                 let candidate =
                   try
                     let expr = callbacks.parse_expr prefix in
-                    match match_template_parts callbacks ((name, expr) :: captures) rest input_rest with
+                    let captured =
+                      { Syntax_template.syntax = expr; kind = Syntax_template.Expr }
+                    in
+                    match match_template_parts callbacks ((name, captured) :: captures) rest input_rest with
                     | Some result -> Some result
                     | None -> None
                   with Error _ | Unsupported _ -> None
@@ -171,6 +179,48 @@ and match_template_parts callbacks captures pattern input =
           try_prefix [] (drop_separators input))
 
 let placeholder_name name = "__syntax_template_hole_" ^ name
+
+let placeholder_prefix = placeholder_name ""
+
+let placeholder_id_name name =
+  if String.starts_with ~prefix:placeholder_prefix name then
+    Some
+      (String.sub name (String.length placeholder_prefix)
+         (String.length name - String.length placeholder_prefix))
+  else None
+
+let lookup_capture captures name position =
+  match List.assoc_opt name captures with
+  | Some captured -> captured
+  | None -> error ("unbound syntax template hole in " ^ position ^ ": " ^ name)
+
+let captured_id captures name position =
+  let captured = lookup_capture captures name position in
+  match (position, captured.Syntax_template.kind, captured.syntax.kind) with
+  | "binder", Syntax_template.Binder, Syntax.Var id -> id
+  | "binder", Syntax_template.Expr, Syntax.Var _ ->
+      error ("expression hole used in binder position: " ^ name)
+  | "binder", Syntax_template.Ident, Syntax.Var _ ->
+      error ("identifier hole used in binder position: " ^ name)
+  | "reference", Syntax_template.Ident, Syntax.Var id -> id
+  | "reference", Syntax_template.Binder, Syntax.Var _ ->
+      error ("binder hole used in reference position: " ^ name)
+  | "reference", Syntax_template.Expr, Syntax.Var _ ->
+      error ("expression hole used in reference position: " ^ name)
+  | _, _, _ -> error ("syntax template hole is not an identifier: " ^ name)
+
+let map_binder_id captures (id : Syntax.id) =
+  match placeholder_id_name id.Syntax.name with
+  | Some name -> captured_id captures name "binder"
+  | None -> id
+
+let map_reference_id captures (id : Syntax.id) =
+  match placeholder_id_name id.Syntax.name with
+  | Some name -> captured_id captures name "reference"
+  | None -> id
+
+let map_param captures (p : Syntax.param) =
+  { p with name = map_binder_id captures p.name }
 
 let rec rewrite_template_holes ?(bound = []) terms =
   let rec go acc = function
@@ -233,32 +283,33 @@ let fresh_intro_scope () =
 let rec substitute_template_captures captures (stx : Syntax.t) =
   let go = substitute_template_captures captures in
   match stx.kind with
-  | Syntax.Var id when String.starts_with ~prefix:(placeholder_name "") id.name ->
-      let prefix = placeholder_name "" in
-      let name = String.sub id.name (String.length prefix) (String.length id.name - String.length prefix) in
-      (match List.assoc_opt name captures with
-       | Some captured -> captured
-       | None -> error ("unbound syntax template hole in replacement: " ^ name))
+  | Syntax.Var id when Option.is_some (placeholder_id_name id.name) ->
+      let name = Option.get (placeholder_id_name id.name) in
+      let captured = lookup_capture captures name "replacement" in
+      (match captured.Syntax_template.kind with
+      | Syntax_template.Binder -> error ("binder hole used in expression position: " ^ name)
+      | Syntax_template.Expr | Syntax_template.Ident -> captured.Syntax_template.syntax)
   | Syntax.Atom _ | Syntax.Var _ | Syntax.Self | Syntax.SelfType | Syntax.Import _ -> stx
   | Syntax.Ap (f, e, a) -> { stx with kind = Syntax.Ap (go f, e, go a) }
-  | Syntax.Lam (p, body) -> { stx with kind = Syntax.Lam ({ p with type_ = Option.map go p.type_ }, go body) }
+  | Syntax.Lam (p, body) ->
+      { stx with kind = Syntax.Lam ({ (map_param captures p) with type_ = Option.map go p.type_ }, go body) }
   | Syntax.Let { name; type_; value; body; recursive } ->
-      { stx with kind = Syntax.Let { name; type_ = Option.map go type_; value = go value; body = go body; recursive } }
+      { stx with kind = Syntax.Let { name = map_binder_id captures name; type_ = Option.map go type_; value = go value; body = go body; recursive } }
   | Syntax.If { cond; then_; else_ } -> { stx with kind = Syntax.If { cond = go cond; then_ = go then_; else_ = go else_ } }
   | Syntax.Annotated { inner; typ } -> { stx with kind = Syntax.Annotated { inner = go inner; typ = go typ } }
   | Syntax.Prod xs -> { stx with kind = Syntax.Prod (List.map go xs) }
   | Syntax.ProdTy xs -> { stx with kind = Syntax.ProdTy (List.map go xs) }
   | Syntax.Arrow (expl, name, dom, eff, cod) ->
       let eff = Option.map (fun (row : Syntax.effect_row) -> { Syntax.effects = List.map go row.effects; tail = Option.map go row.tail }) eff in
-      { stx with kind = Syntax.Arrow (expl, name, go dom, eff, go cod) }
+      { stx with kind = Syntax.Arrow (expl, Option.map (map_binder_id captures) name, go dom, eff, go cod) }
   | Syntax.FieldAccess (e, n) -> { stx with kind = Syntax.FieldAccess (go e, n) }
   | Syntax.Proj (e, n) -> { stx with kind = Syntax.Proj (go e, n) }
   | Syntax.RecordConstruct { typ; fields } ->
       { stx with kind = Syntax.RecordConstruct { typ = go typ; fields = List.map (fun (n, e) -> (n, go e)) fields } }
   | Syntax.Struct { con_fields; bindings } ->
-      { stx with kind = Syntax.Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields; bindings = List.map (map_template_struct_binding go) bindings } }
-  | Syntax.Module { bindings } -> { stx with kind = Syntax.Module { bindings = List.map (map_template_struct_binding go) bindings } }
-  | Syntax.Open (m, body) -> { stx with kind = Syntax.Open (m, go body) }
+      { stx with kind = Syntax.Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields; bindings = List.map (map_template_struct_binding captures go) bindings } }
+  | Syntax.Module { bindings } -> { stx with kind = Syntax.Module { bindings = List.map (map_template_struct_binding captures go) bindings } }
+  | Syntax.Open (m, body) -> { stx with kind = Syntax.Open (map_reference_id captures m, go body) }
   | Syntax.RecordTypeDef { name; params; fields; body } ->
       { stx with kind = Syntax.RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
   | Syntax.TypeDef { name; params; ctors; body } ->
@@ -274,25 +325,36 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.RefNew e -> { stx with kind = Syntax.RefNew (go e) }
   | Syntax.RefGet e -> { stx with kind = Syntax.RefGet (go e) }
   | Syntax.RefSet (l, r) -> { stx with kind = Syntax.RefSet (go l, go r) }
-  | Syntax.Match (scrut, branches) -> { stx with kind = Syntax.Match (go scrut, List.map (map_template_match_branch go) branches) }
-  | Syntax.MacroDef { name; value; body } -> { stx with kind = Syntax.MacroDef { name; value = go value; body = go body } }
+  | Syntax.Match (scrut, branches) -> { stx with kind = Syntax.Match (go scrut, List.map (map_template_match_branch captures go) branches) }
+  | Syntax.MacroDef { name; value; body } -> { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body } }
   | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, go a) }
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
       { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span } }
 
-and map_template_struct_binding go = function
-  | Syntax.LetBinding { name; value; public } -> Syntax.LetBinding { name; value = go value; public }
-  | Syntax.MethodBinding { name; params; body; public } -> Syntax.MethodBinding { name; params; body = go body; public }
-  | Syntax.TypeBinding { name; params; ctors; public } -> Syntax.TypeBinding { name; params; ctors = List.map (fun (n, ps) -> (n, List.map go ps)) ctors; public }
-  | Syntax.RecordTypeBinding { name; params; fields; public } -> Syntax.RecordTypeBinding { name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
-  | Syntax.EffectBinding { name; params; ops; public } -> Syntax.EffectBinding { name; params; ops = List.map (fun (op : Syntax.effect_op) -> { op with input = go op.input; output = go op.output }) ops; public }
-  | Syntax.TraitBinding { name; params; fields; public } -> Syntax.TraitBinding { name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
+and map_template_struct_binding captures go = function
+  | Syntax.LetBinding { name; value; public } -> Syntax.LetBinding { name = map_binder_id captures name; value = go value; public }
+  | Syntax.MethodBinding { name; params; body; public } -> Syntax.MethodBinding { name = map_binder_id captures name; params = List.map (map_param captures) params; body = go body; public }
+  | Syntax.TypeBinding { name; params; ctors; public } -> Syntax.TypeBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; ctors = List.map (fun (n, ps) -> (map_binder_id captures n, List.map go ps)) ctors; public }
+  | Syntax.RecordTypeBinding { name; params; fields; public } -> Syntax.RecordTypeBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
+  | Syntax.EffectBinding { name; params; ops; public } -> Syntax.EffectBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; ops = List.map (fun (op : Syntax.effect_op) -> { op with input = go op.input; output = go op.output }) ops; public }
+  | Syntax.TraitBinding { name; params; fields; public } -> Syntax.TraitBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.ImplBinding { trait_path; trait_name; args; fields; public } -> Syntax.ImplBinding { trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
-  | Syntax.MacroBinding { name; value; public } -> Syntax.MacroBinding { name; value = go value; public }
+  | Syntax.MacroBinding { name; value; public } -> Syntax.MacroBinding { name = map_binder_id captures name; value = go value; public }
 
-and map_template_match_branch go = function
-  | Syntax.ValueBranch (pat, body) -> Syntax.ValueBranch (pat, go body)
-  | Syntax.EffectBranch { effect_path; op; arg_pat; body } -> Syntax.EffectBranch { effect_path; op; arg_pat; body = go body }
+and map_template_match_branch captures go = function
+  | Syntax.ValueBranch (pat, body) -> Syntax.ValueBranch (map_template_pat captures pat, go body)
+  | Syntax.EffectBranch { effect_path; op; arg_pat; body } -> Syntax.EffectBranch { effect_path; op; arg_pat = map_template_pat captures arg_pat; body = go body }
+
+and map_template_pat captures = function
+  | Syntax.PatCon (path, name, pats) -> Syntax.PatCon (path, name, List.map (map_template_pat captures) pats)
+  | Syntax.PatRecord { typ_path; typ; fields; partial } ->
+      Syntax.PatRecord { typ_path; typ; fields = List.map (fun (field, pat) -> (field, Option.map (map_template_pat captures) pat)) fields; partial }
+  | Syntax.PatStructType { fields; partial } ->
+      Syntax.PatStructType { fields = List.map (fun (field, pat) -> (field, map_template_pat captures pat)) fields; partial }
+  | Syntax.PatOr (lhs, rhs) -> Syntax.PatOr (map_template_pat captures lhs, map_template_pat captures rhs)
+  | Syntax.PatProd pats -> Syntax.PatProd (List.map (map_template_pat captures) pats)
+  | Syntax.PatBind id -> Syntax.PatBind (map_binder_id captures id)
+  | (Syntax.PatAtom _ | Syntax.PatType _ | Syntax.PatWild) as pat -> pat
 
 let instantiate_template_replacement callbacks captures replacement =
   let rewritten = rewrite_template_holes replacement in

@@ -519,6 +519,30 @@ let syntax_unbound_replacement_hole_rejected () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unbound replacement hole to be rejected"
 
+let syntax_binder_hole_expression_position_rejected () =
+  match
+    parse_with_macros
+      "do
+         syntax bad do | bad $(name: binder) -> $name end
+         bad x
+       end"
+  with
+  | exception Enforest.Error msg when string_contains msg "binder hole used in expression position" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected binder hole in expression position to be rejected"
+
+let syntax_ident_hole_binder_position_rejected () =
+  match
+    parse_with_macros
+      "do
+         syntax bad do | bad $(name: ident) -> do $name = 1; $name end end
+         bad x
+       end"
+  with
+  | exception Enforest.Error msg when string_contains msg "identifier hole used in binder position" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected identifier hole in binder position to be rejected"
+
 let syntax_postfix_rejected_in_module () =
   match parse_module "operator postfix foo(stx) -> stx" with
   | exception Enforest.Unsupported "unsupported operator declaration shape" -> ()
@@ -617,6 +641,8 @@ let suites =
         Alcotest.test_case "duplicate public syntax exports rejected" `Quick duplicate_public_syntax_exports_rejected;
         Alcotest.test_case "syntax branch head mismatch rejected" `Quick syntax_branch_head_mismatch_rejected;
         Alcotest.test_case "syntax unbound replacement hole rejected" `Quick syntax_unbound_replacement_hole_rejected;
+        Alcotest.test_case "syntax binder hole expression position rejected" `Quick syntax_binder_hole_expression_position_rejected;
+        Alcotest.test_case "syntax ident hole binder position rejected" `Quick syntax_ident_hole_binder_position_rejected;
         Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
         Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;
         Alcotest.test_case "old syntax declaration rejected" `Quick old_syntax_declaration_rejected;

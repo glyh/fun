@@ -21,7 +21,7 @@ type syntax_decl =
 
 type env = {
   mutable operators : Operator_env.t;
-  mutable template_captures : (string * Syntax.t) list;
+  mutable template_captures : (string * Syntax_template.captured) list;
   load_syntax : (string -> Operator_env.export list) option;
   syntax_class : Syntax_class.t;
 }

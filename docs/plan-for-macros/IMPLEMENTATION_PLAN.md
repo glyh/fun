@@ -40,7 +40,7 @@ Completed:
 Current focus:
 
 - [x] Stage 7 enforestation infrastructure is complete through the constrained prefix/infix syntax-extension slice.
-- [ ] Add Stage 7F practical macro authoring: `syntax <head-token> do | pattern -> replacement end`, infix-only precedence-aware `operator` forms, and at least one non-dummy enforestation-backed macro.
+- [x] Add Stage 7F practical macro authoring: `syntax <head-token> do | pattern -> replacement end`, infix-only precedence-aware `operator` forms, and at least one non-dummy enforestation-backed macro.
 - [ ] Add Stage 7H module/struct declaration templates: `decl` holes, `multi ... end` declaration-template output, and declaration-template contexts for value and typed value bindings with optional `pub`.
 - [ ] Add Stage 7G computed hygienic macro authoring: documented syntax-object inspection, hygienic AST builders/deconstructors, and explicit identifier provenance without requiring quote/unquote or user-visible symgen.
 - [ ] Add Stage 7I macros generating macros: macros that produce `macro`, `syntax`, and `operator` declarations, with correct scoping and export.
@@ -482,7 +482,7 @@ Exit criteria:
 
 ## Stage 7: Enforestation And Regular Syntax Extension
 
-Status: Implemented through the first user-visible syntax-extension slice.
+Status: Implemented through expression syntax-template macro authoring.
 
 Purpose:
 
