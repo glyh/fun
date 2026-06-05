@@ -20,18 +20,21 @@ This directory collects references for a future `fun` macro system. It keeps the
 ### Hygiene and scope sets
 
 - [`papers/hygiene/binding-as-sets-of-scopes.pdf`](papers/hygiene/binding-as-sets-of-scopes.pdf)
+  - Markdown conversion: [`papers/hygiene/binding-as-sets-of-scopes.md`](papers/hygiene/binding-as-sets-of-scopes.md)
   - Racket's scope-set hygiene model.
   - Relevant for identifiers as syntax objects with scope sets, subset-based resolution, generated identifiers, and intentional hygiene control.
 
 ### Type-integrated macros
 
 - [`papers/type-integrated-macros/type-systems-as-macros.pdf`](papers/type-integrated-macros/type-systems-as-macros.pdf)
+  - Markdown conversion: [`papers/type-integrated-macros/type-systems-as-macros.md`](papers/type-integrated-macros/type-systems-as-macros.md)
   - Turnstile-style type systems as macros.
-  - Relevant for macros that check/provide types, type environments, and typed embedded languages.
+  - Relevant for synthesize/check macro rules, expected-type propagation, type-operation hooks, type-directed rewriting, type environments, and typed embedded languages.
 
 ### DSL extensibility
 
 - [`papers/dsl-extensibility/macros-for-domain-specific-languages.pdf`](papers/dsl-extensibility/macros-for-domain-specific-languages.pdf)
+  - Markdown conversion: [`papers/dsl-extensibility/macros-for-domain-specific-languages.md`](papers/dsl-extensibility/macros-for-domain-specific-languages.md)
   - Macro-extensible DSLs that inherit host-language macro infrastructure.
   - Relevant for custom languages/sublanguages sharing syntax objects, scope, modules, and IDE/compiler support.
 
@@ -86,6 +89,7 @@ This directory collects references for a future `fun` macro system. It keeps the
 - Regular syntax: `papers/regular-syntax/`, Honu.
 - Hygiene: `papers/hygiene/`, `extracted/klister/commentary/scope-sets.md`, `examples/hygiene.kl`.
 - Type-aware macros: `extracted/klister/commentary/interleaving.md`, `examples/which-problem.kl`, `examples/implicit-conversion.kl`.
-- Type-providing/type-system macros: `papers/type-integrated-macros/`, `examples/type-eq.kl`.
+- Type-providing/type-system macros: `papers/type-integrated-macros/type-systems-as-macros.md`, `examples/type-eq.kl`.
+- Stuck macro scheduling: `extracted/klister/commentary/interleaving.md`, `extracted/klister/commentary/architecture.md`.
 - Phases/modules: `extracted/klister/commentary/architecture.md`, `source-notes/implementation-map.md`, `examples/custom-module.kl`.
 - DSL inheritance: `papers/dsl-extensibility/`.

@@ -110,6 +110,13 @@ These are non-negotiable unless this document is updated with a replacement inva
 5. New final syntax features should go through enforestation.
 6. No user-defined macros should be exposed before Stage 4 is solid.
 
+TURNSTILE/Klister split:
+
+- Use TURNSTILE as the guide for type rule shape: synthesize/check modes, expected-type propagation, type-directed rewriting, and reusable type-operation hooks.
+- Use Klister as the guide for scheduling: problem-aware expansion requests, expansion variables, type metavariables, blocked continuations, and deterministic stuck-macro execution.
+- Do not add a scheduler merely to expose expected types. Stage 9 should stay read-only and fail clearly when the requested information is unavailable; Stage 10 is only for macros that require macro expansion and elaboration to wait on each other.
+- Treat type-providing macro output as a distinct result form, not as syntax plus an implicit property. Later elaboration must verify that the eventual expansion agrees with the provided type.
+
 Identifier resolution rule:
 
 1. Each identifier occurrence has a written name and a scope set.
@@ -567,6 +574,11 @@ Purpose:
 
 - Let macros know which syntactic judgment they are expanding for.
 
+Research note:
+
+- This stage is the Klister-style `which-problem` slice. It should expose the requested judgment without yet exposing type structure or adding scheduler semantics.
+- TURNSTILE's synthesize/check distinction confirms that expression inference and expression checking should be separate problem variants, not a boolean flag on expression expansion.
+
 Problem kinds:
 
 - expression inference;
@@ -607,6 +619,12 @@ Purpose:
 
 - Expose useful expected-type information without building the full scheduler.
 
+Research note:
+
+- This is the TURNSTILE/MLISH expected-type slice: a checking context can make the expected type available to a macro before expansion completes.
+- Keep this intentionally weaker than Klister stuck macros. A macro may inspect already-known expected type structure, but it cannot suspend waiting for an inferred subexpression type.
+- Type operations exposed here should be stable hooks, such as equality/subtyping/type-head reflection, rather than raw semantic values from the OCaml implementation.
+
 Concrete tasks:
 
 - [ ] Let expression macros in checking mode inspect expected semantic type.
@@ -614,6 +632,10 @@ Concrete tasks:
    - primitive types;
    - nominal type constructors and arguments;
    - structural record fields where current type-case supports reflection.
+- [ ] Add macro-facing type operations before broad reflection:
+   - type equality for reflected types;
+   - optional subtype/check relation hook if subtyping exists by then;
+   - normalization/evaluation hook only if a concrete macro example needs it.
 - [ ] Keep this read-only and non-stuck:
    - unknown expected type returns `unknown` or a clear error;
    - no suspension/resumption yet.
@@ -638,6 +660,12 @@ Purpose:
 
 - Support expansion/typechecking interleavings where either side can wait on the other.
 
+Research note:
+
+- This is the Klister operational slice, not merely a more powerful TURNSTILE `local-expand`.
+- Tasks should block on solved-enough problems, such as an expansion variable being filled or a type metavariable's head being known, rather than directly depending on task identities that may not exist yet.
+- Scheduler order must be semantically invisible: independent unblocked tasks may run in any deterministic implementation order, but results must not depend on that order.
+
 Concrete tasks:
 
 - [ ] Add expansion variables analogous to metavariables.
@@ -647,6 +675,10 @@ Concrete tasks:
    - inputs/dependencies;
    - output variable;
    - continuation/action.
+- [ ] Define solved-enough predicates for blocked macros:
+   - expansion variable known to a constructor/head form;
+   - type metavariable known to a reflected type head;
+   - fully solved syntax/type when a macro requests exact structure.
 - [ ] Add deterministic scheduler:
    - run unblocked tasks;
    - mark tasks blocked on type metas or expansion variables;
@@ -686,6 +718,11 @@ Purpose:
 
 - Allow macros to provide type information before full expansion is known.
 
+Research note:
+
+- TURNSTILE communicates type information through expanded syntax properties, but `fun` should model this explicitly because type-providing macros can participate before full expansion is available.
+- Klister's type-providing framing suggests the macro result itself should carry a provided type and delayed expansion obligation.
+
 Concrete tasks:
 
 - [ ] Extend macro result forms:
@@ -693,6 +730,10 @@ Concrete tasks:
    - provided type plus delayed expansion;
    - checked typed fragment;
    - core term plus semantic type, if needed.
+- [ ] Add consistency checks for provided types:
+   - surrounding elaboration may use the provided type immediately;
+   - the delayed expansion must later elaborate to a compatible type;
+   - type/provider mismatch reports both the macro use span and the delayed expansion span.
 - [ ] Define which fragments may bypass `Surface.t`.
 - [ ] Preserve hygiene for fragments introducing binders or lexical references.
 - [ ] Integrate with metavariable solving:

@@ -10,10 +10,17 @@ The important design direction is not merely "macros rewrite syntax before typec
 
 The material under this directory points at four complementary ideas:
 
-- **Klister** (`klister/`) — type-aware, type-providing, problem-aware, hygienic macros with stuck expansion and phase-aware modules.
-- **Binding as Sets of Scopes** (`2914770.2837620.pdf`, `klister/commentary/scope-sets.md`) — Racket-style hygiene via syntax objects annotated with scope sets rather than name rewriting.
-- **Honu** (`2371401.2371420.pdf`) — macro extensibility for regular/algebraic notation using enforestation, operators, syntax classes, and pattern-directed parsing, not just parenthesized s-expressions.
-- **Macros for DSLs / Type Systems as Macros** (`3428297.pdf`, `3093333.3009886.pdf`) — extensible DSLs should inherit the host macro system, and type systems can be implemented as cooperating macros over a shared core.
+- **Klister** (`extracted/klister/`) — type-aware, type-providing, problem-aware, hygienic macros with stuck expansion and phase-aware modules.
+- **Binding as Sets of Scopes** (`papers/hygiene/binding-as-sets-of-scopes.md`, `extracted/klister/commentary/scope-sets.md`) — Racket-style hygiene via syntax objects annotated with scope sets rather than name rewriting.
+- **Honu** (`papers/regular-syntax/honu-enforestation.pdf`) — macro extensibility for regular/algebraic notation using enforestation, operators, syntax classes, and pattern-directed parsing, not just parenthesized s-expressions.
+- **Macros for DSLs / Type Systems as Macros** (`papers/dsl-extensibility/macros-for-domain-specific-languages.md`, `papers/type-integrated-macros/type-systems-as-macros.md`) — extensible DSLs should inherit the host macro system, and type systems can be implemented as cooperating macros over a shared core.
+
+After a closer read, the TURNSTILE paper and Klister should be used for different parts of the design:
+
+- TURNSTILE is the better source for the rule-level interface: expansion computes both an erased term and type information, checking rules consume expected types, type operations such as equality/subtyping are overridable hooks, and type-directed rewrites can implement features such as local inference, ADTs, pattern matching, and typeclass-style dictionary insertion.
+- Klister is the better source for the operational substrate: problem-aware macro APIs, expansion variables, type metavariables, blocked macro continuations, task scheduling, and deterministic stuck-macro behavior.
+- The practical `fun` path should keep Stage 8 problem awareness separate from Stage 9 read-only expected-type reflection, then use the Stage 10 scheduler only for examples that truly require mutually recursive expansion and elaboration.
+- Type-providing macros should not be treated as ordinary `Syntax -> Syntax` rewrites with a side channel; they need an explicit result form that records the provided type, the delayed expansion or typed fragment, and the consistency obligation checked later.
 
 ## Core principles
 
