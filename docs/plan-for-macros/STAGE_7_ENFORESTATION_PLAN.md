@@ -561,7 +561,7 @@ Deferred from Stage 7H:
 
 ## Phase 7G: Computed Hygienic Macro API
 
-Status: Planned. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation.
+Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps the current primitive syntax constructors and `kind`/`id_eq` inspection helpers.
 
 ### Purpose
 
@@ -582,7 +582,7 @@ Add a computed macro authoring layer with:
 - [ ] hygienic AST builder/deconstructor primitives that cover the supported Stage 7 surface forms;
 - [ ] explicit identifier-provenance APIs for introduced identifiers, preserved input identifiers, and caller-supplied binders;
 - [ ] syntax traversal helpers for common transforms, where a raw constructor/deconstructor API would be too painful;
-- [ ] computed macro examples that do not use quote/unquote or user-visible symbol generation;
+- [x] initial computed macro examples that do not use quote/unquote or user-visible symbol generation;
 - [ ] documentation that explains when to use 7F pattern/template syntax versus 7G computed macro APIs.
 
 Stage 7G computed macros are still expression macros. Computed type, pattern, declaration, and module-item macros are deferred to Stage 8 problem-aware macro contexts.
@@ -604,6 +604,12 @@ macro log_call(stx) ->
 ```
 
 The public API should use `Syntax.*` names, implemented as a module in the standard library with no special compiler treatment unless strictly necessary. Existing `stx_*` primitives are temporary compatibility/internal names and should be removed or hidden as part of this phase. Quasiquote/unquote can remain future sugar over this API if the builder API is still too verbose. They are not Stage 7G requirements.
+
+Current implementation notes:
+
+- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.kind`, and `Syntax.id_eq` are exposed from the stdlib as aliases over the existing primitive implementation;
+- the old global `stx_*` names remain available as compatibility/internal names until the 7G API is complete enough to migrate existing tests and examples;
+- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, and `Syntax.kind` on structured operator-use syntax.
 
 ### Syntax Object Primitive Families
 
@@ -637,8 +643,8 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 - [ ] preserved input syntax can be inserted into builder-created output unchanged;
 - [ ] computed builders preserve hygiene for both introduced and use-site identifiers;
 - [ ] syntax-object inspection can destructure a structured `syntax_operator_use` argument;
-- [ ] a computed macro rewrites an enforested operator use without using only fixed pattern/template syntax;
-- [ ] downstream-style macro examples use documented primitives rather than private implementation details.
+- [x] a computed macro rewrites an enforested operator use without using only fixed pattern/template syntax;
+- [x] initial downstream-style macro examples use documented primitives rather than private implementation details.
 
 ### Exit Criteria
 

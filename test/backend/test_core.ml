@@ -997,6 +997,27 @@ let test_operator_macro_error_reports_spans () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected syntax operator macro expansion failure"
 
+let test_syntax_module_i64_builder () =
+  check_i64_macro "Syntax.i64 builder" 42L
+    "do
+       macro answer(_) -> Syntax.i64(42)
+       answer @ (0)
+     end" ()
+
+let test_syntax_module_application_builder () =
+  check_i64_macro "Syntax.ap builder" 3L
+    "do
+       macro add(_) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.i64(1)), Syntax.i64(2))
+       add @ (0)
+     end" ()
+
+let test_syntax_module_operator_use_kind () =
+  check_i64_macro "Syntax.kind operator use" 1L
+    "do
+       operator infix ~ 15 right(stx) -> if Syntax.kind(stx) == \"syntax_operator_use\" do Syntax.i64(1) else Syntax.i64(0) end
+       1 ~ 2 ~ 3
+     end" ()
+
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
     "do
@@ -1798,6 +1819,9 @@ let () =
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
+          Alcotest.test_case "Syntax module: i64 builder" `Quick test_syntax_module_i64_builder;
+          Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
+          Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;

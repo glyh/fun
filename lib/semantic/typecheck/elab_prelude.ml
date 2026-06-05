@@ -57,7 +57,17 @@ pub impl Eq(Char) = module fn eq(x, y) -> eq_char(x, y) end;
 pub impl Eq(Unit) = module fn eq(x, y) -> eq_unit(x, y) end;
 pub impl Eq(String) = module fn eq(x, y) -> eq_string(x, y) end;
 pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
-pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs))
+pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs));
+pub module Syntax do
+  pub var = stx_make_var
+  pub ap = stx_make_ap
+  pub lam = stx_make_lam
+  pub i64 = stx_make_i64
+  pub string = stx_make_string
+  pub bool = stx_make_bool
+  pub kind = stx_kind
+  pub id_eq = stx_id_eq
+end
 |}
 
 let parsed_stdlib = lazy (Parse_expand.parse_module stdlib_source)
