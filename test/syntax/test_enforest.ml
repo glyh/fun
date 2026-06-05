@@ -491,6 +491,12 @@ pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
 
+let pub_syntax_rejected_in_struct () =
+  match parse "struct pub syntax hidden do | hidden $x -> $x end end" with
+  | exception Enforest.Error msg when string_contains msg "pub syntax is not supported inside structs" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected pub syntax in a struct expression to be rejected"
+
 let syntax_exports_include_operator_metadata () =
   match Enforest.parse_public_syntax_exports "pub operator infix ~ 15 right(stx) -> stx" with
   | [ { symbol = "~"; fixity = Operator_env.Infix; precedence = 15; associativity = Operator_env.Right;
@@ -637,6 +643,7 @@ let suites =
         Alcotest.test_case "syntax extension cross module" `Quick syntax_extension_cross_module;
         Alcotest.test_case "syntax import does not leak between parses" `Quick syntax_import_does_not_leak_between_parses;
         Alcotest.test_case "syntax extension not runtime field" `Quick syntax_extension_not_runtime_field;
+        Alcotest.test_case "pub syntax rejected in struct" `Quick pub_syntax_rejected_in_struct;
         Alcotest.test_case "syntax exports include operator metadata" `Quick syntax_exports_include_operator_metadata;
         Alcotest.test_case "duplicate public syntax exports rejected" `Quick duplicate_public_syntax_exports_rejected;
         Alcotest.test_case "syntax branch head mismatch rejected" `Quick syntax_branch_head_mismatch_rejected;

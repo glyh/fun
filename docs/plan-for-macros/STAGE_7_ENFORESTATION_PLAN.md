@@ -470,7 +470,7 @@ Deferred from Stage 7F:
 - [x] a visible syntax head with no matching branch errors instead of falling back to a same-named value;
 - [x] same-name public value/syntax exports obey later-wins import behavior;
 - [x] `pub syntax` exports compile-time syntax without creating runtime fields;
-- [ ] `pub syntax` in an ordinary runtime `struct ... end` expression is rejected deterministically;
+- [x] `pub syntax` in an ordinary runtime `struct ... end` expression is rejected deterministically;
 - [x] failed branch matches continue to later branches, and first successful branch wins;
 - [x] no-match errors name the syntax head and include use-site/declaration spans;
 - [x] replacement templates can construct literals, variables, applications, lambdas, and blocks without raw `stx_make_*` calls;

@@ -1275,7 +1275,8 @@ and parse_named_struct_binding env public stmt =
 and parse_struct_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
-  | Some (TemplateSyntaxDecl _) -> None
+  | Some (TemplateSyntaxDecl _) ->
+      if public then error "pub syntax is not supported inside structs" else None
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
       Some (Syntax.MacroBinding { name; value; public })
   | None -> (
