@@ -1,4 +1,4 @@
-type hole_kind = Expr | Binder | Ident
+type hole_kind = Expr | Binder | Ident | Decl
 
 type pattern_part =
   | Literal of Raw_syntax.t
@@ -18,6 +18,7 @@ type branch = {
 type captured = {
   syntax : Syntax.t;
   kind : hole_kind;
+  decl_terms : Raw_syntax.t list option;
 }
 
 type t = {

@@ -1357,6 +1357,74 @@ let test_syntax_template_reuse_duplicates_evaluation () =
        twice (inc())
      end" ()
 
+let test_decl_template_module_captures_pub_value () =
+  check_i64_macro "decl template captures public module value" 42L
+    "do
+       M = module
+         syntax keep do | keep $(d: decl) -> $d end
+         keep pub answer = 42
+       end;
+       M.answer
+     end" ()
+
+let test_decl_template_module_preserves_typed_value () =
+  check_i64_macro "decl template preserves typed value" 42L
+    "do
+       M = module
+         syntax keep do | keep $(d: decl) -> $d end
+         keep pub answer : I64 = 42
+       end;
+       M.answer
+     end" ()
+
+let test_decl_template_struct_captures_pub_value () =
+  check_i64_macro "decl template captures public struct value" 42L
+    "do
+       Box = struct
+         value: I64
+         syntax keep do | keep $(d: decl) -> $d end
+         keep pub answer = 42
+       end;
+       Box.answer
+     end" ()
+
+let test_decl_template_multi_generates_siblings () =
+  match
+    eval_with_imported_macros
+      [ ( "decls",
+          "syntax pair do
+           | pair -> multi
+               base = 40;
+               pub answer = base + 2
+             end
+           end;
+           pair" ) ]
+      "do M = import \"decls\"; M.answer end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "decl template multi generates siblings" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "decl template multi generates siblings: %s" (Debug.pp_value_short mc v))
+  | exception e ->
+      Alcotest.fail (Printf.sprintf "decl template multi generates siblings: %s" (Printexc.to_string e))
+
+let test_decl_template_multi_rejected_in_expr () =
+  match
+    eval_with_imported_macros
+      [ ( "bad_syntax",
+          "pub syntax bad do
+           | bad -> multi
+               x = 1
+             end
+           end" ) ]
+      "do M = import \"bad_syntax\"; bad end"
+  with
+  | exception Enforest.Error msg ->
+      Alcotest.(check bool) "mentions declaration context" true
+        (string_contains msg "declaration syntax templates")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected multi expression-template rejection"
+
 let () =
   Alcotest.run "core"
     [
@@ -1852,5 +1920,10 @@ let () =
           Alcotest.test_case "syntax template: identifier hole" `Quick test_syntax_template_ident_hole;
           Alcotest.test_case "syntax template: unused capture" `Quick test_syntax_template_unused_capture;
           Alcotest.test_case "syntax template: reuse duplicates evaluation" `Quick test_syntax_template_reuse_duplicates_evaluation;
+          Alcotest.test_case "decl template: module captures pub value" `Quick test_decl_template_module_captures_pub_value;
+          Alcotest.test_case "decl template: module preserves typed value" `Quick test_decl_template_module_preserves_typed_value;
+          Alcotest.test_case "decl template: struct captures pub value" `Quick test_decl_template_struct_captures_pub_value;
+          Alcotest.test_case "decl template: multi generates siblings" `Quick test_decl_template_multi_generates_siblings;
+          Alcotest.test_case "decl template: multi rejected in expr" `Quick test_decl_template_multi_rejected_in_expr;
         ] );
     ]

@@ -751,14 +751,19 @@ and parse_value_decl_after_prefix env ~recursive stmt =
             match drop_separators before_eq with
             | [] -> None
             | colon :: typ_terms when token_kind Colon colon ->
-                Some (parse_type_terms env typ_terms)
+                Some
+                  (try parse_type_terms env typ_terms with
+                   | Unsupported msg -> unsupported ("binding " ^ name_id.name ^ " type: " ^ msg)
+                   | Error msg -> error ("binding " ^ name_id.name ^ " type: " ^ msg))
             | _ ->
                 error
                   "binding parameters are not supported; use fn name(params) \
                    syntax"
           in
           let decl_value =
-            parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms
+            try parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms with
+            | Unsupported msg -> unsupported ("binding " ^ name_id.name ^ ": " ^ msg)
+            | Error msg -> error ("binding " ^ name_id.name ^ ": " ^ msg)
           in
           let decl_value = decl_value in
           Some
@@ -980,8 +985,7 @@ and parse_syntax_template_decl env head_term head do_span body_rest =
           template 50;
     }
 
-and expand_syntax_template env use_span (template : Syntax_template.t) terms =
-  Enforest_template.expand
+and template_callbacks env parse_decl =
     {
       Enforest_template.parse_expr =
         (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
@@ -992,8 +996,34 @@ and expand_syntax_template env use_span (template : Syntax_template.t) terms =
           Fun.protect
             ~finally:(fun () -> env.template_captures <- previous)
             (fun () -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms));
+      parse_decl_with_captures =
+        (fun captures terms ->
+          let previous = env.template_captures in
+          env.template_captures <- captures @ previous;
+          Fun.protect
+            ~finally:(fun () -> env.template_captures <- previous)
+            (fun () -> parse_decl terms));
     }
+
+and expand_syntax_template env use_span (template : Syntax_template.t) terms =
+  Enforest_template.expand
+    (template_callbacks env (fun _ ->
+         error "declaration templates are not available in expression context"))
     use_span template terms
+
+and expand_decl_syntax_template env parse_decl use_span (template : Syntax_template.t) terms =
+  Enforest_template.expand_decl (template_callbacks env parse_decl) use_span template terms
+
+and parse_decl_template_use env parse_decl stmt =
+  match drop_separators stmt with
+  | ({ datum = Token { kind = Ident head; _ }; span; _ } as _head_term) :: _ -> (
+      match Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators head with
+      | Some { Operator_env.expansion = Operator_env.Template template; _ } ->
+          let bindings, rest = expand_decl_syntax_template env parse_decl span template stmt in
+          ensure_no_rest "declaration syntax template use" rest;
+          Some bindings
+      | _ -> None)
+  | _ -> None
 
 and parse_operator_shape stmt =
   match drop_separators stmt with
@@ -1240,9 +1270,15 @@ and parse_module_binding env stmt =
       | Some binding -> Some binding
       | None -> unsupported "unsupported Phase 7C module item")
 
+and parse_module_statement env stmt =
+  let parse_decl terms = parse_module_statement env terms in
+  match parse_decl_template_use env parse_decl stmt with
+  | Some bindings -> bindings
+  | None -> (match parse_module_binding env stmt with Some binding -> [ binding ] | None -> [])
+
 and parse_module_bindings env body_terms =
   with_operator_scope env (fun env ->
-      split_statements body_terms |> List.filter_map (parse_module_binding env))
+      split_statements body_terms |> List.concat_map (parse_module_statement env))
 
 and parse_struct_field env stmt =
   match drop_separators stmt with
@@ -1299,6 +1335,12 @@ and parse_struct_binding env stmt =
       | Some binding -> Some binding
       | None -> unsupported "unsupported Phase 7C struct item")
 
+and parse_struct_statement env stmt =
+  let parse_decl terms = parse_struct_statement env terms in
+  match parse_decl_template_use env parse_decl stmt with
+  | Some bindings -> bindings
+  | None -> (match parse_struct_binding env stmt with Some binding -> [ binding ] | None -> [])
+
 and parse_struct_items env body_terms =
   split_statements body_terms
   |> List.fold_left
@@ -1306,9 +1348,9 @@ and parse_struct_items env body_terms =
          match parse_struct_field env stmt with
          | Some field -> (fields @ [ field ], bindings)
          | None -> (
-             match parse_struct_binding env stmt with
-             | Some binding -> (fields, bindings @ [ binding ])
-             | None -> (fields, bindings)))
+              match parse_struct_statement env stmt with
+              | [] -> (fields, bindings)
+              | new_bindings -> (fields, bindings @ new_bindings)))
        ([], [])
 
 let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms

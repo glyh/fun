@@ -4,6 +4,8 @@ open Enforest_util
 type callbacks = {
   parse_expr : Raw_syntax.t list -> Syntax.t;
   parse_expr_with_captures : (string * Syntax_template.captured) list -> Raw_syntax.t list -> Syntax.t;
+  parse_decl_with_captures :
+    (string * Syntax_template.captured) list -> Raw_syntax.t list -> Syntax.struct_binding list;
 }
 
 let intro_scope_counter = ref (-1)
@@ -12,6 +14,7 @@ let parse_template_hole_kind = function
   | "expr" -> Syntax_template.Expr
   | "binder" -> Syntax_template.Binder
   | "ident" -> Syntax_template.Ident
+  | "decl" -> Syntax_template.Decl
   | kind -> error ("unknown syntax template hole kind: " ^ kind)
 
 let raw_token_spelling term =
@@ -154,6 +157,7 @@ and match_template_parts callbacks captures pattern input =
                 {
                   Syntax_template.syntax = var ~span (Option.get (raw_token_spelling term));
                   kind;
+                  decl_terms = None;
                 }
               in
               match_template_parts callbacks ((name, captured) :: captures) rest input_rest
@@ -167,12 +171,59 @@ and match_template_parts callbacks captures pattern input =
                   try
                     let expr = callbacks.parse_expr prefix in
                     let captured =
-                      { Syntax_template.syntax = expr; kind = Syntax_template.Expr }
+                      { Syntax_template.syntax = expr; kind = Syntax_template.Expr; decl_terms = None }
                     in
                     match match_template_parts callbacks ((name, captured) :: captures) rest input_rest with
                     | Some result -> Some result
                     | None -> None
                   with Error _ | Unsupported _ -> None
+                in
+                (match candidate with Some _ -> candidate | None -> try_prefix prefix input_rest)
+          in
+          try_prefix [] (drop_separators input)
+      | Syntax_template.Decl ->
+          if rest = [] then
+            let input = drop_separators input in
+            if input = [] then None
+            else
+              let captured =
+                {
+                  Syntax_template.syntax = stx ~span:(syntax_span input) (Syntax.Module { bindings = [] });
+                  kind = Syntax_template.Decl;
+                  decl_terms = Some input;
+                }
+              in
+              Some ((name, captured) :: captures, [])
+          else
+          let rec try_prefix prefix = function
+            | [] ->
+                let prefix = drop_separators prefix in
+                if prefix = [] then None
+                else
+                  let captured =
+                    {
+                      Syntax_template.syntax = stx ~span:(syntax_span prefix) (Syntax.Module { bindings = [] });
+                      kind = Syntax_template.Decl;
+                      decl_terms = Some prefix;
+                    }
+                  in
+                  match_template_parts callbacks ((name, captured) :: captures) rest []
+            | term :: input_rest ->
+                let prefix = prefix @ [ term ] in
+                let prefix' = drop_separators prefix in
+                let candidate =
+                  if prefix' = [] then None
+                  else
+                    let captured =
+                      {
+                        Syntax_template.syntax = stx ~span:(syntax_span prefix') (Syntax.Module { bindings = [] });
+                        kind = Syntax_template.Decl;
+                        decl_terms = Some prefix';
+                      }
+                    in
+                    match match_template_parts callbacks ((name, captured) :: captures) rest input_rest with
+                    | Some result -> Some result
+                    | None -> None
                 in
                 (match candidate with Some _ -> candidate | None -> try_prefix prefix input_rest)
           in
@@ -288,6 +339,7 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
       let captured = lookup_capture captures name "replacement" in
       (match captured.Syntax_template.kind with
       | Syntax_template.Binder -> error ("binder hole used in expression position: " ^ name)
+      | Syntax_template.Decl -> error ("declaration hole used in expression position: " ^ name)
       | Syntax_template.Expr | Syntax_template.Ident -> captured.Syntax_template.syntax)
   | Syntax.Atom _ | Syntax.Var _ | Syntax.Self | Syntax.SelfType | Syntax.Import _ -> stx
   | Syntax.Ap (f, e, a) -> { stx with kind = Syntax.Ap (go f, e, go a) }
@@ -356,11 +408,78 @@ and map_template_pat captures = function
   | Syntax.PatBind id -> Syntax.PatBind (map_binder_id captures id)
   | (Syntax.PatAtom _ | Syntax.PatType _ | Syntax.PatWild) as pat -> pat
 
+let is_multi_block replacement =
+  match drop_separators replacement with
+  | { datum = Token { kind = Ident "multi"; _ }; _ } :: _ -> true
+  | _ -> false
+
 let instantiate_template_replacement callbacks captures replacement =
+  (match drop_separators replacement with
+  | _ when is_multi_block replacement ->
+      error "multi ... end is only valid in declaration syntax templates"
+  | _ -> ());
   let rewritten = rewrite_template_holes replacement in
   let parsed = callbacks.parse_expr_with_captures captures rewritten in
   let introduced = Expand.add_scope (fresh_intro_scope ()) parsed in
   substitute_template_captures captures introduced
+
+let captured_decl_terms captures name =
+  let captured = lookup_capture captures name "declaration replacement" in
+  match (captured.Syntax_template.kind, captured.decl_terms) with
+  | Syntax_template.Decl, Some terms -> terms
+  | Syntax_template.Decl, None -> error ("declaration hole has no captured declaration terms: " ^ name)
+  | _ -> error ("non-declaration hole used as declaration: " ^ name)
+
+let rec rewrite_decl_template_holes captures terms =
+  let rec go acc = function
+    | [] -> List.rev acc
+    | { datum = Token { kind = Operator "$"; _ }; _ }
+      :: { datum = Token { kind = Ident name; _ }; span } :: rest -> (
+        match List.assoc_opt name captures with
+        | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
+            go (List.rev_append (captured_decl_terms captures name) acc) rest
+        | _ ->
+            let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+            go (term :: acc) rest)
+    | { datum = Token { kind = Operator "$"; _ }; _ }
+      :: { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest -> (
+        match drop_separators items with
+        | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident _kind; _ }; _ } ]
+          when token_kind Colon colon -> (
+            match List.assoc_opt name captures with
+            | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
+                go (List.rev_append (captured_decl_terms captures name) acc) rest
+            | _ ->
+                let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+                go (term :: acc) rest)
+        | _ -> error "expected template hole annotation $(name: kind)")
+    | { datum = Group (delimiter, items, span); _ } :: rest ->
+        go ({ datum = Group (delimiter, rewrite_decl_template_holes captures items, span); span } :: acc) rest
+    | term :: rest -> go (term :: acc) rest
+  in
+  go [] terms
+
+let declaration_replacement_statements replacement =
+  match drop_separators replacement with
+  | { datum = Token { kind = Ident "multi"; _ }; span = multi_span } :: body_terms ->
+      let body, rest, _span = collect_until_end multi_span body_terms in
+      ensure_no_rest "multi declaration template" rest;
+      split_statements body
+  | terms -> [ terms ]
+
+let instantiate_decl_template_replacement callbacks captures replacement =
+  let rewritten = rewrite_decl_template_holes captures replacement in
+  let statements = declaration_replacement_statements rewritten in
+  let intro_scope = fresh_intro_scope () in
+  statements
+  |> List.concat_map (fun stmt ->
+         try callbacks.parse_decl_with_captures captures stmt with
+         | Unsupported msg -> unsupported ("declaration template replacement: " ^ msg)
+         | Error msg -> error ("declaration template replacement: " ^ msg))
+  |> List.map (fun binding ->
+         binding
+         |> Expand.add_struct_binding_scopes [ intro_scope ]
+         |> map_template_struct_binding captures (substitute_template_captures captures))
 
 let expand callbacks _use_span (template : Syntax_template.t) terms =
   let rec try_branches = function
@@ -370,6 +489,19 @@ let expand callbacks _use_span (template : Syntax_template.t) terms =
         | Some (captures, remaining) ->
             let captures = captures @ template.inherited_captures in
             let expanded = instantiate_template_replacement callbacks captures branch.replacement in
+            (expanded, remaining)
+        | None -> try_branches rest)
+  in
+  try_branches template.branches
+
+let expand_decl callbacks _use_span (template : Syntax_template.t) terms =
+  let rec try_branches = function
+    | [] -> error ("no matching branch for syntax " ^ template.head)
+    | branch :: rest -> (
+        match match_template_parts callbacks [] branch.Syntax_template.pattern terms with
+        | Some (captures, remaining) ->
+            let captures = captures @ template.inherited_captures in
+            let expanded = instantiate_decl_template_replacement callbacks captures branch.replacement in
             (expanded, remaining)
         | None -> try_branches rest)
   in

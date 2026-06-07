@@ -217,13 +217,34 @@ let split_commas terms =
   go [] [] terms
 
 let parse_all parse terms =
+  let first_unconsumed_name term =
+    match term.datum with
+    | Group (Paren, _, _) -> "("
+    | Group (Bracket, _, _) -> "["
+    | Group (Brace, _, _) -> "{"
+    | Token _ -> (
+        match token_text term with
+        | Some text -> text
+        | None -> (
+            match term.datum with
+            | Token { kind; _ } ->
+                Option.value ~default:"<syntax>" (punct_name kind)
+            | Group _ -> "<syntax>"))
+  in
   let terms = drop_separators terms in
   match terms with
   | [] -> error "expected expression"
   | _ ->
       let expr, rest = parse terms in
       let rest = drop_separators rest in
-      if rest = [] then expr else unsupported "unconsumed terms after expression"
+      if rest = [] then expr
+      else
+        let first =
+          match rest with
+          | term :: _ -> first_unconsumed_name term
+          | [] -> "<none>"
+        in
+        unsupported ("unconsumed terms after expression: " ^ first)
 
 let rec split_at_pred pred acc = function
   | [] -> None
@@ -237,6 +258,11 @@ let split_at_arrow terms = split_at_token ThinArrow terms
 let starts_named_do_block terms =
   match drop_separators terms with
   | { datum = Token { kind = Ident _; _ }; _ } :: do_kw :: _ when token_kind KwDo do_kw -> true
+  | _ -> false
+
+let is_multi_block_start term =
+  match term.datum with
+  | Token { kind = Ident "multi"; _ } -> true
   | _ -> false
 
 let split_by_top_level_bar terms =
@@ -264,7 +290,7 @@ let split_match_branches terms =
         go depth false [] (List.rev current :: acc) rest
     | term :: rest when depth = 0 && token_kind ThinArrow term ->
         go depth true (term :: current) acc rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term ->
+    | term :: rest when token_kind KwDo term || token_kind KwSig term || is_multi_block_start term ->
         go (depth + 1) seen_arrow (term :: current) acc rest
     | term :: rest when token_kind KwModule term ->
         if starts_named_do_block rest then go depth seen_arrow (term :: current) acc rest
@@ -282,7 +308,7 @@ let collect_until_end start_span terms =
   let rec go depth acc = function
     | [] -> error "unterminated block"
     | term :: rest
-      when token_kind KwDo term || token_kind KwSig term
+      when token_kind KwDo term || token_kind KwSig term || is_multi_block_start term
            || ((token_kind KwStruct term || token_kind KwModule term) && not (starts_named_do_block rest)) ->
         go (depth + 1) (term :: acc) rest
     | term :: rest when token_kind KwEnd term ->
@@ -347,7 +373,7 @@ and split_statements terms =
   let rec go depth current acc = function
     | [] -> List.rev (List.rev current :: acc)
     | term :: rest when is_statement_separator depth term -> go depth [] (List.rev current :: acc) rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term ->
+    | term :: rest when token_kind KwDo term || token_kind KwSig term || is_multi_block_start term ->
         go (depth + 1) (term :: current) acc rest
     | term :: rest when token_kind KwModule term ->
         if starts_named_do_block rest then go depth (term :: current) acc rest

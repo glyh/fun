@@ -489,7 +489,7 @@ Deferred from Stage 7F:
 
 ## Phase 7H: Module And Struct Declaration Templates
 
-Status: Planned. Phase 7F handles expression-template syntax macros. This phase adds declaration-template support for module and struct bodies without taking on full Stage 8 problem-aware macro contexts.
+Status: Implemented for value and typed-value declaration templates. Phase 7F handles expression-template syntax macros. This phase adds declaration-template support for module and struct bodies without taking on full Stage 8 problem-aware macro contexts.
 
 ### Purpose
 
@@ -501,12 +501,12 @@ Stage 7H does not add user-facing same-head expression/declaration overloading. 
 
 Add declaration-template support with:
 
-- [ ] `decl` holes for one module/struct declaration term;
-- [ ] declaration-template replacement parsing for module/struct contexts;
-- [ ] support for public and private value bindings;
-- [ ] support for typed value bindings;
-- [ ] `decl` holes capture `pub` visibility modifiers and preserve them in replacements;
-- [ ] declaration-template macros can expand to multiple declarations in a module/struct body.
+- [x] `decl` holes for one module/struct declaration term;
+- [x] declaration-template replacement parsing for module/struct contexts;
+- [x] support for public and private value bindings;
+- [x] support for typed value bindings;
+- [x] `decl` holes capture `pub` visibility modifiers and preserve them in replacements;
+- [x] declaration-template macros can expand to multiple declarations in a module/struct body.
 
 Initial `decl` coverage:
 
@@ -544,20 +544,20 @@ Deferred from Stage 7H:
 
 ### Tests
 
-- [ ] `$(name: decl)` captures a module value binding with its `pub` modifier;
-- [ ] `$(name: decl)` captures a struct value binding with its `pub` modifier;
-- [ ] typed value declarations and `pub` modifiers are preserved through declaration templates;
-- [ ] declaration-template replacements can generate public and private value bindings;
-- [ ] declaration-template macros can expand to multiple declarations;
-- [ ] multi-declaration replacements use `multi ... end` and are rejected in expression-template contexts;
-- [ ] `multi ... end` declarations are spliced in written order at the use site;
+- [x] `$(name: decl)` captures a module value binding with its `pub` modifier;
+- [x] `$(name: decl)` captures a struct value binding with its `pub` modifier;
+- [x] typed value declarations and `pub` modifiers are preserved through declaration templates;
+- [x] declaration-template replacements can generate public and private value bindings;
+- [x] declaration-template macros can expand to multiple declarations;
+- [x] multi-declaration replacements use `multi ... end` and are rejected in expression-template contexts;
+- [x] `multi ... end` declarations are spliced in written order at the use site;
 - [ ] struct field declarations are rejected or explicitly deferred in declaration-template macros.
 
 ### Exit Criteria
 
-- [ ] Module and struct declaration-template macros work for value and typed value bindings.
-- [ ] Declaration-template contexts remain separate from expression-template contexts.
-- [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+- [x] Module and struct declaration-template macros work for value and typed value bindings.
+- [x] Declaration-template contexts remain separate from expression-template contexts.
+- [x] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
 
 ## Phase 7G: Computed Hygienic Macro API
 
