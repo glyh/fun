@@ -20,18 +20,18 @@ let macro_call_with_compound_arg_shape () =
   | Surface.Ap (Surface.Ap (Surface.Var "+", _, Surface.Atom (Atom.I64 1L)), _, Surface.Atom (Atom.I64 2L)) -> ()
   | _ -> Alcotest.fail "expected 1 + 2 from macro call"
 
-let stx_make_i64_literal () =
-  match parse "do macro m(_) -> stx_make_i64(42); m @ (0) end" with
+let syntax_i64_literal () =
+  match parse "do macro m(_) -> Syntax.i64(42); m @ (0) end" with
   | Surface.Atom (Atom.I64 42L) -> ()
   | _ -> Alcotest.fail "expected 42"
 
-let stx_make_ap_plus () =
-  match parse "do macro ap(_) -> stx_make_ap(stx_make_ap(stx_make_var(\"+\"), stx_make_i64(1)), stx_make_i64(2)); ap @ (0) end" with
+let syntax_ap_plus () =
+  match parse "do macro ap(_) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.i64(1)), Syntax.i64(2)); ap @ (0) end" with
   | Surface.Ap (Surface.Ap (Surface.Var "+", _, Surface.Atom (Atom.I64 1L)), _, Surface.Atom (Atom.I64 2L)) -> ()
   | _ -> Alcotest.fail "expected 1 + 2"
 
-let stx_make_lam_identity () =
-  match parse "do macro mk(_) -> stx_make_lam(\"x\", stx_make_var(\"x\")); mk @ (0) end" with
+let syntax_lam_identity () =
+  match parse "do macro mk(_) -> Syntax.lam(\"x\", Syntax.var(\"x\")); mk @ (0) end" with
   | Surface.Lam ({ name = "x"; _ }, Surface.Var "x") -> ()
   | _ -> Alcotest.fail "expected fun x -> x"
 
@@ -40,9 +40,9 @@ let suites =
       [ Alcotest.test_case "identity macro" `Quick identity_macro_shape;
         Alcotest.test_case "macro call with compound arg" `Quick macro_call_with_compound_arg_shape;
       ] );
-    ( "parse_macro_prims",
-      [ Alcotest.test_case "stx_make_i64 literal" `Quick stx_make_i64_literal;
-        Alcotest.test_case "stx_make_ap +" `Quick stx_make_ap_plus;
-        Alcotest.test_case "stx_make_lam identity" `Quick stx_make_lam_identity;
+    ( "parse_macro_syntax_api",
+      [ Alcotest.test_case "Syntax.i64 literal" `Quick syntax_i64_literal;
+        Alcotest.test_case "Syntax.ap +" `Quick syntax_ap_plus;
+        Alcotest.test_case "Syntax.lam identity" `Quick syntax_lam_identity;
       ] );
   ]

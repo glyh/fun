@@ -68,35 +68,56 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
 module Stx = struct
   open Syntax
 
+  let fail name msg = raise (Nbe_error.EvalError (name ^ ": " ^ msg))
+
+  let synthetic kind = VStx { kind; span = Source_span.synthetic }
+
   let make_var = function
     | [ VAtom (String name) ] ->
-        Some (VStx { kind = Var (fresh_id name); span = Source_span.synthetic })
+        Some (synthetic (Var (fresh_id name)))
     | _ -> None
 
   let make_ap = function
     | [ VStx f; VStx a ] ->
-        Some (VStx { kind = Ap (f, Explicit, a); span = Source_span.synthetic })
+        Some (synthetic (Ap (f, Explicit, a)))
     | _ -> None
 
   let make_lam = function
     | [ VAtom (String name); VStx body ] ->
         let p = { name = fresh_id name; type_ = None; trait_bounds = []; explicitness = Explicit } in
-        Some (VStx { kind = Lam (p, body); span = Source_span.synthetic })
+        Some (synthetic (Lam (p, body)))
+    | _ -> None
+
+  let make_let = function
+    | [ VAtom (String name); VStx value; VStx body ] ->
+        Some
+          (synthetic
+             (Let
+                { name = fresh_id name;
+                  type_ = None;
+                  value;
+                  body;
+                  recursive = false }))
     | _ -> None
 
   let make_i64 = function
-    | [ VAtom (I64 n) ] ->
-        Some (VStx { kind = Atom (I64 n); span = Source_span.synthetic })
+    | [ VAtom (I64 n) ] -> Some (synthetic (Atom (I64 n)))
     | _ -> None
 
   let make_string = function
-    | [ VAtom (String s) ] ->
-        Some (VStx { kind = Atom (String s); span = Source_span.synthetic })
+    | [ VAtom (String s) ] -> Some (synthetic (Atom (String s)))
     | _ -> None
 
   let make_bool = function
-    | [ VAtom (Bool b) ] ->
-        Some (VStx { kind = Atom (Bool b); span = Source_span.synthetic })
+    | [ VAtom (Bool b) ] -> Some (synthetic (Atom (Bool b)))
+    | _ -> None
+
+  let make_char = function
+    | [ VAtom (Char c) ] -> Some (synthetic (Atom (Char c)))
+    | _ -> None
+
+  let make_unit = function
+    | [ VAtom Unit ] -> Some (synthetic (Atom Unit))
     | _ -> None
 
   let kind = function
@@ -126,6 +147,21 @@ module Stx = struct
         Some (VAtom (String s))
     | _ -> None
 
+  let is_var = function
+    | [ VStx { kind = Var _; _ } ] -> Some (VAtom (Bool true))
+    | [ VStx _ ] -> Some (VAtom (Bool false))
+    | _ -> None
+
+  let is_atom = function
+    | [ VStx { kind = Atom _; _ } ] -> Some (VAtom (Bool true))
+    | [ VStx _ ] -> Some (VAtom (Bool false))
+    | _ -> None
+
+  let id_name = function
+    | [ VStx { kind = Var id; _ } ] -> Some (VAtom (String id.name))
+    | [ VStx _ ] -> fail "stx_id_name" "expected identifier syntax"
+    | _ -> None
+
   let id_eq = function
     | [ VStx { kind = Var a; _ }; VStx { kind = Var b; _ } ] ->
         let eq =
@@ -134,15 +170,56 @@ module Stx = struct
         in
         Some (VAtom (Bool eq))
     | _ -> None
+
+  let operator_symbol = function
+    | [ VStx { kind = SyntaxOperatorUse { operator; _ }; _ } ] ->
+        Some (VAtom (String operator.name))
+    | [ VStx _ ] -> fail "stx_operator_symbol" "expected syntax operator use"
+    | _ -> None
+
+  let operator_fixity = function
+    | [ VStx { kind = SyntaxOperatorUse { fixity; _ }; _ } ] ->
+        let name = match fixity with PrefixOp -> "prefix" | InfixOp -> "infix" in
+        Some (VAtom (String name))
+    | [ VStx _ ] -> fail "stx_operator_fixity" "expected syntax operator use"
+    | _ -> None
+
+  let operator_arity = function
+    | [ VStx { kind = SyntaxOperatorUse { operands; _ }; _ } ] ->
+        Some (VAtom (I64 (Int64.of_int (List.length operands))))
+    | [ VStx _ ] -> fail "stx_operator_arity" "expected syntax operator use"
+    | _ -> None
+
+  let operator_operand = function
+    | [ VStx { kind = SyntaxOperatorUse { operands; _ }; _ }; VAtom (I64 index) ] ->
+        let len = List.length operands in
+        if Int64.compare index 0L < 0 || Int64.compare index (Int64.of_int len) >= 0 then
+          fail "stx_operator_operand" "operand index out of bounds"
+        else
+          let index = Int64.to_int index in
+          Some (VStx (List.nth operands index))
+    | [ VStx _; VAtom (I64 _) ] ->
+        fail "stx_operator_operand" "expected syntax operator use"
+    | _ -> None
 end
 
 let stx_prim_table : (string, value list -> value option) Hashtbl.t =
   [ ("stx_make_var", Stx.make_var);
     ("stx_make_ap", Stx.make_ap);
     ("stx_make_lam", Stx.make_lam);
+    ("stx_make_let", Stx.make_let);
     ("stx_make_i64", Stx.make_i64);
     ("stx_make_string", Stx.make_string);
     ("stx_make_bool", Stx.make_bool);
+    ("stx_make_char", Stx.make_char);
+    ("stx_make_unit", Stx.make_unit);
     ("stx_kind", Stx.kind);
-    ("stx_id_eq", Stx.id_eq) ]
+    ("stx_is_var", Stx.is_var);
+    ("stx_is_atom", Stx.is_atom);
+    ("stx_id_name", Stx.id_name);
+    ("stx_id_eq", Stx.id_eq);
+    ("stx_operator_symbol", Stx.operator_symbol);
+    ("stx_operator_fixity", Stx.operator_fixity);
+    ("stx_operator_arity", Stx.operator_arity);
+    ("stx_operator_operand", Stx.operator_operand) ]
   |> List.to_seq |> Hashtbl.of_seq

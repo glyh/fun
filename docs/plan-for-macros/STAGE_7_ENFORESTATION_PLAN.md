@@ -561,7 +561,7 @@ Deferred from Stage 7H:
 
 ## Phase 7G: Computed Hygienic Macro API
 
-Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps the current primitive syntax constructors and `kind`/`id_eq` inspection helpers.
+Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps the current primitive syntax constructors and `kind`/`id_eq` inspection helpers. A later 7G slice added literal builders for `Char`/`Unit`, a `let_in` builder, identifier classification/name inspection, and structured operator-use inspection/deconstruction helpers.
 
 ### Purpose
 
@@ -607,17 +607,17 @@ The public API should use `Syntax.*` names, implemented as a module in the stand
 
 Current implementation notes:
 
-- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.kind`, and `Syntax.id_eq` are exposed from the stdlib as aliases over the existing primitive implementation;
+- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
 - the old global `stx_*` names remain available as compatibility/internal names until the 7G API is complete enough to migrate existing tests and examples;
-- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, and `Syntax.kind` on structured operator-use syntax.
+- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders, `Syntax.let_in`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic operand bounds errors.
 
 ### Syntax Object Primitive Families
 
 The primitive API should be organized enough that downstream users can write macros without reverse-engineering internal constructors:
 
-- [ ] classification: `stx_kind`, operator-use kind checks, atom/identifier checks;
-- [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers, preserve input identifiers, and place caller-supplied identifiers in binder positions;
-- [ ] literals: construct and inspect integer, bool, char, string, and unit syntax;
+- [x] classification: `Syntax.kind`, operator-use kind checks, atom/identifier checks;
+- [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers, preserve input identifiers, and place caller-supplied identifiers in binder positions; partially covered by `Syntax.id_name`, `Syntax.id_eq`, and `Syntax.var`;
+- [ ] literals: construct and inspect integer, bool, char, string, and unit syntax; builders are implemented, inspectors remain deferred;
 - [ ] application/lambda/let: construct and deconstruct common expression forms;
 - [ ] blocks/modules/structs: inspect and build staged surface containers where supported;
 - [ ] patterns/types: expose only the subset needed before Stage 8 problem-aware macros, or document why they are deferred;
@@ -639,10 +639,10 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 
 ### Tests
 
-- [ ] hygienic builders can construct literals, variables, applications, lambdas, lets, and `do` blocks;
+- [ ] hygienic builders can construct literals, variables, applications, lambdas, lets, and `do` blocks; all listed except `do` blocks are covered by backend tests;
 - [ ] preserved input syntax can be inserted into builder-created output unchanged;
 - [ ] computed builders preserve hygiene for both introduced and use-site identifiers;
-- [ ] syntax-object inspection can destructure a structured `syntax_operator_use` argument;
+- [x] syntax-object inspection can destructure a structured `syntax_operator_use` argument;
 - [x] a computed macro rewrites an enforested operator use without using only fixed pattern/template syntax;
 - [x] initial downstream-style macro examples use documented primitives rather than private implementation details.
 

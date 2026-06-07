@@ -40,11 +40,21 @@ let prims =
     ("stx_make_var", VAtomTy Atom_ty.TString ^-> U);
     ("stx_make_ap", VU ^-> U ^->> U);
     ("stx_make_lam", VAtomTy Atom_ty.TString ^-> U ^->> U);
+    ("stx_make_let", VAtomTy Atom_ty.TString ^-> U ^->> U ^->> U);
     ("stx_make_i64", VAtomTy Atom_ty.TI64 ^-> U);
     ("stx_make_string", VAtomTy Atom_ty.TString ^-> U);
     ("stx_make_bool", VAtomTy Atom_ty.TBool ^-> U);
+    ("stx_make_char", VAtomTy Atom_ty.TChar ^-> U);
+    ("stx_make_unit", VAtomTy Atom_ty.TUnit ^-> U);
     ("stx_kind", VU ^-> AtomTy Atom_ty.TString);
+    ("stx_is_var", VU ^-> AtomTy Atom_ty.TBool);
+    ("stx_is_atom", VU ^-> AtomTy Atom_ty.TBool);
+    ("stx_id_name", VU ^-> AtomTy Atom_ty.TString);
     ("stx_id_eq", VU ^-> U ^->> AtomTy Atom_ty.TBool);
+    ("stx_operator_symbol", VU ^-> AtomTy Atom_ty.TString);
+    ("stx_operator_fixity", VU ^-> AtomTy Atom_ty.TString);
+    ("stx_operator_arity", VU ^-> AtomTy Atom_ty.TI64);
+    ("stx_operator_operand", VU ^-> AtomTy Atom_ty.TI64 ^->> U);
   ]
   |> NameMap.of_list
 
@@ -62,11 +72,21 @@ pub module Syntax do
   pub var = stx_make_var
   pub ap = stx_make_ap
   pub lam = stx_make_lam
+  pub let_in = stx_make_let
   pub i64 = stx_make_i64
   pub string = stx_make_string
   pub bool = stx_make_bool
+  pub char = stx_make_char
+  pub unit = stx_make_unit
   pub kind = stx_kind
+  pub is_var = stx_is_var
+  pub is_atom = stx_is_atom
+  pub id_name = stx_id_name
   pub id_eq = stx_id_eq
+  pub operator_symbol = stx_operator_symbol
+  pub operator_fixity = stx_operator_fixity
+  pub operator_arity = stx_operator_arity
+  pub operator_operand = stx_operator_operand
 end
 |}
 

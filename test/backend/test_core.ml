@@ -1016,7 +1016,61 @@ let test_syntax_module_operator_use_kind () =
     "do
        operator infix ~ 15 right(stx) -> if Syntax.kind(stx) == \"syntax_operator_use\" do Syntax.i64(1) else Syntax.i64(0) end
        1 ~ 2 ~ 3
+      end" ()
+
+let test_syntax_module_literal_builders () =
+  check_i64_macro "Syntax char/unit builders" 42L
+    "do
+       macro char_a(_) -> Syntax.char('a')
+       macro unit_value(_) -> Syntax.unit(())
+       if char_a @ (0) == 'a' do
+         if unit_value @ (0) == () do 42 else 0 end
+       else 0 end
      end" ()
+
+let test_syntax_module_let_builder () =
+  check_i64_macro "Syntax let builder" 7L
+    "do
+       macro answer(_) -> Syntax.let_in(\"x\", Syntax.i64(3), Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.var(\"x\")), Syntax.i64(4)))
+       answer @ (0)
+     end" ()
+
+let test_syntax_module_identifier_inspection () =
+  check_i64_macro "Syntax identifier inspection" 1L
+    "do
+       macro inspect(stx) -> if Syntax.is_var(stx) do
+           if Syntax.id_name(stx) == \"target\" do Syntax.i64(1) else Syntax.i64(0) end
+         else Syntax.i64(0) end
+       target = 10
+       inspect @ (target)
+     end" ()
+
+let test_syntax_module_operator_use_deconstructors () =
+  check_i64_macro "Syntax operator use deconstructors" 8L
+    "do
+       operator infix ~ 15 left(stx) -> if Syntax.operator_symbol(stx) == \"~\" do
+           if Syntax.operator_fixity(stx) == \"infix\" do
+             if Syntax.operator_arity(stx) == 2 do Syntax.operator_operand(stx, 1) else Syntax.i64(0) end
+           else Syntax.i64(0) end
+         else Syntax.i64(0) end
+       3 ~ 8
+     end" ()
+
+let test_syntax_module_operator_operand_error () =
+  match
+    eval_with_macros
+      "do
+         operator infix ~ 15 left(stx) -> Syntax.operator_operand(stx, 2)
+         1 ~ 2
+       end"
+  with
+  | exception Nbe.EvalError msg
+  | exception Failure msg ->
+      Alcotest.(check bool)
+        "mentions operand index" true
+        (string_contains msg "operand index out of bounds")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected operator operand bounds failure"
 
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
@@ -1890,6 +1944,11 @@ let () =
           Alcotest.test_case "Syntax module: i64 builder" `Quick test_syntax_module_i64_builder;
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
+          Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
+          Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
+          Alcotest.test_case "Syntax module: identifier inspection" `Quick test_syntax_module_identifier_inspection;
+          Alcotest.test_case "Syntax module: operator use deconstructors" `Quick test_syntax_module_operator_use_deconstructors;
+          Alcotest.test_case "Syntax module: operator operand error" `Quick test_syntax_module_operator_operand_error;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
