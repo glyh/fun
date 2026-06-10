@@ -22,12 +22,13 @@ type syntax_decl =
 type env = {
   mutable operators : Operator_env.t;
   mutable template_captures : (string * Syntax_template.captured) list;
+  exports_collector : Operator_env.export list ref;
   load_syntax : (string -> Operator_env.export list) option;
   syntax_class : Syntax_class.t;
 }
 
 let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () =
-  { operators = Operator_env.empty; template_captures = []; load_syntax; syntax_class }
+  { operators = Operator_env.empty; template_captures = []; load_syntax; syntax_class; exports_collector = ref [] }
 
 let unsupported msg = raise (Unsupported msg)
 let error msg = raise (Error msg)

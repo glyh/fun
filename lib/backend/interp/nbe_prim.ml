@@ -70,58 +70,68 @@ module Stx = struct
 
   let fail name msg = raise (Nbe_error.EvalError (name ^ ": " ^ msg))
 
-  let synthetic kind = VStx { kind; span = Source_span.synthetic }
+  let expr kind = VStx (StxExpr { kind; span = Source_span.synthetic })
+
+  let expr_value = function VStx (StxExpr stx) -> Some stx | _ -> None
 
   let make_var = function
     | [ VAtom (String name) ] ->
-        Some (synthetic (Var (fresh_id name)))
+        Some (expr (Var (fresh_id name)))
     | _ -> None
 
   let make_ap = function
-    | [ VStx f; VStx a ] ->
-        Some (synthetic (Ap (f, Explicit, a)))
+    | [ f; a ] -> (
+        match (expr_value f, expr_value a) with
+        | Some f, Some a -> Some (expr (Ap (f, Explicit, a)))
+        | _ -> None)
     | _ -> None
 
   let make_lam = function
-    | [ VAtom (String name); VStx body ] ->
+    | [ VAtom (String name); body ] -> (
+      match expr_value body with
+      | Some body ->
         let p = { name = fresh_id name; type_ = None; trait_bounds = []; explicitness = Explicit } in
-        Some (synthetic (Lam (p, body)))
+        Some (expr (Lam (p, body)))
+      | None -> None)
     | _ -> None
 
   let make_let = function
-    | [ VAtom (String name); VStx value; VStx body ] ->
+    | [ VAtom (String name); value; body ] -> (
+      match (expr_value value, expr_value body) with
+      | Some value, Some body ->
         Some
-          (synthetic
+          (expr
              (Let
                 { name = fresh_id name;
                   type_ = None;
                   value;
                   body;
                   recursive = false }))
+      | _ -> None)
     | _ -> None
 
   let make_i64 = function
-    | [ VAtom (I64 n) ] -> Some (synthetic (Atom (I64 n)))
+    | [ VAtom (I64 n) ] -> Some (expr (Atom (I64 n)))
     | _ -> None
 
   let make_string = function
-    | [ VAtom (String s) ] -> Some (synthetic (Atom (String s)))
+    | [ VAtom (String s) ] -> Some (expr (Atom (String s)))
     | _ -> None
 
   let make_bool = function
-    | [ VAtom (Bool b) ] -> Some (synthetic (Atom (Bool b)))
+    | [ VAtom (Bool b) ] -> Some (expr (Atom (Bool b)))
     | _ -> None
 
   let make_char = function
-    | [ VAtom (Char c) ] -> Some (synthetic (Atom (Char c)))
+    | [ VAtom (Char c) ] -> Some (expr (Atom (Char c)))
     | _ -> None
 
   let make_unit = function
-    | [ VAtom Unit ] -> Some (synthetic (Atom Unit))
+    | [ VAtom Unit ] -> Some (expr (Atom Unit))
     | _ -> None
 
   let kind = function
-    | [ VStx stx ] ->
+    | [ VStx (StxExpr stx) ] ->
         let s =
           match stx.kind with
           | Var _ -> "var"
@@ -145,25 +155,29 @@ module Stx = struct
           | _ -> "other"
         in
         Some (VAtom (String s))
+    | [ VStx (StxTypeExpr _) ] -> Some (VAtom (String "type_expr"))
+    | [ VStx (StxPattern _) ] -> Some (VAtom (String "pattern"))
+    | [ VStx (StxDecl _) ] -> Some (VAtom (String "decl"))
+    | [ VStx (StxDecls _) ] -> Some (VAtom (String "decls"))
     | _ -> None
 
   let is_var = function
-    | [ VStx { kind = Var _; _ } ] -> Some (VAtom (Bool true))
+    | [ VStx (StxExpr { kind = Var _; _ }) ] -> Some (VAtom (Bool true))
     | [ VStx _ ] -> Some (VAtom (Bool false))
     | _ -> None
 
   let is_atom = function
-    | [ VStx { kind = Atom _; _ } ] -> Some (VAtom (Bool true))
+    | [ VStx (StxExpr { kind = Atom _; _ }) ] -> Some (VAtom (Bool true))
     | [ VStx _ ] -> Some (VAtom (Bool false))
     | _ -> None
 
   let id_name = function
-    | [ VStx { kind = Var id; _ } ] -> Some (VAtom (String id.name))
+    | [ VStx (StxExpr { kind = Var id; _ }) ] -> Some (VAtom (String id.name))
     | [ VStx _ ] -> fail "stx_id_name" "expected identifier syntax"
     | _ -> None
 
   let id_eq = function
-    | [ VStx { kind = Var a; _ }; VStx { kind = Var b; _ } ] ->
+    | [ VStx (StxExpr { kind = Var a; _ }); VStx (StxExpr { kind = Var b; _ }) ] ->
         let eq =
           String.equal a.name b.name
           && (Scope_set.subset a.scope b.scope || Scope_set.subset b.scope a.scope)
@@ -172,32 +186,32 @@ module Stx = struct
     | _ -> None
 
   let operator_symbol = function
-    | [ VStx { kind = SyntaxOperatorUse { operator; _ }; _ } ] ->
+    | [ VStx (StxExpr { kind = SyntaxOperatorUse { operator; _ }; _ }) ] ->
         Some (VAtom (String operator.name))
     | [ VStx _ ] -> fail "stx_operator_symbol" "expected syntax operator use"
     | _ -> None
 
   let operator_fixity = function
-    | [ VStx { kind = SyntaxOperatorUse { fixity; _ }; _ } ] ->
+    | [ VStx (StxExpr { kind = SyntaxOperatorUse { fixity; _ }; _ }) ] ->
         let name = match fixity with PrefixOp -> "prefix" | InfixOp -> "infix" in
         Some (VAtom (String name))
     | [ VStx _ ] -> fail "stx_operator_fixity" "expected syntax operator use"
     | _ -> None
 
   let operator_arity = function
-    | [ VStx { kind = SyntaxOperatorUse { operands; _ }; _ } ] ->
+    | [ VStx (StxExpr { kind = SyntaxOperatorUse { operands; _ }; _ }) ] ->
         Some (VAtom (I64 (Int64.of_int (List.length operands))))
     | [ VStx _ ] -> fail "stx_operator_arity" "expected syntax operator use"
     | _ -> None
 
   let operator_operand = function
-    | [ VStx { kind = SyntaxOperatorUse { operands; _ }; _ }; VAtom (I64 index) ] ->
+    | [ VStx (StxExpr { kind = SyntaxOperatorUse { operands; _ }; _ }); VAtom (I64 index) ] ->
         let len = List.length operands in
         if Int64.compare index 0L < 0 || Int64.compare index (Int64.of_int len) >= 0 then
           fail "stx_operator_operand" "operand index out of bounds"
         else
           let index = Int64.to_int index in
-          Some (VStx (List.nth operands index))
+          Some (VStx (StxExpr (List.nth operands index)))
     | [ VStx _; VAtom (I64 _) ] ->
         fail "stx_operator_operand" "expected syntax operator use"
     | _ -> None

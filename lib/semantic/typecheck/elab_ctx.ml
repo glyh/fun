@@ -87,6 +87,12 @@ module Ctx = struct
       loader = ctx.loader;
     }
 
+  let hide_names (ctx : t) names : t =
+    {
+      ctx with
+      name_table = List.fold_left (fun table name -> NameMap.remove name table) ctx.name_table names;
+    }
+
   let define_anonymous (ctx : t) (ty : value) (v : value) : t * name_entry =
     let entry = { level = ctx.lvl; ty } in
     ({

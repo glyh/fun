@@ -871,11 +871,11 @@ let check_i64_macro label expected source () =
 
 let test_macro_hygiene_no_capture_user () =
   check_i64_macro "no capture" 1L
-    "do x = 1; macro m(_) -> stx_make_lam(\"x\", stx_make_var(\"x\")); (m @ (0))(x) end" ()
+    "do x = 1; macro m(_) -> Syntax.lam(\"x\", Syntax.var(\"x\")); (m @ (0))(x) end" ()
 
 let test_macro_hygiene_user_no_capture_macro () =
   check_i64_macro "no capture" 1L
-    "do macro m(_) -> stx_make_lam(\"x\", stx_make_var(\"x\")); x = 1; (m @ (0))(x) end" ()
+    "do macro m(_) -> Syntax.lam(\"x\", Syntax.var(\"x\")); x = 1; (m @ (0))(x) end" ()
 
 let test_macro_panic_has_message () =
   match eval_with_macros "do macro bad(_) -> panic[I64](\"boom\"); bad @ (0) end" with
@@ -886,7 +886,7 @@ let test_macro_panic_has_message () =
 let test_imported_macro_expands () =
   match
     eval_with_imported_macros
-      [ ("macros", "pub macro answer(_) -> stx_make_i64(42)") ]
+      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
       "do M = import \"macros\"; answer @ (0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "imported macro" 42L n
@@ -898,7 +898,7 @@ let test_imported_macro_expands () =
 let test_imported_macro_not_runtime_field () =
   match
     eval_with_imported_macros
-      [ ("macros", "pub macro answer(_) -> stx_make_i64(42)") ]
+      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
       "do M = import \"macros\"; M.answer end"
   with
   | exception Elaborate.ElabError _ -> ()
@@ -909,8 +909,8 @@ let test_imported_macro_not_runtime_field () =
 let test_imported_macro_circular_visit () =
   match
     eval_with_imported_macros
-      [ ("a", "pub macro ma(_) -> do B = import \"b\"; stx_make_i64(1) end");
-        ("b", "pub macro mb(_) -> do A = import \"a\"; stx_make_i64(2) end") ]
+      [ ("a", "pub macro ma(_) -> do B = import \"b\"; Syntax.i64(1) end");
+        ("b", "pub macro mb(_) -> do A = import \"a\"; Syntax.i64(2) end") ]
       "do A = import \"a\"; ma @ (0) end"
   with
   | exception Core_loader.CircularMacroVisit "a" -> ()
@@ -921,7 +921,7 @@ let test_macro_generated_import_loads_macros () =
   match
     eval_with_imported_macros
       [ ("loader", "pub macro through(stx) -> stx");
-        ("target", "pub macro answer(_) -> stx_make_i64(42)") ]
+        ("target", "pub macro answer(_) -> Syntax.i64(42)") ]
       "do L = import \"loader\"; T = through @ (import \"target\"); answer @ (0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "macro-generated import" 42L n
@@ -943,7 +943,7 @@ let test_macro_generated_import_checks_missing () =
 let test_imported_macro_calls_regular_function () =
   match
     eval_with_imported_macros
-      [ ("helper", "pub make_answer = fn(stx) -> stx_make_i64(42)");
+      [ ("helper", "pub make_answer = fn(stx) -> Syntax.i64(42)");
         ("macros", "pub macro answer(stx) -> do H = import \"helper\"; H.make_answer(stx) end") ]
       "do M = import \"macros\"; answer @ (0) end"
   with
@@ -963,14 +963,14 @@ let test_operator_prefix_macro_expands () =
 let test_operator_infix_macro_expands () =
   check_i64_macro "operator infix" 9L
     "do
-       operator infix ~ 15 left(stx) -> stx_make_i64(9)
+       operator infix ~ 15 left(stx) -> Syntax.i64(9)
        1 ~ 2
        end" ()
 
 let test_operator_rhs_can_use_earlier_macro () =
   check_i64_macro "operator RHS macro path" 5L
     "do
-       macro answer_body(_) -> stx_make_i64(5)
+       macro answer_body(_) -> Syntax.i64(5)
        syntax answer do | answer -> answer_body @ (0) end
        answer
       end" ()
@@ -1003,6 +1003,27 @@ let test_syntax_module_i64_builder () =
        macro answer(_) -> Syntax.i64(42)
        answer @ (0)
      end" ()
+
+let test_syntax_module_expression_kind () =
+  check_i64_macro "Syntax.kind expression object" 1L
+    "do
+       macro answer(stx) -> if Syntax.kind(stx) == \"var\" do Syntax.i64(1) else Syntax.i64(0) end
+       target = 0
+       answer @ (target)
+     end" ()
+
+let test_syntax_class_types_accessible () =
+  check_i64_macro "Syntax class types accessible" 42L
+    "do
+       x : Syntax.Expr = Syntax.i64(42)
+       42
+     end" ()
+
+let test_syntax_primitive_names_hidden () =
+  match eval_with_macros "do macro answer(_) -> stx_make_i64(42); answer @ (0) end" with
+  | exception Elaborate.ElabError (Elaborate.UnboundVariable "stx_make_i64") -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected direct stx_* primitive name to be hidden"
 
 let test_syntax_module_application_builder () =
   check_i64_macro "Syntax.ap builder" 3L
@@ -1479,6 +1500,41 @@ let test_decl_template_multi_rejected_in_expr () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected multi expression-template rejection"
 
+let test_decl_template_struct_field_deferred () =
+  match
+    eval_with_macros
+      "do
+         Box = struct
+           syntax field do | field -> value: I64 end
+           field
+         end;
+         0
+       end"
+  with
+  | exception Enforest.Error msg ->
+      Alcotest.(check bool) "mentions deferred struct fields" true
+        (string_contains msg "struct field declarations are deferred")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected struct field declaration-template rejection"
+
+let test_7i_generated_pub_syntax_across_imports () =
+  match
+    eval_with_imported_macros
+      [ ("gen", "syntax export_syntax do
+                  | export_syntax ->
+                      multi
+                        pub syntax inc do | inc $x -> $x + 1 end
+                      end
+                  end;
+                  export_syntax") ]
+      "do M = import \"gen\"; inc 41 end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "7I generated pub syntax across imports" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "7I generated pub syntax: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "7I generated pub syntax: %s" (Printexc.to_string e))
+
 let () =
   Alcotest.run "core"
     [
@@ -1942,6 +1998,9 @@ let () =
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
           Alcotest.test_case "Syntax module: i64 builder" `Quick test_syntax_module_i64_builder;
+          Alcotest.test_case "Syntax module: expression kind" `Quick test_syntax_module_expression_kind;
+          Alcotest.test_case "Syntax module: primitive names hidden" `Quick test_syntax_primitive_names_hidden;
+          Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
@@ -1984,5 +2043,7 @@ let () =
           Alcotest.test_case "decl template: struct captures pub value" `Quick test_decl_template_struct_captures_pub_value;
           Alcotest.test_case "decl template: multi generates siblings" `Quick test_decl_template_multi_generates_siblings;
           Alcotest.test_case "decl template: multi rejected in expr" `Quick test_decl_template_multi_rejected_in_expr;
+          Alcotest.test_case "decl template: struct field deferred" `Quick test_decl_template_struct_field_deferred;
+          Alcotest.test_case "7I: generated pub syntax across imports" `Quick test_7i_generated_pub_syntax_across_imports;
         ] );
     ]

@@ -58,6 +58,26 @@ let prims =
   ]
   |> NameMap.of_list
 
+let syntax_primitive_names =
+  [ "stx_make_var";
+    "stx_make_ap";
+    "stx_make_lam";
+    "stx_make_let";
+    "stx_make_i64";
+    "stx_make_string";
+    "stx_make_bool";
+    "stx_make_char";
+    "stx_make_unit";
+    "stx_kind";
+    "stx_is_var";
+    "stx_is_atom";
+    "stx_id_name";
+    "stx_id_eq";
+    "stx_operator_symbol";
+    "stx_operator_fixity";
+    "stx_operator_arity";
+    "stx_operator_operand" ]
+
 let stdlib_source =
   {|
 pub trait Eq(A) = sig eq : A -> A -> Bool end;
@@ -69,6 +89,11 @@ pub impl Eq(String) = module fn eq(x, y) -> eq_string(x, y) end;
 pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
 pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs));
 pub module Syntax do
+  pub Expr : Type = Type
+  pub TypeExpr : Type = Type
+  pub Pattern : Type = Type
+  pub Decl : Type = Type
+  pub Decls : Type = Type
   pub var = stx_make_var
   pub ap = stx_make_ap
   pub lam = stx_make_lam

@@ -190,6 +190,13 @@ and struct_entry =
       (** kind, dictionary type, dictionary value. Kept in source order with
           fields so de Bruijn references across struct bindings remain valid. *)
 
+and syntax_object =
+  | StxExpr of Syntax.t
+  | StxTypeExpr of Syntax.t
+  | StxPattern of Syntax.pat
+  | StxDecl of Syntax.struct_binding
+  | StxDecls of Syntax.struct_binding list
+
 (* Semantic domain — de Bruijn levels for variables *)
 
 and env = value list (* head = most recently bound *)
@@ -300,8 +307,9 @@ and value =
           binds [spine] elements to sub-patterns. *)
   | VCont of cont
       (** Interpreter-only one-shot continuation token for algebraic effect handlers. *)
-  | VStx of Syntax.t
-      (** Compile-time syntax value used by macro expansion. *)
+  | VStx of syntax_object
+      (** Compile-time syntax object used by macro expansion. The tagged shape
+          lets the public [Syntax] API distinguish parser syntax classes. *)
   | VNeutral of { ty : value; neutral : neutral }
       (** Stuck computation with a primitive or a variable/metavariable wrapped in
           elimination frames ([FIf], [FProj]). Unification decomposes these:

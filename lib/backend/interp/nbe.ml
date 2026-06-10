@@ -48,7 +48,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | EffectRowLit row -> Done (eval_effect_row_literal mc env row)
   | Atom a -> Done (VAtom a)
   | AtomTy t -> Done (VAtomTy t)
-  | Stx stx -> Done (VStx stx)
+  | Stx stx -> Done (VStx (StxExpr stx))
   | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))
   | RefNew e ->
       bind_result (eval_result mc env e) (fun value -> Done (VRef (ref value)))

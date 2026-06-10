@@ -1249,8 +1249,11 @@ and parse_value_binding env public recursive_error stmt =
 and parse_module_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
-  | Some (TemplateSyntaxDecl _) -> None
-  | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
+  | Some (TemplateSyntaxDecl { syntax_export; _ }) ->
+      if public then env.exports_collector := syntax_export :: !(env.exports_collector);
+      None
+  | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; syntax_export; _ }) ->
+      if public then env.exports_collector := syntax_export :: !(env.exports_collector);
       Some (Syntax.MacroBinding { name; value; public })
   | None -> (
       match
@@ -1279,6 +1282,26 @@ and parse_module_statement env stmt =
 and parse_module_bindings env body_terms =
   with_operator_scope env (fun env ->
       split_statements body_terms |> List.concat_map (parse_module_statement env))
+
+and collect_public_syntax_statement env stmt =
+  let parse_decl terms =
+    collect_public_syntax_statement env terms;
+    []
+  in
+  match parse_decl_template_use env parse_decl stmt with
+  | Some _ -> ()
+  | None -> (
+      let public, stmt = parse_public_prefix stmt in
+      match parse_operator_decl env stmt with
+      | Some (TemplateSyntaxDecl { syntax_export; _ }) ->
+          if public then env.exports_collector := syntax_export :: !(env.exports_collector)
+      | Some (MacroSyntaxDecl { syntax_export; _ }) ->
+          if public then env.exports_collector := syntax_export :: !(env.exports_collector)
+      | None -> ())
+
+and collect_public_syntax_exports env body_terms =
+  with_operator_scope env (fun env ->
+      split_statements body_terms |> List.iter (collect_public_syntax_statement env))
 
 and parse_struct_field env stmt =
   match drop_separators stmt with
@@ -1337,9 +1360,13 @@ and parse_struct_binding env stmt =
 
 and parse_struct_statement env stmt =
   let parse_decl terms = parse_struct_statement env terms in
-  match parse_decl_template_use env parse_decl stmt with
-  | Some bindings -> bindings
-  | None -> (match parse_struct_binding env stmt with Some binding -> [ binding ] | None -> [])
+  match parse_struct_field env stmt with
+  | Some _ -> error "struct field declarations are deferred in declaration syntax templates"
+  | None -> (
+      match parse_decl_template_use env parse_decl stmt with
+      | Some bindings -> bindings
+      | None -> (
+          match parse_struct_binding env stmt with Some binding -> [ binding ] | None -> []))
 
 and parse_struct_items env body_terms =
   split_statements body_terms
@@ -1371,27 +1398,15 @@ let parse_pat ?file source =
 
 let parse_public_syntax_exports ?file ?load_syntax source =
   let env = env ?load_syntax () in
-  with_operator_scope env (fun env ->
-      try
-        let exports =
-          Raw_syntax.read ?file source
-          |> split_statements
-          |> List.filter_map (fun stmt ->
-              let public, stmt = parse_public_prefix stmt in
-              if public then
-                Option.map
-                  (function
-                    | MacroSyntaxDecl { syntax_export; _ }
-                    | TemplateSyntaxDecl { syntax_export; _ } ->
-                        syntax_export)
-                  (parse_operator_decl env stmt)
-              else None)
-        in
-        (match Operator_env.duplicate_exports_message exports with
-        | Some msg -> error msg
-        | None -> ());
-        exports
-      with Raw_syntax.Error msg -> error msg)
+  try
+    env.exports_collector := [];
+    Raw_syntax.read ?file source |> collect_public_syntax_exports env;
+    let exports = List.rev !(env.exports_collector) in
+    (match Operator_env.duplicate_exports_message exports with
+    | Some msg -> error msg
+    | None -> ());
+    exports
+  with Raw_syntax.Error msg -> error msg
 
 let parse_module ?file ?load_syntax source =
   let env = env ?load_syntax () in

@@ -404,7 +404,7 @@ end" with
 
 let operator_infix_in_do_block () =
   match parse_with_macros "do
-  operator infix ~ 15 left(stx) -> stx_make_i64(9)
+  operator infix ~ 15 left(stx) -> Syntax.i64(9)
   1 + 2 ~ 3
 end" with
   | Ap (Ap (Var "+", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.I64 9L)) -> ()
@@ -424,7 +424,7 @@ pub test = do twice 1 end" with
 
 let operator_rhs_can_use_earlier_macro () =
   match parse_with_macros "do
-  macro one_body(_) -> stx_make_i64(1)
+  macro one_body(_) -> Syntax.i64(1)
   syntax choose do | choose $x -> one_body @ (0) end
   choose 0
 end" with
@@ -433,7 +433,7 @@ end" with
 
 let operator_infix_associativity () =
   match parse_with_macros "do
-  operator infix ~ 15 right(stx) -> if stx_kind(stx) == \"syntax_operator_use\" do stx_make_i64(1) else stx_make_i64(0) end
+  operator infix ~ 15 right(stx) -> if Syntax.kind(stx) == \"syntax_operator_use\" do Syntax.i64(1) else Syntax.i64(0) end
   1 ~ 2 ~ 3
 end" with
   | Atom (Atom.I64 1L) -> ()

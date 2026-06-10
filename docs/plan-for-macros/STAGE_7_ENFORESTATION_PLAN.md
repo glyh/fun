@@ -551,7 +551,7 @@ Deferred from Stage 7H:
 - [x] declaration-template macros can expand to multiple declarations;
 - [x] multi-declaration replacements use `multi ... end` and are rejected in expression-template contexts;
 - [x] `multi ... end` declarations are spliced in written order at the use site;
-- [ ] struct field declarations are rejected or explicitly deferred in declaration-template macros.
+- [x] struct field declarations are rejected or explicitly deferred in declaration-template macros.
 
 ### Exit Criteria
 
@@ -561,7 +561,17 @@ Deferred from Stage 7H:
 
 ## Phase 7G: Computed Hygienic Macro API
 
-Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps the current primitive syntax constructors and `kind`/`id_eq` inspection helpers. A later 7G slice added literal builders for `Char`/`Unit`, a `let_in` builder, identifier classification/name inspection, and structured operator-use inspection/deconstruction helpers.
+Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps primitive syntax constructors and `kind`/`id_eq` inspection helpers. A later 7G slice added literal builders for `Char`/`Unit`, a `let_in` builder, identifier classification/name inspection, and structured operator-use inspection/deconstruction helpers.
+
+Resolved design direction after the Stage 7 design interview:
+
+- `Syntax` remains an ordinary `pub module Syntax do ... end` in `stdlib_source`, not a parser keyword or compiler-injected special namespace.
+- The low-level syntax primitive hooks are implementation details used to elaborate `Syntax`; macro authors should only use `Syntax.*`.
+- Direct global `stx_*` names are not a supported public API and should be hidden from user name resolution once stdlib has been elaborated.
+- Stage 7G introduces typed, tagged syntax-object classes for the public API: expression, type expression, pattern, declaration, and declaration-list objects.
+- Computed macro invocation contexts remain expression macros in Stage 7. The all-class 7G API means all syntax classes can be represented, built, inspected, and deconstructed as objects; it does not mean type/pattern/declaration computed macros are invokable in all parser contexts before Stage 8.
+- Variable-length children are exposed through indexed APIs such as `arity`, `operand(index)`, `field_count`, `field_name(index)`, and `field_value(index)` rather than adding a list/vector library in Stage 7.
+- Pattern/template syntax from 7F and declaration templates from 7H remain the preferred authoring layer for simple rewrites; computed `Syntax.*` APIs are for inspections/transforms that pattern templates cannot express cleanly.
 
 ### Purpose
 
@@ -611,6 +621,22 @@ Current implementation notes:
 - the old global `stx_*` names remain available as compatibility/internal names until the 7G API is complete enough to migrate existing tests and examples;
 - focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders, `Syntax.let_in`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic operand bounds errors.
 
+Detailed 7G work order:
+
+1. Hide direct global `stx_*` primitive names from user code after stdlib elaboration, while keeping `Syntax.*` in stdlib functional.
+2. Migrate tests and examples that still use direct `stx_*` names to `Syntax.*`.
+3. Replace the untyped syntax-value shortcut with tagged syntax-object values covering expression, type expression, pattern, declaration, and declaration-list objects.
+4. Add class-specific opaque public types in `Syntax`, such as `Syntax.Expr`, `Syntax.TypeExpr`, `Syntax.Pattern`, `Syntax.Decl`, and `Syntax.Decls`.
+5. Update primitive signatures so expression builders return `Syntax.Expr`, type builders return `Syntax.TypeExpr`, pattern builders return `Syntax.Pattern`, and declaration builders return `Syntax.Decl`/`Syntax.Decls`.
+6. Extend `Syntax.kind`/classification helpers to report both broad class and node shape deterministically.
+7. Add expression builders and deconstructors for literals, variables, applications, lambdas, lets, ifs, blocks/do-equivalent sequencing, annotations, products, field/projection, records, structs/modules where supported, refs/effects, matches, and syntax-operator uses.
+8. Add type-expression builders and deconstructors for variables, applications, arrows, implicit arrows, products, struct/signature forms, and effect rows where Stage 7 syntax supports them.
+9. Add pattern builders and deconstructors for binders, wildcards, literals, constructors, records, tuples, or-patterns, and type-head patterns.
+10. Add declaration/declaration-list builders and deconstructors for module/struct value bindings, typed value bindings, macro bindings, syntax declarations, infix operator declarations, and the supported 7H multi-declaration template outputs.
+11. Keep variable-length APIs indexed; add deterministic bounds/type errors for every indexed accessor.
+12. Document the supported API with examples that use only `Syntax.*`.
+13. Add a computed macro example that is awkward with 7F templates alone and uses all of inspection, construction, and preserved input syntax.
+
 ### Syntax Object Primitive Families
 
 The primitive API should be organized enough that downstream users can write macros without reverse-engineering internal constructors:
@@ -656,7 +682,17 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 
 ## Phase 7I: Macros Generating Macros
 
-Status: Planned. Phases 7F and 7H give macros the ability to produce expression and declaration templates. This phase extends that to allow macros to generate new macro, syntax, and operator declarations, so that macros can compose and build on each other.
+Status: Planned. Phases 7F and 7H give macros the ability to produce expression and declaration templates. This phase extends declaration-template macros so they can generate new macro, syntax, and operator declarations, allowing syntax-template macros to compose and build on each other.
+
+Resolved design direction after the Stage 7 design interview:
+
+- Stage 7I generation is template-only: declaration-template `syntax` macros can generate `macro`, `syntax`, and `operator infix` declarations.
+- Computed `macro` values and expression/infix operator macros remain expression macros in Stage 7 and do not run in declaration/type/pattern contexts until Stage 8 problem-aware macro contexts.
+- Generated declarations are supported first in module and struct bodies. Local `do`-block declaration-template generation is deferred until a proper block-item syntax class is added.
+- Generated private syntax/operator declarations inside runtime structs may affect later struct items.
+- Generated `pub syntax`, `pub operator`, and `pub macro` inside ordinary runtime `struct ... end` expressions remain rejected, matching the existing handwritten `pub syntax` rule.
+- Generated public syntax/operator/macro declarations in module/module-file contexts must be visible across imports.
+- Generated public syntax exports require syntax-export discovery to expand declaration-template uses, not merely scan raw handwritten `pub syntax`/`pub operator` forms.
 
 ### Purpose
 
@@ -666,12 +702,25 @@ Enable macros to produce `macro`, `syntax`, and `operator` declarations. This ma
 
 Add macro-generating-macro support with:
 
-- [ ] a macro, syntax macro, or operator macro can produce a `macro`, `syntax`, or `operator infix` declaration in its expansion output;
-- [ ] generated syntax declarations are registered in the operator environment during expansion so that later forms in the same block/module can use them;
+- [ ] a declaration-template `syntax` macro can produce a `macro`, `syntax`, or `operator infix` declaration in its expansion output;
+- [ ] generated syntax declarations are registered in the operator environment during expansion so that later forms in the same module/struct can use them;
 - [ ] generated syntax declarations respect the same lexical scope, later-wins, and export rules as hand-written ones;
 - [ ] `pub` on a generated macro, syntax, or operator declaration works like `pub` on a hand-written one;
-- [ ] generated `pub` declarations are rejected deterministically in contexts that cannot export, such as local `do` blocks and ordinary runtime `struct ... end` expressions;
+- [ ] generated `pub` declarations are rejected deterministically in contexts that cannot export, such as ordinary runtime `struct ... end` expressions;
 - [ ] generated computed macros (`macro` / `pub macro`) are phase-visited and elaborated through the same path as hand-written macros.
+
+Detailed 7I work order:
+
+1. Teach declaration-template replacement parsing to preserve generated `syntax` declarations as operator-environment updates while returning no runtime binding.
+2. Teach declaration-template replacement parsing to preserve generated `operator infix` declarations as operator-environment updates and `MacroBinding` compile-time declarations where needed.
+3. Teach declaration-template replacement parsing to preserve generated `macro` declarations as `MacroBinding`s so phase visits can evaluate them just like handwritten macros.
+4. Ensure generated declarations affect only later sibling module/struct items, not earlier items.
+5. Ensure later-wins shadowing applies uniformly between handwritten and generated value/macro/syntax/operator declarations.
+6. Extend public syntax-export discovery to expand declaration-template uses and collect generated public syntax/operator exports.
+7. Extend macro visiting to see generated public `macro` declarations in module/module-file contexts.
+8. Reject generated public compile-time declarations in runtime struct contexts with deterministic errors.
+9. Add import tests for generated public syntax, generated public infix operators, generated public computed macros, and generated-public rejection in structs.
+10. Add cycle tests for generated syntax/macro declarations that participate in syntax-export or macro-visit cycles.
 
 ### Tests
 

@@ -130,7 +130,8 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           fields = List.map (fun (name, value) -> (name, quote ops mc depth value)) d.fields }
   | VSelfType args -> SelfTypeRef (List.map (quote ops mc depth) args)
   | VRefTy a -> RefTy (quote ops mc depth a)
-  | VStx stx -> Stx stx
+  | VStx (StxExpr stx) -> Stx stx
+  | VStx _ -> raise (Nbe_error.EvalError "cannot quote non-expression syntax object")
   | VRef _ -> raise (Nbe_error.EvalError "cannot quote ref")
   | VCon { name; spine; _ } -> quote_spine ops mc depth (Con name) spine
   | VCont _ -> raise (Nbe_error.EvalError "cannot quote continuation")

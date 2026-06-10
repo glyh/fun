@@ -30,6 +30,7 @@ let init_ctx () : Ctx.t =
   in
   let stdlib_core, stdlib_ty = Elab_driver.infer ctx (Lazy.force parsed_stdlib) in
   let stdlib_value = Ctx.eval ctx stdlib_core in
+  let ctx = Ctx.hide_names ctx syntax_primitive_names in
   Ctx.define ctx "stdlib" stdlib_ty stdlib_value
 
 let open_stdlib ctx =

@@ -430,34 +430,69 @@ let captured_decl_terms captures name =
   | Syntax_template.Decl, None -> error ("declaration hole has no captured declaration terms: " ^ name)
   | _ -> error ("non-declaration hole used as declaration: " ^ name)
 
-let rec rewrite_decl_template_holes captures terms =
+let rec rewrite_decl_template_holes ?(bound = []) captures terms =
   let rec go acc = function
     | [] -> List.rev acc
     | { datum = Token { kind = Operator "$"; _ }; _ }
       :: { datum = Token { kind = Ident name; _ }; span } :: rest -> (
-        match List.assoc_opt name captures with
-        | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
-            go (List.rev_append (captured_decl_terms captures name) acc) rest
-        | _ ->
-            let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
-            go (term :: acc) rest)
+        if List.mem name bound then
+          let dollar = { datum = Token { kind = Operator "$"; span }; span } in
+          let ident = { datum = Token { kind = Ident name; span }; span } in
+          go (ident :: dollar :: acc) rest
+        else
+          match List.assoc_opt name captures with
+          | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
+              go (List.rev_append (captured_decl_terms captures name) acc) rest
+          | _ ->
+              let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+              go (term :: acc) rest)
     | { datum = Token { kind = Operator "$"; _ }; _ }
       :: { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest -> (
         match drop_separators items with
         | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident _kind; _ }; _ } ]
           when token_kind Colon colon -> (
-            match List.assoc_opt name captures with
-            | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
-                go (List.rev_append (captured_decl_terms captures name) acc) rest
-            | _ ->
-                let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
-                go (term :: acc) rest)
+            if List.mem name bound then
+              let dollar = { datum = Token { kind = Operator "$"; span }; span } in
+              let group = { datum = Group (Raw_syntax.Paren, items, span); span } in
+              go (group :: dollar :: acc) rest
+            else
+              match List.assoc_opt name captures with
+              | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
+                  go (List.rev_append (captured_decl_terms captures name) acc) rest
+              | _ ->
+                  let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+                  go (term :: acc) rest)
         | _ -> error "expected template hole annotation $(name: kind)")
+    | syntax_kw :: head :: do_kw :: body_rest
+      when is_syntax_keyword syntax_kw && token_kind KwDo do_kw ->
+        let body_terms, rest, body_span = collect_until_end do_kw.span body_rest in
+        let rewritten_body = rewrite_decl_nested_syntax_body captures bound body_terms in
+        let end_term = { datum = Token { kind = KwEnd; span = body_span }; span = body_span } in
+        go (List.rev_append (syntax_kw :: head :: do_kw :: rewritten_body @ [ end_term ]) acc) rest
     | { datum = Group (delimiter, items, span); _ } :: rest ->
-        go ({ datum = Group (delimiter, rewrite_decl_template_holes captures items, span); span } :: acc) rest
+        go ({ datum = Group (delimiter, rewrite_decl_template_holes ~bound captures items, span); span } :: acc) rest
     | term :: rest -> go (term :: acc) rest
   in
   go [] terms
+
+and rewrite_decl_nested_syntax_body captures bound body_terms =
+  let branch_separator () =
+    let span = Source_span.synthetic in
+    { datum = Token { kind = Bar; span }; span }
+  in
+  let rec join_branches = function
+    | [] -> []
+    | [ branch ] -> branch
+    | branch :: rest -> branch @ (branch_separator () :: join_branches rest)
+  in
+  split_match_branches body_terms
+  |> List.map (fun branch_terms ->
+         match split_at_arrow branch_terms with
+         | Some (pattern_terms, arrow, replacement) ->
+             let inner_bound = collect_pattern_holes (parse_template_pattern_parts pattern_terms) in
+             pattern_terms @ (arrow :: rewrite_decl_template_holes ~bound:(inner_bound @ bound) captures replacement)
+         | None -> branch_terms)
+  |> join_branches
 
 let declaration_replacement_statements replacement =
   match drop_separators replacement with
