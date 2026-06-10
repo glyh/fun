@@ -682,7 +682,7 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 
 ## Phase 7I: Macros Generating Macros
 
-Status: Planned. Phases 7F and 7H give macros the ability to produce expression and declaration templates. This phase extends declaration-template macros so they can generate new macro, syntax, and operator declarations, allowing syntax-template macros to compose and build on each other.
+Status: Started. Phases 7F and 7H give macros the ability to produce expression and declaration templates. This phase extends declaration-template macros so they can generate new macro, syntax, and operator declarations, allowing syntax-template macros to compose and build on each other. Generated syntax declarations, generated public syntax/operator/macro exports, and deterministic generated-public rejection in runtime structs are implemented for module/module-file contexts.
 
 Resolved design direction after the Stage 7 design interview:
 
@@ -702,40 +702,40 @@ Enable macros to produce `macro`, `syntax`, and `operator` declarations. This ma
 
 Add macro-generating-macro support with:
 
-- [ ] a declaration-template `syntax` macro can produce a `macro`, `syntax`, or `operator infix` declaration in its expansion output;
-- [ ] generated syntax declarations are registered in the operator environment during expansion so that later forms in the same module/struct can use them;
+- [x] a declaration-template `syntax` macro can produce a `macro`, `syntax`, or `operator infix` declaration in its expansion output;
+- [x] generated syntax declarations are registered in the operator environment during expansion so that later forms in the same module/struct can use them;
 - [ ] generated syntax declarations respect the same lexical scope, later-wins, and export rules as hand-written ones;
-- [ ] `pub` on a generated macro, syntax, or operator declaration works like `pub` on a hand-written one;
-- [ ] generated `pub` declarations are rejected deterministically in contexts that cannot export, such as ordinary runtime `struct ... end` expressions;
-- [ ] generated computed macros (`macro` / `pub macro`) are phase-visited and elaborated through the same path as hand-written macros.
+- [x] `pub` on a generated macro, syntax, or operator declaration works like `pub` on a hand-written one in module/module-file contexts;
+- [x] generated `pub` declarations are rejected deterministically in contexts that cannot export, such as ordinary runtime `struct ... end` expressions;
+- [x] generated computed macros (`macro` / `pub macro`) are phase-visited and elaborated through the same path as hand-written macros in module/module-file contexts.
 
 Detailed 7I work order:
 
-1. Teach declaration-template replacement parsing to preserve generated `syntax` declarations as operator-environment updates while returning no runtime binding.
-2. Teach declaration-template replacement parsing to preserve generated `operator infix` declarations as operator-environment updates and `MacroBinding` compile-time declarations where needed.
-3. Teach declaration-template replacement parsing to preserve generated `macro` declarations as `MacroBinding`s so phase visits can evaluate them just like handwritten macros.
-4. Ensure generated declarations affect only later sibling module/struct items, not earlier items.
+1. [x] Teach declaration-template replacement parsing to preserve generated `syntax` declarations as operator-environment updates while returning no runtime binding.
+2. [x] Teach declaration-template replacement parsing to preserve generated `operator infix` declarations as operator-environment updates and `MacroBinding` compile-time declarations where needed.
+3. [x] Teach declaration-template replacement parsing to preserve generated `macro` declarations as `MacroBinding`s so phase visits can evaluate them just like handwritten macros.
+4. [x] Ensure generated declarations affect only later sibling module/struct items, not earlier items.
 5. Ensure later-wins shadowing applies uniformly between handwritten and generated value/macro/syntax/operator declarations.
-6. Extend public syntax-export discovery to expand declaration-template uses and collect generated public syntax/operator exports.
-7. Extend macro visiting to see generated public `macro` declarations in module/module-file contexts.
-8. Reject generated public compile-time declarations in runtime struct contexts with deterministic errors.
-9. Add import tests for generated public syntax, generated public infix operators, generated public computed macros, and generated-public rejection in structs.
-10. Add cycle tests for generated syntax/macro declarations that participate in syntax-export or macro-visit cycles.
+6. [x] Extend public syntax-export discovery to expand declaration-template uses and collect generated public syntax/operator exports.
+7. [x] Extend macro visiting to see generated public `macro` declarations in module/module-file contexts.
+8. [x] Reject generated public compile-time declarations in runtime struct contexts with deterministic errors.
+9. [x] Add import tests for generated public syntax, generated public infix operators, generated public computed macros, and generated-public rejection in structs.
+10. [x] Add cycle tests for generated syntax/macro declarations that participate in syntax-export or macro-visit cycles.
 
 ### Tests
 
-- [ ] a syntax macro can generate another syntax macro and the generated syntax is usable later in the same expansion;
-- [ ] a syntax macro can generate an `operator infix` declaration with correct precedence and associativity;
-- [ ] a macro can generate another computed `macro` declaration and the generated macro is usable later in the same expansion;
-- [ ] generated syntax declarations exported with `pub` are visible across module imports;
-- [ ] generated `pub` declarations in non-exporting contexts are rejected deterministically;
-- [ ] hygiene is preserved when generated syntax contains introduced identifiers;
-- [ ] macro-generation cycles produce deterministic errors.
+- [x] a syntax macro can generate another syntax macro and the generated syntax is usable later in the same expansion;
+- [x] a syntax macro can generate an `operator infix` declaration with correct precedence and associativity in module/module-file contexts;
+- [x] a declaration-template syntax macro can generate a computed `macro` declaration and the generated macro is phase-visited in module/module-file contexts;
+- [x] generated syntax declarations exported with `pub` are visible across module imports;
+- [x] generated `pub` declarations in non-exporting contexts are rejected deterministically;
+- [x] hygiene is preserved when generated syntax contains introduced identifiers;
+- [x] macro-generation cycles produce deterministic errors.
 
 ### Exit Criteria
 
-- [ ] At least one macro-generated syntax form is tested end-to-end.
-- [ ] Generated macro, syntax, and operator declarations compose with imported syntax extensions.
+- [x] At least one macro-generated syntax form is tested end-to-end.
+- [x] Generated macro, syntax, and operator declarations compose with imported syntax extensions in module/module-file contexts.
 - [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
 
 ## Remaining Stage 7 Work Tracker

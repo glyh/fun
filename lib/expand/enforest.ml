@@ -1337,13 +1337,17 @@ and parse_struct_binding env stmt =
   | Some (TemplateSyntaxDecl _) ->
       if public then error "pub syntax is not supported inside structs" else None
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
-      Some (Syntax.MacroBinding { name; value; public })
+      if public then error "pub operator is not supported inside structs"
+      else Some (Syntax.MacroBinding { name; value; public })
   | None -> (
+      (match parse_macro_binding env public stmt with
+      | Some _ when public -> error "pub macro is not supported inside structs"
+      | Some binding -> Some binding
+      | None ->
       match
         first_some
           [
             parse_method_binding env public;
-            parse_macro_binding env public;
             parse_type_binding env public;
             parse_effect_binding env public;
             parse_trait_binding env public;
@@ -1356,7 +1360,7 @@ and parse_struct_binding env stmt =
           stmt
       with
       | Some binding -> Some binding
-      | None -> unsupported "unsupported Phase 7C struct item")
+      | None -> unsupported "unsupported Phase 7C struct item"))
 
 and parse_struct_statement env stmt =
   let parse_decl terms = parse_struct_statement env terms in

@@ -1535,6 +1535,147 @@ let test_7i_generated_pub_syntax_across_imports () =
       Alcotest.fail (Printf.sprintf "7I generated pub syntax: %s" (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "7I generated pub syntax: %s" (Printexc.to_string e))
 
+let test_7i_generated_syntax_usable_later_same_module () =
+  check_import_i64 "7I generated syntax usable later" 
+    [ ("gen", "syntax make_inc do
+               | make_inc ->
+                   multi
+                     syntax inc do | inc $x -> $x + 1 end
+                   end
+               end;
+               make_inc;
+               pub result = inc 5") ]
+    6L "do M = import \"gen\"; M.result end" ()
+
+let test_7i_generated_pub_operator_across_imports () =
+  match
+    eval_with_imported_macros
+      [ ("gen", "syntax export_operator do
+                  | export_operator ->
+                      multi
+                        pub operator infix ~ 15 left(stx) -> Syntax.i64(9)
+                      end
+                  end;
+                  export_operator") ]
+      "do M = import \"gen\"; 1 ~ 2 end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "7I generated pub operator across imports" 9L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "7I generated pub operator: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "7I generated pub operator: %s" (Printexc.to_string e))
+
+let test_7i_generated_pub_macro_across_imports () =
+  match
+    eval_with_imported_macros
+      [ ("gen", "syntax export_macro do
+                  | export_macro ->
+                      multi
+                        pub macro answer(_) -> Syntax.i64(42)
+                      end
+                  end;
+                  export_macro") ]
+      "do M = import \"gen\"; answer @ (0) end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "7I generated pub macro across imports" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "7I generated pub macro: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "7I generated pub macro: %s" (Printexc.to_string e))
+
+let test_7i_generated_pub_operator_rejected_in_struct () =
+  match
+    eval_with_macros
+      "struct
+           syntax export_operator do
+           | export_operator ->
+               multi
+                 pub operator infix ~ 15 left(stx) -> Syntax.i64(9)
+               end
+           end;
+           export_operator
+         end"
+  with
+  | exception Enforest.Error msg ->
+      Alcotest.(check bool) "mentions pub operator in struct" true
+        (string_contains msg "pub operator is not supported inside structs")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected generated pub operator in struct to be rejected"
+
+let test_7i_generated_pub_macro_rejected_in_struct () =
+  match
+    eval_with_macros
+      "struct
+           syntax export_macro do
+           | export_macro ->
+               multi
+                 pub macro answer(_) -> Syntax.i64(42)
+               end
+           end;
+           export_macro
+         end"
+  with
+  | exception Enforest.Error msg ->
+      Alcotest.(check bool) "mentions pub macro in struct" true
+        (string_contains msg "pub macro is not supported inside structs")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected generated pub macro in struct to be rejected"
+
+let test_7i_generated_syntax_cycle () =
+  match
+    eval_with_imported_macros
+      [ ("cycle_a", "syntax gen_aop do
+                     | gen_aop -> multi
+                         pub syntax aop do | aop $x -> do import \"cycle_b\"; $x end end
+                       end
+                     end;
+                     gen_aop");
+        ("cycle_b", "syntax gen_bop do
+                     | gen_bop -> multi
+                         pub syntax bop do | bop $x -> do import \"cycle_a\"; $x end end
+                       end
+                     end;
+                     gen_bop")
+      ] "do A = import \"cycle_a\"; aop 0 end"
+  with
+  | exception Core_loader.CircularSyntaxVisit "cycle_a" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected generated syntax circular visit"
+
+let test_7i_generated_macro_cycle () =
+  match
+    eval_with_imported_macros
+      [ ("mac_a", "syntax gen_ma do
+                   | gen_ma -> multi
+                       pub macro ma(_) -> do B = import \"mac_b\"; Syntax.i64(1) end
+                     end
+                   end;
+                   gen_ma");
+        ("mac_b", "syntax gen_mb do
+                   | gen_mb -> multi
+                       pub macro mb(_) -> do A = import \"mac_a\"; Syntax.i64(2) end
+                     end
+                   end;
+                   gen_mb")
+      ] "do A = import \"mac_a\"; ma @ (0) end"
+  with
+  | exception Core_loader.CircularSyntaxVisit "mac_a" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected generated macro circular visit"
+
+let test_7i_generated_syntax_hygiene_introduced_binder () =
+  check_i64_macro "7I generated syntax hygiene preserves introduced binders" 99L
+    "do
+       M = module
+         syntax let_x do | let_x $body -> do x = 1; $body end end;
+         pub result = do
+           x = 99;
+           let_x x
+         end
+       end;
+       M.result
+     end" ()
+
 let () =
   Alcotest.run "core"
     [
@@ -2045,5 +2186,13 @@ let () =
           Alcotest.test_case "decl template: multi rejected in expr" `Quick test_decl_template_multi_rejected_in_expr;
           Alcotest.test_case "decl template: struct field deferred" `Quick test_decl_template_struct_field_deferred;
           Alcotest.test_case "7I: generated pub syntax across imports" `Quick test_7i_generated_pub_syntax_across_imports;
+          Alcotest.test_case "7I: generated syntax usable later" `Quick test_7i_generated_syntax_usable_later_same_module;
+          Alcotest.test_case "7I: generated pub operator across imports" `Quick test_7i_generated_pub_operator_across_imports;
+          Alcotest.test_case "7I: generated pub macro across imports" `Quick test_7i_generated_pub_macro_across_imports;
+          Alcotest.test_case "7I: generated pub operator rejected in struct" `Quick test_7i_generated_pub_operator_rejected_in_struct;
+          Alcotest.test_case "7I: generated pub macro rejected in struct" `Quick test_7i_generated_pub_macro_rejected_in_struct;
+          Alcotest.test_case "7I: generated syntax cycle" `Quick test_7i_generated_syntax_cycle;
+          Alcotest.test_case "7I: generated macro cycle" `Quick test_7i_generated_macro_cycle;
+          Alcotest.test_case "7I: generated syntax hygiene introduced binder" `Quick test_7i_generated_syntax_hygiene_introduced_binder;
         ] );
     ]
