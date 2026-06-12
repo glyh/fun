@@ -1054,7 +1054,14 @@ let test_syntax_module_let_builder () =
     "do
        macro answer(_) -> Syntax.let_in(\"x\", Syntax.i64(3), Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.var(\"x\")), Syntax.i64(4)))
        answer @ (0)
-     end" ()
+      end" ()
+
+let test_syntax_module_seq_builder () =
+  check_i64_macro "Syntax seq builder" 7L
+    "do
+       macro answer(_) -> Syntax.seq(Syntax.i64(3), Syntax.i64(7))
+       answer @ (0)
+      end" ()
 
 let test_syntax_module_identifier_inspection () =
   check_i64_macro "Syntax identifier inspection" 1L
@@ -2146,6 +2153,7 @@ let () =
           Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
           Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
+          Alcotest.test_case "Syntax module: seq builder" `Quick test_syntax_module_seq_builder;
           Alcotest.test_case "Syntax module: identifier inspection" `Quick test_syntax_module_identifier_inspection;
           Alcotest.test_case "Syntax module: operator use deconstructors" `Quick test_syntax_module_operator_use_deconstructors;
           Alcotest.test_case "Syntax module: operator operand error" `Quick test_syntax_module_operator_operand_error;

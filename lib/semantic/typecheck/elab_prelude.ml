@@ -41,6 +41,7 @@ let prims =
     ("stx_make_ap", VU ^-> U ^->> U);
     ("stx_make_lam", VAtomTy Atom_ty.TString ^-> U ^->> U);
     ("stx_make_let", VAtomTy Atom_ty.TString ^-> U ^->> U ^->> U);
+    ("stx_make_seq", VU ^-> U ^->> U);
     ("stx_make_i64", VAtomTy Atom_ty.TI64 ^-> U);
     ("stx_make_string", VAtomTy Atom_ty.TString ^-> U);
     ("stx_make_bool", VAtomTy Atom_ty.TBool ^-> U);
@@ -63,6 +64,7 @@ let syntax_primitive_names =
     "stx_make_ap";
     "stx_make_lam";
     "stx_make_let";
+    "stx_make_seq";
     "stx_make_i64";
     "stx_make_string";
     "stx_make_bool";
@@ -98,6 +100,7 @@ pub module Syntax do
   pub ap = stx_make_ap
   pub lam = stx_make_lam
   pub let_in = stx_make_let
+  pub seq = stx_make_seq
   pub i64 = stx_make_i64
   pub string = stx_make_string
   pub bool = stx_make_bool

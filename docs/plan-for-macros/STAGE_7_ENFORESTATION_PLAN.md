@@ -617,9 +617,9 @@ The public API should use `Syntax.*` names, implemented as a module in the stand
 
 Current implementation notes:
 
-- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
+- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.seq`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
 - the old global `stx_*` names remain available as compatibility/internal names until the 7G API is complete enough to migrate existing tests and examples;
-- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders, `Syntax.let_in`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic operand bounds errors.
+- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders, `Syntax.let_in`, `Syntax.seq`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic operand bounds errors.
 
 Detailed 7G work order:
 
@@ -665,7 +665,7 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 
 ### Tests
 
-- [ ] hygienic builders can construct literals, variables, applications, lambdas, lets, and `do` blocks; all listed except `do` blocks are covered by backend tests;
+- [x] hygienic builders can construct literals, variables, applications, lambdas, lets, and do-block-like sequencing;
 - [ ] preserved input syntax can be inserted into builder-created output unchanged;
 - [ ] computed builders preserve hygiene for both introduced and use-site identifiers;
 - [x] syntax-object inspection can destructure a structured `syntax_operator_use` argument;

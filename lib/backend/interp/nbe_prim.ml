@@ -110,6 +110,23 @@ module Stx = struct
       | _ -> None)
     | _ -> None
 
+  let make_seq = function
+    | [ first; second ] -> (
+      match (expr_value first, expr_value second) with
+      | Some first, Some second ->
+        Some
+          (expr
+             (Let
+                {
+                  name = fresh_id "_";
+                  type_ = None;
+                  value = first;
+                  body = second;
+                  recursive = false;
+                }))
+      | _ -> None)
+    | _ -> None
+
   let make_i64 = function
     | [ VAtom (I64 n) ] -> Some (expr (Atom (I64 n)))
     | _ -> None
@@ -222,6 +239,7 @@ let stx_prim_table : (string, value list -> value option) Hashtbl.t =
     ("stx_make_ap", Stx.make_ap);
     ("stx_make_lam", Stx.make_lam);
     ("stx_make_let", Stx.make_let);
+    ("stx_make_seq", Stx.make_seq);
     ("stx_make_i64", Stx.make_i64);
     ("stx_make_string", Stx.make_string);
     ("stx_make_bool", Stx.make_bool);
