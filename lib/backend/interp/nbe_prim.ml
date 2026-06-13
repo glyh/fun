@@ -147,6 +147,31 @@ module Stx = struct
     | [ VAtom Unit ] -> Some (expr (Atom Unit))
     | _ -> None
 
+  let i64_value = function
+    | [ VStx (StxExpr { kind = Atom (I64 n); _ }) ] -> Some (VAtom (I64 n))
+    | [ VStx _ ] -> fail "stx_i64_value" "expected I64 literal syntax"
+    | _ -> None
+
+  let string_value = function
+    | [ VStx (StxExpr { kind = Atom (String s); _ }) ] -> Some (VAtom (String s))
+    | [ VStx _ ] -> fail "stx_string_value" "expected String literal syntax"
+    | _ -> None
+
+  let bool_value = function
+    | [ VStx (StxExpr { kind = Atom (Bool b); _ }) ] -> Some (VAtom (Bool b))
+    | [ VStx _ ] -> fail "stx_bool_value" "expected Bool literal syntax"
+    | _ -> None
+
+  let char_value = function
+    | [ VStx (StxExpr { kind = Atom (Char c); _ }) ] -> Some (VAtom (Char c))
+    | [ VStx _ ] -> fail "stx_char_value" "expected Char literal syntax"
+    | _ -> None
+
+  let unit_value = function
+    | [ VStx (StxExpr { kind = Atom Unit; _ }) ] -> Some (VAtom Unit)
+    | [ VStx _ ] -> fail "stx_unit_value" "expected Unit literal syntax"
+    | _ -> None
+
   let kind = function
     | [ VStx (StxExpr stx) ] ->
         let s =
@@ -245,6 +270,11 @@ let stx_prim_table : (string, value list -> value option) Hashtbl.t =
     ("stx_make_bool", Stx.make_bool);
     ("stx_make_char", Stx.make_char);
     ("stx_make_unit", Stx.make_unit);
+    ("stx_i64_value", Stx.i64_value);
+    ("stx_string_value", Stx.string_value);
+    ("stx_bool_value", Stx.bool_value);
+    ("stx_char_value", Stx.char_value);
+    ("stx_unit_value", Stx.unit_value);
     ("stx_kind", Stx.kind);
     ("stx_is_var", Stx.is_var);
     ("stx_is_atom", Stx.is_atom);

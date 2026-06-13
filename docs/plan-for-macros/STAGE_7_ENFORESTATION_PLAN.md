@@ -561,7 +561,7 @@ Deferred from Stage 7H:
 
 ## Phase 7G: Computed Hygienic Macro API
 
-Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps primitive syntax constructors and `kind`/`id_eq` inspection helpers. A later 7G slice added literal builders for `Char`/`Unit`, a `let_in` builder, identifier classification/name inspection, and structured operator-use inspection/deconstruction helpers.
+Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps primitive syntax constructors and `kind`/`id_eq` inspection helpers. A later 7G slice added literal builders for `Char`/`Unit`, literal value inspectors, a `let_in` builder, identifier classification/name inspection, and structured operator-use inspection/deconstruction helpers.
 
 Resolved design direction after the Stage 7 design interview:
 
@@ -617,9 +617,9 @@ The public API should use `Syntax.*` names, implemented as a module in the stand
 
 Current implementation notes:
 
-- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.seq`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
+- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.seq`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.i64_value`, `Syntax.string_value`, `Syntax.bool_value`, `Syntax.char_value`, `Syntax.unit_value`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
 - the old global `stx_*` names remain available as compatibility/internal names until the 7G API is complete enough to migrate existing tests and examples;
-- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders, `Syntax.let_in`, `Syntax.seq`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic operand bounds errors.
+- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders and inspectors, `Syntax.let_in`, `Syntax.seq`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic accessor bounds/type errors.
 
 Detailed 7G work order:
 
@@ -643,7 +643,7 @@ The primitive API should be organized enough that downstream users can write mac
 
 - [x] classification: `Syntax.kind`, operator-use kind checks, atom/identifier checks;
 - [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers, preserve input identifiers, and place caller-supplied identifiers in binder positions; partially covered by `Syntax.id_name`, `Syntax.id_eq`, and `Syntax.var`;
-- [ ] literals: construct and inspect integer, bool, char, string, and unit syntax; builders are implemented, inspectors remain deferred;
+- [x] literals: construct and inspect integer, bool, char, string, and unit syntax;
 - [ ] application/lambda/let: construct and deconstruct common expression forms;
 - [ ] blocks/modules/structs: inspect and build staged surface containers where supported;
 - [ ] patterns/types: expose only the subset needed before Stage 8 problem-aware macros, or document why they are deferred;

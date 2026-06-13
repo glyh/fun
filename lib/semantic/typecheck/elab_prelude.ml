@@ -47,6 +47,11 @@ let prims =
     ("stx_make_bool", VAtomTy Atom_ty.TBool ^-> U);
     ("stx_make_char", VAtomTy Atom_ty.TChar ^-> U);
     ("stx_make_unit", VAtomTy Atom_ty.TUnit ^-> U);
+    ("stx_i64_value", VU ^-> AtomTy Atom_ty.TI64);
+    ("stx_string_value", VU ^-> AtomTy Atom_ty.TString);
+    ("stx_bool_value", VU ^-> AtomTy Atom_ty.TBool);
+    ("stx_char_value", VU ^-> AtomTy Atom_ty.TChar);
+    ("stx_unit_value", VU ^-> AtomTy Atom_ty.TUnit);
     ("stx_kind", VU ^-> AtomTy Atom_ty.TString);
     ("stx_is_var", VU ^-> AtomTy Atom_ty.TBool);
     ("stx_is_atom", VU ^-> AtomTy Atom_ty.TBool);
@@ -70,6 +75,11 @@ let syntax_primitive_names =
     "stx_make_bool";
     "stx_make_char";
     "stx_make_unit";
+    "stx_i64_value";
+    "stx_string_value";
+    "stx_bool_value";
+    "stx_char_value";
+    "stx_unit_value";
     "stx_kind";
     "stx_is_var";
     "stx_is_atom";
@@ -106,6 +116,11 @@ pub module Syntax do
   pub bool = stx_make_bool
   pub char = stx_make_char
   pub unit = stx_make_unit
+  pub i64_value = stx_i64_value
+  pub string_value = stx_string_value
+  pub bool_value = stx_bool_value
+  pub char_value = stx_char_value
+  pub unit_value = stx_unit_value
   pub kind = stx_kind
   pub is_var = stx_is_var
   pub is_atom = stx_is_atom

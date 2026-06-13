@@ -1047,7 +1047,32 @@ let test_syntax_module_literal_builders () =
        if char_a @ (0) == 'a' do
          if unit_value @ (0) == () do 42 else 0 end
        else 0 end
+      end" ()
+
+let test_syntax_module_literal_inspectors () =
+  check_i64_macro "Syntax literal inspectors" 42L
+    "do
+       macro answer(stx) -> if Syntax.i64_value(stx) == 41 do
+           if Syntax.bool_value(Syntax.bool(true)) do
+             if Syntax.char_value(Syntax.char('a')) == 'a' do
+               if Syntax.string_value(Syntax.string(\"ok\")) == \"ok\" do
+                 if Syntax.unit_value(Syntax.unit(())) == () do Syntax.i64(42) else Syntax.i64(0) end
+               else Syntax.i64(0) end
+             else Syntax.i64(0) end
+           else Syntax.i64(0) end
+         else Syntax.i64(0) end
+       answer @ (41)
      end" ()
+
+let test_syntax_module_literal_inspector_error () =
+  match eval_with_macros "do macro answer(stx) -> Syntax.i64_value(stx); answer @ (true) end" with
+  | exception Nbe.EvalError msg
+  | exception Failure msg ->
+      Alcotest.(check bool)
+        "mentions literal kind" true
+        (string_contains msg "expected I64 literal syntax")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected literal inspector failure"
 
 let test_syntax_module_let_builder () =
   check_i64_macro "Syntax let builder" 7L
@@ -2152,6 +2177,8 @@ let () =
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
+          Alcotest.test_case "Syntax module: literal inspectors" `Quick test_syntax_module_literal_inspectors;
+          Alcotest.test_case "Syntax module: literal inspector error" `Quick test_syntax_module_literal_inspector_error;
           Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
           Alcotest.test_case "Syntax module: seq builder" `Quick test_syntax_module_seq_builder;
           Alcotest.test_case "Syntax module: identifier inspection" `Quick test_syntax_module_identifier_inspection;
