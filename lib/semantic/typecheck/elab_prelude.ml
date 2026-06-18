@@ -52,6 +52,16 @@ let prims =
     ("stx_bool_value", VU ^-> AtomTy Atom_ty.TBool);
     ("stx_char_value", VU ^-> AtomTy Atom_ty.TChar);
     ("stx_unit_value", VU ^-> AtomTy Atom_ty.TUnit);
+    ("stx_is_ap", VU ^-> AtomTy Atom_ty.TBool);
+    ("stx_ap_fn", VU ^-> U);
+    ("stx_ap_arg", VU ^-> U);
+    ("stx_is_lam", VU ^-> AtomTy Atom_ty.TBool);
+    ("stx_lam_name", VU ^-> AtomTy Atom_ty.TString);
+    ("stx_lam_body", VU ^-> U);
+    ("stx_is_let", VU ^-> AtomTy Atom_ty.TBool);
+    ("stx_let_name", VU ^-> AtomTy Atom_ty.TString);
+    ("stx_let_value", VU ^-> U);
+    ("stx_let_body", VU ^-> U);
     ("stx_kind", VU ^-> AtomTy Atom_ty.TString);
     ("stx_is_var", VU ^-> AtomTy Atom_ty.TBool);
     ("stx_is_atom", VU ^-> AtomTy Atom_ty.TBool);
@@ -80,6 +90,16 @@ let syntax_primitive_names =
     "stx_bool_value";
     "stx_char_value";
     "stx_unit_value";
+    "stx_is_ap";
+    "stx_ap_fn";
+    "stx_ap_arg";
+    "stx_is_lam";
+    "stx_lam_name";
+    "stx_lam_body";
+    "stx_is_let";
+    "stx_let_name";
+    "stx_let_value";
+    "stx_let_body";
     "stx_kind";
     "stx_is_var";
     "stx_is_atom";
@@ -121,6 +141,16 @@ pub module Syntax do
   pub bool_value = stx_bool_value
   pub char_value = stx_char_value
   pub unit_value = stx_unit_value
+  pub is_ap = stx_is_ap
+  pub ap_fn = stx_ap_fn
+  pub ap_arg = stx_ap_arg
+  pub is_lam = stx_is_lam
+  pub lam_name = stx_lam_name
+  pub lam_body = stx_lam_body
+  pub is_let = stx_is_let
+  pub let_name = stx_let_name
+  pub let_value = stx_let_value
+  pub let_body = stx_let_body
   pub kind = stx_kind
   pub is_var = stx_is_var
   pub is_atom = stx_is_atom

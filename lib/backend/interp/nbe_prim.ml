@@ -172,6 +172,56 @@ module Stx = struct
     | [ VStx _ ] -> fail "stx_unit_value" "expected Unit literal syntax"
     | _ -> None
 
+  let is_ap = function
+    | [ VStx (StxExpr { kind = Ap _; _ }) ] -> Some (VAtom (Bool true))
+    | [ VStx _ ] -> Some (VAtom (Bool false))
+    | _ -> None
+
+  let ap_fn = function
+    | [ VStx (StxExpr { kind = Ap (fn, _, _); _ }) ] -> Some (VStx (StxExpr fn))
+    | [ VStx _ ] -> fail "stx_ap_fn" "expected application syntax"
+    | _ -> None
+
+  let ap_arg = function
+    | [ VStx (StxExpr { kind = Ap (_, _, arg); _ }) ] -> Some (VStx (StxExpr arg))
+    | [ VStx _ ] -> fail "stx_ap_arg" "expected application syntax"
+    | _ -> None
+
+  let is_lam = function
+    | [ VStx (StxExpr { kind = Lam _; _ }) ] -> Some (VAtom (Bool true))
+    | [ VStx _ ] -> Some (VAtom (Bool false))
+    | _ -> None
+
+  let lam_name = function
+    | [ VStx (StxExpr { kind = Lam (p, _); _ }) ] -> Some (VAtom (String p.name.name))
+    | [ VStx _ ] -> fail "stx_lam_name" "expected lambda syntax"
+    | _ -> None
+
+  let lam_body = function
+    | [ VStx (StxExpr { kind = Lam (_, body); _ }) ] -> Some (VStx (StxExpr body))
+    | [ VStx _ ] -> fail "stx_lam_body" "expected lambda syntax"
+    | _ -> None
+
+  let is_let = function
+    | [ VStx (StxExpr { kind = Let _; _ }) ] -> Some (VAtom (Bool true))
+    | [ VStx _ ] -> Some (VAtom (Bool false))
+    | _ -> None
+
+  let let_name = function
+    | [ VStx (StxExpr { kind = Let { name; _ }; _ }) ] -> Some (VAtom (String name.name))
+    | [ VStx _ ] -> fail "stx_let_name" "expected let syntax"
+    | _ -> None
+
+  let let_value = function
+    | [ VStx (StxExpr { kind = Let { value; _ }; _ }) ] -> Some (VStx (StxExpr value))
+    | [ VStx _ ] -> fail "stx_let_value" "expected let syntax"
+    | _ -> None
+
+  let let_body = function
+    | [ VStx (StxExpr { kind = Let { body; _ }; _ }) ] -> Some (VStx (StxExpr body))
+    | [ VStx _ ] -> fail "stx_let_body" "expected let syntax"
+    | _ -> None
+
   let kind = function
     | [ VStx (StxExpr stx) ] ->
         let s =
@@ -275,6 +325,16 @@ let stx_prim_table : (string, value list -> value option) Hashtbl.t =
     ("stx_bool_value", Stx.bool_value);
     ("stx_char_value", Stx.char_value);
     ("stx_unit_value", Stx.unit_value);
+    ("stx_is_ap", Stx.is_ap);
+    ("stx_ap_fn", Stx.ap_fn);
+    ("stx_ap_arg", Stx.ap_arg);
+    ("stx_is_lam", Stx.is_lam);
+    ("stx_lam_name", Stx.lam_name);
+    ("stx_lam_body", Stx.lam_body);
+    ("stx_is_let", Stx.is_let);
+    ("stx_let_name", Stx.let_name);
+    ("stx_let_value", Stx.let_value);
+    ("stx_let_body", Stx.let_body);
     ("stx_kind", Stx.kind);
     ("stx_is_var", Stx.is_var);
     ("stx_is_atom", Stx.is_atom);

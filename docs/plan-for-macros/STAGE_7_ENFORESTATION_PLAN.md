@@ -617,9 +617,9 @@ The public API should use `Syntax.*` names, implemented as a module in the stand
 
 Current implementation notes:
 
-- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.seq`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.i64_value`, `Syntax.string_value`, `Syntax.bool_value`, `Syntax.char_value`, `Syntax.unit_value`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
+- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.seq`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.i64_value`, `Syntax.string_value`, `Syntax.bool_value`, `Syntax.char_value`, `Syntax.unit_value`, `Syntax.is_ap`, `Syntax.ap_fn`, `Syntax.ap_arg`, `Syntax.is_lam`, `Syntax.lam_name`, `Syntax.lam_body`, `Syntax.is_let`, `Syntax.let_name`, `Syntax.let_value`, `Syntax.let_body`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
 - the old global `stx_*` names remain available as compatibility/internal names until the 7G API is complete enough to migrate existing tests and examples;
-- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders and inspectors, `Syntax.let_in`, `Syntax.seq`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic accessor bounds/type errors.
+- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders and inspectors, expression deconstructors (`ap`/`lam`/`let`), `Syntax.let_in`, `Syntax.seq`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic accessor bounds/type errors.
 
 Detailed 7G work order:
 
@@ -644,7 +644,7 @@ The primitive API should be organized enough that downstream users can write mac
 - [x] classification: `Syntax.kind`, operator-use kind checks, atom/identifier checks;
 - [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers, preserve input identifiers, and place caller-supplied identifiers in binder positions; partially covered by `Syntax.id_name`, `Syntax.id_eq`, and `Syntax.var`;
 - [x] literals: construct and inspect integer, bool, char, string, and unit syntax;
-- [ ] application/lambda/let: construct and deconstruct common expression forms;
+- [x] application/lambda/let: construct and deconstruct common expression forms;
 - [ ] blocks/modules/structs: inspect and build staged surface containers where supported;
 - [ ] patterns/types: expose only the subset needed before Stage 8 problem-aware macros, or document why they are deferred;
 - [ ] source spans: preserve use-site spans where possible and expose enough span information for diagnostics.
