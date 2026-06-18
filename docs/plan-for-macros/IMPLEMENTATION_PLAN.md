@@ -42,7 +42,7 @@ Current focus:
 - [x] Stage 7 enforestation infrastructure is complete through the constrained prefix/infix syntax-extension slice.
 - [x] Add Stage 7F practical macro authoring: `syntax <head-token> do | pattern -> replacement end`, infix-only precedence-aware `operator` forms, and at least one non-dummy enforestation-backed macro.
 - [x] Add Stage 7H module/struct declaration templates: `decl` holes, `multi ... end` declaration-template output, and declaration-template contexts for value and typed value bindings with optional `pub`.
-- [ ] Add Stage 7G computed hygienic macro authoring: started with a public stdlib `Syntax` module over the current primitive builders/inspectors; still needs the broader documented inspection/deconstruction/provenance API without requiring quote/unquote or user-visible symgen.
+- [ ] Add Stage 7G computed hygienic macro authoring: expose `Syntax.t` as a nominal matchable ADT so macros use the existing `match` compiler for destructuring rather than per-field deconstructor functions; builders remain for construction. Still needs the class-specific ADTs (`Syntax.Expr`, `Syntax.Pattern`, etc.), hygiene-preserving ADT destructuring, and deprecation of the functional deconstructor primitives.
 - [ ] Add Stage 7I macros generating macros: macros that produce `macro`, `syntax`, and `operator` declarations, with correct scoping and export.
 - [ ] Start Stage 8: problem-aware macros.
 

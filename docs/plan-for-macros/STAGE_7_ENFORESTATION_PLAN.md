@@ -615,39 +615,60 @@ macro log_call(stx) ->
 
 The public API should use `Syntax.*` names, implemented as a module in the standard library with no special compiler treatment unless strictly necessary. Existing `stx_*` primitives are temporary compatibility/internal names and should be removed or hidden as part of this phase. Quasiquote/unquote can remain future sugar over this API if the builder API is still too verbose. They are not Stage 7G requirements.
 
+### Design direction: ADT-based pattern matching instead of functional deconstructors
+
+The initial 7G implementation explored functional deconstructors (`Syntax.is_ap`, `Syntax.ap_fn`, `Syntax.ap_arg`, etc.) — a Lisp-1-style API where every field access is a separate function call. This accumulates boilerplate quickly and forces macros into chains of `if`/`do` guards.
+
+The revised design exposes `Syntax.t` (and its per-syntax-class variants) as a **nominal, matchable ADT** visible to macros. A macro author writes:
+
+```fun
+macro flatten(stx) ->
+  match stx do
+  | Syntax.Ap(Syntax.Ap(f, a1), a2) -> Syntax.Ap(f, Syntax.Prod([a1, a2]))
+  | _ -> stx
+  end
+```
+
+Pattern matching on syntax uses the existing `match` compiler. Destructuring binders from use-site syntax (e.g. matching `Lam(x, body)` where `x` came from the caller) preserves hygiene through the existing scope machinery — the binder's scope set travels with the identifier through destructuring and reconstruction.
+
+This eliminates the need for per-field deconstructor primitives entirely. **Builders** (`Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.var`, `Syntax.i64`, etc.) remain as the construction API. Class-specific ADTs (`Syntax.Expr`, `Syntax.Pattern`, etc.) restrict which constructors are valid in each position, giving type-level exhaustiveness for macros that operate on known syntax classes.
+
 Current implementation notes:
 
-- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.seq`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.i64_value`, `Syntax.string_value`, `Syntax.bool_value`, `Syntax.char_value`, `Syntax.unit_value`, `Syntax.is_ap`, `Syntax.ap_fn`, `Syntax.ap_arg`, `Syntax.is_lam`, `Syntax.lam_name`, `Syntax.lam_body`, `Syntax.is_let`, `Syntax.let_name`, `Syntax.let_value`, `Syntax.let_body`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation;
-- the old global `stx_*` names remain available as compatibility/internal names until the 7G API is complete enough to migrate existing tests and examples;
-- focused backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders and inspectors, expression deconstructors (`ap`/`lam`/`let`), `Syntax.let_in`, `Syntax.seq`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic accessor bounds/type errors.
+- `Syntax.var`, `Syntax.ap`, `Syntax.lam`, `Syntax.let_in`, `Syntax.seq`, `Syntax.i64`, `Syntax.string`, `Syntax.bool`, `Syntax.char`, `Syntax.unit`, `Syntax.i64_value`, `Syntax.string_value`, `Syntax.bool_value`, `Syntax.char_value`, `Syntax.unit_value`, `Syntax.is_ap`, `Syntax.ap_fn`, `Syntax.ap_arg`, `Syntax.is_lam`, `Syntax.lam_name`, `Syntax.lam_body`, `Syntax.is_let`, `Syntax.let_name`, `Syntax.let_value`, `Syntax.let_body`, `Syntax.kind`, `Syntax.is_var`, `Syntax.is_atom`, `Syntax.id_name`, `Syntax.id_eq`, `Syntax.operator_symbol`, `Syntax.operator_fixity`, `Syntax.operator_arity`, and `Syntax.operator_operand` are exposed from the stdlib as aliases over the primitive implementation (pre-ADT deconstructor API, to be deprecated once ADT matching is available);
+- the old global `stx_*` names remain available as compatibility/internal names until the ADT API is complete enough to migrate existing tests and examples;
+- current backend tests cover `Syntax.i64`, `Syntax.ap`/`Syntax.var`, literal builders and inspectors, expression deconstructors (`ap`/`lam`/`let`), `Syntax.let_in`, `Syntax.seq`, identifier inspection, `Syntax.kind` on structured operator-use syntax, operator-use deconstruction, and deterministic accessor bounds/type errors.
 
 Detailed 7G work order:
 
 1. Hide direct global `stx_*` primitive names from user code after stdlib elaboration, while keeping `Syntax.*` in stdlib functional.
 2. Migrate tests and examples that still use direct `stx_*` names to `Syntax.*`.
-3. Replace the untyped syntax-value shortcut with tagged syntax-object values covering expression, type expression, pattern, declaration, and declaration-list objects.
-4. Add class-specific opaque public types in `Syntax`, such as `Syntax.Expr`, `Syntax.TypeExpr`, `Syntax.Pattern`, `Syntax.Decl`, and `Syntax.Decls`.
-5. Update primitive signatures so expression builders return `Syntax.Expr`, type builders return `Syntax.TypeExpr`, pattern builders return `Syntax.Pattern`, and declaration builders return `Syntax.Decl`/`Syntax.Decls`.
-6. Extend `Syntax.kind`/classification helpers to report both broad class and node shape deterministically.
-7. Add expression builders and deconstructors for literals, variables, applications, lambdas, lets, ifs, blocks/do-equivalent sequencing, annotations, products, field/projection, records, structs/modules where supported, refs/effects, matches, and syntax-operator uses.
-8. Add type-expression builders and deconstructors for variables, applications, arrows, implicit arrows, products, struct/signature forms, and effect rows where Stage 7 syntax supports them.
-9. Add pattern builders and deconstructors for binders, wildcards, literals, constructors, records, tuples, or-patterns, and type-head patterns.
-10. Add declaration/declaration-list builders and deconstructors for module/struct value bindings, typed value bindings, macro bindings, syntax declarations, infix operator declarations, and the supported 7H multi-declaration template outputs.
-11. Keep variable-length APIs indexed; add deterministic bounds/type errors for every indexed accessor.
-12. Document the supported API with examples that use only `Syntax.*`.
-13. Add a computed macro example that is awkward with 7F templates alone and uses all of inspection, construction, and preserved input syntax.
+3. Expose `Syntax.t` as a nominal, matchable ADT so macros can use the existing `match` compiler for destructuring instead of calling per-field deconstructor functions.
+4. Add class-specific nominal types (`Syntax.Expr`, `Syntax.TypeExpr`, `Syntax.Pattern`, `Syntax.Decl`, `Syntax.Decls`) as tagged wrappers or indexed variants so that pattern matching on a known class is exhaustiveness-checked by the match compiler.
+5. Update builder signatures so expression builders return `Syntax.Expr`, type builders return `Syntax.TypeExpr`, pattern builders return `Syntax.Pattern`, and declaration builders return `Syntax.Decl`/`Syntax.Decls`.
+6. Design the ADT constructor naming convention for syntax nodes (e.g. `Syntax.Ap`, `Syntax.Lam`, `Syntax.Let`, `Syntax.Var`, `Syntax.Atom` vs flat names like `Syntax_Ap`). Decide whether to use a single flat ADT or nested per-class ADTs inside wrapper types.
+7. Ensure pattern-matching destructuring of syntax preserves hygiene: binders extracted from use-site syntax (e.g. matching `Lam(x, body)`) carry their scope sets through the match, so reconstruction does not accidentally capture or escape.
+8. Add expression builders for all syntax nodes reachable at macro expansion time: literals, variables, applications, lambdas, lets, ifs, blocks/do-equivalent sequencing, annotations, products, field/projection, records, structs/modules where supported, refs/effects, matches, and syntax-operator uses.
+9. Add type-expression builders for variables, applications, arrows, implicit arrows, products, struct/signature forms, and effect rows where Stage 7 syntax supports them.
+10. Add pattern builders for binders, wildcards, literals, constructors, records, tuples, or-patterns, and type-head patterns.
+11. Add declaration/declaration-list builders for module/struct value bindings, typed value bindings, macro bindings, syntax declarations, infix operator declarations, and the supported 7H multi-declaration template outputs.
+12. Deprecate and remove per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, `stx_ap_arg`, etc.) once ADT matching is operational, since `match` covers all destructuring needs.
+13. Document the supported API with macro examples that use both ADT pattern matching and builders.
+14. Add a computed macro example that is awkward with 7F templates alone and uses ADT matching plus construction.
 
 ### Syntax Object Primitive Families
 
-The primitive API should be organized enough that downstream users can write macros without reverse-engineering internal constructors:
+The ADT-based approach replaces per-field deconstructor functions with pattern matching. The primitive surface consists of builders (for construction) and the exposed nominal types (for matching):
 
-- [x] classification: `Syntax.kind`, operator-use kind checks, atom/identifier checks;
-- [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers, preserve input identifiers, and place caller-supplied identifiers in binder positions; partially covered by `Syntax.id_name`, `Syntax.id_eq`, and `Syntax.var`;
-- [x] literals: construct and inspect integer, bool, char, string, and unit syntax;
-- [x] application/lambda/let: construct and deconstruct common expression forms;
-- [ ] blocks/modules/structs: inspect and build staged surface containers where supported;
-- [ ] patterns/types: expose only the subset needed before Stage 8 problem-aware macros, or document why they are deferred;
-- [ ] source spans: preserve use-site spans where possible and expose enough span information for diagnostics.
+- [x] classification: `Syntax.kind` and operator-use kind checks remain useful as quick predicates; they stay;
+- [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers via `Syntax.var`, preserve input identifiers through ADT destructuring, and place caller-supplied identifiers in binder positions;
+- [x] literals: construct and inspect integer, bool, char, string, and unit syntax via builders + ADT matching;
+- [x] application/lambda/let: construct via builders; destructuring handled by ADT `match` (the existing functional deconstructors serve as a stopgap until ADT matching lands);
+- [ ] ADT exposure: make `Syntax.t` (and per-class variants) nominal types visible to the elaborator and match compiler so that `match stx do Syntax.Ap(fn, arg) -> ... end` works;
+- [ ] syntax-class-specific ADTs: expose `Syntax.Expr`, `Syntax.Pattern`, `Syntax.TypeExpr`, `Syntax.Decl`, `Syntax.Decls` as distinct matchable types with class-appropriate constructor subsets;
+- [ ] blocks/modules/structs: inspect via ADT matching and build staged surface containers;
+- [ ] patterns/types: expose the subset needed before Stage 8 problem-aware macros, or document why they are deferred;
+- [ ] source spans: preserve use-site spans through ADT destructuring/reconstruction and expose span accessors for diagnostics.
 
 ### Hygiene Requirements
 
@@ -666,18 +687,22 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 ### Tests
 
 - [x] hygienic builders can construct literals, variables, applications, lambdas, lets, and do-block-like sequencing;
-- [ ] preserved input syntax can be inserted into builder-created output unchanged;
+- [ ] macros can pattern-match on `Syntax.t` values using `match` with ADT constructor patterns (`Ap`, `Lam`, `Let`, `Var`, `Atom`, etc.);
+- [ ] ADT matching preserves hygiene: binders destructured from use-site syntax retain their scope sets and do not cause accidental capture when used in reconstructed output;
+- [ ] class-specific ADTs (`Syntax.Expr`, `Syntax.Pattern`, etc.) restrict valid constructors and the match compiler warns or errors on impossible cases;
+- [ ] preserved input syntax can be pattern-matched and inserted into builder-created output unchanged;
 - [ ] computed builders preserve hygiene for both introduced and use-site identifiers;
 - [x] syntax-object inspection can destructure a structured `syntax_operator_use` argument;
 - [x] a computed macro rewrites an enforested operator use without using only fixed pattern/template syntax;
-- [x] initial downstream-style macro examples use documented primitives rather than private implementation details.
+- [ ] initial downstream-style macro examples use ADT matching and builders rather than functional deconstructors or `stx_*` primitives.
 
 ### Exit Criteria
 
-- [ ] At least one macro cannot be expressed cleanly with 7F pattern/template syntax alone;
-- [ ] The public syntax-object API is documented and covered by tests;
-- [ ] Public examples use `Syntax.*` rather than `stx_*` primitives;
-- [ ] Existing 7F pattern/template examples remain simpler than their equivalent computed macro versions;
+- [ ] At least one macro cannot be expressed cleanly with 7F pattern/template syntax alone, and its implementation uses ADT pattern matching instead of functional deconstructors;
+- [ ] The public syntax-object API (builders + matchable ADTs) is documented and covered by tests;
+- [ ] Public examples use `Syntax.*` builders and ADT matching rather than `stx_*` primitives;
+- [ ] Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) are deprecated or removed in favor of ADT matching;
+- [ ] Existing 7F pattern/template examples remain simpler than their equivalent ADT-matching macro versions;
 - [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
 
 ## Phase 7I: Macros Generating Macros
