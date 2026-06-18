@@ -354,28 +354,37 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         | Surface.TypeBinding { name; params; ctors; public } :: rest ->
             let num_params = List.length params in
             if num_params = 0 then begin
+              let nominal_id = NominalId.fresh () in
+              let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
+              let tmp_ctx =
+                { ctx with env = nominal_placeholder :: ctx.env;
+                           types = VU :: ctx.types;
+                           lvl = ctx.lvl + 1;
+                           bds = Defined :: ctx.bds;
+                           name_table = NameMap.add name { level = ctx.lvl; ty = VU } ctx.name_table }
+              in
               let elaborated_ctors =
                 List.map
                   (fun (cname, payloads) ->
                     let payload_clos =
                       List.map
                         (fun payload_expr ->
-                        let payload_core, payload_ty = ops.infer ctx payload_expr in
-                        check_type_like ctx payload_ty (Ctx.eval ctx payload_core);
-                        { env = ctx.env; body = payload_core })
+                        let payload_core, payload_ty = ops.infer tmp_ctx payload_expr in
+                        check_type_like tmp_ctx payload_ty (Ctx.eval tmp_ctx payload_core);
+                        { env = tmp_ctx.env; body = payload_core })
                         payloads
                     in
                     (cname, payload_clos))
                   ctors
               in
-              let nominal = VNominal { id = NominalId.fresh (); name; num_params = 0; params = []; constructors = elaborated_ctors } in
+              let nominal = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = elaborated_ctors } in
               let kind = if public then Public else Private in
               let ctor_values, ctor_types =
                 List.split
                   (List.map
                      (fun (cname, payload_clo_opt) ->
                        let ctor_value, ctor_ty =
-                         build_ctor ctx.metas (nominal :: ctx.env) name cname 0 payload_clo_opt
+                         build_ctor tmp_ctx.metas (nominal :: tmp_ctx.env) name cname 0 payload_clo_opt
                        in
                        ((cname, ctor_value), (cname, ctor_ty)))
                      elaborated_ctors)

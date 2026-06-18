@@ -129,9 +129,9 @@ pub module Syntax do
   pub type Id = {name: String; span: Span; scope: I64}
 
   pub type Param = {name: Id; type_: Option(Type); explicitness: Explicitness}
+  pub type Expr = RawVar(Option(Span), Id) | RawAtom(Option(Span), Type) | RawAp(Option(Span), Expr, Explicitness, Expr) | RawLam(Option(Span), Param, Expr) | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
   type Option(A) = Some A | None
   type Foo = Bar
-  pub Expr : Type = Type
   pub TypeExpr : Type = Type
   pub Pattern : Type = Type
   pub Decl : Type = Type

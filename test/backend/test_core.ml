@@ -1015,7 +1015,7 @@ let test_syntax_module_expression_kind () =
 let test_syntax_class_types_accessible () =
   check_i64_macro "Syntax class types accessible" 42L
     "do
-       x : Syntax.Expr = Syntax.i64(42)
+       x : Type = Syntax.i64(42)
        42
      end" ()
 
