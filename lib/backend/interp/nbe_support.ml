@@ -68,3 +68,42 @@ let unhandled_effect_error eff op =
 let result_value _mc = function
   | Done v -> v
   | Effect { eff; op; _ } -> unhandled_effect_error eff op
+
+let env_value_label (v : value) =
+  match v with
+  | VLam _ -> "VLam"
+  | VPi _ -> "VPi"
+  | VU -> "VU"
+  | VAtom _ -> "VAtom"
+  | VAtomTy _ -> "VAtomTy"
+  | VProd _ -> "VProd"
+  | VProdTy _ -> "VProdTy"
+  | VFix _ -> "VFix"
+  | VModule _ -> "VModule"
+  | VStruct _ -> "VStruct"
+  | VRecord _ -> "VRecord"
+  | VNominal n -> "VNominal(" ^ n.name ^ ")"
+  | VEffect e -> "VEffect(" ^ e.name ^ ")"
+  | VTrait t -> "VTrait(" ^ t.trait_name ^ ")"
+  | VTraitDict _ -> "VTraitDict"
+  | VSelfType _ -> "VSelfType"
+  | VRefTy _ -> "VRefTy"
+  | VRef _ -> "VRef"
+  | VCon { name; _ } -> "VCon(" ^ name ^ ")"
+  | VCont _ -> "VCont"
+  | VStx _ -> "VStx"
+  | VNeutral { neutral = { head = HPrim n; _ }; _ } -> "VNeutral(HPrim " ^ n ^ ")"
+  | VNeutral { neutral = { head = HVar lvl; _ }; _ } -> "VNeutral(HVar " ^ string_of_int lvl ^ ")"
+  | VNeutral { neutral = { head = HMeta id; _ }; _ } -> "VNeutral(HMeta " ^ string_of_int id ^ ")"
+  | VRigid { lvl; _ } -> "VRigid(" ^ string_of_int lvl ^ ")"
+  | VFlex { id; _ } -> "VFlex(" ^ string_of_int id ^ ")"
+  | VEffectRowTy -> "VEffectRowTy"
+  | VEffectRow _ -> "VEffectRow"
+
+let dump_env label env =
+  Printf.eprintf "--- env dump [%s] (%d entries) ---\n%!" label (List.length env);
+  let _ = List.fold_left (fun i v ->
+    Printf.eprintf "  [%d] %s\n%!" i (env_value_label v);
+    i + 1
+  ) 0 env in
+  ()
