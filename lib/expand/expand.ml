@@ -336,7 +336,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
         | Some apply_fn ->
           let result =
             with_syntax_operator_context a (fun () ->
-                let arg_stx = Macro_eval.wrap_stx a in
+                let arg_stx = Macro_eval.wrap_stx ~syntax_nominal:(Expand_ctx.get_syntax_expr_nominal ctx) a in
                 apply_fn macro_fn arg_stx)
           in
           begin match Macro_eval.unwrap_stx result with
