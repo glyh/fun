@@ -120,7 +120,7 @@ pub impl Eq(Unit) = module fn eq(x, y) -> eq_unit(x, y) end;
 pub impl Eq(String) = module fn eq(x, y) -> eq_string(x, y) end;
 pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
 pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs));
-pub type Option(A) = Some A | None;
+pub type Option(A) = Some(A) | None;
 pub module Syntax do
   pub type Explicitness = Explicit | Implicit
 
@@ -129,9 +129,12 @@ pub module Syntax do
   pub type Id = {name: String; span: Span; scope: I64}
 
   pub type Param = {name: Id; type_: Option(Type); explicitness: Explicitness}
-  pub type Expr = RawVar(Option(Span), Id) | RawAtom(Option(Span), Type) | RawAp(Option(Span), Expr, Explicitness, Expr) | RawLam(Option(Span), Param, Expr) | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
-  type Option(A) = Some A | None
-  type Foo = Bar
+  pub type Expr =
+    | RawVar(Option(Span), Id)
+    | RawAtom(Option(Span), Type)
+    | RawAp(Option(Span), Expr, Explicitness, Expr)
+    | RawLam(Option(Span), Param, Expr)
+    | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
   pub TypeExpr : Type = Type
   pub Pattern : Type = Type
   pub Decl : Type = Type

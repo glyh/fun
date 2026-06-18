@@ -388,5 +388,23 @@ and split_statements terms =
     | term :: rest when token_kind KwEnd term && depth > 0 -> go (depth - 1) (term :: current) acc rest
     | term :: rest -> go depth (term :: current) acc rest
   in
-  go 0 [] [] terms
-  |> List.filter (fun stmt -> not (List.for_all is_separator stmt || stmt = []))
+  let stmts = go 0 [] [] terms in
+  let stmts = List.filter (fun stmt -> not (List.for_all is_separator stmt || stmt = [])) stmts in
+  let rec merge_cont (acc : Raw_syntax.t list list) (stmts : Raw_syntax.t list list) =
+    match stmts with
+    | [] -> List.rev acc
+    | [ last ] -> List.rev (last :: acc)
+    | a :: b :: rest ->
+        let a_ends_bar = match List.rev a with
+          | (term : Raw_syntax.t) :: _ when token_kind Bar term -> true
+          | _ -> false
+        in
+        let b_starts_bar = match drop_separators b with
+          | (term : Raw_syntax.t) :: _ when token_kind Bar term -> true
+          | _ -> false
+        in
+        if a_ends_bar || b_starts_bar then
+          merge_cont acc ((a @ b) :: rest)
+        else
+          merge_cont (a :: acc) (b :: rest) in
+  merge_cont [] stmts
