@@ -341,7 +341,38 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           in
           begin match Macro_eval.unwrap_stx result with
           | Some expanded -> expand ctx expanded
-          | None -> failwith (syntax_operator_failure a "macro did not return a syntax value")
+          | None ->
+              let got =
+                let open Core in
+                match result with
+                | VStx _ -> "VStx"
+                | VLam _ -> "VLam"
+                | VPi _ -> "VPi"
+                | VU -> "VU"
+                | VAtom _ -> "VAtom"
+                | VAtomTy _ -> "VAtomTy"
+                | VProd _ -> "VProd"
+                | VProdTy _ -> "VProdTy"
+                | VModule _ -> "VModule"
+                | VStruct _ -> "VStruct"
+                | VRecord _ -> "VRecord"
+                | VNominal n -> "VNominal(" ^ n.name ^ ")"
+                | VEffect _ -> "VEffect"
+                | VTrait _ -> "VTrait"
+                | VTraitDict _ -> "VTraitDict"
+                | VCon { name; _ } -> "VCon(" ^ name ^ ")"
+                | VRefTy _ -> "VRefTy"
+                | VRef _ -> "VRef"
+                | VCont _ -> "VCont"
+                | VNeutral _ -> "VNeutral"
+                | VRigid _ -> "VRigid"
+                | VFlex _ -> "VFlex"
+                | VFix _ -> "VFix"
+                | VSelfType _ -> "VSelfType"
+                | VEffectRowTy -> "VEffectRowTy"
+                | VEffectRow _ -> "VEffectRow"
+              in
+              failwith (syntax_operator_failure a ("macro did not return a syntax value, got " ^ got))
           end
         | None -> failwith "macro call requires an apply callback in expand context"
         end
