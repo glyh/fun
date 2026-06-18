@@ -121,6 +121,7 @@ pub impl Eq(String) = module fn eq(x, y) -> eq_string(x, y) end;
 pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
 pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs));
 pub module Syntax do
+  type Option(A) = Some A | None
   type Foo = Bar
   pub Expr : Type = Type
   pub TypeExpr : Type = Type

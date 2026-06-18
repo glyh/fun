@@ -26,7 +26,17 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Var "EffectRow" -> (EffectRowTy, VU)
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in
-      (Var ix, ty)
+      let core = Var ix in
+      let core =
+        let prefix = "stx_" in
+        if String.length name >= String.length prefix
+           && String.sub name 0 (String.length prefix) = prefix then
+          match Ctx.eval ctx core with
+          | VNeutral { neutral = { head = HPrim pname; _ }; _ } -> Prim pname
+          | _ -> core
+        else core
+      in
+      (core, ty)
   | Self ->
       let ix, ty = Ctx.lookup_self ctx in
       (Var ix, ty)
@@ -394,7 +404,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
               let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
               let type_body_term = NomRef (name, type_var_terms) in
               let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
-              let type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
+              let _type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
               let type_ty =
                 let depth = List.length param_ctx.env + 1 in
                 List.fold_right
@@ -404,15 +414,21 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                           codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
                   params VU
               in
-              let recursive_param_ctx = Ctx.define param_ctx name type_ty type_val in
+              (* Build a temporary context with the recursive name available
+                 for payload elaboration, without adding a permanent env entry. *)
+              let tmp_ctx =
+                { param_ctx with env = nominal_placeholder :: param_ctx.env;
+                                lvl = param_ctx.lvl + 1;
+                                name_table = NameMap.add name { level = param_ctx.lvl; ty = type_ty } param_ctx.name_table }
+              in
               let elaborated_ctors =
                 List.map
                   (fun (cname, payloads) ->
                     let payload_clos =
                       List.map
                         (fun payload_expr ->
-                        let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
-                        check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
+                        let payload_core, payload_ty = ops.infer tmp_ctx payload_expr in
+                        check_type_like tmp_ctx payload_ty (Ctx.eval tmp_ctx payload_core);
                         let payload_core = close_recursive_payload_term name num_params payload_core in
                         { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
                         payloads
@@ -422,17 +438,12 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
               in
               let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
               let kind = if public then Public else Private in
-              let body_ctx =
-                let name_ty = Ctx.lookup recursive_param_ctx name |> snd in
-                let name_val = Ctx.eval recursive_param_ctx (Var (Ctx.lookup recursive_param_ctx name |> fst)) in
-                Ctx.define recursive_param_ctx name name_ty name_val
-              in
               let ctor_values, ctor_types =
                 List.split
                   (List.map
                      (fun (cname, payload_clo_opt) ->
                        let ctor_value, ctor_ty =
-                         build_ctor body_ctx.metas (nominal :: body_ctx.env) name cname num_params payload_clo_opt
+                         build_ctor tmp_ctx.metas (nominal :: tmp_ctx.env) name cname num_params payload_clo_opt
                        in
                        ((cname, ctor_value), (cname, ctor_ty)))
                      elaborated_ctors)
@@ -441,11 +452,10 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                 List.fold_left
                   (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
                     Ctx.define ctx ctor_name ctor_ty ctor_value)
-                  body_ctx (List.combine ctor_values ctor_types)
+                  param_ctx (List.combine ctor_values ctor_types)
               in
-              let nominal_ty = Ctx.lookup recursive_param_ctx name |> snd in
-              let ctx = Ctx.define ctx_after_ctors name nominal_ty nominal in
-              let fields = (name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
+              let ctx = Ctx.define ctx_after_ctors name type_ty nominal in
+              let fields = (name, kind, type_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
               go ctx
                 (TypeBind (name, kind, nominal, ctor_values) :: acc_binds,
                  List.rev_append (List.map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) fields) acc_entries)
@@ -606,7 +616,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                 let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
                 let type_body_term = NomRef (name, type_var_terms) in
                 let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
-                let type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
+              let _type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
                 let type_ty =
                   let depth = List.length param_ctx.env + 1 in
                   List.fold_right
@@ -616,7 +626,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                             codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
                     params VU
                 in
-                Ctx.define param_ctx name type_ty type_val
+                Ctx.define param_ctx name type_ty _type_val
             in
             let elaborated_ctors =
               List.map

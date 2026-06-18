@@ -151,6 +151,14 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
             let ctor_entries =
               List.map (fun (n, v) -> ModuleField (n, kind, v)) ctors
             in
+            let env =
+              match nominal with
+              | VNominal { num_params; _ } when num_params > 0 ->
+                  List.fold_left
+                    (fun e _ -> (VAtomTy Atom_ty.TUnit) :: e)
+                    env (List.init num_params (fun _ -> ()))
+              | _ -> env
+            in
             let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
             let env = nominal :: env in
             eval_binds env
@@ -181,6 +189,14 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
         | TypeBind (name, kind, nominal, ctors) :: rest ->
             let ctor_entries =
               List.map (fun (n, v) -> StructField (n, kind, v)) ctors
+            in
+            let env =
+              match nominal with
+              | VNominal { num_params; _ } when num_params > 0 ->
+                  List.fold_left
+                    (fun e _ -> (VAtomTy Atom_ty.TUnit) :: e)
+                    env (List.init num_params (fun _ -> ()))
+              | _ -> env
             in
             let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
             let env = nominal :: env in
