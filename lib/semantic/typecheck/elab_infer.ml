@@ -342,41 +342,82 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                ModuleField (name, kind, val_ty) :: acc_entries)
               rest
         | Surface.TypeBinding { name; params; ctors; public } :: rest ->
-            if params <> [] then raise (ElabError NotANominalType);
+            let num_params = List.length params in
+            let param_ctx =
+              List.fold_left
+                (fun ctx param_name ->
+                  Ctx.define ctx param_name VU (VRigid { lvl = ctx.lvl; spine = [] }))
+                ctx params
+            in
+            let nominal_id = NominalId.fresh () in
+            let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
+            let recursive_param_ctx =
+              if num_params = 0 then Ctx.define param_ctx name VU nominal_placeholder
+              else
+                let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
+                let type_body_term = NomRef (name, type_var_terms) in
+                let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
+                let type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
+                let type_ty =
+                  let depth = List.length param_ctx.env + 1 in
+                  List.fold_right
+                    (fun _ acc ->
+                      VPi { explicitness = Explicit; domain = VU;
+                            effects = effect_row_closure (nominal_placeholder :: param_ctx.env) empty_effect_row;
+                            codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
+                    params VU
+                in
+                Ctx.define param_ctx name type_ty type_val
+            in
             let elaborated_ctors =
               List.map
                 (fun (cname, payloads) ->
                   let payload_clos =
                     List.map
                       (fun payload_expr ->
-                      let payload_core, payload_ty = ops.infer ctx payload_expr in
-                      check_type_like ctx payload_ty (Ctx.eval ctx payload_core);
-                      { env = ctx.env; body = payload_core })
+                      let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
+                      check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
+                      let payload_core = close_recursive_payload_term name num_params payload_core in
+                      { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
                       payloads
                   in
                   (cname, payload_clos))
                 ctors
             in
-            let nominal = VNominal { id = NominalId.fresh (); name; num_params = 0; params = []; constructors = elaborated_ctors } in
+            let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
             let kind = if public then Public else Private in
+            let body_ctx =
+              if num_params = 0 then Ctx.define param_ctx name VU nominal
+              else
+                let name_ty = Ctx.lookup recursive_param_ctx name |> snd in
+                let name_val = Ctx.eval recursive_param_ctx (Var (Ctx.lookup recursive_param_ctx name |> fst)) in
+                Ctx.define recursive_param_ctx name name_ty name_val
+            in
             let ctor_values, ctor_types =
               List.split
                 (List.map
                    (fun (cname, payload_clo_opt) ->
                      let ctor_value, ctor_ty =
-                       build_ctor ctx.metas (nominal :: ctx.env) name cname 0 payload_clo_opt
+                       build_ctor body_ctx.metas (nominal :: body_ctx.env) name cname num_params payload_clo_opt
                      in
                      ((cname, ctor_value), (cname, ctor_ty)))
                    elaborated_ctors)
             in
-            let ctx =
+            let ctx_after_ctors =
               List.fold_left
                 (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
                   Ctx.define ctx ctor_name ctor_ty ctor_value)
-                ctx (List.combine ctor_values ctor_types)
+                body_ctx (List.combine ctor_values ctor_types)
             in
-            let ctx = Ctx.define ctx name VU nominal in
-            let fields = (name, kind, VU) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
+            let nominal_ty =
+              if num_params = 0 then VU
+              else Ctx.lookup recursive_param_ctx name |> snd
+            in
+            let ctx = Ctx.define ctx_after_ctors name nominal_ty nominal in
+            (* Strip the param and placeholder bindings from ctx.env when
+               building LetBind terms, but keep them in the context for
+               subsequent bindings that may reference the type. *)
+            let fields = (name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
             go ctx
               (TypeBind (name, kind, nominal, ctor_values) :: acc_binds,
                List.rev_append (List.map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) fields) acc_entries)
@@ -521,42 +562,80 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                List.rev_append entries acc_entries)
               rest
         | Surface.TypeBinding { name; params; ctors; public } :: rest ->
-            if params <> [] then raise (ElabError NotANominalType);
+            let num_params = List.length params in
+            let param_ctx =
+              List.fold_left
+                (fun ctx param_name ->
+                  Ctx.define ctx param_name VU (VRigid { lvl = ctx.lvl; spine = [] }))
+                ctx params
+            in
+            let nominal_id = NominalId.fresh () in
+            let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
+            let recursive_param_ctx =
+              if num_params = 0 then Ctx.define param_ctx name VU nominal_placeholder
+              else
+                let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
+                let type_body_term = NomRef (name, type_var_terms) in
+                let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
+                let type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
+                let type_ty =
+                  let depth = List.length param_ctx.env + 1 in
+                  List.fold_right
+                    (fun _ acc ->
+                      VPi { explicitness = Explicit; domain = VU;
+                            effects = effect_row_closure (nominal_placeholder :: param_ctx.env) empty_effect_row;
+                            codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
+                    params VU
+                in
+                Ctx.define param_ctx name type_ty type_val
+            in
             let elaborated_ctors =
               List.map
                 (fun (cname, payloads) ->
                   let payload_clos =
                     List.map
                       (fun payload_expr ->
-                      let payload_core, payload_ty = ops.infer ctx payload_expr in
-                      check_type_like ctx payload_ty (Ctx.eval ctx payload_core);
-                      { env = ctx.env; body = payload_core })
+                      let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
+                      check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
+                      let payload_core = close_recursive_payload_term name num_params payload_core in
+                      { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
                       payloads
                   in
                   (cname, payload_clos))
                 ctors
             in
-            let nominal = VNominal { id = NominalId.fresh (); name; num_params = 0; params = []; constructors = elaborated_ctors } in
+            let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
             let kind = if public then Public else Private in
+            let body_ctx =
+              if num_params = 0 then Ctx.define param_ctx name VU nominal
+              else
+                let name_ty = Ctx.lookup recursive_param_ctx name |> snd in
+                let name_val = Ctx.eval recursive_param_ctx (Var (Ctx.lookup recursive_param_ctx name |> fst)) in
+                Ctx.define recursive_param_ctx name name_ty name_val
+            in
             let ctor_values, ctor_types =
               List.split
                 (List.map
                    (fun (cname, payload_clo_opt) ->
                      let ctor_value, ctor_ty =
-                       build_ctor ctx.metas (nominal :: ctx.env) name cname 0 payload_clo_opt
+                       build_ctor body_ctx.metas (nominal :: body_ctx.env) name cname num_params payload_clo_opt
                      in
                      ((cname, ctor_value), (cname, ctor_ty)))
                    elaborated_ctors)
             in
-            let ctx =
+            let ctx_after_ctors =
               List.fold_left
                 (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
                   Ctx.define ctx ctor_name ctor_ty ctor_value)
-                ctx (List.combine ctor_values ctor_types)
+                body_ctx (List.combine ctor_values ctor_types)
             in
-            let ctx = Ctx.define ctx name VU nominal in
+            let nominal_ty =
+              if num_params = 0 then VU
+              else Ctx.lookup recursive_param_ctx name |> snd
+            in
+            let ctx = Ctx.define ctx_after_ctors name nominal_ty nominal in
             let type_entries =
-              StructField (name, kind, VU) :: List.map (fun (c, ty) -> StructField (c, kind, ty)) ctor_types
+              StructField (name, kind, nominal_ty) :: List.map (fun (c, ty) -> StructField (c, kind, ty)) ctor_types
             in
             go ctx
               (TypeBind (name, kind, nominal, ctor_values) :: acc_binds,

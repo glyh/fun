@@ -656,6 +656,97 @@ Detailed 7G work order:
 13. Document the supported API with macro examples that use both ADT pattern matching and builders.
 14. Add a computed macro example that is awkward with 7F templates alone and uses ADT matching plus construction.
 
+### 7G Item 3 Implementation Plan: Expose Syntax.t as matchable ADT
+
+This section records the concrete design decisions and implementation sequence for exposing `Syntax.t` as a nominal, matchable ADT (work order item 3, minimal expression subset).
+
+#### Design decisions
+
+- **Value representation**: VCon values referencing a `Syntax.Expr` nominal type. Replaces `VStx` at the NBE boundary.
+- **Constructor scope**: Minimal expression subset: `Var`, `Atom`, `Ap`, `Lam`, `Let` (5 constructors).
+- **Span**: `Option(Span)` as first constructor field. `None` for synthetic/build-time nodes, `Some(span_record)` for parsed nodes. Pattern synonyms wildcard it.
+- **Sub-types**:
+  - `Span` — record `{file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)}` (8 fields, synthetic field dropped — implied by `None`).
+  - `Id` — record `{name: String; span: Span; scope: ScopeSet}` where `ScopeSet` is a placeholder (`I64` zero) pending proper representation.
+  - `Param` — record `{name: Id; type_: Option(Expr); explicitness: Explicitness}` (trait_bounds deferred, panics if encountered).
+  - `Explicitness` — 2-constructor ADT: `Explicit | Implicit`.
+- **Constructor field layouts**:
+  - `RawVar(Option(Span), Id)`
+  - `RawAtom(Option(Span), Atom)`
+  - `RawAp(Option(Span), Expr, Explicitness, Expr)`
+  - `RawLam(Option(Span), Param, Expr)`
+  - `RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)` (name, type_, value, body, recursive)
+- **Pattern synonyms**: Unidirectional, `pub pattern Name(params...) = RHS` in module body. Full surface patterns in RHS, positional parameter substitution. Same namespace as constructors, later definitions win.
+  - `Var(name) = RawVar(_, {name; _})`
+  - `Ap(fn, arg) = RawAp(_, fn, _, arg)`
+  - `Lam(name, body) = RawLam(_, {name={name; _}; _}, body)`
+  - `Let(name, value, body) = RawLet(_, {name}, _, value, body, _)`
+  - `Atom(val) = RawAtom(_, val)`
+- **Builders**: Two-tier — `Syntax.var(name)` calls `var_with_span(None, name)`. Span-explicit variants for power users.
+- **Bootstrapping**: Syntax nominal extracted from prelude struct after elaboration via a general `resolve_stdlib(ctx, path)` function. Stored in `Expand_ctx.syntax_nominal`.
+- **wrap_stx/unwrap_stx**: Convert between OCaml `Syntax.t` and `VCon` at the `@` macro call boundary. Both receive `Expand_ctx` for nominal access.
+- **OCaml `Syntax.t`**: Unchanged — stays as internal IR for the expander. Only the `VStx` wrapper at the NBE boundary is replaced.
+
+#### Prelude type definitions (target)
+
+```fun
+pub module Syntax do
+  pub type Explicitness = Explicit | Implicit
+
+  pub type Span = struct
+    file : Option(String);
+    start_byte : I64;
+    end_byte : I64;
+    start_line : Option(I64);
+    start_col : Option(I64);
+    end_line : Option(I64);
+    end_col : Option(I64);
+  end
+
+  pub type Id = struct
+    name : String;
+    span : Span;
+    scope : I64;  # placeholder for ScopeSet
+  end
+
+  pub type Param = struct
+    name : Id;
+    type_ : Option(Expr);
+    explicitness : Explicitness;
+  end
+
+  pub type Expr =
+    | RawVar(Option(Span), Id)
+    | RawAtom(Option(Span), Atom)
+    | RawAp(Option(Span), Expr, Explicitness, Expr)
+    | RawLam(Option(Span), Param, Expr)
+    | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
+
+  pub pattern Var(name) = RawVar(_, {name; _})
+  pub pattern Ap(fn, arg) = RawAp(_, fn, _, arg)
+  pub pattern Lam(name, body) = RawLam(_, {name = {name; _}; _}, body)
+  pub pattern Let(name, value, body) = RawLet(_, {name}, _, value, body, _)
+  pub pattern Atom(val) = RawAtom(_, val)
+
+  # Builders (two-tier)
+  pub var = fn(name) -> var_with_span(None, name)
+  pub var_with_span = fn(span, name) -> RawVar(span, {name = name; span = ...; scope = 0})
+  pub ap = fn(f, a) -> ap_with_span(None, f, a)
+  pub ap_with_span = fn(span, f, a) -> RawAp(span, f, Explicit, a)
+  ...
+end
+```
+
+#### Implementation sequence
+
+1. **Prelude types**: Add `Span`, `Id`, `Explicitness`, `Param`, `Expr` (with Raw constructors) + pattern synonyms + two-tier builders to `stdlib_source` in `elab_prelude.ml`.
+2. **General stdlib lookup**: Implement `resolve_stdlib(ctx, path)` to extract arbitrary prelude-defined values.
+3. **Expand_ctx**: Add `syntax_nominal : value option` field. Set after prelude bootstrap via `resolve_stdlib(ctx, ["Syntax"; "Expr"])`.
+4. **wrap_stx/unwrap_stx**: Replace `VStx (StxExpr ...)` with VCon conversion. `wrap_stx(ctx, stx)` pattern-matches on `Syntax.t.kind` → creates `VCon` with appropriate `Raw*` name. `unwrap_stx(ctx, vcon)` reverses.
+5. **Pattern synonym elaboration**: New `pub pattern` declaration form in surface syntax + elaborator support. When `PatCon` finds no direct constructor match, try pattern synonyms on the scrutinee type's nominal.
+6. **Deprecation**: Once ADT matching works, mark old `stx_is_ap` etc. as deprecated.
+7. **Tests**: Macro pattern matching on `Syntax.Expr`, synonym expansion, round-trip `wrap_stx`/`unwrap_stx`, builder hygiene.
+
 ### Syntax Object Primitive Families
 
 The ADT-based approach replaces per-field deconstructor functions with pattern matching. The primitive surface consists of builders (for construction) and the exposed nominal types (for matching):
