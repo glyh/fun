@@ -9,6 +9,7 @@ type t = {
   mutable elaborate : (Surface.t -> Core.value) option;
   mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
   mutable load_macros : (t -> string -> unit) option;
+  mutable syntax_expr_nominal : Core.value option;
   loader : unit option;
 }
 
@@ -21,7 +22,11 @@ let create ?loader () =
     elaborate = None;
     eval_and_apply = None;
     load_macros = None;
+    syntax_expr_nominal = None;
     loader }
+
+let set_syntax_expr_nominal ctx nominal = ctx.syntax_expr_nominal <- Some nominal
+let get_syntax_expr_nominal ctx = ctx.syntax_expr_nominal
 
 let fresh_scope (ctx : t) : int =
   let s = ctx.scope_counter in
@@ -75,6 +80,7 @@ let copy (ctx : t) : t =
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
     load_macros = ctx.load_macros;
+    syntax_expr_nominal = ctx.syntax_expr_nominal;
     loader = ctx.loader }
 
 let register_macro (ctx : t) ~name ~value =

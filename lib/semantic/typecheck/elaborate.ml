@@ -8,5 +8,6 @@ type expr_effects = Elab_effects.expr_effects = { effects : expr_effect list; ta
 
 let init_ctx = Elab_entry.init_ctx
 let open_stdlib = Elab_entry.open_stdlib
+let resolve_stdlib = Elab_entry.resolve_stdlib
 let on_expr = Elab_entry.on_expr
 let on_expr_effects = Elab_entry.on_expr_effects

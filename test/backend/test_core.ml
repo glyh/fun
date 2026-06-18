@@ -1019,6 +1019,21 @@ let test_syntax_class_types_accessible () =
        42
      end" ()
 
+let test_syntax_expr_nominal_resolvable () =
+  let ctx = Elaborate.init_ctx () in
+  match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
+  | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
+      Alcotest.(check int) "5 constructors" 5 (List.length constructors);
+      Alcotest.(check bool) "RawVar present" true
+        (List.exists (fun (n, _) -> n = "RawVar") constructors);
+      Alcotest.(check bool) "RawAtom present" true
+        (List.exists (fun (n, _) -> n = "RawAtom") constructors)
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "expected VNominal Expr, got %s" (Debug.pp_value_short mc v))
+  | exception e ->
+      Alcotest.fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
+
 let test_syntax_primitive_names_hidden () =
   match eval_with_macros "do macro answer(_) -> stx_make_i64(42); answer @ (0) end" with
   | exception Elaborate.ElabError (Elaborate.UnboundVariable "stx_make_i64") -> ()
@@ -2242,6 +2257,7 @@ let () =
           Alcotest.test_case "Syntax module: expression kind" `Quick test_syntax_module_expression_kind;
           Alcotest.test_case "Syntax module: primitive names hidden" `Quick test_syntax_primitive_names_hidden;
           Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
+          Alcotest.test_case "Syntax module: Expr nominal resolvable" `Quick test_syntax_expr_nominal_resolvable;
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
