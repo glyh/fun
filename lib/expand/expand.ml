@@ -371,6 +371,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
                 | VSelfType _ -> "VSelfType"
                 | VEffectRowTy -> "VEffectRowTy"
                 | VEffectRow _ -> "VEffectRow"
+                | VPatternSyn _ -> "VPatternSyn"
               in
               failwith (syntax_operator_failure a ("macro did not return a syntax value, got " ^ got))
           end

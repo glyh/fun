@@ -51,6 +51,7 @@ type refutability = Irrefutable | Destruct | Switch | ProductPat | RecordPat | O
 
 let classify = function
   | CPatCon _ -> Destruct
+  | CPatSyn _ -> Switch
   | CPatAtom _ | CPatType _ | CPatNominalHead _ -> Switch
   | CPatProd _ -> ProductPat
   | CPatRecord _ -> RecordPat
@@ -112,6 +113,7 @@ let collect_switch_keys col =
       | CPatAtom atom -> add (DT.KAtom atom)
       | CPatType atom_ty -> add (DT.KType atom_ty)
       | CPatNominalHead { id; _ } -> add (DT.KNominal id)
+      | CPatSyn { name; rhs; _ } -> add (DT.KSyn { name; rhs })
       | _ -> ())
     col;
   Hashtbl.fold (fun k () acc -> k :: acc) seen []
@@ -178,6 +180,8 @@ let specialize_switch m key =
             Some { r with pats = rest }
         | CPatNominalHead { id; param_pats; _ }, DT.KNominal id' when id = id' ->
             Some { r with pats = Array.append (Array.of_list param_pats) rest }
+        | CPatSyn { name; sub_pats; _ }, DT.KSyn { name = name'; _ } when String.equal name name' ->
+            Some { r with pats = Array.append (Array.of_list sub_pats) rest }
         | CPatWild, _ ->
             Some { r with pats = Array.append (Array.make nominal_arity CPatWild) rest }
         | CPatBind, _ ->

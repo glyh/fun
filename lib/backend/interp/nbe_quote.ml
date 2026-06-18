@@ -133,6 +133,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VStx (StxExpr stx) -> Stx stx
   | VStx _ -> raise (Nbe_error.EvalError "cannot quote non-expression syntax object")
   | VRef _ -> raise (Nbe_error.EvalError "cannot quote ref")
+  | VPatternSyn _ -> raise (Nbe_error.EvalError "cannot quote pattern synonym")
   | VCon { name; spine; _ } -> quote_spine ops mc depth (Con name) spine
   | VCont _ -> raise (Nbe_error.EvalError "cannot quote continuation")
   | VNeutral { neutral = neu; _ } -> quote_neutral ops mc depth neu

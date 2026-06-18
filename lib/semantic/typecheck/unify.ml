@@ -203,6 +203,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))
     | VCont _ -> raise (UnifyError (CannotUnify "cannot quote continuation during unification"))
     | VStx _ -> raise (UnifyError (CannotUnify "cannot quote syntax value during unification"))
+    | VPatternSyn _ -> raise (UnifyError (CannotUnify "cannot quote pattern synonym during unification"))
     | VNeutral { neutral = neu; _ } -> go_neutral d neu
   and go_spine (d : lvl) (head : term) (sp : spine) : term =
     List.fold_left (fun acc v -> Ap (acc, Explicit, go d v)) head sp
@@ -311,7 +312,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter (fun f -> match f with
               | FApp v | FRefSet v -> occurs_check v
               | _ -> ()) frames
-        | VU | VEffectRowTy | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ | VStx _ -> ()
+        | VU | VEffectRowTy | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ | VStx _ | VPatternSyn _ -> ()
       in
       occurs_check rhs;
       MetaContext.solve mc id rhs)
@@ -370,6 +371,7 @@ let value_form = function
   | VFix _ -> "fixpoint"
   | VCont _ -> "continuation"
   | VStx _ -> "syntax"
+  | VPatternSyn _ -> "pattern_syn"
 
 let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : value) : unit =
   let v1 = Nbe.force mc v1 in

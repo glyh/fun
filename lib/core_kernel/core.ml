@@ -143,6 +143,10 @@ and core_pat =
       (** Constructor pattern. [name] is the constructor tag, [num_type_params]
           is how many leading spine elements are type args (skipped during
           matching), [sub_pats] bind the payload elements. *)
+  | CPatSyn of { name : string; sub_pats : core_pat list; rhs : core_pat }
+      (** Pattern synonym reference. [name] is the synonym name, [sub_pats] are
+          user-provided sub-patterns, [rhs] is the synonym's RHS pattern with
+          user sub-patterns already substituted. *)
   | CPatAtom of Atom.t
       (** Literal atom pattern. *)
   | CPatType of Atom_ty.t
@@ -234,6 +238,12 @@ and value =
       codomain : closure;
     }
   | VU
+  | VPatternSyn of {
+      name : string;
+      params : string list;
+      rhs : core_pat;
+      scrutinee_ty : value;
+    }
   | VEffectRowTy
   | VEffectRow of effect_row_value
   | VAtom of Atom.t

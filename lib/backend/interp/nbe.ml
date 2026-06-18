@@ -625,7 +625,7 @@ and core_pat_contains_struct_type = function
   | CPatCon (_, _, pats) -> List.exists core_pat_contains_struct_type pats
   | CPatNominalHead { param_pats; _ } ->
       List.exists core_pat_contains_struct_type param_pats
-  | CPatWild | CPatBind | CPatAtom _ | CPatType _ -> false
+  | CPatWild | CPatBind | CPatAtom _ | CPatType _ | CPatSyn _ -> false
 
 and core_pat_contains_nominal_head = function
   | CPatNominalHead _ -> true
@@ -637,7 +637,7 @@ and core_pat_contains_nominal_head = function
   | CPatCon (_, _, pats) -> List.exists core_pat_contains_nominal_head pats
   | CPatStructType { fields; _ } ->
       List.exists (fun (_, pat) -> core_pat_contains_nominal_head pat) fields
-  | CPatWild | CPatBind | CPatAtom _ | CPatType _ -> false
+  | CPatWild | CPatBind | CPatAtom _ | CPatType _ | CPatSyn _ -> false
 
 and struct_type_fields fields =
   List.filter_map
@@ -653,6 +653,7 @@ and match_core_pat mc pat value =
       Some []
   | CPatProd pats, VProd values when List.length pats = List.length values ->
       match_core_pats mc pats values
+  | CPatSyn { rhs; _ }, v -> match_core_pat mc rhs v
   | CPatCon (name, num_type_params, sub_pats), VCon { name = actual; spine; _ }
     when String.equal name actual ->
       let payload = List.drop num_type_params spine in

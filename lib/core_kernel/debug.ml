@@ -128,6 +128,7 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VFix _ -> "<fix>"
     | VNeutral _ -> "<neutral>"
     | VStx _ -> "<stx>"
+    | VPatternSyn _ -> "<pattern_syn>"
   in
   go 0 v
 

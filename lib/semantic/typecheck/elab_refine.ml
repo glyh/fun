@@ -119,7 +119,7 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
       VNeutral { ty = subst_value_var mc target replacement ty; neutral = subst_neutral_var mc target replacement neutral }
   | VFlex { id; spine } -> VFlex { id; spine = List.map (subst_value_var mc target replacement) spine }
   | VRigid { lvl; spine } -> VRigid { lvl; spine = List.map (subst_value_var mc target replacement) spine }
-  | VLam _ | VFix _ | VCont _ | VStx _ as v -> v
+  | VLam _ | VFix _ | VCont _ | VStx _ | VPatternSyn _ as v -> v
   | VU | VEffectRowTy | VAtom _ | VAtomTy _ as v -> v
 
 and subst_closure_var mc target replacement clo =

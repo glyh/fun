@@ -99,6 +99,7 @@ let env_value_label (v : value) =
   | VFlex { id; _ } -> "VFlex(" ^ string_of_int id ^ ")"
   | VEffectRowTy -> "VEffectRowTy"
   | VEffectRow _ -> "VEffectRow"
+  | VPatternSyn _ -> "VPatternSyn"
 
 let dump_env label env =
   Printf.eprintf "--- env dump [%s] (%d entries) ---\n%!" label (List.length env);
