@@ -815,6 +815,10 @@ let test_eval_continuation_reuse_error () =
   | _ -> Alcotest.fail "unexpected continuation result"
 
 let eval_with_macros source =
+  let syntax_nominal =
+    let ctx = Elaborate.init_ctx () in
+    Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"]
+  in
   let elaborate expr =
     let ctx = Elaborate.init_ctx () in
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -824,7 +828,7 @@ let eval_with_macros source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply source in
+  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_expr_nominal:syntax_nominal source in
   let ctx = Elaborate.init_ctx () in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
@@ -996,6 +1000,43 @@ let test_operator_macro_error_reports_spans () =
       Alcotest.(check bool) "mentions declaration span" true (string_contains msg "declared at")
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected syntax operator macro expansion failure"
+
+let test_syntax_module_expression_kind () =
+  check_i64_macro "Syntax.kind expression object" 1L
+    "do macro answer(stx) -> match stx do | Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; x = 10; answer @ (x) end" ()
+
+let test_syntax_module_literal_inspectors () =
+  check_i64_macro "Syntax literal inspectors" 42L
+    "do macro answer(_) -> Syntax.i64(42); answer @ () end" ()
+
+let test_syntax_module_literal_inspector_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Atom(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (Syntax.var(\"x\")) end" with
+  | VAtom (I64 0L) -> ()
+  | _ -> Alcotest.fail "expected atom fallback on non-atom"
+
+let test_syntax_module_ap_deconstructors () =
+  check_i64_macro "Syntax ap deconstructors" 1L
+    "do macro f(stx) -> match stx do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (add(1, 2)) end" ()
+
+let test_syntax_module_ap_deconstructor_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Ap(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (1) end" with
+  | VAtom (I64 0L) -> ()
+  | _ -> Alcotest.fail "expected ap fallback on non-ap"
+
+let test_syntax_module_lam_deconstructor_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Lam(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (Syntax.i64(0)) end" with
+  | VAtom (I64 0L) -> ()
+  | _ -> Alcotest.fail "expected lam fallback on non-lam"
+
+let test_syntax_module_let_deconstructor_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Let(_, _, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (Syntax.i64(0)) end" with
+  | VAtom (I64 0L) -> ()
+  | _ -> Alcotest.fail "expected let fallback on non-let"
+
+let test_syntax_module_identifier_inspection () =
+  check_i64_macro "Syntax identifier inspection" 1L
+    "do macro inspect(stx) -> match stx do Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; target = 10; inspect @ (target) end" ()
+
 
 let test_syntax_module_i64_builder () =
   check_i64_macro "Syntax.i64 builder" 42L
@@ -2152,6 +2193,14 @@ let () =
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
+          Alcotest.test_case "Syntax module: expression kind" `Quick test_syntax_module_expression_kind;
+          Alcotest.test_case "Syntax module: literal inspectors" `Quick test_syntax_module_literal_inspectors;
+          Alcotest.test_case "Syntax module: literal inspector error" `Quick test_syntax_module_literal_inspector_error;
+          Alcotest.test_case "Syntax module: ap deconstructors" `Quick test_syntax_module_ap_deconstructors;
+          Alcotest.test_case "Syntax module: ap deconstructor error" `Quick test_syntax_module_ap_deconstructor_error;
+          Alcotest.test_case "Syntax module: lam deconstructor error" `Quick test_syntax_module_lam_deconstructor_error;
+          Alcotest.test_case "Syntax module: let deconstructor error" `Quick test_syntax_module_let_deconstructor_error;
+          Alcotest.test_case "Syntax module: identifier inspection" `Quick test_syntax_module_identifier_inspection;
           Alcotest.test_case "Syntax module: i64 builder" `Quick test_syntax_module_i64_builder;
           Alcotest.test_case "Syntax module: primitive names hidden" `Quick test_syntax_primitive_names_hidden;
           Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
