@@ -181,6 +181,8 @@ and struct_binding_term =
   | ImplBind of struct_field_kind * term * value
       (** kind, dictionary term, dictionary type. Impl evidence extends runtime
           scope for trait resolution but is not an ordinary named field. *)
+  | PatternSynBind of string * struct_field_kind * value
+      (** name, kind, VPatternSyn value. *)
 
 and module_entry =
   | ModuleField of string * struct_field_kind * value

@@ -170,6 +170,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
         | ImplBind (kind, def, ty) :: rest ->
             let vdef = eval mc env def in
             eval_binds (vdef :: env) (ModuleImpl (kind, ty, vdef) :: acc) rest
+        | PatternSynBind (name, kind, syn) :: rest ->
+            eval_binds (syn :: env) (ModuleField (name, kind, syn) :: acc) rest
       in
       let _env, entries = eval_binds env [] bindings in
       Done (VModule { entries; partial = false })
@@ -213,6 +215,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
             eval_binds (vdef :: env)
               (StructImpl (kind, ty, vdef) :: acc_entries)
               rest
+        | PatternSynBind (name, kind, syn) :: rest ->
+            eval_binds (syn :: env) (StructField (name, kind, syn) :: acc_entries) rest
       in
       let _env, bind_entries = eval_binds env [] bindings in
       let con_entries =

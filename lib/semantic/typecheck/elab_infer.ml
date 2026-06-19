@@ -282,7 +282,24 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         | [] -> (ctx, List.rev acc_binds, List.rev acc_entries)
         | Surface.MethodBinding _ :: _ -> failwith "module binding cannot be method"
         | Surface.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
-        | Surface.PatternSynBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
+        | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
+            let scrutinee_ty =
+              try
+                let ix, _ty = Ctx.lookup ctx "Expr" in
+                let expr_val = Ctx.eval ctx (Var ix) in
+                match Nbe.force ctx.metas expr_val with
+                | VNominal _ -> expr_val
+                | _ -> VU
+              with _ -> VU
+            in
+            let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
+            let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
+            let kind = if public then Public else Private in
+            let ctx' = Ctx.define ctx name VU syn_val in
+            go ctx'
+              (PatternSynBind (name, kind, syn_val) :: acc_binds,
+               ModuleField (name, kind, VU) :: acc_entries)
+              rest
         | Surface.LetBinding { name; value; public } :: rest ->
             let value_ctx = Ctx.clear_self_scope ctx in
             let val_core, val_ty = ops.infer value_ctx value in
@@ -534,7 +551,24 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let rec go ctx (acc_binds, acc_entries) = function
         | [] -> (List.rev acc_binds, List.rev acc_entries)
         | Surface.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
-        | Surface.PatternSynBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
+        | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
+            let scrutinee_ty =
+              try
+                let ix, _ty = Ctx.lookup ctx "Expr" in
+                let expr_val = Ctx.eval ctx (Var ix) in
+                match Nbe.force ctx.metas expr_val with
+                | VNominal _ -> expr_val
+                | _ -> VU
+              with _ -> VU
+            in
+            let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
+            let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
+            let kind = if public then Public else Private in
+            let ctx' = Ctx.define ctx name VU syn_val in
+            go ctx'
+              (PatternSynBind (name, kind, syn_val) :: acc_binds,
+               StructField (name, kind, VU) :: acc_entries)
+              rest
         | Surface.LetBinding { name; value; public } :: rest ->
             let value_ctx = Ctx.clear_self ctx in
             let val_core, val_ty = ops.infer value_ctx value in

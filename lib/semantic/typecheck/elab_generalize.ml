@@ -55,7 +55,7 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
           (function
             | LetBind (_, _, value) -> closed_under depth value
             | ImplBind (_, value, _) -> closed_under depth value
-            | TypeBind _ | EffectBind _ -> true)
+            | TypeBind _ | EffectBind _ | PatternSynBind _ -> true)
           bindings
     | Struct { con_fields; bindings; _ } ->
         List.for_all (fun (_, ty) -> closed_under depth ty) con_fields
@@ -63,7 +63,7 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
              (function
                | LetBind (_, _, value) -> closed_under depth value
                | ImplBind (_, value, _) -> closed_under depth value
-               | TypeBind _ | EffectBind _ -> true)
+               | TypeBind _ | EffectBind _ | PatternSynBind _ -> true)
              bindings
     | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Perform _ | Stx _ -> true
   in
