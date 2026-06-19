@@ -155,6 +155,12 @@ pub module Syntax do
   pub bool = stx_make_bool
   pub char = stx_make_char
   pub unit = stx_make_unit
+  pub id_name = stx_id_name
+  pub id_eq = stx_id_eq
+  pub operator_symbol = stx_operator_symbol
+  pub operator_fixity = stx_operator_fixity
+  pub operator_arity = stx_operator_arity
+  pub operator_operand = stx_operator_operand
 
 end
 |}
