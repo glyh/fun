@@ -153,8 +153,8 @@ let rec shift_term amount cutoff term =
   | TraitDictTy { trait_id; trait_name; args; fields } ->
       TraitDictTy { trait_id; trait_name; args = List.map (shift cutoff) args; fields = List.map (fun (name, value) -> (name, shift cutoff value)) fields }
   | SelfTypeRef args -> SelfTypeRef (List.map (shift cutoff) args)
-  | Ctor { name; spine; nominal_name; nominal_spine } ->
-      Ctor { name; spine = List.map (shift cutoff) spine; nominal_name; nominal_spine = List.map (shift cutoff) nominal_spine }
+  | Ctor { name; spine; nominal_name; nominal_spine; nominal_value = nv } ->
+      Ctor { name; spine = List.map (shift cutoff) spine; nominal_name; nominal_spine = List.map (shift cutoff) nominal_spine; nominal_value = nv }
   | Match (scrut, branches) ->
       let branch = function
         | ValueBranch (pat, body) -> ValueBranch (pat, shift cutoff body)
@@ -195,7 +195,8 @@ let build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_na
   let all_spine_vars = param_vars @ payload_vars in
   let body_term =
     Ctor { name = ctor_name; spine = all_spine_vars;
-           nominal_name; nominal_spine = param_vars }
+           nominal_name; nominal_spine = param_vars;
+           nominal_value = List.hd env }
   in
   let core_term =
     let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in

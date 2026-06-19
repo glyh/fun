@@ -78,7 +78,8 @@ and term =
       name : string;
       spine : term list;           (* type args then payload args *)
       nominal_name : string;       (* VNominal template name, looked up in env *)
-      nominal_spine : term list;   (* type args for the nominal's params *)
+      nominal_spine : term list;
+    nominal_value : value;   (* type args for the nominal's params *)
     }
       (** Constructor value term. [eval] evaluates spine terms to values,
           looks up [nominal_name] in env for the VNominal template, applies

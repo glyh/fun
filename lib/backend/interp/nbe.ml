@@ -314,10 +314,10 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           eval_fields [] fields)
   | SelfTypeRef args ->
       sequence_values mc env args (fun arg_vals -> Done (VSelfType arg_vals))
-  | Ctor { name; spine; nominal_name; nominal_spine } ->
+  | Ctor { name; spine; nominal_spine; nominal_value; _ } ->
       sequence_values mc env spine (fun spine_vals ->
           sequence_values mc env nominal_spine (fun nom_spine_vals ->
-              match eval_con env nominal_name with
+              match force mc nominal_value with
               | VNominal n ->
                   Done
                     (VCon
@@ -328,7 +328,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                        })
               | _ ->
                   raise
-                    (EvalError ("Ctor nominal is not VNominal: " ^ nominal_name))))
+                    (EvalError "Ctor nominal is not VNominal")))
   | Prim name ->
       Done (VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } })
   | Meta id -> Done (eval_meta mc id)
@@ -376,6 +376,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                     spine = param_vars @ payload_vars;
                     nominal_name = name;
                     nominal_spine = param_vars;
+                    nominal_value = nominal;
                   }
               in
               let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in

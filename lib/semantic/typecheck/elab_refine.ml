@@ -237,8 +237,8 @@ let close_recursive_payload_term nominal_name num_params =
                 args = List.map (go cutoff) args;
                 fields = List.map (fun (name, value) -> (name, go cutoff value)) fields }
         | SelfTypeRef args -> SelfTypeRef (List.map (go cutoff) args)
-        | Ctor { name; spine; nominal_name; nominal_spine } ->
-            Ctor { name; spine = List.map (go cutoff) spine; nominal_name; nominal_spine = List.map (go cutoff) nominal_spine }
+        | Ctor { name; spine; nominal_name; nominal_spine; nominal_value = nv } ->
+            Ctor { name; spine = List.map (go cutoff) spine; nominal_name; nominal_spine = List.map (go cutoff) nominal_spine; nominal_value = nv }
         | Match (scrut, branches) ->
             let go_branch = function
               | ValueBranch (pat, body) -> ValueBranch (pat, go cutoff body)
