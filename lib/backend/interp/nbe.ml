@@ -542,6 +542,12 @@ and eval_con (env : env) (name : string) : value =
     | [] -> raise (EvalError ("unbound constructor/type: " ^ name))
     | VCon c :: _ when String.equal c.name name -> VCon c
     | VNominal n :: _ when String.equal n.name name -> VNominal n
+    | VModule { entries; _ } :: rest ->
+        (let fields = module_entry_fields entries in
+         match List.find_opt (fun (n, k, v) ->
+           String.equal n name && Nbe_support.visible_kind k) fields with
+         | Some (_, _, v) -> v
+         | None -> go rest)
     | _ :: rest -> go rest
   in
   go env
