@@ -36,4 +36,5 @@ setup.log
 _opam/
 
 .claude/
-.opencode/
+.opencode/*
+!.opencode/skills/
