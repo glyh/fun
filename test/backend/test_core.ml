@@ -1041,6 +1041,39 @@ let test_pattern_syn_subst () =
   | CPatCon ("RawAp", 0, [ CPatWild; CPatAtom (I64 1L); CPatWild; CPatAtom (I64 2L) ]) -> ()
   | _ -> Alcotest.fail "substitution did not produce expected pattern"
 
+let eval_with_vcon_macros source =
+  let syntax_nominal =
+    let ctx = Elaborate.init_ctx () in
+    Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"]
+  in
+  let elaborate expr =
+    let ctx = Elaborate.init_ctx () in
+    let core, _ty = Elaborate.on_expr ctx expr in
+    Elaborate.Ctx.eval ctx core
+  in
+  let eval_and_apply fn arg =
+    let mc = MetaContext.create () in
+    Nbe.apply mc fn arg
+  in
+  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_expr_nominal:syntax_nominal source in
+  let ctx = Elaborate.init_ctx () in
+  let core, _ty = Elaborate.on_expr ctx expr in
+  Elaborate.Ctx.eval ctx core
+
+let check_vcon_i64_macro name expected source =
+  let result = eval_with_vcon_macros source in
+  match result with
+  | VAtom (I64 n) -> Alcotest.(check int64) name expected n
+  | _ -> Alcotest.fail (name ^ ": expected I64")
+
+let test_vcon_rawap_match () =
+  check_vcon_i64_macro "vcon raw ap match" 1L
+    "do macro inspect(stx) -> match stx do | Syntax.RawAp(_, _, _, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; inspect @ (Syntax.ap(Syntax.i64(0), Syntax.i64(0))) end"
+
+let test_vcon_pattern_syn_ap () =
+  check_vcon_i64_macro "vcon pattern syn ap" 1L
+    "do macro inspect(stx) -> match stx do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; inspect @ (Syntax.ap(Syntax.i64(0), Syntax.i64(0))) end"
+
 let test_pattern_syn_in_prelude () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Ap"] with
@@ -2276,6 +2309,8 @@ let () =
           Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
           Alcotest.test_case "Syntax module: Expr nominal resolvable" `Quick test_syntax_expr_nominal_resolvable;
           Alcotest.test_case "pattern synonym substitution" `Quick test_pattern_syn_subst;
+          Alcotest.test_case "vcon raw ap match" `Quick test_vcon_rawap_match;
+          Alcotest.test_case "vcon pattern syn ap" `Quick test_vcon_pattern_syn_ap;
           Alcotest.test_case "pattern synonym in prelude" `Quick test_pattern_syn_in_prelude;
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
