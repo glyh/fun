@@ -50,6 +50,7 @@ and struct_binding =
       public : bool;
     }
   | MacroBinding of { name : id; value : t; public : bool }
+  | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
 
 and t = {
   kind : kind;

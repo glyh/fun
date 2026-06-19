@@ -127,6 +127,8 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
                   fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
   | MacroBinding { name; value; public } ->
     MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public }
+  | PatternSynBinding { name; params; rhs; public } ->
+    PatternSynBinding { name = add_id_scope_if within s name; params; rhs; public }
 
 and go_match_branch ?within s = function
   | ValueBranch (p, body) -> ValueBranch (go_pat ?within s p, add_scope ?within s body)
@@ -462,8 +464,10 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [ scope ])
   | ImplBinding { trait_path; trait_name; args; fields; public } ->
     (ImplBinding { trait_path; trait_name; args = List.map (expand ctx) args;
-                   fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public },
+                     fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public },
      [])
+  | PatternSynBinding { name; params; rhs; public } ->
+     (PatternSynBinding { name; params; rhs; public }, [])
   | MacroBinding { name; value; public } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->

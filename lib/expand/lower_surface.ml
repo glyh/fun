@@ -96,6 +96,10 @@ and lower_struct_binding = function
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.MacroBinding { name; value; public } ->
     Surface.MacroBinding { name = lower_id name; value = lower_expr value; public }
+  | Syntax.PatternSynBinding { name; params; rhs; public } ->
+    Surface.PatternSynBinding { name = lower_id name;
+                                params = List.map lower_id params;
+                                rhs = lower_pat rhs; public }
 
 and lower_match_branch = function
   | Syntax.ValueBranch (p, body) -> Surface.ValueBranch (lower_pat p, lower_expr body)

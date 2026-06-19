@@ -27,6 +27,7 @@ type token_kind =
   | KwImport
   | KwOpen
   | KwMacro
+  | KwPattern
   | KwSelf
   | KwSelfType
   | KwRef
@@ -108,6 +109,7 @@ let keyword = function
   | "import" -> Some KwImport
   | "open" -> Some KwOpen
   | "macro" -> Some KwMacro
+  | "pattern" -> Some KwPattern
   | "self" -> Some KwSelf
   | "Self" -> Some KwSelfType
   | "ref" -> Some KwRef
@@ -271,6 +273,7 @@ let read ?file source =
     | KwImport -> "import"
     | KwOpen -> "open"
     | KwMacro -> "macro"
+    | KwPattern -> "pattern"
     | KwSelf -> "self"
     | KwSelfType -> "Self"
     | KwRef -> "ref"

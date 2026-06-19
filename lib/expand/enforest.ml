@@ -1215,6 +1215,23 @@ and parse_macro_binding env public stmt =
       ensure_no_rest "macro binding" rest;
       Some
         (Syntax.MacroBinding { name = id ~span:name_span name; value; public })
+   | _ -> None
+
+and parse_pattern_syn_binding _env public stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwPattern; _ }; _ }
+    :: { datum = Token { kind = Ident name; _ }; span = name_span }
+    :: { datum = Group (Paren, param_terms, _); _ } :: equals :: rhs_terms
+    when token_kind Equals equals ->
+      let params =
+        split_commas (drop_separators param_terms)
+        |> List.map (fun ts ->
+            match drop_separators ts with
+            | [ { datum = Token { kind = Ident p; _ }; span } ] -> id ~span p
+            | _ -> error "expected pattern synonym parameter name")
+      in
+      let rhs = Enforest_pat.parse_pat_terms rhs_terms in
+      Some (Syntax.PatternSynBinding { name = id ~span:name_span name; params; rhs; public })
   | _ -> None
 
 and parse_named_module_binding env public stmt =
@@ -1260,6 +1277,7 @@ and parse_module_binding env stmt =
         first_some
           [
             parse_macro_binding env public;
+            parse_pattern_syn_binding env public;
             parse_type_binding env public;
             parse_effect_binding env public;
             parse_trait_binding env public;

@@ -135,6 +135,11 @@ pub module Syntax do
     | RawAp(Option(Span), Expr, Explicitness, Expr)
     | RawLam(Option(Span), Param, Expr)
     | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
+  pub pattern Var(name) = RawVar(_, name)
+  pub pattern Ap(f, a) = RawAp(_, f, _, a)
+  pub pattern Lam(name, body) = RawLam(_, name, body)
+  pub pattern Let(name, val, body) = RawLet(_, name, _, val, body, _)
+  pub pattern Atom(val) = RawAtom(_, val)
   pub TypeExpr : Type = Type
   pub Pattern : Type = Type
   pub Decl : Type = Type
