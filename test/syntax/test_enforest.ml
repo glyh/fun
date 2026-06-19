@@ -432,6 +432,7 @@ end" with
   | _ -> Alcotest.fail "expected operator RHS to expand through the macro path"
 
 
+
 let operator_declaration_is_sequential () =
   match parse_with_macros "do before = late 0; syntax late do | late $x -> 1 end; late 0 end" with
   | exception Enforest.Unsupported _ -> ()

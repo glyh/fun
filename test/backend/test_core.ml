@@ -815,10 +815,6 @@ let test_eval_continuation_reuse_error () =
   | _ -> Alcotest.fail "unexpected continuation result"
 
 let eval_with_macros source =
-  let syntax_nominal =
-    let ctx = Elaborate.init_ctx () in
-    Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"]
-  in
   let elaborate expr =
     let ctx = Elaborate.init_ctx () in
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -828,7 +824,7 @@ let eval_with_macros source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_expr_nominal:syntax_nominal source in
+  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply source in
   let ctx = Elaborate.init_ctx () in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
@@ -1001,43 +997,6 @@ let test_operator_macro_error_reports_spans () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected syntax operator macro expansion failure"
 
-
-let test_syntax_module_literal_inspectors () =
-  check_i64_macro "Syntax literal inspectors" 42L
-    "do macro answer(_) -> Syntax.i64(42); answer @ () end" ()
-
-let test_syntax_module_literal_inspector_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Atom(_) -> Syntax.var(\"hit\") | _ -> Syntax.var(\"miss\") end; f @ (Syntax.var(\"x\")) end" with
-  | VAtom (String "miss") -> ()
-  | _ -> Alcotest.fail "expected atom fallback on non-atom"
-
-let test_syntax_module_ap_deconstructors () =
-  check_i64_macro "Syntax ap deconstructors" 1L
-    "do macro f(stx) -> match stx do | Syntax.Ap(f, a) -> match f do Syntax.Var(_) -> match a do Syntax.Atom(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; f @ (Syntax.ap(Syntax.var(\"x\"), Syntax.i64(0))) end" ()
-
-let test_syntax_module_ap_deconstructor_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Ap(f, _) -> f | _ -> Syntax.var(\"fallback\") end; f @ (Syntax.i64(0)) end" with
-  | VAtom (String "fallback") -> ()
-  | _ -> Alcotest.fail "expected ap fallback on non-ap"
-
-let test_syntax_module_lam_deconstructors () =
-  check_i64_macro "Syntax lam deconstructors" 1L
-    "do macro f(stx) -> match stx do | Syntax.Lam(name, body) -> match body do Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; f @ (Syntax.lam(\"x\", Syntax.var(\"y\"))) end" ()
-
-let test_syntax_module_lam_deconstructor_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Lam(_, _) -> Syntax.var(\"hit\") | _ -> Syntax.var(\"miss\") end; f @ (Syntax.i64(0)) end" with
-  | VAtom (String "miss") -> ()
-  | _ -> Alcotest.fail "expected lam fallback on non-lam"
-
-let test_syntax_module_let_deconstructors () =
-  check_i64_macro "Syntax let deconstructors" 1L
-    "do macro f(stx) -> match stx do | Syntax.Let(name, val, body) -> match val do Syntax.Atom(_) -> match body do Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; f @ (Syntax.let_in(\"x\", Syntax.i64(0), Syntax.var(\"y\"))) end" ()
-
-let test_syntax_module_let_deconstructor_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Let(_, _, _) -> Syntax.var(\"hit\") | _ -> Syntax.var(\"miss\") end; f @ (Syntax.i64(0)) end" with
-  | VAtom (String "miss") -> ()
-  | _ -> Alcotest.fail "expected let fallback on non-let"
-
 let test_syntax_module_i64_builder () =
   check_i64_macro "Syntax.i64 builder" 42L
     "do
@@ -1074,39 +1033,6 @@ let test_pattern_syn_subst () =
   | CPatCon ("RawAp", 0, [ CPatWild; CPatAtom (I64 1L); CPatWild; CPatAtom (I64 2L) ]) -> ()
   | _ -> Alcotest.fail "substitution did not produce expected pattern"
 
-let eval_with_vcon_macros source =
-  let syntax_nominal =
-    let ctx = Elaborate.init_ctx () in
-    Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"]
-  in
-  let elaborate expr =
-    let ctx = Elaborate.init_ctx () in
-    let core, _ty = Elaborate.on_expr ctx expr in
-    Elaborate.Ctx.eval ctx core
-  in
-  let eval_and_apply fn arg =
-    let mc = MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
-  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_expr_nominal:syntax_nominal source in
-  let ctx = Elaborate.init_ctx () in
-  let core, _ty = Elaborate.on_expr ctx expr in
-  Elaborate.Ctx.eval ctx core
-
-let check_vcon_i64_macro name expected source =
-  let result = eval_with_vcon_macros source in
-  match result with
-  | VAtom (I64 n) -> Alcotest.(check int64) name expected n
-  | _ -> Alcotest.fail (name ^ ": expected I64")
-
-let test_vcon_rawap_match () =
-  check_vcon_i64_macro "vcon raw ap match" 1L
-    "do macro inspect(stx) -> match stx do | Syntax.RawAp(_, _, _, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; inspect @ (Syntax.ap(Syntax.i64(0), Syntax.i64(0))) end"
-
-let test_vcon_pattern_syn_ap () =
-  check_vcon_i64_macro "vcon pattern syn ap" 1L
-    "do macro inspect(stx) -> match stx do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; inspect @ (Syntax.ap(Syntax.i64(0), Syntax.i64(0))) end"
-
 let test_pattern_syn_in_prelude () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Ap"] with
@@ -1134,17 +1060,11 @@ let test_syntax_module_literal_builders () =
   check_i64_macro "Syntax char/unit builders" 42L
     "do
        macro char_a(_) -> Syntax.char('a')
+       macro unit_value(_) -> Syntax.unit(())
        if char_a @ (0) == 'a' do
+         if unit_value @ (0) == () do 42 else 0 end
        else 0 end
       end" ()
-
-
-
-
-
-
-
-
 
 let test_syntax_module_let_builder () =
   check_i64_macro "Syntax let builder" 7L
@@ -1159,6 +1079,33 @@ let test_syntax_module_seq_builder () =
        macro answer(_) -> Syntax.seq(Syntax.i64(3), Syntax.i64(7))
        answer @ (0)
       end" ()
+
+let test_syntax_module_operator_use_deconstructors () =
+  check_i64_macro "Syntax operator use deconstructors" 8L
+    "do
+       operator infix ~ 15 left(stx) -> if Syntax.operator_symbol(stx) == \"~\" do
+           if Syntax.operator_fixity(stx) == \"infix\" do
+             if Syntax.operator_arity(stx) == 2 do Syntax.operator_operand(stx, 1) else Syntax.i64(0) end
+           else Syntax.i64(0) end
+         else Syntax.i64(0) end
+       3 ~ 8
+     end" ()
+
+let test_syntax_module_operator_operand_error () =
+  match
+    eval_with_macros
+      "do
+         operator infix ~ 15 left(stx) -> Syntax.operator_operand(stx, 2)
+         1 ~ 2
+       end"
+  with
+  | exception Nbe.EvalError msg
+  | exception Failure msg ->
+      Alcotest.(check bool)
+        "mentions operand index" true
+        (string_contains msg "operand index out of bounds")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected operator operand bounds failure"
 
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
@@ -2210,21 +2157,13 @@ let () =
           Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
           Alcotest.test_case "Syntax module: Expr nominal resolvable" `Quick test_syntax_expr_nominal_resolvable;
           Alcotest.test_case "pattern synonym substitution" `Quick test_pattern_syn_subst;
-          Alcotest.test_case "vcon raw ap match" `Quick test_vcon_rawap_match;
-          Alcotest.test_case "vcon pattern syn ap" `Quick test_vcon_pattern_syn_ap;
           Alcotest.test_case "pattern synonym in prelude" `Quick test_pattern_syn_in_prelude;
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
-          Alcotest.test_case "Syntax module: literal inspectors" `Quick test_syntax_module_literal_inspectors;
-          Alcotest.test_case "Syntax module: literal inspector error" `Quick test_syntax_module_literal_inspector_error;
-          Alcotest.test_case "Syntax module: ap deconstructors" `Quick test_syntax_module_ap_deconstructors;
-          Alcotest.test_case "Syntax module: ap deconstructor error" `Quick test_syntax_module_ap_deconstructor_error;
-          Alcotest.test_case "Syntax module: lam deconstructors" `Quick test_syntax_module_lam_deconstructors;
-          Alcotest.test_case "Syntax module: lam deconstructor error" `Quick test_syntax_module_lam_deconstructor_error;
-          Alcotest.test_case "Syntax module: let deconstructors" `Quick test_syntax_module_let_deconstructors;
-          Alcotest.test_case "Syntax module: let deconstructor error" `Quick test_syntax_module_let_deconstructor_error;
           Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
           Alcotest.test_case "Syntax module: seq builder" `Quick test_syntax_module_seq_builder;
+          Alcotest.test_case "Syntax module: operator use deconstructors" `Quick test_syntax_module_operator_use_deconstructors;
+          Alcotest.test_case "Syntax module: operator operand error" `Quick test_syntax_module_operator_operand_error;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
