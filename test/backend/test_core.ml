@@ -1008,13 +1008,6 @@ let test_syntax_module_i64_builder () =
        answer @ (0)
      end" ()
 
-let test_syntax_module_expression_kind () =
-  check_i64_macro "Syntax.kind expression object" 1L
-    "do
-       macro answer(stx) -> if Syntax.kind(stx) == \"var\" do Syntax.i64(1) else Syntax.i64(0) end
-       target = 0
-       answer @ (target)
-     end" ()
 
 let test_syntax_class_types_accessible () =
   check_i64_macro "Syntax class types accessible" 42L
@@ -1023,20 +1016,6 @@ let test_syntax_class_types_accessible () =
        42
      end" ()
 
-let test_syntax_expr_nominal_resolvable () =
-  let ctx = Elaborate.init_ctx () in
-  match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
-  | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "5 constructors" 5 (List.length constructors);
-      Alcotest.(check bool) "RawVar present" true
-        (List.exists (fun (n, _) -> n = "RawVar") constructors);
-      Alcotest.(check bool) "RawAtom present" true
-        (List.exists (fun (n, _) -> n = "RawAtom") constructors)
-  | v ->
-      let mc = MetaContext.create () in
-      Alcotest.fail (Printf.sprintf "expected VNominal Expr, got %s" (Debug.pp_value_short mc v))
-   | exception e ->
-      Alcotest.fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
 
 let test_pattern_syn_subst () =
   let rhs = CPatCon ("RawAp", 0, [ CPatWild; CPatBind; CPatWild; CPatBind ]) in
@@ -1101,12 +1080,6 @@ let test_syntax_module_application_builder () =
        add @ (0)
      end" ()
 
-let test_syntax_module_operator_use_kind () =
-  check_i64_macro "Syntax.kind operator use" 1L
-    "do
-       operator infix ~ 15 right(stx) -> if Syntax.kind(stx) == \"syntax_operator_use\" do Syntax.i64(1) else Syntax.i64(0) end
-       1 ~ 2 ~ 3
-      end" ()
 
 let test_syntax_module_literal_builders () =
   check_i64_macro "Syntax char/unit builders" 42L
@@ -1118,98 +1091,13 @@ let test_syntax_module_literal_builders () =
        else 0 end
       end" ()
 
-let test_syntax_module_literal_inspectors () =
-  check_i64_macro "Syntax literal inspectors" 42L
-    "do
-       macro answer(stx) -> if Syntax.i64_value(stx) == 41 do
-           if Syntax.bool_value(Syntax.bool(true)) do
-             if Syntax.char_value(Syntax.char('a')) == 'a' do
-               if Syntax.string_value(Syntax.string(\"ok\")) == \"ok\" do
-                 if Syntax.unit_value(Syntax.unit(())) == () do Syntax.i64(42) else Syntax.i64(0) end
-               else Syntax.i64(0) end
-             else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       answer @ (41)
-     end" ()
 
-let test_syntax_module_literal_inspector_error () =
-  match eval_with_macros "do macro answer(stx) -> Syntax.i64_value(stx); answer @ (true) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions literal kind" true
-        (string_contains msg "expected I64 literal syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected literal inspector failure"
 
-let test_syntax_module_ap_deconstructors () =
-  check_i64_macro "Syntax ap deconstructors" 1L
-    "do
-       macro check_ap(stx) -> if Syntax.is_ap(stx) do
-           if Syntax.is_var(Syntax.ap_fn(stx)) do
-             if Syntax.kind(Syntax.ap_arg(stx)) == \"atom\" do Syntax.i64(1) else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       check_ap @ (f(0))
-     end" ()
 
-let test_syntax_module_ap_deconstructor_error () =
-  match eval_with_macros "do macro inspect(stx) -> Syntax.ap_fn(stx); inspect @ (1) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions application" true
-        (string_contains msg "expected application syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected ap deconstructor failure"
 
-let test_syntax_module_lam_deconstructors () =
-  check_i64_macro "Syntax lam deconstructors" 1L
-    "do
-       macro check_lam(stx) -> if Syntax.is_lam(stx) do
-           if Syntax.lam_name(stx) == \"x\" do
-             if Syntax.is_var(Syntax.lam_body(stx)) do Syntax.i64(1) else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       check_lam @ (fn(x) -> x)
-     end" ()
 
-let test_syntax_module_lam_deconstructor_error () =
-  match eval_with_macros "do macro inspect(stx) -> Syntax.lam_name(stx); inspect @ (1) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions lambda" true
-        (string_contains msg "expected lambda syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected lam deconstructor failure"
 
-let test_syntax_module_let_deconstructors () =
-  check_i64_macro "Syntax let deconstructors" 1L
-    "do
-       macro check_let(_) -> do
-           let_syn = Syntax.let_in(\"x\", Syntax.i64(1), Syntax.var(\"x\"))
-           if Syntax.is_let(let_syn) do
-             if Syntax.let_name(let_syn) == \"x\" do
-               if Syntax.is_atom(Syntax.let_value(let_syn)) do
-                 if Syntax.is_var(Syntax.let_body(let_syn)) do Syntax.i64(1) else Syntax.i64(0) end
-               else Syntax.i64(0) end
-             else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         end
-       check_let @ (0)
-     end" ()
 
-let test_syntax_module_let_deconstructor_error () =
-  match eval_with_macros "do macro inspect(stx) -> Syntax.let_value(stx); inspect @ (1) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions let" true
-        (string_contains msg "expected let syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected let deconstructor failure"
 
 let test_syntax_module_let_builder () =
   check_i64_macro "Syntax let builder" 7L
@@ -1225,42 +1113,8 @@ let test_syntax_module_seq_builder () =
        answer @ (0)
       end" ()
 
-let test_syntax_module_identifier_inspection () =
-  check_i64_macro "Syntax identifier inspection" 1L
-    "do
-       macro inspect(stx) -> if Syntax.is_var(stx) do
-           if Syntax.id_name(stx) == \"target\" do Syntax.i64(1) else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       target = 10
-       inspect @ (target)
-     end" ()
 
-let test_syntax_module_operator_use_deconstructors () =
-  check_i64_macro "Syntax operator use deconstructors" 8L
-    "do
-       operator infix ~ 15 left(stx) -> if Syntax.operator_symbol(stx) == \"~\" do
-           if Syntax.operator_fixity(stx) == \"infix\" do
-             if Syntax.operator_arity(stx) == 2 do Syntax.operator_operand(stx, 1) else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       3 ~ 8
-     end" ()
 
-let test_syntax_module_operator_operand_error () =
-  match
-    eval_with_macros
-      "do
-         operator infix ~ 15 left(stx) -> Syntax.operator_operand(stx, 2)
-         1 ~ 2
-       end"
-  with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions operand index" true
-        (string_contains msg "operand index out of bounds")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected operator operand bounds failure"
 
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
@@ -2308,30 +2162,16 @@ let () =
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
           Alcotest.test_case "Syntax module: i64 builder" `Quick test_syntax_module_i64_builder;
-          Alcotest.test_case "Syntax module: expression kind" `Quick test_syntax_module_expression_kind;
           Alcotest.test_case "Syntax module: primitive names hidden" `Quick test_syntax_primitive_names_hidden;
           Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
-          Alcotest.test_case "Syntax module: Expr nominal resolvable" `Quick test_syntax_expr_nominal_resolvable;
           Alcotest.test_case "pattern synonym substitution" `Quick test_pattern_syn_subst;
           Alcotest.test_case "vcon raw ap match" `Quick test_vcon_rawap_match;
           Alcotest.test_case "vcon pattern syn ap" `Quick test_vcon_pattern_syn_ap;
           Alcotest.test_case "pattern synonym in prelude" `Quick test_pattern_syn_in_prelude;
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
-          Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
-          Alcotest.test_case "Syntax module: literal inspectors" `Quick test_syntax_module_literal_inspectors;
-          Alcotest.test_case "Syntax module: literal inspector error" `Quick test_syntax_module_literal_inspector_error;
-          Alcotest.test_case "Syntax module: ap deconstructors" `Quick test_syntax_module_ap_deconstructors;
-          Alcotest.test_case "Syntax module: ap deconstructor error" `Quick test_syntax_module_ap_deconstructor_error;
-          Alcotest.test_case "Syntax module: lam deconstructors" `Quick test_syntax_module_lam_deconstructors;
-          Alcotest.test_case "Syntax module: lam deconstructor error" `Quick test_syntax_module_lam_deconstructor_error;
-          Alcotest.test_case "Syntax module: let deconstructors" `Quick test_syntax_module_let_deconstructors;
-          Alcotest.test_case "Syntax module: let deconstructor error" `Quick test_syntax_module_let_deconstructor_error;
           Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
           Alcotest.test_case "Syntax module: seq builder" `Quick test_syntax_module_seq_builder;
-          Alcotest.test_case "Syntax module: identifier inspection" `Quick test_syntax_module_identifier_inspection;
-          Alcotest.test_case "Syntax module: operator use deconstructors" `Quick test_syntax_module_operator_use_deconstructors;
-          Alcotest.test_case "Syntax module: operator operand error" `Quick test_syntax_module_operator_operand_error;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;

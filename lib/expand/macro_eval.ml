@@ -59,6 +59,23 @@ let explicitness_to_value (e : Explicitness.t) : value =
   | Explicitness.Explicit -> vcon_explicit
   | Explicitness.Implicit -> vcon_implicit
 
+let atom_to_atomval (a : Atom.t) : value =
+  match a with
+  | Atom.I64 n -> VCon { name = "I64Atom"; spine = [ VAtom (I64 n) ]; nominal = dummy_expr_nominal }
+  | Atom.Bool b -> VCon { name = "BoolAtom"; spine = [ VAtom (Bool b) ]; nominal = dummy_expr_nominal }
+  | Atom.Char c -> VCon { name = "CharAtom"; spine = [ VAtom (Char c) ]; nominal = dummy_expr_nominal }
+  | Atom.String s -> VCon { name = "StringAtom"; spine = [ VAtom (String s) ]; nominal = dummy_expr_nominal }
+  | Atom.Unit -> VCon { name = "UnitAtom"; spine = []; nominal = dummy_expr_nominal }
+
+let atomval_to_atom (v : value) : Atom.t option =
+  match v with
+  | VCon { name = "I64Atom"; spine = [ VAtom (I64 n) ]; _ } -> Some (Atom.I64 n)
+  | VCon { name = "BoolAtom"; spine = [ VAtom (Bool b) ]; _ } -> Some (Atom.Bool b)
+  | VCon { name = "CharAtom"; spine = [ VAtom (Char c) ]; _ } -> Some (Atom.Char c)
+  | VCon { name = "StringAtom"; spine = [ VAtom (String s) ]; _ } -> Some (Atom.String s)
+  | VCon { name = "UnitAtom"; spine = []; _ } -> Some Atom.Unit
+  | _ -> None
+
 let rec param_to_value (p : Syntax.param) : value =
   VRecord
     { typ = VU;
@@ -76,7 +93,7 @@ and wrap_stx_sub (stx : Syntax.t) : value =
       VCon { name = "RawVar"; spine = [ span_opt; id_to_value id ];
              nominal = dummy_expr_nominal }
   | Atom a ->
-      VCon { name = "RawAtom"; spine = [ span_opt; VAtom a ];
+      VCon { name = "RawAtom"; spine = [ span_opt; atom_to_atomval a ];
              nominal = dummy_expr_nominal }
   | Ap (f, e, a) ->
       VCon { name = "RawAp";
@@ -108,7 +125,7 @@ let wrap_stx ~syntax_nominal (stx : Syntax.t) : value =
        | Var id ->
            VCon { name = "RawVar"; spine = [ span_opt; id_to_value id ]; nominal }
        | Atom a ->
-           VCon { name = "RawAtom"; spine = [ span_opt; VAtom a ]; nominal }
+           VCon { name = "RawAtom"; spine = [ span_opt; atom_to_atomval a ]; nominal }
        | Ap (f, e, a) ->
            VCon { name = "RawAp";
                   spine = [ span_opt; wrap_stx_sub f; explicitness_to_value e; wrap_stx_sub a ];
@@ -188,8 +205,10 @@ let rec unwind_stx (v : value) : Syntax.t option =
   match v with
   | VCon { name = "RawVar"; spine = [ _; id_val ]; _ } ->
       Some { kind = Var (value_to_id id_val); span = Source_span.synthetic }
-  | VCon { name = "RawAtom"; spine = [ _; VAtom a ]; _ } ->
-      Some { kind = Atom a; span = Source_span.synthetic }
+  | VCon { name = "RawAtom"; spine = [ _; atom_val ]; _ } ->
+      (match atomval_to_atom atom_val with
+       | Some a -> Some { kind = Atom a; span = Source_span.synthetic }
+       | None -> None)
   | VCon { name = "RawAp"; spine = [ _; fn_val; _; arg_val ]; _ } ->
       (match (unwind_stx fn_val, unwind_stx arg_val) with
        | Some fn, Some arg ->

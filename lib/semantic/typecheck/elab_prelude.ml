@@ -129,9 +129,12 @@ pub module Syntax do
   pub type Id = {name: String; span: Span; scope: I64}
 
   pub type Param = {name: Id; type_: Option(Type); explicitness: Explicitness}
+  pub type AtomVal = I64Atom(I64) | BoolAtom(Bool) | CharAtom(Char) | StringAtom(String) | UnitAtom
   pub type Expr =
     | RawVar(Option(Span), Id)
-    | RawAtom(Option(Span), Type)
+    | RawAtom(Option(Span), AtomVal)
+    | RawVar(Option(Span), Id)
+    | RawAtom(Option(Span), AtomVal)
     | RawAp(Option(Span), Expr, Explicitness, Expr)
     | RawLam(Option(Span), Param, Expr)
     | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
