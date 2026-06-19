@@ -133,8 +133,6 @@ pub module Syntax do
   pub type Expr =
     | RawVar(Option(Span), Id)
     | RawAtom(Option(Span), AtomVal)
-    | RawVar(Option(Span), Id)
-    | RawAtom(Option(Span), AtomVal)
     | RawAp(Option(Span), Expr, Explicitness, Expr)
     | RawLam(Option(Span), Param, Expr)
     | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
