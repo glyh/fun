@@ -145,16 +145,19 @@ pub module Syntax do
   pub Pattern : Type = Type
   pub Decl : Type = Type
   pub Decls : Type = Type
-  pub var = stx_make_var
-  pub ap = stx_make_ap
-  pub lam = stx_make_lam
-  pub let_in = stx_make_let
+  pub synthetic_span = Span{file = None; start_byte = 0; end_byte = 0; start_line = None; start_col = None; end_line = None; end_col = None}
+  pub new_id = fn(name) -> Id{name = name; span = synthetic_span; scope = 0}
+  pub atom_val = fn(val) -> RawAtom(None, val)
+  pub var = fn(name) -> RawVar(None, new_id(name))
+  pub ap = fn(f, a) -> RawAp(None, f, Explicit, a)
+  pub lam = fn(name, body) -> RawLam(None, Param{name = new_id(name); type_ = None; explicitness = Explicit}, body)
+  pub let_in = fn(name, val, body) -> RawLet(None, new_id(name), None, val, body, false)
   pub seq = stx_make_seq
-  pub i64 = stx_make_i64
-  pub string = stx_make_string
-  pub bool = stx_make_bool
-  pub char = stx_make_char
-  pub unit = stx_make_unit
+  pub i64 = fn(n) -> atom_val(I64Atom(n))
+  pub string = fn(s) -> atom_val(StringAtom(s))
+  pub bool = fn(b) -> atom_val(BoolAtom(b))
+  pub char = fn(c) -> atom_val(CharAtom(c))
+  pub unit = fn(_) -> atom_val(UnitAtom)
   pub id_name = stx_id_name
   pub id_eq = stx_id_eq
   pub operator_symbol = stx_operator_symbol

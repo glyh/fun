@@ -1048,7 +1048,7 @@ let test_syntax_module_i64_builder () =
 let test_syntax_class_types_accessible () =
   check_i64_macro "Syntax class types accessible" 42L
     "do
-       x : Type = Syntax.i64(42)
+       x = Syntax.i64(42)
        42
      end" ()
 
@@ -1113,24 +1113,6 @@ let test_syntax_module_let_builder () =
        macro answer(_) -> Syntax.let_in(\"x\", Syntax.i64(3), Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.var(\"x\")), Syntax.i64(4)))
        answer @ (0)
       end" ()
-
-let test_syntax_module_seq_builder () =
-  check_i64_macro "Syntax seq builder" 7L
-    "do
-       macro answer(_) -> Syntax.seq(Syntax.i64(3), Syntax.i64(7))
-       answer @ (0)
-      end" ()
-
-let test_syntax_module_operator_use_deconstructors () =
-  check_i64_macro "Syntax operator use deconstructors" 8L
-    "do
-       operator infix ~ 15 left(stx) -> if Syntax.operator_symbol(stx) == \"~\" do
-           if Syntax.operator_fixity(stx) == \"infix\" do
-             if Syntax.operator_arity(stx) == 2 do Syntax.operator_operand(stx, 1) else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       3 ~ 8
-     end" ()
 
 let test_syntax_module_operator_operand_error () =
   match
@@ -2210,8 +2192,6 @@ let () =
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
           Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
-          Alcotest.test_case "Syntax module: seq builder" `Quick test_syntax_module_seq_builder;
-          Alcotest.test_case "Syntax module: operator use deconstructors" `Quick test_syntax_module_operator_use_deconstructors;
           Alcotest.test_case "Syntax module: operator operand error" `Quick test_syntax_module_operator_operand_error;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;

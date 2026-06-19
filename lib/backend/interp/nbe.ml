@@ -544,7 +544,7 @@ and eval_con (env : env) (name : string) : value =
     | VNominal n :: _ when String.equal n.name name -> VNominal n
     | VModule { entries; _ } :: rest ->
         (let fields = module_entry_fields entries in
-         match List.find_opt (fun (n, k, v) ->
+         match List.find_opt (fun (n, k, _v) ->
            String.equal n name && Nbe_support.visible_kind k) fields with
          | Some (_, _, v) -> v
          | None -> go rest)
