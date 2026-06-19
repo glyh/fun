@@ -1031,8 +1031,15 @@ let test_syntax_expr_nominal_resolvable () =
   | v ->
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "expected VNominal Expr, got %s" (Debug.pp_value_short mc v))
-  | exception e ->
+   | exception e ->
       Alcotest.fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
+
+let test_pattern_syn_subst () =
+  let rhs = CPatCon ("RawAp", 0, [ CPatWild; CPatBind; CPatWild; CPatBind ]) in
+  let result = Elab_patterns.subst_syn_params ["fn"; "arg"] [CPatAtom (I64 1L); CPatAtom (I64 2L)] rhs in
+  match result with
+  | CPatCon ("RawAp", 0, [ CPatWild; CPatAtom (I64 1L); CPatWild; CPatAtom (I64 2L) ]) -> ()
+  | _ -> Alcotest.fail "substitution did not produce expected pattern"
 
 let test_syntax_primitive_names_hidden () =
   match eval_with_macros "do macro answer(_) -> stx_make_i64(42); answer @ (0) end" with
@@ -2258,6 +2265,7 @@ let () =
           Alcotest.test_case "Syntax module: primitive names hidden" `Quick test_syntax_primitive_names_hidden;
           Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
           Alcotest.test_case "Syntax module: Expr nominal resolvable" `Quick test_syntax_expr_nominal_resolvable;
+          Alcotest.test_case "pattern synonym substitution" `Quick test_pattern_syn_subst;
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: operator use kind" `Quick test_syntax_module_operator_use_kind;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;

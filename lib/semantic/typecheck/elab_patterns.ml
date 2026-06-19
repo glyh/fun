@@ -7,6 +7,53 @@ module Ctx = Elab_ctx.Ctx
 
 open Elab_resolve
 
+let rec subst_syn_param (param_name : string) (replacement : core_pat) (pat : core_pat) : core_pat =
+  match pat with
+  | CPatBind -> replacement
+  | CPatWild | CPatAtom _ | CPatType _ -> pat
+  | CPatCon (n, ntp, sub_pats) -> CPatCon (n, ntp, List.map (subst_syn_param param_name replacement) sub_pats)
+  | CPatSyn { name; sub_pats; rhs } ->
+      CPatSyn { name; sub_pats = List.map (subst_syn_param param_name replacement) sub_pats;
+                rhs = subst_syn_param param_name replacement rhs }
+  | CPatProd sub_pats -> CPatProd (List.map (subst_syn_param param_name replacement) sub_pats)
+  | CPatOr (lhs, rhs) -> CPatOr (subst_syn_param param_name replacement lhs,
+                                  subst_syn_param param_name replacement rhs)
+  | CPatRecord { fields; partial } ->
+      CPatRecord { fields = List.map (fun (n, p) -> (n, subst_syn_param param_name replacement p)) fields;
+                   partial }
+  | CPatStructType { fields; partial } ->
+      CPatStructType { fields = List.map (fun (n, p) -> (n, subst_syn_param param_name replacement p)) fields;
+                       partial }
+  | CPatNominalHead { id; name = n; num_params; param_pats } ->
+      CPatNominalHead { id; name = n; num_params;
+                        param_pats = List.map (subst_syn_param param_name replacement) param_pats }
+
+let subst_syn_params (_params : string list) (replacements : core_pat list) (rhs : core_pat) : core_pat =
+  let counter = ref 0 in
+  let rec subst_positional pat =
+    match pat with
+    | CPatBind ->
+        let idx = !counter in
+        incr counter;
+        if idx < List.length replacements then List.nth replacements idx
+        else pat
+    | CPatWild | CPatAtom _ | CPatType _ -> pat
+    | CPatCon (n, ntp, sub_pats) -> CPatCon (n, ntp, List.map subst_positional sub_pats)
+    | CPatSyn { name; sub_pats; rhs } ->
+        CPatSyn { name; sub_pats = List.map subst_positional sub_pats;
+                  rhs = subst_positional rhs }
+    | CPatProd sub_pats -> CPatProd (List.map subst_positional sub_pats)
+    | CPatOr (lhs, rhs) -> CPatOr (subst_positional lhs, subst_positional rhs)
+    | CPatRecord { fields; partial } ->
+        CPatRecord { fields = List.map (fun (n, p) -> (n, subst_positional p)) fields; partial }
+    | CPatStructType { fields; partial } ->
+        CPatStructType { fields = List.map (fun (n, p) -> (n, subst_positional p)) fields; partial }
+    | CPatNominalHead { id; name = n; num_params; param_pats } ->
+        CPatNominalHead { id; name = n; num_params;
+                          param_pats = List.map subst_positional param_pats }
+  in
+  subst_positional rhs
+
 (** Elaborate a surface pattern against a scrutinee type, producing a core
     pattern and extending the context with bound pattern variables. *)
 let rec elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
@@ -121,6 +168,27 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
               (CPatBind, [ (name, VU) ])
           | None -> raise (ElabError (UnknownConstructor name)))
       | _ ->
+          (match path with
+           | [] -> None
+           | _ ->
+               let ctor_value, _ = resolve_path_value ctx path name in
+               match Nbe.force ctx.metas ctor_value with
+               | VPatternSyn { name = _; params; rhs; scrutinee_ty = syn_ty } ->
+                   if List.length sub_pats <> List.length params then
+                     raise (ElabError PatternArityMismatch);
+                   Ctx.unify ctx scrutinee_ty syn_ty;
+                   let core_subs, binders =
+                     List.fold_left (fun (pats, binds) sub_pat ->
+                       let core_p, bs = elaborate_pat_binders ctx sub_pat syn_ty in
+                       (core_p :: pats, bs @ binds))
+                       ([], []) sub_pats
+                   in
+                   let expanded = subst_syn_params params (List.rev core_subs) rhs in
+                   Some (expanded, List.rev binders)
+               | _ -> None)
+          |> function
+          | Some result -> result
+          | None ->
           let resolved_nominal =
             match path with
             | [] -> None
