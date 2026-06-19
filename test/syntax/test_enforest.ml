@@ -431,13 +431,6 @@ end" with
   | Atom (Atom.I64 1L) -> ()
   | _ -> Alcotest.fail "expected operator RHS to expand through the macro path"
 
-let operator_infix_associativity () =
-  match parse_with_macros "do
-  operator infix ~ 15 right(stx) -> if Syntax.kind(stx) == \"syntax_operator_use\" do Syntax.i64(1) else Syntax.i64(0) end
-  1 ~ 2 ~ 3
-end" with
-  | Atom (Atom.I64 1L) -> ()
-  | _ -> Alcotest.fail "expected operator infix to receive structured operator-use input"
 
 let operator_declaration_is_sequential () =
   match parse_with_macros "do before = late 0; syntax late do | late $x -> 1 end; late 0 end" with
@@ -637,7 +630,6 @@ let suites =
         Alcotest.test_case "operator infix in do block" `Quick operator_infix_in_do_block;
         Alcotest.test_case "operator prefix in module" `Quick operator_prefix_in_module;
         Alcotest.test_case "operator RHS can use earlier macro" `Quick operator_rhs_can_use_earlier_macro;
-        Alcotest.test_case "operator infix associativity" `Quick operator_infix_associativity;
         Alcotest.test_case "operator declaration is sequential" `Quick operator_declaration_is_sequential;
         Alcotest.test_case "duplicate operator later wins" `Quick duplicate_operator_later_wins;
         Alcotest.test_case "syntax extension cross module" `Quick syntax_extension_cross_module;

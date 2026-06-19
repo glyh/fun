@@ -154,30 +154,7 @@ pub module Syntax do
   pub bool = stx_make_bool
   pub char = stx_make_char
   pub unit = stx_make_unit
-  pub i64_value = stx_i64_value
-  pub string_value = stx_string_value
-  pub bool_value = stx_bool_value
-  pub char_value = stx_char_value
-  pub unit_value = stx_unit_value
-  pub is_ap = stx_is_ap
-  pub ap_fn = stx_ap_fn
-  pub ap_arg = stx_ap_arg
-  pub is_lam = stx_is_lam
-  pub lam_name = stx_lam_name
-  pub lam_body = stx_lam_body
-  pub is_let = stx_is_let
-  pub let_name = stx_let_name
-  pub let_value = stx_let_value
-  pub let_body = stx_let_body
-  pub kind = stx_kind
-  pub is_var = stx_is_var
-  pub is_atom = stx_is_atom
-  pub id_name = stx_id_name
-  pub id_eq = stx_id_eq
-  pub operator_symbol = stx_operator_symbol
-  pub operator_fixity = stx_operator_fixity
-  pub operator_arity = stx_operator_arity
-  pub operator_operand = stx_operator_operand
+
 end
 |}
 
