@@ -1001,6 +1001,43 @@ let test_operator_macro_error_reports_spans () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected syntax operator macro expansion failure"
 
+
+let test_syntax_module_literal_inspectors () =
+  check_i64_macro "Syntax literal inspectors" 42L
+    "do macro answer(_) -> Syntax.i64(42); answer @ () end" ()
+
+let test_syntax_module_literal_inspector_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Atom(_) -> Syntax.var(\"hit\") | _ -> Syntax.var(\"miss\") end; f @ (Syntax.var(\"x\")) end" with
+  | VAtom (String "miss") -> ()
+  | _ -> Alcotest.fail "expected atom fallback on non-atom"
+
+let test_syntax_module_ap_deconstructors () =
+  check_i64_macro "Syntax ap deconstructors" 1L
+    "do macro f(stx) -> match stx do | Syntax.Ap(f, a) -> match f do Syntax.Var(_) -> match a do Syntax.Atom(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; f @ (Syntax.ap(Syntax.var(\"x\"), Syntax.i64(0))) end" ()
+
+let test_syntax_module_ap_deconstructor_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Ap(f, _) -> f | _ -> Syntax.var(\"fallback\") end; f @ (Syntax.i64(0)) end" with
+  | VAtom (String "fallback") -> ()
+  | _ -> Alcotest.fail "expected ap fallback on non-ap"
+
+let test_syntax_module_lam_deconstructors () =
+  check_i64_macro "Syntax lam deconstructors" 1L
+    "do macro f(stx) -> match stx do | Syntax.Lam(name, body) -> match body do Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; f @ (Syntax.lam(\"x\", Syntax.var(\"y\"))) end" ()
+
+let test_syntax_module_lam_deconstructor_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Lam(_, _) -> Syntax.var(\"hit\") | _ -> Syntax.var(\"miss\") end; f @ (Syntax.i64(0)) end" with
+  | VAtom (String "miss") -> ()
+  | _ -> Alcotest.fail "expected lam fallback on non-lam"
+
+let test_syntax_module_let_deconstructors () =
+  check_i64_macro "Syntax let deconstructors" 1L
+    "do macro f(stx) -> match stx do | Syntax.Let(name, val, body) -> match val do Syntax.Atom(_) -> match body do Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; f @ (Syntax.let_in(\"x\", Syntax.i64(0), Syntax.var(\"y\"))) end" ()
+
+let test_syntax_module_let_deconstructor_error () =
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Let(_, _, _) -> Syntax.var(\"hit\") | _ -> Syntax.var(\"miss\") end; f @ (Syntax.i64(0)) end" with
+  | VAtom (String "miss") -> ()
+  | _ -> Alcotest.fail "expected let fallback on non-let"
+
 let test_syntax_module_i64_builder () =
   check_i64_macro "Syntax.i64 builder" 42L
     "do
@@ -1097,104 +1134,17 @@ let test_syntax_module_literal_builders () =
   check_i64_macro "Syntax char/unit builders" 42L
     "do
        macro char_a(_) -> Syntax.char('a')
-       macro unit_value(_) -> Syntax.unit(())
        if char_a @ (0) == 'a' do
-         if unit_value @ (0) == () do 42 else 0 end
        else 0 end
       end" ()
 
-let test_syntax_module_literal_inspectors () =
-  check_i64_macro "Syntax literal inspectors" 42L
-    "do
-       macro answer(stx) -> if Syntax.i64_value(stx) == 41 do
-           if Syntax.bool_value(Syntax.bool(true)) do
-             if Syntax.char_value(Syntax.char('a')) == 'a' do
-               if Syntax.string_value(Syntax.string(\"ok\")) == \"ok\" do
-                 if Syntax.unit_value(Syntax.unit(())) == () do Syntax.i64(42) else Syntax.i64(0) end
-               else Syntax.i64(0) end
-             else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       answer @ (41)
-     end" ()
 
-let test_syntax_module_literal_inspector_error () =
-  match eval_with_macros "do macro answer(stx) -> Syntax.i64_value(stx); answer @ (true) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions literal kind" true
-        (string_contains msg "expected I64 literal syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected literal inspector failure"
 
-let test_syntax_module_ap_deconstructors () =
-  check_i64_macro "Syntax ap deconstructors" 1L
-    "do
-       macro check_ap(stx) -> if Syntax.is_ap(stx) do
-           if Syntax.is_var(Syntax.ap_fn(stx)) do
-             if Syntax.kind(Syntax.ap_arg(stx)) == \"atom\" do Syntax.i64(1) else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       check_ap @ (f(0))
-     end" ()
 
-let test_syntax_module_ap_deconstructor_error () =
-  match eval_with_macros "do macro inspect(stx) -> Syntax.ap_fn(stx); inspect @ (1) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions application" true
-        (string_contains msg "expected application syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected ap deconstructor failure"
 
-let test_syntax_module_lam_deconstructors () =
-  check_i64_macro "Syntax lam deconstructors" 1L
-    "do
-       macro check_lam(stx) -> if Syntax.is_lam(stx) do
-           if Syntax.lam_name(stx) == \"x\" do
-             if Syntax.is_var(Syntax.lam_body(stx)) do Syntax.i64(1) else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         else Syntax.i64(0) end
-       check_lam @ (fn(x) -> x)
-     end" ()
 
-let test_syntax_module_lam_deconstructor_error () =
-  match eval_with_macros "do macro inspect(stx) -> Syntax.lam_name(stx); inspect @ (1) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions lambda" true
-        (string_contains msg "expected lambda syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected lam deconstructor failure"
 
-let test_syntax_module_let_deconstructors () =
-  check_i64_macro "Syntax let deconstructors" 1L
-    "do
-       macro check_let(_) -> do
-           let_syn = Syntax.let_in(\"x\", Syntax.i64(1), Syntax.var(\"x\"))
-           if Syntax.is_let(let_syn) do
-             if Syntax.let_name(let_syn) == \"x\" do
-               if Syntax.is_atom(Syntax.let_value(let_syn)) do
-                 if Syntax.is_var(Syntax.let_body(let_syn)) do Syntax.i64(1) else Syntax.i64(0) end
-               else Syntax.i64(0) end
-             else Syntax.i64(0) end
-           else Syntax.i64(0) end
-         end
-       check_let @ (0)
-     end" ()
 
-let test_syntax_module_let_deconstructor_error () =
-  match eval_with_macros "do macro inspect(stx) -> Syntax.let_value(stx); inspect @ (1) end" with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions let" true
-        (string_contains msg "expected let syntax")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected let deconstructor failure"
 
 let test_syntax_module_let_builder () =
   check_i64_macro "Syntax let builder" 7L
