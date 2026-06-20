@@ -70,41 +70,6 @@ module Stx = struct
 
   let fail name msg = raise (Nbe_error.EvalError (name ^ ": " ^ msg))
 
-  let expr kind = VStx (StxExpr { kind; span = Source_span.synthetic })
-
-  let expr_value = function VStx (StxExpr stx) -> Some stx | _ -> None
-
-  let make_seq = function
-    | [ first; second ] -> (
-      match (expr_value first, expr_value second) with
-      | Some first, Some second ->
-        Some
-          (expr
-             (Let
-                {
-                  name = fresh_id "_";
-                  type_ = None;
-                  value = first;
-                  body = second;
-                  recursive = false;
-                }))
-      | _ -> None)
-    | _ -> None
-
-  let id_name = function
-    | [ VStx (StxExpr { kind = Var id; _ }) ] -> Some (VAtom (String id.name))
-    | [ VStx _ ] -> fail "stx_id_name" "expected identifier syntax"
-    | _ -> None
-
-  let id_eq = function
-    | [ VStx (StxExpr { kind = Var a; _ }); VStx (StxExpr { kind = Var b; _ }) ] ->
-        let eq =
-          String.equal a.name b.name
-          && (Scope_set.subset a.scope b.scope || Scope_set.subset b.scope a.scope)
-        in
-        Some (VAtom (Bool eq))
-    | _ -> None
-
   let operator_symbol = function
     | [ VStx (StxExpr { kind = SyntaxOperatorUse { operator; _ }; _ }) ] ->
         Some (VAtom (String operator.name))
@@ -138,10 +103,7 @@ module Stx = struct
 end
 
 let stx_prim_table : (string, value list -> value option) Hashtbl.t =
-  [ ("stx_make_seq", Stx.make_seq);
-    ("stx_id_name", Stx.id_name);
-    ("stx_id_eq", Stx.id_eq);
-    ("stx_operator_symbol", Stx.operator_symbol);
+  [ ("stx_operator_symbol", Stx.operator_symbol);
     ("stx_operator_fixity", Stx.operator_fixity);
     ("stx_operator_arity", Stx.operator_arity);
     ("stx_operator_operand", Stx.operator_operand) ]

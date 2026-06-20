@@ -37,9 +37,6 @@ let prims =
     ("<=", i64_comparator);
     (">=", i64_comparator);
     ("not", VAtomTy Atom_ty.TBool ^-> AtomTy Atom_ty.TBool);
-    ("stx_make_seq", VU ^-> U ^->> U);
-    ("stx_id_name", VU ^-> AtomTy Atom_ty.TString);
-    ("stx_id_eq", VU ^-> U ^->> AtomTy Atom_ty.TBool);
     ("stx_operator_symbol", VU ^-> AtomTy Atom_ty.TString);
     ("stx_operator_fixity", VU ^-> AtomTy Atom_ty.TString);
     ("stx_operator_arity", VU ^-> AtomTy Atom_ty.TI64);
@@ -48,10 +45,7 @@ let prims =
   |> NameMap.of_list
 
 let syntax_primitive_names =
-  [ "stx_make_seq";
-    "stx_id_name";
-    "stx_id_eq";
-    "stx_operator_symbol";
+  [ "stx_operator_symbol";
     "stx_operator_fixity";
     "stx_operator_arity";
     "stx_operator_operand" ]
@@ -103,9 +97,9 @@ pub module Syntax do
   pub bool = fn(b) -> atom_val(BoolAtom(b))
   pub char = fn(c) -> atom_val(CharAtom(c))
   pub unit = fn(_) -> atom_val(UnitAtom)
-  pub seq = stx_make_seq
-  pub id_name = stx_id_name
-  pub id_eq = stx_id_eq
+  pub seq = fn(a, b) -> RawLet(None, new_id("_"), None, a, b, false)
+  pub id_name = fn(stx) -> match stx do | RawVar(_, id) -> id.name | _ -> panic[String]("expected identifier") end
+  pub id_eq = fn(a, b) -> match a do | RawVar(_, ida) -> match b do | RawVar(_, idb) -> eq_string(ida.name, idb.name) | _ -> panic[Bool]("expected identifier") end | _ -> panic[Bool]("expected identifier") end
   pub operator_symbol = stx_operator_symbol
   pub operator_fixity = stx_operator_fixity
   pub operator_arity = stx_operator_arity
