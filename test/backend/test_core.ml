@@ -979,6 +979,21 @@ let test_operator_uses_operands () =
        10 >>> 5 >>> 3
      end" ()
 
+let test_operator_right_assoc () =
+  check_i64_macro "operator right assoc" 8L
+    "do
+       infix (<<<) 15 Right ($lhs, $rhs) -> $lhs - $rhs
+       10 <<< 5 <<< 3
+     end" ()
+
+let test_operator_mixed_precedence () =
+  check_i64_macro "operator mixed precedence" 14L
+    "do
+       infix (+++) 10 Left ($lhs, $rhs) -> $lhs + $rhs
+       infix (***) 20 Left ($lhs, $rhs) -> $lhs * $rhs
+       2 +++ 3 *** 4
+     end" ()
+
 let test_operator_rhs_can_use_earlier_macro () =
   check_i64_macro "operator RHS macro path" 5L
     "do
@@ -2213,6 +2228,8 @@ let () =
           Alcotest.test_case "operator prefix macro expands" `Quick test_operator_prefix_macro_expands;
           Alcotest.test_case "infix macro expands" `Quick test_operator_infix_macro_expands;
           Alcotest.test_case "infix uses operands" `Quick test_operator_uses_operands;
+          Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
+          Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
