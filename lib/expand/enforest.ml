@@ -978,10 +978,10 @@ and parse_operator_value env start_span terms =
     rest )
 
 and parse_operator_assoc assoc_str =
-  match String.lowercase_ascii assoc_str with
-  | "left" -> Operator_env.Left
-  | "right" -> Operator_env.Right
-  | _ -> error "operator infix associativity must be 'left' or 'right'"
+  match assoc_str with
+  | "Left" -> Operator_env.Left
+  | "Right" -> Operator_env.Right
+  | _ -> error "operator infix associativity must be Left or Right"
 
 and parse_syntax_template_decl env head_term head do_span body_rest =
   let body_terms, rest, _body_span = collect_until_end do_span body_rest in
@@ -1046,17 +1046,16 @@ and parse_decl_template_use env parse_decl stmt =
 
 and parse_operator_shape stmt =
   match drop_separators stmt with
-  | { datum = Token { kind = Ident op_kw; _ }; _ }
-    :: { datum = Token { kind = Ident ifx; _ }; _ }
+  | { datum = Token { kind = Ident ifx; _ }; _ }
     :: { datum = Group (Raw_syntax.Paren, sym_items, sym_span); _ }
     :: { datum = Token { kind = Int p; _ }; _ }
     :: { datum = Token { kind = Ident assoc_str; _ }; span = assoc_span }
     :: value_terms
-    when String.equal op_kw "operator" && String.equal ifx "infix" ->
+    when String.equal ifx "infix" ->
       let sym = match drop_separators sym_items with
         | [ term ] when Option.is_some (token_text term) ->
             Option.get (token_text term)
-        | _ -> error "operator infix requires a symbol in parens"
+        | _ -> error "infix requires a symbol in parens"
       in
       let prec = Int64.to_int p in
       let assoc = parse_operator_assoc assoc_str in
@@ -1067,7 +1066,7 @@ and parse_operator_decl env stmt =
   match parse_operator_shape stmt with
   | Some (`Infix (name, name_span, prec, assoc, assoc_span, value_terms)) ->
       let value, rest = parse_operator_value env assoc_span value_terms in
-      ensure_no_rest "operator infix declaration" rest;
+      ensure_no_rest "infix declaration" rest;
       env.operators <-
         Operator_env.add_infix ~declaration_span:name_span env.operators
           name prec assoc;
@@ -1093,8 +1092,8 @@ and parse_operator_decl env stmt =
           Some
             (parse_syntax_template_decl env head_term head do_kw.span body_rest)
       | { datum = Token { kind = Ident s; _ }; _ } :: _
-        when String.equal s "operator" ->
-          unsupported "unsupported operator declaration shape"
+        when String.equal s "syntax" ->
+          unsupported "unsupported syntax declaration shape"
       | _ -> None)
 
 and parse_operator_decl_in_do env stmt =
@@ -1105,9 +1104,6 @@ and parse_operator_decl_in_do env stmt =
       | { datum = Token { kind = Ident s; _ }; _ } :: _
         when String.equal s "syntax" ->
           parse_operator_decl env stmt
-      | { datum = Token { kind = Ident s; _ }; _ } :: _
-        when String.equal s "operator" ->
-          error "unsupported operator declaration shape in do block"
       | _ -> None)
 
 and scoped_binding_to_expr env span stmt body =
