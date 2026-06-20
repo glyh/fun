@@ -347,10 +347,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           | Some expanded -> expand ctx expanded
           | None ->
               failwith (syntax_operator_failure (List.hd args)
-                ("macro did not return a syntax value, got " ^
-                 (let open Core in match result with
-                  | VStx _ -> "VStx" | VLam _ -> "VLam" | VCon c -> "VCon(" ^ c.name ^ ")"
-                  | _ -> "...?")))
+                ("macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
           end
         | None -> failwith "macro call requires an apply callback in expand context"
         end
@@ -389,7 +386,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
         in
         begin match Macro_eval.unwrap_stx result with
         | Some expanded -> expand ctx expanded
-        | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } } "operator macro did not return a syntax value")
+        | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } }
+                              ("operator macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
         end
       | None -> failwith "operator macro call requires an apply callback"
       end
