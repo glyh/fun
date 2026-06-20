@@ -976,7 +976,7 @@ let test_operator_uses_operands () =
   check_i64_macro "operator uses operands (Left assoc)" 2L
     "do
        infix (>>>) 15 Left ($lhs, $rhs) -> $lhs - $rhs
-       5 >>> 3
+       10 >>> 5 >>> 3
      end" ()
 
 let test_operator_rhs_can_use_earlier_macro () =
