@@ -1,71 +1,64 @@
 open Core
 
-let dummy_opt_nominal =
-  VNominal { id = NominalId.fresh (); name = "Option";
-             num_params = 0; params = []; constructors = [] }
+type syntax_nominals = {
+  expr : value;
+  explicitness : value;
+  atom_val : value;
+  option_ : value;
+}
 
-let dummy_expl_nominal =
-  VNominal { id = NominalId.fresh (); name = "Explicitness";
-             num_params = 0; params = []; constructors = [] }
+let vcon_none nominals =
+  VCon { name = "None"; spine = []; nominal = nominals.option_ }
 
-let dummy_expr_nominal =
-  VNominal { id = NominalId.fresh (); name = "Expr";
-             num_params = 0; params = []; constructors = [] }
+let vcon_some nominals v =
+  VCon { name = "Some"; spine = [ v ]; nominal = nominals.option_ }
 
-let vcon_none =
-  VCon { name = "None"; spine = []; nominal = dummy_opt_nominal }
+let vcon_explicit nominals =
+  VCon { name = "Explicit"; spine = []; nominal = nominals.explicitness }
 
-let vcon_some v =
-  VCon { name = "Some"; spine = [ v ]; nominal = dummy_opt_nominal }
+let opt_string nominals v = match v with
+  | Some s -> vcon_some nominals (VAtom (String s))
+  | None -> vcon_none nominals
 
-let vcon_explicit =
-  VCon { name = "Explicit"; spine = []; nominal = dummy_expl_nominal }
+let opt_i64 nominals v = match v with
+  | Some n -> vcon_some nominals (VAtom (I64 (Int64.of_int n)))
+  | None -> vcon_none nominals
 
-let vcon_implicit =
-  VCon { name = "Implicit"; spine = []; nominal = dummy_expl_nominal }
-
-let opt_string v = match v with
-  | Some s -> vcon_some (VAtom (String s))
-  | None -> vcon_none
-
-let opt_i64 v = match v with
-  | Some n -> vcon_some (VAtom (I64 (Int64.of_int n)))
-  | None -> vcon_none
-
-let span_to_option (span : Source_span.t) : value =
-  if span.synthetic then vcon_none
+let span_to_option nominals (span : Source_span.t) : value =
+  if span.synthetic then vcon_none nominals
   else
-    vcon_some
+    vcon_some nominals
       (VRecord
          { typ = VU;
            fields =
-             [ ("file", opt_string span.file);
+             [ ("file", opt_string nominals span.file);
                ("start_byte", VAtom (I64 (Int64.of_int span.start_byte)));
                ("end_byte", VAtom (I64 (Int64.of_int span.end_byte)));
-               ("start_line", opt_i64 span.start_line);
-               ("start_col", opt_i64 span.start_col);
-               ("end_line", opt_i64 span.end_line);
-               ("end_col", opt_i64 span.end_col) ] })
+               ("start_line", opt_i64 nominals span.start_line);
+               ("start_col", opt_i64 nominals span.start_col);
+               ("end_line", opt_i64 nominals span.end_line);
+               ("end_col", opt_i64 nominals span.end_col) ] })
 
-let id_to_value (id : Syntax.id) : value =
+let id_to_value nominals (id : Syntax.id) : value =
   VRecord { typ = VU;
             fields =
               [ ("name", VAtom (String id.name));
-                ("span", span_to_option id.span);
+                ("span", span_to_option nominals id.span);
                 ("scope", VAtom (I64 0L)) ] }
 
-let explicitness_to_value (e : Explicitness.t) : value =
+let explicitness_to_value nominals (e : Explicitness.t) : value =
   match e with
-  | Explicitness.Explicit -> vcon_explicit
-  | Explicitness.Implicit -> vcon_implicit
+  | Explicitness.Explicit -> vcon_explicit nominals
+  | Explicitness.Implicit ->
+      VCon { name = "Implicit"; spine = []; nominal = nominals.explicitness }
 
-let atom_to_atomval (a : Atom.t) : value =
+let atom_to_atomval nominals (a : Atom.t) : value =
   match a with
-  | Atom.I64 n -> VCon { name = "I64Atom"; spine = [ VAtom (I64 n) ]; nominal = dummy_expr_nominal }
-  | Atom.Bool b -> VCon { name = "BoolAtom"; spine = [ VAtom (Bool b) ]; nominal = dummy_expr_nominal }
-  | Atom.Char c -> VCon { name = "CharAtom"; spine = [ VAtom (Char c) ]; nominal = dummy_expr_nominal }
-  | Atom.String s -> VCon { name = "StringAtom"; spine = [ VAtom (String s) ]; nominal = dummy_expr_nominal }
-  | Atom.Unit -> VCon { name = "UnitAtom"; spine = []; nominal = dummy_expr_nominal }
+  | Atom.I64 n -> VCon { name = "I64Atom"; spine = [ VAtom (I64 n) ]; nominal = nominals.atom_val }
+  | Atom.Bool b -> VCon { name = "BoolAtom"; spine = [ VAtom (Bool b) ]; nominal = nominals.atom_val }
+  | Atom.Char c -> VCon { name = "CharAtom"; spine = [ VAtom (Char c) ]; nominal = nominals.atom_val }
+  | Atom.String s -> VCon { name = "StringAtom"; spine = [ VAtom (String s) ]; nominal = nominals.atom_val }
+  | Atom.Unit -> VCon { name = "UnitAtom"; spine = []; nominal = nominals.atom_val }
 
 let atomval_to_atom (v : value) : Atom.t option =
   match v with
@@ -76,78 +69,85 @@ let atomval_to_atom (v : value) : Atom.t option =
   | VCon { name = "UnitAtom"; spine = []; _ } -> Some Atom.Unit
   | _ -> None
 
-let rec param_to_value ~nominal (p : Syntax.param) : value =
+let rec param_to_value nominals (p : Syntax.param) : value =
   VRecord
     { typ = VU;
       fields =
-        [ ("name", id_to_value p.name);
+        [ ("name", id_to_value nominals p.name);
           ("type_", (match p.type_ with
-                     | Some t -> vcon_some (wrap_stx_sub ~nominal t)
-                     | None -> vcon_none));
-          ("explicitness", explicitness_to_value p.explicitness) ] }
+                     | Some t -> vcon_some nominals (wrap_stx_sub nominals t)
+                     | None -> vcon_none nominals));
+          ("explicitness", explicitness_to_value nominals p.explicitness) ] }
 
-and wrap_stx_sub ~nominal (stx : Syntax.t) : value =
-  let span_opt = span_to_option stx.span in
+and wrap_stx_sub nominals (stx : Syntax.t) : value =
+  let span_opt = span_to_option nominals stx.span in
   match stx.kind with
   | Var id ->
-      VCon { name = "RawVar"; spine = [ span_opt; id_to_value id ];
-             nominal }
+      VCon { name = "RawVar"; spine = [ span_opt; id_to_value nominals id ];
+             nominal = nominals.expr }
   | Atom a ->
-      VCon { name = "RawAtom"; spine = [ span_opt; atom_to_atomval a ];
-             nominal }
+      VCon { name = "RawAtom"; spine = [ span_opt; atom_to_atomval nominals a ];
+             nominal = nominals.expr }
   | Ap (f, e, a) ->
       VCon { name = "RawAp";
-             spine = [ span_opt; wrap_stx_sub ~nominal f; explicitness_to_value e; wrap_stx_sub ~nominal a ];
-             nominal }
+             spine = [ span_opt; wrap_stx_sub nominals f;
+                       explicitness_to_value nominals e; wrap_stx_sub nominals a ];
+             nominal = nominals.expr }
   | Lam (p, body) ->
       VCon { name = "RawLam";
-             spine = [ span_opt; param_to_value ~nominal p; wrap_stx_sub ~nominal body ];
-             nominal }
+             spine = [ span_opt; param_to_value nominals p;
+                       wrap_stx_sub nominals body ];
+             nominal = nominals.expr }
   | Let { name; type_; value; body; recursive } ->
       let type_val = match type_ with
-        | Some t -> vcon_some (wrap_stx_sub ~nominal t)
-        | None -> vcon_none
+        | Some t -> vcon_some nominals (wrap_stx_sub nominals t)
+        | None -> vcon_none nominals
       in
       VCon { name = "RawLet";
              spine =
-               [ span_opt; id_to_value name; type_val;
-                 wrap_stx_sub ~nominal value; wrap_stx_sub ~nominal body;
+               [ span_opt; id_to_value nominals name; type_val;
+                 wrap_stx_sub nominals value;
+                 wrap_stx_sub nominals body;
                  VAtom (if recursive then Bool true else Bool false) ];
-             nominal }
+             nominal = nominals.expr }
   | _ ->
       VStx (StxExpr stx)
 
-let wrap_stx ~syntax_nominal (stx : Syntax.t) : value =
-  match syntax_nominal with
-  | Some nominal ->
-      let span_opt = span_to_option stx.span in
-      (match stx.kind with
-       | Var id ->
-           VCon { name = "RawVar"; spine = [ span_opt; id_to_value id ]; nominal }
-       | Atom a ->
-           VCon { name = "RawAtom"; spine = [ span_opt; atom_to_atomval a ]; nominal }
-       | Ap (f, e, a) ->
-           VCon { name = "RawAp";
-                  spine = [ span_opt; wrap_stx_sub ~nominal f; explicitness_to_value e; wrap_stx_sub ~nominal a ];
-                  nominal }
-       | Lam (p, body) ->
-           VCon { name = "RawLam";
-                  spine = [ span_opt; param_to_value ~nominal p; wrap_stx_sub ~nominal body ];
-                  nominal }
-       | Let { name; type_; value; body; recursive } ->
-           let type_val = match type_ with
-             | Some t -> vcon_some (wrap_stx_sub ~nominal t)
-             | None -> vcon_none
-           in
-           VCon { name = "RawLet";
-                  spine =
-                    [ span_opt; id_to_value name; type_val;
-                      wrap_stx_sub ~nominal value; wrap_stx_sub ~nominal body;
-                      VAtom (if recursive then Bool true else Bool false) ];
-                  nominal }
-       | _ ->
-           VStx (StxExpr stx))
-  | None ->
+let wrap_stx ~nominals (stx : Syntax.t) : value =
+  match nominals with
+  | None -> VStx (StxExpr stx)
+  | Some nominals ->
+  let span_opt = span_to_option nominals stx.span in
+  match stx.kind with
+  | Var id ->
+      VCon { name = "RawVar"; spine = [ span_opt; id_to_value nominals id ];
+             nominal = nominals.expr }
+  | Atom a ->
+      VCon { name = "RawAtom"; spine = [ span_opt; atom_to_atomval nominals a ];
+             nominal = nominals.expr }
+  | Ap (f, e, a) ->
+      VCon { name = "RawAp";
+             spine = [ span_opt; wrap_stx_sub nominals f;
+                       explicitness_to_value nominals e; wrap_stx_sub nominals a ];
+             nominal = nominals.expr }
+  | Lam (p, body) ->
+      VCon { name = "RawLam";
+             spine = [ span_opt; param_to_value nominals p;
+                       wrap_stx_sub nominals body ];
+             nominal = nominals.expr }
+  | Let { name; type_; value; body; recursive } ->
+      let type_val = match type_ with
+        | Some t -> vcon_some nominals (wrap_stx_sub nominals t)
+        | None -> vcon_none nominals
+      in
+      VCon { name = "RawLet";
+             spine =
+               [ span_opt; id_to_value nominals name; type_val;
+                 wrap_stx_sub nominals value;
+                 wrap_stx_sub nominals body;
+                 VAtom (if recursive then Bool true else Bool false) ];
+             nominal = nominals.expr }
+  | _ ->
       VStx (StxExpr stx)
 
 let rec value_to_id (v : value) : Syntax.id =

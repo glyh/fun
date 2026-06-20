@@ -815,12 +815,14 @@ let test_eval_continuation_reuse_error () =
   | _ -> Alcotest.fail "unexpected continuation result"
 
 let eval_with_macros source =
-  let syntax_nominal =
-    let ctx = Elaborate.init_ctx () in
-    Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"]
+  let ctx = Elaborate.init_ctx () in
+  let nominals =
+    { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];
+      explicitness = Elaborate.resolve_stdlib ctx ["Syntax"; "Explicitness"];
+      atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
+      option_ = Elaborate.resolve_stdlib ctx ["Option"] }
   in
   let elaborate expr =
-    let ctx = Elaborate.init_ctx () in
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
@@ -828,8 +830,7 @@ let eval_with_macros source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_expr_nominal:syntax_nominal source in
-  let ctx = Elaborate.init_ctx () in
+  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_nominals:nominals source in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 

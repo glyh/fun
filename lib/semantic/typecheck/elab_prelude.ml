@@ -152,12 +152,12 @@ pub module Syntax do
   pub ap = fn(f, a) -> RawAp(None, f, Explicit, a)
   pub lam = fn(name, body) -> RawLam(None, Param{name = new_id(name); type_ = None; explicitness = Explicit}, body)
   pub let_in = fn(name, val, body) -> RawLet(None, new_id(name), None, val, body, false)
-  pub seq = stx_make_seq
   pub i64 = fn(n) -> atom_val(I64Atom(n))
   pub string = fn(s) -> atom_val(StringAtom(s))
   pub bool = fn(b) -> atom_val(BoolAtom(b))
   pub char = fn(c) -> atom_val(CharAtom(c))
   pub unit = fn(_) -> atom_val(UnitAtom)
+  pub seq = stx_make_seq
   pub id_name = stx_id_name
   pub id_eq = stx_id_eq
   pub operator_symbol = stx_operator_symbol
