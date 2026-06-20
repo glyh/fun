@@ -1149,6 +1149,22 @@ let test_7g_adt_matching_flip_args () =
   check_i64_macro "7G: computed multi-kind dispatch not possible with templates" 1L
     "do macro classify(stx) -> match stx do | Syntax.Lam(_, _) -> Syntax.i64(1) | Syntax.Ap(_, _) -> Syntax.i64(2) | Syntax.Var(_) -> Syntax.i64(3) | _ -> Syntax.i64(0) end; classify @ (fn(x) -> x) end" ()
 
+let test_7g_adt_simple_flip () =
+  check_i64_macro "7G: simple swap args via nested match" (-2L)
+    "do macro swap(stx) -> match stx do | Syntax.Ap(inner, b) -> match inner do | Syntax.Ap(f, a) -> Syntax.ap(Syntax.ap(f, b), a) | _ -> stx end | _ -> stx end; result = swap @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+
+let test_7g_diag_outer_binders () =
+  check_i64_macro "7G: DEBUG outer match with named binders" 1L
+    "do macro t(stx) -> match stx do | Syntax.Ap(inner, b) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; result = t @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+
+let test_7g_diag_inner_binders_wildcards () =
+  check_i64_macro "7G: DEBUG inner match with wildcards only" 1L
+    "do macro t(stx) -> match stx do | Syntax.Ap(inner, _) -> match inner do | Syntax.Ap(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; result = t @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+
+let test_7g_diag_inner_binders_named () =
+  check_i64_macro "7G: DEBUG inner match with named binders" 1L
+    "do macro t(stx) -> match stx do | Syntax.Ap(inner, _) -> match inner do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; result = t @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+
 let test_7i_generated_syntax_later_wins_shadow () =
   match
     eval_with_imported_macros
@@ -2229,6 +2245,10 @@ let () =
           Alcotest.test_case "7G: ADT matching preserves binding hygiene" `Quick test_7g_adt_matching_hygiene_roundtrip;
           Alcotest.test_case "7G: ADT destructured body not captured by outer scope" `Quick test_7g_adt_matching_hygiene_introduced_body;
           Alcotest.test_case "7G: computed multi-kind dispatch not possible with templates" `Quick test_7g_adt_matching_flip_args;
+          Alcotest.test_case "7G: simple swap args via nested match [DEBUG]" `Quick test_7g_adt_simple_flip;
+          Alcotest.test_case "7G: DEBUG outer match with named binders" `Quick test_7g_diag_outer_binders;
+          Alcotest.test_case "7G: DEBUG inner match with wildcards only" `Quick test_7g_diag_inner_binders_wildcards;
+          Alcotest.test_case "7G: DEBUG inner match with named binders" `Quick test_7g_diag_inner_binders_named;
           Alcotest.test_case "7I: generated syntax obeys later-wins shadowing" `Quick test_7i_generated_syntax_later_wins_shadow;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
