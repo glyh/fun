@@ -987,11 +987,11 @@ let test_macro_multi_arg_swap () =
      end" ()
 
 let test_macro_and_syntax_together () =
-  check_i64_macro "macro and syntax together" 25L
+  check_i64_macro "macro and syntax together" 20L
     "do
-       syntax inc do | inc $n -> $n + 1 end
-       macro add3(a, b, c) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.ap(Syntax.ap(Syntax.var(\"+\"), a), b)), c)
-       inc(add3 @ (6, 8, 10))
+       macro twice(x) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), x), x)
+       syntax wrap do | wrap $x -> twice @ ($x) end
+       wrap 10
      end" ()
 
 let test_operator_uses_operands () =
