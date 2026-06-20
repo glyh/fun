@@ -145,7 +145,7 @@ let wrap_stx ~nominals (stx : Syntax.t) : value =
                [ span_opt; id_to_value nominals name; type_val;
                  wrap_stx_sub nominals value;
                  wrap_stx_sub nominals body;
-                 VAtom (if recursive then Bool true else Bool false) ];
+                  VAtom (if recursive then Bool true else Bool false) ];
              nominal = nominals.expr }
   | _ ->
       VStx (StxExpr stx)

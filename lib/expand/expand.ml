@@ -102,9 +102,9 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
 
 and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding) : Syntax.struct_binding =
   match binding with
-  | LetBinding { name; value; public } ->
+  | LetBinding { name; value; public; recursive } ->
     LetBinding { name = add_id_scope_if within s name;
-                 value = add_scope ?within s value; public }
+                 value = add_scope ?within s value; public; recursive }
   | MethodBinding { name; params; body; public } ->
     let new_name = add_id_scope_if within s name in
     let new_params = List.map (map_param ?within s (add_scope ?within s)) params in
@@ -415,11 +415,12 @@ and expand_method_params_body ctx params body =
 
 and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding) : Syntax.struct_binding * Scope_set.t list =
   match binding with
-  | LetBinding { name; value; public } ->
+  | LetBinding { name; value; public; recursive } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+    let value = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
     (LetBinding { name = add_id_scope scope name;
-                  value = expand ctx value; public },
+                  value; public; recursive },
      [ scope ])
   | MethodBinding { name; params; body; public } ->
     let binding_name = id_name name in

@@ -11,7 +11,7 @@ and effect_op = { name : string; input : t; output : t }
 and effect_row = { effects : t list; tail : t option }
 
 and struct_binding =
-  | LetBinding of { name : string; value : t; public : bool }
+  | LetBinding of { name : string; value : t; public : bool; recursive : bool }
   | MethodBinding of { name : string; params : param list; body : t; public : bool }
   | TypeBinding of {
       name : string;

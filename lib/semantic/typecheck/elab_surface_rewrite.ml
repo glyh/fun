@@ -53,8 +53,8 @@ let rewrite_record_self_refs record_name params expr =
               { typ = go bound typ; fields = List.map (fun (name, value) -> (name, go bound value)) fields }
         | Surface.Module { bindings } ->
             let binding = function
-              | Surface.LetBinding { name; value; public } ->
-                  Surface.LetBinding { name; value = go bound value; public }
+              | Surface.LetBinding { name; value; public; recursive } ->
+                  Surface.LetBinding { name; value = go bound value; public; recursive }
               | Surface.MethodBinding _ -> failwith "module binding cannot be method"
               | Surface.TypeBinding { name; params; ctors; public } ->
                   Surface.TypeBinding
@@ -92,8 +92,8 @@ let rewrite_record_self_refs record_name params expr =
             Surface.Module { bindings = List.map binding bindings }
         | Surface.Struct { con_fields; bindings } ->
             let binding = function
-              | Surface.LetBinding { name; value; public } ->
-                  Surface.LetBinding { name; value = go bound value; public }
+              | Surface.LetBinding { name; value; public; recursive } ->
+                  Surface.LetBinding { name; value = go bound value; public; recursive }
               | Surface.MethodBinding { name; params; body; public } ->
                   Surface.MethodBinding { name; params; body = go (param_names params @ bound) body; public }
               | Surface.TypeBinding { name; params; ctors; public } ->

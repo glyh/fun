@@ -213,12 +213,13 @@ let module_newline_separators () =
   | Module
       {
         bindings =
-          [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true };
+          [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _};
             LetBinding
               {
                 name = "y";
                 value = Ap (Ap (Var "+", Explicit, Var "x"), Explicit, Atom (Atom.I64 1L));
                 public = true;
+                recursive = false;
               } ];
       } ->
       ()
@@ -241,7 +242,7 @@ let open_in_do_block () =
 
 let module_pub_value_decl () =
   match parse_module "pub x = 1" with
-  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
+  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected redesigned public module value"
 
 let module_typed_value_decl () =
@@ -254,6 +255,7 @@ let module_typed_value_decl () =
                 name = "x";
                 value = Annotated { inner = Atom (Atom.I64 1L); typ = Var "I64" };
                 public = false;
+                recursive = false;
               } ];
       } ->
       ()
@@ -278,7 +280,7 @@ end" with
 
 let module_fn_sugar () =
   match parse_module "pub fn id(x : I64) -> x" with
-  | Module { bindings = [ LetBinding { name = "id"; value = Lam ({ name = "x"; type_ = Some (Var "I64"); _ }, Var "x"); public = true } ] } -> ()
+  | Module { bindings = [ LetBinding { name = "id"; value = Lam ({ name = "x"; type_ = Some (Var "I64"); _ }, Var "x"); public = true; _ } ] } -> ()
   | _ -> Alcotest.fail "expected module fn sugar to lower to lambda binding"
 
 let named_module_decl () =
@@ -292,7 +294,8 @@ end" with
               {
                 name = "M";
                 public = true;
-                value = Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] };
+                recursive = false;
+                value = Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _} ] };
               } ];
       } ->
       ()
@@ -303,7 +306,7 @@ let struct_expr () =
   x : I64
   pub y = 2
 end" with
-  | Struct { con_fields = [ ("x", Var "I64") ]; bindings = [ LetBinding { name = "y"; value = Atom (Atom.I64 2L); public = true } ] } -> ()
+  | Struct { con_fields = [ ("x", Var "I64") ]; bindings = [ LetBinding { name = "y"; value = Atom (Atom.I64 2L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected redesigned struct expression"
 
 let struct_method_syntax () =
@@ -321,7 +324,7 @@ let struct_fn_sugar_is_value_binding () =
   | Struct
       {
         con_fields = [];
-        bindings = [ LetBinding { name = "id"; value = Lam ({ name = "x"; type_ = Some (Var "I64"); _ }, Var "x"); public = true } ];
+        bindings = [ LetBinding { name = "id"; value = Lam ({ name = "x"; type_ = Some (Var "I64"); _ }, Var "x"); public = true; _ } ];
       } ->
       ()
   | _ -> Alcotest.fail "expected pub fn in struct to lower to public value binding"
@@ -334,7 +337,7 @@ let module_old_let_syntax_rejected () =
 let module_macro_not_runtime_field () =
   match parse_module "macro id(stx : Stx) -> stx
 pub x = 1" with
-  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
+  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected macro declaration to be dropped from runtime module bindings"
 
 let fn_with_type_application () =
@@ -419,6 +422,7 @@ pub test = do twice 1 end" with
               { name = "test";
                 value = Atom (Atom.I64 1L);
                 public = true;
+                recursive = false;
               } ] } -> ()
   | _ -> Alcotest.fail "expected operator prefix declaration and usage in module"
 
@@ -482,7 +486,7 @@ let syntax_import_does_not_leak_between_parses () =
 let syntax_extension_not_runtime_field () =
   match parse_module "syntax hidden do | hidden $x -> $x end
 pub x = 1" with
-  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true } ] } -> ()
+  | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
 
 let pub_syntax_rejected_in_struct () =

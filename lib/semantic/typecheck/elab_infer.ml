@@ -297,12 +297,16 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
             let kind = if public then Public else Private in
             let ctx' = Ctx.define ctx name VU syn_val in
             go ctx'
-              (PatternSynBind (name, kind, syn_val) :: acc_binds,
-               ModuleField (name, kind, VU) :: acc_entries)
-              rest
-        | Surface.LetBinding { name; value; public } :: rest ->
+               (PatternSynBind (name, kind, syn_val) :: acc_binds,
+                ModuleField (name, kind, VU) :: acc_entries)
+               rest
+        | Surface.LetBinding { name; value; public; recursive; _ } :: rest ->
+            let rec_ty = Ctx.raw_meta ctx in
             let value_ctx = Ctx.clear_self_scope ctx in
+            let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
             let val_core, val_ty = ops.infer value_ctx value in
+            (if recursive then Ctx.unify ctx rec_ty val_ty);
+            let val_core = if recursive then Fix val_core else val_core in
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
             let ctx' = Ctx.define ctx name val_ty val_val in
@@ -569,9 +573,13 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (PatternSynBind (name, kind, syn_val) :: acc_binds,
                StructField (name, kind, VU) :: acc_entries)
               rest
-        | Surface.LetBinding { name; value; public } :: rest ->
+        | Surface.LetBinding { name; value; public; recursive; _ } :: rest ->
+            let rec_ty = Ctx.raw_meta ctx in
             let value_ctx = Ctx.clear_self ctx in
+            let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
             let val_core, val_ty = ops.infer value_ctx value in
+            (if recursive then Ctx.unify ctx rec_ty val_ty);
+            let val_core = if recursive then Fix val_core else val_core in
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
             let ctx' = Ctx.define ctx name val_ty val_val in

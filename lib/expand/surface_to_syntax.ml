@@ -79,8 +79,8 @@ and expr (e : Surface.t) : Syntax.t =
   { Syntax.kind; span }
 
 and struct_binding = function
-  | Surface.LetBinding { name; value; public } ->
-    Syntax.LetBinding { name = id name; value = expr value; public }
+  | Surface.LetBinding { name; value; public; recursive } ->
+    Syntax.LetBinding { name = id name; value = expr value; public; recursive }
   | Surface.MethodBinding { name; params; body; public } ->
     Syntax.MethodBinding { name = id name; params = List.map param params; body = expr body; public }
   | Surface.TypeBinding { name; params; ctors; public } ->

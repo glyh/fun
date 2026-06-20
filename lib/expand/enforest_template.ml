@@ -384,7 +384,7 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
       { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span } }
 
 and map_template_struct_binding captures go = function
-  | Syntax.LetBinding { name; value; public } -> Syntax.LetBinding { name = map_binder_id captures name; value = go value; public }
+  | Syntax.LetBinding { name; value; public; recursive } -> Syntax.LetBinding { name = map_binder_id captures name; value = go value; public; recursive }
   | Syntax.MethodBinding { name; params; body; public } -> Syntax.MethodBinding { name = map_binder_id captures name; params = List.map (map_param captures) params; body = go body; public }
   | Syntax.TypeBinding { name; params; ctors; public } -> Syntax.TypeBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; ctors = List.map (fun (n, ps) -> (map_binder_id captures n, List.map go ps)) ctors; public }
   | Syntax.RecordTypeBinding { name; params; fields; public } -> Syntax.RecordTypeBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }

@@ -410,6 +410,7 @@ and parse_sig_expr env start_span terms =
                 name = id ~span:name_span name;
                 value = parse_type_terms env typ_terms;
                 public = true;
+                recursive = false;
               }
         | _ -> error "expected signature field name : type")
   in
@@ -1246,13 +1247,12 @@ and parse_named_module_binding env public stmt =
       let value =
         stx ~span:(span_between module_span span) (Syntax.Module { bindings })
       in
-      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public })
+      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public; recursive = false })
   | _ -> None
 
-and parse_value_binding env public recursive_error stmt =
+and parse_value_binding env public stmt =
   match parse_value_decl_statement env stmt with
   | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
-      if decl_recursive then error recursive_error;
       let value =
         match decl_type with
         | Some typ ->
@@ -1260,7 +1260,7 @@ and parse_value_binding env public recursive_error stmt =
               (Syntax.Annotated { inner = decl_value; typ })
         | None -> decl_value
       in
-      Some (Syntax.LetBinding { name; value; public })
+      Some (Syntax.LetBinding { name; value; public; recursive = decl_recursive })
   | None -> None
 
 and parse_module_binding env stmt =
@@ -1283,8 +1283,7 @@ and parse_module_binding env stmt =
             parse_trait_binding env public;
             parse_impl_binding env public;
             parse_named_module_binding env public;
-            parse_value_binding env public
-              "recursive module bindings are not supported in Phase 7C modules";
+            parse_value_binding env public;
           ]
           stmt
       with
@@ -1346,7 +1345,7 @@ and parse_named_struct_binding env public stmt =
           ~span:(span_between struct_span span)
           (Syntax.Struct { con_fields; bindings })
       in
-      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public })
+      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public; recursive = false })
   | _ -> None
 
 and parse_struct_binding env stmt =
@@ -1372,8 +1371,7 @@ and parse_struct_binding env stmt =
             parse_impl_binding env public;
             parse_named_module_binding env public;
             parse_named_struct_binding env public;
-            parse_value_binding env public
-              "recursive struct bindings are not supported in Phase 7C structs";
+            parse_value_binding env public;
           ]
           stmt
       with

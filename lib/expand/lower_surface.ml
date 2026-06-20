@@ -79,8 +79,8 @@ and lower_expr (stx : Syntax.t) : Surface.t =
     Surface.SyntaxOperatorUse { operator = lower_id operator; fixity; operands = List.map lower_expr operands; declaration_span; use_span }
 
 and lower_struct_binding = function
-  | Syntax.LetBinding { name; value; public } ->
-    Surface.LetBinding { name = lower_id name; value = lower_expr value; public }
+  | Syntax.LetBinding { name; value; public; recursive } ->
+    Surface.LetBinding { name = lower_id name; value = lower_expr value; public; recursive }
   | Syntax.MethodBinding { name; params; body; public } ->
     Surface.MethodBinding { name = lower_id name; params = List.map lower_param params; body = lower_expr body; public }
   | Syntax.TypeBinding { name; params; ctors; public } ->
