@@ -792,7 +792,7 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 - [x] At least one macro cannot be expressed cleanly with 7F pattern/template syntax alone, and its implementation uses ADT pattern matching instead of functional deconstructors (tested in `test_7g_adt_matching_flip_args`: multi-kind dispatch on `Lam`/`Ap`/`Var`);
 - [ ] The public syntax-object API (builders + matchable ADTs) is documented and covered by tests;
 - [x] Public examples use `Syntax.*` builders and ADT matching rather than `stx_*` primitives;
-- [ ] Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) are deprecated or removed in favor of ADT matching (still available as hidden primitives for stdlib implementation);
+- [x] Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) removed; 20+ unused prims eliminated. 7 remaining (`stx_make_seq`, `stx_id_name`, `stx_id_eq`, `stx_operator_*`) kept as hidden stdlib internals for operator inspection and sequence building (not yet replaced by ADT due to `rec fn` limitations in module blocks);
 - [x] Existing 7F pattern/template examples remain simpler than their equivalent ADT-matching macro versions;
 - [x] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
 
