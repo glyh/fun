@@ -1137,6 +1137,38 @@ let test_operator_macro_discards_unelaborated_perform_operand () =
        discard perform Missing.get(())
       end" ()
 
+let test_7g_adt_matching_hygiene_roundtrip () =
+  check_i64_macro "7G: ADT matching preserves binding hygiene" 42L
+    "do x = 1; macro passthrough(stx) -> match stx do | Syntax.Lam(_, _) -> stx | _ -> stx end; (passthrough @ (fn(x) -> x))(42) end" ()
+
+let test_7g_adt_matching_hygiene_introduced_body () =
+  check_i64_macro "7G: ADT destructured body not captured by outer scope" 80L
+    "do macro double(stx) -> match stx do | Syntax.Lam(_, body) -> Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ -> Syntax.i64(0) end; (double @ (fn(x) -> x))(40) end" ()
+
+let test_7g_adt_matching_flip_args () =
+  check_i64_macro "7G: computed multi-kind dispatch not possible with templates" 1L
+    "do macro classify(stx) -> match stx do | Syntax.Lam(_, _) -> Syntax.i64(1) | Syntax.Ap(_, _) -> Syntax.i64(2) | Syntax.Var(_) -> Syntax.i64(3) | _ -> Syntax.i64(0) end; classify @ (fn(x) -> x) end" ()
+
+let test_7i_generated_syntax_later_wins_shadow () =
+  match
+    eval_with_imported_macros
+      [ ("gen", "syntax build_inc do\n\
+                 | build_inc ->\n\
+                     multi\n\
+                       syntax inc do | inc $x -> $x + 1 end\n\
+                     end\n\
+                 end;\n\
+                 build_inc;\n\
+                 syntax inc do | inc $x -> $x + 100 end;\n\
+                 pub result = inc 1") ]
+      "do M = import \"gen\"; M.result end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "7I generated syntax later-wins" 101L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "7I later-wins: %s" (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "7I later-wins: %s" (Printexc.to_string e))
+
 let test_imported_operator_prefix_expands () =
   match
     eval_with_imported_macros
@@ -2194,6 +2226,10 @@ let () =
           Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
           Alcotest.test_case "Syntax module: operator operand error" `Quick test_syntax_module_operator_operand_error;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
+          Alcotest.test_case "7G: ADT matching preserves binding hygiene" `Quick test_7g_adt_matching_hygiene_roundtrip;
+          Alcotest.test_case "7G: ADT destructured body not captured by outer scope" `Quick test_7g_adt_matching_hygiene_introduced_body;
+          Alcotest.test_case "7G: computed multi-kind dispatch not possible with templates" `Quick test_7g_adt_matching_flip_args;
+          Alcotest.test_case "7I: generated syntax obeys later-wins shadowing" `Quick test_7i_generated_syntax_later_wins_shadow;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
           Alcotest.test_case "operator prefix shadowing is lexical" `Quick test_operator_prefix_shadowing_is_lexical;

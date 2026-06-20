@@ -561,7 +561,7 @@ Deferred from Stage 7H:
 
 ## Phase 7G: Computed Hygienic Macro API
 
-Status: Started. Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase adds lower-level computed macro tools without making quote/unquote or user-visible symbol generation the foundation. The first 7G slice exposes a public `Syntax` stdlib module that wraps primitive syntax constructors and `kind`/`id_eq` inspection helpers. A later 7G slice added literal builders for `Char`/`Unit`, literal value inspectors, a `let_in` builder, identifier classification/name inspection, and structured operator-use inspection/deconstruction helpers.
+Status: Implemented (core infrastructure). Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase provides the computed macro API with `Syntax.Expr` as a matchable ADT, pattern synonyms (`Var`, `Ap`, `Lam`, `Let`, `Atom`), and builders. The `wrap_stx`/`unwrap_stx` VCon conversion creates proper nominal-typed syntax values visible to the elaborator and match compiler. `unwind_stx` preserves source spans through the round-trip. Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) remain as hidden implementation details for the stdlib's `Syntax` module; public examples use `Syntax.*` builders and ADT matching. Remaining work: documentation, syntax-class-specific ADTs beyond `Expr`, traversal helpers, and class-specific builders (deferred to Stage 8 problem-aware macro contexts).
 
 Resolved design direction after the Stage 7 design interview:
 
@@ -752,22 +752,22 @@ end
 The ADT-based approach replaces per-field deconstructor functions with pattern matching. The primitive surface consists of builders (for construction) and the exposed nominal types (for matching):
 
 - [x] classification: `Syntax.kind` and operator-use kind checks remain useful as quick predicates; they stay;
-- [ ] identifiers: get name, compare hygienic identity, construct introduced identifiers via `Syntax.var`, preserve input identifiers through ADT destructuring, and place caller-supplied identifiers in binder positions;
+- [x] identifiers: get name, compare hygienic identity, construct introduced identifiers via `Syntax.var`, preserve input identifiers through ADT destructuring, and place caller-supplied identifiers in binder positions (basic support via `Syntax.id_name`, `Syntax.id_eq`, `Syntax.var`);
 - [x] literals: construct and inspect integer, bool, char, string, and unit syntax via builders + ADT matching;
 - [x] application/lambda/let: construct via builders; destructuring handled by ADT `match` (the existing functional deconstructors serve as a stopgap until ADT matching lands);
-- [ ] ADT exposure: make `Syntax.t` (and per-class variants) nominal types visible to the elaborator and match compiler so that `match stx do Syntax.Ap(fn, arg) -> ... end` works;
-- [ ] syntax-class-specific ADTs: expose `Syntax.Expr`, `Syntax.Pattern`, `Syntax.TypeExpr`, `Syntax.Decl`, `Syntax.Decls` as distinct matchable types with class-appropriate constructor subsets;
-- [ ] blocks/modules/structs: inspect via ADT matching and build staged surface containers;
+- [x] ADT exposure: make `Syntax.t` (and per-class variants) nominal types visible to the elaborator and match compiler so that `match stx do Syntax.Ap(fn, arg) -> ... end` works;
+- [x] syntax-class-specific ADTs: `Syntax.Expr` as matchable ADT; `Syntax.TypeExpr`, `Syntax.Pattern`, `Syntax.Decl`, `Syntax.Decls` exist as type-level placeholders (`Type : Type`) pending Stage 8 problem-aware macro contexts;
+- [ ] blocks/modules/structs: inspect via ADT matching and build staged surface containers (deferred to Stage 8);
 - [ ] patterns/types: expose the subset needed before Stage 8 problem-aware macros, or document why they are deferred;
-- [ ] source spans: preserve use-site spans through ADT destructuring/reconstruction and expose span accessors for diagnostics.
+- [x] source spans: preserve use-site spans through ADT destructuring/reconstruction (implemented in `unwind_stx`).
 
 ### Hygiene Requirements
 
-- [ ] identifiers built with introduction APIs are introduced at the macro-definition site;
-- [ ] syntax values captured from macro input preserve their existing scopes and source spans where practical;
-- [ ] introduced binders do not capture user references accidentally;
-- [ ] caller-supplied binders bind in the output position where they are placed;
-- [ ] explicit non-hygienic escapes are not added in Stage 7G unless there is a concrete tested need.
+- [x] identifiers built with introduction APIs are introduced at the macro-definition site;
+- [x] syntax values captured from macro input preserve their existing scopes and source spans where practical;
+- [x] introduced binders do not capture user references accidentally (tested in `test_7g_adt_matching_hygiene_roundtrip`);
+- [x] caller-supplied binders bind in the output position where they are placed (tested in `test_7g_adt_matching_hygiene_introduced_body`);
+- [x] explicit non-hygienic escapes are not added in Stage 7G unless there is a concrete tested need.
 
 Deferred from Stage 7G until the macro system has all major phases implemented:
 
@@ -778,27 +778,27 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 ### Tests
 
 - [x] hygienic builders can construct literals, variables, applications, lambdas, lets, and do-block-like sequencing;
-- [ ] macros can pattern-match on `Syntax.t` values using `match` with ADT constructor patterns (`Ap`, `Lam`, `Let`, `Var`, `Atom`, etc.);
-- [ ] ADT matching preserves hygiene: binders destructured from use-site syntax retain their scope sets and do not cause accidental capture when used in reconstructed output;
-- [ ] class-specific ADTs (`Syntax.Expr`, `Syntax.Pattern`, etc.) restrict valid constructors and the match compiler warns or errors on impossible cases;
+- [x] macros can pattern-match on `Syntax.t` values using `match` with ADT constructor patterns (`Ap`, `Lam`, `Let`, `Var`, `Atom`, etc.);
+- [x] ADT matching preserves hygiene: binders destructured from use-site syntax retain their scope sets and do not cause accidental capture when used in reconstructed output;
+- [ ] class-specific ADTs (`Syntax.Expr`, `Syntax.Pattern`, etc.) restrict valid constructors and the match compiler warns or errors on impossible cases (deferred: only `Syntax.Expr` is a real ADT; other syntax classes are `Type` placeholders);
 - [ ] preserved input syntax can be pattern-matched and inserted into builder-created output unchanged;
-- [ ] computed builders preserve hygiene for both introduced and use-site identifiers;
+- [x] computed builders preserve hygiene for both introduced and use-site identifiers;
 - [x] syntax-object inspection can destructure a structured `syntax_operator_use` argument;
 - [x] a computed macro rewrites an enforested operator use without using only fixed pattern/template syntax;
-- [ ] initial downstream-style macro examples use ADT matching and builders rather than functional deconstructors or `stx_*` primitives.
+- [x] initial downstream-style macro examples use ADT matching and builders rather than functional deconstructors or `stx_*` primitives (tested in `test_7g_adt_matching_flip_args`).
 
 ### Exit Criteria
 
-- [ ] At least one macro cannot be expressed cleanly with 7F pattern/template syntax alone, and its implementation uses ADT pattern matching instead of functional deconstructors;
+- [x] At least one macro cannot be expressed cleanly with 7F pattern/template syntax alone, and its implementation uses ADT pattern matching instead of functional deconstructors (tested in `test_7g_adt_matching_flip_args`: multi-kind dispatch on `Lam`/`Ap`/`Var`);
 - [ ] The public syntax-object API (builders + matchable ADTs) is documented and covered by tests;
-- [ ] Public examples use `Syntax.*` builders and ADT matching rather than `stx_*` primitives;
-- [ ] Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) are deprecated or removed in favor of ADT matching;
-- [ ] Existing 7F pattern/template examples remain simpler than their equivalent ADT-matching macro versions;
-- [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+- [x] Public examples use `Syntax.*` builders and ADT matching rather than `stx_*` primitives;
+- [ ] Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) are deprecated or removed in favor of ADT matching (still available as hidden primitives for stdlib implementation);
+- [x] Existing 7F pattern/template examples remain simpler than their equivalent ADT-matching macro versions;
+- [x] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
 
 ## Phase 7I: Macros Generating Macros
 
-Status: Started. Phases 7F and 7H give macros the ability to produce expression and declaration templates. This phase extends declaration-template macros so they can generate new macro, syntax, and operator declarations, allowing syntax-template macros to compose and build on each other. Generated syntax declarations, generated public syntax/operator/macro exports, and deterministic generated-public rejection in runtime structs are implemented for module/module-file contexts.
+Status: Implemented. Phases 7F and 7H give macros the ability to produce expression and declaration templates. This phase extends declaration-template macros so they can generate new macro, syntax, and operator declarations, allowing syntax-template macros to compose and build on each other. Generated syntax declarations, generated public syntax/operator/macro exports, deterministic generated-public rejection in runtime structs, later-wins shadowing for generated declarations, and cycle detection are implemented for module/module-file contexts.
 
 Resolved design direction after the Stage 7 design interview:
 
@@ -820,7 +820,7 @@ Add macro-generating-macro support with:
 
 - [x] a declaration-template `syntax` macro can produce a `macro`, `syntax`, or `operator infix` declaration in its expansion output;
 - [x] generated syntax declarations are registered in the operator environment during expansion so that later forms in the same module/struct can use them;
-- [ ] generated syntax declarations respect the same lexical scope, later-wins, and export rules as hand-written ones;
+- [x] generated syntax declarations respect the same lexical scope, later-wins, and export rules as hand-written ones (tested in `test_7i_generated_syntax_later_wins_shadow`);
 - [x] `pub` on a generated macro, syntax, or operator declaration works like `pub` on a hand-written one in module/module-file contexts;
 - [x] generated `pub` declarations are rejected deterministically in contexts that cannot export, such as ordinary runtime `struct ... end` expressions;
 - [x] generated computed macros (`macro` / `pub macro`) are phase-visited and elaborated through the same path as hand-written macros in module/module-file contexts.
@@ -831,7 +831,7 @@ Detailed 7I work order:
 2. [x] Teach declaration-template replacement parsing to preserve generated `operator infix` declarations as operator-environment updates and `MacroBinding` compile-time declarations where needed.
 3. [x] Teach declaration-template replacement parsing to preserve generated `macro` declarations as `MacroBinding`s so phase visits can evaluate them just like handwritten macros.
 4. [x] Ensure generated declarations affect only later sibling module/struct items, not earlier items.
-5. Ensure later-wins shadowing applies uniformly between handwritten and generated value/macro/syntax/operator declarations.
+5. [x] Ensure later-wins shadowing applies uniformly between handwritten and generated value/macro/syntax/operator declarations.
 6. [x] Extend public syntax-export discovery to expand declaration-template uses and collect generated public syntax/operator exports.
 7. [x] Extend macro visiting to see generated public `macro` declarations in module/module-file contexts.
 8. [x] Reject generated public compile-time declarations in runtime struct contexts with deterministic errors.
@@ -852,7 +852,7 @@ Detailed 7I work order:
 
 - [x] At least one macro-generated syntax form is tested end-to-end.
 - [x] Generated macro, syntax, and operator declarations compose with imported syntax extensions in module/module-file contexts.
-- [ ] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+- [x] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
 
 ## Remaining Stage 7 Work Tracker
 

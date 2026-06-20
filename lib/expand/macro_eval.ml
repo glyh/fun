@@ -203,29 +203,29 @@ and value_to_bool (v : value) : bool =
 
 let rec unwind_stx (v : value) : Syntax.t option =
   match v with
-  | VCon { name = "RawVar"; spine = [ _; id_val ]; _ } ->
-      Some { kind = Var (value_to_id id_val); span = Source_span.synthetic }
-  | VCon { name = "RawAtom"; spine = [ _; atom_val ]; _ } ->
+  | VCon { name = "RawVar"; spine = [ span_val; id_val ]; _ } ->
+      Some { kind = Var (value_to_id id_val); span = value_to_span span_val }
+  | VCon { name = "RawAtom"; spine = [ span_val; atom_val ]; _ } ->
       (match atomval_to_atom atom_val with
-       | Some a -> Some { kind = Atom a; span = Source_span.synthetic }
+       | Some a -> Some { kind = Atom a; span = value_to_span span_val }
        | None -> None)
-  | VCon { name = "RawAp"; spine = [ _; fn_val; _; arg_val ]; _ } ->
+  | VCon { name = "RawAp"; spine = [ span_val; fn_val; _; arg_val ]; _ } ->
       (match (unwind_stx fn_val, unwind_stx arg_val) with
        | Some fn, Some arg ->
-           Some { kind = Ap (fn, Explicitness.Explicit, arg); span = Source_span.synthetic }
+           Some { kind = Ap (fn, Explicitness.Explicit, arg); span = value_to_span span_val }
        | _ -> None)
-  | VCon { name = "RawLam"; spine = [ _; param_val; body_val ]; _ } ->
+  | VCon { name = "RawLam"; spine = [ span_val; param_val; body_val ]; _ } ->
       (match unwind_stx body_val with
        | Some body ->
-           Some { kind = Lam (value_to_param param_val, body); span = Source_span.synthetic }
+           Some { kind = Lam (value_to_param param_val, body); span = value_to_span span_val }
        | _ -> None)
-  | VCon { name = "RawLet"; spine = [ _; name_val; _; value_val; body_val; rec_val ]; _ } ->
+  | VCon { name = "RawLet"; spine = [ span_val; name_val; _; value_val; body_val; rec_val ]; _ } ->
       (match (unwind_stx value_val, unwind_stx body_val) with
        | Some value, Some body ->
            Some { kind = Let { name = value_to_id name_val;
                               type_ = None; value; body;
                               recursive = value_to_bool rec_val };
-                  span = Source_span.synthetic }
+                  span = value_to_span span_val }
        | _ -> None)
   | VStx (StxExpr stx) -> Some stx
   | _ -> None
