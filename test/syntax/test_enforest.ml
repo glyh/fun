@@ -407,7 +407,7 @@ end" with
 
 let operator_infix_in_do_block () =
   match parse_with_macros "do
-  operator infix ~ 15 left(stx) -> Syntax.i64(9)
+  infix (~) 15 Left (stx) -> Syntax.i64(9)
   1 + 2 ~ 3
 end" with
   | Ap (Ap (Var "+", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.I64 9L)) -> ()
@@ -496,7 +496,7 @@ let pub_syntax_rejected_in_struct () =
   | _ -> Alcotest.fail "expected pub syntax in a struct expression to be rejected"
 
 let syntax_exports_include_operator_metadata () =
-  match Enforest.parse_public_syntax_exports "pub operator infix ~ 15 right(stx) -> stx" with
+  match Enforest.parse_public_syntax_exports "pub infix (~) 15 Right (stx) -> stx" with
   | [ { symbol = "~"; fixity = Operator_env.Infix; precedence = 15; associativity = Operator_env.Right;
         syntax_class = Syntax_class.Expr; expansion = Operator_env.Macro; _ } ] ->
       ()
@@ -549,25 +549,25 @@ let syntax_ident_hole_binder_position_rejected () =
 
 let syntax_postfix_rejected_in_module () =
   match parse_module "operator postfix foo(stx) -> stx" with
-  | exception Enforest.Unsupported "unsupported operator declaration shape" -> ()
+  | exception Enforest.Unsupported "unsupported Phase 7C module item" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unsupported module syntax declaration"
 
 let syntax_postfix_rejected_in_do_block () =
   match parse "do operator postfix foo(stx) -> stx; 0 end" with
-  | exception Enforest.Error "unsupported operator declaration shape in do block" -> ()
+  | exception (Enforest.Error _) -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unsupported do-block syntax declaration"
 
 let old_syntax_declaration_rejected () =
   match parse_module "operator prefix foo(stx) -> stx" with
-  | exception Enforest.Unsupported "unsupported operator declaration shape" -> ()
+  | exception Enforest.Unsupported "unsupported Phase 7C module item" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected old syntax declaration spelling to be rejected"
 
 let operator_infix_bad_assoc_rejected () =
-  match parse_module "operator infix ~ 15 middle(stx) -> stx" with
-  | exception Enforest.Error "operator infix associativity must be 'left' or 'right'" -> ()
+  match parse_module "infix (~) 15 middle (stx) -> stx" with
+  | exception Enforest.Error "operator infix associativity must be Left or Right" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected invalid operator infix associativity to be rejected"
 

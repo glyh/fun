@@ -390,9 +390,22 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       | Some apply_fn ->
         let result = match operands with
           | [ lhs; rhs ] ->
-              let lhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals lhs in
-              let rhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals rhs in
-              apply_fn (apply_fn macro_fn lhs_stx) rhs_stx
+              let open Core in
+              let rec term_lam_count = function
+                | Lam body -> 1 + term_lam_count body
+                | _ -> 0
+              in
+              let arity = match macro_fn with
+                | VLam { body = { body; _ }; _ } -> 1 + term_lam_count body
+                | _ -> 0
+              in
+              if arity >= 2 then
+                let lhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals lhs in
+                let rhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals rhs in
+                apply_fn (apply_fn macro_fn lhs_stx) rhs_stx
+              else
+                apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals
+                  { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
           | [ single ] ->
               let stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals single in
               apply_fn macro_fn stx

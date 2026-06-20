@@ -682,8 +682,7 @@ and parse_postfix_infix env min_prec lhs terms =
                       syntax_operator_arg ~span ~use_span:term.span op
                         [ lhs; rhs ]
                     in
-                    stx ~span
-                      (Syntax.MacroCall (var ~span:term.span op.symbol, arg))
+                    arg
                 | BuiltinApply ->
                     ap ~span
                       (ap ~span

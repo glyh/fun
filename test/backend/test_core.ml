@@ -966,11 +966,18 @@ let test_operator_prefix_macro_expands () =
      end" ()
 
 let test_operator_infix_macro_expands () =
-  check_i64_macro "infix" 9L
+  check_i64_macro "infix macro expands" 9L
     "do
        infix (~) 15 Left (stx) -> Syntax.i64(9)
        1 ~ 2
        end" ()
+
+let test_operator_uses_operands () =
+  check_i64_macro "operator uses operands" 7L
+    "do
+       infix (>>>) 15 Left (lhs, rhs) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), lhs), rhs)
+       3 >>> 4
+     end" ()
 
 let test_operator_rhs_can_use_earlier_macro () =
   check_i64_macro "operator RHS macro path" 5L
@@ -2205,6 +2212,7 @@ let () =
           Alcotest.test_case "imported macro calls regular function" `Quick test_imported_macro_calls_regular_function;
           Alcotest.test_case "operator prefix macro expands" `Quick test_operator_prefix_macro_expands;
           Alcotest.test_case "infix macro expands" `Quick test_operator_infix_macro_expands;
+          Alcotest.test_case "infix uses operands" `Quick test_operator_uses_operands;
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
