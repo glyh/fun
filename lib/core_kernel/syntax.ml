@@ -118,7 +118,7 @@ and kind =
   | RefSet of t * t
   | Match of t * match_branch list
   | MacroDef of { name : id; value : t; body : t }
-  | MacroCall of t * t
+  | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : id;
       fixity : operator_fixity;

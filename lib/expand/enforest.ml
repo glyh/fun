@@ -495,8 +495,8 @@ and parse_primary env terms =
                     stx ~span
                       (Syntax.MacroCall
                          ( f,
-                           syntax_operator_arg ~span ~use_span:term.span op
-                             [ rhs ] ))
+                           [ syntax_operator_arg ~span ~use_span:term.span op
+                              [ rhs ] ] ))
                 | Operator_env.Template _ ->
                     error
                       "internal error: template syntax should expand before \
@@ -523,8 +523,8 @@ and parse_primary env terms =
                     stx ~span
                       (Syntax.MacroCall
                          ( f,
-                           syntax_operator_arg ~span ~use_span:term.span op
-                             [ rhs ] ))
+                           [ syntax_operator_arg ~span ~use_span:term.span op
+                              [ rhs ] ] ))
                 | Operator_env.Template _ ->
                     error
                       "internal error: template syntax should expand before \
@@ -600,9 +600,12 @@ and parse_postfix_infix env min_prec lhs terms =
       parse_postfix_infix env min_prec lhs rest
   | at :: { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest
     when token_kind At at ->
-      let arg = parse_group_arg env items in
+      let args = match drop_separators items with
+        | [] -> [ unit ~span () ]
+        | _ -> parse_args env items
+      in
       let lhs =
-        stx ~span:(span_between lhs.span span) (Syntax.MacroCall (lhs, arg))
+        stx ~span:(span_between lhs.span span) (Syntax.MacroCall (lhs, args))
       in
       parse_postfix_infix env min_prec lhs rest
   | ({ datum = Group (Raw_syntax.Paren, items, span); _ } as term) :: rest ->

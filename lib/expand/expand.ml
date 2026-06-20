@@ -95,8 +95,8 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
     Match (go scrut, List.map (go_match_branch ?within s) brs)
   | MacroDef { name; value; body } ->
     MacroDef { name = add_id_scope_if within s name; value = go value; body = go body }
-  | MacroCall (f, a) ->
-    MacroCall (go f, go a)
+  | MacroCall (f, args) ->
+    MacroCall (go f, List.map go args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
     SyntaxOperatorUse { operator = add_id_scope_if within s operator; fixity; operands = List.map go operands; declaration_span; use_span }
 
@@ -329,59 +329,34 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | None ->
       failwith "macro definition requires an elaboration callback in expand context"
     end
-  | MacroCall (f, a) ->
-    begin match f.kind with
-    | Var id ->
+  | MacroCall (f, args) ->
+    begin match f.kind, args with
+    | Var id, _ ->
       begin match Expand_ctx.lookup_macro ctx id.name with
       | Some macro_fn ->
         begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
           let result =
-            with_syntax_operator_context a (fun () ->
-                let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals a in
-                apply_fn macro_fn arg_stx)
+            with_syntax_operator_context (List.hd args) (fun () ->
+                List.fold_left (fun fn arg ->
+                    let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
+                    apply_fn fn arg_stx)
+                  macro_fn args)
           in
           begin match Macro_eval.unwrap_stx result with
           | Some expanded -> expand ctx expanded
           | None ->
-              let got =
-                let open Core in
-                match result with
-                | VStx _ -> "VStx"
-                | VLam _ -> "VLam"
-                | VPi _ -> "VPi"
-                | VU -> "VU"
-                | VAtom _ -> "VAtom"
-                | VAtomTy _ -> "VAtomTy"
-                | VProd _ -> "VProd"
-                | VProdTy _ -> "VProdTy"
-                | VModule _ -> "VModule"
-                | VStruct _ -> "VStruct"
-                | VRecord _ -> "VRecord"
-                | VNominal n -> "VNominal(" ^ n.name ^ ")"
-                | VEffect _ -> "VEffect"
-                | VTrait _ -> "VTrait"
-                | VTraitDict _ -> "VTraitDict"
-                | VCon { name; _ } -> "VCon(" ^ name ^ ")"
-                | VRefTy _ -> "VRefTy"
-                | VRef _ -> "VRef"
-                | VCont _ -> "VCont"
-                | VNeutral _ -> "VNeutral"
-                | VRigid _ -> "VRigid"
-                | VFlex _ -> "VFlex"
-                | VFix _ -> "VFix"
-                | VSelfType _ -> "VSelfType"
-                | VEffectRowTy -> "VEffectRowTy"
-                | VEffectRow _ -> "VEffectRow"
-                | VPatternSyn _ -> "VPatternSyn"
-              in
-              failwith (syntax_operator_failure a ("macro did not return a syntax value, got " ^ got))
+              failwith (syntax_operator_failure (List.hd args)
+                ("macro did not return a syntax value, got " ^
+                 (let open Core in match result with
+                  | VStx _ -> "VStx" | VLam _ -> "VLam" | VCon c -> "VCon(" ^ c.name ^ ")"
+                  | _ -> "...?")))
           end
         | None -> failwith "macro call requires an apply callback in expand context"
         end
-      | None -> { stx with kind = MacroCall (expand ctx f, expand ctx a) }
+      | None -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
       end
-    | _ -> { stx with kind = MacroCall (expand ctx f, expand ctx a) }
+    | _ -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
     end
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
     begin match Expand_ctx.lookup_macro ctx operator.name with

@@ -972,6 +972,13 @@ let test_operator_infix_macro_expands () =
        1 ~ 2
        end" ()
 
+let test_macro_multi_arg () =
+  check_i64_macro "macro multi-arg" 7L
+    "do
+       macro add(a, b) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), a), b)
+       add @ (3, 4)
+     end" ()
+
 let test_operator_uses_operands () =
   check_i64_macro "operator uses operands (Left assoc)" 2L
     "do
@@ -2228,6 +2235,7 @@ let () =
           Alcotest.test_case "operator prefix macro expands" `Quick test_operator_prefix_macro_expands;
           Alcotest.test_case "infix macro expands" `Quick test_operator_infix_macro_expands;
           Alcotest.test_case "infix uses operands" `Quick test_operator_uses_operands;
+          Alcotest.test_case "macro multi-arg" `Quick test_macro_multi_arg;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;

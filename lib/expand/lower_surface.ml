@@ -73,7 +73,7 @@ and lower_expr (stx : Syntax.t) : Surface.t =
     Surface.Match (lower_expr scrut, List.map lower_match_branch brs)
   | Syntax.MacroDef { name; value; body } ->
     Surface.MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body }
-  | Syntax.MacroCall (f, a) -> Surface.MacroCall (lower_expr f, lower_expr a)
+  | Syntax.MacroCall (f, a) -> Surface.MacroCall (lower_expr f, List.map lower_expr a)
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
     let fixity = match fixity with Syntax.PrefixOp -> Surface.PrefixOp | Syntax.InfixOp -> Surface.InfixOp in
     Surface.SyntaxOperatorUse { operator = lower_id operator; fixity; operands = List.map lower_expr operands; declaration_span; use_span }

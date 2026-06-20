@@ -379,7 +379,7 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.RefSet (l, r) -> { stx with kind = Syntax.RefSet (go l, go r) }
   | Syntax.Match (scrut, branches) -> { stx with kind = Syntax.Match (go scrut, List.map (map_template_match_branch captures go) branches) }
   | Syntax.MacroDef { name; value; body } -> { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body } }
-  | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, go a) }
+  | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, List.map go a) }
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
       { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span } }
 

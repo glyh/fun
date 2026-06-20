@@ -108,7 +108,7 @@ and t =
   | RefSet of t * t
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
   | MacroDef of { name : string; value : t; body : t }
-  | MacroCall of t * t
+  | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : string;
       fixity : operator_fixity;
