@@ -675,8 +675,16 @@ and parse_postfix_infix env min_prec lhs terms =
                 match op.expansion with
                 | Operator_env.BuiltinRefSet ->
                     stx ~span (Syntax.RefSet (lhs, rhs))
-                | Template _ ->
-                    error "syntax templates are not valid infix operators"
+                | Template template ->
+                    let branch = List.hd template.Syntax_template.branches in
+                    let holes = Enforest_template.collect_pattern_holes branch.pattern in
+                    let captures =
+                      List.map2 (fun name operand ->
+                        (name, { Syntax_template.syntax = operand; kind = Syntax_template.Expr; decl_terms = None }))
+                        holes [ rhs; lhs ]
+                    in
+                    let parsed, _ = parse_expr_prec env 0 branch.replacement in
+                    Enforest_template.substitute_template_captures captures parsed
                 | Macro ->
                     let arg =
                       syntax_operator_arg ~span ~use_span:term.span op
@@ -976,6 +984,58 @@ and parse_operator_value env start_span terms =
   ( List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body,
     rest )
 
+and parse_operator_template_decl env sym sym_span prec assoc value_terms =
+  let terms = drop_separators value_terms in
+  let hole_names, rest =
+    match terms with
+    | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
+        let holes =
+          split_commas (drop_separators items)
+          |> List.concat_map (fun ts ->
+              match drop_separators ts with
+              | [{ datum = Token { kind = Operator "$"; _ }; _ };
+                 { datum = Token { kind = Ident name; _ }; span }] ->
+                  [ (name, span) ]
+              | _ -> error "operator template params must be $hole names")
+        in
+        (holes, rest)
+    | _ -> error "operator template requires parameter list"
+  in
+  let holes = List.map fst hole_names in
+  let body, rest, span =
+    match drop_separators rest with
+    | arrow :: body_terms when token_kind ThinArrow arrow ->
+        let body = Enforest_template.rewrite_template_holes body_terms in
+        (body, [], span_between sym_span (syntax_span body))
+    | do_kw :: body_rest when token_kind KwDo do_kw ->
+        let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+        let body = Enforest_template.rewrite_nested_syntax_body [] body_terms in
+        (body, rest, span_between sym_span span)
+    | _ -> error "expected -> or do after operator template parameters"
+  in
+  ensure_no_rest "infix template declaration" rest;
+  let pattern =
+    let hole name =
+      Syntax_template.Hole { name; kind = Syntax_template.Expr; span = sym_span }
+    in
+    let op_literal = { datum = Token { kind = Operator sym; span = sym_span }; span = sym_span } in
+    (match holes with
+     | [ lhs; rhs ] -> [ hole lhs; Syntax_template.Literal op_literal; hole rhs ]
+     | [ single ] -> [ Syntax_template.Literal op_literal; hole single ]
+     | _ -> error "operator template must have 1 or 2 holes")
+  in
+  let template =
+    { Syntax_template.head = sym;
+      branches = [ { pattern; replacement = body; span } ];
+      declaration_span = sym_span;
+      inherited_captures = [] }
+  in
+  env.operators <-
+    Operator_env.add_template_infix ~declaration_span:sym_span env.operators sym template prec assoc;
+  Some (TemplateSyntaxDecl
+          { syntax_name = id ~span:sym_span sym;
+            syntax_export = Operator_env.template_infix ~declaration_span:sym_span sym template prec assoc })
+
 and parse_operator_assoc assoc_str =
   match assoc_str with
   | "Left" -> Operator_env.Left
@@ -1064,20 +1124,30 @@ and parse_operator_shape stmt =
 and parse_operator_decl env stmt =
   match parse_operator_shape stmt with
   | Some (`Infix (name, name_span, prec, assoc, assoc_span, value_terms)) ->
-      let value, rest = parse_operator_value env assoc_span value_terms in
-      ensure_no_rest "infix declaration" rest;
-      env.operators <-
-        Operator_env.add_infix ~declaration_span:name_span env.operators
-          name prec assoc;
-      Some
-        (MacroSyntaxDecl
-           {
-             syntax_name = id ~span:name_span name;
-             syntax_value = value;
-             syntax_export =
-               Operator_env.macro_infix ~declaration_span:name_span name
-                 prec assoc;
-           })
+      let is_template =
+        match drop_separators value_terms with
+        | { datum = Group (Raw_syntax.Paren, items, _); _ } :: _ ->
+            let param_tokens = List.concat (split_commas (drop_separators items)) in
+            let tokens = drop_separators param_tokens in
+            let first_is_dollar = match tokens with
+              | { datum = Token { kind = Operator "$"; _ }; _ } :: _ -> true
+              | _ -> false
+            in
+            first_is_dollar
+        | _ -> false
+      in
+      if is_template then
+        parse_operator_template_decl env name name_span prec assoc value_terms
+      else begin
+        let value, rest = parse_operator_value env assoc_span value_terms in
+        ensure_no_rest "infix declaration" rest;
+        env.operators <-
+          Operator_env.add_infix ~declaration_span:name_span env.operators name prec assoc;
+        Some (MacroSyntaxDecl
+                { syntax_name = id ~span:name_span name;
+                  syntax_value = value;
+                  syntax_export = Operator_env.macro_infix ~declaration_span:name_span name prec assoc })
+      end
   | None -> (
       match drop_separators stmt with
       | { datum = Token { kind = Ident s; _ }; _ }

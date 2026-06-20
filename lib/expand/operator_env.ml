@@ -36,6 +36,9 @@ let macro_prefix ?(declaration_span = Source_span.synthetic) symbol precedence =
 let template_prefix ?(declaration_span = Source_span.synthetic) symbol template precedence =
   operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Prefix ~precedence ~associativity:Left ~expansion:(Template template)
 
+let template_infix ?(declaration_span = Source_span.synthetic) symbol template precedence associativity =
+  operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:(Template template)
+
 let macro_infix ?(declaration_span = Source_span.synthetic) symbol precedence associativity =
   operator ~syntax_class:Syntax_class.Expr ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity ~expansion:Macro
 
@@ -77,6 +80,10 @@ let add_template_prefix ?declaration_span t symbol template precedence =
 
 let add_infix ?declaration_span t symbol precedence associativity =
   let op = macro_infix ?declaration_span symbol precedence associativity in
+  { t with infixes = op :: without_operator op t.infixes }
+
+let add_template_infix ?declaration_span t symbol template precedence associativity =
+  let op = template_infix ?declaration_span symbol template precedence associativity in
   { t with infixes = op :: without_operator op t.infixes }
 
 let add_operator t op =
