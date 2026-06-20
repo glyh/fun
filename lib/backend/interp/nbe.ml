@@ -9,7 +9,6 @@ let dot_value = Nbe_support.dot_value
 let result_value = Nbe_support.result_value
 let atom_ty_of_atom = Nbe_prim.atom_ty_of_atom
 let prim_table = Nbe_prim.prim_table
-let stx_prim_table = Nbe_prim.stx_prim_table
 
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
@@ -421,14 +420,8 @@ and try_prim_reduce (head : head) (frames : frame list) : value option =
       if List.length atoms = List.length frames then
         match Hashtbl.find_opt prim_table name with
         | Some f -> Option.map (fun a -> VAtom a) (f atoms)
-        | None ->
-          let args = List.filter_map (function FApp v -> Some v | _ -> None) frames in
-          Option.bind (Hashtbl.find_opt stx_prim_table name) (fun f -> f args)
-      else
-        let args = List.filter_map (function FApp v -> Some v | _ -> None) frames in
-        if List.length args = List.length frames
-        then Option.bind (Hashtbl.find_opt stx_prim_table name) (fun f -> f args)
-        else None)
+        | None -> None
+      else None)
   | _ -> None
 
 and eval_effect_row_literal (mc : MetaContext.t) (env : env) (row : effect_row) : value =

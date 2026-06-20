@@ -37,18 +37,10 @@ let prims =
     ("<=", i64_comparator);
     (">=", i64_comparator);
     ("not", VAtomTy Atom_ty.TBool ^-> AtomTy Atom_ty.TBool);
-    ("stx_operator_symbol", VU ^-> AtomTy Atom_ty.TString);
-    ("stx_operator_fixity", VU ^-> AtomTy Atom_ty.TString);
-    ("stx_operator_arity", VU ^-> AtomTy Atom_ty.TI64);
-    ("stx_operator_operand", VU ^-> AtomTy Atom_ty.TI64 ^->> U);
   ]
   |> NameMap.of_list
 
-let syntax_primitive_names =
-  [ "stx_operator_symbol";
-    "stx_operator_fixity";
-    "stx_operator_arity";
-    "stx_operator_operand" ]
+let syntax_primitive_names = []
 
 let stdlib_source =
   {|
@@ -100,10 +92,6 @@ pub module Syntax do
   pub seq = fn(a, b) -> RawLet(None, new_id("_"), None, a, b, false)
   pub id_name = fn(stx) -> match stx do | RawVar(_, id) -> id.name | _ -> panic[String]("expected identifier") end
   pub id_eq = fn(a, b) -> match a do | RawVar(_, ida) -> match b do | RawVar(_, idb) -> eq_string(ida.name, idb.name) | _ -> panic[Bool]("expected identifier") end | _ -> panic[Bool]("expected identifier") end
-  pub operator_symbol = stx_operator_symbol
-  pub operator_fixity = stx_operator_fixity
-  pub operator_arity = stx_operator_arity
-  pub operator_operand = stx_operator_operand
 
 end
 |}

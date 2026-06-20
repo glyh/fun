@@ -1,5 +1,3 @@
-open Core
-
 module Prim = struct
   open Atom
 
@@ -63,48 +61,4 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
     ("<=", i64_cmp (fun a b -> Int64.compare a b <= 0));
     (">=", i64_cmp (fun a b -> Int64.compare a b >= 0));
     ("not", bool_unop not) ]
-  |> List.to_seq |> Hashtbl.of_seq
-
-module Stx = struct
-  open Syntax
-
-  let fail name msg = raise (Nbe_error.EvalError (name ^ ": " ^ msg))
-
-  let operator_symbol = function
-    | [ VStx (StxExpr { kind = SyntaxOperatorUse { operator; _ }; _ }) ] ->
-        Some (VAtom (String operator.name))
-    | [ VStx _ ] -> fail "stx_operator_symbol" "expected syntax operator use"
-    | _ -> None
-
-  let operator_fixity = function
-    | [ VStx (StxExpr { kind = SyntaxOperatorUse { fixity; _ }; _ }) ] ->
-        let name = match fixity with PrefixOp -> "prefix" | InfixOp -> "infix" in
-        Some (VAtom (String name))
-    | [ VStx _ ] -> fail "stx_operator_fixity" "expected syntax operator use"
-    | _ -> None
-
-  let operator_arity = function
-    | [ VStx (StxExpr { kind = SyntaxOperatorUse { operands; _ }; _ }) ] ->
-        Some (VAtom (I64 (Int64.of_int (List.length operands))))
-    | [ VStx _ ] -> fail "stx_operator_arity" "expected syntax operator use"
-    | _ -> None
-
-  let operator_operand = function
-    | [ VStx (StxExpr { kind = SyntaxOperatorUse { operands; _ }; _ }); VAtom (I64 index) ] ->
-        let len = List.length operands in
-        if Int64.compare index 0L < 0 || Int64.compare index (Int64.of_int len) >= 0 then
-          fail "stx_operator_operand" "operand index out of bounds"
-        else
-          let index = Int64.to_int index in
-          Some (VStx (StxExpr (List.nth operands index)))
-    | [ VStx _; VAtom (I64 _) ] ->
-        fail "stx_operator_operand" "expected syntax operator use"
-    | _ -> None
-end
-
-let stx_prim_table : (string, value list -> value option) Hashtbl.t =
-  [ ("stx_operator_symbol", Stx.operator_symbol);
-    ("stx_operator_fixity", Stx.operator_fixity);
-    ("stx_operator_arity", Stx.operator_arity);
-    ("stx_operator_operand", Stx.operator_operand) ]
   |> List.to_seq |> Hashtbl.of_seq

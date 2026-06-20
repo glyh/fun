@@ -1115,22 +1115,6 @@ let test_syntax_module_let_builder () =
        answer @ (0)
       end" ()
 
-let test_syntax_module_operator_operand_error () =
-  match
-    eval_with_macros
-      "do
-         operator infix ~ 15 left(stx) -> Syntax.operator_operand(stx, 2)
-         1 ~ 2
-       end"
-  with
-  | exception Nbe.EvalError msg
-  | exception Failure msg ->
-      Alcotest.(check bool)
-        "mentions operand index" true
-        (string_contains msg "operand index out of bounds")
-  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected operator operand bounds failure"
-
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
     "do
@@ -2241,7 +2225,6 @@ let () =
           Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
           Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
           Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
-          Alcotest.test_case "Syntax module: operator operand error" `Quick test_syntax_module_operator_operand_error;
           Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
           Alcotest.test_case "7G: ADT matching preserves binding hygiene" `Quick test_7g_adt_matching_hygiene_roundtrip;
           Alcotest.test_case "7G: ADT destructured body not captured by outer scope" `Quick test_7g_adt_matching_hygiene_introduced_body;
