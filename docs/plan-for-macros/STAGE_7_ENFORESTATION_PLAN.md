@@ -561,7 +561,7 @@ Deferred from Stage 7H:
 
 ## Phase 7G: Computed Hygienic Macro API
 
-Status: Implemented (core infrastructure). Phase 7F gives the common case a readable, all-hygienic pattern/template surface. This phase provides the computed macro API with `Syntax.Expr` as a matchable ADT, pattern synonyms (`Var`, `Ap`, `Lam`, `Let`, `Atom`), and builders. The `wrap_stx`/`unwrap_stx` VCon conversion creates proper nominal-typed syntax values visible to the elaborator and match compiler. `unwind_stx` preserves source spans through the round-trip. Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) remain as hidden implementation details for the stdlib's `Syntax` module; public examples use `Syntax.*` builders and ADT matching. Remaining work: documentation, syntax-class-specific ADTs beyond `Expr`, traversal helpers, and class-specific builders (deferred to Stage 8 problem-aware macro contexts).
+Status: Implemented. All 28 `stx_*` primitives eliminated — zero remain. The `Syntax` module is pure ADT-based: `Syntax.Expr` as a matchable ADT with pattern synonyms (`Var`, `Ap`, `Lam`, `Let`, `Atom`), builders constructing `VCon` values directly, `wrap_stx`/`unwrap_stx` using real nominals from the stdlib (no dummies), source span preservation through round-trip, nested pattern matching with named binders, hygiene preservation through ADT destructuring/reconstruction, and `rec fn` support in module bindings. Remaining deferred to Stage 8: documentation, syntax-class-specific ADTs beyond `Expr`, traversal helpers, and class-specific builders.
 
 Resolved design direction after the Stage 7 design interview:
 
@@ -789,12 +789,18 @@ Deferred from Stage 7G until the macro system has all major phases implemented:
 
 ### Exit Criteria
 
+- [x] All 28 `stx_*` primitives removed — zero remain. The `Syntax` module is pure ADT-based.
 - [x] At least one macro cannot be expressed cleanly with 7F pattern/template syntax alone, and its implementation uses ADT pattern matching instead of functional deconstructors (tested in `test_7g_adt_matching_flip_args`: multi-kind dispatch on `Lam`/`Ap`/`Var`);
-- [ ] The public syntax-object API (builders + matchable ADTs) is documented and covered by tests;
-- [x] Public examples use `Syntax.*` builders and ADT matching rather than `stx_*` primitives;
-- [x] Per-field deconstructor primitives (`stx_is_ap`, `stx_ap_fn`, etc.) removed; 20+ unused prims eliminated. 7 remaining (`stx_make_seq`, `stx_id_name`, `stx_id_eq`, `stx_operator_*`) kept as hidden stdlib internals for operator inspection and sequence building (not yet replaced by ADT due to `rec fn` limitations in module blocks);
-- [x] Existing 7F pattern/template examples remain simpler than their equivalent ADT-matching macro versions;
-- [x] Existing Stage 7 enforestation, hygiene, loader, and macro tests still pass.
+- [x] `wrap_stx`/`unwrap_stx` use real nominals from the stdlib via `syntax_nominals` record — no dummy nominals.
+- [x] Source spans preserved through ADT round-trip.
+- [x] Nested pattern matching with named binders works.
+- [x] ADT matching preserves hygiene (tested in `test_7g_adt_matching_hygiene_*`).
+- [x] `rec fn` in module bindings supported (`LetBinding.recursive`).
+- [x] `Syntax.seq`, `id_name`, `id_eq` use ADT constructors/patterns.
+- [ ] The public syntax-object API is documented (deferred).
+- [x] Public examples use `Syntax.*` builders and ADT matching.
+- [x] Existing 7F pattern/template examples remain simpler than ADT equivalents.
+- [x] Existing Stage 7 tests still pass.
 
 ## Phase 7I: Macros Generating Macros
 
