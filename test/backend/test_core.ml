@@ -979,6 +979,21 @@ let test_macro_multi_arg () =
        add @ (3, 4)
      end" ()
 
+let test_macro_multi_arg_swap () =
+  check_i64_macro "macro multi-arg swap" (-2L)
+    "do
+       macro flip(a, b) -> Syntax.ap(Syntax.ap(Syntax.var(\"-\"), b), a)
+       flip @ (5, 3)
+     end" ()
+
+let test_macro_and_syntax_together () =
+  check_i64_macro "macro and syntax together" 25L
+    "do
+       syntax inc do | inc $n -> $n + 1 end
+       macro add3(a, b, c) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.ap(Syntax.ap(Syntax.var(\"+\"), a), b)), c)
+       inc(add3 @ (6, 8, 10))
+     end" ()
+
 let test_operator_uses_operands () =
   check_i64_macro "operator uses operands (Left assoc)" 2L
     "do
@@ -2236,6 +2251,8 @@ let () =
           Alcotest.test_case "infix macro expands" `Quick test_operator_infix_macro_expands;
           Alcotest.test_case "infix uses operands" `Quick test_operator_uses_operands;
           Alcotest.test_case "macro multi-arg" `Quick test_macro_multi_arg;
+          Alcotest.test_case "macro multi-arg swap" `Quick test_macro_multi_arg_swap;
+          Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
