@@ -384,7 +384,30 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | _ -> { stx with kind = MacroCall (expand ctx f, expand ctx a) }
     end
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
-    { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span } }
+    begin match Expand_ctx.lookup_macro ctx operator.name with
+    | Some macro_fn ->
+      begin match ctx.Expand_ctx.eval_and_apply with
+      | Some apply_fn ->
+        let result = match operands with
+          | [ lhs; rhs ] ->
+              let lhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals lhs in
+              let rhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals rhs in
+              apply_fn (apply_fn macro_fn lhs_stx) rhs_stx
+          | [ single ] ->
+              let stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals single in
+              apply_fn macro_fn stx
+          | _ -> apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals
+                   { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
+        in
+        begin match Macro_eval.unwrap_stx result with
+        | Some expanded -> expand ctx expanded
+        | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } } "operator macro did not return a syntax value")
+        end
+      | None -> failwith "operator macro call requires an apply callback"
+      end
+    | _ ->
+      { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span } }
+    end
 
 and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc = function

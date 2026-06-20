@@ -955,7 +955,25 @@ and parse_import_statement env stmt =
   | _ -> None
 
 and parse_operator_value env start_span terms =
-  let params, body, rest, span = parse_fn_parts env start_span terms in
+  let terms = drop_separators terms in
+  let explicit_params, rest =
+    match terms with
+    | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
+        (parse_param_group env Explicitness.Explicit items, rest)
+    | _ -> ([], terms)
+  in
+  let params = explicit_params in
+  let body, rest, span =
+    match drop_separators rest with
+    | arrow :: body_terms when token_kind ThinArrow arrow ->
+        let body = parse_all (fun ts -> parse_expr_prec env 0 ts) body_terms in
+        (body, [], span_between start_span body.span)
+    | do_kw :: body_rest when token_kind KwDo do_kw ->
+        let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+        let body = parse_do_body_terms env span body_terms in
+        (body, rest, span_between start_span span)
+    | _ -> error "expected -> or do after operator parameters"
+  in
   ( List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body,
     rest )
 
@@ -1030,37 +1048,36 @@ and parse_operator_shape stmt =
   match drop_separators stmt with
   | { datum = Token { kind = Ident op_kw; _ }; _ }
     :: { datum = Token { kind = Ident ifx; _ }; _ }
-    :: name_term
+    :: { datum = Group (Raw_syntax.Paren, sym_items, sym_span); _ }
     :: { datum = Token { kind = Int p; _ }; _ }
     :: { datum = Token { kind = Ident assoc_str; _ }; span = assoc_span }
     :: value_terms
     when String.equal op_kw "operator" && String.equal ifx "infix" ->
-      let name = required_syntax_name name_term "operator infix" in
-      Some
-        (`Infix
-           ( name_term,
-             name,
-             Int64.to_int p,
-             parse_operator_assoc assoc_str,
-             assoc_span,
-             value_terms ))
+      let sym = match drop_separators sym_items with
+        | [ term ] when Option.is_some (token_text term) ->
+            Option.get (token_text term)
+        | _ -> error "operator infix requires a symbol in parens"
+      in
+      let prec = Int64.to_int p in
+      let assoc = parse_operator_assoc assoc_str in
+      Some (`Infix (sym, sym_span, prec, assoc, assoc_span, value_terms))
   | _ -> None
 
 and parse_operator_decl env stmt =
   match parse_operator_shape stmt with
-  | Some (`Infix (name_term, name, prec, assoc, assoc_span, value_terms)) ->
+  | Some (`Infix (name, name_span, prec, assoc, assoc_span, value_terms)) ->
       let value, rest = parse_operator_value env assoc_span value_terms in
       ensure_no_rest "operator infix declaration" rest;
       env.operators <-
-        Operator_env.add_infix ~declaration_span:name_term.span env.operators
+        Operator_env.add_infix ~declaration_span:name_span env.operators
           name prec assoc;
       Some
         (MacroSyntaxDecl
            {
-             syntax_name = id ~span:name_term.span name;
+             syntax_name = id ~span:name_span name;
              syntax_value = value;
              syntax_export =
-               Operator_env.macro_infix ~declaration_span:name_term.span name
+               Operator_env.macro_infix ~declaration_span:name_span name
                  prec assoc;
            })
   | None -> (

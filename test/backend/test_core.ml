@@ -968,7 +968,7 @@ let test_operator_prefix_macro_expands () =
 let test_operator_infix_macro_expands () =
   check_i64_macro "operator infix" 9L
     "do
-       operator infix ~ 15 left(stx) -> Syntax.i64(9)
+       operator infix (~) 15 left (stx) -> Syntax.i64(9)
        1 ~ 2
        end" ()
 
@@ -991,7 +991,7 @@ let test_operator_macro_error_reports_spans () =
   match
     eval_with_macros
        "do
-          operator infix ~ 15 left(stx) -> 1
+          operator infix (~) 15 left (stx) -> 1
           1 ~ 2
         end"
   with
@@ -1623,7 +1623,7 @@ let test_7i_generated_pub_operator_across_imports () =
       [ ("gen", "syntax export_operator do
                   | export_operator ->
                       multi
-                        pub operator infix ~ 15 left(stx) -> Syntax.i64(9)
+                        pub operator infix (~) 15 left (stx) -> Syntax.i64(9)
                       end
                   end;
                   export_operator") ]
@@ -1660,7 +1660,7 @@ let test_7i_generated_pub_operator_rejected_in_struct () =
            syntax export_operator do
            | export_operator ->
                multi
-                 pub operator infix ~ 15 left(stx) -> Syntax.i64(9)
+                 pub operator infix (~) 15 left (stx) -> Syntax.i64(9)
                end
            end;
            export_operator
