@@ -2,103 +2,62 @@
 
 ## Goal
 
-Let macros declare their syntactic return kind at definition time, so the elaborator can validate that:
-- An `expr` macro is only called in expression position
-- A `decl` macro is only called in declaration position
-- A `pattern` macro (future) is only called in pattern position
-
-Macros are tagged by kind at definition:
+Let macros declare their syntactic return kind, so the elaborator can validate that macros are used in the correct context. The kind is determined by the macro's **return type** — either via inference (best effort) or explicit annotation.
 
 ```fun
-macro expr twice(x) -> Syntax.ap(Syntax.ap(Syntax.var("+"), x), x)
-macro decl value_binding(name, val) -> multi pub name = val end
+macro twice(x) -> Syntax.ap(Syntax.ap(Syntax.var("+"), x), x)   -- inferred: Expr
+macro bind(x) : Decl -> multi pub x = 0 end                      -- annotated: Decl
 ```
 
-The kind replaces the previous `[why]` implicit parameter design. The macro body knows its context statically — no runtime branching needed.
+This follows the same convention as regular functions: return type determines usage. No `macro expr` / `macro decl` syntax tags — the kind comes from what the macro produces.
 
 ## Design References
 
 - `IMPLEMENTATION_PLAN.md` Stage 8 defines the exit criteria.
-- Stage 7G/7H/7I provide the computed macro and declaration-template infrastructure this builds on.
-- The `Syntax.Problem` ADT (`ExprProblem | PatternProblem | DeclProblem`) is replaced by macro-kind tags.
+- Stage 7G provides the `Syntax.Expr` ADT this builds on.
+- The `Syntax.Problem` ADT and `[why]` implicit parameter prototypes are deprecated.
 
-## Non-Goals For Stage 8
+## Key Design Decisions
 
-- Do not implement type-aware macros (Stage 9).
-- Do not implement stuck macros or schedulers (Stage 10).
-- Do not add flow-sensitive typing or `type-match` constructs.
-- Do not implement pattern macros until pattern ADT is defined.
+### Kind inference
+
+Like function return types, macro kinds are inferred from the body:
+- Body returns a `Syntax.Expr` node → `Expr` kind
+- Body returns a declaration structure → `Decl` kind
+- Best-effort inference; annotation (`: Decl`) when ambiguous
+
+### Name shadowing
+
+Later bindings shadow previous regardless of kind. A name cannot be used for both an `Expr` macro and a `Decl` macro simultaneously — the later binding wins.
+
+### No implicit problem parameter
+
+The `[why]` implicit parameter is removed. The macro's kind is static, not a runtime value to branch on.
 
 ## Phase 8A: Kind-Tagged Macro Syntax
 
 Status: Not started.
 
-Introduce the `macro <kind> name(...) -> body` syntax where `<kind>` is one of `expr` or `decl`.
-
 ### Scope
 
-- [ ] Parse `macro expr name(params) -> body` and `macro decl name(params) -> body`
-- [ ] Store `macro_kind : expr | decl` in `MacroBinding` and `MacroDef`
-- [ ] Remove `has_problem` field and `Syntax.Problem`-based implicit parameter
-
-### Requirements
-
-- [ ] Macro kinds are checked at definition time (not at call site)
-- [ ] `expr` macros can only be called in expression position
-- [ ] `decl` macros can only be called in declaration position
-- [ ] Existing macro tests continue to work (default to `expr` kind)
+- [ ] Parse optional `: Decl` annotation on macro definitions
+- [ ] Infer kind from body when annotation is absent
+- [ ] Store kind in `MacroBinding` / `MacroDef`
 
 ## Phase 8B: Elaborator Integration
 
 Status: Not started.
 
-Thread the macro kind through the expander and validate call sites.
-
 ### Scope
 
 - [ ] `Expand_ctx` tracks current context kind
-- [ ] Macro call expansion validates kind matches expected context
-- [ ] Error on mismatched macro kind at call site
-- [ ] `parse_expand` sets context kind automatically (expression for `parse_expr`, declaration for `parse_module`)
-
-## Phase 8C: Decl Macros
-
-Status: Not started.
-
-Implement `macro decl` — macros that produce declaration syntax.
-
-### Scope
-
-- [ ] `macro decl foo(name, val) -> multi pub name = val end`
-- [ ] Decl macros integrate with Stage 7H/7I declaration-template machinery
-- [ ] `multi ... end` output from decl macros
-
-### Tests
-
-- [ ] Decl macro produces a module-level binding
-- [ ] Decl macro rejected in expression position
-- [ ] Expr macro rejected in declaration position
+- [ ] Macro call validates kind matches expected context
+- [ ] Error on mismatched kind at call site
+- [ ] `parse_expr` sets expr context, `parse_module` sets decl context
 
 ## Exit Criteria
 
-- [ ] Macro kinds (`expr`/`decl`) are declared at definition time
+- [ ] Macro kinds inferred from return type or explicit annotation
 - [ ] Call sites validate kind against expected context
-- [ ] No runtime problem-dispatch in macro bodies
-- [ ] All existing tests pass (kind defaults to `expr`)
-
-## Phase 8D (future): Pattern Macros
-
-Deferred until `Syntax.Pattern` ADT is defined. Pattern macros will use `macro pattern` tag similarly.
-
-## Implementation Plan (from IMPLEMENTATION_PLAN.md)
-
-```
-Stage 8: Problem-Aware Macros
-
-- Thread problem information through expansion
-- Add macro API to inspect the current problem
-- Allow a macro binding to expand differently by problem kind
-- Integrate with bidirectional elaboration
-```
-
-Updated design: replace implicit `[why]` parameter with declarative `macro expr`/`macro decl` syntax.
+- [ ] Name shadowing works regardless of kind
+- [ ] All existing tests pass (macros default to `Expr` kind)

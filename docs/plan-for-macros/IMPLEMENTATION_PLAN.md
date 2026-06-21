@@ -47,7 +47,7 @@ Current focus:
 - [x] Multi-arg macros: `MacroCall(f, args_list)`, `m @ (a, b, c)` parsed via `parse_args`, expander applies fold_left.
 - [x] Operator redesign: `infix (sym) prec Assoc (params) -> body`. Template form: `infix (sym) prec Assoc ($a, $b) -> $a - $b` uses `substitute_template_captures`.
 - [x] Syntax expanding to macro: template replacement can contain `macro @ (args)` calls.
-- [ ] Start Stage 8: problem-aware macros. (In progress — core infrastructure done, needs elaborator integration.)
+- [ ] Start Stage 8: problem-aware macros. (Design revised to return-type-based kind inference.)
 
 ## Validation Commands
 
@@ -571,47 +571,42 @@ Exit criteria:
 
 ## Stage 8: Problem-Aware Macros
 
-Status: In progress (infrastructure prototyped, redesigning to tag-based approach).
+Status: Not started. Design revised.
 
 Purpose:
 
-- Let macros declare their syntactic return kind at definition time using kind tags.
+- Let macros declare their syntactic return kind via return type (inferred or annotated).
 
 Design (revised):
 
-- Macros are tagged with a kind: `macro expr name(...) -> ...` or `macro decl name(...) -> ...`
-- The kind is static — known at definition time, validated at call site
-- Replaces the earlier `[why]` implicit parameter prototype
-- The `Syntax.Problem` ADT and `has_problem` flag are deprecated in favor of kind tags
+- Macro kind is determined by return type, not a keyword tag
+- `macro twice(x) -> ...` — inferred: returns Expr
+- `macro bind(x) : Decl -> ...` — annotated: returns Decl
+- Follows function return-type conventions: best-effort inference, annotation fallback
+- Name shadowing: later bindings win regardless of kind; same name can't be both Expr and Decl
+- No `[why]` implicit parameter — kind is static, not runtime-dispatchable
 
 Kinds:
 
-- `expr` — expression macro (default)
-- `decl` — declaration macro (produces module-level bindings)
-- `pattern` — deferred until Syntax.Pattern ADT is defined
+- `Expr` — expression macro (default, inferred from `Syntax.Expr` return values)
+- `Decl` — declaration macro (inferred from declaration-typed return values)
+- `Pattern` — deferred until Syntax.Pattern ADT is defined
 
 Concrete tasks:
 
-- [ ] Add `macro expr` / `macro decl` syntax parsing
-- [ ] Store kind in `MacroBinding` / `MacroDef`
-- [ ] Thread kind through expander context
+- [ ] Parse optional `: Decl` annotation on macro definitions
+- [ ] Infer kind from body when annotation absent
+- [ ] Store kind in MacroBinding/MacroDef
+- [ ] Expand_ctx tracks current context kind
 - [ ] Validate call site kind matches macro kind
-- [ ] Implement `macro decl` producing declaration output
-- [ ] Integrate with `parse_expr` (expr context) and `parse_module` (decl context)
+- [ ] parse_expr sets expr context, parse_module sets decl context
 
 Tests to add:
 
-- [ ] Expr macro works in expression context
-- [ ] Decl macro works in declaration context
-- [ ] Expr macro rejected in declaration context
+- [ ] Expr macro works in expression context (implicit — existing tests cover this)
 - [ ] Decl macro rejected in expression context
-
-### Design notes
-
-The initial prototype used an implicit `[why]` parameter and `Syntax.Problem` ADT to allow runtime branching on problem kind. This was rejected because:
-- Multi-kind dispatch within a single macro body is not a meaningful use case
-- Static kind tags provide better error messages and simpler macro bodies
-- The `[why]` approach required matching on `Syntax.ExprProblem` etc., which flow-insensitive typing can't refine
+- [ ] Expr macro in declaration context returns declaration syntax
+- [ ] Later binding shadows earlier regardless of kind
 
 Problem-aware macro bodies use `match why do | ExprProblem -> ... | PatternProblem -> ...` which works at runtime (NBE destructuring of `VCon`). However, this has no type-level refinement: all branches must return the same type. Future stages may need flow-sensitive typing or a `type-match` construct that refines the expected return type by problem kind.
 
