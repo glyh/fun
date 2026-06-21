@@ -1223,15 +1223,15 @@ and parse_do_body_terms env span body_terms =
                     (MacroSyntaxDecl
                        { syntax_name = name; syntax_value = value; _ }) ->
                     fun acc ->
-                      stx ~span (Syntax.MacroDef { name; value; body = acc })
+                      stx ~span (Syntax.MacroDef { name; value; body = acc; has_problem = false })
                 | Some (TemplateSyntaxDecl _) -> fun acc -> acc
                 | None -> (
                     match parse_macro_binding env false stmt with
-                    | Some (Syntax.MacroBinding { name; value; public = false })
+                    | Some (Syntax.MacroBinding { name; value; public = false; has_problem; _ })
                       ->
                         fun acc ->
                           stx ~span
-                            (Syntax.MacroDef { name; value; body = acc })
+                            (Syntax.MacroDef { name; value; body = acc; has_problem })
                     | Some (Syntax.MacroBinding { public = true; _ }) ->
                         error "pub macro is not supported inside do blocks"
                     | Some _ -> error "unexpected non-macro binding"
@@ -1288,7 +1288,7 @@ and parse_public_prefix stmt =
 and parse_syntax_binding env public stmt =
   match parse_operator_decl env stmt with
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
-      Some (Syntax.MacroBinding { name; value; public })
+      Some (Syntax.MacroBinding { name; value; public ; has_problem = false })
   | Some (TemplateSyntaxDecl _) -> None
   | None -> None
 
@@ -1297,10 +1297,15 @@ and parse_macro_binding env public stmt =
   | { datum = Token { kind = KwMacro; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
     :: rest ->
+      let has_problem =
+        match drop_separators rest with
+        | { datum = Group (Raw_syntax.Bracket, _, _); _ } :: _ -> true
+        | _ -> false
+      in
       let value, rest = parse_fn env name_span rest in
       ensure_no_rest "macro binding" rest;
       Some
-        (Syntax.MacroBinding { name = id ~span:name_span name; value; public })
+        (Syntax.MacroBinding { name = id ~span:name_span name; value; public; has_problem })
    | _ -> None
 
 and parse_pattern_syn_binding _env public stmt =
@@ -1356,7 +1361,7 @@ and parse_module_binding env stmt =
       None
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; syntax_export; _ }) ->
       if public then env.exports_collector := syntax_export :: !(env.exports_collector);
-      Some (Syntax.MacroBinding { name; value; public })
+      Some (Syntax.MacroBinding { name; value; public ; has_problem = false })
   | None -> (
       match
         first_some
@@ -1440,7 +1445,7 @@ and parse_struct_binding env stmt =
       if public then error "pub syntax is not supported inside structs" else None
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
       if public then error "pub operator is not supported inside structs"
-      else Some (Syntax.MacroBinding { name; value; public })
+      else Some (Syntax.MacroBinding { name; value; public ; has_problem = false })
   | None -> (
       (match parse_macro_binding env public stmt with
       | Some _ when public -> error "pub macro is not supported inside structs"

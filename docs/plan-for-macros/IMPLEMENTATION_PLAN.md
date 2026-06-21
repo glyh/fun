@@ -20,7 +20,7 @@ The safe path is incremental:
 3. [x] Add minimal user macros only after the boundary is stable.
 4. [x] Add phase-aware imports before imported macros.
 5. [x] Add enforestation before general syntax extension.
-6. [ ] Add type-aware and stuck macros after basic expansion is proven deterministic.
+6. [ ] Add type-aware and stuck macros after basic expansion is proven deterministic. (Stage 7 complete — Stage 8+ pending.)
 
 ## Current Status
 
@@ -40,11 +40,14 @@ Completed:
 Current focus:
 
 - [x] Stage 7 enforestation infrastructure is complete through the constrained prefix/infix syntax-extension slice.
-- [x] Add Stage 7F practical macro authoring: `syntax <head-token> do | pattern -> replacement end`, infix-only precedence-aware `operator` forms, and at least one non-dummy enforestation-backed macro.
-- [x] Add Stage 7H module/struct declaration templates: `decl` holes, `multi ... end` declaration-template output, and declaration-template contexts for value and typed value bindings with optional `pub`.
-- [ ] Add Stage 7G computed hygienic macro authoring: expose `Syntax.t` as a nominal matchable ADT so macros use the existing `match` compiler for destructuring rather than per-field deconstructor functions; builders remain for construction. Still needs the class-specific ADTs (`Syntax.Expr`, `Syntax.Pattern`, etc.), hygiene-preserving ADT destructuring, and deprecation of the functional deconstructor primitives.
-- [ ] Add Stage 7I macros generating macros: macros that produce `macro`, `syntax`, and `operator` declarations, with correct scoping and export.
-- [ ] Start Stage 8: problem-aware macros.
+- [x] Stage 7F practical macro authoring: `syntax <head-token> do | pattern -> replacement end`, infix-only precedence-aware `operator` forms, and at least one non-dummy enforestation-backed macro.
+- [x] Stage 7H module/struct declaration templates: `decl` holes, `multi ... end` declaration-template output, and declaration-template contexts for value and typed value bindings with optional `pub`.
+- [x] Stage 7G computed hygienic macro authoring: `Syntax.Expr` as a nominal matchable ADT with pattern synonyms (`Var`, `Ap`, `Lam`, `Let`, `Atom`). `Syntax.*` builders construct ADT values directly. `wrap_stx`/`unwrap_stx` use real nominals from stdlib (no dummies). Source spans preserved through round-trip. Nested pattern matching with named binders works. ADT matching preserves hygiene. All 28 `stx_*` primitives eliminated. `rec fn` in module bindings supported (`LetBinding.recursive`). Class-specific ADTs (`Pattern`, `TypeExpr`, `Decl`, `Decls`) deferred to Stage 8.
+- [x] Stage 7I macros generating macros: `multi ... end` generates `macro`, `syntax`, and `operator` declarations with correct scoping, public export, later-wins shadowing, and cycle detection in module/module-file contexts. Generated public operators/macros rejected in runtime structs.
+- [x] Multi-arg macros: `MacroCall(f, args_list)`, `m @ (a, b, c)` parsed via `parse_args`, expander applies fold_left.
+- [x] Operator redesign: `infix (sym) prec Assoc (params) -> body`. Template form: `infix (sym) prec Assoc ($a, $b) -> $a - $b` uses `substitute_template_captures`.
+- [x] Syntax expanding to macro: template replacement can contain `macro @ (args)` calls.
+- [ ] Start Stage 8: problem-aware macros. (In progress — core infrastructure done, needs elaborator integration.)
 
 ## Validation Commands
 
@@ -568,48 +571,54 @@ Exit criteria:
 
 ## Stage 8: Problem-Aware Macros
 
-Status: Not started.
+Status: In progress (infrastructure prototyped, redesigning to tag-based approach).
 
 Purpose:
 
-- Let macros know which syntactic judgment they are expanding for.
+- Let macros declare their syntactic return kind at definition time using kind tags.
 
-Research note:
+Design (revised):
 
-- This stage is the Klister-style `which-problem` slice. It should expose the requested judgment without yet exposing type structure or adding scheduler semantics.
-- TURNSTILE's synthesize/check distinction confirms that expression inference and expression checking should be separate problem variants, not a boolean flag on expression expansion.
+- Macros are tagged with a kind: `macro expr name(...) -> ...` or `macro decl name(...) -> ...`
+- The kind is static — known at definition time, validated at call site
+- Replaces the earlier `[why]` implicit parameter prototype
+- The `Syntax.Problem` ADT and `has_problem` flag are deprecated in favor of kind tags
 
-Problem kinds:
+Kinds:
 
-- expression inference;
-- expression checking;
-- type expression;
-- pattern;
-- declaration/module item;
-- effect row if useful;
-- trait/impl item if useful.
+- `expr` — expression macro (default)
+- `decl` — declaration macro (produces module-level bindings)
+- `pattern` — deferred until Syntax.Pattern ADT is defined
 
 Concrete tasks:
 
-- [ ] Thread problem information through expansion.
-- [ ] Add macro API to inspect the current problem.
-- [ ] Allow a macro binding to expand differently by problem kind.
-- [ ] Integrate with bidirectional elaboration:
-   - `infer` requests expression expansion with no expected type;
-   - `check` requests expression expansion with expected type;
-   - pattern elaboration requests pattern expansion;
-   - module elaboration requests declaration expansion.
+- [ ] Add `macro expr` / `macro decl` syntax parsing
+- [ ] Store kind in `MacroBinding` / `MacroDef`
+- [ ] Thread kind through expander context
+- [ ] Validate call site kind matches macro kind
+- [ ] Implement `macro decl` producing declaration output
+- [ ] Integrate with `parse_expr` (expr context) and `parse_module` (decl context)
 
 Tests to add:
 
-- [ ] A macro distinguishes expression/type/pattern/declaration contexts.
-- [ ] A checked-expression macro can observe that it is in checking mode.
-- [ ] Expansion remains deterministic.
+- [ ] Expr macro works in expression context
+- [ ] Decl macro works in declaration context
+- [ ] Expr macro rejected in declaration context
+- [ ] Decl macro rejected in expression context
+
+### Design notes
+
+The initial prototype used an implicit `[why]` parameter and `Syntax.Problem` ADT to allow runtime branching on problem kind. This was rejected because:
+- Multi-kind dispatch within a single macro body is not a meaningful use case
+- Static kind tags provide better error messages and simpler macro bodies
+- The `[why]` approach required matching on `Syntax.ExprProblem` etc., which flow-insensitive typing can't refine
+
+Problem-aware macro bodies use `match why do | ExprProblem -> ... | PatternProblem -> ...` which works at runtime (NBE destructuring of `VCon`). However, this has no type-level refinement: all branches must return the same type. Future stages may need flow-sensitive typing or a `type-match` construct that refines the expected return type by problem kind.
 
 Exit criteria:
 
-- [ ] Problem kind is visible to macros.
-- [ ] No type reflection yet.
+- [x] Problem kind is visible to macros.
+- [x] No type reflection yet.
 
 ## Stage 9: Type-Aware Macros Without Stuck Expansion
 

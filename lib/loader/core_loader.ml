@@ -130,7 +130,7 @@ let rec visit_macros t (ctx : Expand_ctx.t) path =
           (fun () ->
              List.fold_left
                (fun acc -> function
-                 | Surface.MacroBinding { name; value; public = true } -> (
+                  | Surface.MacroBinding { name; value; public = true; _ } -> (
                      match ctx.Expand_ctx.elaborate with
                      | Some elaborate ->
                          let eval_and_apply = ctx.Expand_ctx.eval_and_apply in

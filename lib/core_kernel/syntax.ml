@@ -49,7 +49,7 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
-  | MacroBinding of { name : id; value : t; public : bool }
+  | MacroBinding of { name : id; value : t; public : bool; has_problem : bool }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
 
 and t = {
@@ -117,7 +117,7 @@ and kind =
   | RefGet of t
   | RefSet of t * t
   | Match of t * match_branch list
-  | MacroDef of { name : id; value : t; body : t }
+  | MacroDef of { name : id; value : t; body : t; has_problem : bool }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : id;

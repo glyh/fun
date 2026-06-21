@@ -56,6 +56,7 @@ pub type Option(A) = Some(A) | None;
 pub module Syntax do
   pub type Explicitness = Explicit | Implicit
   pub type Assoc = Left | Right
+  pub type Problem = ExprProblem | PatternProblem | DeclProblem
 
   pub type Span = {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)}
 

@@ -85,8 +85,8 @@ let rewrite_record_self_refs record_name params expr =
                         args = List.map (go bound) args;
                         fields = List.map (fun (field, value) -> (field, go bound value)) fields;
                         public }
-                | Surface.MacroBinding { name; value; public } ->
-                    Surface.MacroBinding { name; value = go bound value; public }
+                | Surface.MacroBinding { name; value; public; _ } ->
+                    Surface.MacroBinding { name; value = go bound value; public; has_problem = false }
                 | Surface.PatternSynBinding binding -> Surface.PatternSynBinding binding
             in
             Surface.Module { bindings = List.map binding bindings }
@@ -125,8 +125,8 @@ let rewrite_record_self_refs record_name params expr =
                         args = List.map (go bound) args;
                         fields = List.map (fun (field, value) -> (field, go bound value)) fields;
                         public }
-                | Surface.MacroBinding { name; value; public } ->
-                    Surface.MacroBinding { name; value = go bound value; public }
+                | Surface.MacroBinding { name; value; public; _ } ->
+                    Surface.MacroBinding { name; value = go bound value; public; has_problem = false }
                 | Surface.PatternSynBinding binding -> Surface.PatternSynBinding binding
             in
             Surface.Struct

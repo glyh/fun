@@ -93,8 +93,8 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
   | RefSet (l, r) -> RefSet (go l, go r)
   | Match (scrut, brs) ->
     Match (go scrut, List.map (go_match_branch ?within s) brs)
-  | MacroDef { name; value; body } ->
-    MacroDef { name = add_id_scope_if within s name; value = go value; body = go body }
+  | MacroDef { name; value; body; _ } ->
+    MacroDef { name = add_id_scope_if within s name; value = go value; body = go body; has_problem = false }
   | MacroCall (f, args) ->
     MacroCall (go f, List.map go args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
@@ -125,8 +125,8 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
   | ImplBinding { trait_path; trait_name; args; fields; public } ->
     ImplBinding { trait_path; trait_name; args = List.map (add_scope ?within s) args;
                   fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
-  | MacroBinding { name; value; public } ->
-    MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public }
+  | MacroBinding { name; value; public; _ } ->
+    MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public; has_problem = false }
   | PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = add_id_scope_if within s name; params; rhs; public }
 
@@ -312,14 +312,17 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind =
         Match (expand ctx scrut,
                List.map (expand_match_branch ctx) brs) }
-  | MacroDef { name; value; body } ->
+  | MacroDef { name; value; body; has_problem; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let value = expand ctx value in
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
       let previous = Expand_ctx.lookup_macro ctx name.name in
-      Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
+      if has_problem then
+        Expand_ctx.register_macro_with_problem ctx ~name:name.name ~value:macro_fn
+      else
+        Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
       Fun.protect
         ~finally:(fun () ->
           match previous with
@@ -336,12 +339,26 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       | Some macro_fn ->
         begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
+          let problem_args =
+            if Expand_ctx.macro_has_problem ctx id.name then
+              match Expand_ctx.get_current_problem ctx with
+              | Some p -> [ p ]
+              | None ->
+                  begin match ctx.Expand_ctx.syntax_nominals with
+                  | Some n -> [ let open Core in VCon { name = "ExprProblem"; spine = []; nominal = n.Macro_eval.problem } ]
+                  | None -> []
+                  end
+            else []
+          in
           let result =
             with_syntax_operator_context (List.hd args) (fun () ->
+                let fn =
+                  List.fold_left (fun fn v -> apply_fn fn v) macro_fn problem_args
+                in
                 List.fold_left (fun fn arg ->
                     let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
                     apply_fn fn arg_stx)
-                  macro_fn args)
+                  fn args)
           in
           begin match Macro_eval.unwrap_stx result with
           | Some expanded -> expand ctx expanded
@@ -478,7 +495,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [])
   | PatternSynBinding { name; params; rhs; public } ->
      (PatternSynBinding { name; params; rhs; public }, [])
-  | MacroBinding { name; value; public } ->
+  | MacroBinding { name; value; public; has_problem } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let value = expand ctx value in
@@ -486,11 +503,14 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
       let macro_fn = elab lowered in
       let binding_name = id_name name in
       let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
-      Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
-      (MacroBinding { name = add_id_scope scope name; value; public },
+      if has_problem then
+        Expand_ctx.register_macro_with_problem ctx ~name:binding_name ~value:macro_fn
+      else
+        Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
+      (MacroBinding { name = add_id_scope scope name; value; public; has_problem },
        [ scope ])
     | None ->
-      (MacroBinding { name; value = expand ctx value; public }, [])
+      (MacroBinding { name; value = expand ctx value; public; has_problem }, [])
     end
 
 and expand_match_branch ctx = function

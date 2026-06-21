@@ -6,6 +6,8 @@ type t = {
   mutable scope_counter : int;
   mutable name_counter : int;
   mutable macro_table : (string, Core.value) Hashtbl.t;
+  mutable macro_has_problem : (string, unit) Hashtbl.t;
+  mutable current_problem : Core.value option;
   mutable elaborate : (Surface.t -> Core.value) option;
   mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
   mutable load_macros : (t -> string -> unit) option;
@@ -19,6 +21,8 @@ let create ?loader () =
     scope_counter = 0;
     name_counter = 0;
     macro_table = Hashtbl.create 8;
+    macro_has_problem = Hashtbl.create 8;
+    current_problem = None;
     elaborate = None;
     eval_and_apply = None;
     load_macros = None;
@@ -77,6 +81,8 @@ let copy (ctx : t) : t =
     scope_counter = ctx.scope_counter;
     name_counter = ctx.name_counter;
     macro_table = Hashtbl.copy ctx.macro_table;
+    macro_has_problem = Hashtbl.copy ctx.macro_has_problem;
+    current_problem = ctx.current_problem;
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
     load_macros = ctx.load_macros;
@@ -85,6 +91,24 @@ let copy (ctx : t) : t =
 
 let register_macro (ctx : t) ~name ~value =
   Hashtbl.replace ctx.macro_table name value
+
+let register_macro_with_problem (ctx : t) ~name ~value =
+  Hashtbl.replace ctx.macro_table name value;
+  Hashtbl.replace ctx.macro_has_problem name ()
+
+let set_current_problem (ctx : t) problem =
+  ctx.current_problem <- Some problem
+
+let get_current_problem (ctx : t) =
+  ctx.current_problem
+
+let macro_has_problem (ctx : t) name =
+  Hashtbl.mem ctx.macro_has_problem name
+
+let get_current_problem_or_default (ctx : t) ~default =
+  match ctx.current_problem with
+  | Some p -> p
+  | None -> default
 
 let lookup_macro (ctx : t) name =
   Hashtbl.find_opt ctx.macro_table name
