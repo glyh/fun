@@ -45,6 +45,7 @@ and struct_binding =
       public : bool;
     }
   | MacroBinding of { name : string; value : t; public : bool; kind : Syntax.MacroKind.t option }
+  | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
 
 and t =

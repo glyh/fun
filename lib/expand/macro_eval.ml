@@ -261,3 +261,18 @@ let rec unwind_stx (v : value) : Syntax.t option =
   | _ -> None
 
 let unwrap_stx (v : value) : Syntax.t option = unwind_stx v
+
+let unwrap_stx_decl (v : value) : Syntax.struct_binding list option =
+  match v with
+  | VStx (StxDecl binding) -> Some [ binding ]
+  | VStx (StxDecls bindings) -> Some bindings
+  | VStx (StxExpr stx) -> (
+      match stx.kind with
+      | Syntax.Module { bindings } | Syntax.Struct { bindings; _ } -> Some bindings
+      | _ -> None)
+  | _ -> None
+
+let wrap_stx_decl (bindings : Syntax.struct_binding list) : value =
+  match bindings with
+  | [ binding ] -> VStx (StxDecl binding)
+  | _ -> VStx (StxDecls bindings)

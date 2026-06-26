@@ -47,7 +47,7 @@ Current focus:
 - [x] Multi-arg macros: `MacroCall(f, args_list)`, `m @ (a, b, c)` parsed via `parse_args`, expander applies fold_left.
 - [x] Operator redesign: `infix (sym) prec Assoc (params) -> body`. Template form: `infix (sym) prec Assoc ($a, $b) -> $a - $b` uses `substitute_template_captures`.
 - [x] Syntax expanding to macro: template replacement can contain `macro @ (args)` calls.
-- [ ] Start Stage 8: problem-aware macros. (Design revised to return-type-based kind inference.)
+- [x] Stage 8: kind-tagged macros with Expr/Decl annotation, context validation, decl-position macro calls, and multi-binding returns.
 
 ## Validation Commands
 
@@ -90,17 +90,16 @@ source text
   -> raw syntax / token trees
   -> syntax objects with scope sets and phase
   -> enforestation using current syntax/operator environment
-  -> hygienic expansion task graph
-       - ordinary expansion tasks
-       - macro evaluation tasks
-       - type elaboration/unification tasks
-       - blocked/stuck macro continuations
-  -> post-expansion Surface.t or typed fragments
+  -> hygienic expansion (fixed-kind macros: Expr or Decl)
+       - expression macro evaluation
+       - declaration macro evaluation
+       - type-aware reflection (Stage 10)
+  -> post-expansion Surface.t
   -> Core.term + semantic type
   -> NbE/backend
 ```
 
-Keep `Surface.t` as the elaborator-facing boundary until surface macros are stable. Only bypass `Surface.t` for typed/core fragments in Stage 11.
+Keep `Surface.t` as the elaborator-facing boundary. Since macro kinds are fixed per definition, no task graph scheduler is needed.
 
 ## Design Invariants
 
@@ -113,12 +112,11 @@ These are non-negotiable unless this document is updated with a replacement inva
 5. New final syntax features should go through enforestation.
 6. No user-defined macros should be exposed before Stage 4 is solid.
 
-TURNSTILE/Klister split:
+TURNSTILE/Klister notes:
 
 - Use TURNSTILE as the guide for type rule shape: synthesize/check modes, expected-type propagation, type-directed rewriting, and reusable type-operation hooks.
-- Use Klister as the guide for scheduling: problem-aware expansion requests, expansion variables, type metavariables, blocked continuations, and deterministic stuck-macro execution.
-- Do not add a scheduler merely to expose expected types. Stage 9 should stay read-only and fail clearly when the requested information is unavailable; Stage 10 is only for macros that require macro expansion and elaboration to wait on each other.
-- Treat type-providing macro output as a distinct result form, not as syntax plus an implicit property. Later elaboration must verify that the eventual expansion agrees with the provided type.
+- Fixed-kind macros (Expr/Decl per definition) eliminate the need for a Klister-style scheduler. Macros always produce their declared kind; no stuck expansion or expansion variables are needed.
+- Stage 10 type-aware macros stay read-only: expose expected type, fail clearly when unavailable.
 
 Identifier resolution rule:
 
@@ -569,195 +567,80 @@ Exit criteria:
 - [x] Initial redesigned syntax slice works through enforestation.
 - [x] Menhir is no longer the place new final syntax features are added.
 
-## Stage 8: Problem-Aware Macros
+## Stage 8: Kind-Tagged Macros
 
-Status: Not started. Design revised.
+Status: Complete.
 
 Purpose:
 
-- Let macros declare their syntactic return kind via return type (inferred or annotated).
+- Let macros declare their syntactic return kind via explicit annotation (defaults to Expr).
+- Each macro has a fixed return kind — Expr or Decl — simplifying later stages.
 
-Design (revised):
+Design:
 
-- Macro kind is determined by return type, not a keyword tag
-- `macro twice(x) -> ...` — inferred: returns Expr
-- `macro bind(x) : Decl -> ...` — annotated: returns Decl
-- Follows function return-type conventions: best-effort inference, annotation fallback
-- Name shadowing: later bindings win regardless of kind; same name can't be both Expr and Decl
-- No `[why]` implicit parameter — kind is static, not runtime-dispatchable
+- `macro name(params) -> ...` — default: Expr
+- `macro name(params) : Decl -> ...` — annotated: Decl
+- `macro name(params) : Expr -> ...` — explicit: Expr
+- Kind is static per macro; no runtime dispatch
+- Name shadowing: later bindings win regardless of kind
 
-Kinds:
+Implemented:
 
-- `Expr` — expression macro (default, inferred from `Syntax.Expr` return values)
-- `Decl` — declaration macro (inferred from declaration-typed return values)
-- `Pattern` — deferred until Syntax.Pattern ADT is defined
+- [x] Parse optional `: Decl` / `: Expr` annotation on macro definitions
+- [x] Default kind is Expr
+- [x] Store kind in MacroBinding/MacroDef (Syntax.t and Surface.t)
+- [x] Expand_ctx tracks current context kind and per-macro kind
+- [x] Validate call site kind matches macro kind
+- [x] parse_expr sets Expr context, parse_module sets Decl context
+- [x] MacroCallBinding in declaration position (module/struct bodies)
+- [x] Decl macros can return multiple bindings
+- [x] Imported macro kinds preserved via Core_loader
+- [x] Tests: annotation parsing, kind rejection, name shadowing, decl-position calls
 
-Concrete tasks:
-
-- [ ] Parse optional `: Decl` annotation on macro definitions
-- [ ] Infer kind from body when annotation absent
-- [ ] Store kind in MacroBinding/MacroDef
-- [ ] Expand_ctx tracks current context kind
-- [ ] Validate call site kind matches macro kind
-- [ ] parse_expr sets expr context, parse_module sets decl context
-
-Tests to add:
-
-- [ ] Expr macro works in expression context (implicit — existing tests cover this)
-- [ ] Decl macro rejected in expression context
-- [ ] Expr macro in declaration context returns declaration syntax
-- [ ] Later binding shadows earlier regardless of kind
-
-Problem-aware macro bodies use `match why do | ExprProblem -> ... | PatternProblem -> ...` which works at runtime (NBE destructuring of `VCon`). However, this has no type-level refinement: all branches must return the same type. Future stages may need flow-sensitive typing or a `type-match` construct that refines the expected return type by problem kind.
-
-Exit criteria:
-
-- [x] Problem kind is visible to macros.
-- [x] No type reflection yet.
-
-## Stage 9: Type-Aware Macros Without Stuck Expansion
+## Stage 9: Decl/Pattern ADT Completion
 
 Status: Not started.
 
 Purpose:
 
-- Expose useful expected-type information without building the full scheduler.
-
-Research note:
-
-- This is the TURNSTILE/MLISH expected-type slice: a checking context can make the expected type available to a macro before expansion completes.
-- Keep this intentionally weaker than Klister stuck macros. A macro may inspect already-known expected type structure, but it cannot suspend waiting for an inferred subexpression type.
-- Type operations exposed here should be stable hooks, such as equality/subtyping/type-head reflection, rather than raw semantic values from the OCaml implementation.
+- Define ADT constructors for `Syntax.Decl`/`Syntax.Decls` (and `Syntax.Pattern`) so macros can construct/splice declaration and pattern syntax, not just expressions.
 
 Concrete tasks:
 
-- [ ] Let expression macros in checking mode inspect expected semantic type.
-- [ ] Add stable reflected type heads:
-   - primitive types;
-   - nominal type constructors and arguments;
-   - structural record fields where current type-case supports reflection.
-- [ ] Add macro-facing type operations before broad reflection:
-   - type equality for reflected types;
-   - optional subtype/check relation hook if subtyping exists by then;
-   - normalization/evaluation hook only if a concrete macro example needs it.
-- [ ] Keep this read-only and non-stuck:
-   - unknown expected type returns `unknown` or a clear error;
-   - no suspension/resumption yet.
+- [ ] Add DeclBinding ADT to stdlib: `Syntax.DeclBinding(binding)` nominal
+- [ ] Add wrap_stx support for Decl/Decls ADT constructors
+- [ ] Add builder functions: `Syntax.decl(binding)`, `Syntax.decls(bindings)`
+- [ ] Add Syntax.Pattern ADT and pattern-synonym constructors (Stage 7G deferred)
+- [ ] Tests: Decl macro returning `Syntax.decl(...)`, multi-decl macros
 
-Tests to add:
-
-- [ ] Type-directed defaulting.
-- [ ] Type-directed wrapper generation.
-- [ ] Record-field-based code generation.
-- [ ] Graceful failure when expected type is unavailable.
-
-Exit criteria:
-
-- [ ] Useful type-aware macros exist.
-- [ ] No scheduler required.
-
-## Stage 10: Expansion Variables And Stuck Macro Scheduler
+## Stage 10: Type-Aware Macros
 
 Status: Not started.
 
 Purpose:
 
-- Support expansion/typechecking interleavings where either side can wait on the other.
-
-Research note:
-
-- This is the Klister operational slice, not merely a more powerful TURNSTILE `local-expand`.
-- Tasks should block on solved-enough problems, such as an expansion variable being filled or a type metavariable's head being known, rather than directly depending on task identities that may not exist yet.
-- Scheduler order must be semantically invisible: independent unblocked tasks may run in any deterministic implementation order, but results must not depend on that order.
+- Expose expected-type information to macro bodies without a scheduler (kinds are fixed, no stuck expansion needed).
+- This is a read-only reflection API: a macro in checking mode can inspect the expected type.
 
 Concrete tasks:
 
-- [ ] Add expansion variables analogous to metavariables.
-- [ ] Add task records:
-   - task id;
-   - problem kind;
-   - inputs/dependencies;
-   - output variable;
-   - continuation/action.
-- [ ] Define solved-enough predicates for blocked macros:
-   - expansion variable known to a constructor/head form;
-   - type metavariable known to a reflected type head;
-   - fully solved syntax/type when a macro requests exact structure.
-- [ ] Add deterministic scheduler:
-   - run unblocked tasks;
-   - mark tasks blocked on type metas or expansion variables;
-   - detect no-progress states;
-   - report dependency cycles.
-- [ ] Expose elaboration operations as tasks where needed:
-   - infer type of expanded expression;
-   - check expression against expected type;
-   - solve unification constraints;
-   - resume blocked macro once reflected type is known.
-
-Suggested files:
-
-- `lib/expand/expansion_var.ml`
-- `lib/expand/task_graph.ml`
-- `lib/semantic/typecheck/elaborate.ml`
-- `lib/semantic/typecheck/unify.ml`
+- [ ] Let expression macros in checking mode inspect expected semantic type
+- [ ] Add stable reflected type heads: primitives, nominals, structural record fields
+- [ ] Add macro-facing type operations: type equality, type-head reflection
+- [ ] Graceful failure when expected type is unavailable
 
 Tests to add:
 
-- [ ] Macro waits for expected type.
-- [ ] Typechecker waits for macro expansion.
-- [ ] Independent tasks produce same result regardless of order.
-- [ ] Deadlock/cycle reports waiting problems.
+- [ ] Type-directed defaulting
+- [ ] Type-directed wrapper generation
+- [ ] Graceful failure when expected type is unavailable
 
 Exit criteria:
 
-- [ ] Stuck macros work for small examples.
-- [ ] Dependency failures are understandable enough for prototype work.
-- [ ] Non-macro elaboration behavior remains unchanged.
+- [ ] Useful type-aware macros exist
+- [ ] No scheduler required (fixed kind per macro)
 
-## Stage 11: Type-Providing Macros And Typed Fragments
-
-Status: Not started.
-
-Purpose:
-
-- Allow macros to provide type information before full expansion is known.
-
-Research note:
-
-- TURNSTILE communicates type information through expanded syntax properties, but `fun` should model this explicitly because type-providing macros can participate before full expansion is available.
-- Klister's type-providing framing suggests the macro result itself should carry a provided type and delayed expansion obligation.
-
-Concrete tasks:
-
-- [ ] Extend macro result forms:
-   - expanded syntax only;
-   - provided type plus delayed expansion;
-   - checked typed fragment;
-   - core term plus semantic type, if needed.
-- [ ] Add consistency checks for provided types:
-   - surrounding elaboration may use the provided type immediately;
-   - the delayed expansion must later elaborate to a compatible type;
-   - type/provider mismatch reports both the macro use span and the delayed expansion span.
-- [ ] Define which fragments may bypass `Surface.t`.
-- [ ] Preserve hygiene for fragments introducing binders or lexical references.
-- [ ] Integrate with metavariable solving:
-   - provided types may contain metas;
-   - delayed expansion may depend on solved metas;
-   - unification failures point back to macro spans.
-
-Tests to add:
-
-- [ ] Macro provides a type so surrounding application/checking proceeds.
-- [ ] Later expansion agrees with provided type.
-- [ ] Disagreement is rejected.
-- [ ] Macro-generated binders remain hygienic.
-
-Exit criteria:
-
-- [ ] Type-providing macros work in at least one realistic example.
-- [ ] Typed/core fragments have a clear hygiene story.
-
-## Stage 12: Macro-Powered Language Features
+## Stage 11: Macro-Powered Language Features
 
 Status: Not started.
 
@@ -780,7 +663,7 @@ Exit criteria:
 - [ ] The macro implementation is simpler than bespoke compiler machinery.
 - [ ] Shortcomings feed back into the macro API before any rewrite.
 
-## Stage 13: Macro Diagnostics And Expansion UX
+## Stage 12: Macro Diagnostics And Expansion UX
 
 Status: Not started.
 

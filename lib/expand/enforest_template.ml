@@ -392,6 +392,7 @@ and map_template_struct_binding captures go = function
   | Syntax.TraitBinding { name; params; fields; public } -> Syntax.TraitBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.ImplBinding { trait_path; trait_name; args; fields; public } -> Syntax.ImplBinding { trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.MacroBinding { name; value; public; _ } -> Syntax.MacroBinding { name = map_binder_id captures name; value = go value; public; kind = None }
+  | Syntax.MacroCallBinding { f; args } -> Syntax.MacroCallBinding { f = go f; args = List.map go args }
   | Syntax.PatternSynBinding binding -> Syntax.PatternSynBinding binding
 
 and map_template_match_branch captures go = function

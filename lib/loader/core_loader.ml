@@ -130,21 +130,23 @@ let rec visit_macros t (ctx : Expand_ctx.t) path =
           (fun () ->
              List.fold_left
                (fun acc -> function
-                  | Surface.MacroBinding { name; value; public = true; _ } -> (
-                     match ctx.Expand_ctx.elaborate with
-                     | Some elaborate ->
-                         let eval_and_apply = ctx.Expand_ctx.eval_and_apply in
-                         let lowered =
-                           Parse_expand.expand_lower
-                             ~elaborate
-                             ?eval_and_apply
-                             ~load_macros:(visit_macros t)
-                             value
-                         in
-                         let macro_fn = elaborate lowered in
-                         Expand_ctx.register_macro ctx ~name ~value:macro_fn;
-                         (name, macro_fn) :: acc
-                     | None -> acc)
+                   | Surface.MacroBinding { name; value; public = true; kind; _ } -> (
+                      match ctx.Expand_ctx.elaborate with
+                      | Some elaborate ->
+                          let eval_and_apply = ctx.Expand_ctx.eval_and_apply in
+                          let lowered =
+                            Parse_expand.expand_lower
+                              ~elaborate
+                              ?eval_and_apply
+                              ~load_macros:(visit_macros t)
+                              value
+                          in
+                          let macro_fn = elaborate lowered in
+                          Expand_ctx.register_macro ctx ~name ~value:macro_fn;
+                          let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
+                          Expand_ctx.register_macro_kind ctx ~name ~kind:resolved_kind;
+                          (name, macro_fn) :: acc
+                      | None -> acc)
                  | _ -> acc)
                [] bindings
              |> List.rev)

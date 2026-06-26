@@ -282,6 +282,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         | [] -> (ctx, List.rev acc_binds, List.rev acc_entries)
         | Surface.MethodBinding _ :: _ -> failwith "module binding cannot be method"
         | Surface.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
+        | Surface.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
             let scrutinee_ty =
               try
@@ -555,6 +556,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let rec go ctx (acc_binds, acc_entries) = function
         | [] -> (List.rev acc_binds, List.rev acc_entries)
         | Surface.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
+        | Surface.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
             let scrutinee_ty =
               try

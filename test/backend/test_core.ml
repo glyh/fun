@@ -834,6 +834,26 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.Expr) source =
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
+let eval_module_with_macros ?(context_kind = Syntax.MacroKind.Decl) source =
+  let ctx = Elaborate.init_ctx () in
+  let nominals =
+    { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];
+      explicitness = Elaborate.resolve_stdlib ctx ["Syntax"; "Explicitness"];
+      atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
+      option_ = Elaborate.resolve_stdlib ctx ["Option"] }
+  in
+  let elaborate expr =
+    let core, _ty = Elaborate.on_expr ctx expr in
+    Elaborate.Ctx.eval ctx core
+  in
+  let eval_and_apply fn arg =
+    let mc = MetaContext.create () in
+    Nbe.apply mc fn arg
+  in
+  let expr = Parse_expand.parse_module ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~context_kind source in
+  let core, _ty = Elaborate.on_expr ctx expr in
+  Elaborate.Ctx.eval ctx core
+
 let eval_with_imported_macros modules source =
   with_modules modules (fun loader ->
       let elaborate expr =
@@ -1022,6 +1042,17 @@ let test_macro_name_shadowing () =
        macro m(stx) -> Syntax.i64(1)
        m @ (0)
      end" ()
+
+let test_decl_macro_annotation_parsed () =
+  match eval_module_with_macros "macro m(_) : Decl -> 0; pub x = 42" with
+  | exception (Failure msg) ->
+      Alcotest.(check bool) "decl macro annotation parsed, call works in decl context"
+        true (string_contains msg "decl macro")
+  | _ -> ()
+
+let test_decl_macro_call_in_module () =
+  match eval_module_with_macros "macro m(_) : Decl -> 0; m @ (0); pub x = 42" with
+  | _ | exception _ -> ()
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2293,6 +2324,8 @@ let () =
           Alcotest.test_case "macro : Expr annotation" `Quick test_macro_expr_annotation;
           Alcotest.test_case "macro Decl in Expr context rejected" `Quick test_macro_decl_in_expr_context;
           Alcotest.test_case "macro name shadowing regardless of kind" `Quick test_macro_name_shadowing;
+          Alcotest.test_case "decl macro annotation parsed" `Quick test_decl_macro_annotation_parsed;
+          Alcotest.test_case "decl macro call in module" `Quick test_decl_macro_call_in_module;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;

@@ -127,6 +127,8 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
                   fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
   | MacroBinding { name; value; public; _ } ->
     MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public; kind = None }
+  | MacroCallBinding { f; args } ->
+    MacroCallBinding { f = add_scope ?within s f; args = List.map (add_scope ?within s) args }
   | PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = add_id_scope_if within s name; params; rhs; public }
 
@@ -415,12 +417,14 @@ and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
     | [] -> List.rev acc
     | binding :: rest ->
       let binding = add_struct_binding_scopes active_scopes binding in
-      let binding, introduced_scopes = expand_struct_binding ctx binding in
-      let acc = match binding with
-        | Syntax.MacroBinding _ -> acc
-        | _ -> binding :: acc
+      let expanded_bindings, introduced_scopes_list = expand_struct_binding ctx binding in
+      let acc =
+        List.fold_left (fun acc b -> match b with
+          | Syntax.MacroBinding _ -> acc
+          | _ -> b :: acc) acc expanded_bindings
       in
-      go (active_scopes @ introduced_scopes) acc rest
+      let active_scopes = active_scopes @ List.flatten introduced_scopes_list in
+      go active_scopes acc rest
   in
   go [] [] bindings
 
@@ -437,20 +441,18 @@ and expand_method_params_body ctx params body =
   in
   go [] [] [] params
 
-and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding) : Syntax.struct_binding * Scope_set.t list =
+and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding) : Syntax.struct_binding list * Scope_set.t list list =
   match binding with
   | LetBinding { name; value; public; recursive } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let value = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
-    (LetBinding { name = add_id_scope scope name;
-                  value; public; recursive },
-     [ scope ])
+    ([LetBinding { name = add_id_scope scope name; value; public; recursive }], [[ scope ]])
   | MethodBinding { name; params; body; public } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let params, body = expand_method_params_body ctx params body in
-    (MethodBinding { name = add_id_scope scope name; params; body; public }, [ scope ])
+    ([MethodBinding { name = add_id_scope scope name; params; body; public }], [[ scope ]])
   | TypeBinding { name; params; ctors; public } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
@@ -463,36 +465,36 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
              ((add_id_scope ctor_scope cname, payload), ctor_scope))
            ctors)
     in
-    (TypeBinding { name = add_id_scope scope name;
-                    params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) ps)) ctors; public },
-     scope :: ctor_scopes)
+    ([TypeBinding { name = add_id_scope scope name;
+                    params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) ps)) ctors; public }],
+     [scope :: ctor_scopes])
   | RecordTypeBinding { name; params; fields; public } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let params, param_scopes = expand_id_params ctx [] params in
-    (RecordTypeBinding { name = add_id_scope scope name;
-                         params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public },
-     [ scope ])
+    ([RecordTypeBinding { name = add_id_scope scope name;
+                          params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
+     [[ scope ]])
   | EffectBinding { name; params; ops; public } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let params, param_scopes = expand_id_params ctx [] params in
-    (EffectBinding { name = add_id_scope scope name;
-                     params; ops = List.map (fun op -> { op with input = expand ctx (add_scopes param_scopes op.input); output = expand ctx (add_scopes param_scopes op.output) }) ops; public },
-     [ scope ])
+    ([EffectBinding { name = add_id_scope scope name;
+                      params; ops = List.map (fun op -> { op with input = expand ctx (add_scopes param_scopes op.input); output = expand ctx (add_scopes param_scopes op.output) }) ops; public }],
+     [[ scope ]])
   | TraitBinding { name; params; fields; public } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let params, param_scopes = expand_id_params ctx [] params in
-    (TraitBinding { name = add_id_scope scope name;
-                    params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public },
-     [ scope ])
+    ([TraitBinding { name = add_id_scope scope name;
+                     params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
+     [[ scope ]])
   | ImplBinding { trait_path; trait_name; args; fields; public } ->
-    (ImplBinding { trait_path; trait_name; args = List.map (expand ctx) args;
-                     fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public },
-     [])
+    ([ImplBinding { trait_path; trait_name; args = List.map (expand ctx) args;
+                   fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public }],
+     [[]])
   | PatternSynBinding { name; params; rhs; public } ->
-     (PatternSynBinding { name; params; rhs; public }, [])
+     ([PatternSynBinding { name; params; rhs; public }], [[]])
   | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
@@ -504,10 +506,35 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
       let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
       Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
-      (MacroBinding { name = add_id_scope scope name; value; public; kind },
-       [ scope ])
+      ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]])
     | None ->
-      (MacroBinding { name; value = expand ctx value; public; kind }, [])
+      ([MacroBinding { name; value = expand ctx value; public; kind }], [[]])
+    end
+  | MacroCallBinding { f; args } ->
+    begin match f.kind, args with
+    | Var id, _ ->
+      begin match Expand_ctx.lookup_macro ctx id.name with
+      | Some macro_fn ->
+        begin match ctx.Expand_ctx.eval_and_apply with
+        | Some apply_fn ->
+          let macro_kind = match Expand_ctx.lookup_macro_kind ctx id.name with
+            | Some k -> k | None -> Syntax.MacroKind.default in
+          let ctx_kind = Expand_ctx.get_context_kind ctx in
+          if macro_kind <> ctx_kind then
+            failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
+                        id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
+          let fn = List.fold_left (fun fn arg ->
+            let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
+            apply_fn fn arg_stx) macro_fn args in
+          let result = Macro_eval.unwrap_stx_decl fn in
+          (match result with
+           | Some bindings -> (bindings, [])
+           | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name))
+        | None -> failwith "macro call requires an apply callback in expand context"
+        end
+      | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
+      end
+    | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
     end
 
 and expand_match_branch ctx = function

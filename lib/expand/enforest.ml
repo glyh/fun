@@ -1295,6 +1295,20 @@ and parse_pattern_syn_binding _env public stmt =
       Some (Syntax.PatternSynBinding { name = id ~span:name_span name; params; rhs; public })
   | _ -> None
 
+and parse_macro_call_binding env stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = Ident name; _ }; span = name_span }
+    :: { datum = Token { kind = At; _ }; _ }
+    :: { datum = Group (Raw_syntax.Paren, items, span); _ }
+    :: rest ->
+      let args = match drop_separators items with
+        | [] -> [ unit ~span () ]
+        | _ -> parse_args env items in
+      ensure_no_rest "macro call binding" rest;
+      let f = var ~span:name_span name in
+      Some (Syntax.MacroCallBinding { f; args })
+  | _ -> None
+
 and parse_named_module_binding env public stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwModule; _ }; span = module_span }
@@ -1336,14 +1350,15 @@ and parse_module_binding env stmt =
       match
         first_some
           [
-            parse_macro_binding env public;
-            parse_pattern_syn_binding env public;
-            parse_type_binding env public;
-            parse_effect_binding env public;
-            parse_trait_binding env public;
-            parse_impl_binding env public;
-            parse_named_module_binding env public;
-            parse_value_binding env public;
+             parse_macro_binding env public;
+             parse_macro_call_binding env;
+             parse_pattern_syn_binding env public;
+             parse_type_binding env public;
+             parse_effect_binding env public;
+             parse_trait_binding env public;
+             parse_impl_binding env public;
+             parse_named_module_binding env public;
+             parse_value_binding env public;
           ]
           stmt
       with
@@ -1420,7 +1435,11 @@ and parse_struct_binding env stmt =
       (match parse_macro_binding env public stmt with
       | Some _ when public -> error "pub macro is not supported inside structs"
       | Some binding -> Some binding
-      | None ->
+      | None -> (
+          match parse_macro_call_binding env stmt with
+          | Some _ when public -> error "pub macro call is not supported inside structs"
+          | Some binding -> Some binding
+          | None ->
       match
         first_some
           [
@@ -1436,7 +1455,7 @@ and parse_struct_binding env stmt =
           stmt
       with
       | Some binding -> Some binding
-      | None -> unsupported "unsupported Phase 7C struct item"))
+      | None -> unsupported "unsupported Phase 7C struct item")))
 
 and parse_struct_statement env stmt =
   let parse_decl terms = parse_struct_statement env terms in
