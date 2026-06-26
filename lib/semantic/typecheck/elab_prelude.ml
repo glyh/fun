@@ -76,8 +76,11 @@ pub module Syntax do
   pub pattern Atom(val) = RawAtom(_, val)
   pub TypeExpr : Type = Type
   pub Pattern : Type = Type
-  pub Decl : Type = Type
-  pub Decls : Type = Type
+  pub type Decl = DeclLet(Id, Expr, Bool)
+  pub type Decls = DeclNil | DeclCons(Decl, Decls)
+  pub decl_let = fn(name, val, is_pub) -> DeclLet(name, val, is_pub)
+  pub decl_nil = DeclNil
+  pub decl_cons = fn(head, tail) -> DeclCons(head, tail)
   pub synthetic_span = Span{file = None; start_byte = 0; end_byte = 0; start_line = None; start_col = None; end_line = None; end_col = None}
   pub new_id = fn(name) -> Id{name = name; span = synthetic_span; scope = 0}
   pub atom_val = fn(val) -> RawAtom(None, val)

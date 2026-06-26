@@ -35,6 +35,8 @@ type syntax_nominals = {
   explicitness : value;
   atom_val : value;
   option_ : value;
+  decl : value;
+  decls : value;
 }
 
 let vcon_none nominals =
@@ -263,16 +265,44 @@ let rec unwind_stx (v : value) : Syntax.t option =
 let unwrap_stx (v : value) : Syntax.t option = unwind_stx v
 
 let unwrap_stx_decl (v : value) : Syntax.struct_binding list option =
-  match v with
-  | VStx (StxDecl binding) -> Some [ binding ]
-  | VStx (StxDecls bindings) -> Some bindings
-  | VStx (StxExpr stx) -> (
-      match stx.kind with
-      | Syntax.Module { bindings } | Syntax.Struct { bindings; _ } -> Some bindings
-      | _ -> None)
-  | _ -> None
+  let rec go v =
+    match v with
+    | VCon { name = "DeclLet"; spine = [ id_val; expr_val; pub_val ]; _ } ->
+        (match unwind_stx expr_val with
+         | Some expr ->
+             let name = value_to_id id_val in
+             let public = value_to_bool pub_val in
+             [ Syntax.LetBinding { name; value = expr; public; recursive = false } ]
+         | None -> [])
+    | VCon { name = "DeclNil"; _ } -> []
+    | VCon { name = "DeclCons"; spine = [ head; tail ]; _ } ->
+        go head @ go tail
+    | VStx (StxDecl binding) -> [ binding ]
+    | VStx (StxDecls bindings) -> bindings
+    | VStx (StxExpr stx) -> (
+        match stx.kind with
+        | Syntax.Module { bindings } | Syntax.Struct { bindings; _ } -> bindings
+        | _ -> [])
+    | _ -> []
+  in
+  let result = go v in
+  if result = [] then None else Some result
 
-let wrap_stx_decl (bindings : Syntax.struct_binding list) : value =
-  match bindings with
-  | [ binding ] -> VStx (StxDecl binding)
-  | _ -> VStx (StxDecls bindings)
+let wrap_stx_decl ~nominals (bindings : Syntax.struct_binding list) : value =
+  match nominals with
+  | None ->
+      (match bindings with
+       | [ b ] -> VStx (StxDecl b)
+       | _ -> VStx (StxDecls bindings))
+  | Some n ->
+      let rec go = function
+        | [] -> VCon { name = "DeclNil"; spine = []; nominal = n.decls }
+        | Syntax.LetBinding { name; value; public; _ } :: rest ->
+            let id_val = id_to_value n name in
+            let expr_val = wrap_stx_sub n value in
+            let pub_val = VAtom (if public then Bool true else Bool false) in
+            let head = VCon { name = "DeclLet"; spine = [ id_val; expr_val; pub_val ]; nominal = n.decl } in
+            VCon { name = "DeclCons"; spine = [ head; go rest ]; nominal = n.decls }
+        | _ :: rest -> go rest  (* skip non-LetBindings for now *)
+      in
+      go bindings
