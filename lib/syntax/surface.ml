@@ -44,7 +44,7 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
-  | MacroBinding of { name : string; value : t; public : bool; has_problem : bool }
+  | MacroBinding of { name : string; value : t; public : bool; kind : Syntax.MacroKind.t option }
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
 
 and t =
@@ -107,7 +107,7 @@ and t =
   | RefGet of t
   | RefSet of t * t
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
-  | MacroDef of { name : string; value : t; body : t; has_problem : bool }
+  | MacroDef of { name : string; value : t; body : t; kind : Syntax.MacroKind.t option }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : string;

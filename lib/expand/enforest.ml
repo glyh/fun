@@ -140,7 +140,8 @@ and parse_type_atom env (terms : Raw_syntax.t list) :
       (var ~span "Unit", rest)
   | { datum = Token { kind = KwSelfType; _ }; span } :: rest ->
       (stx ~span Syntax.SelfType, rest)
-  | { datum = Token { kind = KwFn; _ }; span } :: rest -> parse_fn env span rest
+  | { datum = Token { kind = KwFn; _ }; span } :: rest ->
+      let _, expr, rest = parse_fn env span rest in (expr, rest)
   | { datum = Token { kind = KwModule; _ }; span } :: rest ->
       parse_module_expr env span rest
   | { datum = Token { kind = KwSig; _ }; span } :: rest ->
@@ -253,7 +254,7 @@ and parse_param_group env explicitness items =
   | [] -> error "empty implicit parameter list"
   | _ -> List.map (parse_param_item env explicitness) (split_commas items)
 
-and parse_fn_parts env ?(allow_empty = false) start_span terms =
+and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false) start_span terms =
   let terms = drop_separators terms in
   let implicit_params, rest =
     match terms with
@@ -267,18 +268,19 @@ and parse_fn_parts env ?(allow_empty = false) start_span terms =
     | ({ datum = Group (Raw_syntax.Paren, items, _); _ } as group) :: rest ->
         let previous_span =
           match terms with
-          | ({ datum = Group (Raw_syntax.Bracket, _, _); _ } as implicit_group)
-            :: _ ->
-              implicit_group.span
-          | _ -> start_span
-        in
-        require_adjacent_span previous_span group.span
-          "explicit fn parameter list";
+          | ({ datum = Group (Raw_syntax.Bracket, _, _); _ } as g) :: _ -> g.span
+          | _ -> start_span in
+        require_adjacent_span previous_span group.span "explicit fn parameter list";
         (parse_param_group env Explicitness.Explicit items, rest)
     | rest when implicit_params <> [] || allow_empty -> ([], rest)
     | _ -> error "fn requires at least one parameter list"
   in
   let params = implicit_params @ explicit_params in
+  let kind, rest = if kind_annotation then
+    match drop_separators rest with
+    | { datum = Token { kind = Colon; _ }; _ } :: { datum = Token { kind = Ident k; _ }; _ } :: rest ->
+      (Syntax.MacroKind.of_string k, drop_separators rest)
+    | _ -> (None, rest) else (None, rest) in
   let body, rest, span =
     match drop_separators rest with
     | arrow :: body_terms when token_kind ThinArrow arrow ->
@@ -286,16 +288,14 @@ and parse_fn_parts env ?(allow_empty = false) start_span terms =
         (body, [], span_between start_span body.span)
     | do_kw :: body_rest when token_kind KwDo do_kw ->
         let body_terms, rest, span = collect_until_end do_kw.span body_rest in
-        let body = parse_do_body_terms env span body_terms in
-        (body, rest, span_between start_span span)
+        (parse_do_body_terms env span body_terms, rest, span_between start_span span)
     | _ -> error "expected -> or do after fn parameters"
   in
-  (params, body, rest, span)
+  (params, kind, body, rest, span)
 
-and parse_fn env start_span terms =
-  let params, body, rest, span = parse_fn_parts env start_span terms in
-  ( List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body,
-    rest )
+and parse_fn ?(kind_annotation = false) env start_span terms =
+  let params, kind, body, rest, span = parse_fn_parts ~kind_annotation env start_span terms in
+  (kind, List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body, rest)
 
 and parse_method_params env items =
   let items = drop_separators items in
@@ -466,7 +466,8 @@ and parse_primary env terms =
             "impl ... in syntax is not supported; use do blocks and impl \
              declarations"
       | Token { kind = KwDo; _ } -> parse_do env term.span rest
-      | Token { kind = KwFn; _ } -> parse_fn env term.span rest
+      | Token { kind = KwFn; _ } ->
+          let _, expr, rest = parse_fn env term.span rest in (expr, rest)
       | Token { kind = KwIf; _ } -> parse_if env term.span rest
       | Token { kind = KwMatch; _ } -> parse_match env term.span rest
       | Token { kind = KwRef; _ } -> parse_ref env term.span rest
@@ -743,7 +744,7 @@ and parse_value_decl_after_prefix env ~recursive stmt =
   | { datum = Token { kind = KwFn; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
     :: rest ->
-      let value, rest = parse_fn env name_span rest in
+      let _, value, rest = parse_fn env name_span rest in
       ensure_no_rest "function declaration" rest;
       Some
         {
@@ -1219,55 +1220,29 @@ and parse_do_body_terms env span body_terms =
             List.map
               (fun stmt ->
                 match parse_operator_decl_in_do env stmt with
-                | Some
-                    (MacroSyntaxDecl
-                       { syntax_name = name; syntax_value = value; _ }) ->
-                    fun acc ->
-                      stx ~span (Syntax.MacroDef { name; value; body = acc; has_problem = false })
+                | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
+                    fun acc -> stx ~span (Syntax.MacroDef { name; value; body = acc; kind = None })
                 | Some (TemplateSyntaxDecl _) -> fun acc -> acc
                 | None -> (
                     match parse_macro_binding env false stmt with
-                    | Some (Syntax.MacroBinding { name; value; public = false; has_problem; _ })
-                      ->
-                        fun acc ->
-                          stx ~span
-                            (Syntax.MacroDef { name; value; body = acc; has_problem })
+                    | Some (Syntax.MacroBinding { name; value; public = false; kind; _ }) ->
+                        fun acc -> stx ~span (Syntax.MacroDef { name; value; body = acc; kind })
                     | Some (Syntax.MacroBinding { public = true; _ }) ->
                         error "pub macro is not supported inside do blocks"
                     | Some _ -> error "unexpected non-macro binding"
                     | None -> (
                         match parse_binding_statement env stmt with
-                        | Some
-                            {
-                              decl_name = name;
-                              decl_type = type_;
-                              decl_value = value;
-                              decl_recursive = recursive;
-                            } ->
-                            fun acc ->
-                              stx ~span
-                                (Syntax.Let
-                                   { name; type_; value; body = acc; recursive })
+                        | Some { decl_name = name; decl_type = type_; decl_value = value; decl_recursive = recursive } ->
+                            fun acc -> stx ~span (Syntax.Let { name; type_; value; body = acc; recursive })
                         | None -> (
                             match parse_open_statement stmt with
-                            | Some name ->
-                                fun acc -> stx ~span (Syntax.Open (name, acc))
+                            | Some name -> fun acc -> stx ~span (Syntax.Open (name, acc))
                             | None -> (
                                 match parse_import_statement env stmt with
                                 | Some value ->
-                                    fun acc ->
-                                      stx ~span
-                                        (Syntax.Let
-                                           {
-                                             name = id ~span:value.span "_";
-                                             type_ = None;
-                                             value;
-                                             body = acc;
-                                             recursive = false;
-                                           })
+                                    fun acc -> stx ~span (Syntax.Let { name = id ~span:value.span "_"; type_ = None; value; body = acc; recursive = false })
                                 | None ->
-                                    fun acc ->
-                                      scoped_binding_to_expr env span stmt acc))
+                                    fun acc -> scoped_binding_to_expr env span stmt acc))
                         )))
               statements
           in
@@ -1288,7 +1263,7 @@ and parse_public_prefix stmt =
 and parse_syntax_binding env public stmt =
   match parse_operator_decl env stmt with
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
-      Some (Syntax.MacroBinding { name; value; public ; has_problem = false })
+      Some (Syntax.MacroBinding { name; value; public ; kind = None })
   | Some (TemplateSyntaxDecl _) -> None
   | None -> None
 
@@ -1297,15 +1272,10 @@ and parse_macro_binding env public stmt =
   | { datum = Token { kind = KwMacro; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
     :: rest ->
-      let has_problem =
-        match drop_separators rest with
-        | { datum = Group (Raw_syntax.Bracket, _, _); _ } :: _ -> true
-        | _ -> false
-      in
-      let value, rest = parse_fn env name_span rest in
+      let kind, value, rest = parse_fn ~kind_annotation:true env name_span rest in
       ensure_no_rest "macro binding" rest;
       Some
-        (Syntax.MacroBinding { name = id ~span:name_span name; value; public; has_problem })
+        (Syntax.MacroBinding { name = id ~span:name_span name; value; public; kind })
    | _ -> None
 
 and parse_pattern_syn_binding _env public stmt =
@@ -1361,7 +1331,7 @@ and parse_module_binding env stmt =
       None
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; syntax_export; _ }) ->
       if public then env.exports_collector := syntax_export :: !(env.exports_collector);
-      Some (Syntax.MacroBinding { name; value; public ; has_problem = false })
+      Some (Syntax.MacroBinding { name; value; public ; kind = None })
   | None -> (
       match
         first_some
@@ -1445,7 +1415,7 @@ and parse_struct_binding env stmt =
       if public then error "pub syntax is not supported inside structs" else None
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
       if public then error "pub operator is not supported inside structs"
-      else Some (Syntax.MacroBinding { name; value; public ; has_problem = false })
+      else Some (Syntax.MacroBinding { name; value; public ; kind = None })
   | None -> (
       (match parse_macro_binding env public stmt with
       | Some _ when public -> error "pub macro is not supported inside structs"

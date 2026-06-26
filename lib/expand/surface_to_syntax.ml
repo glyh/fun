@@ -69,7 +69,7 @@ and expr (e : Surface.t) : Syntax.t =
     | Match (scrut, branches) ->
       Syntax.Match (expr scrut, List.map match_branch branches)
     | MacroDef { name; value; body; _ } ->
-      Syntax.MacroDef { name = id name; value = expr value; body = expr body; has_problem = false }
+      Syntax.MacroDef { name = id name; value = expr value; body = expr body; kind = None }
     | MacroCall (f, a) ->
       Syntax.MacroCall (expr f, List.map (expr) a)
     | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
@@ -95,7 +95,7 @@ and struct_binding = function
     Syntax.ImplBinding { trait_path; trait_name; args = List.map expr args;
                          fields = List.map (fun (name, value) -> (name, expr value)) fields; public }
   | Surface.MacroBinding { name; value; public; _ } ->
-    Syntax.MacroBinding { name = id name; value = expr value; public; has_problem = false }
+    Syntax.MacroBinding { name = id name; value = expr value; public; kind = None }
   | Surface.PatternSynBinding { name; params; rhs; public } ->
     Syntax.PatternSynBinding { name = id name; params = List.map id params;
                                rhs = pat_ rhs; public }

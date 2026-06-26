@@ -35,7 +35,6 @@ type syntax_nominals = {
   explicitness : value;
   atom_val : value;
   option_ : value;
-  problem : value;
 }
 
 let vcon_none nominals =

@@ -72,7 +72,7 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.Match (scrut, brs) ->
     Surface.Match (lower_expr scrut, List.map lower_match_branch brs)
   | Syntax.MacroDef { name; value; body; _ } ->
-    Surface.MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body; has_problem = false }
+    Surface.MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body; kind = None }
   | Syntax.MacroCall (f, a) -> Surface.MacroCall (lower_expr f, List.map lower_expr a)
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
     let fixity = match fixity with Syntax.PrefixOp -> Surface.PrefixOp | Syntax.InfixOp -> Surface.InfixOp in
@@ -95,7 +95,7 @@ and lower_struct_binding = function
     Surface.ImplBinding { trait_path; trait_name; args = List.map lower_expr args;
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.MacroBinding { name; value; public; _ } ->
-    Surface.MacroBinding { name = lower_id name; value = lower_expr value; public; has_problem = false }
+    Surface.MacroBinding { name = lower_id name; value = lower_expr value; public; kind = None }
   | Syntax.PatternSynBinding { name; params; rhs; public } ->
     Surface.PatternSynBinding { name = lower_id name;
                                 params = List.map lower_id params;

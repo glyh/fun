@@ -94,7 +94,7 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
   | Match (scrut, brs) ->
     Match (go scrut, List.map (go_match_branch ?within s) brs)
   | MacroDef { name; value; body; _ } ->
-    MacroDef { name = add_id_scope_if within s name; value = go value; body = go body; has_problem = false }
+    MacroDef { name = add_id_scope_if within s name; value = go value; body = go body; kind = None }
   | MacroCall (f, args) ->
     MacroCall (go f, List.map go args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
@@ -126,7 +126,7 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
     ImplBinding { trait_path; trait_name; args = List.map (add_scope ?within s) args;
                   fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
   | MacroBinding { name; value; public; _ } ->
-    MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public; has_problem = false }
+    MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public; kind = None }
   | PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = add_id_scope_if within s name; params; rhs; public }
 
@@ -312,22 +312,25 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind =
         Match (expand ctx scrut,
                List.map (expand_match_branch ctx) brs) }
-  | MacroDef { name; value; body; has_problem; _ } ->
+  | MacroDef { name; value; body; kind; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let value = expand ctx value in
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
+      let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
       let previous = Expand_ctx.lookup_macro ctx name.name in
-      if has_problem then
-        Expand_ctx.register_macro_with_problem ctx ~name:name.name ~value:macro_fn
-      else
-        Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
+      let previous_kind = Expand_ctx.lookup_macro_kind ctx name.name in
+      Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
+      Expand_ctx.register_macro_kind ctx ~name:name.name ~kind:resolved_kind;
       Fun.protect
         ~finally:(fun () ->
-          match previous with
-          | Some value -> Expand_ctx.register_macro ctx ~name:name.name ~value
-          | None -> Hashtbl.remove ctx.Expand_ctx.macro_table name.name)
+          match previous, previous_kind with
+          | Some value, Some kind ->
+            Expand_ctx.register_macro ctx ~name:name.name ~value;
+            Expand_ctx.register_macro_kind ctx ~name:name.name ~kind
+          | _ -> (Hashtbl.remove ctx.Expand_ctx.macro_table name.name;
+                  Hashtbl.remove ctx.Expand_ctx.macro_kind_table name.name))
         (fun () -> expand ctx body)
     | None ->
       failwith "macro definition requires an elaboration callback in expand context"
@@ -339,26 +342,21 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       | Some macro_fn ->
         begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
-          let problem_args =
-            if Expand_ctx.macro_has_problem ctx id.name then
-              match Expand_ctx.get_current_problem ctx with
-              | Some p -> [ p ]
-              | None ->
-                  begin match ctx.Expand_ctx.syntax_nominals with
-                  | Some n -> [ let open Core in VCon { name = "ExprProblem"; spine = []; nominal = n.Macro_eval.problem } ]
-                  | None -> []
-                  end
-            else []
+          let macro_kind =
+            match Expand_ctx.lookup_macro_kind ctx id.name with
+            | Some k -> k
+            | None -> Syntax.MacroKind.default
           in
+          let ctx_kind = Expand_ctx.get_context_kind ctx in
+          if macro_kind <> ctx_kind then
+            failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
+                        id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
           let result =
             with_syntax_operator_context (List.hd args) (fun () ->
-                let fn =
-                  List.fold_left (fun fn v -> apply_fn fn v) macro_fn problem_args
-                in
                 List.fold_left (fun fn arg ->
                     let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
                     apply_fn fn arg_stx)
-                  fn args)
+                  macro_fn args)
           in
           begin match Macro_eval.unwrap_stx result with
           | Some expanded -> expand ctx expanded
@@ -495,7 +493,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [])
   | PatternSynBinding { name; params; rhs; public } ->
      (PatternSynBinding { name; params; rhs; public }, [])
-  | MacroBinding { name; value; public; has_problem } ->
+  | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let value = expand ctx value in
@@ -503,14 +501,13 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
       let macro_fn = elab lowered in
       let binding_name = id_name name in
       let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
-      if has_problem then
-        Expand_ctx.register_macro_with_problem ctx ~name:binding_name ~value:macro_fn
-      else
-        Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
-      (MacroBinding { name = add_id_scope scope name; value; public; has_problem },
+      let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
+      Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
+      Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
+      (MacroBinding { name = add_id_scope scope name; value; public; kind },
        [ scope ])
     | None ->
-      (MacroBinding { name; value = expand ctx value; public; has_problem }, [])
+      (MacroBinding { name; value = expand ctx value; public; kind }, [])
     end
 
 and expand_match_branch ctx = function

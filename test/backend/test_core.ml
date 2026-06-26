@@ -814,18 +814,13 @@ let test_eval_continuation_reuse_error () =
       | _ -> Alcotest.fail "expected continuation reuse error")
   | _ -> Alcotest.fail "unexpected continuation result"
 
-let eval_with_macros ?(problem = None) source =
+let eval_with_macros ?(context_kind = Syntax.MacroKind.Expr) source =
   let ctx = Elaborate.init_ctx () in
   let nominals =
     { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];
       explicitness = Elaborate.resolve_stdlib ctx ["Syntax"; "Explicitness"];
       atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
-      option_ = Elaborate.resolve_stdlib ctx ["Option"];
-      problem = Elaborate.resolve_stdlib ctx ["Syntax"; "Problem"] }
-  in
-  let problem = match problem with
-    | Some p -> p
-    | None -> Core.VCon { name = "ExprProblem"; spine = []; nominal = Elaborate.resolve_stdlib ctx ["Syntax"; "Problem"] }
+      option_ = Elaborate.resolve_stdlib ctx ["Option"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -835,7 +830,7 @@ let eval_with_macros ?(problem = None) source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~current_problem:problem source in
+  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~context_kind source in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
@@ -991,32 +986,42 @@ let test_macro_multi_arg_swap () =
        flip @ (5, 3)
      end" ()
 
-let test_macro_problem_aware () =
-  check_i64_macro "macro problem-aware (default Expr)" 1L
+let test_macro_default_expr () =
+  check_i64_macro "macro default kind Expr" 1L
     "do
-       macro check[why](stx) -> match why do | Syntax.ExprProblem -> Syntax.i64(1) | _ -> Syntax.i64(0) end
+       macro check(stx) -> Syntax.i64(1)
        check @ (0)
      end" ()
 
-let test_macro_problem_pattern () =
-  let ctx = Elaborate.init_ctx () in
-  let problem = Core.VCon { name = "PatternProblem"; spine = []; nominal = Elaborate.resolve_stdlib ctx ["Syntax"; "Problem"] } in
-  match eval_with_macros ~problem:(Some problem) "do macro check[why](_) -> match why do | Syntax.ExprProblem -> Syntax.i64(1) | _ -> Syntax.i64(2) end; check @ (9) end" with
-  | VAtom (I64 n) -> Alcotest.(check int64) "PatternProblem returns 2" 2L n
-  | v ->
-      let mc = MetaContext.create () in
-      Alcotest.fail (Debug.pp_value_short mc v)
-  | exception e -> Alcotest.fail (Printexc.to_string e)
+let test_macro_expr_annotation () =
+  check_i64_macro "macro : Expr explicit annotation" 1L
+    "do
+       macro check(_) : Expr -> Syntax.i64(1)
+       check @ (0)
+     end" ()
 
-let test_macro_problem_decl () =
-  let ctx = Elaborate.init_ctx () in
-  let problem = Core.VCon { name = "DeclProblem"; spine = []; nominal = Elaborate.resolve_stdlib ctx ["Syntax"; "Problem"] } in
-  match eval_with_macros ~problem:(Some problem) "do macro check[why](_) -> match why do | Syntax.ExprProblem -> Syntax.i64(1) | Syntax.PatternProblem -> Syntax.i64(2) | _ -> Syntax.i64(3) end; check @ (9) end" with
-  | VAtom (I64 n) -> Alcotest.(check int64) "DeclProblem returns 3" 3L n
+let test_macro_decl_in_expr_context () =
+  match
+    eval_with_macros
+      "do
+         macro check(_) : Decl -> Syntax.i64(1)
+         check @ (0)
+       end"
+  with
+  | exception (Failure msg) ->
+      Alcotest.(check bool) "Decl macro in Expr context rejected"
+        true (string_contains msg "has kind Decl but was used in Expr context")
   | v ->
       let mc = MetaContext.create () in
-      Alcotest.fail (Debug.pp_value_short mc v)
-  | exception e -> Alcotest.fail (Printexc.to_string e)
+      Alcotest.fail (Printf.sprintf "expected failure, got: %s" (Debug.pp_value_short mc v))
+
+let test_macro_name_shadowing () =
+  check_i64_macro "macro name shadowing regardless of kind" 1L
+    "do
+       macro m(_) : Decl -> Syntax.i64(0)
+       macro m(stx) -> Syntax.i64(1)
+       m @ (0)
+     end" ()
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2284,9 +2289,10 @@ let () =
           Alcotest.test_case "infix uses operands" `Quick test_operator_uses_operands;
           Alcotest.test_case "macro multi-arg" `Quick test_macro_multi_arg;
           Alcotest.test_case "macro multi-arg swap" `Quick test_macro_multi_arg_swap;
-          Alcotest.test_case "macro problem-aware" `Quick test_macro_problem_aware;
-          Alcotest.test_case "macro problem-pattern" `Quick test_macro_problem_pattern;
-          Alcotest.test_case "macro problem-decl" `Quick test_macro_problem_decl;
+          Alcotest.test_case "macro default kind Expr" `Quick test_macro_default_expr;
+          Alcotest.test_case "macro : Expr annotation" `Quick test_macro_expr_annotation;
+          Alcotest.test_case "macro Decl in Expr context rejected" `Quick test_macro_decl_in_expr_context;
+          Alcotest.test_case "macro name shadowing regardless of kind" `Quick test_macro_name_shadowing;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;

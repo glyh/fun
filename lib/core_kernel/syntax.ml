@@ -1,3 +1,10 @@
+module MacroKind = struct
+  type t = Expr | Decl
+  let default = Expr
+  let to_string = function Expr -> "Expr" | Decl -> "Decl"
+  let of_string = function "Decl" -> Some Decl | "Expr" -> Some Expr | _ -> None
+end
+
 type id = {
   name : string;
   span : Source_span.t;
@@ -49,7 +56,7 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
-  | MacroBinding of { name : id; value : t; public : bool; has_problem : bool }
+  | MacroBinding of { name : id; value : t; public : bool; kind : MacroKind.t option }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
 
 and t = {
@@ -117,7 +124,7 @@ and kind =
   | RefGet of t
   | RefSet of t * t
   | Match of t * match_branch list
-  | MacroDef of { name : id; value : t; body : t; has_problem : bool }
+  | MacroDef of { name : id; value : t; body : t; kind : MacroKind.t option }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : id;

@@ -6,8 +6,8 @@ type t = {
   mutable scope_counter : int;
   mutable name_counter : int;
   mutable macro_table : (string, Core.value) Hashtbl.t;
-  mutable macro_has_problem : (string, unit) Hashtbl.t;
-  mutable current_problem : Core.value option;
+  mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
+  mutable context_kind : Syntax.MacroKind.t;
   mutable elaborate : (Surface.t -> Core.value) option;
   mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
   mutable load_macros : (t -> string -> unit) option;
@@ -21,8 +21,8 @@ let create ?loader () =
     scope_counter = 0;
     name_counter = 0;
     macro_table = Hashtbl.create 8;
-    macro_has_problem = Hashtbl.create 8;
-    current_problem = None;
+    macro_kind_table = Hashtbl.create 8;
+    context_kind = Syntax.MacroKind.Expr;
     elaborate = None;
     eval_and_apply = None;
     load_macros = None;
@@ -40,11 +40,6 @@ let fresh_scope (ctx : t) : int =
 let fresh_scope_set (ctx : t) : Scope_set.t =
   Scope_set.singleton (fresh_scope ctx)
 
-(** Suffix a fresh internal name (e.g. "x__0") when a binder shadows a
-    previously seen written name.  This is only for debugging / lowering
-    hygiene tests: the elaborator's own sequential [Ctx.define]/[lookup]
-    already handles shadowing correctly regardless of the lowered string.
-    Scope-set resolution remains the authoritative hygiene model. *)
 let fresh_resolved_name (ctx : t) name =
   if Binding.has_name ctx.binding_table name then begin
     let i = ctx.name_counter in
@@ -81,8 +76,8 @@ let copy (ctx : t) : t =
     scope_counter = ctx.scope_counter;
     name_counter = ctx.name_counter;
     macro_table = Hashtbl.copy ctx.macro_table;
-    macro_has_problem = Hashtbl.copy ctx.macro_has_problem;
-    current_problem = ctx.current_problem;
+    macro_kind_table = Hashtbl.copy ctx.macro_kind_table;
+    context_kind = ctx.context_kind;
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
     load_macros = ctx.load_macros;
@@ -92,26 +87,20 @@ let copy (ctx : t) : t =
 let register_macro (ctx : t) ~name ~value =
   Hashtbl.replace ctx.macro_table name value
 
-let register_macro_with_problem (ctx : t) ~name ~value =
-  Hashtbl.replace ctx.macro_table name value;
-  Hashtbl.replace ctx.macro_has_problem name ()
-
-let set_current_problem (ctx : t) problem =
-  ctx.current_problem <- Some problem
-
-let get_current_problem (ctx : t) =
-  ctx.current_problem
-
-let macro_has_problem (ctx : t) name =
-  Hashtbl.mem ctx.macro_has_problem name
-
-let get_current_problem_or_default (ctx : t) ~default =
-  match ctx.current_problem with
-  | Some p -> p
-  | None -> default
+let register_macro_kind (ctx : t) ~name ~kind =
+  Hashtbl.replace ctx.macro_kind_table name kind
 
 let lookup_macro (ctx : t) name =
   Hashtbl.find_opt ctx.macro_table name
+
+let lookup_macro_kind (ctx : t) name =
+  Hashtbl.find_opt ctx.macro_kind_table name
+
+let set_context_kind (ctx : t) kind =
+  ctx.context_kind <- kind
+
+let get_context_kind (ctx : t) =
+  ctx.context_kind
 
 let resolve (ctx : t) (id : Syntax.id) : Binding.binding_info option =
   Binding.resolve ctx.binding_table id
