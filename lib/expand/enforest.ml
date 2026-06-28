@@ -286,6 +286,16 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
       match drop_separators rest with
       | { datum = Token { kind = Colon; _ }; _ }
         :: { datum = Token { kind = Ident k; _ }; _ }
+        :: { datum = Group (Raw_syntax.Paren, [ { datum = Token { kind = Ident inner; _ }; _ } ], _); _ }
+        :: rest ->
+          let rest = drop_separators rest in
+          let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
+          let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+          (Some (Syntax.MacroKind.Expr (Some (k ^ "(" ^ inner ^ ")"))),
+           Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
+           rest)
+      | { datum = Token { kind = Colon; _ }; _ }
+        :: { datum = Token { kind = Ident k; _ }; _ }
         :: rest ->
           let rest = drop_separators rest in
           (match Syntax.MacroKind.of_string k with
