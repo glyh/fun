@@ -37,6 +37,7 @@ type syntax_nominals = {
   option_ : value;
   decl : value;
   list : value;
+  pat : value;
 }
 
 let vcon_none nominals =
@@ -307,3 +308,69 @@ let wrap_stx_decl ~nominals (bindings : Syntax.struct_binding list) : value =
         | _ :: rest -> go rest  (* skip non-LetBindings for now *)
       in
       go bindings
+
+let unwrap_stx_pat (v : value) : Syntax.pat option =
+  let rec go v =
+    match v with
+    | VCon { name = "RawPatWild"; spine = [ _span_val ]; _ } ->
+        Some Syntax.PatWild
+    | VCon { name = "RawPatBind"; spine = [ _span_val; id_val ]; _ } ->
+        Some (Syntax.PatBind (value_to_id id_val))
+    | VCon { name = "RawPatCon"; spine = [ _span_val; ctor_val; args_val ]; _ } ->
+        let ctor = value_to_id ctor_val in
+        let args = unwind_stx_list args_val |> List.filter_map go in
+        Some (Syntax.PatCon ([], ctor.name, args))
+    | VCon { name = "RawPatAtom"; spine = [ _span_val; atom_val ]; _ } ->
+        (match atomval_to_atom atom_val with
+         | Some a -> Some (Syntax.PatAtom a)
+         | None -> None)
+    | VCon { name = "RawPatProd"; spine = [ _span_val; pats_val ]; _ } ->
+        let pats = unwind_stx_list pats_val |> List.filter_map go in
+        Some (Syntax.PatProd pats)
+    | VCon { name = "RawPatOr"; spine = [ _span_val; l_val; r_val ]; _ } ->
+        (match go l_val, go r_val with
+         | Some l, Some r -> Some (Syntax.PatOr (l, r))
+         | _ -> None)
+    | VStx (StxPattern p) -> Some p
+    | _ -> None
+  and unwind_stx_list v =
+    match v with
+    | VCon { name = "Nil"; _ } -> []
+    | VCon { name = "Cons"; spine = [ head; tail ]; _ } -> head :: unwind_stx_list tail
+    | _ -> []
+  in
+  go v
+
+let wrap_stx_pat ~nominals (p : Syntax.pat) : value =
+  match nominals with
+  | None -> VStx (StxPattern p)
+  | Some n ->
+    let span_opt = VCon { name = "None"; spine = []; nominal = n.option_ } in
+    let rec go p =
+      match p with
+      | Syntax.PatWild ->
+          VCon { name = "RawPatWild"; spine = [ span_opt ]; nominal = n.pat }
+      | Syntax.PatBind id ->
+          let id_val = id_to_value n id in
+          VCon { name = "RawPatBind"; spine = [ span_opt; id_val ]; nominal = n.pat }
+      | Syntax.PatCon (_, ctor, args) ->
+          let ctor_val = id_to_value n { Syntax.name = ctor; span = Source_span.synthetic; scope = Scope_set.empty } in
+          let args_val = list_to_stx_value n (List.map go args) in
+          VCon { name = "RawPatCon"; spine = [ span_opt; ctor_val; args_val ]; nominal = n.pat }
+      | Syntax.PatAtom a ->
+          let atom_val = atom_to_atomval n a in
+          VCon { name = "RawPatAtom"; spine = [ span_opt; atom_val ]; nominal = n.pat }
+      | Syntax.PatProd pats ->
+          let pats_val = list_to_stx_value n (List.map go pats) in
+          VCon { name = "RawPatProd"; spine = [ span_opt; pats_val ]; nominal = n.pat }
+      | Syntax.PatOr (l, r) ->
+          let l_val = go l in
+          let r_val = go r in
+          VCon { name = "RawPatOr"; spine = [ span_opt; l_val; r_val ]; nominal = n.pat }
+      | Syntax.PatRecord _ | Syntax.PatStructType _ | Syntax.PatType _ ->
+          VStx (StxPattern p)
+    and list_to_stx_value n = function
+      | [] -> VCon { name = "Nil"; spine = []; nominal = n.list }
+      | h :: t -> VCon { name = "Cons"; spine = [ h; list_to_stx_value n t ]; nominal = n.list }
+    in
+    go p

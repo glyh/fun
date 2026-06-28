@@ -76,7 +76,14 @@ pub module Syntax do
   pub pattern Let(name, val, body) = RawLet(_, name, _, val, body, _)
   pub pattern Atom(val) = RawAtom(_, val)
   pub TypeExpr : Type = Type
-  pub Pattern : Type = Type
+  pub type Pattern =
+    | RawPatWild(Option(Span))
+    | RawPatBind(Option(Span), Id)
+    | RawPatAtom(Option(Span), AtomVal)
+  pub pat_wild = RawPatWild(None)
+  pub pat_var = fn(id) -> RawPatBind(None, id)
+  pub pat_atom = fn(val) -> RawPatAtom(None, val)
+  pub pat_wildcard = pat_wild
   pub type Decl = DeclLet(Id, Expr, Bool)
   pub Decls = List(Decl)
   pub decl_let = fn(name, val, is_pub) -> DeclLet(name, val, is_pub)

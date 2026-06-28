@@ -1,4 +1,4 @@
-type delimiter = Paren | Bracket | Brace
+type delimiter = Paren | Bracket | Brace [@@deriving show]
 
 type token_kind =
   | Ident of string
@@ -57,20 +57,24 @@ type token_kind =
   | DatumComment
   | Operator of string
   | Eof
+[@@deriving show]
 
 type token = {
   kind : token_kind;
   span : Source_span.t;
 }
+[@@deriving show]
 
 type datum =
   | Token of token
   | Group of delimiter * t list * Source_span.t
+[@@deriving show]
 
 and t = {
   datum : datum;
   span : Source_span.t;
 }
+[@@deriving show]
 
 exception Error of string
 

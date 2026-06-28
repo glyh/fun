@@ -427,6 +427,14 @@ and split_statements terms =
           merge_cont (a :: acc) (b :: rest) in
   merge_cont [] stmts
 
+let debug_desc_token term =
+  match term.Raw_syntax.datum with
+  | Token { kind = Ident n; _ } -> Printf.sprintf "Ident(%s)" n
+  | Token { kind; _ } -> punct_name kind |> Option.value ~default:"?"
+  | Group (Bracket, _, _) -> "[...]"
+  | Group (Paren, _, _) -> "(...)"
+  | Group (Brace, _, _) -> "{...}"
+
 let rec push_and_recover env span kind rest =
   push_error env span kind;
   skip_to_statement_boundary rest

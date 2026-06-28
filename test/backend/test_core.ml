@@ -822,7 +822,8 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.Expr) source =
       atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
       option_ = Elaborate.resolve_stdlib ctx ["Option"];
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
-      list = Elaborate.resolve_stdlib ctx ["List"] }
+      list = Elaborate.resolve_stdlib ctx ["List"];
+      pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -844,7 +845,8 @@ let eval_decl_module source =
       atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
       option_ = Elaborate.resolve_stdlib ctx ["Option"];
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
-      list = Elaborate.resolve_stdlib ctx ["List"] }
+      list = Elaborate.resolve_stdlib ctx ["List"];
+      pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in

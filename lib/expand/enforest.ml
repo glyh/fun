@@ -141,7 +141,8 @@ and parse_type_atom env (terms : Raw_syntax.t list) :
   | { datum = Token { kind = KwSelfType; _ }; span } :: rest ->
       (stx ~span Syntax.SelfType, rest)
   | { datum = Token { kind = KwFn; _ }; span } :: rest ->
-      let _, expr, rest = parse_fn env span rest in (expr, rest)
+      let _, expr, rest = parse_fn env span rest in
+      (expr, rest)
   | { datum = Token { kind = KwModule; _ }; span } :: rest ->
       parse_module_expr env span rest
   | { datum = Token { kind = KwSig; _ }; span } :: rest ->
@@ -254,7 +255,8 @@ and parse_param_group env explicitness items =
   | [] -> error "empty implicit parameter list"
   | _ -> List.map (parse_param_item env explicitness) (split_commas items)
 
-and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false) start_span terms =
+and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
+    start_span terms =
   let terms = drop_separators terms in
   let implicit_params, rest =
     match terms with
@@ -268,19 +270,27 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false) start_s
     | ({ datum = Group (Raw_syntax.Paren, items, _); _ } as group) :: rest ->
         let previous_span =
           match terms with
-          | ({ datum = Group (Raw_syntax.Bracket, _, _); _ } as g) :: _ -> g.span
-          | _ -> start_span in
-        require_adjacent_span previous_span group.span "explicit fn parameter list";
+          | ({ datum = Group (Raw_syntax.Bracket, _, _); _ } as g) :: _ ->
+              g.span
+          | _ -> start_span
+        in
+        require_adjacent_span previous_span group.span
+          "explicit fn parameter list";
         (parse_param_group env Explicitness.Explicit items, rest)
     | rest when implicit_params <> [] || allow_empty -> ([], rest)
     | _ -> error "fn requires at least one parameter list"
   in
   let params = implicit_params @ explicit_params in
-  let kind, rest = if kind_annotation then
-    match drop_separators rest with
-    | { datum = Token { kind = Colon; _ }; _ } :: { datum = Token { kind = Ident k; _ }; _ } :: rest ->
-      (Syntax.MacroKind.of_string k, drop_separators rest)
-    | _ -> (None, rest) else (None, rest) in
+  let kind, rest =
+    if kind_annotation then
+      match drop_separators rest with
+      | { datum = Token { kind = Colon; _ }; _ }
+        :: { datum = Token { kind = Ident k; _ }; _ }
+        :: rest ->
+          (Syntax.MacroKind.of_string k, drop_separators rest)
+      | _ -> (None, rest)
+    else (None, rest)
+  in
   let body, rest, span =
     match drop_separators rest with
     | arrow :: body_terms when token_kind ThinArrow arrow ->
@@ -288,39 +298,56 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false) start_s
         (body, body_rest, span_between start_span body.span)
     | do_kw :: body_rest when token_kind KwDo do_kw ->
         let body_terms, rest, span = collect_until_end do_kw.span body_rest in
-        (parse_do_body_terms env span body_terms, rest, span_between start_span span)
+        ( parse_do_body_terms env span body_terms,
+          rest,
+          span_between start_span span )
     | _ -> error "expected -> or do after fn parameters"
   in
   (params, kind, body, rest, span)
 
 and parse_fn ?(kind_annotation = false) env start_span terms =
-  let params, kind, body, rest, span = parse_fn_parts ~kind_annotation env start_span terms in
-  (kind, List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body, rest)
+  let params, kind, body, rest, span =
+    parse_fn_parts ~kind_annotation env start_span terms
+  in
+  ( kind,
+    List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body,
+    rest )
 
 and parse_method_params env items =
   let items = drop_separators items in
   if items = [] then [] else parse_param_group env Explicitness.Explicit items
 
 and parse_method_binding env public stmt =
-  let header = Parse_spec.seq (Parse_spec.punct KwMethod) Parse_spec.str_ident in
+  let header =
+    Parse_spec.seq (Parse_spec.punct KwMethod) Parse_spec.str_ident
+  in
   match Parse_spec.parse header env stmt with
-  | Some (((), (name, name_span)), rest) ->
-      (match Enforest_util.drop_separators rest with
-      | { datum = Group (Raw_syntax.Paren, items, _); _ } as params_group :: rest ->
-          require_adjacent_span name_span params_group.span "method parameter list";
+  | Some (((), (name, name_span)), rest) -> (
+      match Enforest_util.drop_separators rest with
+      | ({ datum = Group (Raw_syntax.Paren, items, _); _ } as params_group)
+        :: rest ->
+          require_adjacent_span name_span params_group.span
+            "method parameter list";
           let params = parse_method_params env items in
           let body, rest =
             match Enforest_util.drop_separators rest with
             | arrow :: body_terms when token_kind ThinArrow arrow ->
                 parse_expr_prec env 0 body_terms
             | do_kw :: body_rest when token_kind KwDo do_kw ->
-                let body_terms, rest, _span = collect_until_end do_kw.span body_rest in
+                let body_terms, rest, _span =
+                  collect_until_end do_kw.span body_rest
+                in
                 (parse_do_body_terms env _span body_terms, rest)
             | _ -> error "expected -> or do after method parameters"
           in
           ensure_no_rest "method declaration" rest;
-          Some (Syntax.MethodBinding { name = id ~span:name_span name; params; body; public })
-      | _ -> error ("method declaration requires a parenthesized parameter list: " ^ name))
+          Some
+            (Syntax.MethodBinding
+               { name = id ~span:name_span name; params; body; public })
+      | _ ->
+          error
+            ("method declaration requires a parenthesized parameter list: "
+           ^ name))
   | None -> None
 
 and parse_module_type_fields env what terms =
@@ -459,7 +486,8 @@ and parse_primary env terms =
              declarations"
       | Token { kind = KwDo; _ } -> parse_do env term.span rest
       | Token { kind = KwFn; _ } ->
-          let _, expr, rest = parse_fn env term.span rest in (expr, rest)
+          let _, expr, rest = parse_fn env term.span rest in
+          (expr, rest)
       | Token { kind = KwIf; _ } -> parse_if env term.span rest
       | Token { kind = KwMatch; _ } -> parse_match env term.span rest
       | Token { kind = KwRef; _ } -> parse_ref env term.span rest
@@ -488,8 +516,10 @@ and parse_primary env terms =
                     stx ~span
                       (Syntax.MacroCall
                          ( f,
-                           [ syntax_operator_arg ~span ~use_span:term.span op
-                              [ rhs ] ] ))
+                           [
+                             syntax_operator_arg ~span ~use_span:term.span op
+                               [ rhs ];
+                           ] ))
                 | Operator_env.Template _ ->
                     error
                       "internal error: template syntax should expand before \
@@ -516,8 +546,10 @@ and parse_primary env terms =
                     stx ~span
                       (Syntax.MacroCall
                          ( f,
-                           [ syntax_operator_arg ~span ~use_span:term.span op
-                              [ rhs ] ] ))
+                           [
+                             syntax_operator_arg ~span ~use_span:term.span op
+                               [ rhs ];
+                           ] ))
                 | Operator_env.Template _ ->
                     error
                       "internal error: template syntax should expand before \
@@ -593,7 +625,8 @@ and parse_postfix_infix env min_prec lhs terms =
       parse_postfix_infix env min_prec lhs rest
   | at :: { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest
     when token_kind At at ->
-      let args = match drop_separators items with
+      let args =
+        match drop_separators items with
         | [] -> [ unit ~span () ]
         | _ -> parse_args env items
       in
@@ -673,14 +706,23 @@ and parse_postfix_infix env min_prec lhs terms =
                     stx ~span (Syntax.RefSet (lhs, rhs))
                 | Template template ->
                     let branch = List.hd template.Syntax_template.branches in
-                    let holes = Enforest_template.collect_pattern_holes branch.pattern in
+                    let holes =
+                      Enforest_template.collect_pattern_holes branch.pattern
+                    in
                     let captures =
-                      List.map2 (fun name operand ->
-                        (name, { Syntax_template.syntax = operand; kind = Syntax_template.Expr; decl_terms = None }))
+                      List.map2
+                        (fun name operand ->
+                          ( name,
+                            {
+                              Syntax_template.syntax = operand;
+                              kind = Syntax_template.Expr;
+                              decl_terms = None;
+                            } ))
                         holes [ rhs; lhs ]
                     in
                     let parsed, _ = parse_expr_prec env 0 branch.replacement in
-                    Enforest_template.substitute_template_captures captures parsed
+                    Enforest_template.substitute_template_captures captures
+                      parsed
                 | Macro ->
                     let arg =
                       syntax_operator_arg ~span ~use_span:term.span op
@@ -757,8 +799,10 @@ and parse_value_decl_after_prefix env ~recursive stmt =
             | colon :: typ_terms when token_kind Colon colon ->
                 Some
                   (try parse_type_terms env typ_terms with
-                   | Unsupported msg -> unsupported ("binding " ^ name_id.name ^ " type: " ^ msg)
-                   | Error msg -> error ("binding " ^ name_id.name ^ " type: " ^ msg))
+                  | Unsupported msg ->
+                      unsupported ("binding " ^ name_id.name ^ " type: " ^ msg)
+                  | Error msg ->
+                      error ("binding " ^ name_id.name ^ " type: " ^ msg))
             | _ ->
                 error
                   "binding parameters are not supported; use fn name(params) \
@@ -766,7 +810,8 @@ and parse_value_decl_after_prefix env ~recursive stmt =
           in
           let decl_value =
             try parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms with
-            | Unsupported msg -> unsupported ("binding " ^ name_id.name ^ ": " ^ msg)
+            | Unsupported msg ->
+                unsupported ("binding " ^ name_id.name ^ ": " ^ msg)
             | Error msg -> error ("binding " ^ name_id.name ^ ": " ^ msg)
           in
           let decl_value = decl_value in
@@ -943,9 +988,10 @@ and parse_impl_binding env public stmt =
   | _ -> None
 
 and parse_open_statement env stmt =
-  let spec = Parse_spec.map
-    (Parse_spec.seq (Parse_spec.punct KwOpen) Parse_spec.str_ident)
-    (fun ((), (name, span)) -> id ~span name)
+  let spec =
+    Parse_spec.map
+      (Parse_spec.seq (Parse_spec.punct KwOpen) Parse_spec.str_ident)
+      (fun ((), (name, span)) -> id ~span name)
   in
   Parse_spec.to_option spec env stmt
 
@@ -987,8 +1033,10 @@ and parse_operator_template_decl env sym sym_span prec assoc value_terms =
           split_commas (drop_separators items)
           |> List.concat_map (fun ts ->
               match drop_separators ts with
-              | [{ datum = Token { kind = Operator "$"; _ }; _ };
-                 { datum = Token { kind = Ident name; _ }; span }] ->
+              | [
+               { datum = Token { kind = Operator "$"; _ }; _ };
+               { datum = Token { kind = Ident name; _ }; span };
+              ] ->
                   [ (name, span) ]
               | _ -> error "operator template params must be $hole names")
         in
@@ -1010,25 +1058,39 @@ and parse_operator_template_decl env sym sym_span prec assoc value_terms =
   ensure_no_rest "infix template declaration" rest;
   let pattern =
     let hole name =
-      Syntax_template.Hole { name; kind = Syntax_template.Expr; span = sym_span }
+      Syntax_template.Hole
+        { name; kind = Syntax_template.Expr; span = sym_span }
     in
-    let op_literal = { datum = Token { kind = Operator sym; span = sym_span }; span = sym_span } in
-    (match holes with
-     | [ lhs; rhs ] -> [ hole lhs; Syntax_template.Literal op_literal; hole rhs ]
-     | [ single ] -> [ Syntax_template.Literal op_literal; hole single ]
-     | _ -> error "operator template must have 1 or 2 holes")
+    let op_literal =
+      {
+        datum = Token { kind = Operator sym; span = sym_span };
+        span = sym_span;
+      }
+    in
+    match holes with
+    | [ lhs; rhs ] -> [ hole lhs; Syntax_template.Literal op_literal; hole rhs ]
+    | [ single ] -> [ Syntax_template.Literal op_literal; hole single ]
+    | _ -> error "operator template must have 1 or 2 holes"
   in
   let template =
-    { Syntax_template.head = sym;
+    {
+      Syntax_template.head = sym;
       branches = [ { pattern; replacement = body; span } ];
       declaration_span = sym_span;
-      inherited_captures = [] }
+      inherited_captures = [];
+    }
   in
   env.operators <-
-    Operator_env.add_template_infix ~declaration_span:sym_span env.operators sym template prec assoc;
-  Some (TemplateSyntaxDecl
-          { syntax_name = id ~span:sym_span sym;
-            syntax_export = Operator_env.template_infix ~declaration_span:sym_span sym template prec assoc })
+    Operator_env.add_template_infix ~declaration_span:sym_span env.operators sym
+      template prec assoc;
+  Some
+    (TemplateSyntaxDecl
+       {
+         syntax_name = id ~span:sym_span sym;
+         syntax_export =
+           Operator_env.template_infix ~declaration_span:sym_span sym template
+             prec assoc;
+       })
 
 and parse_operator_assoc assoc_str =
   match assoc_str with
@@ -1044,7 +1106,12 @@ and parse_syntax_template_decl env head_term head do_span body_rest =
   let available = List.map fst inherited_captures in
   let branches = Enforest_template.parse_branches ~available head body_terms in
   let template =
-    { Syntax_template.head; branches; declaration_span = head_term.span; inherited_captures }
+    {
+      Syntax_template.head;
+      branches;
+      declaration_span = head_term.span;
+      inherited_captures;
+    }
   in
   env.operators <-
     Operator_env.add_template_prefix ~declaration_span:head_term.span
@@ -1058,24 +1125,24 @@ and parse_syntax_template_decl env head_term head do_span body_rest =
     }
 
 and template_callbacks env parse_decl =
-    {
-      Enforest_template.parse_expr =
-        (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
-      parse_expr_with_captures =
-        (fun captures terms ->
-          let previous = env.template_captures in
-          env.template_captures <- captures @ previous;
-          Fun.protect
-            ~finally:(fun () -> env.template_captures <- previous)
-            (fun () -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms));
-      parse_decl_with_captures =
-        (fun captures terms ->
-          let previous = env.template_captures in
-          env.template_captures <- captures @ previous;
-          Fun.protect
-            ~finally:(fun () -> env.template_captures <- previous)
-            (fun () -> parse_decl terms));
-    }
+  {
+    Enforest_template.parse_expr =
+      (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
+    parse_expr_with_captures =
+      (fun captures terms ->
+        let previous = env.template_captures in
+        env.template_captures <- captures @ previous;
+        Fun.protect
+          ~finally:(fun () -> env.template_captures <- previous)
+          (fun () -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms));
+    parse_decl_with_captures =
+      (fun captures terms ->
+        let previous = env.template_captures in
+        env.template_captures <- captures @ previous;
+        Fun.protect
+          ~finally:(fun () -> env.template_captures <- previous)
+          (fun () -> parse_decl terms));
+  }
 
 and expand_syntax_template env use_span (template : Syntax_template.t) terms =
   Enforest_template.expand
@@ -1083,15 +1150,24 @@ and expand_syntax_template env use_span (template : Syntax_template.t) terms =
          error "declaration templates are not available in expression context"))
     use_span template terms
 
-and expand_decl_syntax_template env parse_decl use_span (template : Syntax_template.t) terms =
-  Enforest_template.expand_decl (template_callbacks env parse_decl) use_span template terms
+and expand_decl_syntax_template env parse_decl use_span
+    (template : Syntax_template.t) terms =
+  Enforest_template.expand_decl
+    (template_callbacks env parse_decl)
+    use_span template terms
 
 and parse_decl_template_use env parse_decl stmt =
   match drop_separators stmt with
-  | ({ datum = Token { kind = Ident head; _ }; span; _ } as _head_term) :: _ -> (
-      match Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators head with
+  | ({ datum = Token { kind = Ident head; _ }; span; _ } as _head_term) :: _
+    -> (
+      match
+        Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators
+          head
+      with
       | Some { Operator_env.expansion = Operator_env.Template template; _ } ->
-          let bindings, rest = expand_decl_syntax_template env parse_decl span template stmt in
+          let bindings, rest =
+            expand_decl_syntax_template env parse_decl span template stmt
+          in
           ensure_no_rest "declaration syntax template use" rest;
           Some bindings
       | _ -> None)
@@ -1105,7 +1181,8 @@ and parse_operator_shape stmt =
     :: { datum = Token { kind = Ident assoc_str; _ }; span = assoc_span }
     :: value_terms
     when String.equal ifx "infix" ->
-      let sym = match drop_separators sym_items with
+      let sym =
+        match drop_separators sym_items with
         | [ term ] when Option.is_some (token_text term) ->
             Option.get (token_text term)
         | _ -> error "infix requires a symbol in parens"
@@ -1121,9 +1198,12 @@ and parse_operator_decl env stmt =
       let is_template =
         match drop_separators value_terms with
         | { datum = Group (Raw_syntax.Paren, items, _); _ } :: _ ->
-            let param_tokens = List.concat (split_commas (drop_separators items)) in
+            let param_tokens =
+              List.concat (split_commas (drop_separators items))
+            in
             let tokens = drop_separators param_tokens in
-            let first_is_dollar = match tokens with
+            let first_is_dollar =
+              match tokens with
               | { datum = Token { kind = Operator "$"; _ }; _ } :: _ -> true
               | _ -> false
             in
@@ -1136,11 +1216,17 @@ and parse_operator_decl env stmt =
         let value, rest = parse_operator_value env assoc_span value_terms in
         ensure_no_rest "infix declaration" rest;
         env.operators <-
-          Operator_env.add_infix ~declaration_span:name_span env.operators name prec assoc;
-        Some (MacroSyntaxDecl
-                { syntax_name = id ~span:name_span name;
-                  syntax_value = value;
-                  syntax_export = Operator_env.macro_infix ~declaration_span:name_span name prec assoc })
+          Operator_env.add_infix ~declaration_span:name_span env.operators name
+            prec assoc;
+        Some
+          (MacroSyntaxDecl
+             {
+               syntax_name = id ~span:name_span name;
+               syntax_value = value;
+               syntax_export =
+                 Operator_env.macro_infix ~declaration_span:name_span name prec
+                   assoc;
+             })
       end
   | None -> (
       match drop_separators stmt with
@@ -1210,29 +1296,58 @@ and parse_do_body_terms env span body_terms =
             List.map
               (fun stmt ->
                 match parse_operator_decl_in_do env stmt with
-                | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
-                    fun acc -> stx ~span (Syntax.MacroDef { name; value; body = acc; kind = None })
+                | Some
+                    (MacroSyntaxDecl
+                       { syntax_name = name; syntax_value = value; _ }) ->
+                    fun acc ->
+                      stx ~span
+                        (Syntax.MacroDef
+                           { name; value; body = acc; kind = None })
                 | Some (TemplateSyntaxDecl _) -> fun acc -> acc
                 | None -> (
                     match parse_macro_binding env false stmt with
-                    | Some (Syntax.MacroBinding { name; value; public = false; kind; _ }) ->
-                        fun acc -> stx ~span (Syntax.MacroDef { name; value; body = acc; kind })
+                    | Some
+                        (Syntax.MacroBinding
+                           { name; value; public = false; kind; _ }) ->
+                        fun acc ->
+                          stx ~span
+                            (Syntax.MacroDef { name; value; body = acc; kind })
                     | Some (Syntax.MacroBinding { public = true; _ }) ->
                         error "pub macro is not supported inside do blocks"
                     | Some _ -> error "unexpected non-macro binding"
                     | None -> (
                         match parse_binding_statement env stmt with
-                        | Some { decl_name = name; decl_type = type_; decl_value = value; decl_recursive = recursive } ->
-                            fun acc -> stx ~span (Syntax.Let { name; type_; value; body = acc; recursive })
+                        | Some
+                            {
+                              decl_name = name;
+                              decl_type = type_;
+                              decl_value = value;
+                              decl_recursive = recursive;
+                            } ->
+                            fun acc ->
+                              stx ~span
+                                (Syntax.Let
+                                   { name; type_; value; body = acc; recursive })
                         | None -> (
                             match parse_open_statement env stmt with
-                            | Some name -> fun acc -> stx ~span (Syntax.Open (name, acc))
+                            | Some name ->
+                                fun acc -> stx ~span (Syntax.Open (name, acc))
                             | None -> (
                                 match parse_import_statement env stmt with
                                 | Some value ->
-                                    fun acc -> stx ~span (Syntax.Let { name = id ~span:value.span "_"; type_ = None; value; body = acc; recursive = false })
+                                    fun acc ->
+                                      stx ~span
+                                        (Syntax.Let
+                                           {
+                                             name = id ~span:value.span "_";
+                                             type_ = None;
+                                             value;
+                                             body = acc;
+                                             recursive = false;
+                                           })
                                 | None ->
-                                    fun acc -> scoped_binding_to_expr env span stmt acc))
+                                    fun acc ->
+                                      scoped_binding_to_expr env span stmt acc))
                         )))
               statements
           in
@@ -1253,7 +1368,7 @@ and parse_public_prefix stmt =
 and parse_syntax_binding env public stmt =
   match parse_operator_decl env stmt with
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
-      Some (Syntax.MacroBinding { name; value; public ; kind = None })
+      Some (Syntax.MacroBinding { name; value; public; kind = None })
   | Some (TemplateSyntaxDecl _) -> None
   | None -> None
 
@@ -1262,64 +1377,86 @@ and parse_macro_binding env public stmt =
   | { datum = Token { kind = KwMacro; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
     :: rest ->
-      let kind, value, rest = parse_fn ~kind_annotation:true env name_span rest in
+      let kind, value, rest =
+        parse_fn ~kind_annotation:true env name_span rest
+      in
       ensure_no_rest "macro binding" rest;
       Some
-        (Syntax.MacroBinding { name = id ~span:name_span name; value; public; kind })
-   | _ -> None
+        (Syntax.MacroBinding
+           { name = id ~span:name_span name; value; public; kind })
+  | _ -> None
 
 and parse_pattern_syn_binding _env public stmt =
-  let header = Parse_spec.seq3
-    (Parse_spec.punct KwPattern) Parse_spec.str_ident
-    (Parse_spec.custom_spec ~name:"params_group" (fun _env -> function
-      | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest -> Some (items, rest)
-      | _ -> None)) in
-  match Parse_spec.parse header _env stmt with
-  | Some (((), (name, name_span), param_terms), rest) ->
-      (match Enforest_util.drop_separators rest with
-      | equals :: rhs_terms when token_kind Equals equals ->
-          let params =
-            split_commas (Enforest_util.drop_separators param_terms)
-            |> List.map (fun ts ->
-                match Enforest_util.drop_separators ts with
-                | [ { datum = Token { kind = Ident p; _ }; span } ] -> id ~span p
-                | _ -> error "expected pattern synonym parameter name")
-          in
+  let header =
+  Parse_spec.seq3
+    (Parse_spec.punct KwPattern)
+    Parse_spec.str_ident
+    (Parse_spec.opt (Parse_spec.custom_spec ~name:"params_group" (fun _env -> function
+      | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
+          Some (items, rest)
+      | _ -> None)))
+in
+match Parse_spec.parse header _env stmt with
+| Some (((), (name, name_span), param_terms), rest) -> (
+    match Enforest_util.drop_separators rest with
+    | equals :: rhs_terms when token_kind Equals equals ->
+        let params = match param_terms with
+          | Some terms ->
+              split_commas (Enforest_util.drop_separators terms)
+              |> List.map (fun ts ->
+                  match Enforest_util.drop_separators ts with
+                  | [ { datum = Token { kind = Ident p; _ }; span } ] ->
+                      id ~span p
+                  | _ -> error "expected pattern synonym parameter name")
+          | None -> []
+        in
           let rhs = Enforest_pat.parse_pat_terms rhs_terms in
-          Some (Syntax.PatternSynBinding { name = id ~span:name_span name; params; rhs; public })
+          Some
+            (Syntax.PatternSynBinding
+               { name = id ~span:name_span name; params; rhs; public })
       | _ -> error "expected '=' after pattern synonym parameters")
   | None -> None
 
 and parse_macro_call_binding env stmt =
-  let args_spec = Parse_spec.custom_spec ~name:"args" (fun _env items ->
-    let items = Enforest_util.drop_separators items in
-    let args = match items with
-      | [] -> [ unit ~span:Source_span.synthetic () ]
-      | _ -> parse_args env items
-    in
-    Some (args, []))
+  let args_spec =
+    Parse_spec.custom_spec ~name:"args" (fun _env items ->
+        let items = Enforest_util.drop_separators items in
+        let args =
+          match items with
+          | [] -> [ unit ~span:Source_span.synthetic () ]
+          | _ -> parse_args env items
+        in
+        Some (args, []))
   in
   Parse_spec.to_option
     (Parse_spec.map
-      (Parse_spec.seq4 Parse_spec.str_ident (Parse_spec.punct At)
-         (Parse_spec.paren_group args_spec) Parse_spec.eof)
-      (fun ((name, name_span), (), (args, _), ()) ->
+       (Parse_spec.seq4 Parse_spec.str_ident (Parse_spec.punct At)
+          (Parse_spec.paren_group args_spec)
+          Parse_spec.eof)
+       (fun ((name, name_span), (), (args, _), ()) ->
          let f = var ~span:name_span name in
          Syntax.MacroCallBinding { f; args }))
     env stmt
 
 and parse_named_module_binding env public stmt =
-  let header = Parse_spec.drop_sep (Parse_spec.seq3
-    (Parse_spec.spanned (Parse_spec.punct KwModule))
-    Parse_spec.str_ident
-    (Parse_spec.spanned (Parse_spec.punct KwDo))) in
+  let header =
+    Parse_spec.drop_sep
+      (Parse_spec.seq3
+         (Parse_spec.spanned (Parse_spec.punct KwModule))
+         Parse_spec.str_ident
+         (Parse_spec.spanned (Parse_spec.punct KwDo)))
+  in
   match header.Parse_spec.run env stmt with
   | Some ((((), module_span), (name, name_span), ((), do_span)), rest) ->
       let body_terms, rest, span = collect_until_end do_span rest in
       ensure_no_rest "module declaration" rest;
       let bindings = parse_module_bindings env body_terms in
-      let value = stx ~span:(span_between module_span span) (Syntax.Module { bindings }) in
-      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public; recursive = false })
+      let value =
+        stx ~span:(span_between module_span span) (Syntax.Module { bindings })
+      in
+      Some
+        (Syntax.LetBinding
+           { name = id ~span:name_span name; value; public; recursive = false })
   | None -> None
 
 and parse_value_binding env public stmt =
@@ -1332,46 +1469,61 @@ and parse_value_binding env public stmt =
               (Syntax.Annotated { inner = decl_value; typ })
         | None -> decl_value
       in
-      Some (Syntax.LetBinding { name; value; public; recursive = decl_recursive })
+      Some
+        (Syntax.LetBinding { name; value; public; recursive = decl_recursive })
   | None -> None
 
 and parse_module_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
   | Some (TemplateSyntaxDecl { syntax_export; _ }) ->
-      if public then env.exports_collector := syntax_export :: !(env.exports_collector);
+      if public then
+        env.exports_collector := syntax_export :: !(env.exports_collector);
       None
-  | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; syntax_export; _ }) ->
-      if public then env.exports_collector := syntax_export :: !(env.exports_collector);
-      Some (Syntax.MacroBinding { name; value; public ; kind = None })
+  | Some
+      (MacroSyntaxDecl
+         { syntax_name = name; syntax_value = value; syntax_export; _ }) ->
+      if public then
+        env.exports_collector := syntax_export :: !(env.exports_collector);
+      Some (Syntax.MacroBinding { name; value; public; kind = None })
   | None -> (
       match
         first_some
           [
-             parse_macro_binding env public;
-             parse_macro_call_binding env;
-             parse_pattern_syn_binding env public;
-             parse_type_binding env public;
-             parse_effect_binding env public;
-             parse_trait_binding env public;
-             parse_impl_binding env public;
-             parse_named_module_binding env public;
-             parse_value_binding env public;
+            parse_macro_binding env public;
+            parse_macro_call_binding env;
+            parse_pattern_syn_binding env public;
+            parse_type_binding env public;
+            parse_effect_binding env public;
+            parse_trait_binding env public;
+            parse_impl_binding env public;
+            parse_named_module_binding env public;
+            parse_value_binding env public;
           ]
           stmt
       with
       | Some binding -> Some binding
-      | None -> unsupported "unsupported Phase 7C module item")
+      | None ->
+          let desc =
+            match Enforest_util.drop_separators stmt with
+            | t :: _ -> Raw_syntax.show_datum t.Raw_syntax.datum
+            | [] -> "(empty)"
+          in
+          unsupported (Printf.sprintf "unsupported module item: %s" desc))
 
 and parse_module_statement env stmt =
   let parse_decl terms = parse_module_statement env terms in
   match parse_decl_template_use env parse_decl stmt with
   | Some bindings -> bindings
-  | None -> (match parse_module_binding env stmt with Some binding -> [ binding ] | None -> [])
+  | None -> (
+      match parse_module_binding env stmt with
+      | Some binding -> [ binding ]
+      | None -> [])
 
 and parse_module_bindings env body_terms =
   with_operator_scope env (fun env ->
-      split_statements body_terms |> List.concat_map (parse_module_statement env))
+      split_statements body_terms
+      |> List.concat_map (parse_module_statement env))
 
 and collect_public_syntax_statement env stmt =
   let parse_decl terms =
@@ -1384,14 +1536,17 @@ and collect_public_syntax_statement env stmt =
       let public, stmt = parse_public_prefix stmt in
       match parse_operator_decl env stmt with
       | Some (TemplateSyntaxDecl { syntax_export; _ }) ->
-          if public then env.exports_collector := syntax_export :: !(env.exports_collector)
+          if public then
+            env.exports_collector := syntax_export :: !(env.exports_collector)
       | Some (MacroSyntaxDecl { syntax_export; _ }) ->
-          if public then env.exports_collector := syntax_export :: !(env.exports_collector)
+          if public then
+            env.exports_collector := syntax_export :: !(env.exports_collector)
       | None -> ())
 
 and collect_public_syntax_exports env body_terms =
   with_operator_scope env (fun env ->
-      split_statements body_terms |> List.iter (collect_public_syntax_statement env))
+      split_statements body_terms
+      |> List.iter (collect_public_syntax_statement env))
 
 and parse_struct_field env stmt =
   match drop_separators stmt with
@@ -1405,62 +1560,84 @@ and parse_struct_field env stmt =
   | _ -> None
 
 and parse_named_struct_binding env public stmt =
-  let header = Parse_spec.drop_sep (Parse_spec.seq3
-    (Parse_spec.spanned (Parse_spec.punct KwStruct))
-    Parse_spec.str_ident
-    (Parse_spec.spanned (Parse_spec.punct KwDo))) in
+  let header =
+    Parse_spec.drop_sep
+      (Parse_spec.seq3
+         (Parse_spec.spanned (Parse_spec.punct KwStruct))
+         Parse_spec.str_ident
+         (Parse_spec.spanned (Parse_spec.punct KwDo)))
+  in
   match header.Parse_spec.run env stmt with
   | Some ((((), struct_span), (name, name_span), ((), do_span)), rest) ->
       let body_terms, rest, span = collect_until_end do_span rest in
       ensure_no_rest "struct declaration" rest;
       let con_fields, bindings = parse_struct_items env body_terms in
-      let value = stx ~span:(span_between struct_span span) (Syntax.Struct { con_fields; bindings }) in
-      Some (Syntax.LetBinding { name = id ~span:name_span name; value; public; recursive = false })
+      let value =
+        stx
+          ~span:(span_between struct_span span)
+          (Syntax.Struct { con_fields; bindings })
+      in
+      Some
+        (Syntax.LetBinding
+           { name = id ~span:name_span name; value; public; recursive = false })
   | _ -> None
 
 and parse_struct_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
   | Some (TemplateSyntaxDecl _) ->
-      if public then error "pub syntax is not supported inside structs" else None
+      if public then error "pub syntax is not supported inside structs"
+      else None
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
       if public then error "pub operator is not supported inside structs"
-      else Some (Syntax.MacroBinding { name; value; public ; kind = None })
+      else Some (Syntax.MacroBinding { name; value; public; kind = None })
   | None -> (
-      (match parse_macro_binding env public stmt with
+      match parse_macro_binding env public stmt with
       | Some _ when public -> error "pub macro is not supported inside structs"
       | Some binding -> Some binding
       | None -> (
           match parse_macro_call_binding env stmt with
-          | Some _ when public -> error "pub macro call is not supported inside structs"
+          | Some _ when public ->
+              error "pub macro call is not supported inside structs"
           | Some binding -> Some binding
-          | None ->
-      match
-        first_some
-          [
-            parse_method_binding env public;
-            parse_type_binding env public;
-            parse_effect_binding env public;
-            parse_trait_binding env public;
-            parse_impl_binding env public;
-            parse_named_module_binding env public;
-            parse_named_struct_binding env public;
-            parse_value_binding env public;
-          ]
-          stmt
-      with
-      | Some binding -> Some binding
-      | None -> unsupported "unsupported Phase 7C struct item")))
+          | None -> (
+              match
+                first_some
+                  [
+                    parse_method_binding env public;
+                    parse_type_binding env public;
+                    parse_effect_binding env public;
+                    parse_trait_binding env public;
+                    parse_impl_binding env public;
+                    parse_named_module_binding env public;
+                    parse_named_struct_binding env public;
+                    parse_value_binding env public;
+                  ]
+                  stmt
+              with
+              | Some binding -> Some binding
+              | None ->
+                  let desc =
+                    match Enforest_util.drop_separators stmt with
+                    | t :: _ -> Raw_syntax.show_datum t.Raw_syntax.datum
+                    | [] -> "(empty)"
+                  in
+                  unsupported
+                    (Printf.sprintf "unsupported struct item: %s" desc))))
 
 and parse_struct_statement env stmt =
   let parse_decl terms = parse_struct_statement env terms in
   match parse_struct_field env stmt with
-  | Some _ -> error "struct field declarations are deferred in declaration syntax templates"
+  | Some _ ->
+      error
+        "struct field declarations are deferred in declaration syntax templates"
   | None -> (
       match parse_decl_template_use env parse_decl stmt with
       | Some bindings -> bindings
       | None -> (
-          match parse_struct_binding env stmt with Some binding -> [ binding ] | None -> []))
+          match parse_struct_binding env stmt with
+          | Some binding -> [ binding ]
+          | None -> []))
 
 and parse_struct_items env body_terms =
   split_statements body_terms
@@ -1469,9 +1646,9 @@ and parse_struct_items env body_terms =
          match parse_struct_field env stmt with
          | Some field -> (fields @ [ field ], bindings)
          | None -> (
-              match parse_struct_statement env stmt with
-              | [] -> (fields, bindings)
-              | new_bindings -> (fields, bindings @ new_bindings)))
+             match parse_struct_statement env stmt with
+             | [] -> (fields, bindings)
+             | new_bindings -> (fields, bindings @ new_bindings)))
        ([], [])
 
 let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms
