@@ -135,3 +135,15 @@ module, its constructors become visible only AFTER the ADT binding is processed.
      vs binding parsers into separate files accessible via a small driver).
   The goal is fewer lines through less duplication, not fewer lines through
   less readability.
+- **Debug via instrumentation, not test-case exploration.** When tracking down
+  a parser or elaboration bug, do not repeatedly modify test cases to exhaust
+  the input space. Instead:
+  1. Add logging (`debug_tokens`, `Printf.eprintf`, etc.) to surface internal
+     state at the point of failure.
+  2. Or add reusable test utilities that expose intermediate representations
+     (e.g. `show_token_kind`, `desc_token`, `Parse_spec.parse` with
+     traceable combinators).
+  3. `dune build 2>&1 && dune exec test.exe 2>/tmp/log` captures both stdout
+     and stderr for inspection without scrolling through test output.
+  The goal is a single diagnostic that pins the root cause, not a matrix of
+  modified test inputs.
