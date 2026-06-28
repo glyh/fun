@@ -284,16 +284,29 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
   let kind, type_binding_param, rest =
     if kind_annotation then
       match drop_separators rest with
-      | { datum = Token { kind = Colon; _ }; _ }
-        :: { datum = Token { kind = Ident k; _ }; _ }
-        :: { datum = Group (Raw_syntax.Paren, [ { datum = Token { kind = Ident inner; _ }; _ } ], _); _ }
-        :: rest ->
+      | { datum = Token { kind = Colon; _ }; span = _colon_span }
+        :: { datum = Token { kind = Ident k; _ }; span = _k_span }
+        :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
           let rest = drop_separators rest in
-          let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
-          let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
-          (Some (Syntax.MacroKind.Expr (Some (k ^ "(" ^ inner ^ ")"))),
-           Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
-           rest)
+          if String.equal k "Expr" then begin
+            match drop_separators items with
+            | [ { datum = Token { kind = Ident u; _ }; _ } ] when String.equal u "_" ->
+                (Some (Syntax.MacroKind.(Expr None)), None, rest)
+            | [ { datum = Token { kind = Ident inner; _ }; _ } ] ->
+                let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
+                let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+                (Some (Syntax.MacroKind.Expr (Some inner)),
+                 Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
+                 rest)
+            | _ ->
+                error "unsupported type pattern in macro annotation"
+          end else begin
+            let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
+            let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+            (Some (Syntax.MacroKind.Expr (Some k)),
+             Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
+             rest)
+          end
       | { datum = Token { kind = Colon; _ }; _ }
         :: { datum = Token { kind = Ident k; _ }; _ }
         :: rest ->
