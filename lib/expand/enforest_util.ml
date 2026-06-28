@@ -25,13 +25,20 @@ type env = {
   exports_collector : Operator_env.export list ref;
   load_syntax : (string -> Operator_env.export list) option;
   syntax_class : Syntax_class.t;
+  errors : Parse_error.t list ref;
 }
 
 let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () =
-  { operators = Operator_env.empty; template_captures = []; load_syntax; syntax_class; exports_collector = ref [] }
+  { operators = Operator_env.empty; template_captures = []; load_syntax; syntax_class;
+    exports_collector = ref []; errors = ref [] }
 
 let unsupported msg = raise (Unsupported msg)
 let error msg = raise (Error msg)
+
+let push_error env span kind =
+  env.errors := { Parse_error.kind; span } :: !(env.errors)
+
+let get_errors env = List.rev !(env.errors)
 
 let rec first_some parsers input =
   match parsers with
@@ -408,3 +415,26 @@ and split_statements terms =
         else
           merge_cont (a :: acc) (b :: rest) in
   merge_cont [] stmts
+
+let rec push_and_recover env span kind rest =
+  push_error env span kind;
+  skip_to_statement_boundary rest
+
+and skip_to_statement_boundary tokens =
+  let rec skip depth = function
+    | [] -> []
+    | t :: rest when is_separator t && depth = 0 -> rest
+    | t :: rest when token_kind KwDo t || token_kind KwSig t || is_multi_block_start t ->
+        skip (depth + 1) rest
+    | t :: rest when token_kind KwModule t ->
+        if starts_named_do_block rest then skip depth rest
+        else skip (depth + 1) rest
+    | t :: rest when token_kind KwStruct t ->
+        (match drop_separators rest with
+        | next :: _ when token_kind KwDo next -> skip depth rest
+        | _ -> skip (depth + 1) rest)
+    | t :: rest when token_kind KwEnd t && depth > 0 ->
+        skip (depth - 1) rest
+    | _ :: rest -> skip depth rest
+  in
+  skip 0 tokens

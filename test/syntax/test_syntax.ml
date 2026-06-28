@@ -8,5 +8,6 @@ let suites =
   @ Test_macros.suites
   @ Test_enforest.suites
   @ Test_line_counts.suites
+  @ Test_spec.suites
 
 let () = Alcotest.run "syntax" suites
