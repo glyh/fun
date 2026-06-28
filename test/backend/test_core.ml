@@ -1130,7 +1130,36 @@ let test_type_aware_checking () =
   in
   (* Type annotation on x means checking mode — A should be I64 → 42
      No annotation on y means inference — A is fresh meta → should match wildcard *)
-  ()
+   ()
+
+let test_type_default_macro () =
+  check_i64_macro "type-directed default for I64" 0L
+    "do
+       macro default(_) : A do
+         match A do
+         | I64 -> Syntax.i64(0)
+         | Bool -> Syntax.bool(false)
+         | _ -> do _ = A; Syntax.i64(42) end
+         end
+       end
+       do x : I64 = default @ (0); x end
+     end" ()
+
+let test_type_default_bool () =
+  match eval_with_macros
+    "do
+       macro default(_) : A do
+         match A do
+         | I64 -> Syntax.i64(0)
+         | Bool -> Syntax.bool(false)
+         | _ -> do _ = A; Syntax.bool(false) end
+         end
+       end
+       do x : Bool = default @ (0); x end
+     end"
+  with
+  | VAtom (Bool b) -> Alcotest.(check bool) "type-directed default for Bool" false b
+  | v -> Alcotest.fail (Debug.pp_value_short (MetaContext.create ()) v)
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2409,6 +2438,8 @@ let () =
           Alcotest.test_case "Pattern wild round-trip" `Quick test_pattern_round_trip;
           Alcotest.test_case "type-aware default macro" `Quick test_type_aware_macro;
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
+          Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
+          Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
