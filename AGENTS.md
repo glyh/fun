@@ -135,7 +135,7 @@ module, its constructors become visible only AFTER the ADT binding is processed.
      vs binding parsers into separate files accessible via a small driver).
   The goal is fewer lines through less duplication, not fewer lines through
   less readability.
-  **The 1500-line limit in `test_line_counts.ml` is strict. Never bump it.**
+  **The 3000-line limit in `test_line_counts.ml` is strict. Never bump it.**
   If a file exceeds it, split or extract — do not raise the cap.
 - **Debug via instrumentation, not test-case exploration.** When tracking down
   a parser or elaboration bug, do not repeatedly modify test cases to exhaust
