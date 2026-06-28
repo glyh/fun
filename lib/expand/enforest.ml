@@ -284,8 +284,8 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false) start_s
   let body, rest, span =
     match drop_separators rest with
     | arrow :: body_terms when token_kind ThinArrow arrow ->
-        let body = parse_all (fun ts -> parse_expr_prec env 0 ts) body_terms in
-        (body, [], span_between start_span body.span)
+        let body, body_rest = parse_expr_prec env 0 body_terms in
+        (body, body_rest, span_between start_span body.span)
     | do_kw :: body_rest when token_kind KwDo do_kw ->
         let body_terms, rest, span = collect_until_end do_kw.span body_rest in
         (parse_do_body_terms env span body_terms, rest, span_between start_span span)
@@ -312,7 +312,7 @@ and parse_method_binding env public stmt =
       let body, rest =
         match drop_separators rest with
         | arrow :: body_terms when token_kind ThinArrow arrow ->
-            (parse_all (fun ts -> parse_expr_prec env 0 ts) body_terms, [])
+            parse_expr_prec env 0 body_terms
         | do_kw :: body_rest when token_kind KwDo do_kw ->
             let body_terms, rest, span =
               collect_until_end do_kw.span body_rest
@@ -977,8 +977,8 @@ and parse_operator_value env start_span terms =
   let body, rest, span =
     match drop_separators rest with
     | arrow :: body_terms when token_kind ThinArrow arrow ->
-        let body = parse_all (fun ts -> parse_expr_prec env 0 ts) body_terms in
-        (body, [], span_between start_span body.span)
+        let body, body_rest = parse_expr_prec env 0 body_terms in
+        (body, body_rest, span_between start_span body.span)
     | do_kw :: body_rest when token_kind KwDo do_kw ->
         let body_terms, rest, span = collect_until_end do_kw.span body_rest in
         let body = parse_do_body_terms env span body_terms in

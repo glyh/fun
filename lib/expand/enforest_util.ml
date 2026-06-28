@@ -161,6 +161,17 @@ let punct_name = function
   | DatumComment -> Some "#_"
   | _ -> None
 
+let debug_tokens label tokens =
+  Printf.eprintf "%s [%d]: " label (List.length tokens);
+  List.iter (fun t ->
+    match t.Raw_syntax.datum with
+    | Token { kind = Ident n; _ } -> Printf.eprintf "Ident(%s) " n
+    | Token { kind; _ } -> Printf.eprintf "%s " (punct_name kind |> Option.value ~default:"?")
+    | Group (Paren, _, _) -> Printf.eprintf "(...) "
+    | Group _ -> Printf.eprintf "[...] ")
+    tokens;
+  Printf.eprintf "\n%!"
+
 let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 
 let is_expr_start env term =
