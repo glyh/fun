@@ -1199,6 +1199,20 @@ let test_expected_type_rejects_mismatch () =
   | _ -> Alcotest.fail "expected type mismatch"
   | exception _ -> ()
 
+let test_annotation_known_type_no_binding () =
+  check_i64_macro "known type : Int → no binding" 1L
+    "do
+       macro mk(_) : Int -> Syntax.i64(1)
+       mk @ (0)
+     end" ()
+
+let test_annotation_expr_int_no_binding () =
+  check_i64_macro "known type : Expr(Int) → no binding" 1L
+    "do
+       macro mk(_) : Expr(Int) -> Syntax.i64(1)
+       mk @ (0)
+     end" ()
+
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
@@ -2483,6 +2497,8 @@ let () =
           Alcotest.test_case ": A shorthand" `Quick test_expr_shorthand;
           Alcotest.test_case "expected type reaches macro" `Quick test_expected_type_reaches_macro;
           Alcotest.test_case "expected type rejects mismatch" `Quick test_expected_type_rejects_mismatch;
+          Alcotest.test_case ": Int known type no binding" `Quick test_annotation_known_type_no_binding;
+          Alcotest.test_case ": Expr(Int) known type no binding" `Quick test_annotation_expr_int_no_binding;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
