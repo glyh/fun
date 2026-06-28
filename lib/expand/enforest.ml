@@ -302,34 +302,26 @@ and parse_method_params env items =
   if items = [] then [] else parse_param_group env Explicitness.Explicit items
 
 and parse_method_binding env public stmt =
-  match drop_separators stmt with
-  | { datum = Token { kind = KwMethod; _ }; _ }
-    :: { datum = Token { kind = Ident name; _ }; span = name_span }
-    :: ({ datum = Group (Raw_syntax.Paren, items, _); _ } as params_group)
-    :: rest ->
-      require_adjacent_span name_span params_group.span "method parameter list";
-      let params = parse_method_params env items in
-      let body, rest =
-        match drop_separators rest with
-        | arrow :: body_terms when token_kind ThinArrow arrow ->
-            parse_expr_prec env 0 body_terms
-        | do_kw :: body_rest when token_kind KwDo do_kw ->
-            let body_terms, rest, span =
-              collect_until_end do_kw.span body_rest
-            in
-            (parse_do_body_terms env span body_terms, rest)
-        | _ -> error "expected -> or do after method parameters"
-      in
-      ensure_no_rest "method declaration" rest;
-      Some
-        (Syntax.MethodBinding
-           { name = id ~span:name_span name; params; body; public })
-  | { datum = Token { kind = KwMethod; _ }; _ }
-    :: { datum = Token { kind = Ident name; _ }; _ }
-    :: _ ->
-      error
-        ("method declaration requires a parenthesized parameter list: " ^ name)
-  | _ -> None
+  let header = Parse_spec.seq (Parse_spec.punct KwMethod) Parse_spec.str_ident in
+  match Parse_spec.parse header env stmt with
+  | Some (((), (name, name_span)), rest) ->
+      (match Enforest_util.drop_separators rest with
+      | { datum = Group (Raw_syntax.Paren, items, _); _ } as params_group :: rest ->
+          require_adjacent_span name_span params_group.span "method parameter list";
+          let params = parse_method_params env items in
+          let body, rest =
+            match Enforest_util.drop_separators rest with
+            | arrow :: body_terms when token_kind ThinArrow arrow ->
+                parse_expr_prec env 0 body_terms
+            | do_kw :: body_rest when token_kind KwDo do_kw ->
+                let body_terms, rest, _span = collect_until_end do_kw.span body_rest in
+                (parse_do_body_terms env _span body_terms, rest)
+            | _ -> error "expected -> or do after method parameters"
+          in
+          ensure_no_rest "method declaration" rest;
+          Some (Syntax.MethodBinding { name = id ~span:name_span name; params; body; public })
+      | _ -> error ("method declaration requires a parenthesized parameter list: " ^ name))
+  | None -> None
 
 and parse_module_type_fields env what terms =
   Enforest_decl_helpers.parse_module_type_fields (parse_type_terms env) what
