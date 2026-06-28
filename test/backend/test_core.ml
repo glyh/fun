@@ -1185,16 +1185,19 @@ let test_expr_shorthand () =
      end" ()
 
 let test_expected_type_reaches_macro () =
-  let _positive = eval_decl_module
+  let _ = eval_decl_module
     "macro typed(_) : Expr(A) do Syntax.i64(42) end
      pub x : I64 = typed @ (0)"
   in
+  ()
+
+let test_expected_type_rejects_mismatch () =
   match eval_decl_module
     "macro typed(_) : Expr(A) do Syntax.bool(true) end
      pub x : I64 = typed @ (0)"
   with
-  | _ -> Alcotest.fail "expected type mismatch — A should constrain return to I64"
-  | exception _ -> () (* expected: type mismatch *)
+  | _ -> Alcotest.fail "expected type mismatch"
+  | exception _ -> ()
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2479,6 +2482,7 @@ let () =
           Alcotest.test_case "Expr(A) binding" `Quick test_expr_binding;
           Alcotest.test_case ": A shorthand" `Quick test_expr_shorthand;
           Alcotest.test_case "expected type reaches macro" `Quick test_expected_type_reaches_macro;
+          Alcotest.test_case "expected type rejects mismatch" `Quick test_expected_type_rejects_mismatch;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
