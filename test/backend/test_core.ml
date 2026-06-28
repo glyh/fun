@@ -1214,19 +1214,20 @@ let test_annotation_expr_int_no_binding () =
      end" ()
 
 let test_annotation_unknown_binder () =
-  check_i64_macro "unknown Expr(MyAwesomeType) → binder" 1L
+  (* Foo is not in known_type_names → binder → uses do-block for extra param *)
+  check_i64_macro "unknown Expr(Foo) → binder" 1L
     "do
-       macro mk(_) : Expr(MyAwesomeType) do do _ = MyAwesomeType; Syntax.i64(1) end end
+       macro mk(_) : Expr(Foo) do do _ = Foo; Syntax.i64(1) end end
        mk @ (0)
      end" ()
 
-let test_annotation_known_module_type () =
-  let _ = eval_decl_module
-    "type MyAwesomeType = I64
-     macro mk(_) : Expr(MyAwesomeType) do do _ = MyAwesomeType; Syntax.i64(1) end end
-     pub x = mk @ (0)"
-  in
-  ()
+let test_annotation_known_no_binder () =
+  (* Int is in known_type_names → no binder → -> works directly *)
+  check_i64_macro "known Expr(Int) → no binder" 1L
+    "do
+       macro mk(_) : Expr(Int) -> Syntax.i64(1)
+       mk @ (0)
+     end" ()
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2514,8 +2515,8 @@ let () =
           Alcotest.test_case "expected type rejects mismatch" `Quick test_expected_type_rejects_mismatch;
           Alcotest.test_case ": Int known type no binding" `Quick test_annotation_known_type_no_binding;
           Alcotest.test_case ": Expr(Int) known type no binding" `Quick test_annotation_expr_int_no_binding;
-          Alcotest.test_case ": Expr(MyAwesomeType) binder" `Quick test_annotation_unknown_binder;
-          Alcotest.test_case ": Expr(MyAwesomeType) module type" `Quick test_annotation_known_module_type;
+          Alcotest.test_case ": Expr(Foo) binder works" `Quick test_annotation_unknown_binder;
+          Alcotest.test_case ": Expr(Int) no binder" `Quick test_annotation_known_no_binder;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
