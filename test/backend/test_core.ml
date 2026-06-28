@@ -1060,7 +1060,10 @@ let test_decl_kind_registered_persists () =
    | _ -> Alcotest.fail "expected Decl-rejection failure"
 
 let test_decl_macro_generates_binding () =
-  let _ = eval_decl_module "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), false) end;mk @ (0);pub answer = 42"
+  let _ = eval_decl_module
+    "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), false) end
+mk @ (0)
+pub answer = 42"
   in
   ()
 
