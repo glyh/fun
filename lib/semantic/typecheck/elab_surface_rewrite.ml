@@ -179,7 +179,7 @@ let rewrite_record_self_refs record_name params expr =
                   Surface.EffectBranch { effect_path; op; arg_pat; body = go bound body }
             in
             Surface.Match (go bound scrutinee, List.map go_branch branches)
-        | Atom _ | Var _ | Self | SelfType -> expr
+        | Atom _ | Var _ | Self | SelfType | StxExpr _ -> expr
         | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ -> failwith "macro-only syntax should not reach elaboration")
   in
   go [] expr

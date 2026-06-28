@@ -45,6 +45,7 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
   match k with
   | Var id -> Var (add_id_scope_if within s id)
   | Atom _ -> k
+  | Stx s -> Stx (go s)
   | Self -> k
   | SelfType -> k
   | Ap (f, e, a) -> Ap (go f, e, go a)
@@ -222,7 +223,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | Some info -> { stx with kind = Var { id with name = info.resolved_name } }
     | None -> stx
     end
-  | Atom _ | Self | SelfType -> stx
+  | Atom _ | Self | SelfType | Stx _ -> stx
   | Import path ->
     Option.iter (fun f -> f ctx path) ctx.Expand_ctx.load_macros;
     stx
@@ -352,8 +353,9 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                       id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
         if Syntax.MacroKind.has_type_binding macro_kind then
-          (* Defer to elaborator for expected-type *)
-          { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
+          (* Defer to elaborator for expected-type; wrap args in Stx to survive lowering *)
+          let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
+          { stx with kind = MacroCall (expand ctx f, List.map (fun a -> wrap_stx (expand ctx a)) args) }
         else begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
           let result =

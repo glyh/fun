@@ -120,12 +120,22 @@ let load_elaborated t path ~elaborate ~eval_and_apply =
   match Hashtbl.find_opt t.runtime_elab_cache resolved with
   | Some result -> result
   | None ->
-      let parsed = parse_runtime_module t path ~eval_and_apply in
+      let load_macros ctx _path =
+        match Hashtbl.find_opt t.macro_cache resolved with
+        | Some macros ->
+            List.iter (fun (name, value, kind) ->
+              Expand_ctx.register_macro ctx ~name ~value;
+              Expand_ctx.register_macro_kind ctx ~name ~kind)
+              macros
+        | None -> ()
+      in
+      if not (Sys.file_exists resolved) then raise (ImportNotFound path);
+      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~load_macros ~load_syntax:(load_syntax_exports t) (read_module_source resolved) in
       Hashtbl.replace t.active resolved path;
       let result =
         Fun.protect
           ~finally:(fun () -> Hashtbl.remove t.active resolved)
-          (fun () -> elaborate parsed)
+          (fun () -> elaborate surface expand_ctx)
       in
       Hashtbl.replace t.runtime_elab_cache resolved result;
       result

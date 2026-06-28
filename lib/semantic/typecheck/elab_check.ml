@@ -135,6 +135,29 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let effect_branches' = List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches in
       check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
+  | MacroCall (Var macro_name, args), _ ->
+      let fallback () =
+        let core, inferred = ops.infer ctx expr in
+        Ctx.unify ctx expected inferred;
+        core
+      in
+      (match Hashtbl.find_opt ctx.macro_table macro_name with
+       | Some (macro_fn, macro_kind) when Syntax.MacroKind.has_type_binding macro_kind ->
+           (match ctx.expand_ctx with
+            | Some expand_ctx ->
+                (match expand_ctx.Expand_ctx.eval_and_apply with
+                 | Some apply_fn ->
+                     let fn = apply_fn macro_fn expected in
+                     let fn = List.fold_left (fun fn arg ->
+                       let arg_stx = VStx (StxExpr (Syntax.{ kind = Stx (Surface_to_syntax.expr arg); span = Source_span.synthetic })) in
+                       apply_fn fn arg_stx) fn args in
+                     (match Macro_eval.unwrap_stx fn with
+                      | Some expanded ->
+                          ops.check ctx (Lower_surface.lower_expr expanded) expected
+                      | None -> fallback ())
+                 | None -> fallback ())
+            | None -> fallback ())
+       | _ -> fallback ())
   | _ ->
       let core, inferred = ops.infer ctx expr in
       let rec wrap_implicits core ty =

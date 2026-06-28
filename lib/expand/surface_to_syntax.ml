@@ -22,6 +22,7 @@ and effect_row (row : Surface.effect_row) : Syntax.effect_row =
 and expr (e : Surface.t) : Syntax.t =
   let kind =
     match e with
+    | StxExpr s -> Syntax.Stx s
     | Atom a -> Syntax.Atom a
     | Var name -> Syntax.Var (id name)
     | Self -> Syntax.Self

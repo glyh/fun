@@ -17,7 +17,7 @@ open Elab_ops
 let rec compile_time_safe (expr : Surface.t) : bool =
   match expr with
   | Surface.RefNew _ | Surface.RefGet _ | Surface.RefSet _ -> false
-  | Surface.Atom _ | Surface.Var _ | Surface.Self | Surface.SelfType | Surface.Import _ -> true
+  | Surface.Atom _ | Surface.Var _ | Surface.Self | Surface.SelfType | Surface.StxExpr _ | Surface.Import _ -> true
   | Surface.Ap (f, _, a) -> compile_time_safe f && compile_time_safe a
   | Surface.Lam (_, body) -> compile_time_safe body
   | Surface.Let { type_; value; body; _ } ->
@@ -271,5 +271,5 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
           effect_branches
       in
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
-  | Atom _ | Var _ | Self | SelfType | Import _ -> empty_expr_effects
+  | Atom _ | Var _ | Self | SelfType | StxExpr _ | Import _ -> empty_expr_effects
   | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ -> failwith "macro-only syntax should not reach elaboration"

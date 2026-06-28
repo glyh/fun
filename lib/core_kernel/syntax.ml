@@ -127,6 +127,7 @@ and kind =
   | RefGet of t
   | RefSet of t * t
   | Match of t * match_branch list
+  | Stx of t  (* opaque syntax wrapper *)
   | MacroDef of { name : id; value : t; body : t; kind : MacroKind.t option }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {

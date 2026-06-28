@@ -242,7 +242,8 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       | Some loader ->
           let core, _value, ty =
               Core_loader.load_elaborated loader path
-                ~elaborate:(fun imported ->
+                ~elaborate:(fun imported expand_ctx ->
+                    ctx.expand_ctx <- Some expand_ctx;
                     let core, ty = ops.infer ctx imported in
                     (core, Ctx.eval ctx core, ty))
                 ~eval_and_apply:(fun fn arg ->
@@ -936,3 +937,5 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
   | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ ->
       failwith "macro-only syntax should not reach elaboration"
+  | StxExpr _ -> failwith "stx-only syntax should not reach elaboration"
+

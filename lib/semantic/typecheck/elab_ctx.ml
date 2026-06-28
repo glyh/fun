@@ -17,6 +17,7 @@ module Ctx = struct
     resume_entry : name_entry option;
     loader : Core_loader.t option;
     macro_table : (string, Core.value * Syntax.MacroKind.t) Hashtbl.t;
+    mutable expand_ctx : Expand_ctx.t option;
   }
 
   let empty () : t =
@@ -35,6 +36,7 @@ module Ctx = struct
       resume_entry = None;
       loader = None;
       macro_table = Hashtbl.create 4;
+      expand_ctx = None;
     }
 
   let bind (ctx : t) (name : string) (ty : value) : t =
@@ -53,6 +55,7 @@ module Ctx = struct
       resume_entry = ctx.resume_entry;
       loader = ctx.loader;
       macro_table = ctx.macro_table;
+      expand_ctx = ctx.expand_ctx;
     }
 
   let bind_anonymous (ctx : t) (ty : value) : t * name_entry =
@@ -70,9 +73,10 @@ module Ctx = struct
        self_entry = ctx.self_entry;
        self_type = ctx.self_type;
        resume_entry = ctx.resume_entry;
-       loader = ctx.loader;
-       macro_table = ctx.macro_table;
-     },
+        loader = ctx.loader;
+        macro_table = ctx.macro_table;
+        expand_ctx = ctx.expand_ctx;
+      },
      entry)
 
   let define (ctx : t) (name : string) (ty : value) (v : value) : t =
@@ -90,6 +94,7 @@ module Ctx = struct
       resume_entry = ctx.resume_entry;
       loader = ctx.loader;
       macro_table = ctx.macro_table;
+      expand_ctx = ctx.expand_ctx;
     }
 
   let hide_names (ctx : t) names : t =
@@ -114,7 +119,8 @@ module Ctx = struct
        resume_entry = ctx.resume_entry;
         loader = ctx.loader;
         macro_table = ctx.macro_table;
-     },
+        expand_ctx = ctx.expand_ctx;
+      },
      entry)
 
   let lookup (ctx : t) (name : string) : ix * value =

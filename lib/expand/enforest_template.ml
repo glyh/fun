@@ -378,6 +378,7 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.RefGet e -> { stx with kind = Syntax.RefGet (go e) }
   | Syntax.RefSet (l, r) -> { stx with kind = Syntax.RefSet (go l, go r) }
   | Syntax.Match (scrut, branches) -> { stx with kind = Syntax.Match (go scrut, List.map (map_template_match_branch captures go) branches) }
+  | Syntax.Stx s -> { stx with kind = Syntax.Stx (go s) }
   | Syntax.MacroDef { name; value; body; _ } -> { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body; kind = None } }
   | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, List.map go a) }
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
