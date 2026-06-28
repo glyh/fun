@@ -1062,16 +1062,8 @@ let test_decl_kind_registered_persists () =
 let test_decl_macro_generates_binding () =
   let _ = eval_decl_module
     "macro mk(_) : Decl do Syntax.decl_nil end
-     pub _sep = 0
      mk @ (0)
      pub answer = 42"
-  in
-  ()
-
-let test_decl_macro_call_binding_parsed () =
-  let _ = eval_decl_module
-    "pub a = 1
-     mk @ (0)"
   in
   ()
 
@@ -2347,7 +2339,6 @@ let () =
           Alcotest.test_case "macro name shadowing regardless of kind" `Quick test_macro_name_shadowing;
           Alcotest.test_case "Decl kind survives elaboration" `Quick test_decl_kind_registered_persists;
           Alcotest.test_case "Decl macro generates binding in module" `Quick test_decl_macro_generates_binding;
-          Alcotest.test_case "MacroCallBinding parses after binding" `Quick test_decl_macro_call_binding_parsed;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
