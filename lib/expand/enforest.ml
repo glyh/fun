@@ -280,6 +280,12 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
     | rest when implicit_params <> [] || allow_empty -> ([], rest)
     | _ -> error "fn requires at least one parameter list"
   in
+  let known_type_names = ["I64"; "Bool"; "Unit"; "Char"; "String"; "Type"; "Id"; "Span"; "Expr";
+                           "Option"; "List"; "AtomVal"; "Explicitness"; "Ref"; "Pattern"; "Decl"; "Trait"] in
+  let is_binder_name n =
+    let is_upper c = c >= 'A' && c <= 'Z' in
+    String.length n > 0 && is_upper n.[0]
+  in
   let params = implicit_params @ explicit_params in
   let kind, type_binding_param, rest =
     if kind_annotation then
@@ -293,11 +299,14 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
             | [ { datum = Token { kind = Ident u; _ }; _ } ] when String.equal u "_" ->
                 (Some (Syntax.MacroKind.(Expr None)), None, rest)
             | [ { datum = Token { kind = Ident inner; _ }; _ } ] ->
-                let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
-                let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
-                (Some (Syntax.MacroKind.Expr (Some inner)),
-                 Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
-                 rest)
+                if List.mem inner known_type_names || not (is_binder_name inner) then
+                  (Some (Syntax.MacroKind.(Expr None)), None, rest)
+                else
+                  let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
+                  let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+                  (Some (Syntax.MacroKind.Expr (Some inner)),
+                   Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
+                   rest)
             | _ ->
                 error "unsupported type pattern in macro annotation"
           end else begin
@@ -316,6 +325,8 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           else
             (match Syntax.MacroKind.of_string k with
              | Some kind -> (Some kind, None, rest)
+             | None when List.mem k known_type_names || not (is_binder_name k) ->
+                 (Some (Syntax.MacroKind.(Expr None)), None, rest)
              | None ->
                  let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
                  let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
