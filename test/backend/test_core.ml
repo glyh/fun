@@ -1088,6 +1088,13 @@ let test_decl_macro_two_calls () =
   in
   ()
 
+let test_pattern_round_trip () =
+  check_i64_macro "Pattern builder evaluates" 1L
+    "do
+       macro check(_) -> Syntax.i64(1)
+       do _ = Syntax.pat_wild; check @ (0) end
+     end" ()
+
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
@@ -2362,6 +2369,7 @@ let () =
           Alcotest.test_case "Decl macro generates binding in module" `Quick test_decl_macro_generates_binding;
           Alcotest.test_case "imported Decl macro generates binding" `Quick test_imported_decl_macro;
           Alcotest.test_case "Decl macro two calls" `Quick test_decl_macro_two_calls;
+          Alcotest.test_case "Pattern wild round-trip" `Quick test_pattern_round_trip;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
