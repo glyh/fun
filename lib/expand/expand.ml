@@ -353,8 +353,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           | None -> Syntax.MacroKind.default
         in
         let ctx_kind = Expand_ctx.get_context_kind ctx in
-        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
-        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
+        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
+        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
         if macro_base <> ctx_base then
           failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                       id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
@@ -459,7 +459,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let value =
       let prev = Expand_ctx.get_context_kind ctx in
-      Expand_ctx.set_context_kind ctx Syntax.MacroKind.(Expr None);
+      Expand_ctx.set_context_kind ctx Syntax.MacroKind.(Expr (None, None));
       let v = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
       Expand_ctx.set_context_kind ctx prev;
       v
@@ -537,8 +537,8 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
           let macro_kind = match Expand_ctx.lookup_macro_kind ctx id.name with
             | Some k -> k | None -> Syntax.MacroKind.default in
           let ctx_kind = Expand_ctx.get_context_kind ctx in
-        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
-        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
+        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
+        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
         if macro_base <> ctx_base then
             failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                         id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));

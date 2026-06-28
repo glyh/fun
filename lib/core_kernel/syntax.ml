@@ -1,10 +1,11 @@
 module MacroKind = struct
-  type t = Expr of string option | Decl
-  let default = Expr None
+  type t = Expr of string option * string option | Decl
+  let default = Expr (None, None)
   let to_string = function Expr _ -> "Expr" | Decl -> "Decl"
-  let of_string = function "Decl" -> Some Decl | "Expr" -> Some (Expr None) | _ -> None
-  let has_type_binding = function Expr (Some _) -> true | _ -> false
-  let type_binding_name = function Expr (Some n) -> Some n | _ -> None
+  let of_string = function "Decl" -> Some Decl | "Expr" -> Some (Expr (None, None)) | _ -> None
+  let has_type_binding = function Expr (Some _, _) -> true | _ -> false
+  let type_binding_name = function Expr (Some n, _) -> Some n | _ -> None
+  let type_constraint_name = function Expr (_, Some n) -> Some n | _ -> None
 end
 
 type id = {

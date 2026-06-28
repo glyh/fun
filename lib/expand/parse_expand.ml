@@ -12,7 +12,7 @@ let expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ?conte
   Surface_to_syntax.expr surface |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ?context_kind |> fst
 
 let parse_expr_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source =
-  let context_kind = match context_kind with Some k -> k | None -> Syntax.MacroKind.(Expr None) in
+  let context_kind = match context_kind with Some k -> k | None -> Syntax.MacroKind.(Expr (None, None)) in
   Enforest.parse_expr ?load_syntax source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~context_kind
 
 let parse_expr ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source =

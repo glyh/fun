@@ -297,14 +297,16 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           if String.equal k "Expr" then begin
             match drop_separators items with
             | [ { datum = Token { kind = Ident u; _ }; _ } ] when String.equal u "_" ->
-                (Some (Syntax.MacroKind.(Expr None)), None, rest)
+                (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
             | [ { datum = Token { kind = Ident inner; _ }; _ } ] ->
-                if List.mem inner known_type_names || not (is_binder_name inner) then
-                  (Some (Syntax.MacroKind.(Expr None)), None, rest)
+                if List.mem inner known_type_names then
+                  (Some (Syntax.MacroKind.(Expr (None, Some inner))), None, rest)
+                else if not (is_binder_name inner) then
+                  (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
                 else
                   let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
                   let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
-                  (Some (Syntax.MacroKind.Expr (Some inner)),
+                  (Some (Syntax.MacroKind.Expr (Some inner, None)),
                    Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
                    rest)
             | _ ->
@@ -312,7 +314,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           end else begin
             let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
             let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
-            (Some (Syntax.MacroKind.Expr (Some k)),
+            (Some (Syntax.MacroKind.Expr (Some k, None)),
              Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
              rest)
           end
@@ -325,12 +327,14 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           else
             (match Syntax.MacroKind.of_string k with
              | Some kind -> (Some kind, None, rest)
-             | None when List.mem k known_type_names || not (is_binder_name k) ->
-                 (Some (Syntax.MacroKind.(Expr None)), None, rest)
+             | None when List.mem k known_type_names ->
+                 (Some (Syntax.MacroKind.(Expr (None, Some k))), None, rest)
+             | None when not (is_binder_name k) ->
+                 (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
              | None ->
                  let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
                  let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
-                 (Some (Syntax.MacroKind.Expr (Some k)),
+                 (Some (Syntax.MacroKind.Expr (Some k, None)),
                   Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
                   rest))
       | _ -> (None, None, rest)
