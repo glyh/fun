@@ -549,9 +549,11 @@ let syntax_ident_hole_binder_position_rejected () =
 
 let syntax_postfix_rejected_in_module () =
   match parse_module "operator postfix foo(stx) -> stx" with
-  | exception Enforest.Unsupported "unsupported Phase 7C module item" -> ()
+  | exception (Enforest.Unsupported msg) ->
+      if String.starts_with ~prefix:"unsupported module item" msg then ()
+      else Alcotest.fail ("unexpected message: " ^ msg)
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected unsupported module syntax declaration"
+   | _ -> Alcotest.fail "expected unsupported module syntax declaration"
 
 let syntax_postfix_rejected_in_do_block () =
   match parse "do operator postfix foo(stx) -> stx; 0 end" with
@@ -561,7 +563,9 @@ let syntax_postfix_rejected_in_do_block () =
 
 let old_syntax_declaration_rejected () =
   match parse_module "operator prefix foo(stx) -> stx" with
-  | exception Enforest.Unsupported "unsupported Phase 7C module item" -> ()
+  | exception (Enforest.Unsupported msg) ->
+      if String.starts_with ~prefix:"unsupported module item" msg then ()
+      else Alcotest.fail ("unexpected message: " ^ msg)
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected old syntax declaration spelling to be rejected"
 

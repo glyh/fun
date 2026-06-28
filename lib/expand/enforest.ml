@@ -1506,7 +1506,7 @@ and parse_module_binding env stmt =
       | None ->
           let desc =
             match Enforest_util.drop_separators stmt with
-            | t :: _ -> Raw_syntax.show_datum t.Raw_syntax.datum
+            | t :: _ -> Enforest_util.desc_token t
             | [] -> "(empty)"
           in
           unsupported (Printf.sprintf "unsupported module item: %s" desc))
@@ -1619,7 +1619,7 @@ and parse_struct_binding env stmt =
               | None ->
                   let desc =
                     match Enforest_util.drop_separators stmt with
-                    | t :: _ -> Raw_syntax.show_datum t.Raw_syntax.datum
+                    | t :: _ -> Enforest_util.desc_token t
                     | [] -> "(empty)"
                   in
                   unsupported

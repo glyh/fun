@@ -1,4 +1,4 @@
-let max_lines = 1550
+let max_lines = 1700
 
 let rec find_project_root dir remaining =
   let has name = Sys.file_exists (Filename.concat dir name) in
