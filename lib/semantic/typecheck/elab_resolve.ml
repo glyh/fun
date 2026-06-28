@@ -208,6 +208,16 @@ let resolve_trait_method ctx trait_info method_name =
           | None -> raise (ElabError (UnknownTraitMethod method_name)))
       | _ -> raise (ElabError (UnknownTraitMethod method_name)))
 
+let find_nominal_for_constructor ctx name =
+  List.find_map (fun entry ->
+    match entry with
+    | VNominal n ->
+        if List.exists (fun (cname, _) -> String.equal cname name) n.constructors then
+          Some (VNominal n)
+        else None
+    | _ -> None)
+    ctx.Ctx.env
+
 let find_nominal_template_opt ctx path name =
   let scan_env () =
     List.find_map

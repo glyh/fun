@@ -289,21 +289,15 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         | Surface.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
             let scrutinee_ty =
-              try
-                match rhs with
-                | Surface.PatCon ([], ctor_name, _) ->
-                    (match Elab_resolve.find_nominal_template_opt ctx [] ctor_name with
-                     | Some nominal -> nominal
-                     | None -> raise Not_found)
-                | _ -> raise Not_found
-              with Not_found ->
-                try
-                  let ix, _ty = Ctx.lookup ctx "Expr" in
-                  let expr_val = Ctx.eval ctx (Var ix) in
-                  match Nbe.force ctx.metas expr_val with
-                  | VNominal _ -> expr_val
-                  | _ -> VU
-                with _ -> VU
+              match rhs with
+              | Surface.PatCon ([], ctor_name, _) ->
+                  (match Elab_resolve.find_nominal_template_opt ctx [] ctor_name with
+                   | Some nominal -> nominal
+                   | None ->
+                       (match Elab_resolve.find_nominal_for_constructor ctx ctor_name with
+                        | Some nominal -> nominal
+                        | None -> VU))
+              | _ -> VU
             in
             let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
             let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
@@ -572,29 +566,23 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         | Surface.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
             let scrutinee_ty =
-              try
-                match rhs with
-                | Surface.PatCon ([], ctor_name, _) ->
-                    (match Elab_resolve.find_nominal_template_opt ctx [] ctor_name with
-                     | Some nominal -> nominal
-                     | None -> raise Not_found)
-                | _ -> raise Not_found
-              with Not_found ->
-                try
-                  let ix, _ty = Ctx.lookup ctx "Expr" in
-                  let expr_val = Ctx.eval ctx (Var ix) in
-                  match Nbe.force ctx.metas expr_val with
-                  | VNominal _ -> expr_val
-                  | _ -> VU
-                with _ -> VU
+              match rhs with
+              | Surface.PatCon ([], ctor_name, _) ->
+                  (match Elab_resolve.find_nominal_template_opt ctx [] ctor_name with
+                   | Some nominal -> nominal
+                   | None ->
+                       (match Elab_resolve.find_nominal_for_constructor ctx ctor_name with
+                        | Some nominal -> nominal
+                        | None -> VU))
+              | _ -> VU
             in
             let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
             let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
             let kind = if public then Public else Private in
             let ctx' = Ctx.define ctx name VU syn_val in
             go ctx'
-              (PatternSynBind (name, kind, syn_val) :: acc_binds,
-               StructField (name, kind, VU) :: acc_entries)
+               (PatternSynBind (name, kind, syn_val) :: acc_binds,
+                StructField (name, kind, VU) :: acc_entries)
               rest
         | Surface.LetBinding { name; value; public; recursive; _ } :: rest ->
             let rec_ty = Ctx.raw_meta ctx in

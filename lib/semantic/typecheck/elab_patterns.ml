@@ -148,11 +148,30 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
   | PatCon (path, name, sub_pats) -> (
       match Nbe.force ctx.metas scrutinee_ty with
       | VU -> (
-          match find_nominal_template_opt ctx path name with
-          | Some (VNominal n) ->
-              if List.length sub_pats <> n.num_params then
+          let resolve =
+            match find_nominal_template_opt ctx path name with
+            | Some (VNominal n) ->
+                let ctor_params =
+                  match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
+                  | Some (_, params) -> List.length params
+                  | None -> n.num_params
+                in
+                Some (n.id, n.name, ctor_params)
+            | _ ->
+                List.find_map (fun entry ->
+                  match entry with
+                  | VNominal n ->
+                      (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
+                       | Some (_, payloads) -> Some (n.id, n.name, List.length payloads)
+                       | None -> None)
+                  | _ -> None)
+                  ctx.Ctx.env
+          in
+          match resolve with
+          | Some (id, nm, ctor_params) ->
+              if List.length sub_pats <> ctor_params then
                 raise (ElabError PatternArityMismatch);
-              let param_tys = List.init n.num_params (fun _ -> VU) in
+              let param_tys = List.init ctor_params (fun _ -> VU) in
               let core_param_pats, binders =
                 List.fold_left2
                   (fun (pat_acc, binder_acc) sub_pat param_ty ->
@@ -160,13 +179,28 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
                     (core_pat :: pat_acc, sub_binders @ binder_acc))
                   ([], []) sub_pats param_tys
               in
-              (CPatNominalHead { id = n.id; name = n.name; num_params = n.num_params;
+              (CPatNominalHead { id; name = nm; num_params = ctor_params;
                                  param_pats = List.rev core_param_pats },
                List.rev binders)
-          | Some _ -> raise (ElabError (UnknownConstructor name))
           | None when path = [] && sub_pats = [] && starts_lowercase name ->
               (CPatBind, [ (name, VU) ])
-          | None -> raise (ElabError (UnknownConstructor name)))
+          | None ->
+              (match resolve_path_value_opt ctx path name with
+               | Some (syn_val, _) ->
+                   (match Nbe.force ctx.metas syn_val with
+                    | VPatternSyn { rhs; params; scrutinee_ty = syn_ty; _ } ->
+                        if List.length sub_pats <> List.length params then
+                          raise (ElabError PatternArityMismatch);
+                        let core_subs, binders =
+                          List.fold_left (fun (pats, binds) sub_pat ->
+                            let core_p, bs = elaborate_pat_binders ctx sub_pat syn_ty in
+                            (core_p :: pats, bs @ binds))
+                            ([], []) sub_pats
+                        in
+                        let expanded = subst_syn_params params (List.rev core_subs) rhs in
+                        (expanded, List.rev binders)
+                    | _ -> raise (ElabError (UnknownConstructor name)))
+               | None -> raise (ElabError (UnknownConstructor name))))
       | _ ->
           (match path with
            | [] -> None
