@@ -272,21 +272,22 @@ let unwrap_stx_decl (v : value) : Syntax.struct_binding list option =
          | Some expr ->
              let name = value_to_id id_val in
              let public = value_to_bool pub_val in
-             [ Syntax.LetBinding { name; value = expr; public; recursive = false } ]
-         | None -> [])
-    | VCon { name = "DeclNil"; _ } -> []
+             Some [ Syntax.LetBinding { name; value = expr; public; recursive = false } ]
+         | None -> None)
+    | VCon { name = "DeclNil"; _ } -> Some []
     | VCon { name = "DeclCons"; spine = [ head; tail ]; _ } ->
-        go head @ go tail
-    | VStx (StxDecl binding) -> [ binding ]
-    | VStx (StxDecls bindings) -> bindings
+        (match go head, go tail with
+         | Some hd, Some tl -> Some (hd @ tl)
+         | _ -> None)
+    | VStx (StxDecl binding) -> Some [ binding ]
+    | VStx (StxDecls bindings) -> Some bindings
     | VStx (StxExpr stx) -> (
         match stx.kind with
-        | Syntax.Module { bindings } | Syntax.Struct { bindings; _ } -> bindings
-        | _ -> [])
-    | _ -> []
+        | Syntax.Module { bindings } | Syntax.Struct { bindings; _ } -> Some bindings
+        | _ -> None)
+    | _ -> None
   in
-  let result = go v in
-  if result = [] then None else Some result
+  go v
 
 let wrap_stx_decl ~nominals (bindings : Syntax.struct_binding list) : value =
   match nominals with

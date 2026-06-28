@@ -1061,8 +1061,10 @@ let test_decl_kind_registered_persists () =
 
 let test_decl_macro_generates_binding () =
   let _ = eval_decl_module
-    "macro mk(_) do Syntax.i64(1) end
-     pub x = 1"
+    "macro mk(_) : Decl do Syntax.decl_nil end
+     pub _sep = 0
+     mk @ (0)
+     pub answer = 42"
   in
   ()
 
