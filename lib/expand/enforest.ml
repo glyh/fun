@@ -1269,21 +1269,26 @@ and parse_macro_binding env public stmt =
    | _ -> None
 
 and parse_pattern_syn_binding _env public stmt =
-  match drop_separators stmt with
-  | { datum = Token { kind = KwPattern; _ }; _ }
-    :: { datum = Token { kind = Ident name; _ }; span = name_span }
-    :: { datum = Group (Paren, param_terms, _); _ } :: equals :: rhs_terms
-    when token_kind Equals equals ->
-      let params =
-        split_commas (drop_separators param_terms)
-        |> List.map (fun ts ->
-            match drop_separators ts with
-            | [ { datum = Token { kind = Ident p; _ }; span } ] -> id ~span p
-            | _ -> error "expected pattern synonym parameter name")
-      in
-      let rhs = Enforest_pat.parse_pat_terms rhs_terms in
-      Some (Syntax.PatternSynBinding { name = id ~span:name_span name; params; rhs; public })
-  | _ -> None
+  let header = Parse_spec.seq3
+    (Parse_spec.punct KwPattern) Parse_spec.str_ident
+    (Parse_spec.custom_spec ~name:"params_group" (fun _env -> function
+      | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest -> Some (items, rest)
+      | _ -> None)) in
+  match Parse_spec.parse header _env stmt with
+  | Some (((), (name, name_span), param_terms), rest) ->
+      (match Enforest_util.drop_separators rest with
+      | equals :: rhs_terms when token_kind Equals equals ->
+          let params =
+            split_commas (Enforest_util.drop_separators param_terms)
+            |> List.map (fun ts ->
+                match Enforest_util.drop_separators ts with
+                | [ { datum = Token { kind = Ident p; _ }; span } ] -> id ~span p
+                | _ -> error "expected pattern synonym parameter name")
+          in
+          let rhs = Enforest_pat.parse_pat_terms rhs_terms in
+          Some (Syntax.PatternSynBinding { name = id ~span:name_span name; params; rhs; public })
+      | _ -> error "expected '=' after pattern synonym parameters")
+  | None -> None
 
 and parse_macro_call_binding env stmt =
   let args_spec = Parse_spec.custom_spec ~name:"args" (fun _env items ->
