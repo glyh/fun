@@ -457,7 +457,13 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   | LetBinding { name; value; public; recursive } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
-    let value = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
+    let value =
+      let prev = Expand_ctx.get_context_kind ctx in
+      Expand_ctx.set_context_kind ctx Syntax.MacroKind.(Expr None);
+      let v = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
+      Expand_ctx.set_context_kind ctx prev;
+      v
+    in
     ([LetBinding { name = add_id_scope scope name; value; public; recursive }], [[ scope ]])
   | MethodBinding { name; params; body; public } ->
     let binding_name = id_name name in

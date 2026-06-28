@@ -1117,6 +1117,11 @@ let test_type_aware_macro () =
        default @ (0)
      end" ()
 
+let test_type_aware_checking () =
+  let _ = eval_decl_module "macro default(_) : A do Syntax.i64(1) end;pub x : I64 = default @ (0)"
+  in
+  ()
+
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
@@ -2393,6 +2398,7 @@ let () =
           Alcotest.test_case "Decl macro two calls" `Quick test_decl_macro_two_calls;
           Alcotest.test_case "Pattern wild round-trip" `Quick test_pattern_round_trip;
           Alcotest.test_case "type-aware default macro" `Quick test_type_aware_macro;
+          Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
