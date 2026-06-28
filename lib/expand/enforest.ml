@@ -950,20 +950,18 @@ and parse_impl_binding env public stmt =
       | None -> error "impl binding requires = module ... end")
   | _ -> None
 
-and parse_open_statement stmt =
-  match drop_separators stmt with
-  | [
-   { datum = Token { kind = KwOpen; _ }; _ };
-   { datum = Token { kind = Ident name; _ }; span };
-  ] ->
-      Some (id ~span name)
-  | _ -> None
+and parse_open_statement env stmt =
+  let spec = Parse_spec.map
+    (Parse_spec.seq (Parse_spec.punct KwOpen) Parse_spec.str_ident)
+    (fun ((), (name, span)) -> id ~span name)
+  in
+  Parse_spec.to_option spec env stmt
 
 and parse_import_statement env stmt =
-  match drop_separators stmt with
-  | { datum = Token { kind = KwImport; _ }; _ } :: _ ->
-      Some (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
-  | _ -> None
+  let spec = Parse_spec.punct KwImport in
+  match Parse_spec.to_option spec env stmt with
+  | Some () -> Some (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
+  | None -> None
 
 and parse_operator_value env start_span terms =
   let terms = drop_separators terms in
@@ -1235,7 +1233,7 @@ and parse_do_body_terms env span body_terms =
                         | Some { decl_name = name; decl_type = type_; decl_value = value; decl_recursive = recursive } ->
                             fun acc -> stx ~span (Syntax.Let { name; type_; value; body = acc; recursive })
                         | None -> (
-                            match parse_open_statement stmt with
+                            match parse_open_statement env stmt with
                             | Some name -> fun acc -> stx ~span (Syntax.Open (name, acc))
                             | None -> (
                                 match parse_import_statement env stmt with
@@ -1296,19 +1294,33 @@ and parse_pattern_syn_binding _env public stmt =
   | _ -> None
 
 and parse_macro_call_binding env stmt =
-  begin match drop_separators stmt with
-  | ({ datum = Token { kind = Ident name; _ }; span = name_span } as _nm)
-    :: { datum = Token { kind = At; _ }; _ }
-    :: { datum = Group (Raw_syntax.Paren, items, span); _ }
-    :: rest ->
-      let args = match drop_separators items with
-        | [] -> [ unit ~span () ]
-        | _ -> parse_args env items in
-      ensure_no_rest "macro call binding" rest;
-      let f = var ~span:name_span name in
-      Some (Syntax.MacroCallBinding { f; args })
-  | _ -> None
-  end
+  let args_spec = {
+    Parse_spec.run = (fun _env items ->
+      let items = Enforest_util.drop_separators items in
+      let args = match items with
+        | [] -> [ unit ~span:Source_span.synthetic () ]
+        | _ -> parse_args env items
+      in
+      Some (args, []));
+    Parse_spec.name = "args";
+  } in
+  let group_spec = {
+    Parse_spec.run = (fun _env -> function
+      | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
+          (match args_spec.Parse_spec.run _env items with
+           | Some (args, []) -> Some ((args, span), rest)
+           | _ -> None)
+      | _ -> None);
+    Parse_spec.name = "group(Paren)";
+  } in
+  let spec =
+    Parse_spec.map
+      (Parse_spec.seq4 Parse_spec.str_ident (Parse_spec.punct At) group_spec Parse_spec.eof)
+      (fun ((name, name_span), (), (args, _), ()) ->
+         let f = var ~span:name_span name in
+         Syntax.MacroCallBinding { f; args })
+  in
+  Parse_spec.to_option spec env stmt
 
 and parse_named_module_binding env public stmt =
   match drop_separators stmt with

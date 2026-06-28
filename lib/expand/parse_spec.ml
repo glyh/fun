@@ -112,3 +112,16 @@ let recover spec = {
         None);
   name = spec.name
 }
+
+let str_ident = {
+  run = (fun _env -> function
+    | { datum = Token { kind = Ident n; _ }; span } :: rest ->
+        Some ((n, span), rest)
+    | _ -> None);
+  name = "ident"
+}
+
+let to_option spec env tokens =
+  match parse spec env tokens with
+  | Some (v, []) -> Some v
+  | _ -> None
