@@ -814,7 +814,7 @@ let test_eval_continuation_reuse_error () =
       | _ -> Alcotest.fail "expected continuation reuse error")
   | _ -> Alcotest.fail "unexpected continuation result"
 
-let eval_with_macros ?(context_kind = Syntax.MacroKind.Expr) source =
+let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr None)) source =
   let ctx = Elaborate.init_ctx () in
   let nominals =
     { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];

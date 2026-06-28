@@ -342,17 +342,20 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | Var id, _ ->
       begin match Expand_ctx.lookup_macro ctx id.name with
       | Some macro_fn ->
-        begin match ctx.Expand_ctx.eval_and_apply with
+        let macro_kind =
+          match Expand_ctx.lookup_macro_kind ctx id.name with
+          | Some k -> k
+          | None -> Syntax.MacroKind.default
+        in
+        let ctx_kind = Expand_ctx.get_context_kind ctx in
+        if macro_kind <> ctx_kind then
+          failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
+                      id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
+        if Syntax.MacroKind.has_type_binding macro_kind then
+          (* Defer to elaborator for expected-type *)
+          { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
+        else begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
-          let macro_kind =
-            match Expand_ctx.lookup_macro_kind ctx id.name with
-            | Some k -> k
-            | None -> Syntax.MacroKind.default
-          in
-          let ctx_kind = Expand_ctx.get_context_kind ctx in
-          if macro_kind <> ctx_kind then
-            failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
-                        id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
           let result =
             with_syntax_operator_context (List.hd args) (fun () ->
                 List.fold_left (fun fn arg ->
