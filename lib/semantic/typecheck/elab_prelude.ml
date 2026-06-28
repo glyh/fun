@@ -53,6 +53,7 @@ pub impl Eq(String) = module fn eq(x, y) -> eq_string(x, y) end;
 pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
 pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs));
 pub type Option(A) = Some(A) | None;
+pub type List(A) = Nil | Cons(A, List(A));
 pub module Syntax do
   pub type Explicitness = Explicit | Implicit
   pub type Assoc = Left | Right
@@ -77,10 +78,8 @@ pub module Syntax do
   pub TypeExpr : Type = Type
   pub Pattern : Type = Type
   pub type Decl = DeclLet(Id, Expr, Bool)
-  pub type Decls = DeclNil | DeclCons(Decl, Decls)
+  pub Decls = List(Decl)
   pub decl_let = fn(name, val, is_pub) -> DeclLet(name, val, is_pub)
-  pub decl_nil = DeclNil
-  pub decl_cons = fn(head, tail) -> DeclCons(head, tail)
   pub synthetic_span = Span{file = None; start_byte = 0; end_byte = 0; start_line = None; start_col = None; end_line = None; end_col = None}
   pub new_id = fn(name) -> Id{name = name; span = synthetic_span; scope = 0}
   pub atom_val = fn(val) -> RawAtom(None, val)

@@ -523,11 +523,19 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
           if macro_kind <> ctx_kind then
             failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                         id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
-          let fn = List.fold_left (fun fn arg ->
-            let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
-            apply_fn fn arg_stx) macro_fn args in
-          let result = Macro_eval.unwrap_stx_decl fn in
-          (match result with
+           let fn = List.fold_left (fun fn arg ->
+             let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
+             apply_fn fn arg_stx) macro_fn args in
+           let rec force_val v =
+             match v with
+             | Core.VLam _ | Core.VFlex _ ->
+                 let dummy = Core.VStx (Core.StxExpr { Syntax.kind = Atom (Atom.Unit); span = Source_span.synthetic }) in
+                 force_val (apply_fn v dummy)
+             | _ -> v
+           in
+           let fn = force_val fn in
+           let result = Macro_eval.unwrap_stx_decl fn in
+           (match result with
            | Some bindings -> (bindings, [])
            | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name))
         | None -> failwith "macro call requires an apply callback in expand context"

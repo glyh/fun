@@ -822,7 +822,7 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.Expr) source =
       atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
       option_ = Elaborate.resolve_stdlib ctx ["Option"];
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
-      decls = Elaborate.resolve_stdlib ctx ["Syntax"; "Decls"] }
+      list = Elaborate.resolve_stdlib ctx ["List"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -844,7 +844,7 @@ let eval_decl_module source =
       atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
       option_ = Elaborate.resolve_stdlib ctx ["Option"];
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
-      decls = Elaborate.resolve_stdlib ctx ["Syntax"; "Decls"] }
+      list = Elaborate.resolve_stdlib ctx ["List"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -1082,7 +1082,7 @@ pub answer = 42" ]
    | _ -> Alcotest.fail "expected 42"
 
 let test_decl_macro_two_calls () =
-  let _ = eval_decl_module "macro m1(_) : Decl do Syntax.decl_nil end;macro m2(_) : Decl do Syntax.decl_nil end;m2 @ (0)"
+  let _ = eval_decl_module "macro m1(_) : Decl do Nil end;macro m2(_) : Decl do Nil end;m2 @ (0)"
   in
   ()
 
@@ -2029,15 +2029,15 @@ let () =
                  match Some(Some(7)) do \
                    | Some(Some(x)) -> x | Some(None) -> 0 | None -> 0 end end");
              Alcotest.test_case "recursive parameterized ADT match" `Quick
-               (check_i64 "recursive parameterized ADT match" 1L
-                  "do type List(a) = Cons(a, List(a)) | Nil; \
-                   match Cons(1, Nil) do Cons(x, _) -> x | Nil -> 0 end end");
-             Alcotest.test_case "recursive list sum" `Quick
-               (check_i64 "recursive list sum" 6L
-                  "do type List(a) = Cons(a, List(a)) | Nil; \
-                   rec sum : List(I64) -> I64 = fn(xs) do \
-                     match xs do Cons(x, rest) -> x + sum(rest) | Nil -> 0 end end; \
-                   sum(Cons(1, Cons(2, Cons(3, Nil)))) end");
+                (check_i64 "recursive parameterized ADT match" 1L
+                   "do type MyList(a) = Cons(a, MyList(a)) | Nil; \
+                    match Cons(1, Nil) do Cons(x, _) -> x | Nil -> 0 end end");
+              Alcotest.test_case "recursive list sum" `Quick
+                (check_i64 "recursive list sum" 6L
+                   "do type MyList(a) = Cons(a, MyList(a)) | Nil; \
+                    rec sum : MyList(I64) -> I64 = fn(xs) do \
+                      match xs do Cons(x, rest) -> x + sum(rest) | Nil -> 0 end end; \
+                    sum(Cons(1, Cons(2, Cons(3, Nil)))) end");
              Alcotest.test_case "constructor comma payload distinct from tuple" `Quick
                (check_i64 "constructor comma payload distinct from tuple" 6L
                   "do type Tuple(a, b, c) = T(a, b * c); \

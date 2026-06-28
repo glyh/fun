@@ -36,7 +36,7 @@ type syntax_nominals = {
   atom_val : value;
   option_ : value;
   decl : value;
-  decls : value;
+  list : value;
 }
 
 let vcon_none nominals =
@@ -274,8 +274,8 @@ let unwrap_stx_decl (v : value) : Syntax.struct_binding list option =
              let public = value_to_bool pub_val in
              Some [ Syntax.LetBinding { name; value = expr; public; recursive = false } ]
          | None -> None)
-    | VCon { name = "DeclNil"; _ } -> Some []
-    | VCon { name = "DeclCons"; spine = [ head; tail ]; _ } ->
+    | VCon { name = "Nil"; _ } -> Some []
+    | VCon { name = "Cons"; spine = [ head; tail ]; _ } ->
         (match go head, go tail with
          | Some hd, Some tl -> Some (hd @ tl)
          | _ -> None)
@@ -297,13 +297,13 @@ let wrap_stx_decl ~nominals (bindings : Syntax.struct_binding list) : value =
        | _ -> VStx (StxDecls bindings))
   | Some n ->
       let rec go = function
-        | [] -> VCon { name = "DeclNil"; spine = []; nominal = n.decls }
+        | [] -> VCon { name = "Nil"; spine = []; nominal = n.list }
         | Syntax.LetBinding { name; value; public; _ } :: rest ->
             let id_val = id_to_value n name in
             let expr_val = wrap_stx_sub n value in
             let pub_val = VAtom (if public then Bool true else Bool false) in
             let head = VCon { name = "DeclLet"; spine = [ id_val; expr_val; pub_val ]; nominal = n.decl } in
-            VCon { name = "DeclCons"; spine = [ head; go rest ]; nominal = n.decls }
+            VCon { name = "Cons"; spine = [ head; go rest ]; nominal = n.list }
         | _ :: rest -> go rest  (* skip non-LetBindings for now *)
       in
       go bindings
