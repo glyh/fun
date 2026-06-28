@@ -94,8 +94,8 @@ and lower_struct_binding = function
   | Syntax.ImplBinding { trait_path; trait_name; args; fields; public } ->
     Surface.ImplBinding { trait_path; trait_name; args = List.map lower_expr args;
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
-  | Syntax.MacroBinding { name; value; public; _ } ->
-    Surface.MacroBinding { name = lower_id name; value = lower_expr value; public; kind = None }
+  | Syntax.MacroBinding { name; value; public; kind } ->
+    Surface.MacroBinding { name = lower_id name; value = lower_expr value; public; kind }
   | Syntax.MacroCallBinding { f; args } ->
     Surface.MacroCallBinding { f = lower_expr f; args = List.map lower_expr args }
   | Syntax.PatternSynBinding { name; params; rhs; public } ->
