@@ -1296,8 +1296,8 @@ and parse_pattern_syn_binding _env public stmt =
   | _ -> None
 
 and parse_macro_call_binding env stmt =
-  match drop_separators stmt with
-  | { datum = Token { kind = Ident name; _ }; span = name_span }
+  begin match drop_separators stmt with
+  | ({ datum = Token { kind = Ident name; _ }; span = name_span } as _nm)
     :: { datum = Token { kind = At; _ }; _ }
     :: { datum = Group (Raw_syntax.Paren, items, span); _ }
     :: rest ->
@@ -1308,6 +1308,7 @@ and parse_macro_call_binding env stmt =
       let f = var ~span:name_span name in
       Some (Syntax.MacroCallBinding { f; args })
   | _ -> None
+  end
 
 and parse_named_module_binding env public stmt =
   match drop_separators stmt with

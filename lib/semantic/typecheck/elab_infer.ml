@@ -241,10 +241,10 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       match ctx.loader with
       | Some loader ->
           let core, _value, ty =
-            Core_loader.load_elaborated loader path ~elaborate:(fun imported ->
-                let core, ty = ops.infer ctx imported in
-                (core, Ctx.eval ctx core, ty))
-          in
+              Core_loader.load_elaborated loader path ~elaborate:(fun imported ->
+                  let core, ty = ops.infer ctx imported in
+                  (core, Ctx.eval ctx core, ty))
+              in
           (core, ty)
       | None -> raise (ElabError (ImportRequiresLoader path)))
   | RecordConstruct { typ; fields } ->

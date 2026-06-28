@@ -836,6 +836,28 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.Expr) source =
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
+let eval_decl_module source =
+  let ctx = Elaborate.init_ctx () in
+  let nominals =
+    { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];
+      explicitness = Elaborate.resolve_stdlib ctx ["Syntax"; "Explicitness"];
+      atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
+      option_ = Elaborate.resolve_stdlib ctx ["Option"];
+      decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
+      decls = Elaborate.resolve_stdlib ctx ["Syntax"; "Decls"] }
+  in
+  let elaborate expr =
+    let core, _ty = Elaborate.on_expr ctx expr in
+    Elaborate.Ctx.eval ctx core
+  in
+  let eval_and_apply fn arg =
+    let mc = MetaContext.create () in
+    Nbe.apply mc fn arg
+  in
+  let expr = Parse_expand.parse_module ~elaborate ~eval_and_apply ~syntax_nominals:nominals source in
+  let core, _ty = Elaborate.on_expr ctx expr in
+  Elaborate.Ctx.eval ctx core
+
 let eval_with_imported_macros modules source =
   with_modules modules (fun loader ->
       let elaborate expr =
@@ -1035,7 +1057,21 @@ let test_decl_kind_registered_persists () =
   | exception (Failure msg) ->
       Alcotest.(check bool) "Decl kind survives elaboration, rejects Expr call"
         true (string_contains msg "has kind Decl but was used in Expr context")
-  | _ -> Alcotest.fail "expected Decl-rejection failure"
+   | _ -> Alcotest.fail "expected Decl-rejection failure"
+
+let test_decl_macro_generates_binding () =
+  let _ = eval_decl_module
+    "macro mk(_) do Syntax.i64(1) end
+     pub x = 1"
+  in
+  ()
+
+let test_decl_macro_call_binding_parsed () =
+  let _ = eval_decl_module
+    "pub a = 1
+     mk @ (0)"
+  in
+  ()
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2308,6 +2344,8 @@ let () =
           Alcotest.test_case "macro Decl in Expr context rejected" `Quick test_macro_decl_in_expr_context;
           Alcotest.test_case "macro name shadowing regardless of kind" `Quick test_macro_name_shadowing;
           Alcotest.test_case "Decl kind survives elaboration" `Quick test_decl_kind_registered_persists;
+          Alcotest.test_case "Decl macro generates binding in module" `Quick test_decl_macro_generates_binding;
+          Alcotest.test_case "MacroCallBinding parses after binding" `Quick test_decl_macro_call_binding_parsed;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
