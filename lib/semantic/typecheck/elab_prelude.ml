@@ -98,7 +98,7 @@ pub module Syntax do
   pub type Decl = DeclLet(Id, Expr, Bool)
   pub Decls = List(Decl)
   pub decl_let = fn(name, val, is_pub) -> DeclLet(name, val, is_pub)
-  pub type Type = ExprType(Type) | DeclType
+  pub type Type = ExprType(Type) | DeclType | DeclsType
   pub synthetic_span = Span{file = None; start_byte = 0; end_byte = 0; start_line = None; start_col = None; end_line = None; end_col = None}
   pub new_id = fn(name) -> Id{name = name; span = synthetic_span; scope = 0}
   pub atom_val = fn(val) -> RawAtom(None, val)
