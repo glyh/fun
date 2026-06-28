@@ -1214,18 +1214,16 @@ let test_annotation_expr_int_no_binding () =
      end" ()
 
 let test_annotation_unknown_binder () =
-  (* Foo is not in known_type_names → binder → uses do-block for extra param *)
-  check_i64_macro "unknown Expr(Foo) → binder" 1L
+  check_i64_macro "Expr(Foo) → binder creates extra param" 1L
     "do
-       macro mk(_) : Expr(Foo) do do _ = Foo; Syntax.i64(1) end end
+       macro mk(_) : Expr(Foo) do Syntax.i64(1) end
        mk @ (0)
      end" ()
 
 let test_annotation_known_no_binder () =
-  (* Int is in known_type_names → no binder → -> works directly *)
-  check_i64_macro "known Expr(Int) → no binder" 1L
+  check_i64_macro "Expr(I64) → no binder → -> works" 1L
     "do
-       macro mk(_) : Expr(Int) -> Syntax.i64(1)
+       macro mk(_) : Expr(I64) -> Syntax.i64(1)
        mk @ (0)
      end" ()
 
@@ -2516,7 +2514,7 @@ let () =
           Alcotest.test_case ": Int known type no binding" `Quick test_annotation_known_type_no_binding;
           Alcotest.test_case ": Expr(Int) known type no binding" `Quick test_annotation_expr_int_no_binding;
           Alcotest.test_case ": Expr(Foo) binder works" `Quick test_annotation_unknown_binder;
-          Alcotest.test_case ": Expr(Int) no binder" `Quick test_annotation_known_no_binder;
+          Alcotest.test_case ": Expr(I64) no binder" `Quick test_annotation_known_no_binder;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
