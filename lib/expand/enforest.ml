@@ -1312,19 +1312,18 @@ and parse_macro_call_binding env stmt =
     env stmt
 
 and parse_named_module_binding env public stmt =
-  match drop_separators stmt with
-  | { datum = Token { kind = KwModule; _ }; span = module_span }
-    :: { datum = Token { kind = Ident name; _ }; span = name_span }
-    :: do_kw :: body_rest
-    when token_kind KwDo do_kw ->
-      let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+  let header = Parse_spec.drop_sep (Parse_spec.seq3
+    (Parse_spec.spanned (Parse_spec.punct KwModule))
+    Parse_spec.str_ident
+    (Parse_spec.spanned (Parse_spec.punct KwDo))) in
+  match header.Parse_spec.run env stmt with
+  | Some ((((), module_span), (name, name_span), ((), do_span)), rest) ->
+      let body_terms, rest, span = collect_until_end do_span rest in
       ensure_no_rest "module declaration" rest;
       let bindings = parse_module_bindings env body_terms in
-      let value =
-        stx ~span:(span_between module_span span) (Syntax.Module { bindings })
-      in
+      let value = stx ~span:(span_between module_span span) (Syntax.Module { bindings }) in
       Some (Syntax.LetBinding { name = id ~span:name_span name; value; public; recursive = false })
-  | _ -> None
+  | None -> None
 
 and parse_value_binding env public stmt =
   match parse_value_decl_statement env stmt with
@@ -1409,19 +1408,16 @@ and parse_struct_field env stmt =
   | _ -> None
 
 and parse_named_struct_binding env public stmt =
-  match drop_separators stmt with
-  | { datum = Token { kind = KwStruct; _ }; span = struct_span }
-    :: { datum = Token { kind = Ident name; _ }; span = name_span }
-    :: do_kw :: body_rest
-    when token_kind KwDo do_kw ->
-      let body_terms, rest, span = collect_until_end do_kw.span body_rest in
+  let header = Parse_spec.drop_sep (Parse_spec.seq3
+    (Parse_spec.spanned (Parse_spec.punct KwStruct))
+    Parse_spec.str_ident
+    (Parse_spec.spanned (Parse_spec.punct KwDo))) in
+  match header.Parse_spec.run env stmt with
+  | Some ((((), struct_span), (name, name_span), ((), do_span)), rest) ->
+      let body_terms, rest, span = collect_until_end do_span rest in
       ensure_no_rest "struct declaration" rest;
       let con_fields, bindings = parse_struct_items env body_terms in
-      let value =
-        stx
-          ~span:(span_between struct_span span)
-          (Syntax.Struct { con_fields; bindings })
-      in
+      let value = stx ~span:(span_between struct_span span) (Syntax.Struct { con_fields; bindings }) in
       Some (Syntax.LetBinding { name = id ~span:name_span name; value; public; recursive = false })
   | _ -> None
 

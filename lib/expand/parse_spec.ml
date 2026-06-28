@@ -137,3 +137,13 @@ let paren_group item_spec = {
 }
 
 let custom_spec ~name run_fn = { run = run_fn; name }
+
+let spanned spec = {
+  run = (fun env -> function
+    | t :: rest ->
+        (match spec.run env [t] with
+         | Some (v, []) -> Some ((v, t.Raw_syntax.span), rest)
+         | _ -> None)
+    | [] -> None);
+  name = Printf.sprintf "spanned(%s)" spec.name
+}
