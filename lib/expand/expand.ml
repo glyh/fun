@@ -349,13 +349,31 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           | None -> Syntax.MacroKind.default
         in
         let ctx_kind = Expand_ctx.get_context_kind ctx in
-        if macro_kind <> ctx_kind then
+        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
+        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
+        if macro_base <> ctx_base then
           failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                       id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
         if Syntax.MacroKind.has_type_binding macro_kind then
-          (* Defer to elaborator for expected-type; wrap args in Stx to survive lowering *)
-          let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
-          { stx with kind = MacroCall (expand ctx f, List.map (fun a -> wrap_stx (expand ctx a)) args) }
+          (* Type-binding macro: evaluate with VU as expected type *)
+          begin match ctx.Expand_ctx.eval_and_apply with
+          | Some apply_fn ->
+          let result =
+            with_syntax_operator_context (List.hd args) (fun () ->
+                List.fold_left (fun fn arg ->
+                    let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
+                    apply_fn fn arg_stx)
+                  macro_fn args)
+            in
+              begin match Macro_eval.unwrap_stx result with
+              | Some expanded -> expand ctx expanded
+              | None ->
+                  Printf.eprintf "DEBUG unwrap_stx None spine_count=%d\n%!" (match result with Core.VCon { spine; _ } -> List.length spine | _ -> -1);
+                  failwith (syntax_operator_failure (List.hd args)
+                    ("type-aware macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
+            end
+          | None -> failwith "macro call requires an apply callback in expand context"
+          end
         else begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
           let result =
@@ -525,7 +543,9 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
           let macro_kind = match Expand_ctx.lookup_macro_kind ctx id.name with
             | Some k -> k | None -> Syntax.MacroKind.default in
           let ctx_kind = Expand_ctx.get_context_kind ctx in
-          if macro_kind <> ctx_kind then
+        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
+        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr None | _ as k -> k in
+        if macro_base <> ctx_base then
             failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                         id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
            let fn = List.fold_left (fun fn arg ->

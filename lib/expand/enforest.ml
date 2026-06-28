@@ -287,7 +287,12 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
       | { datum = Token { kind = Colon; _ }; _ }
         :: { datum = Token { kind = Ident k; _ }; _ }
         :: rest ->
-          (Syntax.MacroKind.of_string k, drop_separators rest)
+          let rest = drop_separators rest in
+          (match Syntax.MacroKind.of_string k with
+           | Some kind -> (Some kind, rest)
+           | None ->
+               (* Type binding: : A where A is a type parameter name *)
+               (Some (Syntax.MacroKind.Expr (Some k)), rest))
       | _ -> (None, rest)
     else (None, rest)
   in

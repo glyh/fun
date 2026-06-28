@@ -833,7 +833,13 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr None)) source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr = Parse_expand.parse_expr ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~context_kind source in
+  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~context_kind source in
+  Hashtbl.iter (fun name value ->
+    let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
+      | Some k -> k | None -> Syntax.MacroKind.default in
+    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (value, kind))
+    expand_ctx.Expand_ctx.macro_table;
+  ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
@@ -856,7 +862,14 @@ let eval_decl_module source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr = Parse_expand.parse_module ~elaborate ~eval_and_apply ~syntax_nominals:nominals source in
+  let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals source in
+  (* Register macros from expander in elaborator context *)
+  Hashtbl.iter (fun name value ->
+    let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
+      | Some k -> k | None -> Syntax.MacroKind.default in
+    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (value, kind))
+    expand_ctx.Expand_ctx.macro_table;
+  ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
@@ -1093,6 +1106,13 @@ let test_pattern_round_trip () =
     "do
        macro check(_) -> Syntax.i64(1)
        do _ = Syntax.pat_wild; check @ (0) end
+     end" ()
+
+let test_type_aware_macro () =
+  check_i64_macro "type-aware default" 1L
+    "do
+       macro default(_) : A do Syntax.i64(1) end
+       default @ (0)
      end" ()
 
 let test_macro_and_syntax_together () =
@@ -2370,6 +2390,7 @@ let () =
           Alcotest.test_case "imported Decl macro generates binding" `Quick test_imported_decl_macro;
           Alcotest.test_case "Decl macro two calls" `Quick test_decl_macro_two_calls;
           Alcotest.test_case "Pattern wild round-trip" `Quick test_pattern_round_trip;
+          Alcotest.test_case "type-aware default macro" `Quick test_type_aware_macro;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
