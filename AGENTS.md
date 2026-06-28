@@ -147,3 +147,12 @@ module, its constructors become visible only AFTER the ADT binding is processed.
      and stderr for inspection without scrolling through test output.
   The goal is a single diagnostic that pins the root cause, not a matrix of
   modified test inputs.
+- **No test-driven special cases.** Do not introduce special-case logic whose
+  sole purpose is making a test pass. Fix the code so that it genuinely and
+  uniformly handles the input, conforming to the semantics of the language
+  or compiler. When the intended semantics are ambiguous or under-specified,
+  ask the user before committing to an interpretation.
+- **Git checkout is a last resort.** Use `git checkout` only sparingly. If you
+  must jump to a historical commit or branch, first record where you are
+  (e.g. note the current branch/commit in the todo list or save a stash) so
+  you do not lose track of the starting point and lose progress.
