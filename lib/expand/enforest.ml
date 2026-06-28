@@ -281,7 +281,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
     | _ -> error "fn requires at least one parameter list"
   in
   let params = implicit_params @ explicit_params in
-  let kind, rest =
+  let kind, type_binding_param, rest =
     if kind_annotation then
       match drop_separators rest with
       | { datum = Token { kind = Colon; _ }; _ }
@@ -289,13 +289,17 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
         :: rest ->
           let rest = drop_separators rest in
           (match Syntax.MacroKind.of_string k with
-           | Some kind -> (Some kind, rest)
+           | Some kind -> (Some kind, None, rest)
            | None ->
-               (* Type binding: : A where A is a type parameter name *)
-               (Some (Syntax.MacroKind.Expr (Some k)), rest))
-      | _ -> (None, rest)
-    else (None, rest)
+               let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
+               let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+               (Some (Syntax.MacroKind.Expr (Some k)),
+                Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
+                rest))
+      | _ -> (None, None, rest)
+    else (None, None, rest)
   in
+  let params = match type_binding_param with Some p -> p :: params | None -> params in
   let body, rest, span =
     match drop_separators rest with
     | arrow :: body_terms when token_kind ThinArrow arrow ->

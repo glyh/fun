@@ -355,15 +355,16 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                       id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
         if Syntax.MacroKind.has_type_binding macro_kind then
-          (* Type-binding macro: evaluate with VU as expected type *)
+          (* Type-binding macro: pass VU for implicit type param, then explicit args *)
           begin match ctx.Expand_ctx.eval_and_apply with
           | Some apply_fn ->
-          let result =
-            with_syntax_operator_context (List.hd args) (fun () ->
-                List.fold_left (fun fn arg ->
-                    let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
-                    apply_fn fn arg_stx)
-                  macro_fn args)
+            let result =
+              with_syntax_operator_context (List.hd args) (fun () ->
+                  let fn = apply_fn macro_fn Core.VU in
+                  List.fold_left (fun fn arg ->
+                      let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
+                      apply_fn fn arg_stx)
+                    fn args)
             in
               begin match Macro_eval.unwrap_stx result with
               | Some expanded -> expand ctx expanded
