@@ -1079,7 +1079,12 @@ pub answer = 42" ]
      end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "imported DeclLet generates binding" 42L n
-  | _ -> Alcotest.fail "expected 42"
+   | _ -> Alcotest.fail "expected 42"
+
+let test_decl_macro_two_calls () =
+  let _ = eval_decl_module "macro m1(_) : Decl do Syntax.decl_nil end;macro m2(_) : Decl do Syntax.decl_nil end;m2 @ (0)"
+  in
+  ()
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2354,6 +2359,7 @@ let () =
           Alcotest.test_case "Decl kind survives elaboration" `Quick test_decl_kind_registered_persists;
           Alcotest.test_case "Decl macro generates binding in module" `Quick test_decl_macro_generates_binding;
           Alcotest.test_case "imported Decl macro generates binding" `Quick test_imported_decl_macro;
+          Alcotest.test_case "Decl macro two calls" `Quick test_decl_macro_two_calls;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;

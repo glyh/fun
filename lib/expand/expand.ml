@@ -93,8 +93,8 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
   | RefSet (l, r) -> RefSet (go l, go r)
   | Match (scrut, brs) ->
     Match (go scrut, List.map (go_match_branch ?within s) brs)
-  | MacroDef { name; value; body; _ } ->
-    MacroDef { name = add_id_scope_if within s name; value = go value; body = go body; kind = None }
+  | MacroDef { name; value; body; kind } ->
+    MacroDef { name = add_id_scope_if within s name; value = go value; body = go body; kind }
   | MacroCall (f, args) ->
     MacroCall (go f, List.map go args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
@@ -125,8 +125,8 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
   | ImplBinding { trait_path; trait_name; args; fields; public } ->
     ImplBinding { trait_path; trait_name; args = List.map (add_scope ?within s) args;
                   fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
-  | MacroBinding { name; value; public; _ } ->
-    MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public; kind = None }
+  | MacroBinding { name; value; public; kind } ->
+    MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public; kind }
   | MacroCallBinding { f; args } ->
     MacroCallBinding { f = add_scope ?within s f; args = List.map (add_scope ?within s) args }
   | PatternSynBinding { name; params; rhs; public } ->
