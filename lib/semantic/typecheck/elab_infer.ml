@@ -241,9 +241,13 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       match ctx.loader with
       | Some loader ->
           let core, _value, ty =
-              Core_loader.load_elaborated loader path ~elaborate:(fun imported ->
-                  let core, ty = ops.infer ctx imported in
-                  (core, Ctx.eval ctx core, ty))
+              Core_loader.load_elaborated loader path
+                ~elaborate:(fun imported ->
+                    let core, ty = ops.infer ctx imported in
+                    (core, Ctx.eval ctx core, ty))
+                ~eval_and_apply:(fun fn arg ->
+                    let mc = MetaContext.create () in
+                    Nbe.apply mc fn arg)
               in
           (core, ty)
       | None -> raise (ElabError (ImportRequiresLoader path)))

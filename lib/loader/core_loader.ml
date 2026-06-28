@@ -16,7 +16,7 @@ type t = {
   parsed_cache : (string, Surface.t) Hashtbl.t;
   runtime_surface_cache : (string, Surface.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
-  macro_cache : (string, (string * Core.value) list) Hashtbl.t;
+  macro_cache : (string, (string * Core.value * Syntax.MacroKind.t) list) Hashtbl.t;
   syntax_cache : (string, Operator_env.export list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
   macro_active : (string, string) Hashtbl.t;
@@ -72,16 +72,30 @@ let parse_raw_module t path =
       Hashtbl.replace t.parsed_cache resolved surface;
       surface
 
-let parse_runtime_module t path =
+let parse_runtime_module t ?eval_and_apply path =
   let resolved = resolved_path t path in
   if not (Sys.file_exists resolved) then raise (ImportNotFound path);
-  match Hashtbl.find_opt t.runtime_surface_cache resolved with
-  | Some surface -> surface
-  | None ->
-      let source = read_module_source resolved in
-      let surface = Parse_expand.parse_module ~load_syntax:(load_syntax_exports t) source in
-      Hashtbl.replace t.runtime_surface_cache resolved surface;
-      surface
+  let load_macros ctx _path =
+    match Hashtbl.find_opt t.macro_cache resolved with
+    | Some macros ->
+        List.iter (fun (name, value, kind) ->
+          Expand_ctx.register_macro ctx ~name ~value;
+          Expand_ctx.register_macro_kind ctx ~name ~kind)
+          macros
+    | None -> ()
+  in
+  (match eval_and_apply with
+   | Some _ ->
+       let source = read_module_source resolved in
+       Parse_expand.parse_module ?eval_and_apply ~load_macros ~load_syntax:(load_syntax_exports t) source
+   | None ->
+       match Hashtbl.find_opt t.runtime_surface_cache resolved with
+       | Some surface -> surface
+       | None ->
+           let source = read_module_source resolved in
+           let surface = Parse_expand.parse_module ~load_macros ~load_syntax:(load_syntax_exports t) source in
+           Hashtbl.replace t.runtime_surface_cache resolved surface;
+           surface)
 
 let load t path f =
   let resolved = resolved_path t path in
@@ -92,13 +106,13 @@ let load t path f =
     ~finally:(fun () -> Hashtbl.remove t.active resolved)
     (fun () -> f parsed)
 
-let load_elaborated t path ~elaborate =
+let load_elaborated t path ~elaborate ~eval_and_apply =
   let resolved = resolved_path t path in
   if Hashtbl.mem t.active resolved then raise (CircularImport path);
   match Hashtbl.find_opt t.runtime_elab_cache resolved with
   | Some result -> result
   | None ->
-      let parsed = parse_runtime_module t path in
+      let parsed = parse_runtime_module t path ~eval_and_apply in
       Hashtbl.replace t.active resolved path;
       let result =
         Fun.protect
@@ -111,7 +125,10 @@ let load_elaborated t path ~elaborate =
 let rec visit_macros t (ctx : Expand_ctx.t) path =
   let resolved = resolved_path t path in
   let register_cached macros =
-    List.iter (fun (name, value) -> Expand_ctx.register_macro ctx ~name ~value) macros
+    List.iter (fun (name, value, kind) ->
+      Expand_ctx.register_macro ctx ~name ~value;
+      Expand_ctx.register_macro_kind ctx ~name ~kind)
+      macros
   in
   match Hashtbl.find_opt t.macro_cache resolved with
   | Some macros -> register_cached macros
@@ -145,7 +162,7 @@ let rec visit_macros t (ctx : Expand_ctx.t) path =
                           Expand_ctx.register_macro ctx ~name ~value:macro_fn;
                           let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
                           Expand_ctx.register_macro_kind ctx ~name ~kind:resolved_kind;
-                          (name, macro_fn) :: acc
+                          (name, macro_fn, resolved_kind) :: acc
                       | None -> acc)
                  | _ -> acc)
                [] bindings
