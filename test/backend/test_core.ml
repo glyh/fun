@@ -1213,6 +1213,21 @@ let test_annotation_expr_int_no_binding () =
        mk @ (0)
      end" ()
 
+let test_annotation_unknown_binder () =
+  check_i64_macro "unknown Expr(MyAwesomeType) → binder" 1L
+    "do
+       macro mk(_) : Expr(MyAwesomeType) do do _ = MyAwesomeType; Syntax.i64(1) end end
+       mk @ (0)
+     end" ()
+
+let test_annotation_known_module_type () =
+  let _ = eval_decl_module
+    "type MyAwesomeType = I64
+     macro mk(_) : Expr(MyAwesomeType) do do _ = MyAwesomeType; Syntax.i64(1) end end
+     pub x = mk @ (0)"
+  in
+  ()
+
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
@@ -2499,6 +2514,8 @@ let () =
           Alcotest.test_case "expected type rejects mismatch" `Quick test_expected_type_rejects_mismatch;
           Alcotest.test_case ": Int known type no binding" `Quick test_annotation_known_type_no_binding;
           Alcotest.test_case ": Expr(Int) known type no binding" `Quick test_annotation_expr_int_no_binding;
+          Alcotest.test_case ": Expr(MyAwesomeType) binder" `Quick test_annotation_unknown_binder;
+          Alcotest.test_case ": Expr(MyAwesomeType) module type" `Quick test_annotation_known_module_type;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
