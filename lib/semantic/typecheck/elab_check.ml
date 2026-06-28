@@ -149,8 +149,11 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                  | Some apply_fn ->
                      let fn = apply_fn macro_fn expected in
                      let fn = List.fold_left (fun fn arg ->
-                       let arg_stx = VStx (StxExpr (Syntax.{ kind = Stx (Surface_to_syntax.expr arg); span = Source_span.synthetic })) in
-                       apply_fn fn arg_stx) fn args in
+                       match arg with
+                       | Surface.StxExpr stx_arg ->
+                           let arg_stx = Macro_eval.wrap_stx ~nominals:expand_ctx.Expand_ctx.syntax_nominals stx_arg in
+                           apply_fn fn arg_stx
+                       | _ -> fn) fn args in
                      (match Macro_eval.unwrap_stx fn with
                       | Some expanded ->
                           ops.check ctx (Lower_surface.lower_expr expanded) expected

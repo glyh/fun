@@ -1109,7 +1109,7 @@ let test_pattern_round_trip () =
      end" ()
 
 let test_type_aware_macro () =
-  check_i64_macro "type-aware param bound as VU" 1L
+  check_i64_macro "type-aware param bound in infer" 1L
     "do
        macro default(_) : A do
          do _ = A; Syntax.i64(1) end

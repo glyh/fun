@@ -322,19 +322,23 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
       let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
-      let previous = Expand_ctx.lookup_macro ctx name.name in
-      let previous_kind = Expand_ctx.lookup_macro_kind ctx name.name in
       Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:name.name ~kind:resolved_kind;
-      Fun.protect
-        ~finally:(fun () ->
-          match previous, previous_kind with
-          | Some value, Some kind ->
-            Expand_ctx.register_macro ctx ~name:name.name ~value;
-            Expand_ctx.register_macro_kind ctx ~name:name.name ~kind
-          | _ -> (Hashtbl.remove ctx.Expand_ctx.macro_table name.name;
-                  Hashtbl.remove ctx.Expand_ctx.macro_kind_table name.name))
-        (fun () -> expand ctx body)
+      if Syntax.MacroKind.has_type_binding resolved_kind then
+        expand ctx body (* Keep macro in table for elaborator *)
+      else begin
+        let previous = Expand_ctx.lookup_macro ctx name.name in
+        let previous_kind = Expand_ctx.lookup_macro_kind ctx name.name in
+        Fun.protect
+          ~finally:(fun () ->
+            match previous, previous_kind with
+            | Some value, Some kind ->
+              Expand_ctx.register_macro ctx ~name:name.name ~value;
+              Expand_ctx.register_macro_kind ctx ~name:name.name ~kind
+            | _ -> (Hashtbl.remove ctx.Expand_ctx.macro_table name.name;
+                    Hashtbl.remove ctx.Expand_ctx.macro_kind_table name.name))
+          (fun () -> expand ctx body)
+      end
     | None ->
       failwith "macro definition requires an elaboration callback in expand context"
     end
@@ -355,26 +359,9 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                       id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
         if Syntax.MacroKind.has_type_binding macro_kind then
-          (* Type-binding macro: pass VU for implicit type param, then explicit args *)
-          begin match ctx.Expand_ctx.eval_and_apply with
-          | Some apply_fn ->
-            let result =
-              with_syntax_operator_context (List.hd args) (fun () ->
-                  let fn = apply_fn macro_fn Core.VU in
-                  List.fold_left (fun fn arg ->
-                      let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
-                      apply_fn fn arg_stx)
-                    fn args)
-            in
-              begin match Macro_eval.unwrap_stx result with
-              | Some expanded -> expand ctx expanded
-              | None ->
-                  Printf.eprintf "DEBUG unwrap_stx None spine_count=%d\n%!" (match result with Core.VCon { spine; _ } -> List.length spine | _ -> -1);
-                  failwith (syntax_operator_failure (List.hd args)
-                    ("type-aware macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
-            end
-          | None -> failwith "macro call requires an apply callback in expand context"
-          end
+          (* Defer to elaborator: wrap args in Stx to survive lowering *)
+          let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
+          { stx with kind = MacroCall (expand ctx f, List.map (fun a -> wrap_stx (expand ctx a)) args) }
         else begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
           let result =

@@ -935,7 +935,35 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
-  | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ ->
+  | MacroCall (f, args) ->
+      let macro_name = match f with Var n -> Some n | _ -> None in
+      (match macro_name with
+       | Some name ->
+           (match Hashtbl.find_opt ctx.macro_table name with
+            | Some (macro_fn, _macro_kind) ->
+                (match ctx.expand_ctx with
+                 | Some expand_ctx ->
+                     (match expand_ctx.Expand_ctx.eval_and_apply with
+                      | Some apply_fn ->
+                          let ty = Ctx.raw_meta ctx in
+                          let fn = apply_fn macro_fn ty in
+                          let fn = List.fold_left (fun fn arg ->
+                            match arg with
+                            | Surface.StxExpr stx_arg ->
+                                let arg_stx = Macro_eval.wrap_stx ~nominals:expand_ctx.Expand_ctx.syntax_nominals stx_arg in
+                                apply_fn fn arg_stx
+                            | _ -> fn) fn args in
+                          (match Macro_eval.unwrap_stx fn with
+                           | Some expanded ->
+                               ops.infer ctx (Lower_surface.lower_expr expanded)
+                           | None ->
+                               let ty = Ctx.raw_meta ctx in
+                               (Ctx.fresh_meta ctx, ty))
+                      | None -> failwith "eval_and_apply required")
+                 | None -> failwith "expand_ctx required")
+            | None -> failwith "macro-only syntax should not reach elaboration")
+       | None -> failwith "macro-only syntax should not reach elaboration")
+  | MacroDef _ | SyntaxOperatorUse _ ->
       failwith "macro-only syntax should not reach elaboration"
   | StxExpr _ -> failwith "stx-only syntax should not reach elaboration"
 
