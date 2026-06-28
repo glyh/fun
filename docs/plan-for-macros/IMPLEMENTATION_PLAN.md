@@ -49,7 +49,8 @@ Current focus:
 - [x] Syntax expanding to macro: template replacement can contain `macro @ (args)` calls.
 - [x] Stage 8: kind-tagged macros with Expr/Decl annotation, context validation, decl-position calls, and multi-binding returns.
 - [x] Stage 8 follow-up: Decl ADT (DeclLet, DeclNil, DeclCons) with wrap/unwrap_stx_decl, builders (decl_let, decl_nil, decl_cons), import support via eval_and_apply threading + macro_cache kind preservation.
-- [ ] Stage 9: Syntax.Pattern ADT. Decl ADT is complete; Pattern ADT remains.
+- [x] Stage 9: Syntax.Pattern ADT complete (6 constructors, builders, wrap/unwrap, pattern synonyms).
+- [x] Stage 10: Type-aware macros — : Expr(A)/Expr(_)/Decl annotations, type-case in macro body, check+infer paths, expected-type constraint via elaborator, Syntax.Type ADT.
 
 ## Validation Commands
 
