@@ -42,12 +42,14 @@ Current focus:
 - [x] Stage 7 enforestation infrastructure is complete through the constrained prefix/infix syntax-extension slice.
 - [x] Stage 7F practical macro authoring: `syntax <head-token> do | pattern -> replacement end`, infix-only precedence-aware `operator` forms, and at least one non-dummy enforestation-backed macro.
 - [x] Stage 7H module/struct declaration templates: `decl` holes, `multi ... end` declaration-template output, and declaration-template contexts for value and typed value bindings with optional `pub`.
-- [x] Stage 7G computed hygienic macro authoring: `Syntax.Expr` as a nominal matchable ADT with pattern synonyms (`Var`, `Ap`, `Lam`, `Let`, `Atom`). `Syntax.*` builders construct ADT values directly. `wrap_stx`/`unwrap_stx` use real nominals from stdlib (no dummies). Source spans preserved through round-trip. Nested pattern matching with named binders works. ADT matching preserves hygiene. All 28 `stx_*` primitives eliminated. `rec fn` in module bindings supported (`LetBinding.recursive`). Class-specific ADTs (`Pattern`, `TypeExpr`, `Decl`, `Decls`) deferred to Stage 8.
+- [x] Stage 7G computed hygienic macro authoring: `Syntax.Expr` as a nominal matchable ADT with pattern synonyms (`Var`, `Ap`, `Lam`, `Let`, `Atom`). `Syntax.*` builders construct ADT values directly. `wrap_stx`/`unwrap_stx` use real nominals from stdlib (no dummies). Source spans preserved through round-trip. Nested pattern matching with named binders works. ADT matching preserves hygiene. All 28 `stx_*` primitives eliminated. `rec fn` in module bindings supported (`LetBinding.recursive`). Class-specific ADTs: Decl done (`DeclLet`/`DeclNil`/`DeclCons`), Pattern and TypeExpr deferred to Stage 9.
 - [x] Stage 7I macros generating macros: `multi ... end` generates `macro`, `syntax`, and `operator` declarations with correct scoping, public export, later-wins shadowing, and cycle detection in module/module-file contexts. Generated public operators/macros rejected in runtime structs.
 - [x] Multi-arg macros: `MacroCall(f, args_list)`, `m @ (a, b, c)` parsed via `parse_args`, expander applies fold_left.
 - [x] Operator redesign: `infix (sym) prec Assoc (params) -> body`. Template form: `infix (sym) prec Assoc ($a, $b) -> $a - $b` uses `substitute_template_captures`.
 - [x] Syntax expanding to macro: template replacement can contain `macro @ (args)` calls.
-- [x] Stage 8: kind-tagged macros with Expr/Decl annotation, context validation, decl-position macro calls, and multi-binding returns.
+- [x] Stage 8: kind-tagged macros with Expr/Decl annotation, context validation, decl-position calls, and multi-binding returns.
+- [x] Stage 8 follow-up: Decl ADT (DeclLet, DeclNil, DeclCons) with wrap/unwrap_stx_decl, builders (decl_let, decl_nil, decl_cons), import support via eval_and_apply threading + macro_cache kind preservation.
+- [ ] Stage 9: Syntax.Pattern ADT. Decl ADT is complete; Pattern ADT remains.
 
 ## Validation Commands
 
@@ -599,19 +601,27 @@ Implemented:
 
 ## Stage 9: Decl/Pattern ADT Completion
 
-Status: Not started.
+Status: Decl ADT done. Pattern ADT not started.
 
 Purpose:
 
 - Define ADT constructors for `Syntax.Decl`/`Syntax.Decls` (and `Syntax.Pattern`) so macros can construct/splice declaration and pattern syntax, not just expressions.
 
-Concrete tasks:
+Decl ADT (complete):
 
-- [ ] Add DeclBinding ADT to stdlib: `Syntax.DeclBinding(binding)` nominal
-- [ ] Add wrap_stx support for Decl/Decls ADT constructors
-- [ ] Add builder functions: `Syntax.decl(binding)`, `Syntax.decls(bindings)`
-- [ ] Add Syntax.Pattern ADT and pattern-synonym constructors (Stage 7G deferred)
-- [ ] Tests: Decl macro returning `Syntax.decl(...)`, multi-decl macros
+- [x] `Syntax.Decl = DeclLet(Id, Expr, Bool)` — single let-binding constructor
+- [x] `Syntax.Decls = DeclNil | DeclCons(Decl, Decls)` — binding list
+- [x] `wrap_stx_decl` wraps `struct_binding list` into DeclCons(DeclLet(...), ...) chain
+- [x] `unwrap_stx_decl` handles DeclLet→LetBinding, DeclNil→[], DeclCons→cons
+- [x] Builders: `Syntax.decl_let(id, val, pub)`, `decl_nil`, `decl_cons(head, tail)`
+- [x] Tests: DeclLet generates bindings, DeclNil empty list, two macros, imports
+
+Pattern ADT (remaining):
+
+- [ ] Add `Syntax.Pattern` ADT with constructors mirroring pattern forms (wildcard, binder, constructor, literal, tuple, record, or-pattern)
+- [ ] Add `wrap_stx_pat` / `unwrap_stx_pat` for pattern round-trip
+- [ ] Add builder functions: `Syntax.pat_wild`, `Syntax.pat_var(...)`, `Syntax.pat_ctr(...)`, etc.
+- [ ] Tests: macro returning pattern syntax, macro inspecting pattern syntax
 
 ## Stage 10: Type-Aware Macros
 
