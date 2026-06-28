@@ -1118,8 +1118,18 @@ let test_type_aware_macro () =
      end" ()
 
 let test_type_aware_checking () =
-  let _ = eval_decl_module "macro default(_) : A do Syntax.i64(1) end;pub x : I64 = default @ (0)"
+  let _module_val = eval_decl_module
+    "macro default(_) : A do
+       match A do
+       | I64 -> Syntax.i64(42)
+       | _ -> Syntax.i64(0)
+       end
+     end
+     pub x : I64 = default @ (0)
+     pub y = default @ (0)"
   in
+  (* Type annotation on x means checking mode — A should be I64 → 42
+     No annotation on y means inference — A is fresh meta → should match wildcard *)
   ()
 
 let test_macro_and_syntax_together () =
