@@ -87,7 +87,15 @@ let parse_runtime_module t ?eval_and_apply path =
   (match eval_and_apply with
    | Some _ ->
        let source = read_module_source resolved in
-       Parse_expand.parse_module ?eval_and_apply ~load_macros ~load_syntax:(load_syntax_exports t) source
+       let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ~load_macros ~load_syntax:(load_syntax_exports t) source in
+       (* Cache macros from expansion context so elaborator can find them *)
+       Hashtbl.iter (fun name value ->
+         let kind = match Hashtbl.find_opt ctx.Expand_ctx.macro_kind_table name with
+           | Some k -> k | None -> Syntax.MacroKind.default in
+         Hashtbl.replace t.macro_cache resolved
+           ((name, value, kind) :: (Option.value ~default:[] (Hashtbl.find_opt t.macro_cache resolved))))
+         ctx.Expand_ctx.macro_table;
+       surface
    | None ->
        match Hashtbl.find_opt t.runtime_surface_cache resolved with
        | Some surface -> surface
