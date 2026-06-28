@@ -125,3 +125,15 @@ let to_option spec env tokens =
   match parse spec env tokens with
   | Some (v, []) -> Some v
   | _ -> None
+
+let paren_group item_spec = {
+  run = (fun env -> function
+    | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
+        (match parse item_spec env items with
+         | Some (value, []) -> Some ((value, span), rest)
+         | _ -> None)
+    | _ -> None);
+  name = Printf.sprintf "paren_group(%s)" item_spec.name
+}
+
+let custom_spec ~name run_fn = { run = run_fn; name }

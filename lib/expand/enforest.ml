@@ -1294,33 +1294,22 @@ and parse_pattern_syn_binding _env public stmt =
   | _ -> None
 
 and parse_macro_call_binding env stmt =
-  let args_spec = {
-    Parse_spec.run = (fun _env items ->
-      let items = Enforest_util.drop_separators items in
-      let args = match items with
-        | [] -> [ unit ~span:Source_span.synthetic () ]
-        | _ -> parse_args env items
-      in
-      Some (args, []));
-    Parse_spec.name = "args";
-  } in
-  let group_spec = {
-    Parse_spec.run = (fun _env -> function
-      | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
-          (match args_spec.Parse_spec.run _env items with
-           | Some (args, []) -> Some ((args, span), rest)
-           | _ -> None)
-      | _ -> None);
-    Parse_spec.name = "group(Paren)";
-  } in
-  let spec =
-    Parse_spec.map
-      (Parse_spec.seq4 Parse_spec.str_ident (Parse_spec.punct At) group_spec Parse_spec.eof)
+  let args_spec = Parse_spec.custom_spec ~name:"args" (fun _env items ->
+    let items = Enforest_util.drop_separators items in
+    let args = match items with
+      | [] -> [ unit ~span:Source_span.synthetic () ]
+      | _ -> parse_args env items
+    in
+    Some (args, []))
+  in
+  Parse_spec.to_option
+    (Parse_spec.map
+      (Parse_spec.seq4 Parse_spec.str_ident (Parse_spec.punct At)
+         (Parse_spec.paren_group args_spec) Parse_spec.eof)
       (fun ((name, name_span), (), (args, _), ()) ->
          let f = var ~span:name_span name in
-         Syntax.MacroCallBinding { f; args })
-  in
-  Parse_spec.to_option spec env stmt
+         Syntax.MacroCallBinding { f; args }))
+    env stmt
 
 and parse_named_module_binding env public stmt =
   match drop_separators stmt with
