@@ -117,3 +117,21 @@ module, its constructors become visible only AFTER the ADT binding is processed.
 - `Syntax.t` is the surface AST node, NOT an OCaml `t` type alias
 - `Core.term` is the elaboration core term, `Core.value` is the evaluated value
 - `and` in type definitions links mutually recursive types across files
+
+## Style conventions
+
+- **Exceptions are not control flow.** `raise`/`try-with` must never be used for
+  normal program logic. They signal unrecoverable errors — malformed input, I/O
+  failures, internal invariants violated. A well-formed program should not
+  trigger exception-based dispatch. Use `Result`, `option`, or explicit
+  sum types for recoverable or expected failure paths.
+- **Line-count reduction is structural, not cosmetic.** When faced with a hard
+  LoC limit, do not minify, reindent, or join lines. Instead:
+  1. Identify genuinely repetitive code (e.g. near-duplicate `first_some` blocks,
+     body-parsing patterns copied across `parse_fn_parts`/`parse_method_binding`/
+     `parse_operator_value`).
+  2. Lift the common structure into a shared helper or combinator.
+  3. Or split the module at a clean interface boundary (e.g. expression parser
+     vs binding parsers into separate files accessible via a small driver).
+  The goal is fewer lines through less duplication, not fewer lines through
+  less readability.
