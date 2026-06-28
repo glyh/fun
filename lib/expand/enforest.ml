@@ -308,17 +308,20 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
              rest)
           end
       | { datum = Token { kind = Colon; _ }; _ }
-        :: { datum = Token { kind = Ident k; _ }; _ }
+        :: { datum = Token { kind = Ident k; _ }; span = _k_span }
         :: rest ->
           let rest = drop_separators rest in
-          (match Syntax.MacroKind.of_string k with
-           | Some kind -> (Some kind, None, rest)
-           | None ->
-               let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
-               let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
-               (Some (Syntax.MacroKind.Expr (Some k)),
-                Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
-                rest))
+          if String.equal k "Expr" then
+            error ": Expr requires a type pattern, e.g. : Expr(_) or : Expr(A)"
+          else
+            (match Syntax.MacroKind.of_string k with
+             | Some kind -> (Some kind, None, rest)
+             | None ->
+                 let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
+                 let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+                 (Some (Syntax.MacroKind.Expr (Some k)),
+                  Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
+                  rest))
       | _ -> (None, None, rest)
     else (None, None, rest)
   in

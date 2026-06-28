@@ -1033,9 +1033,9 @@ let test_macro_default_expr () =
      end" ()
 
 let test_macro_expr_annotation () =
-  check_i64_macro "macro : Expr explicit annotation" 1L
+  check_i64_macro "macro : Expr(_) explicit annotation" 1L
     "do
-       macro check(_) : Expr -> Syntax.i64(1)
+       macro check(_) : Expr(_) -> Syntax.i64(1)
        check @ (0)
      end" ()
 
@@ -1148,7 +1148,7 @@ let test_type_default_macro () =
 let test_type_default_bool () =
   match eval_with_macros
     "do
-       macro default(_) : A do
+       macro default(_) : Expr(A) do
          match A do
          | I64 -> Syntax.i64(0)
          | Bool -> Syntax.bool(false)
@@ -1160,6 +1160,27 @@ let test_type_default_bool () =
   with
   | VAtom (Bool b) -> Alcotest.(check bool) "type-directed default for Bool" false b
   | v -> Alcotest.fail (Debug.pp_value_short (MetaContext.create ()) v)
+
+let test_expr_wildcard () =
+  check_i64_macro "macro : Expr(_) works" 1L
+    "do
+       macro mk(_) : Expr(_) -> Syntax.i64(1)
+       mk @ (0)
+     end" ()
+
+let test_expr_binding () =
+  check_i64_macro "macro : Expr(A) works" 1L
+    "do
+       macro mk(_) : Expr(A) do do _ = A; Syntax.i64(1) end end
+       mk @ (0)
+     end" ()
+
+let test_expr_shorthand () =
+  check_i64_macro "macro : A shorthand works" 1L
+    "do
+       macro mk(_) : A do do _ = A; Syntax.i64(1) end end
+       mk @ (0)
+     end" ()
 
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
@@ -2428,7 +2449,7 @@ let () =
           Alcotest.test_case "macro multi-arg" `Quick test_macro_multi_arg;
           Alcotest.test_case "macro multi-arg swap" `Quick test_macro_multi_arg_swap;
           Alcotest.test_case "macro default kind Expr" `Quick test_macro_default_expr;
-          Alcotest.test_case "macro : Expr annotation" `Quick test_macro_expr_annotation;
+          Alcotest.test_case "macro : Expr(_) annotation" `Quick test_macro_expr_annotation;
           Alcotest.test_case "macro Decl in Expr context rejected" `Quick test_macro_decl_in_expr_context;
           Alcotest.test_case "macro name shadowing regardless of kind" `Quick test_macro_name_shadowing;
           Alcotest.test_case "Decl kind survives elaboration" `Quick test_decl_kind_registered_persists;
@@ -2440,6 +2461,9 @@ let () =
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
           Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
           Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
+          Alcotest.test_case "Expr(_) wildcard" `Quick test_expr_wildcard;
+          Alcotest.test_case "Expr(A) binding" `Quick test_expr_binding;
+          Alcotest.test_case ": A shorthand" `Quick test_expr_shorthand;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
