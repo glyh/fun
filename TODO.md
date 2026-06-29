@@ -25,6 +25,19 @@ nominals can be aliased through rebinds (`type T = SomeNominal`). The nominal's
 `id` field exists for identity comparison and should be used instead of name
 comparison wherever possible.
 
+### Audit hardcoded symbol names
+
+There are hardcoded string names scattered across the codebase — type names
+(`"Type"`, `"R"`), constructor names (`"RExpr"`, `"Some"`, `"None"`), module
+paths (`"Syntax"`), etc. These should be centralized or replaced with nominal
+identity references where possible. Places to audit:
+
+- `enforest.ml`: `"Syntax"`, `"R"` (R-type annotation), `"Type"` (old annotation)
+- `elab_infer/elab_check.ml`: `"RExpr"` constructor name for wrapping
+- `elab_resolve.ml`: `"stdlib"` module name
+- `elab_prelude.ml`: stdlib source code has many hardcoded names
+- `macro_eval.ml`, `expand.ml`, `expand_ctx.ml`: syntax nominal references
+
 ### Nested-module ADT constructor resolution
 
 `pub pattern PatWild = RawPatWild(_)` inside modules can fail because constructor
