@@ -143,6 +143,12 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       in
       (match Hashtbl.find_opt ctx.macro_table macro_name with
        | Some (macro_fn, macro_kind) when Syntax.MacroKind.has_type_binding macro_kind ->
+           (match Syntax.MacroKind.type_constraint_name macro_kind with
+            | Some constraint_name ->
+                (match resolve_path_value_opt ctx [] constraint_name with
+                 | Some (constraint_val, _) -> Ctx.unify ctx expected constraint_val
+                 | None -> raise (ElabError (UnboundVariable constraint_name)))
+            | None -> ());
            (match ctx.expand_ctx with
             | Some expand_ctx ->
                 (match expand_ctx.Expand_ctx.eval_and_apply with

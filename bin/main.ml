@@ -16,8 +16,8 @@ let run source =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr =
-    Parse_expand.parse_expr
+  let expr, expand_ctx =
+    Parse_expand.parse_expr_with_ctx
       ~elaborate
       ~eval_and_apply
       ~load_macros:(Core_loader.visit_macros loader)
@@ -25,6 +25,12 @@ let run source =
       source
   in
   let ctx = Elaborate.init_ctx () in
+  Hashtbl.iter (fun name value ->
+    let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
+      | Some k -> k | None -> Syntax.MacroKind.default in
+    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (value, kind))
+    expand_ctx.Expand_ctx.macro_table;
+  ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
   let core, ty = Elaborate.on_expr ~loader ctx expr in
   let value = Elaborate.Ctx.eval ctx core in
   Printf.printf "%s: %s\n"

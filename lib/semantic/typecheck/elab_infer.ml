@@ -940,12 +940,18 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       (match macro_name with
        | Some name ->
            (match Hashtbl.find_opt ctx.macro_table name with
-            | Some (macro_fn, _macro_kind) ->
+            | Some (macro_fn, macro_kind) ->
                 (match ctx.expand_ctx with
                  | Some expand_ctx ->
                      (match expand_ctx.Expand_ctx.eval_and_apply with
                       | Some apply_fn ->
                           let ty = Ctx.raw_meta ctx in
+                          (match Syntax.MacroKind.type_constraint_name macro_kind with
+                           | Some constraint_name ->
+                               (match resolve_path_value_opt ctx [] constraint_name with
+                                | Some (constraint_val, _) -> Ctx.unify ctx ty constraint_val
+                                | None -> raise (ElabError (UnboundVariable constraint_name)))
+                           | None -> ());
                           let fn = apply_fn macro_fn ty in
                           let fn = List.fold_left (fun fn arg ->
                             match arg with

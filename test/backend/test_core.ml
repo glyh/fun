@@ -1227,6 +1227,22 @@ let test_annotation_known_no_binder () =
        mk @ (0)
      end" ()
 
+let test_constraint_rejects_mismatch () =
+  match eval_decl_module
+    "macro mk(_) : Expr(I64) -> Syntax.i64(1)
+     pub x : Bool = mk @ (0)"
+  with
+  | _ -> Alcotest.fail "expected constraint type mismatch"
+  | exception _ -> ()
+
+let test_constraint_body_type_mismatch () =
+  match eval_decl_module
+    "macro mk(_) : Expr(I64) -> Syntax.bool(true)
+     pub x : I64 = mk @ (0)"
+  with
+  | _ -> Alcotest.fail "expected constraint body type mismatch"
+  | exception _ -> ()
+
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
@@ -2515,6 +2531,8 @@ let () =
           Alcotest.test_case ": Expr(Int) known type no binding" `Quick test_annotation_expr_int_no_binding;
           Alcotest.test_case ": Expr(Foo) binder works" `Quick test_annotation_unknown_binder;
           Alcotest.test_case ": Expr(I64) no binder" `Quick test_annotation_known_no_binder;
+          Alcotest.test_case "constraint rejects mismatch" `Quick test_constraint_rejects_mismatch;
+          Alcotest.test_case "constraint rejects body type mismatch" `Quick test_constraint_body_type_mismatch;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
