@@ -76,6 +76,20 @@ Cross-language research:
 - **Swift/Kotlin**: constructors inherit the type's visibility.
 
 Consensus: **private type constructors are never usable unqualified after open**.
+
+Additional languages researched:
+- **Standard ML**: Signatures (`sig ... end`) define interfaces; types not in the
+  signature are *abstract* and constructors are hidden. `open` only exposes
+  what's in the structure's signature. Opaque ascription (`:>`) hides
+  implementation details.
+- **F#**: `private` types "not usable outside this file". Discriminated union
+  cases inherit the type's accessibility — a `private` DU has private
+  constructors. Values "cannot be more accessible than their type" — no
+  exposing a private type via a public binding.
+- **Scala**: `private` restricts to enclosing class/object; `private[package]`
+  to a package. `sealed` traits restrict inheritance to the same file — but
+  case class pattern matching still requires the concrete type to be
+  accessible. Default is `public`.
 The current `unqualified_constructor_in_scope` check in `elab_patterns.ml:239`
 is correct. The fix for `Syntax.R`'s constructors should be at the module-opening
 level (recursive `open_module_value` registers public sub-module ADT constructors
