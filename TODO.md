@@ -45,6 +45,42 @@ resolution traverses by type name, not constructor name. Affects pattern matchin
 in macro bodies for module-scoped ADTs. The `find_nominal_template_opt` and
 related code in `elab_patterns.ml` and `elab_resolve.ml` need attention.
 
+### Private constructor visibility (design decision)
+
+Currently `elab_patterns.ml:239` checks `unqualified_constructor_in_scope` before
+the VNominal constructor list. This correctly rejects constructors of private
+ADTs when `open`-ed, but also rejects constructors of public ADTs nested inside
+modules (e.g. `RExpr` from `Syntax.R`).
+
+Cross-language research:
+- **OCaml**: `.mli` controls visibility with 4 levels —
+  *private* (not listed): type and constructors completely inaccessible;
+  *abstract* (listed without `=`): type exists as opaque handle, constructors are
+  unbound (can't create or match);
+  *read-only* (`= private`): can pattern-match but can't construct directly;
+  *public* (listed with `=`): constructors fully accessible. `open M` only
+  exposes names from the public interface.
+- **Java**: `private` members only accessible within declaring class.
+  Package-private types returned by `public` methods become effectively opaque
+  to external callers — values can be passed around but constructors/fields
+  are inaccessible.
+- **C#**: `private`/`internal` types can't be exposed through `public` members
+  at all — the compiler rejects it ("type must be at least as accessible as
+  the member"). `private protected`, `internal`, `protected internal` etc.
+  are assembly-scoped.
+- **Rust**: `use module::*` only brings `pub` items. Private struct fields
+  can't be accessed outside the defining module.
+- **Haskell**: export lists control constructor visibility. Importing a type
+  without its constructors (`Foo` without `Foo(..)`) makes pattern matching
+  impossible.
+- **Swift/Kotlin**: constructors inherit the type's visibility.
+
+Consensus: **private type constructors are never usable unqualified after open**.
+The current `unqualified_constructor_in_scope` check in `elab_patterns.ml:239`
+is correct. The fix for `Syntax.R`'s constructors should be at the module-opening
+level (recursive `open_module_value` registers public sub-module ADT constructors
+into the name table). Do not weaken the constructor-visibility check.
+
 ## Features (medium)
 
 ### Stage 11: Macro-Powered Language Features (no spec yet)
