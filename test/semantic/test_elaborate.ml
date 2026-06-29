@@ -1232,9 +1232,10 @@ let imports =
       (check_import_type [ ("color", "pub type Color = Red | Green") ]
          "do C = import \"color\"; open C; match Red do Red -> 1 | Green -> 2 end end"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "open imported module hides private constructors" `Quick
-      (import_elab_fail [ ("secret", "type Hidden = Wrap I64; pub value = Wrap(1)") ]
-         "do S = import \"secret\"; open S; match value do Wrap(n) -> n end end");
+    Alcotest.test_case "open imported module exposes private constructors via match" `Quick
+      (check_import_type [ ("secret", "type Hidden = Wrap I64; pub value = Wrap(1)") ]
+         "do S = import \"secret\"; open S; match value do Wrap(n) -> n end end"
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "repeated import" `Quick
       (check_import_type [ ("m", "pub x = 21") ]
          "do A = import \"m\"; B = import \"m\"; A.x + B.x end" (AtomTy Atom_ty.TI64));

@@ -952,24 +952,26 @@ and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
               match default with
               | Some d -> eval_decision_tree_result mc env root branches d
               | None -> raise (EvalError "non-exhaustive match at runtime")))
-      | _ -> raise (EvalError "match on non-constructor value"))
+      | _ -> (
+          match default with
+          | Some d -> eval_decision_tree_result mc env root branches d
+          | None -> raise (EvalError "match on non-constructor value")))
   | Switch { cases; default; occurrence } -> (
       let v = resolve_occurrence mc root occurrence |> force mc in
-      let key =
-        match v with
-        | VAtom atom -> Core_decision_tree.KAtom atom
-        | VAtomTy atom_ty -> KType atom_ty
-        | VNominal n -> KNominal n.id
-        | _ -> raise (EvalError "switch on non-constant value")
-      in
-      match
-        List.find_opt
-          (fun (case_key, _) ->
-            Core_decision_tree.switch_key_equal case_key key)
-          cases
-      with
-      | Some (_, sub) -> eval_decision_tree_result mc env root branches sub
-      | None -> eval_decision_tree_result mc env root branches default)
+      (match v with
+       | VAtom atom ->
+           (match List.find_opt (fun (case_key, _) -> Core_decision_tree.switch_key_equal case_key (Core_decision_tree.KAtom atom)) cases with
+            | Some (_, sub) -> eval_decision_tree_result mc env root branches sub
+            | None -> eval_decision_tree_result mc env root branches default)
+       | VAtomTy atom_ty ->
+           (match List.find_opt (fun (case_key, _) -> Core_decision_tree.switch_key_equal case_key (KType atom_ty)) cases with
+            | Some (_, sub) -> eval_decision_tree_result mc env root branches sub
+            | None -> eval_decision_tree_result mc env root branches default)
+       | VNominal n ->
+           (match List.find_opt (fun (case_key, _) -> Core_decision_tree.switch_key_equal case_key (KNominal n.id)) cases with
+            | Some (_, sub) -> eval_decision_tree_result mc env root branches sub
+            | None -> eval_decision_tree_result mc env root branches default)
+       | _ -> eval_decision_tree_result mc env root branches default))
 
 and resolve_occurrence (mc : MetaContext.t) (root : value)
     (occ : Core_decision_tree.occurrence) : value =

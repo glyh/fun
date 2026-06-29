@@ -824,7 +824,7 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr (None, None))) sour
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
       list = Elaborate.resolve_stdlib ctx ["List"];
       pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"];
-      type_ = Elaborate.resolve_stdlib ctx ["Syntax"; "Type"] }
+      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -854,7 +854,7 @@ let eval_decl_module source =
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
       list = Elaborate.resolve_stdlib ctx ["List"];
       pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"];
-      type_ = Elaborate.resolve_stdlib ctx ["Syntax"; "Type"] }
+      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -1123,7 +1123,7 @@ let test_type_aware_checking () =
   let _module_val = eval_decl_module
     "macro default(_) : A do
        match A do
-       | I64 -> Syntax.i64(42)
+       | RExpr(I64) -> Syntax.i64(42)
        | _ -> Syntax.i64(0)
        end
      end
@@ -1139,8 +1139,8 @@ let test_type_default_macro () =
     "do
        macro default(_) : A do
          match A do
-         | I64 -> Syntax.i64(0)
-         | Bool -> Syntax.bool(false)
+         | RExpr(I64) -> Syntax.i64(0)
+         | RExpr(Bool) -> Syntax.bool(false)
          | _ -> do _ = A; Syntax.i64(42) end
          end
        end
@@ -1152,8 +1152,8 @@ let test_type_default_bool () =
     "do
        macro default(_) : Expr(A) do
          match A do
-         | I64 -> Syntax.i64(0)
-         | Bool -> Syntax.bool(false)
+         | RExpr(I64) -> Syntax.i64(0)
+         | RExpr(Bool) -> Syntax.bool(false)
          | _ -> do _ = A; Syntax.bool(false) end
          end
        end

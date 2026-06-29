@@ -305,7 +305,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
                   (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
                 else
                   let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
-                  let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+                  let type_ty = { Syntax.kind = FieldAccess (Enforest_util.var "Syntax", "R"); span = Source_span.synthetic } in
                   (Some (Syntax.MacroKind.Expr (Some inner, None)),
                    Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
                    rest)
@@ -313,7 +313,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
                 error "unsupported type pattern in macro annotation"
           end else begin
             let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
-            let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+            let type_ty = { Syntax.kind = FieldAccess (Enforest_util.var "Syntax", "R"); span = Source_span.synthetic } in
             (Some (Syntax.MacroKind.Expr (Some k, None)),
              Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
              rest)
@@ -333,7 +333,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
                  (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
              | None ->
                  let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
-                 let type_ty = { Syntax.kind = Var (Enforest_util.id ~span:Source_span.synthetic "Type"); span = Source_span.synthetic } in
+                 let type_ty = { Syntax.kind = FieldAccess (Enforest_util.var "Syntax", "R"); span = Source_span.synthetic } in
                  (Some (Syntax.MacroKind.Expr (Some k, None)),
                   Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
                   rest))

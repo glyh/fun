@@ -38,7 +38,7 @@ type syntax_nominals = {
   decl : value;
   list : value;
   pat : value;
-  type_ : value;
+  r_ : value;
 }
 
 let vcon_none nominals =

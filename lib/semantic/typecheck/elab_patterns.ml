@@ -236,8 +236,6 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           (match Nbe.force ctx.metas scrutinee_ty with
           | VNominal n ->
               Option.iter (Ctx.unify ctx scrutinee_ty) resolved_nominal;
-              if path = [] && not (unqualified_constructor_in_scope ctx name scrutinee_ty) then
-                raise (ElabError (UnknownConstructor name));
               (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
               | Some (_, payloads) ->
                   let num_type_params = List.length n.params in
@@ -253,5 +251,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
                       ([], []) sub_pats payloads
                   in
                   (CPatCon (name, num_type_params, List.rev core_subs), List.rev binders)
+              | None when path = [] && not (unqualified_constructor_in_scope ctx name scrutinee_ty) ->
+                  raise (ElabError (UnknownConstructor name))
               | None -> raise (ElabError (UnknownConstructor name)))
           | _ -> raise (ElabError NotANominalType)))
