@@ -51,29 +51,34 @@ related code in `elab_patterns.ml` and `elab_resolve.ml` need attention.
 but become abstract outside the module. Values can be passed around; constructors
 are rejected unqualified.
 
-**Unification needed**: `pub`/`private` on module entries and constructor
-visibility are the same concern (module-boundary access control), but currently
-handled in two unrelated places:
+**Surface syntax — sig integration**: `pub` annotations are the primitive;
+a sig is an optional extract of `pub` entries that overrides inline annotations.
 
-1. `open_module_value` / `add_opened_field` — registers pub names into the
-   name table during `open`
-2. `elab_patterns.ml:239` / `unqualified_constructor_in_scope` — checks the
-   name table to decide if a constructor is usable unqualified
+```fun
+sig M = sig
+  pub type R = RExpr(T) | RDecls | RPat
+  pub value : I64                    -- type-only, no body
+end
 
-These should be one mechanism: `open_module_value` registers both the type and
-its constructors for public VNominals (recursively into sub-modules). Private
-types never register, so their constructors are naturally unreachable.
-`unqualified_constructor_in_scope` can then be dropped from `elab_patterns.ml`
-entirely — lookup in the name table IS the access check.
+module M = do
+  type Hidden = Wrap                 -- private (not in sig)
+  type R = RExpr(T) | RDecls | RPat
+  value = Wrap(1)
+end
+```
 
-**Implementation plan**: make `open_module_value` recursively register public
-sub-module ADT constructors into the name table. Then move the VNominal
-constructor-list check before the `unqualified_constructor_in_scope` guard in
-`elab_patterns.ml:239` (the name table already encodes public vs private).
-Revert `imports 10` test to `import_elab_fail`.
+When a sig IS present, it restricts what's visible (only sig entries are public).
+When absent, `pub` annotations on definitions determine visibility. The `pub`
+syntax is identical in both — values in the sig use `:` instead of `=`.
+Mechanical elevation, no parallel syntax.
 
-**Cross-language consensus** (10 languages): private type constructors never
-usable unqualified after `open`/`import`.
+**Unification**: `open_module_value` becomes the single access-control gate.
+It registers both type names and their constructors (recursively for public
+sub-modules). Private types never register → constructors naturally unreachable.
+`unqualified_constructor_in_scope` can be dropped — the name table IS the check.
+
+**Cross-language consensus** (10 languages): private constructors never usable
+unqualified after `open`/`import`.
 
 ## Features (medium)
 
