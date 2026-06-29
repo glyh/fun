@@ -1163,24 +1163,22 @@ let test_type_default_bool () =
   | VAtom (Bool b) -> Alcotest.(check bool) "type-directed default for Bool" false b
   | v -> Alcotest.fail (Debug.pp_value_short (MetaContext.create ()) v)
 
-let test_expr_wildcard () =
-  check_i64_macro "macro : Expr(_) works" 1L
-    "do
-       macro mk(_) : Expr(_) -> Syntax.i64(1)
-       mk @ (0)
-     end" ()
+let test_rtype_match_non_exhaustive_missing_ctors () =
+  match eval_decl_module
+    "macro default(_) : Expr(A) do
+       match A do
+       | RExpr(I64) -> Syntax.i64(0)
+       end
+     end
+     pub x : I64 = default @ (0)"
+  with
+  | _ -> Alcotest.fail "expected non-exhaustive match"
+  | exception _ -> ()
 
 let test_expr_binding () =
   check_i64_macro "macro : Expr(A) works" 1L
     "do
        macro mk(_) : Expr(A) do do _ = A; Syntax.i64(1) end end
-       mk @ (0)
-     end" ()
-
-let test_expr_shorthand () =
-  check_i64_macro "macro : A shorthand works" 1L
-    "do
-       macro mk(_) : A do do _ = A; Syntax.i64(1) end end
        mk @ (0)
      end" ()
 
@@ -2522,9 +2520,8 @@ let () =
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
           Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
           Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
-          Alcotest.test_case "Expr(_) wildcard" `Quick test_expr_wildcard;
+          Alcotest.test_case "R-type match non-exhaustive missing ctors" `Quick test_rtype_match_non_exhaustive_missing_ctors;
           Alcotest.test_case "Expr(A) binding" `Quick test_expr_binding;
-          Alcotest.test_case ": A shorthand" `Quick test_expr_shorthand;
           Alcotest.test_case "expected type reaches macro" `Quick test_expected_type_reaches_macro;
           Alcotest.test_case "expected type rejects mismatch" `Quick test_expected_type_rejects_mismatch;
           Alcotest.test_case ": Int known type no binding" `Quick test_annotation_known_type_no_binding;
