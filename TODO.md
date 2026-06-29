@@ -45,55 +45,23 @@ resolution traverses by type name, not constructor name. Affects pattern matchin
 in macro bodies for module-scoped ADTs. The `find_nominal_template_opt` and
 related code in `elab_patterns.ml` and `elab_resolve.ml` need attention.
 
-### Private constructor visibility (design decision)
+### Private type visibility (design)
 
-Currently `elab_patterns.ml:239` checks `unqualified_constructor_in_scope` before
-the VNominal constructor list. This correctly rejects constructors of private
-ADTs when `open`-ed, but also rejects constructors of public ADTs nested inside
-modules (e.g. `RExpr` from `Syntax.R`).
+**Decision**: OCaml/SML path (Plan B). Private types can leak through public
+bindings (`pub value : Hidden` where `Hidden` is private). The type becomes
+abstract outside the module — values can be passed around but constructors
+are rejected unqualified. No new abstraction layer; the existing pub/private
+mechanism at module boundaries is sufficient.
 
-Cross-language research:
-- **OCaml**: `.mli` controls visibility with 4 levels —
-  *private* (not listed): type and constructors completely inaccessible;
-  *abstract* (listed without `=`): type exists as opaque handle, constructors are
-  unbound (can't create or match);
-  *read-only* (`= private`): can pattern-match but can't construct directly;
-  *public* (listed with `=`): constructors fully accessible. `open M` only
-  exposes names from the public interface.
-- **Java**: `private` members only accessible within declaring class.
-  Package-private types returned by `public` methods become effectively opaque
-  to external callers — values can be passed around but constructors/fields
-  are inaccessible.
-- **C#**: `private`/`internal` types can't be exposed through `public` members
-  at all — the compiler rejects it ("type must be at least as accessible as
-  the member"). `private protected`, `internal`, `protected internal` etc.
-  are assembly-scoped.
-- **Rust**: `use module::*` only brings `pub` items. Private struct fields
-  can't be accessed outside the defining module.
-- **Haskell**: export lists control constructor visibility. Importing a type
-  without its constructors (`Foo` without `Foo(..)`) makes pattern matching
-  impossible.
-- **Swift/Kotlin**: constructors inherit the type's visibility.
+**Implementation**: `open_module_value` must recursively register constructors
+of nested public ADTs into the name table (fixing `Syntax.R → RExpr`). After
+that, `elab_patterns.ml:239` can keep the `unqualified_constructor_in_scope`
+guard, and the `imports 10` test reverts to `import_elab_fail`.
 
-Consensus: **private type constructors are never usable unqualified after open**.
-
-Additional languages researched:
-- **Standard ML**: Signatures (`sig ... end`) define interfaces; types not in the
-  signature are *abstract* and constructors are hidden. `open` only exposes
-  what's in the structure's signature. Opaque ascription (`:>`) hides
-  implementation details.
-- **F#**: `private` types "not usable outside this file". Discriminated union
-  cases inherit the type's accessibility — a `private` DU has private
-  constructors. Values "cannot be more accessible than their type" — no
-  exposing a private type via a public binding.
-- **Scala**: `private` restricts to enclosing class/object; `private[package]`
-  to a package. `sealed` traits restrict inheritance to the same file — but
-  case class pattern matching still requires the concrete type to be
-  accessible. Default is `public`.
-The current `unqualified_constructor_in_scope` check in `elab_patterns.ml:239`
-is correct. The fix for `Syntax.R`'s constructors should be at the module-opening
-level (recursive `open_module_value` registers public sub-module ADT constructors
-into the name table). Do not weaken the constructor-visibility check.
+**Cross-language consensus** (10 languages researched — OCaml, SML, F#, Haskell,
+Scala, Java, C#, Rust, Swift, Kotlin): private type constructors are never
+usable unqualified after `open`/`import`. The existing guard is correct;
+do not weaken it.
 
 ## Features (medium)
 
