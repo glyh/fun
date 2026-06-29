@@ -1,8 +1,8 @@
 # TODO
 
-## Macro infrastructure
+## Bugs (high)
 
-### Disambiguate annotation names by scope (low, deferred)
+### Disambiguate annotation names by scope
 
 Currently `known_type_names` in `enforest.ml` is a hardcoded list:
 `["I64"; "Bool"; "Unit"; "Char"; "String"; "Type"; "Id"; "Span"; "Expr";
@@ -25,15 +25,15 @@ nominals can be aliased through rebinds (`type T = SomeNominal`). The nominal's
 `id` field exists for identity comparison and should be used instead of name
 comparison wherever possible.
 
-### Stage 11: Macro-Powered Language Features (no spec yet)
-
-### Stage 12: Macro Diagnostics & Expansion UX (no spec yet)
-
-## Elaborator / pattern matching
-
-### Nested-module ADT constructor resolution (low)
+### Nested-module ADT constructor resolution
 
 `pub pattern PatWild = RawPatWild(_)` inside modules can fail because constructor
 resolution traverses by type name, not constructor name. Affects pattern matching
 in macro bodies for module-scoped ADTs. The `find_nominal_template_opt` and
 related code in `elab_patterns.ml` and `elab_resolve.ml` need attention.
+
+## Features (medium)
+
+### Stage 11: Macro-Powered Language Features (no spec yet)
+
+### Stage 12: Macro Diagnostics & Expansion UX (no spec yet)
