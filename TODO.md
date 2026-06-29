@@ -47,21 +47,33 @@ related code in `elab_patterns.ml` and `elab_resolve.ml` need attention.
 
 ### Private type visibility (design)
 
-**Decision**: OCaml/SML path (Plan B). Private types can leak through public
-bindings (`pub value : Hidden` where `Hidden` is private). The type becomes
-abstract outside the module — values can be passed around but constructors
-are rejected unqualified. No new abstraction layer; the existing pub/private
-mechanism at module boundaries is sufficient.
+**Decision**: OCaml/SML path. Private types can leak through public bindings
+but become abstract outside the module. Values can be passed around; constructors
+are rejected unqualified.
 
-**Implementation**: `open_module_value` must recursively register constructors
-of nested public ADTs into the name table (fixing `Syntax.R → RExpr`). After
-that, `elab_patterns.ml:239` can keep the `unqualified_constructor_in_scope`
-guard, and the `imports 10` test reverts to `import_elab_fail`.
+**Unification needed**: `pub`/`private` on module entries and constructor
+visibility are the same concern (module-boundary access control), but currently
+handled in two unrelated places:
 
-**Cross-language consensus** (10 languages researched — OCaml, SML, F#, Haskell,
-Scala, Java, C#, Rust, Swift, Kotlin): private type constructors are never
-usable unqualified after `open`/`import`. The existing guard is correct;
-do not weaken it.
+1. `open_module_value` / `add_opened_field` — registers pub names into the
+   name table during `open`
+2. `elab_patterns.ml:239` / `unqualified_constructor_in_scope` — checks the
+   name table to decide if a constructor is usable unqualified
+
+These should be one mechanism: `open_module_value` registers both the type and
+its constructors for public VNominals (recursively into sub-modules). Private
+types never register, so their constructors are naturally unreachable.
+`unqualified_constructor_in_scope` can then be dropped from `elab_patterns.ml`
+entirely — lookup in the name table IS the access check.
+
+**Implementation plan**: make `open_module_value` recursively register public
+sub-module ADT constructors into the name table. Then move the VNominal
+constructor-list check before the `unqualified_constructor_in_scope` guard in
+`elab_patterns.ml:239` (the name table already encodes public vs private).
+Revert `imports 10` test to `import_elab_fail`.
+
+**Cross-language consensus** (10 languages): private type constructors never
+usable unqualified after `open`/`import`.
 
 ## Features (medium)
 
