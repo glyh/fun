@@ -2,6 +2,15 @@
 
 ## Bugs (high)
 
+### Clarified bug-fix scope
+
+- Fix every concrete bug in this section.
+- Treat **Private type visibility** as a separate feature/design task, not part
+  of this bug-fix pass.
+- For unclear TODOs, prefer semantic fixes over cosmetic cleanup. In
+  particular, do not merely centralize hardcoded strings if the real issue is
+  comparing values/types/nominals by name.
+
 ### Disambiguate annotation names by scope
 
 Currently `known_type_names` in `enforest.ml` is a hardcoded list:
@@ -18,12 +27,39 @@ be context-sensitive, tracking an environment of type names in scope rather
 than a static list. This applies (at least) to all 3 sites where the implicit
 R-type parameter is constructed in `enforest.ml` (~lines 308, 316, 336).
 
+**Decision**: elaboration decides, but this requires an expander/elaborator
+handshake because binder-vs-constraint changes macro arity. Do not fix this with
+a parser name set or an expander-only type-name set. Track the design in
+`docs/plan-for-macros/TYPE_AWARE_INTERLEAVING.md`.
+
+**Implementation target**:
+
+- Design the handshake/task model before changing macro arity semantics.
+- Replace `known_type_names` only after that model exists.
+- Later tests should cover user-defined, aliased, and imported type names in
+  `: Expr(...)` annotations.
+
 ### Nominal identity vs. name comparisons
 
 Any code that compares nominals by `String.equal` on names is fragile because
 nominals can be aliased through rebinds (`type T = SomeNominal`). The nominal's
 `id` field exists for identity comparison and should be used instead of name
 comparison wherever possible.
+
+**Decision**: this also applies to pattern matching. Constructor lookup may use
+constructor names to select a field within an already-known nominal, but it must
+not use type/nominal names to decide identity when aliases/rebinds are possible.
+
+**Implementation target**:
+
+- Audit `find_nominal_template_opt`, `find_nominal_for_constructor`,
+  `unqualified_constructor_in_scope`, `elab_patterns.ml`, `elab_match.ml`, and
+  `elab_refine.ml`.
+- Prefer the scrutinee nominal id when elaborating constructor patterns.
+- Preserve qualified constructor visibility checks, but reject wrong-nominal
+  matches by nominal id rather than by name.
+- Add/adjust tests for module aliases, nested-module ADTs, and pattern synonyms
+  over module-scoped ADTs.
 
 ### Audit hardcoded symbol names
 
@@ -38,6 +74,12 @@ identity references where possible. Places to audit:
 - `elab_prelude.ml`: stdlib source code has many hardcoded names
 - `macro_eval.ml`, `expand.ml`, `expand_ctx.ml`: syntax nominal references
 
+**Decision**: this audit is about semantic correctness, not cosmetic constants.
+Do not compare type/nominal identity by string when a resolved value or nominal
+id is available. A small helper/constant is fine when it removes a duplicated
+compiler invariant, but broad prelude/test string centralization is not the goal
+of this bug-fix pass.
+
 ### Nested-module ADT constructor resolution
 
 `pub pattern PatWild = RawPatWild(_)` inside modules can fail because constructor
@@ -45,53 +87,20 @@ resolution traverses by type name, not constructor name. Affects pattern matchin
 in macro bodies for module-scoped ADTs. The `find_nominal_template_opt` and
 related code in `elab_patterns.ml` and `elab_resolve.ml` need attention.
 
+**Implementation target**:
+
+- Resolve constructor patterns by constructor value/type where possible,
+  including qualified paths through modules and aliases.
+- For type-case patterns, use constructor-name lookup only to find a constructor
+  within a resolved nominal, not to infer nominal identity from a matching type
+  name.
+- Add regression coverage for public pattern synonyms inside modules over
+  module-scoped ADTs.
+
 ### Private type visibility (design)
 
-**Decision**: OCaml/SML path. Private types can leak through public bindings
-but become abstract outside the module. Values can be passed around; constructors
-are rejected unqualified.
-
-**Surface syntax**:
-
-Two mutually exclusive modes. A module either uses inline `pub` annotations
-OR a sig — never both. Opaque/abstract types are simply types declared
-without a RHS (no `=` constructors) in a sig:
-
-```fun
--- Mode A: inline pub (all types concrete)
-module M = do
-  type Hidden = Wrap            -- private (no pub)
-  pub type R = RExpr(T) | RDecls | RPat
-  pub value = Wrap(1)
-end
-
--- Mode B: sig (can declare opaque types)
-sig M = sig
-  type R = RExpr(T) | RDecls | RPat   -- RHS → concrete
-  type Handle                          -- no RHS → opaque/abstract
-  value : I64                          -- type-only, no body
-end
-
-module M : M = do
-  type Hidden = Wrap
-  type R = RExpr(T) | RDecls | RPat
-  type Handle = ...                    -- defined here, hidden from outside
-  value = Wrap(1)
-end
-```
-
-When a sig is present, everything in the body is private by default and
-`pub` annotations are a compile error. Elevation from inline pub to sig is
-mechanical: copy `pub` entries into a sig block, replace `=` with `:` for
-values, drop `pub` from the body.
-
-**Unification**: `open_module_value` becomes the single access-control gate.
-It registers both type names and their constructors (recursively for public
-sub-modules). Private types never register → constructors naturally unreachable.
-`unqualified_constructor_in_scope` can be dropped — the name table IS the check.
-
-**Cross-language consensus** (10 languages): private constructors never usable
-unqualified after `open`/`import`.
+**Status**: separate task. Do not implement as part of the current concrete bug
+fix pass. Track the design in `docs/16.private_type_visibility.md`.
 
 ## Features (medium)
 

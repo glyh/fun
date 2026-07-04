@@ -866,8 +866,16 @@ let match_tests =
     Alcotest.test_case "qualified constructor pattern wrong nominal" `Quick
       (elab_fail
          "do S = module pub type Color = Red end; \
-          T = module pub type Color = Red end; \
-          match S.Red do T.Red -> 1 | _ -> 0 end end");
+           T = module pub type Color = Red end; \
+           match S.Red do T.Red -> 1 | _ -> 0 end end");
+    Alcotest.test_case "nested module pattern synonym constructor" `Quick
+      (check_type
+         "do M = module \
+            pub B = module pub type T = X I64 | Y end; \
+            pub pattern PX(n) = B.X(n) \
+          end; \
+          match M.B.X(7) do M.PX(n) -> n | M.B.Y -> 0 end end"
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record pattern shorthand" `Quick
       (check_type
          "do Point = struct x: I64; y: I64; end; \

@@ -94,8 +94,9 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
             match find_nominal_template_opt ctx path name with
             | Some _ -> Some VU
             | None -> (
-                match resolve_path_value_opt ctx path name with
-                | Some (_, ctor_ty) -> nominal_from_constructor_type_opt ctx ctor_ty
+                match nominal_for_constructor_path_opt ctx path name with
+                | Some nominal -> Some nominal
+                | None when path = [] -> find_nominal_for_constructor ctx name
                 | None -> None))
         | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
         | Surface.PatType _ -> Some VU

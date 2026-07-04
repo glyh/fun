@@ -291,13 +291,10 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
             let scrutinee_ty =
               match rhs with
-              | Surface.PatCon ([], ctor_name, _) ->
-                  (match Elab_resolve.find_nominal_template_opt ctx [] ctor_name with
+              | Surface.PatCon (path, ctor_name, _) ->
+                  (match Elab_resolve.find_nominal_for_pattern_head_opt ctx path ctor_name with
                    | Some nominal -> nominal
-                   | None ->
-                       (match Elab_resolve.find_nominal_for_constructor ctx ctor_name with
-                        | Some nominal -> nominal
-                        | None -> VU))
+                   | None -> VU)
               | _ -> VU
             in
             let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
@@ -568,13 +565,10 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
             let scrutinee_ty =
               match rhs with
-              | Surface.PatCon ([], ctor_name, _) ->
-                  (match Elab_resolve.find_nominal_template_opt ctx [] ctor_name with
+              | Surface.PatCon (path, ctor_name, _) ->
+                  (match Elab_resolve.find_nominal_for_pattern_head_opt ctx path ctor_name with
                    | Some nominal -> nominal
-                   | None ->
-                       (match Elab_resolve.find_nominal_for_constructor ctx ctor_name with
-                        | Some nominal -> nominal
-                        | None -> VU))
+                   | None -> VU)
               | _ -> VU
             in
             let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
@@ -978,4 +972,3 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | MacroDef _ | SyntaxOperatorUse _ ->
       failwith "macro-only syntax should not reach elaboration"
   | StxExpr _ -> failwith "stx-only syntax should not reach elaboration"
-

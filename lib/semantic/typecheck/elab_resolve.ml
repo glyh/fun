@@ -261,6 +261,24 @@ let nominal_from_constructor_type_opt ctx ctor_ty =
   in
   follow ctor_ty
 
+let nominal_for_constructor_path_opt ctx path name =
+  match resolve_path_value_opt ctx path name with
+  | Some (value, ty) -> (
+      match Nbe.force ctx.Ctx.metas value with
+      | VCon { nominal; _ } -> Some nominal
+      | VLam _ | VFix _ -> nominal_from_constructor_type_opt ctx ty
+      | _ -> None)
+  | None -> None
+
+let find_nominal_for_pattern_head_opt ctx path name =
+  match find_nominal_template_opt ctx path name with
+  | Some nominal -> Some nominal
+  | None -> (
+      match nominal_for_constructor_path_opt ctx path name with
+      | Some nominal -> Some nominal
+      | None when path = [] -> find_nominal_for_constructor ctx name
+      | None -> None)
+
 let unqualified_constructor_in_scope ctx name nominal =
   let same_nominal_id ctor_nominal =
     match (Nbe.force ctx.Ctx.metas ctor_nominal, Nbe.force ctx.Ctx.metas nominal) with
