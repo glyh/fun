@@ -39,23 +39,7 @@ let open_stdlib ctx =
   (ix, open_module_value ctx ty value)
 
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
-  let ix, _ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
-  let stdlib_value = Ctx.eval ctx (Var ix) in
-  List.fold_left
-    (fun acc field_name ->
-      match Nbe.force ctx.metas acc with
-      | VModule { entries; _ } ->
-          let fields = module_entry_fields entries in
-          (match List.find_opt (fun (n, k, _v) -> String.equal n field_name && Nbe_support.visible_kind k) fields with
-           | Some (_, _, v) -> v
-           | None -> raise (ElabError (UnboundVariable field_name)))
-      | VStruct { entries; _ } ->
-          let fields = struct_entry_fields entries in
-          (match List.find_opt (fun (n, k, _v) -> String.equal n field_name && Nbe_support.visible_kind k) fields with
-           | Some (_, _, v) -> v
-           | None -> raise (ElabError (UnboundVariable field_name)))
-      | _ -> raise (ElabError (UnboundVariable field_name)))
-    stdlib_value path
+  Elab_stdlib.resolve ctx path
 
 (** Entry point: elaborate a surface expression in the given context. *)
 let on_expr ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value =

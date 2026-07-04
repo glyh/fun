@@ -142,7 +142,7 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
         core
       in
       (match Hashtbl.find_opt ctx.macro_table macro_name with
-       | Some (macro_fn, macro_kind) when Syntax.MacroKind.has_type_binding macro_kind ->
+       | Some (macro_fn, macro_kind, macro_nominals) when Syntax.MacroKind.has_type_binding macro_kind ->
            (match Syntax.MacroKind.type_constraint_name macro_kind with
             | Some constraint_name ->
                 (match resolve_path_value_opt ctx [] constraint_name with
@@ -154,7 +154,7 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                 (match expand_ctx.Expand_ctx.eval_and_apply with
                  | Some apply_fn ->
                      let wrapped_ty =
-                        match expand_ctx.Expand_ctx.syntax_nominals with
+                         match macro_nominals with
                         | Some nominals ->
                             VCon { name = Compiler_names.Constructor_name.r_expr; spine = [expected]; nominal = nominals.Macro_eval.r_ }
                         | None -> expected
@@ -163,10 +163,10 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                      let fn = List.fold_left (fun fn arg ->
                        match arg with
                        | Surface.StxExpr stx_arg ->
-                           let arg_stx = Macro_eval.wrap_stx ~nominals:expand_ctx.Expand_ctx.syntax_nominals stx_arg in
-                           apply_fn fn arg_stx
-                       | _ -> fn) fn args in
-                     (match Macro_eval.unwrap_stx fn with
+                            let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg in
+                            apply_fn fn arg_stx
+                        | _ -> fn) fn args in
+                     (match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
                       | Some expanded ->
                           ops.check ctx (Lower_surface.lower_expr expanded) expected
                       | None -> fallback ())

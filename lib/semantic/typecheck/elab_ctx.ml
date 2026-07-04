@@ -16,7 +16,7 @@ module Ctx = struct
     self_type : value option;
     resume_entry : name_entry option;
     loader : Core_loader.t option;
-    macro_table : (string, Core.value * Syntax.MacroKind.t) Hashtbl.t;
+    macro_table : (string, Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) Hashtbl.t;
     mutable expand_ctx : Expand_ctx.t option;
   }
 

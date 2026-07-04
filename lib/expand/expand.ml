@@ -327,13 +327,13 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       if Syntax.MacroKind.has_type_binding resolved_kind then
         expand ctx body (* Keep macro in table for elaborator *)
       else begin
-        let previous = Expand_ctx.lookup_macro ctx name.name in
+        let previous = Expand_ctx.lookup_macro_entry ctx name.name in
         let previous_kind = Expand_ctx.lookup_macro_kind ctx name.name in
         Fun.protect
           ~finally:(fun () ->
             match previous, previous_kind with
-            | Some value, Some kind ->
-              Expand_ctx.register_macro ctx ~name:name.name ~value;
+            | Some entry, Some kind ->
+              Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals:entry.syntax_nominals ~name:name.name ~value:entry.value;
               Expand_ctx.register_macro_kind ctx ~name:name.name ~kind
             | _ -> (Hashtbl.remove ctx.Expand_ctx.macro_table name.name;
                     Hashtbl.remove ctx.Expand_ctx.macro_kind_table name.name))
@@ -345,8 +345,10 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | MacroCall (f, args) ->
     begin match f.kind, args with
     | Var id, _ ->
-      begin match Expand_ctx.lookup_macro ctx id.name with
-      | Some macro_fn ->
+      begin match Expand_ctx.lookup_macro_entry ctx id.name with
+      | Some macro_entry ->
+        let macro_fn = macro_entry.Expand_ctx.value in
+        let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
         let macro_kind =
           match Expand_ctx.lookup_macro_kind ctx id.name with
           | Some k -> k
@@ -367,11 +369,11 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           let result =
             with_syntax_operator_context (List.hd args) (fun () ->
                 List.fold_left (fun fn arg ->
-                    let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
+                    let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
                     apply_fn fn arg_stx)
                   macro_fn args)
           in
-          begin match Macro_eval.unwrap_stx result with
+          begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
           | Some expanded -> expand ctx expanded
           | None ->
               failwith (syntax_operator_failure (List.hd args)
@@ -384,8 +386,10 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | _ -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
     end
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
-    begin match Expand_ctx.lookup_macro ctx operator.name with
-    | Some macro_fn ->
+    begin match Expand_ctx.lookup_macro_entry ctx operator.name with
+    | Some macro_entry ->
+      let macro_fn = macro_entry.Expand_ctx.value in
+      let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
       begin match ctx.Expand_ctx.eval_and_apply with
       | Some apply_fn ->
         let result = match operands with
@@ -400,19 +404,19 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
                 | _ -> 0
               in
               if arity >= 2 then
-                let lhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals lhs in
-                let rhs_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals rhs in
+                let lhs_stx = Macro_eval.wrap_stx ~nominals:macro_nominals lhs in
+                let rhs_stx = Macro_eval.wrap_stx ~nominals:macro_nominals rhs in
                 apply_fn (apply_fn macro_fn lhs_stx) rhs_stx
               else
-                apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals
+                apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
                   { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
           | [ single ] ->
-              let stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals single in
+              let stx = Macro_eval.wrap_stx ~nominals:macro_nominals single in
               apply_fn macro_fn stx
-          | _ -> apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals
+          | _ -> apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
                    { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
         in
-        begin match Macro_eval.unwrap_stx result with
+        begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
         | Some expanded -> expand ctx expanded
         | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } }
                               ("operator macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
@@ -530,8 +534,10 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   | MacroCallBinding { f; args } ->
     begin match f.kind, args with
     | Var id, _ ->
-      begin match Expand_ctx.lookup_macro ctx id.name with
-      | Some macro_fn ->
+      begin match Expand_ctx.lookup_macro_entry ctx id.name with
+      | Some macro_entry ->
+        let macro_fn = macro_entry.Expand_ctx.value in
+        let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
         begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
           let macro_kind = match Expand_ctx.lookup_macro_kind ctx id.name with
@@ -543,8 +549,8 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
             failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                         id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
            let fn = List.fold_left (fun fn arg ->
-             let arg_stx = Macro_eval.wrap_stx ~nominals:ctx.syntax_nominals arg in
-             apply_fn fn arg_stx) macro_fn args in
+              let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
+              apply_fn fn arg_stx) macro_fn args in
            let rec force_val v =
              match v with
              | Core.VLam _ | Core.VFlex _ ->
@@ -553,7 +559,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
              | _ -> v
            in
            let fn = force_val fn in
-           let result = Macro_eval.unwrap_stx_decl fn in
+            let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn in
            (match result with
            | Some bindings -> (bindings, [])
            | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name))

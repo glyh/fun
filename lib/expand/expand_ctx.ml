@@ -1,3 +1,8 @@
+type macro_entry = {
+  value : Core.value;
+  syntax_nominals : Macro_eval.syntax_nominals option;
+}
+
 type phase = Runtime | CompileTime
 
 type t = {
@@ -5,7 +10,7 @@ type t = {
   phase : phase;
   mutable scope_counter : int;
   mutable name_counter : int;
-  mutable macro_table : (string, Core.value) Hashtbl.t;
+  mutable macro_table : (string, macro_entry) Hashtbl.t;
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
   mutable context_kind : Syntax.MacroKind.t;
   mutable elaborate : (Surface.t -> Core.value) option;
@@ -84,13 +89,19 @@ let copy (ctx : t) : t =
     syntax_nominals = ctx.syntax_nominals;
     loader = ctx.loader }
 
-let register_macro (ctx : t) ~name ~value =
-  Hashtbl.replace ctx.macro_table name value
+let register_macro_with_nominals ctx ~syntax_nominals ~name ~value =
+  Hashtbl.replace ctx.macro_table name { value; syntax_nominals }
+
+let register_macro ctx ~name ~value =
+  register_macro_with_nominals ctx ~syntax_nominals:ctx.syntax_nominals ~name ~value
 
 let register_macro_kind (ctx : t) ~name ~kind =
   Hashtbl.replace ctx.macro_kind_table name kind
 
 let lookup_macro (ctx : t) name =
+  Option.map (fun entry -> entry.value) (Hashtbl.find_opt ctx.macro_table name)
+
+let lookup_macro_entry (ctx : t) name =
   Hashtbl.find_opt ctx.macro_table name
 
 let lookup_macro_kind (ctx : t) name =

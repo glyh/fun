@@ -13,8 +13,9 @@ let string_contains text needle =
   String.equal needle "" || go 0
 
 let parse_with_macros ?load_macros ?load_syntax source =
+  let ctx = Elaborate.init_ctx () in
+  let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
-    let ctx = Elaborate.init_ctx () in
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
@@ -22,11 +23,12 @@ let parse_with_macros ?load_macros ?load_syntax source =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_expr ?load_macros ?load_syntax ~elaborate ~eval_and_apply source
+  Parse_expand.parse_expr ?load_macros ?load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let parse_module_with_macros ?load_macros ?load_syntax source =
+  let ctx = Elaborate.init_ctx () in
+  let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
-    let ctx = Elaborate.init_ctx () in
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
@@ -34,7 +36,7 @@ let parse_module_with_macros ?load_macros ?load_syntax source =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_module ?load_macros ?load_syntax ~elaborate ~eval_and_apply source
+  Parse_expand.parse_module ?load_macros ?load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let with_modules modules f =
   let dir = Filename.temp_dir "fun_syntax_test" "" in

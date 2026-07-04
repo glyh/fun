@@ -835,10 +835,10 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr (None, None))) sour
     Nbe.apply mc fn arg
   in
   let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~context_kind source in
-  Hashtbl.iter (fun name value ->
+  Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
       | Some k -> k | None -> Syntax.MacroKind.default in
-    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (value, kind))
+    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
   ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
@@ -866,10 +866,10 @@ let eval_decl_module source =
   in
   let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals source in
   (* Register macros from expander in elaborator context *)
-  Hashtbl.iter (fun name value ->
+  Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
       | Some k -> k | None -> Syntax.MacroKind.default in
-    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (value, kind))
+    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
   ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
@@ -877,10 +877,11 @@ let eval_decl_module source =
 
 let eval_with_imported_macros modules source =
   with_modules modules (fun loader ->
+      let macro_ctx = Elaborate.init_ctx () in
+      let syntax_nominals = Elaborate.syntax_nominals macro_ctx in
       let elaborate expr =
-        let ctx = Elaborate.init_ctx () in
-        let core, _ty = Elaborate.on_expr ~loader ctx expr in
-        Elaborate.Ctx.eval ctx core
+        let core, _ty = Elaborate.on_expr ~loader macro_ctx expr in
+        Elaborate.Ctx.eval macro_ctx core
       in
       let eval_and_apply fn arg =
         let mc = MetaContext.create () in
@@ -890,6 +891,7 @@ let eval_with_imported_macros modules source =
         Parse_expand.parse_expr
           ~elaborate
           ~eval_and_apply
+          ~syntax_nominals
           ~load_macros:(Core_loader.visit_macros loader)
           ~load_syntax:(Core_loader.load_syntax_exports loader)
           source

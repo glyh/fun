@@ -47,6 +47,39 @@ let vcon_none nominals =
 let vcon_some nominals v =
   VCon { name = Compiler_names.Constructor_name.some; spine = [ v ]; nominal = nominals.option_ }
 
+let same_nominal expected actual =
+  match expected, actual with
+  | VNominal e, VNominal a -> e.id = a.id
+  | _ -> false
+
+let con_matches ?nominals nominal_of_expected expected_name actual_name actual_nominal =
+  String.equal actual_name expected_name
+  &&
+  match nominals with
+  | None -> false
+  | Some n -> same_nominal (nominal_of_expected n) actual_nominal
+
+let list_con_matches ?nominals name nominal =
+  con_matches ?nominals (fun n -> n.list) name nominal
+
+let option_con_matches ?nominals name nominal =
+  con_matches ?nominals (fun n -> n.option_) name nominal
+
+let expr_con_matches ?nominals name nominal =
+  con_matches ?nominals (fun n -> n.expr) name nominal
+
+let pat_con_matches ?nominals name nominal =
+  con_matches ?nominals (fun n -> n.pat) name nominal
+
+let decl_con_matches ?nominals name nominal =
+  con_matches ?nominals (fun n -> n.decl) name nominal
+
+let atom_val_con_matches ?nominals name nominal =
+  con_matches ?nominals (fun n -> n.atom_val) name nominal
+
+let explicitness_con_matches ?nominals name nominal =
+  con_matches ?nominals (fun n -> n.explicitness) name nominal
+
 let vcon_explicit nominals =
   VCon { name = "Explicit"; spine = []; nominal = nominals.explicitness }
 
@@ -94,13 +127,18 @@ let atom_to_atomval nominals (a : Atom.t) : value =
   | Atom.String s -> VCon { name = "StringAtom"; spine = [ VAtom (String s) ]; nominal = nominals.atom_val }
   | Atom.Unit -> VCon { name = "UnitAtom"; spine = []; nominal = nominals.atom_val }
 
-let atomval_to_atom (v : value) : Atom.t option =
+let atomval_to_atom ?nominals (v : value) : Atom.t option =
   match v with
-  | VCon { name = "I64Atom"; spine = [ VAtom (I64 n) ]; _ } -> Some (Atom.I64 n)
-  | VCon { name = "BoolAtom"; spine = [ VAtom (Bool b) ]; _ } -> Some (Atom.Bool b)
-  | VCon { name = "CharAtom"; spine = [ VAtom (Char c) ]; _ } -> Some (Atom.Char c)
-  | VCon { name = "StringAtom"; spine = [ VAtom (String s) ]; _ } -> Some (Atom.String s)
-  | VCon { name = "UnitAtom"; spine = []; _ } -> Some Atom.Unit
+  | VCon { name; spine = [ VAtom (I64 n) ]; nominal }
+    when atom_val_con_matches ?nominals "I64Atom" name nominal -> Some (Atom.I64 n)
+  | VCon { name; spine = [ VAtom (Bool b) ]; nominal }
+    when atom_val_con_matches ?nominals "BoolAtom" name nominal -> Some (Atom.Bool b)
+  | VCon { name; spine = [ VAtom (Char c) ]; nominal }
+    when atom_val_con_matches ?nominals "CharAtom" name nominal -> Some (Atom.Char c)
+  | VCon { name; spine = [ VAtom (String s) ]; nominal }
+    when atom_val_con_matches ?nominals "StringAtom" name nominal -> Some (Atom.String s)
+  | VCon { name; spine = []; nominal }
+    when atom_val_con_matches ?nominals "UnitAtom" name nominal -> Some Atom.Unit
   | _ -> None
 
 let rec param_to_value nominals (p : Syntax.param) : value =
@@ -184,27 +222,28 @@ let wrap_stx ~nominals (stx : Syntax.t) : value =
   | _ ->
       VStx (StxExpr stx)
 
-let rec value_to_id (v : value) : Syntax.id =
+let rec value_to_id ?nominals (v : value) : Syntax.id =
   match v with
   | VRecord { fields; _ } ->
       let name = match List.assoc_opt "name" fields with
         | Some (VAtom (String n)) -> n | _ -> "?"
       in
       let span = match List.assoc_opt "span" fields with
-        | Some s -> value_to_span s | None -> Source_span.synthetic
+        | Some s -> value_to_span ?nominals s | None -> Source_span.synthetic
       in
       { name; span; scope = Scope_set.empty }
   | _ ->
       { name = "?"; span = Source_span.synthetic; scope = Scope_set.empty }
 
-and value_to_span (v : value) : Source_span.t =
+and value_to_span ?nominals (v : value) : Source_span.t =
   match v with
-  | VCon { name; _ } when String.equal name Compiler_names.Constructor_name.none -> Source_span.synthetic
-  | VCon { name; spine = [ VRecord ({ fields; _ } as _rec) ]; _ }
-    when String.equal name Compiler_names.Constructor_name.some ->
+  | VCon { name; nominal; _ }
+    when option_con_matches ?nominals Compiler_names.Constructor_name.none name nominal -> Source_span.synthetic
+  | VCon { name; spine = [ VRecord ({ fields; _ } as _rec) ]; nominal }
+    when option_con_matches ?nominals Compiler_names.Constructor_name.some name nominal ->
       let file = match List.assoc_opt "file" fields with
-        | Some (VCon { name; spine = [ VAtom (String s) ]; _ })
-          when String.equal name Compiler_names.Constructor_name.some -> Some s
+        | Some (VCon { name; spine = [ VAtom (String s) ]; nominal })
+          when option_con_matches ?nominals Compiler_names.Constructor_name.some name nominal -> Some s
         | _ -> None
       in
       let start_byte = match List.assoc_opt "start_byte" fields with
@@ -218,15 +257,16 @@ and value_to_span (v : value) : Source_span.t =
         synthetic = false }
   | _ -> Source_span.synthetic
 
-and value_to_param (v : value) : Syntax.param =
+and value_to_param ?nominals (v : value) : Syntax.param =
   match v with
   | VRecord { fields; _ } ->
       let name = match List.assoc_opt "name" fields with
-        | Some n -> value_to_id n
+        | Some n -> value_to_id ?nominals n
         | None -> { name = "?"; span = Source_span.synthetic; scope = Scope_set.empty }
       in
       let explicitness = match List.assoc_opt "explicitness" fields with
-        | Some (VCon { name = "Explicit"; _ }) -> Explicitness.Explicit
+        | Some (VCon { name; nominal; _ })
+          when explicitness_con_matches ?nominals "Explicit" name nominal -> Explicitness.Explicit
         | _ -> Explicitness.Implicit
       in
       { name; type_ = None; trait_bounds = []; explicitness }
@@ -237,49 +277,56 @@ and value_to_param (v : value) : Syntax.param =
 and value_to_bool (v : value) : bool =
   match v with VAtom (Bool b) -> b | _ -> false
 
-let rec unwind_stx (v : value) : Syntax.t option =
+let rec unwind_stx ?nominals (v : value) : Syntax.t option =
   match v with
-  | VCon { name = "RawVar"; spine = [ span_val; id_val ]; _ } ->
-      Some { kind = Var (value_to_id id_val); span = value_to_span span_val }
-  | VCon { name = "RawAtom"; spine = [ span_val; atom_val ]; _ } ->
-      (match atomval_to_atom atom_val with
-       | Some a -> Some { kind = Atom a; span = value_to_span span_val }
+  | VCon { name; spine = [ span_val; id_val ]; nominal }
+    when expr_con_matches ?nominals "RawVar" name nominal ->
+      Some { kind = Var (value_to_id ?nominals id_val); span = value_to_span ?nominals span_val }
+  | VCon { name; spine = [ span_val; atom_val ]; nominal }
+    when expr_con_matches ?nominals "RawAtom" name nominal ->
+      (match atomval_to_atom ?nominals atom_val with
+       | Some a -> Some { kind = Atom a; span = value_to_span ?nominals span_val }
        | None -> None)
-  | VCon { name = "RawAp"; spine = [ span_val; fn_val; _; arg_val ]; _ } ->
-      (match (unwind_stx fn_val, unwind_stx arg_val) with
+  | VCon { name; spine = [ span_val; fn_val; _; arg_val ]; nominal }
+    when expr_con_matches ?nominals "RawAp" name nominal ->
+      (match (unwind_stx ?nominals fn_val, unwind_stx ?nominals arg_val) with
        | Some fn, Some arg ->
-           Some { kind = Ap (fn, Explicitness.Explicit, arg); span = value_to_span span_val }
+           Some { kind = Ap (fn, Explicitness.Explicit, arg); span = value_to_span ?nominals span_val }
        | _ -> None)
-  | VCon { name = "RawLam"; spine = [ span_val; param_val; body_val ]; _ } ->
-      (match unwind_stx body_val with
+  | VCon { name; spine = [ span_val; param_val; body_val ]; nominal }
+    when expr_con_matches ?nominals "RawLam" name nominal ->
+      (match unwind_stx ?nominals body_val with
        | Some body ->
-           Some { kind = Lam (value_to_param param_val, body); span = value_to_span span_val }
+           Some { kind = Lam (value_to_param ?nominals param_val, body); span = value_to_span ?nominals span_val }
        | _ -> None)
-  | VCon { name = "RawLet"; spine = [ span_val; name_val; _; value_val; body_val; rec_val ]; _ } ->
-      (match (unwind_stx value_val, unwind_stx body_val) with
+  | VCon { name; spine = [ span_val; name_val; _; value_val; body_val; rec_val ]; nominal }
+    when expr_con_matches ?nominals "RawLet" name nominal ->
+      (match (unwind_stx ?nominals value_val, unwind_stx ?nominals body_val) with
        | Some value, Some body ->
-           Some { kind = Let { name = value_to_id name_val;
-                              type_ = None; value; body;
-                              recursive = value_to_bool rec_val };
-                  span = value_to_span span_val }
+           Some { kind = Let { name = value_to_id ?nominals name_val;
+                               type_ = None; value; body;
+                               recursive = value_to_bool rec_val };
+                  span = value_to_span ?nominals span_val }
        | _ -> None)
   | VStx (StxExpr stx) -> Some stx
   | _ -> None
 
-let unwrap_stx (v : value) : Syntax.t option = unwind_stx v
+let unwrap_stx ?nominals (v : value) : Syntax.t option = unwind_stx ?nominals v
 
-let unwrap_stx_decl (v : value) : Syntax.struct_binding list option =
+let unwrap_stx_decl ?nominals (v : value) : Syntax.struct_binding list option =
   let rec go v =
     match v with
-    | VCon { name = "DeclLet"; spine = [ id_val; expr_val; pub_val ]; _ } ->
-        (match unwind_stx expr_val with
+    | VCon { name; spine = [ id_val; expr_val; pub_val ]; nominal }
+      when decl_con_matches ?nominals "DeclLet" name nominal ->
+        (match unwind_stx ?nominals expr_val with
          | Some expr ->
-             let name = value_to_id id_val in
+             let name = value_to_id ?nominals id_val in
              let public = value_to_bool pub_val in
              Some [ Syntax.LetBinding { name; value = expr; public; recursive = false } ]
          | None -> None)
-    | VCon { name = "Nil"; _ } -> Some []
-    | VCon { name = "Cons"; spine = [ head; tail ]; _ } ->
+    | VCon { name; nominal; _ } when list_con_matches ?nominals "Nil" name nominal -> Some []
+    | VCon { name; spine = [ head; tail ]; nominal }
+      when list_con_matches ?nominals "Cons" name nominal ->
         (match go head, go tail with
          | Some hd, Some tl -> Some (hd @ tl)
          | _ -> None)
@@ -312,25 +359,31 @@ let wrap_stx_decl ~nominals (bindings : Syntax.struct_binding list) : value =
       in
       go bindings
 
-let unwrap_stx_pat (v : value) : Syntax.pat option =
+let unwrap_stx_pat ?nominals (v : value) : Syntax.pat option =
   let rec go v =
     match v with
-    | VCon { name = "RawPatWild"; spine = [ _span_val ]; _ } ->
+    | VCon { name; spine = [ _span_val ]; nominal }
+      when pat_con_matches ?nominals "RawPatWild" name nominal ->
         Some Syntax.PatWild
-    | VCon { name = "RawPatBind"; spine = [ _span_val; id_val ]; _ } ->
-        Some (Syntax.PatBind (value_to_id id_val))
-    | VCon { name = "RawPatCon"; spine = [ _span_val; ctor_val; args_val ]; _ } ->
-        let ctor = value_to_id ctor_val in
+    | VCon { name; spine = [ _span_val; id_val ]; nominal }
+      when pat_con_matches ?nominals "RawPatBind" name nominal ->
+        Some (Syntax.PatBind (value_to_id ?nominals id_val))
+    | VCon { name; spine = [ _span_val; ctor_val; args_val ]; nominal }
+      when pat_con_matches ?nominals "RawPatCon" name nominal ->
+        let ctor = value_to_id ?nominals ctor_val in
         let args = unwind_stx_list args_val |> List.filter_map go in
         Some (Syntax.PatCon ([], ctor.name, args))
-    | VCon { name = "RawPatAtom"; spine = [ _span_val; atom_val ]; _ } ->
-        (match atomval_to_atom atom_val with
+    | VCon { name; spine = [ _span_val; atom_val ]; nominal }
+      when pat_con_matches ?nominals "RawPatAtom" name nominal ->
+        (match atomval_to_atom ?nominals atom_val with
          | Some a -> Some (Syntax.PatAtom a)
          | None -> None)
-    | VCon { name = "RawPatProd"; spine = [ _span_val; pats_val ]; _ } ->
+    | VCon { name; spine = [ _span_val; pats_val ]; nominal }
+      when pat_con_matches ?nominals "RawPatProd" name nominal ->
         let pats = unwind_stx_list pats_val |> List.filter_map go in
         Some (Syntax.PatProd pats)
-    | VCon { name = "RawPatOr"; spine = [ _span_val; l_val; r_val ]; _ } ->
+    | VCon { name; spine = [ _span_val; l_val; r_val ]; nominal }
+      when pat_con_matches ?nominals "RawPatOr" name nominal ->
         (match go l_val, go r_val with
          | Some l, Some r -> Some (Syntax.PatOr (l, r))
          | _ -> None)
@@ -338,8 +391,9 @@ let unwrap_stx_pat (v : value) : Syntax.pat option =
     | _ -> None
   and unwind_stx_list v =
     match v with
-    | VCon { name = "Nil"; _ } -> []
-    | VCon { name = "Cons"; spine = [ head; tail ]; _ } -> head :: unwind_stx_list tail
+    | VCon { name; nominal; _ } when list_con_matches ?nominals "Nil" name nominal -> []
+    | VCon { name; spine = [ head; tail ]; nominal }
+      when list_con_matches ?nominals "Cons" name nominal -> head :: unwind_stx_list tail
     | _ -> []
   in
   go v

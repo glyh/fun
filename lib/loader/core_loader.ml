@@ -16,7 +16,7 @@ type t = {
   parsed_cache : (string, Surface.t) Hashtbl.t;
   runtime_surface_cache : (string, Surface.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
-  macro_cache : (string, (string * Core.value * Syntax.MacroKind.t) list) Hashtbl.t;
+  macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
   syntax_cache : (string, Operator_env.export list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
   macro_active : (string, string) Hashtbl.t;
@@ -72,14 +72,14 @@ let parse_raw_module t path =
       Hashtbl.replace t.parsed_cache resolved surface;
       surface
 
-let parse_runtime_module t ?eval_and_apply path =
+let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
   let resolved = resolved_path t path in
   if not (Sys.file_exists resolved) then raise (ImportNotFound path);
   let load_macros ctx _path =
     match Hashtbl.find_opt t.macro_cache resolved with
     | Some macros ->
-        List.iter (fun (name, value, kind) ->
-          Expand_ctx.register_macro ctx ~name ~value;
+        List.iter (fun (name, value, kind, syntax_nominals) ->
+          Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals ~name ~value;
           Expand_ctx.register_macro_kind ctx ~name ~kind)
           macros
     | None -> ()
@@ -87,14 +87,14 @@ let parse_runtime_module t ?eval_and_apply path =
   (match eval_and_apply with
    | Some _ ->
        let source = read_module_source resolved in
-       let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ~load_macros ~load_syntax:(load_syntax_exports t) source in
+        let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ?syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) source in
        (* Cache macros from expansion context so elaborator can find them *)
-       Hashtbl.iter (fun name value ->
-         let kind = match Hashtbl.find_opt ctx.Expand_ctx.macro_kind_table name with
-           | Some k -> k | None -> Syntax.MacroKind.default in
-         Hashtbl.replace t.macro_cache resolved
-           ((name, value, kind) :: (Option.value ~default:[] (Hashtbl.find_opt t.macro_cache resolved))))
-         ctx.Expand_ctx.macro_table;
+        Hashtbl.iter (fun name entry ->
+          let kind = match Hashtbl.find_opt ctx.Expand_ctx.macro_kind_table name with
+            | Some k -> k | None -> Syntax.MacroKind.default in
+          Hashtbl.replace t.macro_cache resolved
+            ((name, entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals) :: (Option.value ~default:[] (Hashtbl.find_opt t.macro_cache resolved))))
+          ctx.Expand_ctx.macro_table;
        surface
    | None ->
        match Hashtbl.find_opt t.runtime_surface_cache resolved with
@@ -114,7 +114,7 @@ let load t path f =
     ~finally:(fun () -> Hashtbl.remove t.active resolved)
     (fun () -> f parsed)
 
-let load_elaborated t path ~elaborate ~eval_and_apply =
+let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
   let resolved = resolved_path t path in
   if Hashtbl.mem t.active resolved then raise (CircularImport path);
   match Hashtbl.find_opt t.runtime_elab_cache resolved with
@@ -123,14 +123,14 @@ let load_elaborated t path ~elaborate ~eval_and_apply =
       let load_macros ctx _path =
         match Hashtbl.find_opt t.macro_cache resolved with
         | Some macros ->
-            List.iter (fun (name, value, kind) ->
-              Expand_ctx.register_macro ctx ~name ~value;
+            List.iter (fun (name, value, kind, syntax_nominals) ->
+              Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals ~name ~value;
               Expand_ctx.register_macro_kind ctx ~name ~kind)
               macros
         | None -> ()
       in
       if not (Sys.file_exists resolved) then raise (ImportNotFound path);
-      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~load_macros ~load_syntax:(load_syntax_exports t) (read_module_source resolved) in
+      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) (read_module_source resolved) in
       Hashtbl.replace t.active resolved path;
       let result =
         Fun.protect
@@ -143,8 +143,8 @@ let load_elaborated t path ~elaborate ~eval_and_apply =
 let rec visit_macros t (ctx : Expand_ctx.t) path =
   let resolved = resolved_path t path in
   let register_cached macros =
-    List.iter (fun (name, value, kind) ->
-      Expand_ctx.register_macro ctx ~name ~value;
+    List.iter (fun (name, value, kind, syntax_nominals) ->
+      Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals ~name ~value;
       Expand_ctx.register_macro_kind ctx ~name ~kind)
       macros
   in
@@ -169,18 +169,19 @@ let rec visit_macros t (ctx : Expand_ctx.t) path =
                       match ctx.Expand_ctx.elaborate with
                       | Some elaborate ->
                           let eval_and_apply = ctx.Expand_ctx.eval_and_apply in
-                          let lowered =
-                            Parse_expand.expand_lower
-                              ~elaborate
-                              ?eval_and_apply
-                              ~load_macros:(visit_macros t)
-                              value
+                           let lowered =
+                             Parse_expand.expand_lower
+                               ~elaborate
+                               ?eval_and_apply
+                               ?syntax_nominals:ctx.Expand_ctx.syntax_nominals
+                               ~load_macros:(visit_macros t)
+                               value
                           in
-                          let macro_fn = elaborate lowered in
-                          Expand_ctx.register_macro ctx ~name ~value:macro_fn;
-                          let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
-                          Expand_ctx.register_macro_kind ctx ~name ~kind:resolved_kind;
-                          (name, macro_fn, resolved_kind) :: acc
+                           let macro_fn = elaborate lowered in
+                           Expand_ctx.register_macro ctx ~name ~value:macro_fn;
+                           let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
+                           Expand_ctx.register_macro_kind ctx ~name ~kind:resolved_kind;
+                           (name, macro_fn, resolved_kind, ctx.Expand_ctx.syntax_nominals) :: acc
                       | None -> acc)
                  | _ -> acc)
                [] bindings
