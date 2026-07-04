@@ -38,3 +38,4 @@ _opam/
 .claude/
 .opencode/*
 !.opencode/skills/
+.codebase-memory/
