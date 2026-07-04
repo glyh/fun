@@ -42,10 +42,10 @@ type syntax_nominals = {
 }
 
 let vcon_none nominals =
-  VCon { name = "None"; spine = []; nominal = nominals.option_ }
+  VCon { name = Compiler_names.Constructor_name.none; spine = []; nominal = nominals.option_ }
 
 let vcon_some nominals v =
-  VCon { name = "Some"; spine = [ v ]; nominal = nominals.option_ }
+  VCon { name = Compiler_names.Constructor_name.some; spine = [ v ]; nominal = nominals.option_ }
 
 let vcon_explicit nominals =
   VCon { name = "Explicit"; spine = []; nominal = nominals.explicitness }
@@ -199,10 +199,12 @@ let rec value_to_id (v : value) : Syntax.id =
 
 and value_to_span (v : value) : Source_span.t =
   match v with
-  | VCon { name = "None"; _ } -> Source_span.synthetic
-  | VCon { name = "Some"; spine = [ VRecord ({ fields; _ } as _rec) ]; _ } ->
+  | VCon { name; _ } when String.equal name Compiler_names.Constructor_name.none -> Source_span.synthetic
+  | VCon { name; spine = [ VRecord ({ fields; _ } as _rec) ]; _ }
+    when String.equal name Compiler_names.Constructor_name.some ->
       let file = match List.assoc_opt "file" fields with
-        | Some (VCon { name = "Some"; spine = [ VAtom (String s) ]; _ }) -> Some s
+        | Some (VCon { name; spine = [ VAtom (String s) ]; _ })
+          when String.equal name Compiler_names.Constructor_name.some -> Some s
         | _ -> None
       in
       let start_byte = match List.assoc_opt "start_byte" fields with
@@ -346,7 +348,7 @@ let wrap_stx_pat ~nominals (p : Syntax.pat) : value =
   match nominals with
   | None -> VStx (StxPattern p)
   | Some n ->
-    let span_opt = VCon { name = "None"; spine = []; nominal = n.option_ } in
+    let span_opt = VCon { name = Compiler_names.Constructor_name.none; spine = []; nominal = n.option_ } in
     let rec go p =
       match p with
       | Syntax.PatWild ->

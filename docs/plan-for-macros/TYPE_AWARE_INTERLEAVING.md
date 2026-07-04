@@ -82,6 +82,8 @@ whether `A` is known as a type/value before deciding macro arity.
 
 - `type MyTag = ...; macro m(_) : Expr(MyTag) -> ...` treats `MyTag` as a
   constraint, not a binder.
+- `MyInt = I64; macro m(_) : Expr(MyInt) -> ...` constrains by the aliased
+  builtin type instead of creating an implicit `MyInt : Syntax.R` binder.
 - `Alias = SomeModule; macro m(_) : Expr(Alias.T) -> ...` constrains by the
   aliased type value.
 - Imported macro modules compile annotations using the importing/visiting phase

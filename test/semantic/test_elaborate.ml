@@ -203,6 +203,8 @@ let operators =
     Alcotest.test_case "unit equality" `Quick (check_type "() == ()" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "type alias equality" `Quick
       (check_type "do MyInt = I64; (1 : MyInt) == (2 : MyInt) end" (AtomTy Atom_ty.TBool));
+    Alcotest.test_case "builtin alias chain equality" `Quick
+      (check_type "do MyInt = I64; Alias = MyInt; (1 : Alias) == (2 : MyInt) end" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "operator as value" `Quick (check_type "(==)(1)(1)" (AtomTy Atom_ty.TBool));
     Alcotest.test_case "polymorphic helper" `Quick
       (check_type "do same : [A : Type] -> A -> A -> Bool = fn[A : Type] -> (==)[A]; same(1, 1) end" (AtomTy Atom_ty.TBool));

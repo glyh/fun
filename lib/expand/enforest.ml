@@ -153,14 +153,7 @@ and parse_type_atom env (terms : Raw_syntax.t list) :
       let name = keyword_name kind in
       if Option.is_some name then
         let name = Option.get name in
-        if
-          String.equal name "ref"
-          || String.equal name "EffectRow"
-          || String.equal name "Type" || String.equal name "I64"
-          || String.equal name "Bool" || String.equal name "Unit"
-          || String.equal name "Char" || String.equal name "String"
-          || String.equal name "Absurd"
-        then
+        if List.mem name Compiler_names.Type_name.parser_type_keywords then
           match terms with
           | { span; _ } :: rest -> (var ~span name, rest)
           | _ -> error "expected type token"
@@ -280,8 +273,11 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
     | rest when implicit_params <> [] || allow_empty -> ([], rest)
     | _ -> error "fn requires at least one parameter list"
   in
-  let known_type_names = ["I64"; "Bool"; "Unit"; "Char"; "String"; "Type"; "Id"; "Span"; "Expr";
-                           "Option"; "List"; "AtomVal"; "Explicitness"; "Ref"; "Pattern"; "Decl"; "Trait"] in
+  let known_type_names = Compiler_names.Type_name.macro_annotation_known in
+  let r_type () =
+    { Syntax.kind = FieldAccess (Enforest_util.var Compiler_names.Module_name.syntax, Compiler_names.Syntax_name.r);
+      span = Source_span.synthetic }
+  in
   let is_binder_name n =
     let is_upper c = c >= 'A' && c <= 'Z' in
     String.length n > 0 && is_upper n.[0]
@@ -305,7 +301,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
                   (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
                 else
                   let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
-                  let type_ty = { Syntax.kind = FieldAccess (Enforest_util.var "Syntax", "R"); span = Source_span.synthetic } in
+                  let type_ty = r_type () in
                   (Some (Syntax.MacroKind.Expr (Some inner, None)),
                    Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
                    rest)
@@ -313,7 +309,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
                 error "unsupported type pattern in macro annotation"
           end else begin
             let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
-            let type_ty = { Syntax.kind = FieldAccess (Enforest_util.var "Syntax", "R"); span = Source_span.synthetic } in
+            let type_ty = r_type () in
             (Some (Syntax.MacroKind.Expr (Some k, None)),
              Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
              rest)
@@ -333,7 +329,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
                  (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
              | None ->
                  let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
-                 let type_ty = { Syntax.kind = FieldAccess (Enforest_util.var "Syntax", "R"); span = Source_span.synthetic } in
+                  let type_ty = r_type () in
                  (Some (Syntax.MacroKind.Expr (Some k, None)),
                   Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
                   rest))

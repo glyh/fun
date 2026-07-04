@@ -947,10 +947,10 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                                 | None -> raise (ElabError (UnboundVariable constraint_name)))
                            | None -> ());
                           let wrapped_ty =
-                            match expand_ctx.Expand_ctx.syntax_nominals with
-                            | Some nominals ->
-                                VCon { name = "RExpr"; spine = [ty]; nominal = nominals.Macro_eval.r_ }
-                            | None -> ty
+                             match expand_ctx.Expand_ctx.syntax_nominals with
+                             | Some nominals ->
+                                 VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ty]; nominal = nominals.Macro_eval.r_ }
+                             | None -> ty
                           in
                           let fn = apply_fn macro_fn wrapped_ty in
                           let fn = List.fold_left (fun fn arg ->

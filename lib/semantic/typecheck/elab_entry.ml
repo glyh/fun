@@ -12,16 +12,16 @@ open Elab_resolve
 let init_ctx () : Ctx.t =
   let ctx = Ctx.empty () in
   let add_type ctx name v = Ctx.define ctx name VU v in
-  let ctx = add_type ctx "I64" (VAtomTy Atom_ty.TI64) in
-  let ctx = add_type ctx "Bool" (VAtomTy Atom_ty.TBool) in
-  let ctx = add_type ctx "Unit" (VAtomTy Atom_ty.TUnit) in
-  let ctx = add_type ctx "Char" (VAtomTy Atom_ty.TChar) in
-  let ctx = add_type ctx "String" (VAtomTy Atom_ty.TString) in
-  let ctx = add_type ctx "Absurd" (VAtomTy Atom_ty.TAbsurd) in
-  let ctx = Ctx.define ctx "Type" VU VU in
-  let ctx = Ctx.define ctx "EffectRow" VU VEffectRowTy in
+  let ctx = add_type ctx Compiler_names.Type_name.i64 (VAtomTy Atom_ty.TI64) in
+  let ctx = add_type ctx Compiler_names.Type_name.bool (VAtomTy Atom_ty.TBool) in
+  let ctx = add_type ctx Compiler_names.Type_name.unit (VAtomTy Atom_ty.TUnit) in
+  let ctx = add_type ctx Compiler_names.Type_name.char (VAtomTy Atom_ty.TChar) in
+  let ctx = add_type ctx Compiler_names.Type_name.string (VAtomTy Atom_ty.TString) in
+  let ctx = add_type ctx Compiler_names.Type_name.absurd (VAtomTy Atom_ty.TAbsurd) in
+  let ctx = Ctx.define ctx Compiler_names.Type_name.type_ VU VU in
+  let ctx = Ctx.define ctx Compiler_names.Type_name.effect_row VU VEffectRowTy in
   let ref_ty = VPi { explicitness = Explicit; domain = VU; effects = effect_row_closure ctx.env empty_effect_row; codomain = { env = ctx.env; body = U } } in
-  let ctx = Ctx.define ctx "Ref" ref_ty (VLam { body = { env = ctx.env; body = RefTy (Var 0) } }) in
+  let ctx = Ctx.define ctx Compiler_names.Type_name.ref_ ref_ty (VLam { body = { env = ctx.env; body = RefTy (Var 0) } }) in
   let ctx =
     NameMap.fold
       (fun name ty ctx ->
@@ -31,15 +31,15 @@ let init_ctx () : Ctx.t =
   let stdlib_core, stdlib_ty = Elab_driver.infer ctx (Lazy.force parsed_stdlib) in
   let stdlib_value = Ctx.eval ctx stdlib_core in
   let ctx = Ctx.hide_names ctx syntax_primitive_names in
-  Ctx.define ctx "stdlib" stdlib_ty stdlib_value
+  Ctx.define ctx Compiler_names.Module_name.stdlib stdlib_ty stdlib_value
 
 let open_stdlib ctx =
-  let ix, ty = Ctx.lookup ctx "stdlib" in
+  let ix, ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
   let value = Ctx.eval ctx (Var ix) in
   (ix, open_module_value ctx ty value)
 
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
-  let ix, _ty = Ctx.lookup ctx "stdlib" in
+  let ix, _ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
   let stdlib_value = Ctx.eval ctx (Var ix) in
   List.fold_left
     (fun acc field_name ->

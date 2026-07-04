@@ -154,10 +154,10 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                 (match expand_ctx.Expand_ctx.eval_and_apply with
                  | Some apply_fn ->
                      let wrapped_ty =
-                       match expand_ctx.Expand_ctx.syntax_nominals with
-                       | Some nominals ->
-                           VCon { name = "RExpr"; spine = [expected]; nominal = nominals.Macro_eval.r_ }
-                       | None -> expected
+                        match expand_ctx.Expand_ctx.syntax_nominals with
+                        | Some nominals ->
+                            VCon { name = Compiler_names.Constructor_name.r_expr; spine = [expected]; nominal = nominals.Macro_eval.r_ }
+                        | None -> expected
                      in
                      let fn = apply_fn macro_fn wrapped_ty in
                      let fn = List.fold_left (fun fn arg ->
