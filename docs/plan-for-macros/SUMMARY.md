@@ -1,5 +1,9 @@
 # Macro system summary
 
+> **⚠️ Status note**: This is a design summary document. The "Suggested implementation path"
+> section reflects the original plan and may not match current completion status.
+> For current completion status, see **[STATUS.md](STATUS.md)** — the canonical macro status.
+
 ## Goal
 
 The planned macro system should be a first-class, hygienic, type-integrated extension mechanism for `fun`. It should not make the language Lisp-shaped. Instead, it should preserve regular surface syntax while giving users the same kind of extensibility that Racket gets from syntax objects, phases, hygienic expansion, and compile-time computation.

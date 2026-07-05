@@ -1,5 +1,7 @@
 # TODO
 
+For detailed current implementation status, see [`docs/STATUS.md`](docs/STATUS.md).
+
 ## Bugs (high)
 
 ### Disambiguate annotation names by scope

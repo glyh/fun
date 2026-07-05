@@ -1,5 +1,10 @@
 # Stage 8: Problem-Aware Macros
 
+> **⚠️ Status note**: This is a design document with stale status markers
+> ("Not started"). Stage 8 is actually complete. The design decisions recorded
+> here are accurate; only the completion checkboxes are stale.
+> For current completion status, see **[STATUS.md](STATUS.md)** — the canonical macro status.
+
 ## Goal
 
 Let macros declare their syntactic return kind, so the elaborator can validate that macros are used in the correct context. The kind is determined by the macro's **return type** — either via inference (best effort) or explicit annotation.

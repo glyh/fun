@@ -1,5 +1,9 @@
 # Macro Implementation Plan
 
+> **⚠️ Status note**: This is a design/history document. Stages 0–10 are complete;
+> Stages 11–12 are not yet specified. For current completion status, see
+> **[STATUS.md](STATUS.md)** — the canonical macro status.
+
 ## Goal
 
 Build a hygienic, regular-syntax, type-integrated macro system for `fun` without committing the prototype to a dead-end parser or a surface-only rewrite pass.

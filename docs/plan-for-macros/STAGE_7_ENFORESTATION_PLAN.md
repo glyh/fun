@@ -1,5 +1,9 @@
 # Stage 7 Enforestation Plan
 
+> **⚠️ Status note**: This is a design/history document. All Stage 7 sub-phases
+> (7A–7I) are complete. Some status text in the body may not reflect this.
+> For current completion status, see **[STATUS.md](STATUS.md)** — the canonical macro status.
+
 ## Goal
 
 Stage 7 introduces enforestation as the parsing boundary for the redesigned `fun` surface syntax described in `SYNTAX_SPEC.md`.
@@ -892,7 +896,7 @@ These items are the resolved infrastructure debt for the original Stage 7 enfore
 
 ### Cleanup And Documentation
 
-- [x] Update `SYNTAX_SPEC.md`, `IMPLEMENTATION_PLAN.md`, and `CLAUDE.md` so they agree on current comment syntax, Stage 7 status, and provisional syntax-extension forms.
+- [x] Update `SYNTAX_SPEC.md`, `IMPLEMENTATION_PLAN.md`, and `AGENTS.md` so they agree on current comment syntax, Stage 7 status, and provisional syntax-extension forms.
 - [x] Remove stale Menhir-related test dependencies if they are no longer needed by the semantic/backend test stanzas.
 - [x] Document the current parser boundary: raw reader -> enforestation -> hygienic expansion -> lowering to `Surface.t`.
 - [x] Keep `Surface.t` as the elaborator-facing boundary until Stage 8+ proves an interleaved expansion/elaboration design; decision: Stage 7 still lowers through `Surface.t`, with macro-only surface nodes preserved only for phase-aware expansion before elaboration.

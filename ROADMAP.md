@@ -110,6 +110,8 @@ The macro plan is larger than the recent semantic features because it requires s
 
 The syntax redesign now enters through reader/enforestation rather than Menhir grammar growth, with macro syntax extension continuing on top of that boundary.
 
+For detailed current completion status, see [`docs/STATUS.md`](docs/STATUS.md) and [`docs/plan-for-macros/STATUS.md`](docs/plan-for-macros/STATUS.md).
+
 ### 7. CLR/C# rewrite target
 
 The CLR/C# rewrite is now part of the active agenda rather than a distant cleanup item. The current OCaml implementation remains the design prototype, but most remaining non-macro items are either minor or can plausibly be implemented in the language instead of the compiler.

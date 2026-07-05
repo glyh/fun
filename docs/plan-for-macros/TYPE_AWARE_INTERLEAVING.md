@@ -1,5 +1,10 @@
 # Type-Aware Macro Interleaving
 
+> **Status note**: This is a design document describing the required fix for the
+> Stage 10 annotation-name disambiguation limitation (expand/elaborate interleaving).
+> The fix is not yet implemented. See **[STATUS.md](STATUS.md)** for current
+> macro completion status.
+
 ## Problem
 
 Macro annotations such as `: Expr(A)` are currently resolved in `enforest.ml`
