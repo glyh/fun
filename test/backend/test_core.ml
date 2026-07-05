@@ -1266,6 +1266,77 @@ let test_binder_body_type_mismatch () =
   | _ -> Alcotest.fail "expected binder body type mismatch"
   | exception _ -> ()
 
+(** Stage 3: helper that produces a driver_output via the new [Macro_driver].
+    Parses source, runs the driver, and returns the output. *)
+let run_driver source : Macro_driver.driver_output =
+  let stx = Enforest.parse_module source in
+  Macro_driver.run stx
+
+(** Stage 3: equivalence helper — runs both the old pipeline
+    ([Parse_expand.parse_module_with_ctx]) and the new driver, and
+    returns the full lowered surfaces for structural comparison. *)
+let driver_vs_pipeline source =
+  let ctx = Elaborate.init_ctx () in
+  let nominals = Elaborate.syntax_nominals ctx in
+  let elaborate expr =
+    let core, _ty = Elaborate.on_expr ctx expr in
+    Elaborate.Ctx.eval ctx core
+  in
+  let eval_and_apply fn arg =
+    let mc = MetaContext.create () in
+    Nbe.apply mc fn arg
+  in
+  let pipeline_surface, _expand_ctx =
+    Parse_expand.parse_module_with_ctx
+      ~elaborate ~eval_and_apply ~syntax_nominals:nominals source
+  in
+  let driver_output = run_driver source in
+  (pipeline_surface, driver_output.surface)
+
+(** Stage 3: structural equivalence — a module with only runtime bindings
+    produces the same binding structure from both pipelines. *)
+let test_driver_equiv_runtime () =
+  let source = "pub x : I64 = 42\npub y = x + 1\n" in
+  let a, b = driver_vs_pipeline source in
+  Alcotest.(check bool)
+    "driver matches pipeline for runtime module" true (a = b)
+
+(** Stage 3: a module with a macro definition produces the same surface
+    structure from both pipelines. *)
+let test_driver_equiv_macro () =
+  let source =
+    "macro mk(_) -> Syntax.i64(1)\n\
+     pub x : I64 = mk @ (0)\n"
+  in
+  let a, b = driver_vs_pipeline source in
+  Alcotest.(check bool)
+    "driver matches pipeline for module with macro" true (a = b)
+
+(** Stage 3: [macro_exports] includes a locally defined default-kind macro. *)
+let test_driver_macro_exports_default () =
+  let output = run_driver "macro mk(_) -> Syntax.i64(1)\n" in
+  let names = List.map (fun (e : Macro_driver.macro_export) -> e.name) output.macro_exports in
+  Alcotest.(check (list string)) "macro_exports contains mk"
+    ["mk"] names;
+  Alcotest.(check string) "macro export kind is default Expr"
+    (Syntax.MacroKind.to_string Syntax.MacroKind.default)
+    (Syntax.MacroKind.to_string (List.hd output.macro_exports).kind)
+
+(** Stage 3: [macro_exports] includes a Decl-kind macro. *)
+let test_driver_macro_exports_decl () =
+  let output = run_driver "macro gen(_) : Decl do Nil end\n" in
+  let names = List.map (fun (e : Macro_driver.macro_export) -> e.name) output.macro_exports in
+  Alcotest.(check (list string)) "macro_exports contains gen" ["gen"] names;
+  Alcotest.(check string) "macro export kind is Decl"
+    (Syntax.MacroKind.to_string Syntax.MacroKind.Decl)
+    (Syntax.MacroKind.to_string (List.hd output.macro_exports).kind)
+
+(** Stage 3: [driver_output.elab_ctx.expand_ctx] is populated. *)
+let test_driver_elab_ctx_has_expand_ctx () =
+  let output = run_driver "pub x : I64 = 42\n" in
+  Alcotest.(check bool) "elab_ctx.expand_ctx is populated" true
+    (Option.is_some output.elab_ctx.Elab_ctx.Ctx.expand_ctx)
+
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
@@ -2557,6 +2628,11 @@ let () =
           Alcotest.test_case "Expr(Intt) typo → binder not constraint" `Quick test_binder_typo_guard;
           Alcotest.test_case "binder type mismatch" `Quick test_binder_type_mismatch;
           Alcotest.test_case "binder body type mismatch" `Quick test_binder_body_type_mismatch;
+          Alcotest.test_case "driver equiv runtime module" `Quick test_driver_equiv_runtime;
+          Alcotest.test_case "driver equiv module with macro" `Quick test_driver_equiv_macro;
+          Alcotest.test_case "driver macro_exports default kind" `Quick test_driver_macro_exports_default;
+          Alcotest.test_case "driver macro_exports Decl kind" `Quick test_driver_macro_exports_decl;
+          Alcotest.test_case "driver elab_ctx.expand_ctx populated" `Quick test_driver_elab_ctx_has_expand_ctx;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;

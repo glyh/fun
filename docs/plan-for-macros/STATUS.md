@@ -54,7 +54,9 @@ namespace and remains the main open design issue before Stages 11–12.
 
 - **[TYPE_AWARE_INTERLEAVING.md](TYPE_AWARE_INTERLEAVING.md)** — Design document for the
   expander/elaborator interleaving needed to fix the Stage 10 annotation-name disambiguation
-  limitation. Describes the required compiler shape, seams to replace, and regression tests.
+  limitation. Stage 1 split parsed annotations from resolved macro kinds, Stage 2 removed
+  the static known-type list, and Stage 3 added an additive callable `Macro_driver`
+  skeleton. Describes the remaining compiler shape, seams to replace, and regression tests.
 
 - **[STAGE_7_ENFORESTATION_PLAN.md](STAGE_7_ENFORESTATION_PLAN.md)** — Concrete implementation
   plan for Stage 7 enforestation (phases 7A–7I). All sub-phases are complete. The document

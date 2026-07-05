@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after Type-aware macro interleaving Stage 2 (July 2026).
+Last updated: after Type-aware macro interleaving Stage 3 (July 2026).
 
 ---
 
@@ -41,6 +41,9 @@ Last updated: after Type-aware macro interleaving Stage 2 (July 2026).
   uppercase names now uniformly become binders until the semantic driver can
   resolve constraints against the prior type namespace. See
   [`plan-for-macros/TYPE_AWARE_INTERLEAVING.md`](plan-for-macros/TYPE_AWARE_INTERLEAVING.md).
+- Type-aware interleaving migration Stage 3 added an additive callable
+  `Macro_driver` skeleton. It exposes the future driver output shape and macro
+  exports while preserving the current whole-module expansion behavior.
 
 ---
 
@@ -64,10 +67,11 @@ Last updated: after Type-aware macro interleaving Stage 2 (July 2026).
   and [`plan-for-macros/IMPLEMENTATION_PLAN.md`](plan-for-macros/IMPLEMENTATION_PLAN.md).
 
 ### Annotation scope disambiguation / type-aware interleaving
-- Stage 1 (AST split) and Stage 2 (remove static `known_type_names`) are done.
-  Current temporary behavior maps leading-uppercase annotations to binders;
-  real constraint recognition still requires expander/elaborator interleaving
-  with access to the current prior type namespace. See
+- Stage 1 (AST split), Stage 2 (remove static `known_type_names`), and Stage 3
+  (additive callable `Macro_driver` skeleton) are done. Current temporary
+  behavior maps leading-uppercase annotations to binders; real constraint
+  recognition still requires the Stage 4 resolver over an incrementally advanced
+  semantic context. See
   [`17.type_aware_macro_interleaving_design.md`](17.type_aware_macro_interleaving_design.md),
   [`plan-for-macros/TYPE_AWARE_INTERLEAVING.md`](plan-for-macros/TYPE_AWARE_INTERLEAVING.md),
   and [TODO.md](../TODO.md).
