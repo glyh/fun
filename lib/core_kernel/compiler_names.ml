@@ -12,21 +12,6 @@ module Type_name = struct
 
   let builtin_atoms = [ i64; bool; unit; char; string; absurd ]
   let parser_type_keywords = ref_keyword :: effect_row :: type_ :: builtin_atoms
-
-  let macro_annotation_known =
-    builtin_atoms
-    @ [ type_;
-        "Id";
-        "Span";
-        "Expr";
-        "Option";
-        "List";
-        "AtomVal";
-        "Explicitness";
-        ref_;
-        "Pattern";
-        "Decl";
-        "Trait" ]
 end
 
 module Module_name = struct

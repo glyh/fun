@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: for the state after Stage 10 completion (July 2025).
+Last updated: after Type-aware macro interleaving Stage 2 (July 2026).
 
 ---
 
@@ -36,8 +36,10 @@ Last updated: for the state after Stage 10 completion (July 2025).
 - Stages 0 through 10 are complete: substrate, hygiene, expansion, phase-aware imports,
   enforestation, syntax templates, computed ADT-based syntax API, kind-tagged macros,
   Decl/Pattern ADTs, type-aware macros. See [`plan-for-macros/STATUS.md`](plan-for-macros/STATUS.md).
-- Stage 10 has a known limitation: annotation-name disambiguation uses a static
-  `known_type_names` list instead of scope-aware elaboration. See
+- Stage 10 has a known limitation: annotation-name disambiguation is temporarily
+  parser/enforester-local. The old static known-type list has been removed;
+  uppercase names now uniformly become binders until the semantic driver can
+  resolve constraints against the prior type namespace. See
   [`plan-for-macros/TYPE_AWARE_INTERLEAVING.md`](plan-for-macros/TYPE_AWARE_INTERLEAVING.md).
 
 ---
@@ -62,9 +64,12 @@ Last updated: for the state after Stage 10 completion (July 2025).
   and [`plan-for-macros/IMPLEMENTATION_PLAN.md`](plan-for-macros/IMPLEMENTATION_PLAN.md).
 
 ### Annotation scope disambiguation / type-aware interleaving
-- Current `enforest.ml` uses a static `known_type_names` list to decide whether
-  `Expr(A)` is a constraint or a binder. A proper fix requires expander/elaborator
-  interleaving. See [`plan-for-macros/TYPE_AWARE_INTERLEAVING.md`](plan-for-macros/TYPE_AWARE_INTERLEAVING.md)
+- Stage 1 (AST split) and Stage 2 (remove static `known_type_names`) are done.
+  Current temporary behavior maps leading-uppercase annotations to binders;
+  real constraint recognition still requires expander/elaborator interleaving
+  with access to the current prior type namespace. See
+  [`17.type_aware_macro_interleaving_design.md`](17.type_aware_macro_interleaving_design.md),
+  [`plan-for-macros/TYPE_AWARE_INTERLEAVING.md`](plan-for-macros/TYPE_AWARE_INTERLEAVING.md),
   and [TODO.md](../TODO.md).
 
 ### Private type visibility

@@ -73,6 +73,9 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.Match (scrut, brs) ->
     Surface.Match (lower_expr scrut, List.map lower_match_branch brs)
   | Syntax.MacroDef { name; value; body; _ } ->
+    (* Deliberately drop annotation when lowering after macro registration:
+       the resolved kind is carried by the macro registry/table, not this
+       syntax node. *)
     Surface.MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body; kind = None }
   | Syntax.MacroCall (f, a) -> Surface.MacroCall (lower_expr f, List.map lower_expr a)
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->

@@ -177,11 +177,11 @@ let rec visit_macros t (ctx : Expand_ctx.t) path =
                                ~load_macros:(visit_macros t)
                                value
                           in
-                           let macro_fn = elaborate lowered in
-                           Expand_ctx.register_macro ctx ~name ~value:macro_fn;
-                           let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
-                           Expand_ctx.register_macro_kind ctx ~name ~kind:resolved_kind;
-                           (name, macro_fn, resolved_kind, ctx.Expand_ctx.syntax_nominals) :: acc
+                            let macro_fn = elaborate lowered in
+                            Expand_ctx.register_macro ctx ~name ~value:macro_fn;
+                            let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
+                            Expand_ctx.register_macro_kind ctx ~name ~kind:resolved_kind;
+                            (name, macro_fn, resolved_kind, ctx.Expand_ctx.syntax_nominals) :: acc
                       | None -> acc)
                  | _ -> acc)
                [] bindings

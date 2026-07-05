@@ -321,7 +321,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       let value = expand ctx value in
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
-      let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
+      let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
       Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:name.name ~kind:resolved_kind;
       if Syntax.MacroKind.has_type_binding resolved_kind then
@@ -524,7 +524,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
       let macro_fn = elab lowered in
       let binding_name = id_name name in
       let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
-      let resolved_kind = match kind with Some k -> k | None -> Syntax.MacroKind.default in
+      let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
       Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
       ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]])

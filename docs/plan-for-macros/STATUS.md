@@ -23,11 +23,13 @@ defer to this file for completion status.
 
 ### Stage 10 known limitation
 
-Annotation-name disambiguation uses a static `known_type_names` list in the parser.
-User-defined types (e.g. `type MyTag = I64`) are not recognized as constraints in
-`Expr(MyTag)` — they are mistakenly treated as binders. This requires
-expander/elaborator interleaving to fix and is the main open design issue before
-Stages 11–12.
+Annotation-name disambiguation is still not scope-aware. The old static
+`known_type_names` parser list has been removed as part of the type-aware
+interleaving migration; current temporary behavior treats leading-uppercase names
+as binders, so `Expr(I64)`, `Expr(MyTag)`, and typo-like names such as
+`Expr(Intt)` all synthesize implicit R parameters. Real constraint recognition
+requires expander/elaborator interleaving against the current prior type
+namespace and remains the main open design issue before Stages 11–12.
 
 ## Stages 11–12: Not specified
 

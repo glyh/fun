@@ -6,18 +6,16 @@ For detailed current implementation status, see [`docs/STATUS.md`](docs/STATUS.m
 
 ### Disambiguate annotation names by scope
 
-Currently macro annotation disambiguation uses the static compiler-known list
-`Compiler_names.Type_name.macro_annotation_known`.
+Stage 2 of the type-aware interleaving migration removed the old static
+compiler-known list (`Compiler_names.Type_name.macro_annotation_known`). Macro
+annotations now use a temporary parser/enforester fallback: `_` is unconstrained,
+leading-uppercase names become binders with synthesized implicit R parameters,
+and lowercase/non-binder names are unconstrained.
 
-When parsing `: Expr(Foo)`, if `Foo` is in `known_type_names`, it becomes a
-constraint (`Expr(None, Some "Foo")`). Otherwise, if it starts uppercase, it
-becomes a type-binding parameter (`Expr(Some "Foo", None)`).
-
-This means a user who defines `type MyTag = I64` cannot use `: Expr(MyTag)`
-as a constraint — `MyTag` is treated as a binder. The disambiguation should
-be context-sensitive, tracking an environment of type names in scope rather
-than a static list. This applies (at least) to all 3 sites where the implicit
-R-type parameter is constructed in `enforest.ml` (~lines 308, 316, 336).
+This means neither builtin names nor user-defined types are resolved as
+constraints yet: `: Expr(I64)`, `: Expr(MyTag)`, and misspellings such as
+`: Expr(Intt)` are all binders until the semantic module driver can resolve
+annotation names against the current prior type namespace.
 
 **Decision**: elaboration decides, but this requires an expander/elaborator
 handshake because binder-vs-constraint changes macro arity. Do not fix this with
@@ -26,8 +24,9 @@ a parser name set or an expander-only type-name set. Track the design in
 
 **Implementation target**:
 
-- Design the handshake/task model before changing macro arity semantics.
-- Replace the static known-type list only after that model exists.
+- Stage 1 (AST split) and Stage 2 (remove static known-type list) are complete.
+- Next: implement the semantic driver / resolver path that decides binder vs
+  constraint using the current prior elaboration context.
 - Future regressions are listed in
   `docs/plan-for-macros/TYPE_AWARE_INTERLEAVING.md`.
 

@@ -1199,15 +1199,15 @@ let test_expected_type_rejects_mismatch () =
   | _ -> Alcotest.fail "expected type mismatch"
   | exception _ -> ()
 
-let test_annotation_known_type_no_binding () =
-  check_i64_macro "known type : Int → no binding" 1L
+let test_annotation_bare_binder () =
+  check_i64_macro "bare : Int → binder with implicit param" 1L
     "do
        macro mk(_) : Int -> Syntax.i64(1)
        mk @ (0)
      end" ()
 
-let test_annotation_expr_int_no_binding () =
-  check_i64_macro "known type : Expr(Int) → no binding" 1L
+let test_annotation_expr_int_binder () =
+  check_i64_macro ": Expr(Int) → binder with implicit param" 1L
     "do
        macro mk(_) : Expr(Int) -> Syntax.i64(1)
        mk @ (0)
@@ -1220,27 +1220,50 @@ let test_annotation_unknown_binder () =
        mk @ (0)
      end" ()
 
-let test_annotation_known_no_binder () =
-  check_i64_macro "Expr(I64) → no binder → -> works" 1L
+let test_annotation_expr_i64_binder () =
+  check_i64_macro ": Expr(I64) → binder with implicit param" 1L
     "do
        macro mk(_) : Expr(I64) -> Syntax.i64(1)
        mk @ (0)
      end" ()
 
-let test_constraint_rejects_mismatch () =
+(** Stage 2: [Expr(I64)] is a binder, not a constraint. The synthesized
+    implicit param [I64] is referenceable in the macro body. *)
+let test_binder_i64_referenceable () =
+  check_i64_macro "Expr(I64) binder is referenceable in body" 1L
+    "do
+       macro mk(_) : Expr(I64) do do _ = I64; Syntax.i64(1) end end
+       mk @ (0)
+     end" ()
+
+(** Stage 2: unresolved uppercase names remain binders — no guessing.
+    [Intt] is not a known type, so it becomes a binder. *)
+let test_binder_typo_guard () =
+  check_i64_macro "Expr(Intt) typo → binder, not constraint" 1L
+    "do
+       macro mk(_) : Expr(Intt) do do _ = Intt; Syntax.i64(1) end end
+       mk @ (0)
+     end" ()
+
+(** Stage 2: binder-mode type checking — when a binder annotation is
+    used at a typed site, the expected type fills the implicit param.
+    A return-type mismatch still surfaces as an elaboration error. *)
+let test_binder_type_mismatch () =
   match eval_decl_module
     "macro mk(_) : Expr(I64) -> Syntax.i64(1)
      pub x : Bool = mk @ (0)"
   with
-  | _ -> Alcotest.fail "expected constraint type mismatch"
+  | _ -> Alcotest.fail "expected binder type mismatch"
   | exception _ -> ()
 
-let test_constraint_body_type_mismatch () =
+(** Stage 2: binder-mode body type mismatch — the body returns a type
+    incompatible with the annotated use site. *)
+let test_binder_body_type_mismatch () =
   match eval_decl_module
     "macro mk(_) : Expr(I64) -> Syntax.bool(true)
      pub x : I64 = mk @ (0)"
   with
-  | _ -> Alcotest.fail "expected constraint body type mismatch"
+  | _ -> Alcotest.fail "expected binder body type mismatch"
   | exception _ -> ()
 
 let test_macro_and_syntax_together () =
@@ -2526,12 +2549,14 @@ let () =
           Alcotest.test_case "Expr(A) binding" `Quick test_expr_binding;
           Alcotest.test_case "expected type reaches macro" `Quick test_expected_type_reaches_macro;
           Alcotest.test_case "expected type rejects mismatch" `Quick test_expected_type_rejects_mismatch;
-          Alcotest.test_case ": Int known type no binding" `Quick test_annotation_known_type_no_binding;
-          Alcotest.test_case ": Expr(Int) known type no binding" `Quick test_annotation_expr_int_no_binding;
+          Alcotest.test_case ": Int → binder with implicit param" `Quick test_annotation_bare_binder;
+          Alcotest.test_case ": Expr(Int) → binder with implicit param" `Quick test_annotation_expr_int_binder;
           Alcotest.test_case ": Expr(Foo) binder works" `Quick test_annotation_unknown_binder;
-          Alcotest.test_case ": Expr(I64) no binder" `Quick test_annotation_known_no_binder;
-          Alcotest.test_case "constraint rejects mismatch" `Quick test_constraint_rejects_mismatch;
-          Alcotest.test_case "constraint rejects body type mismatch" `Quick test_constraint_body_type_mismatch;
+          Alcotest.test_case ": Expr(I64) → binder with implicit param" `Quick test_annotation_expr_i64_binder;
+          Alcotest.test_case "Expr(I64) binder is referenceable" `Quick test_binder_i64_referenceable;
+          Alcotest.test_case "Expr(Intt) typo → binder not constraint" `Quick test_binder_typo_guard;
+          Alcotest.test_case "binder type mismatch" `Quick test_binder_type_mismatch;
+          Alcotest.test_case "binder body type mismatch" `Quick test_binder_body_type_mismatch;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;

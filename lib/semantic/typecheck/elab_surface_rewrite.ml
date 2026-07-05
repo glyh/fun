@@ -86,6 +86,8 @@ let rewrite_record_self_refs record_name params expr =
                         fields = List.map (fun (field, value) -> (field, go bound value)) fields;
                         public }
                 | Surface.MacroBinding { name; value; public; _ } ->
+                    (* Deliberately drop annotation after macro registration:
+                       the resolved kind is carried by the macro registry/table. *)
                     Surface.MacroBinding { name; value = go bound value; public; kind = None }
                 | Surface.MacroCallBinding { f; args } ->
                     Surface.MacroCallBinding { f = go bound f; args = List.map (go bound) args }
@@ -128,6 +130,8 @@ let rewrite_record_self_refs record_name params expr =
                         fields = List.map (fun (field, value) -> (field, go bound value)) fields;
                         public }
                 | Surface.MacroBinding { name; value; public; _ } ->
+                    (* Deliberately drop annotation after macro registration:
+                       the resolved kind is carried by the macro registry/table. *)
                     Surface.MacroBinding { name; value = go bound value; public; kind = None }
                 | Surface.MacroCallBinding { f; args } ->
                     Surface.MacroCallBinding { f = go bound f; args = List.map (go bound) args }

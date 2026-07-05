@@ -44,7 +44,7 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
-  | MacroBinding of { name : string; value : t; public : bool; kind : Syntax.MacroKind.t option }
+  | MacroBinding of { name : string; value : t; public : bool; kind : Syntax.MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
 
@@ -109,7 +109,7 @@ and t =
   | RefSet of t * t
   | StxExpr of Syntax.t (* opaque syntax wrapper — survives lowering intact *)
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
-  | MacroDef of { name : string; value : t; body : t; kind : Syntax.MacroKind.t option }
+  | MacroDef of { name : string; value : t; body : t; kind : Syntax.MacroAnnotation.t option }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : string;

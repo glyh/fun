@@ -8,6 +8,21 @@ module MacroKind = struct
   let type_constraint_name = function Expr (_, Some n) -> Some n | _ -> None
 end
 
+(** Unresolved macro annotation as parsed from source syntax.
+    Records what was written, not semantic meaning. *)
+module MacroAnnotation = struct
+  type arg = Wildcard | Named of string
+  type t = Expr of arg option | LegacyExprBinder of string | Decl
+  let default = Expr None
+  let to_string = function Expr _ | LegacyExprBinder _ -> "Expr" | Decl -> "Decl"
+  let of_string = function "Decl" -> Some Decl | "Expr" -> Some (Expr None) | _ -> None
+  let arg_name = function Wildcard -> "_" | Named s -> s
+  let is_decl = function Decl -> true | Expr _ | LegacyExprBinder _ -> false
+  let is_expr = function Expr _ | LegacyExprBinder _ -> true | Decl -> false
+end
+
+
+
 type id = {
   name : string;
   span : Source_span.t;
@@ -59,7 +74,7 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
-  | MacroBinding of { name : id; value : t; public : bool; kind : MacroKind.t option }
+  | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
 
@@ -129,7 +144,7 @@ and kind =
   | RefSet of t * t
   | Match of t * match_branch list
   | Stx of t  (* opaque syntax wrapper *)
-  | MacroDef of { name : id; value : t; body : t; kind : MacroKind.t option }
+  | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : id;
@@ -163,3 +178,50 @@ and pat =
 
 let fresh_id ?(span = Source_span.synthetic) ?(scope = Scope_set.empty) name =
   { name; span; scope }
+
+(** STAGE 2: Uniform binder-only resolution. All leading-uppercase names
+    produce [Expr(Some name, None)] + synthesized implicit param. No
+    type-constraint path exists yet — that is deferred to Stage 4 (semantic
+    driver with type-namespace resolution).
+
+    Contract:
+    - [_] (Wildcard) → unconstrained Expr, no binder
+    - Leading-uppercase name → binder with synthesized implicit param
+    - Lowercase/non-binder name → unconstrained Expr, no binder
+    - [LegacyExprBinder] → unchanged (pre-Stage-1 compat)
+    - [Decl] → unchanged *)
+module MacroAnnotationAdapter = struct
+  let r_type () =
+    let syntax_var =
+      { kind = Var { name = Compiler_names.Module_name.syntax; span = Source_span.synthetic; scope = Scope_set.empty };
+        span = Source_span.synthetic }
+    in
+    { kind = FieldAccess (syntax_var, Compiler_names.Syntax_name.r);
+      span = Source_span.synthetic }
+
+  let synthesize_binder_param name =
+    let tp = { name; span = Source_span.synthetic; scope = Scope_set.empty } in
+    let type_ty = r_type () in
+    Some { name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }
+
+  let resolve (ann : MacroAnnotation.t) : MacroKind.t * param option =
+    let is_upper c = c >= 'A' && c <= 'Z' in
+    let is_binder_name n = String.length n > 0 && is_upper n.[0] in
+    match ann with
+    | MacroAnnotation.Decl -> (MacroKind.Decl, None)
+    | MacroAnnotation.LegacyExprBinder name ->
+        (MacroKind.(Expr (Some name, None)), synthesize_binder_param name)
+    | MacroAnnotation.Expr (Some arg) -> (
+        let name = MacroAnnotation.arg_name arg in
+        if String.equal name "_" then
+          (MacroKind.(Expr (None, None)), None)
+        else if is_binder_name name then
+          (MacroKind.(Expr (Some name, None)), synthesize_binder_param name)
+        else
+          (MacroKind.(Expr (None, None)), None))
+    | MacroAnnotation.Expr None ->
+        (MacroKind.Expr (None, None), None)
+
+  let resolve_kind_only ann = fst (resolve ann)
+  let resolve_param ann = snd (resolve ann)
+end

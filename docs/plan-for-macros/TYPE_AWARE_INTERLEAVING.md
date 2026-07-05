@@ -7,10 +7,14 @@
 
 ## Problem
 
-Macro annotations such as `: Expr(A)` are currently resolved in `enforest.ml`
-with a static `known_type_names` list. If `A` is in that list, it becomes a
-type constraint. Otherwise, an uppercase name becomes an implicit macro binder
-of type `Syntax.R`.
+Historically, macro annotations such as `: Expr(A)` were resolved in
+`enforest.ml` with a static `known_type_names` list. If `A` was in that list, it
+became a type constraint. Otherwise, an uppercase name became an implicit macro
+binder of type `Syntax.R`.
+
+The current migration state has removed that static list: leading-uppercase
+annotation names uniformly become binders until the semantic driver can resolve
+constraints against the current prior type namespace.
 
 That is wrong for user-defined, aliased, imported, or re-exported types. The
 decision should be semantic: `Expr(A)` is a constraint if `A` resolves as a type

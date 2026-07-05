@@ -379,7 +379,11 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.RefSet (l, r) -> { stx with kind = Syntax.RefSet (go l, go r) }
   | Syntax.Match (scrut, branches) -> { stx with kind = Syntax.Match (go scrut, List.map (map_template_match_branch captures go) branches) }
   | Syntax.Stx s -> { stx with kind = Syntax.Stx (go s) }
-  | Syntax.MacroDef { name; value; body; _ } -> { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body; kind = None } }
+  | Syntax.MacroDef { name; value; body; _ } ->
+      (* Deliberately drop annotation after macro registration: the resolved
+         kind is carried by the macro registry/table. Macro-generating macros
+         with annotated generated macro definitions remain a Stage 2+ limitation. *)
+      { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body; kind = None } }
   | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, List.map go a) }
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
       { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span } }
@@ -392,7 +396,11 @@ and map_template_struct_binding captures go = function
   | Syntax.EffectBinding { name; params; ops; public } -> Syntax.EffectBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; ops = List.map (fun (op : Syntax.effect_op) -> { op with input = go op.input; output = go op.output }) ops; public }
   | Syntax.TraitBinding { name; params; fields; public } -> Syntax.TraitBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.ImplBinding { trait_path; trait_name; args; fields; public } -> Syntax.ImplBinding { trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
-  | Syntax.MacroBinding { name; value; public; _ } -> Syntax.MacroBinding { name = map_binder_id captures name; value = go value; public; kind = None }
+  | Syntax.MacroBinding { name; value; public; _ } ->
+      (* Deliberately drop annotation after macro registration: the resolved
+         kind is carried by the macro registry/table. Macro-generating macros
+         with annotated generated macro bindings remain a Stage 2+ limitation. *)
+      Syntax.MacroBinding { name = map_binder_id captures name; value = go value; public; kind = None }
   | Syntax.MacroCallBinding { f; args } -> Syntax.MacroCallBinding { f = go f; args = List.map go args }
   | Syntax.PatternSynBinding binding -> Syntax.PatternSynBinding binding
 

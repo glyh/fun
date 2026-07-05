@@ -273,15 +273,6 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
     | rest when implicit_params <> [] || allow_empty -> ([], rest)
     | _ -> error "fn requires at least one parameter list"
   in
-  let known_type_names = Compiler_names.Type_name.macro_annotation_known in
-  let r_type () =
-    { Syntax.kind = FieldAccess (Enforest_util.var Compiler_names.Module_name.syntax, Compiler_names.Syntax_name.r);
-      span = Source_span.synthetic }
-  in
-  let is_binder_name n =
-    let is_upper c = c >= 'A' && c <= 'Z' in
-    String.length n > 0 && is_upper n.[0]
-  in
   let params = implicit_params @ explicit_params in
   let kind, type_binding_param, rest =
     if kind_annotation then
@@ -293,26 +284,19 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           if String.equal k "Expr" then begin
             match drop_separators items with
             | [ { datum = Token { kind = Ident u; _ }; _ } ] when String.equal u "_" ->
-                (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
+                let ann = Some Syntax.MacroAnnotation.(Expr (Some Wildcard)) in
+                let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
+                (ann, param, rest)
             | [ { datum = Token { kind = Ident inner; _ }; _ } ] ->
-                if List.mem inner known_type_names then
-                  (Some (Syntax.MacroKind.(Expr (None, Some inner))), None, rest)
-                else if not (is_binder_name inner) then
-                  (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
-                else
-                  let tp = { Syntax.name = inner; span = Source_span.synthetic; scope = Scope_set.empty } in
-                  let type_ty = r_type () in
-                  (Some (Syntax.MacroKind.Expr (Some inner, None)),
-                   Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
-                   rest)
+                let ann = Some Syntax.MacroAnnotation.(Expr (Some (Named inner))) in
+                let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
+                (ann, param, rest)
             | _ ->
                 error "unsupported type pattern in macro annotation"
           end else begin
-            let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
-            let type_ty = r_type () in
-            (Some (Syntax.MacroKind.Expr (Some k, None)),
-             Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
-             rest)
+            let ann = Some (Syntax.MacroAnnotation.LegacyExprBinder k) in
+            let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
+            (ann, param, rest)
           end
       | { datum = Token { kind = Colon; _ }; _ }
         :: { datum = Token { kind = Ident k; _ }; span = _k_span }
@@ -321,18 +305,12 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           if String.equal k "Expr" then
             error ": Expr requires a type pattern, e.g. : Expr(_) or : Expr(A)"
           else
-            (match Syntax.MacroKind.of_string k with
-             | Some kind -> (Some kind, None, rest)
-             | None when List.mem k known_type_names ->
-                 (Some (Syntax.MacroKind.(Expr (None, Some k))), None, rest)
-             | None when not (is_binder_name k) ->
-                 (Some (Syntax.MacroKind.(Expr (None, None))), None, rest)
+            (match Syntax.MacroAnnotation.of_string k with
+             | Some ann -> (Some ann, None, rest)
              | None ->
-                 let tp = { Syntax.name = k; span = Source_span.synthetic; scope = Scope_set.empty } in
-                  let type_ty = r_type () in
-                 (Some (Syntax.MacroKind.Expr (Some k, None)),
-                  Some (Syntax.{ name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }),
-                  rest))
+                 let ann = Some Syntax.MacroAnnotation.(Expr (Some (Named k))) in
+                 let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
+                 (ann, param, rest))
       | _ -> (None, None, rest)
     else (None, None, rest)
   in

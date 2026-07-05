@@ -70,6 +70,8 @@ and expr (e : Surface.t) : Syntax.t =
     | Match (scrut, branches) ->
       Syntax.Match (expr scrut, List.map match_branch branches)
     | MacroDef { name; value; body; _ } ->
+      (* Deliberately drop annotation after macro registration: the resolved
+         kind is carried by the macro registry/table, not this syntax node. *)
       Syntax.MacroDef { name = id name; value = expr value; body = expr body; kind = None }
     | MacroCall (f, a) ->
       Syntax.MacroCall (expr f, List.map (expr) a)
@@ -96,6 +98,8 @@ and struct_binding = function
     Syntax.ImplBinding { trait_path; trait_name; args = List.map expr args;
                          fields = List.map (fun (name, value) -> (name, expr value)) fields; public }
   | Surface.MacroBinding { name; value; public; _ } ->
+    (* Deliberately drop annotation after macro registration: the resolved
+       kind is carried by the macro registry/table, not this syntax node. *)
     Syntax.MacroBinding { name = id name; value = expr value; public; kind = None }
   | Surface.MacroCallBinding { f; args } ->
     Syntax.MacroCallBinding { f = expr f; args = List.map expr args }
