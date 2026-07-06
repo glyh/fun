@@ -23,13 +23,22 @@ defer to this file for completion status.
 
 ### Stage 10 known limitation
 
-Annotation-name disambiguation is still not scope-aware. The old static
-`known_type_names` parser list has been removed as part of the type-aware
-interleaving migration; current temporary behavior treats leading-uppercase names
-as binders, so `Expr(I64)`, `Expr(MyTag)`, and typo-like names such as
-`Expr(Intt)` all synthesize implicit R parameters. Real constraint recognition
-requires expander/elaborator interleaving against the current prior type
-namespace and remains the main open design issue before Stages 11–12.
+Annotation-name disambiguation is partially resolved. The old static
+`known_type_names` parser list has been removed. Stages 1–7 of the type-aware
+interleaving migration are complete: the expander's `MacroBinding` site now uses
+an injected `resolve_macro_kind` callback (set by `Macro_driver.run`) for
+canonical semantic kind resolution at registration time. Stage 6 added
+generated declaration re-entry (generated `MacroBinding` nodes compile/register,
+generated siblings thread scopes). Stage 7 adds scoped per-binding semantic
+advancement: top-level source-order prior user type/record declarations now
+constrain later macro annotations. Builtin types (`I64`,
+`Bool`, etc.) produce constraint annotations, prior user-defined type/record
+names constrain, unresolved uppercase names remain binders, and lowercase/
+wildcard are unconstrained. Same-Decl generated type→macro interleaving
+is deferred; the final driver must avoid double-elaboration/nominal
+freshness drift.
+Real interleaving (expand + elaborate per-binding) remains the main design
+gate before Stages 11–12.
 
 ## Stages 11–12: Not specified
 

@@ -13,6 +13,7 @@ type t = {
   mutable macro_table : (string, macro_entry) Hashtbl.t;
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
   mutable context_kind : Syntax.MacroKind.t;
+  mutable resolve_macro_kind : (Syntax.MacroAnnotation.t -> Syntax.MacroKind.t * Syntax.param option) option;
   mutable elaborate : (Surface.t -> Core.value) option;
   mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
   mutable load_macros : (t -> string -> unit) option;
@@ -28,6 +29,7 @@ let create ?loader () =
     macro_table = Hashtbl.create 8;
     macro_kind_table = Hashtbl.create 8;
     context_kind = Syntax.MacroKind.(Expr (None, None));
+    resolve_macro_kind = None;
     elaborate = None;
     eval_and_apply = None;
     load_macros = None;
@@ -83,6 +85,7 @@ let copy (ctx : t) : t =
     macro_table = Hashtbl.copy ctx.macro_table;
     macro_kind_table = Hashtbl.copy ctx.macro_kind_table;
     context_kind = ctx.context_kind;
+    resolve_macro_kind = ctx.resolve_macro_kind;
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
     load_macros = ctx.load_macros;

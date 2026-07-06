@@ -1,13 +1,12 @@
-(** Stage 3: Additive driver skeleton for macro interleaving.
+(** Stage 3 / Stage 4 / Stage 5 / Stage 7: driver skeleton for macro interleaving.
 
-    This module runs the expander over a module's top-level bindings and
-    collects compiled macro exports. It is NOT yet an incremental
-    semantic driver — all bindings are expanded in one pass with the
-    initial prelude context. Per-binding semantic advancement belongs
-    to Stage 4.
-
-    The output matches the current [Parse_expand.parse_module_with_ctx]
-    pipeline exactly, so existing tests pass unchanged. *)
+    Runs the expander over a module's top-level bindings and collects
+    compiled macro exports. Stage 4 adds semantic kind pre-resolution
+    and Lam-stripping for constraint annotations. Stage 5 replaces the
+    global lock table with an injected [resolve_macro_kind] callback on
+    [Expand_ctx.t]. Stage 7 adds scoped per-binding semantic advancement
+    so that top-level source-order prior type/record declarations affect
+    later macro annotation resolution. *)
 
 open Core
 
@@ -32,29 +31,68 @@ let run (stx : Syntax.t) : driver_output =
     | _ -> invalid_arg "Macro_driver.run: expected Syntax.Module"
   in
   (* Initialise elaboration context (built-in types, stdlib). *)
-  let elab_ctx = Elaborate.init_ctx () in
-  let syntax_nominals = Elaborate.syntax_nominals elab_ctx in
+  let elab_ctx0 = Elaborate.init_ctx () in
+  (* Open stdlib so the per-binding advancement context matches module
+     elaboration semantics (stdlib types are available during resolution).
+     [init_ctx] defines stdlib as a module but does not open it. *)
+  let _, elab_ctx0 = Elaborate.open_stdlib elab_ctx0 in
+  let elab_ctx = ref elab_ctx0 in
+  let syntax_nominals = Elaborate.syntax_nominals !elab_ctx in
   (* Build expand context with the same callbacks used by [eval_decl_module]. *)
   let expand_ctx = Expand_ctx.create () in
   Expand_ctx.set_syntax_nominals expand_ctx syntax_nominals;
   Expand_ctx.set_context_kind expand_ctx Syntax.MacroKind.Decl;
+  (* Use [Elab_driver.infer] directly instead of [Elaborate.on_expr] because
+     [!elab_ctx] already has stdlib opened. [on_expr] would open stdlib again,
+     causing a double-open with wrong de Bruijn indices for macro body
+     compilation. *)
   expand_ctx.Expand_ctx.elaborate
     <- Some (fun expr ->
-         let core, _ty = Elaborate.on_expr elab_ctx expr in
-         Elaborate.Ctx.eval elab_ctx core);
+         let core, _ty = Elab_driver.infer !elab_ctx expr in
+         Elaborate.Ctx.eval !elab_ctx core);
   expand_ctx.Expand_ctx.eval_and_apply
     <- Some (fun fn arg ->
          let mc = MetaContext.create () in
          Nbe.apply mc fn arg);
-  (* Expand all top-level bindings wholesale (do NOT duplicate the per-binding
-     scope loop from expand.ml). *)
-  let expanded_bindings =
-    Expand.expand_struct_bindings expand_ctx bindings
+  (* Stage 5 / Stage 7: inject semantic macro kind resolver callback.
+     The callback reads the current (!elab_ctx) so that prior bindings
+     advanced by the [after_binding] hook are visible for resolution. *)
+  expand_ctx.Expand_ctx.resolve_macro_kind <- Some (fun ann ->
+    Macro_resolver.resolve_kind !elab_ctx ann);
+  (* Stage 7: per-binding semantic advancement hook.
+     After each source binding is expanded, lower and elaborate every
+     non-macro expanded binding to advance the elaborator context.
+     MacroBinding and MacroCallBinding are skipped — they are handled
+     by the expander and do not contribute to the semantic namespace.
+     The hook is intentionally NOT passed to recursive calls inside
+     expand_struct_binding (e.g. Decl macro expansion), so generated
+     type→generated-macro interleaving within the same Decl output is
+     deferred. *)
+  let after_binding expanded =
+    List.iter (fun (b : Syntax.struct_binding) ->
+      match b with
+      | Syntax.MacroBinding _ | Syntax.MacroCallBinding _ -> ()
+      | _ ->
+          let lowered = Lower_surface.lower_struct_binding b in
+          let ctx', _, _ = Elab_infer.elab_module_binding Elab_driver.ops !elab_ctx lowered in
+          elab_ctx := ctx')
+      expanded
+  in
+  (* Expand all top-level bindings with scoped per-binding advancement.
+     Macro bindings are retained in the expanded list for surface output;
+     the original [expand_struct_bindings] filtering is applied below. *)
+  let expanded_bindings, _scopes =
+    Expand.expand_struct_bindings_with_scopes ~after_binding expand_ctx bindings
+  in
+  (* Filter out MacroBinding nodes from the surface (matching the behaviour
+     of [Expand.expand_struct_bindings]). MacroCallBinding nodes are kept. *)
+  let surface_bindings =
+    List.filter (function Syntax.MacroBinding _ -> false | _ -> true) expanded_bindings
   in
   (* Rebuild lowered surface, preserving the original [stx] span. *)
   let surface =
     Lower_surface.lower_expr
-      { stx with kind = Syntax.Module { bindings = expanded_bindings } }
+      { stx with kind = Syntax.Module { bindings = surface_bindings } }
   in
   (* Collect compiled macro exports from the expand context's macro table. *)
   let macro_exports =
@@ -72,10 +110,7 @@ let run (stx : Syntax.t) : driver_output =
     |> List.sort (fun a b -> String.compare a.name b.name)
   in
   (* Copy compiled macros into the elaboration context so it can resolve
-     macro calls during later elaboration (matching [eval_decl_module]).
-
-     STAGE 3 NOTE: [elab_ctx] is NOT yet incrementally advanced per-binding.
-     The semantic type namespace remains the initial prelude state. *)
+     macro calls during later elaboration (matching [eval_decl_module]). *)
   Hashtbl.iter
     (fun name entry ->
       let kind =
@@ -83,8 +118,8 @@ let run (stx : Syntax.t) : driver_output =
         | Some k -> k
         | None -> Syntax.MacroKind.default
       in
-      Hashtbl.replace elab_ctx.Elab_ctx.Ctx.macro_table name
+      Hashtbl.replace !elab_ctx.Elab_ctx.Ctx.macro_table name
         (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
-  elab_ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
-  { surface; expand_ctx; elab_ctx; macro_exports }
+  !elab_ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
+  { surface; expand_ctx; elab_ctx = !elab_ctx; macro_exports }

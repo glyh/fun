@@ -26,10 +26,17 @@ a parser name set or an expander-only type-name set. Track the design in
 
 **Implementation target**:
 
-- Stage 1 (AST split), Stage 2 (remove static known-type list), and Stage 3
-  (additive callable `Macro_driver` skeleton) are complete.
-- Next: implement the semantic resolver path that decides binder vs constraint
-  using the current prior elaboration context.
+- Stages 1–7 are complete: AST split, static known-type list removal, additive
+  `Macro_driver` skeleton, `Macro_resolver` with prelude-type constraint
+  resolution, canonical per-binding kind registration via injected
+  `resolve_macro_kind` callback (replacing the global-lock hack),
+  macro-generated declaration re-entry (generated `MacroBinding` nodes
+  compile/register, generated siblings thread scopes), and scoped per-binding
+  semantic advancement (prior source-order user type/record declarations
+  affect later macro annotation resolution). Only top-level source-order
+  prior bindings advance; same-Decl generated type→macro interleaving is
+  deferred; future final driver must avoid double-elaboration/nominal
+  freshness drift.
 - Future regressions are listed in
   `docs/plan-for-macros/TYPE_AWARE_INTERLEAVING.md`.
 

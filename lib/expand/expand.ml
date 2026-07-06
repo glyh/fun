@@ -216,6 +216,25 @@ let expand_id_params (ctx : Expand_ctx.t) scopes params =
 (** The main expander: walks the syntax tree, allocates fresh scopes for
     each binder, adds those scopes to identifier occurrences in the binder's
     body. This implements hygienic lexical scoping. *)
+
+(** Did the parser synthesize an implicit binder param for this annotation?
+    True for [LegacyExprBinder] and for uppercase non-wildcard [Expr(Named)]. *)
+let parser_synthesized_binder (ann : Syntax.MacroAnnotation.t option) : bool =
+  match ann with
+  | Some (Syntax.MacroAnnotation.LegacyExprBinder _) -> true
+  | Some (Syntax.MacroAnnotation.Expr (Some (Named n))) ->
+      let is_upper c = c >= 'A' && c <= 'Z' in
+      n <> "_" && String.length n > 0 && is_upper n.[0]
+  | _ -> false
+
+(** Strip the leading [Lam] from a macro value. This undoes the parser's
+    synthesized implicit binder when the semantic resolver determines the
+    annotation is a type constraint rather than a binder. *)
+let strip_leading_lam (value : Syntax.t) : Syntax.t =
+  match value.kind with
+  | Syntax.Lam (_, inner) -> inner
+  | _ -> value
+
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
@@ -427,21 +446,24 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span } }
     end
 
-and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
-  let rec go active_scopes acc = function
-    | [] -> List.rev acc
+and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) (ctx : Expand_ctx.t) bindings =
+  let rec go active_scopes acc all_scopes = function
+    | [] -> (List.rev acc, all_scopes)
     | binding :: rest ->
       let binding = add_struct_binding_scopes active_scopes binding in
       let expanded_bindings, introduced_scopes_list = expand_struct_binding ctx binding in
       let acc =
-        List.fold_left (fun acc b -> match b with
-          | Syntax.MacroBinding _ -> acc
-          | _ -> b :: acc) acc expanded_bindings
+        List.fold_left (fun acc b -> b :: acc) acc expanded_bindings
       in
+      after_binding expanded_bindings;
       let active_scopes = active_scopes @ List.flatten introduced_scopes_list in
-      go active_scopes acc rest
+      go active_scopes acc (all_scopes @ introduced_scopes_list) rest
   in
-  go [] [] bindings
+  go [] [] [] bindings
+
+and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
+  let expanded_bindings, _introduced_scopes_list = expand_struct_bindings_with_scopes ctx bindings in
+  List.filter (function Syntax.MacroBinding _ -> false | _ -> true) expanded_bindings
 
 and expand_method_params_body ctx params body =
   let rec go active_scopes param_scopes acc = function
@@ -520,11 +542,22 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let value = expand ctx value in
+      (* Stage 5: resolve kind via driver callback if set, else adapter fallback *)
+      let (resolved_kind, strip_lam) =
+        match ctx.Expand_ctx.resolve_macro_kind, kind with
+        | Some resolve, Some ann ->
+            let (semantic_kind, semantic_param) = resolve ann in
+            (semantic_kind, parser_synthesized_binder (Some ann) && Option.is_none semantic_param)
+        | _ ->
+            let k = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
+            (k, false)
+      in
+      (* Strip parser-synthesized Lam when semantic resolution says constraint *)
+      let value = if strip_lam then strip_leading_lam value else value in
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
       let binding_name = id_name name in
       let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
-      let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
       Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
       ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]])
@@ -559,10 +592,15 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
              | _ -> v
            in
            let fn = force_val fn in
-            let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn in
-           (match result with
-           | Some bindings -> (bindings, [])
-           | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name))
+             let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn in
+            (match result with
+            | Some bindings ->
+                (* Stage 6: recursively process generated bindings through
+                   the shared binding-list loop so generated MacroBinding
+                   annotations are resolved, macros are compiled/registered,
+                   and sibling-generated scopes thread in source order. *)
+                expand_struct_bindings_with_scopes ctx bindings
+            | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name))
         | None -> failwith "macro call requires an apply callback in expand context"
         end
       | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])

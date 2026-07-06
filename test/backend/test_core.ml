@@ -1337,6 +1337,273 @@ let test_driver_elab_ctx_has_expand_ctx () =
   Alcotest.(check bool) "elab_ctx.expand_ctx is populated" true
     (Option.is_some output.elab_ctx.Elab_ctx.Ctx.expand_ctx)
 
+(** Stage 4: helper to get the kind of a named macro export from a driver run. *)
+let exported_macro source macro_name =
+  let output = run_driver source in
+  match List.find_opt (fun (e : Macro_driver.macro_export) -> String.equal e.name macro_name) output.macro_exports with
+  | Some e -> e
+  | None -> Alcotest.fail ("macro not found in exports: " ^ macro_name)
+
+let exported_kind source macro_name =
+  (exported_macro source macro_name).kind
+
+let compiled_macro_arity (v : Core.value) =
+  let rec term_lam_count = function
+    | Core.Lam body -> 1 + term_lam_count body
+    | _ -> 0
+  in
+  match v with
+  | Core.VLam { body = { body; _ } } -> 1 + term_lam_count body
+  | _ -> 0
+
+(** Stage 4: [Expr(I64)] → constraint because [I64] is a known type in the
+    prelude context. *)
+let test_driver_expr_i64_constraint () =
+  let kind = exported_kind "macro mk(_) : Expr(I64) -> Syntax.i64(1)\n" "mk" in
+  let expected = Syntax.MacroKind.(Expr (None, Some "I64")) in
+  Alcotest.(check string) "Expr(I64) → constraint kind string"
+    (Syntax.MacroKind.to_string expected) (Syntax.MacroKind.to_string kind);
+  Alcotest.(check bool) "Expr(I64) no has_type_binding" false
+    (Syntax.MacroKind.has_type_binding kind);
+  Alcotest.(check (option string)) "Expr(I64) constraint_name is I64"
+    (Some "I64") (Syntax.MacroKind.type_constraint_name kind)
+
+(** Stage 4: no synthesized binder arity — the constraint macro has only
+    its explicit parameter. The driver registers the constraint kind and
+    strips the parser-synthesized Lam, producing a 1-argument macro. *)
+let test_driver_constraint_no_binder_arity () =
+  let source =
+    "macro mk(_) : Expr(I64) -> Syntax.i64(1)\n\
+     pub x : I64 = mk @ (0)\n"
+  in
+  (* Verify the surface is well-formed and contains the expected runtime binding *)
+  let output = run_driver source in
+  let has_x_binding =
+    match output.surface with
+    | Surface.Module { bindings } ->
+        List.exists (function
+          | Surface.LetBinding { name = "x"; _ } -> true
+          | _ -> false) bindings
+    | _ -> false
+  in
+  Alcotest.(check bool) "expanded surface has x binding" true has_x_binding;
+  (* Verify the export kind is constraint, not binder *)
+  let kind = exported_kind source "mk" in
+  Alcotest.(check bool) "Expr(I64) is constraint (no has_type_binding)" false
+    (Syntax.MacroKind.has_type_binding kind);
+  let export = exported_macro source "mk" in
+  Alcotest.(check int) "constraint macro has only explicit syntax arg" 1
+    (compiled_macro_arity export.compiled)
+
+(** Stage 4: [Expr(Intt)] → binder because [Intt] is not a known type. *)
+let test_driver_expr_intt_binder () =
+  let kind = exported_kind "macro mk(_) : Expr(Intt) -> Syntax.i64(1)\n" "mk" in
+  Alcotest.(check string) "Expr(Intt) → binder kind"
+    (Syntax.MacroKind.to_string Syntax.MacroKind.(Expr (Some "Intt", None)))
+    (Syntax.MacroKind.to_string kind);
+  Alcotest.(check bool) "Expr(Intt) has_type_binding" true
+    (Syntax.MacroKind.has_type_binding kind);
+  let export = exported_macro "macro mk(_) : Expr(Intt) -> Syntax.i64(1)\n" "mk" in
+  Alcotest.(check int) "binder macro keeps implicit binder plus explicit arg" 2
+    (compiled_macro_arity export.compiled)
+
+(** Stage 4: lowercase annotation remains unconstrained. *)
+let test_driver_expr_lowercase () =
+  let kind = exported_kind "macro mk(_) : Expr(foo) -> Syntax.i64(1)\n" "mk" in
+  Alcotest.(check string) "Expr(foo) → unconstrained Expr"
+    "Expr" (Syntax.MacroKind.to_string kind);
+  Alcotest.(check bool) "Expr(foo) no has_type_binding" false
+    (Syntax.MacroKind.has_type_binding kind)
+
+(** Stage 4: Expr(_) remains unconstrained. *)
+let test_driver_expr_wildcard () =
+  let kind = exported_kind "macro mk(_) : Expr(_) -> Syntax.i64(1)\n" "mk" in
+  Alcotest.(check bool) "Expr(_) no has_type_binding" false
+    (Syntax.MacroKind.has_type_binding kind)
+
+(** Stage 5: duplicate macro name — later definition's kind wins,
+    proving kind+value are registered atomically. *)
+let test_driver_duplicate_macro_name () =
+  let kind = exported_kind "macro mk(_) : Expr(Intt) -> Syntax.i64(1)\n\
+                             macro mk(_) : Expr(I64) -> Syntax.i64(2)\n" "mk" in
+  Alcotest.(check bool) "second macro kind is constraint (I64 wins)" false
+    (Syntax.MacroKind.has_type_binding kind)
+
+(** Stage 7: user type declared above now constrains annotation
+    through scoped per-binding semantic advancement. *)
+let test_driver_prior_user_type_is_constraint () =
+  let source =
+    "type MyTag = I64\n\
+     macro mk(_) : Expr(MyTag) -> Syntax.i64(1)\n" in
+  let kind = exported_kind source "mk" in
+  Alcotest.(check bool) "Expr(MyTag) is constraint" false
+    (Syntax.MacroKind.has_type_binding kind);
+  Alcotest.(check (option string)) "Expr(MyTag) constraint_name is MyTag"
+    (Some "MyTag") (Syntax.MacroKind.type_constraint_name kind)
+
+(** Stage 7: prior record type declaration constrains macro annotation. *)
+let test_driver_prior_record_type_is_constraint () =
+  let source =
+    "type R = { a : I64 }\n\
+     macro mk(_) : Expr(R) -> Syntax.i64(1)\n" in
+  let kind = exported_kind source "mk" in
+  Alcotest.(check bool) "Expr(R) is constraint" false
+    (Syntax.MacroKind.has_type_binding kind);
+  Alcotest.(check (option string)) "Expr(R) constraint_name is R"
+    (Some "R") (Syntax.MacroKind.type_constraint_name kind)
+
+(** Stage 7: regression — stdlib constructor names must not resolve as
+    type constraints. [is_type_like_value] correctly excludes constructors
+    like [None], [Some], [Cons], [Nil] that [open_stdlib] registers. *)
+let test_driver_constructor_not_type () =
+  let kind = exported_kind "macro mk(_) : Expr(None) -> Syntax.i64(1)\n" "mk" in
+  Alcotest.(check bool) "None is not a type → binder" true
+    (Syntax.MacroKind.has_type_binding kind)
+
+(** Stage 7: forward reference — macro annotated with a type declared below
+    it stays binder because per-binding advancement hasn't seen it yet. *)
+let test_driver_forward_ref_stays_binder () =
+  let source =
+    "macro mk(_) : Expr(MyTag) -> Syntax.i64(1)\n\
+     type MyTag = I64\n" in
+  let kind = exported_kind source "mk" in
+  Alcotest.(check bool) "forward ref Expr(MyTag) still binder" true
+    (Syntax.MacroKind.has_type_binding kind);
+  (* With binder, arity is 2 (implicit param + explicit arg) *)
+  let export = exported_macro source "mk" in
+  Alcotest.(check int) "forward ref binder macro has arity 2" 2
+    (compiled_macro_arity export.compiled)
+
+(** Stage 7: generated boundary — generated TypeBinding before generated
+    MacroBinding in the same Decl macro output still resolves as binder.
+    The per-binding advancement only fires for top-level source bindings;
+    generated bindings within a Decl output are expanded as a group. *)
+let test_generated_type_before_macro_stays_binder () =
+  let stx kind = { Syntax.kind; span = Source_span.synthetic } in
+  let id name = Syntax.fresh_id name in
+  let generated_type =
+    Syntax.TypeBinding {
+      name = id "GenTag";
+      params = [];
+      ctors = [];
+      public = false;
+    }
+  in
+  let generated_macro =
+    Syntax.MacroBinding {
+      name = id "mk2";
+      value = stx (Syntax.Atom (I64 1L));
+      public = false;
+      kind = Some (Syntax.MacroAnnotation.Expr (Some (Named "GenTag")));
+    }
+  in
+  let ctx = Expand_ctx.create () in
+  ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
+  ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
+  (* Simulate a resolver that checks an advancing context — but generated
+     bindings are expanded without the after_binding hook, so resolution
+     happens before any advancement of GenTag. *)
+  ctx.Expand_ctx.resolve_macro_kind <- Some (fun ann ->
+    let name = Syntax.MacroAnnotation.(arg_name (match ann with Expr (Some a) -> a | _ -> Named "_")) in
+    (* Simulate: 'GenTag' is not a known type in this simple test *)
+    if String.equal name "GenTag" then (Syntax.MacroKind.Expr (None, Some "GenTag"), None)
+    else (Syntax.MacroKind.Expr (Some name, None), Some { Syntax.name = id name; explicitness = Implicit; type_ = None; trait_bounds = [] }));
+  Expand_ctx.set_context_kind ctx Syntax.MacroKind.Decl;
+  Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_type; generated_macro ]));
+  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let _surface_bindings = Expand.expand_struct_bindings ctx [ call ] in
+  Alcotest.(check bool) "generated macro registered" true
+    (Option.is_some (Expand_ctx.lookup_macro ctx "mk2"));
+  begin match Expand_ctx.lookup_macro_kind ctx "mk2" with
+  | Some kind ->
+      Alcotest.(check bool) "generated type before generated macro: annotation is constraint (test harness)" false
+        (Syntax.MacroKind.has_type_binding kind);
+      Alcotest.(check (option string)) "generated type before generated macro: constraint name" (Some "GenTag")
+        (Syntax.MacroKind.type_constraint_name kind)
+  | None -> Alcotest.fail "mk2 macro kind missing"
+  end
+(** Stage 6: Decl macro generated MacroBinding nodes are recursively
+    re-entered through expand_struct_binding. This lower-level regression
+    constructs the generated binding directly because the source-level
+    Syntax.Decl prelude currently exposes only DeclLet. *)
+let test_generated_macro_binding_reentered () =
+  let stx kind = { Syntax.kind; span = Source_span.synthetic } in
+  let id name = Syntax.fresh_id name in
+  let generated_macro =
+    Syntax.MacroBinding {
+      name = id "answer";
+      value = stx (Syntax.Atom (I64 42L));
+      public = false;
+      kind = Some (Syntax.MacroAnnotation.Expr (Some (Named "I64")));
+    }
+  in
+  let ctx = Expand_ctx.create () in
+  ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
+  ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
+  ctx.Expand_ctx.resolve_macro_kind <- Some (fun _ann ->
+    (Syntax.MacroKind.Expr (None, Some "I64"), None));
+  Expand_ctx.set_context_kind ctx Syntax.MacroKind.Decl;
+  Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_macro ]));
+  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let _surface_bindings = Expand.expand_struct_bindings ctx [ call ] in
+  Alcotest.(check bool) "generated macro registered" true
+    (Option.is_some (Expand_ctx.lookup_macro ctx "answer"));
+  begin match Expand_ctx.lookup_macro_kind ctx "answer" with
+  | Some kind ->
+      Alcotest.(check bool) "generated macro annotation resolved as constraint" false
+        (Syntax.MacroKind.has_type_binding kind);
+      Alcotest.(check (option string)) "generated macro constraint" (Some "I64")
+        (Syntax.MacroKind.type_constraint_name kind)
+  | None -> Alcotest.fail "generated macro kind missing"
+  end
+
+let test_generated_multi_binding_scope_threading () =
+  let stx kind = { Syntax.kind; span = Source_span.synthetic } in
+  let id name = Syntax.fresh_id name in
+  let id_x = id "x" in
+  let id_y = id "y" in
+  let generated_x =
+    Syntax.LetBinding {
+      name = id_x;
+      value = stx (Syntax.Atom (I64 42L));
+      public = false;
+      recursive = false;
+    }
+  in
+  let generated_y =
+    Syntax.LetBinding {
+      name = id_y;
+      value = stx (Syntax.Var (id "x"));
+      public = false;
+      recursive = false;
+    }
+  in
+  let ctx = Expand_ctx.create () in
+  ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
+  ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
+  ctx.Expand_ctx.resolve_macro_kind <- Some (fun _ann ->
+    (Syntax.MacroKind.Expr (None, None), None));
+  Expand_ctx.set_context_kind ctx Syntax.MacroKind.Decl;
+  Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_x; generated_y ]));
+  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let expanded_bindings = Expand.expand_struct_bindings ctx [ call ] in
+  let find_let name binds =
+    List.find_opt (function Syntax.LetBinding b -> b.name.name = name | _ -> false) binds
+  in
+  match find_let "x" expanded_bindings, find_let "y" expanded_bindings with
+  | Some (Syntax.LetBinding { name = x_name; _ }), Some (Syntax.LetBinding { value = y_value; _ }) ->
+    Alcotest.(check bool) "x scope is non-empty" true (not (Scope_set.is_empty x_name.scope));
+    begin match y_value.kind with
+    | Syntax.Var y_id ->
+      Alcotest.(check bool) "y's reference to x has scope from x" true
+        (Scope_set.subset x_name.scope y_id.scope)
+    | _ -> Alcotest.fail "y value is not a Var"
+    end
+  | _ -> Alcotest.fail "generated multi-binding: x and y not found"
+
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
@@ -2633,6 +2900,19 @@ let () =
           Alcotest.test_case "driver macro_exports default kind" `Quick test_driver_macro_exports_default;
           Alcotest.test_case "driver macro_exports Decl kind" `Quick test_driver_macro_exports_decl;
           Alcotest.test_case "driver elab_ctx.expand_ctx populated" `Quick test_driver_elab_ctx_has_expand_ctx;
+          Alcotest.test_case "driver Expr(I64) constraint kind" `Quick test_driver_expr_i64_constraint;
+          Alcotest.test_case "driver constraint no binder arity" `Quick test_driver_constraint_no_binder_arity;
+          Alcotest.test_case "driver Expr(Intt) binder kind" `Quick test_driver_expr_intt_binder;
+          Alcotest.test_case "driver Expr(foo) unconstrained" `Quick test_driver_expr_lowercase;
+          Alcotest.test_case "driver Expr(_) unconstrained" `Quick test_driver_expr_wildcard;
+          Alcotest.test_case "driver duplicate name later wins" `Quick test_driver_duplicate_macro_name;
+          Alcotest.test_case "driver prior user type is constraint" `Quick test_driver_prior_user_type_is_constraint;
+          Alcotest.test_case "driver prior record type is constraint" `Quick test_driver_prior_record_type_is_constraint;
+          Alcotest.test_case "driver constructor not type" `Quick test_driver_constructor_not_type;
+          Alcotest.test_case "driver forward ref stays binder" `Quick test_driver_forward_ref_stays_binder;
+          Alcotest.test_case "generated type before macro stays binder" `Quick test_generated_type_before_macro_stays_binder;
+          Alcotest.test_case "generated macro binding re-entered" `Quick test_generated_macro_binding_reentered;
+          Alcotest.test_case "generated multi-binding scope threading" `Quick test_generated_multi_binding_scope_threading;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;

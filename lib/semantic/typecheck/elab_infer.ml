@@ -16,6 +16,206 @@ open Elab_generalize
 open Elab_apply
 open Elab_ops
 
+(** Stage 7: per-binding module elaboration. Processes a single
+    [Surface.struct_binding] and returns the updated elaboration context,
+    the resulting [Core.struct_binding_term] list, and the [Core.module_entry]
+    list. [MacroBinding]/[MacroCallBinding] return empty results as the
+    expander handles these separately. *)
+let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_binding)
+    : Ctx.t * Core.struct_binding_term list * Core.module_entry list =
+  match b with
+  | Surface.MethodBinding _ -> failwith "module binding cannot be method"
+  | Surface.MacroBinding _ -> (ctx, [], [])
+  | Surface.MacroCallBinding _ -> (ctx, [], [])
+  | Surface.PatternSynBinding { name; params; rhs; public } ->
+      let scrutinee_ty =
+        match rhs with
+        | Surface.PatCon (path, ctor_name, _) ->
+            (match Elab_resolve.find_nominal_for_pattern_head_opt ctx path ctor_name with
+             | Some nominal -> nominal
+             | None -> VU)
+        | _ -> VU
+      in
+      let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
+      let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
+      let kind = if public then Public else Private in
+      let ctx' = Ctx.define ctx name VU syn_val in
+      (ctx', [PatternSynBind (name, kind, syn_val)], [ModuleField (name, kind, VU)])
+  | Surface.LetBinding { name; value; public; recursive } ->
+      let rec_ty = Ctx.raw_meta ctx in
+      let value_ctx = Ctx.clear_self_scope ctx in
+      let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
+      let val_core, val_ty = ops.infer value_ctx value in
+      (if recursive then Ctx.unify ctx rec_ty val_ty);
+      let val_core = if recursive then Fix val_core else val_core in
+      let val_val = Ctx.eval ctx val_core in
+      let kind = if public then Public else Private in
+      let ctx' = Ctx.define ctx name val_ty val_val in
+      (ctx', [LetBind (name, kind, val_core)], [ModuleField (name, kind, val_ty)])
+  | Surface.EffectBinding { name; params; ops = eff_ops; public } ->
+      let _effect_id, eff, eff_ty, _elaborated_ops =
+        elaborate_eff_family ops ctx name params eff_ops
+      in
+      let kind = if public then Public else Private in
+      let ctx' = Ctx.define ctx name eff_ty eff in
+      (ctx', [EffectBind (name, kind, eff)], [ModuleField (name, kind, eff_ty)])
+  | Surface.TraitBinding { name; params; fields; public } ->
+      let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
+      let kind = if public then Public else Private in
+      let ctx' = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
+      (ctx', [LetBind (name, kind, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name })],
+       [ModuleField (name, kind, VU)])
+  | Surface.ImplBinding { trait_path = []; trait_name; args; fields; public } ->
+      let ctx', _impl_effects, _evidence, impl_ty, impl_core = elaborate_impl ops ctx trait_name args fields in
+      let kind = if public then Public else Private in
+      (ctx', [ImplBind (kind, impl_core, impl_ty)], [ModuleImpl (kind, impl_ty, Ctx.eval ctx impl_core)])
+  | Surface.ImplBinding { trait_path = _ :: _; trait_name; _ } ->
+      raise (ElabError (UnknownTrait trait_name))
+  | Surface.RecordTypeBinding { name; params; fields; public } ->
+      check_duplicate_names (List.map fst fields);
+      let rewritten_fields =
+        List.map
+          (fun (field, ty) -> (field, rewrite_record_self_refs name params ty))
+          fields
+      in
+      let rec elaborate_params ctx param_values = function
+        | [] ->
+            let self_type = VSelfType param_values in
+            ops.infer (Ctx.with_self_type ctx self_type)
+              (Surface.Struct { con_fields = rewritten_fields; bindings = [] })
+        | param :: rest ->
+            let param_value = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
+            let ctx' = Ctx.bind ctx param VU in
+            let body_core, body_ty = elaborate_params ctx' (param_values @ [ param_value ]) rest in
+            let body_ty_term = Ctx.quote ctx' body_ty in
+            ( Lam body_core,
+              VPi
+                { explicitness = Implicit;
+                  domain = VU;
+                  effects = effect_row_closure ctx.Ctx.env empty_effect_row;
+                  codomain = { env = ctx.Ctx.env; body = body_ty_term } } )
+      in
+      let val_core, val_ty = elaborate_params ctx [] params in
+      let val_val = Ctx.eval ctx val_core in
+      let kind = if public then Public else Private in
+      let ctx' = Ctx.define ctx name val_ty val_val in
+      (ctx', [LetBind (name, kind, val_core)], [ModuleField (name, kind, val_ty)])
+  | Surface.TypeBinding { name; params; ctors; public } ->
+      let num_params = List.length params in
+      if num_params = 0 then begin
+        let nominal_id = NominalId.fresh () in
+        let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
+        let tmp_ctx =
+          { ctx with env = nominal_placeholder :: ctx.env;
+                     types = VU :: ctx.types;
+                     lvl = ctx.lvl + 1;
+                     bds = Defined :: ctx.bds;
+                     name_table = NameMap.add name { level = ctx.lvl; ty = VU } ctx.name_table }
+        in
+        let elaborated_ctors =
+          List.map
+            (fun (cname, payloads) ->
+              let payload_clos =
+                List.map
+                  (fun payload_expr ->
+                  let payload_core, payload_ty = ops.infer tmp_ctx payload_expr in
+                  check_type_like tmp_ctx payload_ty (Ctx.eval tmp_ctx payload_core);
+                  { env = tmp_ctx.env; body = payload_core })
+                  payloads
+              in
+              (cname, payload_clos))
+            ctors
+        in
+        let nominal = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = elaborated_ctors } in
+        let kind = if public then Public else Private in
+        let ctor_values, ctor_types =
+          List.split
+            (List.map
+               (fun (cname, payload_clo_opt) ->
+                 let ctor_value, ctor_ty =
+                   build_ctor tmp_ctx.metas (nominal :: tmp_ctx.env) name cname 0 payload_clo_opt
+                 in
+                 ((cname, ctor_value), (cname, ctor_ty)))
+               elaborated_ctors)
+        in
+        let ctx =
+          List.fold_left
+            (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
+              Ctx.define ctx ctor_name ctor_ty ctor_value)
+            ctx (List.combine ctor_values ctor_types)
+        in
+        let ctx = Ctx.define ctx name VU nominal in
+        let fields = (name, kind, VU) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
+        (ctx,
+         [TypeBind (name, kind, nominal, ctor_values)],
+         List.rev_append (List.map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) fields) [])
+      end else begin
+        let param_ctx =
+          List.fold_left
+            (fun ctx param_name ->
+              Ctx.define ctx param_name VU (VRigid { lvl = ctx.lvl; spine = [] }))
+            ctx params
+        in
+        let nominal_id = NominalId.fresh () in
+        let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
+        let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
+        let type_body_term = NomRef (name, type_var_terms) in
+        let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
+        let _type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
+        let type_ty =
+          let depth = List.length param_ctx.env + 1 in
+          List.fold_right
+            (fun _ acc ->
+              VPi { explicitness = Explicit; domain = VU;
+                    effects = effect_row_closure (nominal_placeholder :: param_ctx.env) empty_effect_row;
+                    codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
+            params VU
+        in
+        let tmp_ctx =
+          { param_ctx with env = nominal_placeholder :: param_ctx.env;
+                          lvl = param_ctx.lvl + 1;
+                          name_table = NameMap.add name { level = param_ctx.lvl; ty = type_ty } param_ctx.name_table }
+        in
+        let elaborated_ctors =
+          List.map
+            (fun (cname, payloads) ->
+              let payload_clos =
+                List.map
+                  (fun payload_expr ->
+                  let payload_core, payload_ty = ops.infer tmp_ctx payload_expr in
+                  check_type_like tmp_ctx payload_ty (Ctx.eval tmp_ctx payload_core);
+                  let payload_core = close_recursive_payload_term name num_params payload_core in
+                  { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
+                  payloads
+              in
+              (cname, payload_clos))
+            ctors
+        in
+        let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
+        let kind = if public then Public else Private in
+        let ctor_values, ctor_types =
+          List.split
+            (List.map
+               (fun (cname, payload_clo_opt) ->
+                 let ctor_value, ctor_ty =
+                   build_ctor tmp_ctx.metas (nominal :: tmp_ctx.env) name cname num_params payload_clo_opt
+                 in
+                 ((cname, ctor_value), (cname, ctor_ty)))
+               elaborated_ctors)
+        in
+        let ctx_after_ctors =
+          List.fold_left
+            (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
+              Ctx.define ctx ctor_name ctor_ty ctor_value)
+            param_ctx (List.combine ctor_values ctor_types)
+        in
+        let ctx = Ctx.define ctx_after_ctors name type_ty nominal in
+        let fields = (name, kind, type_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
+        (ctx,
+         [TypeBind (name, kind, nominal, ctor_values)],
+         List.rev_append (List.map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) fields) [])
+      end
+
 let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   match expr with
   | Atom (I64 n) -> (Atom (I64 n), VAtomTy Atom_ty.TI64)
@@ -284,223 +484,14 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
           (RecordConstruct { typ = typ_core; fields = field_cores }, record_ty)
       | _ -> raise (ElabError ApplyingNonFunction))
   | Module { bindings } ->
-      let rec go ctx (acc_binds, acc_entries) = function
-        | [] -> (ctx, List.rev acc_binds, List.rev acc_entries)
-        | Surface.MethodBinding _ :: _ -> failwith "module binding cannot be method"
-        | Surface.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
-        | Surface.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
-        | Surface.PatternSynBinding { name; params; rhs; public } :: rest ->
-            let scrutinee_ty =
-              match rhs with
-              | Surface.PatCon (path, ctor_name, _) ->
-                  (match Elab_resolve.find_nominal_for_pattern_head_opt ctx path ctor_name with
-                   | Some nominal -> nominal
-                   | None -> VU)
-              | _ -> VU
-            in
-            let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
-            let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
-            let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name VU syn_val in
-            go ctx'
-               (PatternSynBind (name, kind, syn_val) :: acc_binds,
-                ModuleField (name, kind, VU) :: acc_entries)
-               rest
-        | Surface.LetBinding { name; value; public; recursive; _ } :: rest ->
-        (* ... this pattern should be unique enough with the next binding ... *)
-            let rec_ty = Ctx.raw_meta ctx in
-            let value_ctx = Ctx.clear_self_scope ctx in
-            let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
-            let val_core, val_ty = ops.infer value_ctx value in
-            (if recursive then Ctx.unify ctx rec_ty val_ty);
-            let val_core = if recursive then Fix val_core else val_core in
-            let val_val = Ctx.eval ctx val_core in
-            let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name val_ty val_val in
-            go ctx'
-              (LetBind (name, kind, val_core) :: acc_binds,
-               ModuleField (name, kind, val_ty) :: acc_entries)
-              rest
-        | Surface.EffectBinding { name; params; ops = eff_ops; public } :: rest ->
-            let _effect_id, eff, eff_ty, _elaborated_ops =
-              elaborate_eff_family ops ctx name params eff_ops
-            in
-            let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name eff_ty eff in
-            go ctx'
-              (EffectBind (name, kind, eff) :: acc_binds,
-               ModuleField (name, kind, eff_ty) :: acc_entries)
-              rest
-        | Surface.TraitBinding { name; params; fields; public } :: rest ->
-            let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
-            let kind = if public then Public else Private in
-            let ctx' = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
-            go ctx'
-              (LetBind (name, kind, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name }) :: acc_binds,
-               ModuleField (name, kind, VU) :: acc_entries)
-              rest
-        | Surface.ImplBinding { trait_path = []; trait_name; args; fields; public } :: rest ->
-            let ctx', _impl_effects, _evidence, impl_ty, impl_core = elaborate_impl ops ctx trait_name args fields in
-            let kind = if public then Public else Private in
-            go ctx'
-              (ImplBind (kind, impl_core, impl_ty) :: acc_binds,
-               ModuleImpl (kind, impl_ty, Ctx.eval ctx impl_core) :: acc_entries)
-              rest
-        | Surface.ImplBinding { trait_path = _ :: _; trait_name; _ } :: _ ->
-            raise (ElabError (UnknownTrait trait_name))
-        | Surface.RecordTypeBinding { name; params; fields; public } :: rest ->
-            check_duplicate_names (List.map fst fields);
-            let rewritten_fields =
-              List.map
-                (fun (field, ty) -> (field, rewrite_record_self_refs name params ty))
-                fields
-            in
-            let rec elaborate_params ctx param_values = function
-              | [] ->
-                  let self_type = VSelfType param_values in
-                  ops.infer (Ctx.with_self_type ctx self_type)
-                    (Surface.Struct { con_fields = rewritten_fields; bindings = [] })
-              | param :: rest ->
-                  let param_value = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
-                  let ctx' = Ctx.bind ctx param VU in
-                  let body_core, body_ty = elaborate_params ctx' (param_values @ [ param_value ]) rest in
-                  let body_ty_term = Ctx.quote ctx' body_ty in
-                  ( Lam body_core,
-                    VPi
-                      { explicitness = Implicit;
-                        domain = VU;
-                        effects = effect_row_closure ctx.Ctx.env empty_effect_row;
-                        codomain = { env = ctx.Ctx.env; body = body_ty_term } } )
-            in
-            let val_core, val_ty = elaborate_params ctx [] params in
-            let val_val = Ctx.eval ctx val_core in
-            let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name val_ty val_val in
-            go ctx'
-              (LetBind (name, kind, val_core) :: acc_binds,
-               ModuleField (name, kind, val_ty) :: acc_entries)
-              rest
-        | Surface.TypeBinding { name; params; ctors; public } :: rest ->
-            let num_params = List.length params in
-            if num_params = 0 then begin
-              let nominal_id = NominalId.fresh () in
-              let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
-              let tmp_ctx =
-                { ctx with env = nominal_placeholder :: ctx.env;
-                           types = VU :: ctx.types;
-                           lvl = ctx.lvl + 1;
-                           bds = Defined :: ctx.bds;
-                           name_table = NameMap.add name { level = ctx.lvl; ty = VU } ctx.name_table }
-              in
-              let elaborated_ctors =
-                List.map
-                  (fun (cname, payloads) ->
-                    let payload_clos =
-                      List.map
-                        (fun payload_expr ->
-                        let payload_core, payload_ty = ops.infer tmp_ctx payload_expr in
-                        check_type_like tmp_ctx payload_ty (Ctx.eval tmp_ctx payload_core);
-                        { env = tmp_ctx.env; body = payload_core })
-                        payloads
-                    in
-                    (cname, payload_clos))
-                  ctors
-              in
-              let nominal = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = elaborated_ctors } in
-              let kind = if public then Public else Private in
-              let ctor_values, ctor_types =
-                List.split
-                  (List.map
-                     (fun (cname, payload_clo_opt) ->
-                       let ctor_value, ctor_ty =
-                         build_ctor tmp_ctx.metas (nominal :: tmp_ctx.env) name cname 0 payload_clo_opt
-                       in
-                       ((cname, ctor_value), (cname, ctor_ty)))
-                     elaborated_ctors)
-              in
-              let ctx =
-                List.fold_left
-                  (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
-                    Ctx.define ctx ctor_name ctor_ty ctor_value)
-                  ctx (List.combine ctor_values ctor_types)
-              in
-              let ctx = Ctx.define ctx name VU nominal in
-              let fields = (name, kind, VU) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
-              go ctx
-                (TypeBind (name, kind, nominal, ctor_values) :: acc_binds,
-                 List.rev_append (List.map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) fields) acc_entries)
-                rest
-            end else begin
-              let param_ctx =
-                List.fold_left
-                  (fun ctx param_name ->
-                    Ctx.define ctx param_name VU (VRigid { lvl = ctx.lvl; spine = [] }))
-                  ctx params
-              in
-              let nominal_id = NominalId.fresh () in
-              let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
-              let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
-              let type_body_term = NomRef (name, type_var_terms) in
-              let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
-              let _type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
-              let type_ty =
-                let depth = List.length param_ctx.env + 1 in
-                List.fold_right
-                  (fun _ acc ->
-                    VPi { explicitness = Explicit; domain = VU;
-                          effects = effect_row_closure (nominal_placeholder :: param_ctx.env) empty_effect_row;
-                          codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
-                  params VU
-              in
-              (* Build a temporary context with the recursive name available
-                 for payload elaboration, without adding a permanent env entry. *)
-              let tmp_ctx =
-                { param_ctx with env = nominal_placeholder :: param_ctx.env;
-                                lvl = param_ctx.lvl + 1;
-                                name_table = NameMap.add name { level = param_ctx.lvl; ty = type_ty } param_ctx.name_table }
-              in
-              let elaborated_ctors =
-                List.map
-                  (fun (cname, payloads) ->
-                    let payload_clos =
-                      List.map
-                        (fun payload_expr ->
-                        let payload_core, payload_ty = ops.infer tmp_ctx payload_expr in
-                        check_type_like tmp_ctx payload_ty (Ctx.eval tmp_ctx payload_core);
-                        let payload_core = close_recursive_payload_term name num_params payload_core in
-                        { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
-                        payloads
-                    in
-                    (cname, payload_clos))
-                  ctors
-              in
-              let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
-              let kind = if public then Public else Private in
-              let ctor_values, ctor_types =
-                List.split
-                  (List.map
-                     (fun (cname, payload_clo_opt) ->
-                       let ctor_value, ctor_ty =
-                         build_ctor tmp_ctx.metas (nominal :: tmp_ctx.env) name cname num_params payload_clo_opt
-                       in
-                       ((cname, ctor_value), (cname, ctor_ty)))
-                     elaborated_ctors)
-              in
-              let ctx_after_ctors =
-                List.fold_left
-                  (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
-                    Ctx.define ctx ctor_name ctor_ty ctor_value)
-                  param_ctx (List.combine ctor_values ctor_types)
-              in
-              let ctx = Ctx.define ctx_after_ctors name type_ty nominal in
-              let fields = (name, kind, type_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
-              go ctx
-                (TypeBind (name, kind, nominal, ctor_values) :: acc_binds,
-                 List.rev_append (List.map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) fields) acc_entries)
-                rest
-            end
+      let _ctx, core_bindings, entries =
+        List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
+          let ctx', b, e = elab_module_binding ops ctx b in
+          (ctx', b @ acc_binds, e @ acc_entries))
+        (Ctx.clear_self_scope ctx, [], []) bindings
       in
-      let _ctx, core_bindings, entries = go (Ctx.clear_self_scope ctx) ([], []) bindings in
+      let core_bindings = List.rev core_bindings in
+      let entries = List.rev entries in
       let fields = module_entry_fields entries in
       validate_module_fields fields;
       (Module { bindings = core_bindings }, VModule { entries; partial = false })
