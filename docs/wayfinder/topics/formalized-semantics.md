@@ -25,7 +25,7 @@ core_tt_kernel → core_tt_syntax → core_tt_expand → core_tt_loader → core
                               core_tt_match ───────────────────────┘
 ```
 
-**Roadmap status (ROADMAP.md):**
+**Roadmap status (now the direction [map](../fun-design-map.md)):**
 1. Regression coverage — ongoing
 2. Type-case/generic programming — complete
 3. Traits/ad-hoc polymorphism — mostly complete
@@ -149,7 +149,7 @@ Miller pattern unification for flex metas:
 Mismatch types:
 `NonLinearSpine | OccursCheck | CannotUnify | TupleLengthMismatch | SpineLengthMismatch | NeutralHeadMismatch | FrameMismatch | NominalMismatch | EffectMismatch | EffectRowMismatch`
 
-### Known bug patterns (from TODO.md and AGENTS.md)
+### Known bug patterns (from AGENTS.md and the direction map)
 
 1. **De Bruijn index mismatches** between elaboration and NBE — `List.nth` failures, `VNeutral` where `VLam` expected
 2. **rest = [] bugs** in parser — discarding unconsumed tokens silently
@@ -171,13 +171,11 @@ Mismatch types:
 
 **If extraction is ever desired:** Coq.
 
-## Current Working Directory
+## Provenance
 
-```
-/home/lyh/.local/share/opencode/worktree/eb4376/ai-formalized-semantics
-```
-
-This is the same `fun` repo as `/home/lyh/pullground/fun` (a different worktree).
+This proposal originated as a standalone handover note (drafted in a separate
+`fun` worktree). It is preserved here as a fog-stage direction; whether and when
+to pursue it hangs on the [CLR/C# rewrite shape](../fun-design-map.md#fog).
 
 ## Key Files to Reference
 
@@ -189,8 +187,8 @@ This is the same `fun` repo as `/home/lyh/pullground/fun` (a different worktree)
 - `lib/semantic/typecheck/unify.ml` — structural unification
 - `lib/semantic/typecheck/elab_ctx.ml` — elaboration context
 - `AGENTS.md` — project conventions, common bugs, style guide
-- `ROADMAP.md` — feature roadmap, including C# rewrite
-- `TODO.md` — known bugs and feature work
+- [direction map](../fun-design-map.md) — decisions, open tickets, and fog (incl. the C# rewrite)
+- [`docs/STATUS.md`](../../STATUS.md) — current implementation status
 - `lib/expand/enforest.ml` — parser / enforestation (source of `rest=[]` bugs)
 
 ## Recurring Conventions (from AGENTS.md)

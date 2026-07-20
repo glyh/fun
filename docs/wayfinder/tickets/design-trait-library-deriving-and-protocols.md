@@ -1,8 +1,11 @@
 ---
+title: Trait library deriving and protocols
+parent: ../fun-design-map.md
+labels:
+  - wayfinder:grilling
 status: open
-label: wayfinder:grilling
-blockers: []
-blocks: []
+assignee:
+blocked_by: []
 ---
 
 # Trait library deriving and protocols
@@ -14,7 +17,9 @@ type-case where possible rather than compiler magic.
 
 ## Context
 
-- `ROADMAP.md` records that trait work is mostly complete.
+- The [map](../fun-design-map.md) and [`docs/STATUS.md`](../../STATUS.md) record trait work
+  as mostly complete; detail in [traits](../topics/traits.md) and
+  [trait-module-stdlib](../topics/trait-module-stdlib.md).
 - Remaining milestones include explicit deriving/fallback behaviour and more
   protocol-style operations (e.g. `Eq`, `Ord`, `Show`, `Hash`).
 - Where possible these should be implemented as library-level macros or

@@ -1,11 +1,14 @@
 ---
-status: resolved
-label: wayfinder:grilling
-resolved_at: 2026-07-05
-resolution: resolved/closed
-resolution_doc: docs/17.type_aware_macro_interleaving_design.md
-blockers: []
-blocks: []
+title: Type-aware macro interleaving handshake
+parent: ../fun-design-map.md
+labels:
+  - wayfinder:grilling
+status: closed
+assignee: glyh
+resolution: Semantic module driver with an explicit ordered queue; split unresolved MacroAnnotation vs resolved MacroKind; per-binding semantic advancement; provisional recursive-macro registration + fuel; driver-based import loading. Design in topics/macro-interleaving-design.md; Stages 1–9 implemented.
+closed_date: 2026-07-05
+implemented_date: 2026-07-20
+blocked_by: []
 ---
 
 # Type-aware macro interleaving handshake
@@ -18,9 +21,9 @@ task-queue expander.
 
 ## Context
 
-- `TODO.md` tracks this as a high-priority bug.
-- `docs/plan-for-macros/TYPE_AWARE_INTERLEAVING.md` describes the long-term
-  type-aware interleaving model.
+- Was tracked as a high-priority bug before this map existed.
+- [`macro-system/TYPE_AWARE_INTERLEAVING.md`](../macro-system/TYPE_AWARE_INTERLEAVING.md)
+  describes the long-term type-aware interleaving model.
 - The current static `known_type_names` mechanism is wrong because annotation
   name resolution changes macro arity: an unresolved uppercase name introduces
   an implicit `Syntax.R` binder, while a resolved type/value name is a
@@ -30,12 +33,14 @@ task-queue expander.
 
 ## Resolution
 
-**Resolved.** Design completed — see
-[docs/17.type_aware_macro_interleaving_design.md](../../../17.type_aware_macro_interleaving_design.md).
+**Resolved and implemented.** Design completed — see
+[macro-interleaving-design](../topics/macro-interleaving-design.md) — and the
+full nine-stage migration (Stages 1–9) is now implemented; see
+[`macro-system/STATUS.md`](../macro-system/STATUS.md) for build status.
 
 ### Summary of decisions
 
-- **Design-only.** No implementation source changes yet.
+- **Originally design-only**; implementation followed in Stages 1–9.
 - **No OCaml 5 effects.** Explicit first-order queue/state machine — portable to C#.
 - **New semantic module driver** near `elab_driver` / `Core_loader` boundary.
   Not in `Elab_infer` or `Expand`.

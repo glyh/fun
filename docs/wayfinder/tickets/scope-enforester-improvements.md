@@ -1,9 +1,12 @@
 ---
+title: Enforester improvements scope
+parent: ../fun-design-map.md
+labels:
+  - wayfinder:grilling
 status: open
-label: wayfinder:grilling
-blockers:
-  - 01-type-aware-macro-interleaving
-blocks: []
+assignee:
+blocked_by:
+  - design-type-aware-macro-interleaving.md
 ---
 
 # Enforester improvements scope
@@ -15,7 +18,7 @@ before the CLR / C# rewrite.
 
 ## Context
 
-- `docs/15.enforest_improvement_plan.md` describes two phases:
+- [enforester-improvements](../topics/enforester-improvements.md) describes two phases:
   1. Structured errors and fault-tolerant parsing (spans, recovery, incremental).
   2. Spec-oriented structure (declarative combinators, generic driver).
 - The roadmap cautions against broad diagnostics cleanup pre-rewrite.

@@ -1,11 +1,11 @@
 # Design: Type-Aware Macro Interleaving Handshake
 
 > **Status:** Staged-migration Stages 1–9 (§12) are implemented; see
-> [plan-for-macros/STATUS.md](plan-for-macros/STATUS.md) for what is done and
+> [macro-system/STATUS.md](../macro-system/STATUS.md) for what is done and
 > what remains deferred. The full queue-driver end state (§4) is not yet the
 > main pipeline.
 >
-> **Parent:** [TYPE_AWARE_INTERLEAVING.md](plan-for-macros/TYPE_AWARE_INTERLEAVING.md) —
+> **Parent:** [TYPE_AWARE_INTERLEAVING.md](../macro-system/TYPE_AWARE_INTERLEAVING.md) —
 > the motivation and required compiler shape. This document encodes the resolved
 > decisions from the Wayfinder `Type-aware macro interleaving handshake` ticket.
 
@@ -406,9 +406,9 @@ The following must pass before this ticket is considered complete:
 
 ## 14. References
 
-- [TYPE_AWARE_INTERLEAVING.md](plan-for-macros/TYPE_AWARE_INTERLEAVING.md) —
+- [TYPE_AWARE_INTERLEAVING.md](../macro-system/TYPE_AWARE_INTERLEAVING.md) —
   original problem statement and required compiler shape.
-- [STATUS.md](STATUS.md) — canonical completion status.
+- [macro-system/STATUS.md](../macro-system/STATUS.md) — canonical completion status.
 - `lib/expand/enforest.ml` — current `known_type_names` mechanism to be
   replaced.
 - `lib/expand/expand.ml` — current `MacroBinding` compilation to be moved

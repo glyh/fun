@@ -1,9 +1,12 @@
 ---
+title: Stage 11 macro-powered language features spec
+parent: ../fun-design-map.md
+labels:
+  - wayfinder:grilling
 status: open
-label: wayfinder:grilling
-blockers:
-  - 01-type-aware-macro-interleaving
-blocks: []
+assignee:
+blocked_by:
+  - design-type-aware-macro-interleaving.md
 ---
 
 # Stage 11 macro-powered language features spec

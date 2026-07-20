@@ -2,7 +2,7 @@
 
 ## Context
 
-`ROADMAP.md` lists References as the next language feature after the recent regression coverage work. The only explicit semantic requirement is that mutable ref cells must capture the cell, not the current value, inside closures. The goal is to add a small first-class mutable reference feature while preserving the dependent typechecker/NbE invariants as much as possible.
+The project roadmap listed References as the next language feature after the recent regression coverage work. The only explicit semantic requirement is that mutable ref cells must capture the cell, not the current value, inside closures. The goal is to add a small first-class mutable reference feature while preserving the dependent typechecker/NbE invariants as much as possible.
 
 Recommended first scope:
 

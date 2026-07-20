@@ -1,9 +1,12 @@
 ---
+title: Stage 12 macro diagnostics / expansion UX spec
+parent: ../fun-design-map.md
+labels:
+  - wayfinder:grilling
 status: open
-label: wayfinder:grilling
-blockers:
-  - 01-type-aware-macro-interleaving
-blocks: []
+assignee:
+blocked_by:
+  - design-type-aware-macro-interleaving.md
 ---
 
 # Stage 12 macro diagnostics / expansion UX spec

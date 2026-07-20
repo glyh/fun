@@ -40,7 +40,7 @@ aliases, imported module aliases, and future forms where a name resolves to a
 type-level value without being syntactically declared as a type in the same
 parser scope.
 
-The Klister notes under `docs/plan-for-macros/extracted/klister/commentary/`
+The Klister notes under `extracted/klister/commentary/`
 describe the intended architecture: macro expansion and typechecking are
 interleaved. Expansion can block on type/elaboration facts, and typechecking can
 block on expansion results.
