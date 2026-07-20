@@ -13,7 +13,6 @@ let () =
 
 type t = {
   base_dir : string;
-  parsed_cache : (string, Surface.t) Hashtbl.t;
   runtime_surface_cache : (string, Surface.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
   macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
@@ -25,7 +24,6 @@ type t = {
 
 let create ~base_dir =
   { base_dir;
-    parsed_cache = Hashtbl.create 16;
     runtime_surface_cache = Hashtbl.create 16;
     runtime_elab_cache = Hashtbl.create 16;
     macro_cache = Hashtbl.create 16;
@@ -57,20 +55,6 @@ let rec load_syntax_exports t path =
       in
       Hashtbl.replace t.syntax_cache resolved exports;
       exports
-
-let parse_raw_module_source ?file t source =
-  Enforest.parse_module ?file ~load_syntax:(load_syntax_exports t) source |> Lower_surface.lower_expr
-
-let parse_raw_module t path =
-  let resolved = resolved_path t path in
-  if not (Sys.file_exists resolved) then raise (ImportNotFound path);
-  match Hashtbl.find_opt t.parsed_cache resolved with
-  | Some surface -> surface
-  | None ->
-      let source = read_module_source resolved in
-      let surface = parse_raw_module_source ~file:resolved t source in
-      Hashtbl.replace t.parsed_cache resolved surface;
-      surface
 
 let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
   let resolved = resolved_path t path in
@@ -140,51 +124,7 @@ let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
       Hashtbl.replace t.runtime_elab_cache resolved result;
       result
 
-let rec visit_macros t (ctx : Expand_ctx.t) path =
-  let resolved = resolved_path t path in
-  let register_cached macros =
-    List.iter (fun (name, value, kind, syntax_nominals) ->
-      Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals ~name ~value;
-      Expand_ctx.register_macro_kind ctx ~name ~kind)
-      macros
-  in
-  match Hashtbl.find_opt t.macro_cache resolved with
-  | Some macros -> register_cached macros
-  | None ->
-      if Hashtbl.mem t.macro_active resolved then raise (CircularMacroVisit path);
-      let module_expr = parse_raw_module t path in
-      let bindings =
-        match module_expr with
-        | Surface.Module { bindings } | Surface.Struct { bindings; _ } -> bindings
-        | _ -> raise (Invalid_argument ("module expected: " ^ path))
-      in
-      Hashtbl.replace t.macro_active resolved path;
-      let macros =
-        Fun.protect
-          ~finally:(fun () -> Hashtbl.remove t.macro_active resolved)
-          (fun () ->
-             List.fold_left
-               (fun acc -> function
-                   | Surface.MacroBinding { name; value; public = true; kind; _ } -> (
-                      match ctx.Expand_ctx.elaborate with
-                      | Some elaborate ->
-                          let eval_and_apply = ctx.Expand_ctx.eval_and_apply in
-                           let lowered =
-                             Parse_expand.expand_lower
-                               ~elaborate
-                               ?eval_and_apply
-                               ?syntax_nominals:ctx.Expand_ctx.syntax_nominals
-                               ~load_macros:(visit_macros t)
-                               value
-                          in
-                            let macro_fn = elaborate lowered in
-                            Expand_ctx.register_macro ctx ~name ~value:macro_fn;
-                            let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
-                            Expand_ctx.register_macro_kind ctx ~name ~kind:resolved_kind;
-                            (name, macro_fn, resolved_kind, ctx.Expand_ctx.syntax_nominals) :: acc
-                      | None -> acc)
-                 | _ -> acc)
-               [] bindings
-             |> List.rev)
-      in
-      Hashtbl.replace t.macro_cache resolved macros
+(* Stage 8/9: the old [visit_macros] path that compiled imported macros
+   separately (with parser-heuristic kind resolution) has been retired.
+   Imported macros are now compiled through [Macro_driver.visit_macros],
+   which shares this loader's [macro_cache] and [macro_active] state. *)

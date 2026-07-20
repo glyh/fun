@@ -21,24 +21,31 @@ defer to this file for completion status.
 | 9 | Decl/Pattern ADT completion | Done |
 | 10 | Type-aware macros | Done |
 
-### Stage 10 known limitation
+### Stage 10 annotation disambiguation — resolved on the driver path
 
-Annotation-name disambiguation is partially resolved. The old static
-`known_type_names` parser list has been removed. Stages 1–7 of the type-aware
-interleaving migration are complete: the expander's `MacroBinding` site now uses
-an injected `resolve_macro_kind` callback (set by `Macro_driver.run`) for
-canonical semantic kind resolution at registration time. Stage 6 added
-generated declaration re-entry (generated `MacroBinding` nodes compile/register,
-generated siblings thread scopes). Stage 7 adds scoped per-binding semantic
-advancement: top-level source-order prior user type/record declarations now
-constrain later macro annotations. Builtin types (`I64`,
-`Bool`, etc.) produce constraint annotations, prior user-defined type/record
-names constrain, unresolved uppercase names remain binders, and lowercase/
-wildcard are unconstrained. Same-Decl generated type→macro interleaving
-is deferred; the final driver must avoid double-elaboration/nominal
-freshness drift.
-Real interleaving (expand + elaborate per-binding) remains the main design
-gate before Stages 11–12.
+The old static `known_type_names` parser list has been removed. Stages 1–9 of
+the type-aware interleaving migration are complete: the expander's
+`MacroBinding` site uses an injected `resolve_macro_kind` callback (set by
+`Macro_driver.run`) for canonical semantic kind resolution at registration
+time; generated declarations re-enter the expander; scoped per-binding
+semantic advancement makes top-level source-order prior declarations
+(builtin types, user type/record declarations, and value aliases such as
+`MyInt = I64`) constrain later macro annotations, while unresolved uppercase
+names remain binders and lowercase/wildcard are unconstrained. Qualified
+annotations (`: Expr(M.T)`) resolve against imported module types. The
+recursive-macro safety slice is implemented: top-level macro definitions use
+provisional registration with rollback, and macro expansion has a depth-style
+fuel guard shared across copied expand contexts. Stage 8 replaced the old
+`Core_loader.visit_macros` import path with `Macro_driver.visit_macros`, which
+compiles an imported module's public macros through a full driver run so
+their annotations resolve in the imported module's own advancing context;
+Stage 9 retired the old loader path.
+
+Still deferred: same-Decl generated type→macro interleaving,
+transformer-level self-recursive macro bodies, mutually recursive macro
+groups, semantic `resolved_type_ref` constraint identity, and
+resolved-export cache fingerprinting. The final full queue driver must avoid
+double-elaboration/nominal freshness drift.
 
 ## Stages 11–12: Not specified
 
@@ -62,10 +69,11 @@ gate before Stages 11–12.
   match current completion status.
 
 - **[TYPE_AWARE_INTERLEAVING.md](TYPE_AWARE_INTERLEAVING.md)** — Design document for the
-  expander/elaborator interleaving needed to fix the Stage 10 annotation-name disambiguation
-  limitation. Stage 1 split parsed annotations from resolved macro kinds, Stage 2 removed
-  the static known-type list, and Stage 3 added an additive callable `Macro_driver`
-  skeleton. Describes the remaining compiler shape, seams to replace, and regression tests.
+  expander/elaborator interleaving that fixed the Stage 10 annotation-name disambiguation
+  limitation. Stages 1–9 are implemented, including semantic kind resolution,
+  generated declaration re-entry, per-binding semantic advancement, provisional
+  macro registration/rollback, depth-style macro fuel, and driver-based import
+  loading. Describes the long-term queue-driver compiler shape.
 
 - **[STAGE_7_ENFORESTATION_PLAN.md](STAGE_7_ENFORESTATION_PLAN.md)** — Concrete implementation
   plan for Stage 7 enforestation (phases 7A–7I). All sub-phases are complete. The document
@@ -84,6 +92,7 @@ gate before Stages 11–12.
 - The expander uses `Expand_ctx.t` for macro processing during parsing, requiring
   `elaborate` and `eval_and_apply` callbacks.
 - The elaborator uses `Elaborate.Ctx.t` for `Surface.t → Core.term`.
-- Imported macros are pre-compiled by `visit_macros` and cached in `macro_cache`.
+- Imported macros are pre-compiled by `Macro_driver.visit_macros` (a full
+  driver run over the imported module) and cached in the loader's `macro_cache`.
 - Type-aware macros (Stage 10) use `: Expr(A)` / `: Expr(_)` / `: Expr(I64)` annotations.
 - The `Syntax.Expr` ADT with pattern synonyms provides computed macro authoring.

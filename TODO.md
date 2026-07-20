@@ -4,41 +4,35 @@ For detailed current implementation status, see [`docs/STATUS.md`](docs/STATUS.m
 
 ## Bugs (high)
 
-### Disambiguate annotation names by scope
+### Disambiguate annotation names by scope — RESOLVED
 
-Stage 2 of the type-aware interleaving migration removed the old static
-compiler-known list (`Compiler_names.Type_name.macro_annotation_known`). Stage 3
-added an additive callable `Macro_driver` skeleton, but it intentionally preserves
-the current whole-module expansion behavior. Macro annotations still use a
-temporary parser/enforester fallback: `_` is unconstrained, leading-uppercase
-names become binders with synthesized implicit R parameters, and lowercase/
-non-binder names are unconstrained.
+All nine stages of the type-aware interleaving migration are complete.
+Macro annotations are resolved semantically against the current prior type
+namespace on the driver path: builtin types, prior user type/record
+declarations, and value aliases (`MyInt = I64`) constrain; qualified
+annotations (`: Expr(M.T)`) resolve against imported module types;
+unresolved uppercase names remain binders; lowercase/wildcard are
+unconstrained. Imported macro modules are compiled through
+`Macro_driver.visit_macros` (a full driver run over the imported module),
+so their annotations resolve in the imported module's own advancing
+context; the old `Core_loader.visit_macros` parser-heuristic path is
+retired.
 
-This means neither builtin names nor user-defined types are resolved as
-constraints yet: `: Expr(I64)`, `: Expr(MyTag)`, and misspellings such as
-`: Expr(Intt)` are all binders until the semantic module driver can resolve
-annotation names against the current prior type namespace.
+Deferred follow-ups (design gates for the full queue driver, tracked in
+`docs/plan-for-macros/TYPE_AWARE_INTERLEAVING.md` and
+`docs/17.type_aware_macro_interleaving_design.md`):
 
-**Decision**: elaboration decides, but this requires an expander/elaborator
-handshake because binder-vs-constraint changes macro arity. Do not fix this with
-a parser name set or an expander-only type-name set. Track the design in
-`docs/plan-for-macros/TYPE_AWARE_INTERLEAVING.md`.
-
-**Implementation target**:
-
-- Stages 1–7 are complete: AST split, static known-type list removal, additive
-  `Macro_driver` skeleton, `Macro_resolver` with prelude-type constraint
-  resolution, canonical per-binding kind registration via injected
-  `resolve_macro_kind` callback (replacing the global-lock hack),
-  macro-generated declaration re-entry (generated `MacroBinding` nodes
-  compile/register, generated siblings thread scopes), and scoped per-binding
-  semantic advancement (prior source-order user type/record declarations
-  affect later macro annotation resolution). Only top-level source-order
-  prior bindings advance; same-Decl generated type→macro interleaving is
-  deferred; future final driver must avoid double-elaboration/nominal
-  freshness drift.
-- Future regressions are listed in
-  `docs/plan-for-macros/TYPE_AWARE_INTERLEAVING.md`.
+- Same-Decl generated type→macro interleaving (a macro-generated type does
+  not yet constrain a macro generated later in the same Decl output).
+- Transformer-level self-recursive macro bodies and mutually recursive
+  macro groups.
+- Semantic `resolved_type_ref` constraint identity (constraints are still
+  recorded by name and resolved at the use site).
+- Resolved-export cache fingerprinting (the loader macro cache is still
+  keyed by module path, not resolved export identity).
+- Making the queue driver the single main pipeline (the REPL expression
+  path still uses `Parse_expand` with the parser-side annotation adapter
+  for expression-level macro definitions).
 
 ### Private type visibility (design)
 

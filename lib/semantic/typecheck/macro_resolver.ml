@@ -40,11 +40,14 @@ let synthesize_binder_param (name : string) : Syntax.param option =
     [is_type_like_value] also matches [VEffect] — obscure but
     harmless: you wouldn't normally constrain a macro by an effect
     type. *)
-let is_known_type (ctx : Elab_ctx.Ctx.t) (name : string) : bool =
-  match Elab_resolve.resolve_path_value_opt ctx [] name with
+let is_known_path_type (ctx : Elab_ctx.Ctx.t) (path : string list) (name : string) : bool =
+  match Elab_resolve.resolve_path_value_opt ctx path name with
   | Some (v, _ty) ->
       Elab_validate.is_type_like_value ctx v
   | None -> false
+
+let is_known_type (ctx : Elab_ctx.Ctx.t) (name : string) : bool =
+  is_known_path_type ctx [] name
 
 (** Semantic resolution of a macro annotation.
 
@@ -69,6 +72,13 @@ let resolve_kind (ctx : Elab_ctx.Ctx.t) (ann : Syntax.MacroAnnotation.t)
       (Syntax.MacroKind.Decl, None)
   | Syntax.MacroAnnotation.LegacyExprBinder name ->
       (Syntax.MacroKind.(Expr (Some name, None)), synthesize_binder_param name)
+  | Syntax.MacroAnnotation.Expr (Some (Syntax.MacroAnnotation.Qualified (path, last) as arg)) ->
+      (* Qualified names cannot bind: either the path resolves to a
+         type-like value (constraint) or the annotation is unconstrained. *)
+      if is_known_path_type ctx path last then
+        (Syntax.MacroKind.(Expr (None, Some (Syntax.MacroAnnotation.arg_name arg))), None)
+      else
+        (Syntax.MacroKind.(Expr (None, None)), None)
   | Syntax.MacroAnnotation.Expr (Some arg) -> (
       let name = Syntax.MacroAnnotation.arg_name arg in
       if String.equal name "_" then

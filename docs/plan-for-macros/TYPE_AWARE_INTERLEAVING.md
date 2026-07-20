@@ -1,9 +1,16 @@
 # Type-Aware Macro Interleaving
 
-> **Status note**: This is a design document describing the required fix for the
+> **Status note**: This is a design document describing the fix for the
 > Stage 10 annotation-name disambiguation limitation (expand/elaborate interleaving).
-> The fix is not yet implemented. See **[STATUS.md](STATUS.md)** for current
-> macro completion status.
+> Stages 1–9 are implemented: parsed annotations are distinct from resolved kinds,
+> the static known-type list is gone, `Macro_driver.run` exists, semantic kind
+> resolution happens at macro registration, generated declarations re-enter the
+> expander, top-level prior bindings advance the semantic context, the
+> recursive-macro safety slice has provisional registration/rollback plus
+> depth-style macro fuel, and imported macros are compiled through
+> `Macro_driver.visit_macros` (a full driver run over the imported module),
+> retiring the old `Core_loader.visit_macros` path. See **[STATUS.md](STATUS.md)**
+> for current macro completion status.
 
 ## Problem
 
@@ -12,9 +19,10 @@ Historically, macro annotations such as `: Expr(A)` were resolved in
 became a type constraint. Otherwise, an uppercase name became an implicit macro
 binder of type `Syntax.R`.
 
-The current migration state has removed that static list: leading-uppercase
-annotation names uniformly become binders until the semantic driver can resolve
-constraints against the current prior type namespace.
+The current migration state has removed that static list and the semantic driver
+now resolves annotations against the current prior top-level type namespace.
+Builtin and prior user-defined type/record names become constraints;
+unresolved leading-uppercase names remain binders.
 
 That is wrong for user-defined, aliased, imported, or re-exported types. The
 decision should be semantic: `Expr(A)` is a constraint if `A` resolves as a type
@@ -66,14 +74,17 @@ whether `A` is known as a type/value before deciding macro arity.
 
 - `Parse_expand.expand_lower_syntax` currently runs full expansion before
   elaboration.
-- `Expand.expand` currently compiles `MacroBinding` via an `elaborate` callback
-  whose context only contains builtins and already-opened stdlib bindings.
-- `Expand.expand_struct_bindings` scope-expands prior type/value bindings but
-  does not elaborate them before compiling macros.
+- `Expand.expand` still compiles `MacroBinding` through an injected `elaborate`
+  callback, but `Macro_driver.run` now keeps that callback tied to an advancing
+  elaboration context.
+- `Expand.expand_struct_bindings_with_scopes` supports an `after_binding` hook;
+  `Macro_driver.run` uses it to elaborate prior top-level non-macro bindings
+  before compiling later macros.
 - `Elab_infer` currently sees lowered `Surface.t` after macro bindings have been
   removed from runtime output.
-- `Core_loader.visit_macros` compiles imported macros through the same
-  pre-elaboration path.
+- Done: `Core_loader.visit_macros` has been retired; imported macros are
+  compiled by `Macro_driver.visit_macros` through a full driver run over the
+  imported module, sharing the loader's macro cache and circularity guard.
 
 ## Design Target
 
@@ -87,15 +98,20 @@ whether `A` is known as a type/value before deciding macro arity.
    equality.
 6. Apply the same mechanism to imported macros and module aliases.
 
-## Regression Tests To Add Later
+## Regression Tests / Remaining Coverage
 
-- `type MyTag = ...; macro m(_) : Expr(MyTag) -> ...` treats `MyTag` as a
+- Done: `type MyTag = ...; macro m(_) : Expr(MyTag) -> ...` treats `MyTag` as a
   constraint, not a binder.
-- `MyInt = I64; macro m(_) : Expr(MyInt) -> ...` constrains by the aliased
+- Done: `MyInt = I64; macro m(_) : Expr(MyInt) -> ...` constrains by the aliased
   builtin type instead of creating an implicit `MyInt : Syntax.R` binder.
-- `Alias = SomeModule; macro m(_) : Expr(Alias.T) -> ...` constrains by the
-  aliased type value.
-- Imported macro modules compile annotations using the importing/visiting phase
-  context correctly.
-- Existing type-aware binder macros using unresolved `Expr(A)` still compile and
-  receive the expected `Syntax.R` argument.
+- Done: `M = import "types_mod"; macro m(_) : Expr(M.T) -> ...` constrains by
+  the imported module's type through the qualified annotation; unresolved
+  qualified names stay unconstrained (never binders).
+- Done: imported macro modules compile annotations in the imported module's own
+  advancing context (a prior `type Tag` in the imported module constrains its
+  later macros); only public macros are registered into the importer.
+- Done: existing type-aware binder macros using unresolved `Expr(A)` still compile
+  and receive the expected `Syntax.R` argument.
+- Done: recursive-macro safety infrastructure has focused tests for fuel
+  exhaustion/success, shared copied-context fuel, provisional fill/clear, and
+  provisional rollback for duplicate and fresh macro-definition failures.

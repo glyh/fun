@@ -79,6 +79,14 @@ let resolve_path_value_opt ctx path name =
           in
           go (Ctx.eval ctx core) ty (rest @ [ name ]))
 
+(** Resolve a possibly-dotted name ("M.T") by splitting on '.' into a
+    module path and final segment. Used for macro constraint names, which
+    may carry a qualified annotation. *)
+let resolve_dotted_value_opt ctx dotted =
+  match List.rev (String.split_on_char '.' dotted) with
+  | [] -> None
+  | name :: rev_path -> resolve_path_value_opt ctx (List.rev rev_path) name
+
 let lookup_trait ctx name =
   match NameMap.find_opt name ctx.Ctx.traits with
   | Some info -> info

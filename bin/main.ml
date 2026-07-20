@@ -22,7 +22,7 @@ let run source =
       ~elaborate
       ~eval_and_apply
       ~syntax_nominals
-      ~load_macros:(Core_loader.visit_macros loader)
+      ~load_macros:(Macro_driver.visit_macros loader)
       ~load_syntax:(Core_loader.load_syntax_exports loader)
       source
   in

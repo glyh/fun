@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after Type-aware macro interleaving Stage 7 (July 2026).
+Last updated: after Type-aware macro interleaving Stages 8–9 (July 2026).
 
 ---
 
@@ -36,19 +36,26 @@ Last updated: after Type-aware macro interleaving Stage 7 (July 2026).
 - Stages 0 through 10 are complete: substrate, hygiene, expansion, phase-aware imports,
   enforestation, syntax templates, computed ADT-based syntax API, kind-tagged macros,
   Decl/Pattern ADTs, type-aware macros. See [`plan-for-macros/STATUS.md`](plan-for-macros/STATUS.md).
-- Stage 10 has a known limitation: annotation-name disambiguation is temporarily
-  parser/enforester-local. The old static known-type list has been removed;
-  uppercase names now uniformly become binders until the semantic driver can
-  resolve constraints against the prior type namespace. See
+- The Stage 10 annotation-name disambiguation limitation is resolved on the
+  semantic driver path: annotations are resolved against the current prior
+  type namespace (builtins, user types, value aliases, and qualified
+  imported types via `Expr(M.T)`). See
   [`plan-for-macros/TYPE_AWARE_INTERLEAVING.md`](plan-for-macros/TYPE_AWARE_INTERLEAVING.md).
-- Type-aware interleaving migration Stages 1–7 are done: AST split, static
+- Type-aware interleaving migration Stages 1–9 are done: AST split, static
   list removal, `Macro_driver` skeleton, prelude-type constraint resolution,
   canonical per-binding kind registration via injected callback,
   macro-generated declaration re-entry (generated `MacroBinding` nodes
-  compile/register, generated siblings thread scopes), and scoped per-binding
+  compile/register, generated siblings thread scopes), scoped per-binding
   semantic advancement (top-level source-order prior user type/record
-  declarations now constrain later macro annotations). Same-Decl generated
-  type→macro interleaving is deferred.
+  declarations now constrain later macro annotations), recursive-macro
+  safety infrastructure (top-level provisional macro registration/rollback plus
+  depth-style macro expansion fuel shared across copied contexts),
+  driver-based import loading (`Macro_driver.visit_macros` compiles imported
+  public macros through a full driver run, so their annotations resolve in
+  the imported module's own context), and retirement of the old
+  `Core_loader.visit_macros` parser-heuristic path. Same-Decl generated
+  type→macro interleaving and transformer-level self-recursive macro
+  bodies are deferred.
 
 ---
 
@@ -72,14 +79,13 @@ Last updated: after Type-aware macro interleaving Stage 7 (July 2026).
   and [`plan-for-macros/IMPLEMENTATION_PLAN.md`](plan-for-macros/IMPLEMENTATION_PLAN.md).
 
 ### Annotation scope disambiguation / type-aware interleaving
-- Stages 1–7 are done. The `Macro_driver.run` skeleton now uses an injected
-  `resolve_macro_kind` callback on `Expand_ctx.t` (replacing the Stage 4
-  global-lock table) for canonical per-binding macro kind resolution at the
-  expansion site. Builtin types resolve as constraints, unresolved uppercase
-  names remain binders, lowercase/wildcard are unconstrained. Stage 7 adds
-  scoped per-binding semantic advancement: prior top-level source-order user
-  type/record declarations now affect later macro annotation resolution.
-  Same-Decl generated type→macro interleaving is deferred. See
+- Migration Stages 1–9 are done; semantic annotation resolution is active for
+  driver-based module compilation and for imported macro modules. Remaining
+  deferred items: same-Decl generated type→macro interleaving,
+  transformer-level self-recursive macro bodies, mutually recursive macro
+  groups, semantic `resolved_type_ref` constraint identity (constraints are
+  still recorded by name and resolved at the use site), and resolved-export
+  cache fingerprinting (the macro cache is still keyed by module path). See
   [`17.type_aware_macro_interleaving_design.md`](17.type_aware_macro_interleaving_design.md),
   [`plan-for-macros/TYPE_AWARE_INTERLEAVING.md`](plan-for-macros/TYPE_AWARE_INTERLEAVING.md),
   and [TODO.md](../TODO.md).

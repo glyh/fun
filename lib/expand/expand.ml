@@ -385,21 +385,24 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           { stx with kind = MacroCall (expand ctx f, List.map (fun a -> wrap_stx (expand ctx a)) args) }
         else begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
-          let result =
-            with_syntax_operator_context (List.hd args) (fun () ->
-                List.fold_left (fun fn arg ->
-                    let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
-                    apply_fn fn arg_stx)
-                  macro_fn args)
-          in
-          begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
-          | Some expanded -> expand ctx expanded
-          | None ->
-              failwith (syntax_operator_failure (List.hd args)
-                ("macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
-          end
+          Expand_ctx.with_macro_fuel ctx ~name:id.name (fun () ->
+            let result =
+              with_syntax_operator_context (List.hd args) (fun () ->
+                  List.fold_left (fun fn arg ->
+                      let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
+                      apply_fn fn arg_stx)
+                    macro_fn args)
+            in
+            begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
+            | Some expanded -> expand ctx expanded
+            | None ->
+                failwith (syntax_operator_failure (List.hd args)
+                  ("macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
+            end)
         | None -> failwith "macro call requires an apply callback in expand context"
         end
+      | None when Expand_ctx.is_provisional_macro ctx id.name ->
+        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
       | None -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
       end
     | _ -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
@@ -411,37 +414,40 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
       begin match ctx.Expand_ctx.eval_and_apply with
       | Some apply_fn ->
-        let result = match operands with
-          | [ lhs; rhs ] ->
-              let open Core in
-              let rec term_lam_count = function
-                | Lam body -> 1 + term_lam_count body
-                | _ -> 0
-              in
-              let arity = match macro_fn with
-                | VLam { body = { body; _ }; _ } -> 1 + term_lam_count body
-                | _ -> 0
-              in
-              if arity >= 2 then
-                let lhs_stx = Macro_eval.wrap_stx ~nominals:macro_nominals lhs in
-                let rhs_stx = Macro_eval.wrap_stx ~nominals:macro_nominals rhs in
-                apply_fn (apply_fn macro_fn lhs_stx) rhs_stx
-              else
-                apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
-                  { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
-          | [ single ] ->
-              let stx = Macro_eval.wrap_stx ~nominals:macro_nominals single in
-              apply_fn macro_fn stx
-          | _ -> apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
-                   { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
-        in
-        begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
-        | Some expanded -> expand ctx expanded
-        | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } }
-                              ("operator macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
-        end
+        Expand_ctx.with_macro_fuel ctx ~name:operator.name (fun () ->
+          let result = match operands with
+            | [ lhs; rhs ] ->
+                let open Core in
+                let rec term_lam_count = function
+                  | Lam body -> 1 + term_lam_count body
+                  | _ -> 0
+                in
+                let arity = match macro_fn with
+                  | VLam { body = { body; _ }; _ } -> 1 + term_lam_count body
+                  | _ -> 0
+                in
+                if arity >= 2 then
+                  let lhs_stx = Macro_eval.wrap_stx ~nominals:macro_nominals lhs in
+                  let rhs_stx = Macro_eval.wrap_stx ~nominals:macro_nominals rhs in
+                  apply_fn (apply_fn macro_fn lhs_stx) rhs_stx
+                else
+                  apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
+                    { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
+            | [ single ] ->
+                let stx = Macro_eval.wrap_stx ~nominals:macro_nominals single in
+                apply_fn macro_fn stx
+            | _ -> apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
+                     { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
+          in
+          begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
+          | Some expanded -> expand ctx expanded
+          | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } }
+                                ("operator macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
+          end)
       | None -> failwith "operator macro call requires an apply callback"
       end
+    | _ when Expand_ctx.is_provisional_macro ctx operator.name ->
+      failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" operator.name)
     | _ ->
       { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span } }
     end
@@ -538,10 +544,9 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [[]])
   | PatternSynBinding { name; params; rhs; public } ->
      ([PatternSynBinding { name; params; rhs; public }], [[]])
-  | MacroBinding { name; value; public; kind } ->
+   | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
-      let value = expand ctx value in
       (* Stage 5: resolve kind via driver callback if set, else adapter fallback *)
       let (resolved_kind, strip_lam) =
         match ctx.Expand_ctx.resolve_macro_kind, kind with
@@ -552,15 +557,27 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
             let k = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
             (k, false)
       in
-      (* Strip parser-synthesized Lam when semantic resolution says constraint *)
-      let value = if strip_lam then strip_leading_lam value else value in
-      let lowered = Lower_surface.lower_expr value in
-      let macro_fn = elab lowered in
       let binding_name = id_name name in
+      (* Stage 7: introduce name scope and register provisional macro BEFORE
+         expansion/elaboration so the macro's own name is known during its
+         definition (for future re-expansion-recursion support). The
+         provisional marker prevents premature callable lookup. *)
       let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
-      Expand_ctx.register_macro ctx ~name:binding_name ~value:macro_fn;
+      let macro_snapshot = Expand_ctx.snapshot_macro ctx binding_name in
+      Expand_ctx.register_provisional_macro ctx ~name:binding_name ();
       Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
-      ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]])
+      Fun.protect
+        ~finally:(fun () ->
+          if Expand_ctx.is_provisional_macro ctx binding_name then
+            Expand_ctx.restore_macro_snapshot ctx ~name:binding_name macro_snapshot)
+        (fun () ->
+          let value = expand ctx value in
+          (* Strip parser-synthesized Lam when semantic resolution says constraint *)
+          let value = if strip_lam then strip_leading_lam value else value in
+          let lowered = Lower_surface.lower_expr value in
+          let macro_fn = elab lowered in
+          Expand_ctx.fill_provisional_macro ctx ~name:binding_name ~value:macro_fn;
+          ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]]))
     | None ->
       ([MacroBinding { name; value = expand ctx value; public; kind }], [[]])
     end
@@ -581,28 +598,31 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
         if macro_base <> ctx_base then
             failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                         id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
-           let fn = List.fold_left (fun fn arg ->
-              let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
-              apply_fn fn arg_stx) macro_fn args in
-           let rec force_val v =
-             match v with
-             | Core.VLam _ | Core.VFlex _ ->
-                 let dummy = Core.VStx (Core.StxExpr { Syntax.kind = Atom (Atom.Unit); span = Source_span.synthetic }) in
-                 force_val (apply_fn v dummy)
-             | _ -> v
-           in
-           let fn = force_val fn in
+           Expand_ctx.with_macro_fuel ctx ~name:id.name (fun () ->
+             let fn = List.fold_left (fun fn arg ->
+                let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
+                apply_fn fn arg_stx) macro_fn args in
+             let rec force_val v =
+               match v with
+               | Core.VLam _ | Core.VFlex _ ->
+                   let dummy = Core.VStx (Core.StxExpr { Syntax.kind = Atom (Atom.Unit); span = Source_span.synthetic }) in
+                   force_val (apply_fn v dummy)
+               | _ -> v
+             in
+             let fn = force_val fn in
              let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn in
-            (match result with
-            | Some bindings ->
-                (* Stage 6: recursively process generated bindings through
-                   the shared binding-list loop so generated MacroBinding
-                   annotations are resolved, macros are compiled/registered,
-                   and sibling-generated scopes thread in source order. *)
-                expand_struct_bindings_with_scopes ctx bindings
-            | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name))
+             (match result with
+             | Some bindings ->
+                 (* Stage 6: recursively process generated bindings through
+                    the shared binding-list loop so generated MacroBinding
+                    annotations are resolved, macros are compiled/registered,
+                    and sibling-generated scopes thread in source order. *)
+                 expand_struct_bindings_with_scopes ctx bindings
+             | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name)))
         | None -> failwith "macro call requires an apply callback in expand context"
         end
+      | None when Expand_ctx.is_provisional_macro ctx id.name ->
+        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
       | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
       end
     | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])

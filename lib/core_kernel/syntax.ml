@@ -11,12 +11,15 @@ end
 (** Unresolved macro annotation as parsed from source syntax.
     Records what was written, not semantic meaning. *)
 module MacroAnnotation = struct
-  type arg = Wildcard | Named of string
+  type arg = Wildcard | Named of string | Qualified of string list * string
   type t = Expr of arg option | LegacyExprBinder of string | Decl
   let default = Expr None
   let to_string = function Expr _ | LegacyExprBinder _ -> "Expr" | Decl -> "Decl"
   let of_string = function "Decl" -> Some Decl | "Expr" -> Some (Expr None) | _ -> None
-  let arg_name = function Wildcard -> "_" | Named s -> s
+  let arg_name = function
+    | Wildcard -> "_"
+    | Named s -> s
+    | Qualified (path, last) -> String.concat "." (path @ [ last ])
   let is_decl = function Decl -> true | Expr _ | LegacyExprBinder _ -> false
   let is_expr = function Expr _ | LegacyExprBinder _ -> true | Decl -> false
 end
@@ -211,6 +214,10 @@ module MacroAnnotationAdapter = struct
     | MacroAnnotation.Decl -> (MacroKind.Decl, None)
     | MacroAnnotation.LegacyExprBinder name ->
         (MacroKind.(Expr (Some name, None)), synthesize_binder_param name)
+    | MacroAnnotation.Expr (Some (MacroAnnotation.Qualified _ as arg)) ->
+        (* Qualified names cannot bind; without a semantic context assume
+           a constraint and let the driver resolver refine it. *)
+        (MacroKind.(Expr (None, Some (MacroAnnotation.arg_name arg))), None)
     | MacroAnnotation.Expr (Some arg) -> (
         let name = MacroAnnotation.arg_name arg in
         if String.equal name "_" then

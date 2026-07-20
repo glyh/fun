@@ -291,8 +291,22 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
                 let ann = Some Syntax.MacroAnnotation.(Expr (Some (Named inner))) in
                 let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
                 (ann, param, rest)
-            | _ ->
-                error "unsupported type pattern in macro annotation"
+            | inner_items -> (
+                (* Qualified name: Ident (. Ident)+ *)
+                let rec qualified acc = function
+                  | [ { datum = Raw_syntax.Token { kind = Ident last; _ }; _ } ] ->
+                      Some (List.rev acc, last)
+                  | { datum = Raw_syntax.Token { kind = Ident seg; _ }; _ } :: dot :: more
+                    when token_kind Dot dot ->
+                      qualified (seg :: acc) more
+                  | _ -> None
+                in
+                match qualified [] inner_items with
+                | Some (path, last) when path <> [] ->
+                    let ann = Some Syntax.MacroAnnotation.(Expr (Some (Qualified (path, last)))) in
+                    let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
+                    (ann, param, rest)
+                | _ -> error "unsupported type pattern in macro annotation")
           end else begin
             let ann = Some (Syntax.MacroAnnotation.LegacyExprBinder k) in
             let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in

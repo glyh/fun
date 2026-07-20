@@ -892,7 +892,7 @@ let eval_with_imported_macros modules source =
           ~elaborate
           ~eval_and_apply
           ~syntax_nominals
-          ~load_macros:(Core_loader.visit_macros loader)
+          ~load_macros:(Macro_driver.visit_macros loader)
           ~load_syntax:(Core_loader.load_syntax_exports loader)
           source
       in
@@ -1523,6 +1523,85 @@ let test_generated_type_before_macro_stays_binder () =
         (Syntax.MacroKind.type_constraint_name kind)
   | None -> Alcotest.fail "mk2 macro kind missing"
   end
+
+(** Stage 8: driver run with a loader over temp modules. *)
+let run_driver_with_modules modules source f =
+  with_modules modules (fun loader ->
+      let stx = Enforest.parse_module ~load_syntax:(Core_loader.load_syntax_exports loader) source in
+      f (Macro_driver.run ~loader stx))
+
+let exported_kind_with_modules modules source macro_name =
+  run_driver_with_modules modules source (fun (output : Macro_driver.driver_output) ->
+      match List.find_opt (fun (e : Macro_driver.macro_export) -> String.equal e.name macro_name) output.macro_exports with
+      | Some e -> e.kind
+      | None -> Alcotest.fail ("macro not found in exports: " ^ macro_name))
+
+(** Stage 8: a prior value alias of a builtin type constrains the
+    annotation instead of creating an implicit binder. *)
+let test_driver_value_alias_builtin_constraint () =
+  let kind = exported_kind "MyInt = I64\nmacro mk(_) : Expr(MyInt) -> Syntax.i64(1)\n" "mk" in
+  Alcotest.(check bool) "Expr(MyInt) is constraint" false
+    (Syntax.MacroKind.has_type_binding kind);
+  Alcotest.(check (option string)) "Expr(MyInt) constraint_name"
+    (Some "MyInt") (Syntax.MacroKind.type_constraint_name kind)
+
+(** Stage 8: a qualified annotation naming an imported module's type
+    resolves as a constraint through the import-extended context. *)
+let test_driver_qualified_import_type_constraint () =
+  let kind =
+    exported_kind_with_modules
+      [ ("types_mod", "pub type T = I64") ]
+      "M = import \"types_mod\"\nmacro mk(_) : Expr(M.T) -> Syntax.i64(1)\n"
+      "mk"
+  in
+  Alcotest.(check bool) "Expr(M.T) is constraint" false
+    (Syntax.MacroKind.has_type_binding kind);
+  Alcotest.(check (option string)) "Expr(M.T) constraint_name"
+    (Some "M.T") (Syntax.MacroKind.type_constraint_name kind)
+
+(** Stage 8: an unresolved qualified annotation stays unconstrained —
+    a dotted name can never become an implicit binder. *)
+let test_driver_qualified_unresolved_unconstrained () =
+  let source = "macro mk(_) : Expr(No.Such) -> Syntax.i64(1)\n" in
+  let kind = exported_kind source "mk" in
+  Alcotest.(check bool) "Expr(No.Such) no has_type_binding" false
+    (Syntax.MacroKind.has_type_binding kind);
+  Alcotest.(check (option string)) "Expr(No.Such) unconstrained"
+    None (Syntax.MacroKind.type_constraint_name kind);
+  let export = exported_macro source "mk" in
+  Alcotest.(check int) "no implicit binder synthesized" 1
+    (compiled_macro_arity export.compiled)
+
+(** Stage 8: imported macro annotations are resolved in the imported
+    module's own context — a type declared before the macro in the
+    imported module constrains it, instead of becoming a binder as under
+    the old [Core_loader.visit_macros] parser heuristic. *)
+let test_visit_macros_imported_annotation_uses_module_context () =
+  with_modules
+    [ ("macros_mod", "type Tag = I64\npub macro mk(_) : Expr(Tag) -> Syntax.i64(1)") ]
+    (fun loader ->
+      let ctx = Expand_ctx.create () in
+      Macro_driver.visit_macros loader ctx "macros_mod";
+      match Expand_ctx.lookup_macro_kind ctx "mk" with
+      | Some kind ->
+          Alcotest.(check bool) "imported Expr(Tag) is constraint" false
+            (Syntax.MacroKind.has_type_binding kind);
+          Alcotest.(check (option string)) "imported Expr(Tag) constraint_name"
+            (Some "Tag") (Syntax.MacroKind.type_constraint_name kind)
+      | None -> Alcotest.fail "imported macro kind missing")
+
+(** Stage 8: only public macros are registered by import loading. *)
+let test_visit_macros_private_not_registered () =
+  with_modules
+    [ ("macros_mod", "macro hidden(_) -> Syntax.i64(1)\npub macro shown(_) -> Syntax.i64(2)") ]
+    (fun loader ->
+      let ctx = Expand_ctx.create () in
+      Macro_driver.visit_macros loader ctx "macros_mod";
+      Alcotest.(check bool) "private macro not registered" true
+        (Option.is_none (Expand_ctx.lookup_macro ctx "hidden"));
+      Alcotest.(check bool) "public macro registered" true
+        (Option.is_some (Expand_ctx.lookup_macro ctx "shown")))
+
 (** Stage 6: Decl macro generated MacroBinding nodes are recursively
     re-entered through expand_struct_binding. This lower-level regression
     constructs the generated binding directly because the source-level
@@ -2911,6 +2990,11 @@ let () =
           Alcotest.test_case "driver constructor not type" `Quick test_driver_constructor_not_type;
           Alcotest.test_case "driver forward ref stays binder" `Quick test_driver_forward_ref_stays_binder;
           Alcotest.test_case "generated type before macro stays binder" `Quick test_generated_type_before_macro_stays_binder;
+          Alcotest.test_case "driver value alias of builtin is constraint" `Quick test_driver_value_alias_builtin_constraint;
+          Alcotest.test_case "driver qualified imported type is constraint" `Quick test_driver_qualified_import_type_constraint;
+          Alcotest.test_case "driver qualified unresolved unconstrained" `Quick test_driver_qualified_unresolved_unconstrained;
+          Alcotest.test_case "imported macro annotation uses module context" `Quick test_visit_macros_imported_annotation_uses_module_context;
+          Alcotest.test_case "imported private macro not registered" `Quick test_visit_macros_private_not_registered;
           Alcotest.test_case "generated macro binding re-entered" `Quick test_generated_macro_binding_reentered;
           Alcotest.test_case "generated multi-binding scope threading" `Quick test_generated_multi_binding_scope_threading;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;

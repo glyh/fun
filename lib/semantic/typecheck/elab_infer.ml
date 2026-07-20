@@ -934,7 +934,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                           let ty = Ctx.raw_meta ctx in
                           (match Syntax.MacroKind.type_constraint_name macro_kind with
                            | Some constraint_name ->
-                               (match resolve_path_value_opt ctx [] constraint_name with
+                               (match resolve_dotted_value_opt ctx constraint_name with
                                 | Some (constraint_val, _) -> Ctx.unify ctx ty constraint_val
                                 | None -> raise (ElabError (UnboundVariable constraint_name)))
                            | None -> ());
@@ -944,19 +944,20 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                                  VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ty]; nominal = nominals.Macro_eval.r_ }
                              | None -> ty
                           in
-                          let fn = apply_fn macro_fn wrapped_ty in
-                          let fn = List.fold_left (fun fn arg ->
-                            match arg with
-                            | Surface.StxExpr stx_arg ->
-                                 let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg in
-                                 apply_fn fn arg_stx
-                             | _ -> fn) fn args in
-                           (match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
-                           | Some expanded ->
-                               ops.infer ctx (Lower_surface.lower_expr expanded)
-                           | None ->
-                               let ty = Ctx.raw_meta ctx in
-                               (Ctx.fresh_meta ctx, ty))
+                          Expand_ctx.with_macro_fuel expand_ctx ~name (fun () ->
+                            let fn = apply_fn macro_fn wrapped_ty in
+                            let fn = List.fold_left (fun fn arg ->
+                              match arg with
+                              | Surface.StxExpr stx_arg ->
+                                   let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg in
+                                   apply_fn fn arg_stx
+                               | _ -> fn) fn args in
+                             (match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
+                             | Some expanded ->
+                                 ops.infer ctx (Lower_surface.lower_expr expanded)
+                             | None ->
+                                 let ty = Ctx.raw_meta ctx in
+                                 (Ctx.fresh_meta ctx, ty)))
                       | None -> failwith "eval_and_apply required")
                  | None -> failwith "expand_ctx required")
             | None -> failwith "macro-only syntax should not reach elaboration")

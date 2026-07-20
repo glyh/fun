@@ -462,7 +462,7 @@ let syntax_extension_cross_module () =
     (fun loader ->
       match
         parse_with_macros
-          ~load_macros:(Core_loader.visit_macros loader)
+          ~load_macros:(Macro_driver.visit_macros loader)
           ~load_syntax:(Core_loader.load_syntax_exports loader)
           "do
   Ops = import \"syntax_ops\"

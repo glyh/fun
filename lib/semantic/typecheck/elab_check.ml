@@ -145,7 +145,7 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
        | Some (macro_fn, macro_kind, macro_nominals) when Syntax.MacroKind.has_type_binding macro_kind ->
            (match Syntax.MacroKind.type_constraint_name macro_kind with
             | Some constraint_name ->
-                (match resolve_path_value_opt ctx [] constraint_name with
+                (match resolve_dotted_value_opt ctx constraint_name with
                  | Some (constraint_val, _) -> Ctx.unify ctx expected constraint_val
                  | None -> raise (ElabError (UnboundVariable constraint_name)))
             | None -> ());
@@ -159,17 +159,22 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                             VCon { name = Compiler_names.Constructor_name.r_expr; spine = [expected]; nominal = nominals.Macro_eval.r_ }
                         | None -> expected
                      in
-                     let fn = apply_fn macro_fn wrapped_ty in
-                     let fn = List.fold_left (fun fn arg ->
-                       match arg with
-                       | Surface.StxExpr stx_arg ->
-                            let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg in
-                            apply_fn fn arg_stx
-                        | _ -> fn) fn args in
-                     (match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
-                      | Some expanded ->
-                          ops.check ctx (Lower_surface.lower_expr expanded) expected
-                      | None -> fallback ())
+                     Expand_ctx.with_macro_fuel expand_ctx ~name:macro_name (fun () ->
+                       let fn = apply_fn macro_fn wrapped_ty in
+                       let fn = List.fold_left (fun fn arg ->
+                         match arg with
+                         | Surface.StxExpr stx_arg ->
+                              let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg in
+                              apply_fn fn arg_stx
+                          | _ -> fn) fn args in
+                       (match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
+                        | Some expanded ->
+                            ops.check ctx (Lower_surface.lower_expr expanded) expected
+                        | None ->
+                            let inferred = Ctx.raw_meta ctx in
+                            let core = Ctx.fresh_meta ctx in
+                            Ctx.unify ctx expected inferred;
+                            core))
                  | None -> fallback ())
             | None -> fallback ())
        | _ -> fallback ())
