@@ -89,6 +89,12 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
 - Macro Stages 0–10 (substrate, hygiene, enforestation, syntax templates,
   kind-tagged macros, Decl/Pattern ADTs, type-aware macros) are complete; the
   design library lives in [`macro-system/`](macro-system/).
+- [Bool and `if` as library features](topics/bool-and-if-as-library.md) — Stage 11's
+  first increment: `Bool` demoted from a primitive to a prelude nominal ADT
+  (`False | True`), primitives return `I64`, and `if` desugared to `match` with
+  `Core.If`/`FIf` removed (sound — `FMatch` subsumes them). Implemented, 778 tests
+  green. Stage 11 (["macro-powered language features"](tickets/specify-stage-11-macro-powered-language-features.md))
+  stays **open** as the umbrella for further demotion increments.
 
 ## Fog
 
@@ -117,6 +123,28 @@ as the frontier reaches them.
   (deriving/fallback, protocol-style ops, UFCS, FFI/native bindings) should be
   library-level macros / type-case rather than new compiler machinery. UFCS and FFI
   are desirable but should not drive the prototype agenda now.
+- **Too many IR layers — can one be removed?** — the pipeline carries several
+  intermediate representations: `Raw_syntax` → `Syntax.t` (enforest) → `Surface.t`
+  (lower) → `Core.term` (elaborate) → `value` (NbE). This is more layers than may be
+  needed. Suspected prime candidate: `Syntax.t` and `Surface.t` appear close to
+  **isomorphic** — `lower_surface.ml` / `surface_to_syntax.ml` are near 1:1
+  structural maps with no desugaring — so one of them might be collapsible. Needs
+  its own investigation (what each layer actually buys: hygiene/scope-set carriage,
+  macro reflection boundaries, the two desugaring seams at enforest and elaborate)
+  before any merge decision. Do **not** pre-slice into tickets yet.
+- **Primitive ↔ symbolic-name wiring is stringly-typed and fragile** — a primitive's
+  identity is replicated by bare string across three places that must stay in
+  lockstep: the runtime reducer table (`nbe_prim.ml` `prim_table`), the type map
+  (`elab_prelude.ml` `prims`), and the base-context binding (`elab_entry.ml`, each
+  name bound `Var name → HPrim name`) — plus the prelude `stdlib_source` references
+  each prim by string literal (`eq_i64(x, y)`, `panic[…]`, …). No single source of
+  truth; adding or renaming a prim (e.g. this session's `<` → `lt_i64`) means editing
+  every copy by hand, and the "holes" in the stdlib (typed slots the prelude expects
+  the compiler to fill) are wired the same brittle way. Want a **maintainable, not
+  hacky** scheme — one declaration of `(name, type, reducer)` that the runtime,
+  elaborator, base context, and prelude all derive from, with no stringly-typed
+  drift. Needs its own investigation of the options (a single registry, generated
+  bindings, a typed prim GADT, …) before choosing.
 - **Known deferred bug — nested-module ADT constructor resolution** —
   `pub pattern PatWild = RawPatWild(_)` inside a module fails because
   `find_nominal_template_opt` matches by *type* name, not constructor name, on the
@@ -130,7 +158,22 @@ The current frontier — open tickets under [`tickets/`](tickets/), in intended
 order. All are unblocked (the ticket that blocked enforester work is now closed).
 
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
-  — what Stage 11 (derived helpers, DSL blocks, scaffolding) should include.
+  — umbrella for demoting built-in constructs to library. Direction decided;
+  increment 1 (Bool + `if`) landed; **stays open** for more increments.
+- [Add short-circuit && / || operators](tickets/add-short-circuit-and-or-operators.md)
+  — Stage 11 increment; feasible now via the builtin operator table.
+- [Prelude-as-implicit-syntax-import for operator demotion](tickets/prelude-implicit-syntax-import-operator-demotion.md)
+  — mechanism needed before `+`/`==`/`<` can move out of `operator_env.ml`.
+- [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
+  — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
+  self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
+- [Reflect Match in the Expr macro ADT](tickets/reflect-match-in-expr-macro-adt.md)
+  — enables a true prelude-macro `if`, `matches?`, pattern DSLs, `derive`. Design
+  decided via grilling; **blocked on** mutually-recursive nominal types (for the
+  dedicated `Branch` ADT).
+- [Unify procedural macro call syntax with functions](tickets/unify-macro-call-syntax-with-functions.md)
+  — Stage 11 increment; design decided (drop `@`, `f(args)` for macros, macros
+  become scope-aware bindings dispatched by kind). Ready to implement.
 - [Specify Stage 12 macro diagnostics and expansion UX](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md)
   — diagnostics scope pre- vs post-rewrite.
 - [Design trait library deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md)

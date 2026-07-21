@@ -30,4 +30,5 @@ let syntax_nominals ctx : Macro_eval.syntax_nominals =
     decl = resolve ctx [Compiler_names.Module_name.syntax; "Decl"];
     list = resolve ctx ["List"];
     pat = resolve ctx [Compiler_names.Module_name.syntax; "Pattern"];
-    r_ = resolve ctx [Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.r] }
+    r_ = resolve ctx [Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.r];
+    bool = resolve ctx [Compiler_names.Type_name.bool] }

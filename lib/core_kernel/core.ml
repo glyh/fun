@@ -31,7 +31,6 @@ and term =
   | EffectRowLit of effect_row
   | Atom of Atom.t
   | AtomTy of Atom_ty.t
-  | If of term * term * term
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
   | Fix of term
@@ -378,7 +377,6 @@ and effect_request = {
 (* Elimination frames on stuck terms *)
 and frame =
   | FApp of value
-  | FIf of { then_ : closure; else_ : closure }
   | FProj of int
   | FDot of string
   | FRefGet

@@ -57,7 +57,8 @@ let check_i64 label expected source () =
 
 let check_bool label expected source () =
   match eval_source source with
-  | VAtom (Bool b) -> Alcotest.(check bool) label expected b
+  | VCon { name = "True"; _ } -> Alcotest.(check bool) label expected true
+  | VCon { name = "False"; _ } -> Alcotest.(check bool) label expected false
   | v ->
       let mc = MetaContext.create () in
       fail_with_source label source
@@ -84,8 +85,8 @@ let check_not_conv label s1 s2 () =
 (* -- eval tests --------------------------------------------------------- *)
 
 let test_eval_prod () =
-  match eval_source "(1, true)" with
-  | VProd [ VAtom (I64 1L); VAtom (Bool true) ] -> ()
+  match eval_source "(1, True)" with
+  | VProd [ VAtom (I64 1L); VCon { name = "True"; _ } ] -> ()
   | _ -> Alcotest.fail "expected VProd"
 
 let test_eval_pi () =
@@ -105,7 +106,7 @@ let test_eval_module_signature_argument () =
 
 let test_eval_module_signature_extra_field () =
   check_i64 "module signature extra field" 42L
-    "(fn(m : module pub x = I64 end) -> m.x)(module pub x = 42; pub y = true end)"
+    "(fn(m : module pub x = I64 end) -> m.x)(module pub x = 42; pub y = True end)"
     ()
 
 let test_eval_signature_sugar_argument () =
@@ -151,13 +152,19 @@ let test_neutral_ap () =
   | VRigid { lvl = 0; spine = [ VAtom (I64 1L) ] } -> ()
   | _ -> Alcotest.fail "expected stuck application"
 
-let test_neutral_if () =
+let test_neutral_match () =
   let mc = mc () in
   let env = [ VRigid { lvl = 0; spine = [] } ] in
-  let v = eval mc env (If (Var 0, Atom (I64 1L), Atom (I64 2L))) in
+  let v =
+    eval mc env
+      (Match
+         ( Var 0,
+           [ ValueBranch (CPatAtom (I64 1L), Atom (I64 1L));
+             ValueBranch (CPatAtom (I64 2L), Atom (I64 2L)) ] ))
+  in
   match v with
-  | VNeutral { neutral = { head = HVar 0; frames = [ FIf _ ] }; _ } -> ()
-  | _ -> Alcotest.fail "expected stuck if"
+  | VNeutral { neutral = { head = HVar 0; frames = [ FMatch _ ] }; _ } -> ()
+  | _ -> Alcotest.fail "expected stuck match"
 
 (* -- meta tests (require manual construction) ---------------------------- *)
 
@@ -204,8 +211,8 @@ let test_unify_simple () =
 let test_unify_pi () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
-  let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TBool } } in
-  let v2 = VPi { explicitness = Explicit; domain = VAtomTy Atom_ty.TI64; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TBool } } in
+  let v1 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TChar } } in
+  let v2 = VPi { explicitness = Explicit; domain = VAtomTy Atom_ty.TI64; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TChar } } in
   unify mc [] 0 v1 v2;
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with VAtomTy Atom_ty.TI64 -> () | _ -> Alcotest.fail "expected Atom_ty.TI64 in pi domain"
@@ -219,7 +226,7 @@ let test_unify_spine () =
   let solved = force mc (VFlex { id; spine = [] }) in
   match solved with
   | VLam { body = clo; _ } ->
-      let result = closure_apply mc clo (VAtomTy Atom_ty.TBool) in
+      let result = closure_apply mc clo (VAtomTy Atom_ty.TChar) in
       (match result with VAtomTy Atom_ty.TI64 -> () | _ -> Alcotest.fail "expected constant function")
   | _ -> Alcotest.fail "expected VLam"
 
@@ -249,7 +256,7 @@ let test_unify_rename_fst () =
       let v_fst = closure_apply mc outer_clo (VAtomTy Atom_ty.TI64) in
       match v_fst with
       | VLam { body = inner_clo; _ } ->
-          let result = closure_apply mc inner_clo (VAtomTy Atom_ty.TBool) in
+          let result = closure_apply mc inner_clo (VAtomTy Atom_ty.TChar) in
           Alcotest.(check bool) "rename fst" true
             (match result with VAtomTy Atom_ty.TI64 -> true | _ -> false)
       | _ -> Alcotest.fail "expected inner VLam")
@@ -267,9 +274,9 @@ let test_unify_rename_snd () =
       let v_fst = closure_apply mc outer_clo (VAtomTy Atom_ty.TI64) in
       match v_fst with
       | VLam { body = inner_clo; _ } ->
-          let result = closure_apply mc inner_clo (VAtomTy Atom_ty.TBool) in
+          let result = closure_apply mc inner_clo (VAtomTy Atom_ty.TChar) in
           Alcotest.(check bool) "rename snd" true
-            (match result with VAtomTy Atom_ty.TBool -> true | _ -> false)
+            (match result with VAtomTy Atom_ty.TChar -> true | _ -> false)
       | _ -> Alcotest.fail "expected inner VLam")
   | _ -> Alcotest.fail "expected VLam"
 
@@ -277,7 +284,7 @@ let test_unify_occurs_check () =
   let mc = mc () in
   let id = MetaContext.fresh mc in
   let v1 = VFlex { id; spine = [] } in
-  let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TBool } } in
+  let v2 = VPi { explicitness = Explicit; domain = VFlex { id; spine = [] }; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TChar } } in
   match unify mc [] 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected occurs check error"
@@ -298,7 +305,7 @@ let test_unify_nonlinear_spine () =
 let test_unify_mismatch () =
   let mc = mc () in
   let v1 = VAtomTy Atom_ty.TI64 in
-  let v2 = VAtomTy Atom_ty.TBool in
+  let v2 = VAtomTy Atom_ty.TChar in
   match unify mc [] 0 v1 v2 with
   | exception UnifyError _ -> ()
   | _ -> Alcotest.fail "expected unify error"
@@ -306,7 +313,7 @@ let test_unify_mismatch () =
 let test_unify_nominal_params () =
   let mc = mc () in
   let nom1 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy Atom_ty.TI64 ]; constructors = [] } in
-  let nom2 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy Atom_ty.TBool ]; constructors = [] } in
+  let nom2 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy Atom_ty.TChar ]; constructors = [] } in
   match unify mc [] 0 nom1 nom2 with
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different nominal params"
@@ -320,7 +327,7 @@ let test_unify_effect_same_id_same_params () =
 let test_unify_effect_same_id_different_params () =
   let mc = mc () in
   let eff1 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
-  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TBool ]; operations = [] } in
+  let eff2 = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TChar ]; operations = [] } in
   match unify mc [] 0 eff1 eff2 with
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different effect params"
@@ -524,10 +531,10 @@ let is_zeroish_source call =
   "do
      is_zeroish : [T : Type] -> T -> Bool = fn[T : Type](x) do
        match T do I64 -> x == 0
-       | Bool -> x == false
-       | Unit -> true
+       | Bool -> x == False
+       | Unit -> True
        | Char -> x == 'a'
-       | _ -> false
+       | _ -> False
        end
      end
      " ^ call ^ "
@@ -540,10 +547,10 @@ let test_eval_type_case_i64_nonzero () =
   check_bool "type-case I64 nonzero" false (is_zeroish_source "is_zeroish(1)") ()
 
 let test_eval_type_case_bool_false () =
-  check_bool "type-case Bool false" true (is_zeroish_source "is_zeroish(false)") ()
+  check_bool "type-case Bool False" true (is_zeroish_source "is_zeroish(False)") ()
 
 let test_eval_type_case_bool_true () =
-  check_bool "type-case Bool true" false (is_zeroish_source "is_zeroish(true)") ()
+  check_bool "type-case Bool True" false (is_zeroish_source "is_zeroish(True)") ()
 
 let test_eval_type_case_unit () =
   check_bool "type-case Unit" true (is_zeroish_source "is_zeroish(())") ()
@@ -555,7 +562,7 @@ let default_source call =
   "do
      default : [T : Type] -> T = fn[T : Type] do
        match T do I64 -> 0
-       | Bool -> false
+       | Bool -> False
        | Unit -> ()
        | Char -> 'a'
        | _ -> panic(\"no default\")
@@ -583,7 +590,7 @@ let default_or_source call =
   "do
      default_or : [T : Type] -> T -> T = fn[T : Type](fallback) do
        match T do I64 -> 0
-       | Bool -> false
+       | Bool -> False
        | Unit -> ()
        | Char -> 'a'
        | String -> \"\"
@@ -597,7 +604,7 @@ let test_eval_type_case_default_or_i64 () =
   check_i64 "type-case default_or I64" 0L (default_or_source "default_or[I64](99)") ()
 
 let test_eval_type_case_default_or_bool () =
-  check_bool "type-case default_or Bool" false (default_or_source "default_or[Bool](true)") ()
+  check_bool "type-case default_or Bool" false (default_or_source "default_or[Bool](True)") ()
 
 let test_eval_type_case_default_or_string () =
   check_bool "type-case default_or String" true (default_or_source "default_or[String](\"fallback\") == \"\"") ()
@@ -745,7 +752,7 @@ let test_eval_handler_parameterized_dispatch () =
      StateBool = State(Bool)
      match (if perform StateBool.get(()) do perform StateI64.get(()) + 1 else 0 end) do x -> x
      | effect StateI64.get () -> resume(10)
-     | effect StateBool.get () -> resume(true)
+     | effect StateBool.get () -> resume(True)
      end
      end"
     ()
@@ -824,7 +831,8 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr (None, None))) sour
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
       list = Elaborate.resolve_stdlib ctx ["List"];
       pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"];
-      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"] }
+      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"];
+      bool = Elaborate.resolve_stdlib ctx ["Bool"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -854,7 +862,8 @@ let eval_decl_module source =
       decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
       list = Elaborate.resolve_stdlib ctx ["List"];
       pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"];
-      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"] }
+      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"];
+      bool = Elaborate.resolve_stdlib ctx ["Bool"] }
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_expr ctx expr in
@@ -919,14 +928,14 @@ let check_i64_macro label expected source () =
 
 let test_macro_hygiene_no_capture_user () =
   check_i64_macro "no capture" 1L
-    "do x = 1; macro m(_) -> Syntax.lam(\"x\", Syntax.var(\"x\")); (m @ (0))(x) end" ()
+    "do x = 1; macro m(_) -> Syntax.lam(\"x\", Syntax.var(\"x\")); (m(0))(x) end" ()
 
 let test_macro_hygiene_user_no_capture_macro () =
   check_i64_macro "no capture" 1L
-    "do macro m(_) -> Syntax.lam(\"x\", Syntax.var(\"x\")); x = 1; (m @ (0))(x) end" ()
+    "do macro m(_) -> Syntax.lam(\"x\", Syntax.var(\"x\")); x = 1; (m(0))(x) end" ()
 
 let test_macro_panic_has_message () =
-  match eval_with_macros "do macro bad(_) -> panic[I64](\"boom\"); bad @ (0) end" with
+  match eval_with_macros "do macro bad(_) -> panic[I64](\"boom\"); bad(0) end" with
   | exception EvalError msg ->
       Alcotest.(check bool) "panic message contains 'boom'" true (String.contains msg 'b')
   | _ -> Alcotest.fail "expected panic"
@@ -935,7 +944,7 @@ let test_imported_macro_expands () =
   match
     eval_with_imported_macros
       [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
-      "do M = import \"macros\"; answer @ (0) end"
+      "do M = import \"macros\"; answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "imported macro" 42L n
   | v ->
@@ -959,7 +968,7 @@ let test_imported_macro_circular_visit () =
     eval_with_imported_macros
       [ ("a", "pub macro ma(_) -> do B = import \"b\"; Syntax.i64(1) end");
         ("b", "pub macro mb(_) -> do A = import \"a\"; Syntax.i64(2) end") ]
-      "do A = import \"a\"; ma @ (0) end"
+      "do A = import \"a\"; ma(0) end"
   with
   | exception Core_loader.CircularMacroVisit "a" -> ()
   | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
@@ -970,7 +979,7 @@ let test_macro_generated_import_loads_macros () =
     eval_with_imported_macros
       [ ("loader", "pub macro through(stx) -> stx");
         ("target", "pub macro answer(_) -> Syntax.i64(42)") ]
-      "do L = import \"loader\"; T = through @ (import \"target\"); answer @ (0) end"
+      "do L = import \"loader\"; T = through(import \"target\"); answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "macro-generated import" 42L n
   | v ->
@@ -982,7 +991,7 @@ let test_macro_generated_import_checks_missing () =
   match
     eval_with_imported_macros
       [ ("loader", "pub macro through(stx) -> stx") ]
-      "do L = import \"loader\"; through @ (import \"missing\") end"
+      "do L = import \"loader\"; through(import \"missing\") end"
   with
   | exception Core_loader.ImportNotFound "missing" -> ()
   | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
@@ -993,7 +1002,7 @@ let test_imported_macro_calls_regular_function () =
     eval_with_imported_macros
       [ ("helper", "pub make_answer = fn(stx) -> Syntax.i64(42)");
         ("macros", "pub macro answer(stx) -> do H = import \"helper\"; H.make_answer(stx) end") ]
-      "do M = import \"macros\"; answer @ (0) end"
+      "do M = import \"macros\"; answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "macro calls function" 42L n
   | v ->
@@ -1019,36 +1028,36 @@ let test_macro_multi_arg () =
   check_i64_macro "macro multi-arg" 7L
     "do
        macro add(a, b) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), a), b)
-       add @ (3, 4)
+       add(3, 4)
      end" ()
 
 let test_macro_multi_arg_swap () =
   check_i64_macro "macro multi-arg swap" (-2L)
     "do
        macro flip(a, b) -> Syntax.ap(Syntax.ap(Syntax.var(\"-\"), b), a)
-       flip @ (5, 3)
+       flip(5, 3)
      end" ()
 
 let test_macro_default_expr () =
   check_i64_macro "macro default kind Expr" 1L
     "do
        macro check(stx) -> Syntax.i64(1)
-       check @ (0)
+       check(0)
      end" ()
 
 let test_macro_expr_annotation () =
   check_i64_macro "macro : Expr(_) explicit annotation" 1L
     "do
        macro check(_) : Expr(_) -> Syntax.i64(1)
-       check @ (0)
+       check(0)
      end" ()
 
 let test_macro_decl_in_expr_context () =
   match
     eval_with_macros
       "do
-         macro check(_) : Decl -> Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(42), false)
-         check @ (0)
+         macro check(_) : Decl -> Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(42), False)
+         check(0)
        end"
   with
   | exception (Failure msg) ->
@@ -1061,16 +1070,16 @@ let test_macro_decl_in_expr_context () =
 let test_macro_name_shadowing () =
   check_i64_macro "macro name shadowing regardless of kind" 1L
     "do
-       macro m(_) : Decl -> Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(0), false)
+       macro m(_) : Decl -> Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(0), False)
        macro m(stx) -> Syntax.i64(1)
-       m @ (0)
+       m(0)
      end" ()
 
 let test_decl_kind_registered_persists () =
   match eval_with_macros
     "do
-       macro m(_) : Decl -> Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(1), false);
-       m @ (0)
+       macro m(_) : Decl -> Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(1), False);
+       m(0)
      end"
   with
   | exception (Failure msg) ->
@@ -1080,8 +1089,8 @@ let test_decl_kind_registered_persists () =
 
 let test_decl_macro_generates_binding () =
   let _ = eval_decl_module
-    "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), false) end
-mk @ (0)
+    "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) end
+mk(0)
 pub answer = 42"
   in
   ()
@@ -1089,8 +1098,8 @@ pub answer = 42"
 let test_imported_decl_macro () =
   match eval_with_imported_macros
     [ "imported_decl_module",
-      "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), false) end
-mk @ (0)
+      "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) end
+mk(0)
 pub answer = 42" ]
     "do
       M = import \"imported_decl_module\"
@@ -1101,7 +1110,7 @@ pub answer = 42" ]
    | _ -> Alcotest.fail "expected 42"
 
 let test_decl_macro_two_calls () =
-  let _ = eval_decl_module "macro m1(_) : Decl do Nil end;macro m2(_) : Decl do Nil end;m2 @ (0)"
+  let _ = eval_decl_module "macro m1(_) : Decl do Nil end;macro m2(_) : Decl do Nil end;m2(0)"
   in
   ()
 
@@ -1109,7 +1118,7 @@ let test_pattern_round_trip () =
   check_i64_macro "Pattern builder evaluates" 1L
     "do
        macro check(_) -> Syntax.i64(1)
-       do _ = Syntax.pat_wild; check @ (0) end
+       do _ = Syntax.pat_wild; check(0) end
      end" ()
 
 let test_type_aware_macro () =
@@ -1118,7 +1127,7 @@ let test_type_aware_macro () =
        macro default(_) : A do
          do _ = A; Syntax.i64(1) end
        end
-       default @ (0)
+       default(0)
      end" ()
 
 let test_type_aware_checking () =
@@ -1129,8 +1138,8 @@ let test_type_aware_checking () =
        | _ -> Syntax.i64(0)
        end
      end
-     pub x : I64 = default @ (0)
-     pub y = default @ (0)"
+     pub x : I64 = default(0)
+     pub y = default(0)"
   in
   (* Type annotation on x means checking mode — A should be I64 → 42
      No annotation on y means inference — A is fresh meta → should match wildcard *)
@@ -1142,11 +1151,11 @@ let test_type_default_macro () =
        macro default(_) : A do
          match A do
          | RExpr(I64) -> Syntax.i64(0)
-         | RExpr(Bool) -> Syntax.bool(false)
+         | RExpr(Bool) -> Syntax.var(\"False\")
          | _ -> do _ = A; Syntax.i64(42) end
          end
        end
-       do x : I64 = default @ (0); x end
+       do x : I64 = default(0); x end
      end" ()
 
 let test_type_default_bool () =
@@ -1155,14 +1164,14 @@ let test_type_default_bool () =
        macro default(_) : Expr(A) do
          match A do
          | RExpr(I64) -> Syntax.i64(0)
-         | RExpr(Bool) -> Syntax.bool(false)
-         | _ -> do _ = A; Syntax.bool(false) end
+         | RExpr(Bool) -> Syntax.var(\"False\")
+         | _ -> do _ = A; Syntax.var(\"False\") end
          end
        end
-       do x : Bool = default @ (0); x end
+       do x : Bool = default(0); x end
      end"
   with
-  | VAtom (Bool b) -> Alcotest.(check bool) "type-directed default for Bool" false b
+  | VCon { name = "False"; _ } -> ()
   | v -> Alcotest.fail (Debug.pp_value_short (MetaContext.create ()) v)
 
 let test_rtype_match_non_exhaustive_missing_ctors () =
@@ -1172,7 +1181,7 @@ let test_rtype_match_non_exhaustive_missing_ctors () =
        | RExpr(I64) -> Syntax.i64(0)
        end
      end
-     pub x : I64 = default @ (0)"
+     pub x : I64 = default(0)"
   with
   | _ -> Alcotest.fail "expected non-exhaustive match"
   | exception _ -> ()
@@ -1181,20 +1190,20 @@ let test_expr_binding () =
   check_i64_macro "macro : Expr(A) works" 1L
     "do
        macro mk(_) : Expr(A) do do _ = A; Syntax.i64(1) end end
-       mk @ (0)
+       mk(0)
      end" ()
 
 let test_expected_type_reaches_macro () =
   let _ = eval_decl_module
     "macro typed(_) : Expr(A) do Syntax.i64(42) end
-     pub x : I64 = typed @ (0)"
+     pub x : I64 = typed(0)"
   in
   ()
 
 let test_expected_type_rejects_mismatch () =
   match eval_decl_module
-    "macro typed(_) : Expr(A) do Syntax.bool(true) end
-     pub x : I64 = typed @ (0)"
+    "macro typed(_) : Expr(A) do Syntax.var(\"True\") end
+     pub x : I64 = typed(0)"
   with
   | _ -> Alcotest.fail "expected type mismatch"
   | exception _ -> ()
@@ -1203,28 +1212,28 @@ let test_annotation_bare_binder () =
   check_i64_macro "bare : Int → binder with implicit param" 1L
     "do
        macro mk(_) : Int -> Syntax.i64(1)
-       mk @ (0)
+       mk(0)
      end" ()
 
 let test_annotation_expr_int_binder () =
   check_i64_macro ": Expr(Int) → binder with implicit param" 1L
     "do
        macro mk(_) : Expr(Int) -> Syntax.i64(1)
-       mk @ (0)
+       mk(0)
      end" ()
 
 let test_annotation_unknown_binder () =
   check_i64_macro "Expr(Foo) → binder creates extra param" 1L
     "do
        macro mk(_) : Expr(Foo) do Syntax.i64(1) end
-       mk @ (0)
+       mk(0)
      end" ()
 
 let test_annotation_expr_i64_binder () =
   check_i64_macro ": Expr(I64) → binder with implicit param" 1L
     "do
        macro mk(_) : Expr(I64) -> Syntax.i64(1)
-       mk @ (0)
+       mk(0)
      end" ()
 
 (** Stage 2: [Expr(I64)] is a binder, not a constraint. The synthesized
@@ -1233,7 +1242,7 @@ let test_binder_i64_referenceable () =
   check_i64_macro "Expr(I64) binder is referenceable in body" 1L
     "do
        macro mk(_) : Expr(I64) do do _ = I64; Syntax.i64(1) end end
-       mk @ (0)
+       mk(0)
      end" ()
 
 (** Stage 2: unresolved uppercase names remain binders — no guessing.
@@ -1242,7 +1251,7 @@ let test_binder_typo_guard () =
   check_i64_macro "Expr(Intt) typo → binder, not constraint" 1L
     "do
        macro mk(_) : Expr(Intt) do do _ = Intt; Syntax.i64(1) end end
-       mk @ (0)
+       mk(0)
      end" ()
 
 (** Stage 2: binder-mode type checking — when a binder annotation is
@@ -1251,7 +1260,7 @@ let test_binder_typo_guard () =
 let test_binder_type_mismatch () =
   match eval_decl_module
     "macro mk(_) : Expr(I64) -> Syntax.i64(1)
-     pub x : Bool = mk @ (0)"
+     pub x : Bool = mk(0)"
   with
   | _ -> Alcotest.fail "expected binder type mismatch"
   | exception _ -> ()
@@ -1260,8 +1269,8 @@ let test_binder_type_mismatch () =
     incompatible with the annotated use site. *)
 let test_binder_body_type_mismatch () =
   match eval_decl_module
-    "macro mk(_) : Expr(I64) -> Syntax.bool(true)
-     pub x : I64 = mk @ (0)"
+    "macro mk(_) : Expr(I64) -> Syntax.var(\"True\")
+     pub x : I64 = mk(0)"
   with
   | _ -> Alcotest.fail "expected binder body type mismatch"
   | exception _ -> ()
@@ -1306,7 +1315,7 @@ let test_driver_equiv_runtime () =
 let test_driver_equiv_macro () =
   let source =
     "macro mk(_) -> Syntax.i64(1)\n\
-     pub x : I64 = mk @ (0)\n"
+     pub x : I64 = mk(0)\n"
   in
   let a, b = driver_vs_pipeline source in
   Alcotest.(check bool)
@@ -1374,7 +1383,7 @@ let test_driver_expr_i64_constraint () =
 let test_driver_constraint_no_binder_arity () =
   let source =
     "macro mk(_) : Expr(I64) -> Syntax.i64(1)\n\
-     pub x : I64 = mk @ (0)\n"
+     pub x : I64 = mk(0)\n"
   in
   (* Verify the surface is well-formed and contains the expected runtime binding *)
   let output = run_driver source in
@@ -1687,7 +1696,7 @@ let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "do
        macro twice(x) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), x), x)
-       syntax wrap do | wrap $x -> twice @ ($x) end
+       syntax wrap do | wrap $x -> twice($x) end
        wrap 10
      end" ()
 
@@ -1717,7 +1726,7 @@ let test_operator_rhs_can_use_earlier_macro () =
   check_i64_macro "operator RHS macro path" 5L
     "do
        macro answer_body(_) -> Syntax.i64(5)
-       syntax answer do | answer -> answer_body @ (0) end
+       syntax answer do | answer -> answer_body(0) end
        answer
       end" ()
 
@@ -1745,46 +1754,46 @@ let test_operator_macro_error_reports_spans () =
 
 let test_syntax_module_expression_kind () =
   check_i64_macro "Syntax.kind expression object" 1L
-    "do macro answer(stx) -> match stx do | Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; x = 10; answer @ (x) end" ()
+    "do macro answer(stx) -> match stx do | Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; x = 10; answer(x) end" ()
 
 let test_syntax_module_literal_inspectors () =
   check_i64_macro "Syntax literal inspectors" 42L
-    "do macro answer(_) -> Syntax.i64(42); answer @ () end" ()
+    "do macro answer(_) -> Syntax.i64(42); answer() end" ()
 
 let test_syntax_module_literal_inspector_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Atom(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (Syntax.var(\"x\")) end" with
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Atom(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f(Syntax.var(\"x\")) end" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected atom fallback on non-atom"
 
 let test_syntax_module_ap_deconstructors () =
   check_i64_macro "Syntax ap deconstructors" 1L
-    "do macro f(stx) -> match stx do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (add(1, 2)) end" ()
+    "do macro f(stx) -> match stx do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f(add(1, 2)) end" ()
 
 let test_syntax_module_ap_deconstructor_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Ap(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (1) end" with
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Ap(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f(1) end" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected ap fallback on non-ap"
 
 let test_syntax_module_lam_deconstructor_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Lam(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (Syntax.i64(0)) end" with
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Lam(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f(Syntax.i64(0)) end" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected lam fallback on non-lam"
 
 let test_syntax_module_let_deconstructor_error () =
-  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Let(_, _, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f @ (Syntax.i64(0)) end" with
+  match eval_with_macros "do macro f(stx) -> match stx do Syntax.Let(_, _, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; f(Syntax.i64(0)) end" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected let fallback on non-let"
 
 let test_syntax_module_identifier_inspection () =
   check_i64_macro "Syntax identifier inspection" 1L
-    "do macro inspect(stx) -> match stx do Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; target = 10; inspect @ (target) end" ()
+    "do macro inspect(stx) -> match stx do Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; target = 10; inspect(target) end" ()
 
 
 let test_syntax_module_i64_builder () =
   check_i64_macro "Syntax.i64 builder" 42L
     "do
        macro answer(_) -> Syntax.i64(42)
-       answer @ (0)
+       answer(0)
      end" ()
 
 let test_syntax_class_types_accessible () =
@@ -1827,7 +1836,7 @@ let test_pattern_syn_in_prelude () =
       Alcotest.fail (Printf.sprintf "exception: %s" (Printexc.to_string e))
 
 let test_syntax_primitive_names_hidden () =
-  match eval_with_macros "do macro answer(_) -> stx_make_i64(42); answer @ (0) end" with
+  match eval_with_macros "do macro answer(_) -> stx_make_i64(42); answer(0) end" with
   | exception Elaborate.ElabError (Elaborate.UnboundVariable "stx_make_i64") -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected direct stx_* primitive name to be hidden"
@@ -1836,7 +1845,7 @@ let test_syntax_module_application_builder () =
   check_i64_macro "Syntax.ap builder" 3L
     "do
        macro add(_) -> Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.i64(1)), Syntax.i64(2))
-       add @ (0)
+       add(0)
      end" ()
 
 let test_syntax_module_literal_builders () =
@@ -1844,8 +1853,8 @@ let test_syntax_module_literal_builders () =
     "do
        macro char_a(_) -> Syntax.char('a')
        macro unit_value(_) -> Syntax.unit(())
-       if char_a @ (0) == 'a' do
-         if unit_value @ (0) == () do 42 else 0 end
+       if char_a(0) == 'a' do
+         if unit_value(0) == () do 42 else 0 end
        else 0 end
       end" ()
 
@@ -1853,7 +1862,7 @@ let test_syntax_module_let_builder () =
   check_i64_macro "Syntax let builder" 7L
     "do
        macro answer(_) -> Syntax.let_in(\"x\", Syntax.i64(3), Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.var(\"x\")), Syntax.i64(4)))
-       answer @ (0)
+       answer(0)
       end" ()
 
 let test_operator_macro_discards_unelaborated_perform_operand () =
@@ -1865,31 +1874,31 @@ let test_operator_macro_discards_unelaborated_perform_operand () =
 
 let test_7g_adt_matching_hygiene_roundtrip () =
   check_i64_macro "7G: ADT matching preserves binding hygiene" 42L
-    "do x = 1; macro passthrough(stx) -> match stx do | Syntax.Lam(_, _) -> stx | _ -> stx end; (passthrough @ (fn(x) -> x))(42) end" ()
+    "do x = 1; macro passthrough(stx) -> match stx do | Syntax.Lam(_, _) -> stx | _ -> stx end; (passthrough(fn(x) -> x))(42) end" ()
 
 let test_7g_adt_matching_hygiene_introduced_body () =
   check_i64_macro "7G: ADT destructured body not captured by outer scope" 80L
-    "do macro double(stx) -> match stx do | Syntax.Lam(_, body) -> Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ -> Syntax.i64(0) end; (double @ (fn(x) -> x))(40) end" ()
+    "do macro double(stx) -> match stx do | Syntax.Lam(_, body) -> Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ -> Syntax.i64(0) end; (double(fn(x) -> x))(40) end" ()
 
 let test_7g_adt_matching_flip_args () =
   check_i64_macro "7G: computed multi-kind dispatch not possible with templates" 1L
-    "do macro classify(stx) -> match stx do | Syntax.Lam(_, _) -> Syntax.i64(1) | Syntax.Ap(_, _) -> Syntax.i64(2) | Syntax.Var(_) -> Syntax.i64(3) | _ -> Syntax.i64(0) end; classify @ (fn(x) -> x) end" ()
+    "do macro classify(stx) -> match stx do | Syntax.Lam(_, _) -> Syntax.i64(1) | Syntax.Ap(_, _) -> Syntax.i64(2) | Syntax.Var(_) -> Syntax.i64(3) | _ -> Syntax.i64(0) end; classify(fn(x) -> x) end" ()
 
 let test_7g_adt_simple_flip () =
   check_i64_macro "7G: simple swap args via nested match" (-2L)
-    "do macro swap(stx) -> match stx do | Syntax.Ap(inner, b) -> match inner do | Syntax.Ap(f, a) -> Syntax.ap(Syntax.ap(f, b), a) | _ -> stx end | _ -> stx end; result = swap @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+    "do macro swap(stx) -> match stx do | Syntax.Ap(inner, b) -> match inner do | Syntax.Ap(f, a) -> Syntax.ap(Syntax.ap(f, b), a) | _ -> stx end | _ -> stx end; result = swap((fn(x, y) -> x - y)(5, 3)); result end" ()
 
 let test_7g_diag_outer_binders () =
   check_i64_macro "7G: DEBUG outer match with named binders" 1L
-    "do macro t(stx) -> match stx do | Syntax.Ap(inner, b) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; result = t @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+    "do macro t(stx) -> match stx do | Syntax.Ap(inner, b) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; result = t((fn(x, y) -> x - y)(5, 3)); result end" ()
 
 let test_7g_diag_inner_binders_wildcards () =
   check_i64_macro "7G: DEBUG inner match with wildcards only" 1L
-    "do macro t(stx) -> match stx do | Syntax.Ap(inner, _) -> match inner do | Syntax.Ap(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; result = t @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+    "do macro t(stx) -> match stx do | Syntax.Ap(inner, _) -> match inner do | Syntax.Ap(_, _) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; result = t((fn(x, y) -> x - y)(5, 3)); result end" ()
 
 let test_7g_diag_inner_binders_named () =
   check_i64_macro "7G: DEBUG inner match with named binders" 1L
-    "do macro t(stx) -> match stx do | Syntax.Ap(inner, _) -> match inner do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; result = t @ ((fn(x, y) -> x - y)(5, 3)); result end" ()
+    "do macro t(stx) -> match stx do | Syntax.Ap(inner, _) -> match inner do | Syntax.Ap(f, a) -> Syntax.i64(1) | _ -> Syntax.i64(0) end | _ -> Syntax.i64(0) end; result = t((fn(x, y) -> x - y)(5, 3)); result end" ()
 
 let test_7i_generated_syntax_later_wins_shadow () =
   match
@@ -1949,22 +1958,22 @@ let test_operator_prefix_shadowing_is_lexical () =
       end" ()
 
 let test_syntax_template_unless () =
-  check_i64_macro "unless false passes through" 10L
+  check_i64_macro "unless False passes through" 10L
     "do
        syntax unless do
        | unless $cond $branch -> if $cond do 0 else $branch end
        end
-       unless false 10
+       unless False 10
      end" ()
 
 let test_syntax_template_when_match () =
-  check_i64_macro "when false falls back" 0L
+  check_i64_macro "when False falls back" 0L
     "do
        syntax when do
        | when $cond $branch else $fallback ->
            if $cond do $branch else $fallback end
        end
-       when false 42 else 0
+       when False 42 else 0
      end" ()
 
 let test_syntax_template_hole_reuse () =
@@ -2054,8 +2063,8 @@ let test_syntax_template_generates_syntax_form () =
        syntax build_choose do
        | build_choose -> do
            syntax flag do
-           | flag yes -> true
-           | flag no -> false
+           | flag yes -> True
+           | flag no -> False
            end
            syntax choose do
            | choose $cond then $branch else $fallback ->
@@ -2132,8 +2141,8 @@ let test_syntax_template_nested_callsite_unparenthesized () =
   check_i64_macro "nested syntax callsite inside unparenthesized holes" 7L
     "do
        syntax bool do
-       | bool yes -> true
-       | bool no -> false
+       | bool yes -> True
+       | bool no -> False
        end
        syntax add2 do | add2 $x -> $x + 2 end
        syntax pick do
@@ -2386,7 +2395,7 @@ let test_7i_generated_pub_macro_across_imports () =
                       end
                   end;
                   export_macro") ]
-      "do M = import \"gen\"; answer @ (0) end"
+      "do M = import \"gen\"; answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "7I generated pub macro across imports" 42L n
   | v ->
@@ -2468,7 +2477,7 @@ let test_7i_generated_macro_cycle () =
                      end
                    end;
                    gen_mb")
-      ] "do A = import \"mac_a\"; ma @ (0) end"
+      ] "do A = import \"mac_a\"; ma(0) end"
   with
   | exception Core_loader.CircularSyntaxVisit "mac_a" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
@@ -2508,10 +2517,10 @@ let () =
             (check_i64 "non-rec let rhs sees outer" 1L "do x = 1; x = x; x end");
           Alcotest.test_case "lambda shadows outer let" `Quick
             (check_i64 "lambda shadows outer let" 7L "do x = 1; (fn(x) -> x : I64 -> I64)(7) end");
-          Alcotest.test_case "if true" `Quick (check_i64 "if true" 1L "if true do 1 else 2 end");
-          Alcotest.test_case "if false" `Quick (check_i64 "if false" 2L "if false do 1 else 2 end");
+          Alcotest.test_case "if True" `Quick (check_i64 "if True" 1L "if True do 1 else 2 end");
+          Alcotest.test_case "if False" `Quick (check_i64 "if False" 2L "if False do 1 else 2 end");
           Alcotest.test_case "prod" `Quick test_eval_prod;
-          Alcotest.test_case "proj" `Quick (check_i64 "proj" 42L "(42, true).0");
+          Alcotest.test_case "proj" `Quick (check_i64 "proj" 42L "(42, True).0");
           Alcotest.test_case "dot" `Quick test_eval_dot;
           Alcotest.test_case "module signature argument" `Quick test_eval_module_signature_argument;
           Alcotest.test_case "module signature extra field" `Quick test_eval_module_signature_extra_field;
@@ -2525,7 +2534,7 @@ let () =
           Alcotest.test_case "pi" `Quick test_eval_pi;
           Alcotest.test_case "eq i64" `Quick (check_bool "eq i64" true "1 == 1");
           Alcotest.test_case "neq i64" `Quick (check_bool "neq i64" true "1 != 2");
-          Alcotest.test_case "eq bool" `Quick (check_bool "eq bool" false "true == false");
+          Alcotest.test_case "eq bool" `Quick (check_bool "eq bool" false "True == False");
           Alcotest.test_case "eq char" `Quick (check_bool "eq char" true "'a' == 'a'");
           Alcotest.test_case "eq unit" `Quick (check_bool "eq unit" true "() == ()");
           Alcotest.test_case "eq string" `Quick (check_bool "eq string" true "\"hello\" == \"hello\"");
@@ -2538,7 +2547,7 @@ let () =
               | _ -> Alcotest.fail "expected panic");
           Alcotest.test_case "fix" `Quick
             (check_i64 "fix" 0L
-               "do rec f : Bool -> I64 = fn(x) -> if x do 0 else f(true) end; f(false) end");
+               "do rec f : Bool -> I64 = fn(x) -> if x do 0 else f(True) end; f(False) end");
           Alcotest.test_case "rec sum" `Quick
             (check_i64 "rec sum" 15L
                "do rec sum : I64 -> I64 = fn(n) -> if n == 0 do 0 else sum(n - 1) + n end; sum(5) end");
@@ -2553,7 +2562,7 @@ let () =
                "do rec f : I64 -> I64 = fn(n) -> if n == 5 do 5 else f(n + 1) end; f(0) end");
           Alcotest.test_case "rec not" `Quick
             (check_i64 "rec not" 0L
-               "do rec f : Bool -> I64 = fn(x) -> if x do 0 else f(not x) end; f(false) end");
+               "do rec f : Bool -> I64 = fn(x) -> if x do 0 else f(not x) end; f(False) end");
           Alcotest.test_case "unhandled perform" `Quick test_eval_unhandled_perform;
           Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
@@ -2569,8 +2578,8 @@ let () =
           Alcotest.test_case "handler record payload binding order" `Quick test_eval_handler_record_payload_binding_order;
           Alcotest.test_case "type-case I64 zero" `Quick test_eval_type_case_i64_zero;
           Alcotest.test_case "type-case I64 nonzero" `Quick test_eval_type_case_i64_nonzero;
-          Alcotest.test_case "type-case Bool false" `Quick test_eval_type_case_bool_false;
-          Alcotest.test_case "type-case Bool true" `Quick test_eval_type_case_bool_true;
+          Alcotest.test_case "type-case Bool False" `Quick test_eval_type_case_bool_false;
+          Alcotest.test_case "type-case Bool True" `Quick test_eval_type_case_bool_true;
           Alcotest.test_case "type-case Unit" `Quick test_eval_type_case_unit;
           Alcotest.test_case "type-case Char a" `Quick test_eval_type_case_char_a;
           Alcotest.test_case "type-case default I64" `Quick test_eval_type_case_default_i64;
@@ -2642,7 +2651,7 @@ let () =
              Alcotest.test_case "constructor tuple payload remains single arg" `Quick
                (check_i64 "constructor tuple payload remains single arg" 1L
                   "do type Pair = P(I64 * Bool); \
-                   match P((1, true)) do P(pair) -> pair.0 end end");
+                   match P((1, True)) do P(pair) -> pair.0 end end");
            Alcotest.test_case "qualified constructor pattern" `Quick
              (check_i64 "qualified constructor pattern" 2L
                 "do S = module pub type Color = Red | Green end; \
@@ -2666,7 +2675,7 @@ let () =
                 "match 1 do (0 | 1) -> 42 | _ -> 0 end");
           Alcotest.test_case "match bool literal" `Quick
             (check_i64 "match bool literal" 0L
-               "match false do true -> 1 | false -> 0 end");
+               "match False do True -> 1 | False -> 0 end");
           Alcotest.test_case "match unit literal" `Quick
             (check_i64 "match unit literal" 7L
                "match () do () -> 7 end");
@@ -2690,25 +2699,25 @@ let () =
                 "do type Wrapper = W(I64); match W(41) do W(x) -> x + 1 end end");
            Alcotest.test_case "match tuple bind" `Quick
              (check_i64 "match tuple bind" 1L
-                "match (1, true) do (x, b) -> if b do x else 0 end end");
+                "match (1, True) do (x, b) -> if b do x else 0 end end");
           Alcotest.test_case "match tuple wildcard" `Quick
             (check_i64 "match tuple wildcard" 2L
                "match (1, 2) do (_, y) -> y end");
           Alcotest.test_case "match whole tuple binder" `Quick
             (check_i64 "match whole tuple binder" 1L
-               "match (1, true) do p -> p.0 end");
+               "match (1, True) do p -> p.0 end");
           Alcotest.test_case "match nested tuple" `Quick
             (check_i64 "match nested tuple" 3L
-               "match ((1, true), 2) do ((x, _), y) -> x + y end");
+               "match ((1, True), 2) do ((x, _), y) -> x + y end");
           Alcotest.test_case "match tuple literals" `Quick
             (check_i64 "match tuple literals" 9L
-               "match (false, 1) do (true, x) -> x | (false, _) -> 9 end");
+               "match (False, 1) do (True, x) -> x | (False, _) -> 9 end");
           Alcotest.test_case "record field access" `Quick
             (check_i64 "record field access" 1L
                "do Point = struct x: I64; y: I64; end; (Point{x = 1; y = 2}).x end");
            Alcotest.test_case "parameterized record construction" `Quick
              (check_bool "parameterized record construction" true
-                "do Pair = fn[A : Type, B : Type] -> struct fst: A; snd: B; end; (Pair[I64, Bool]{fst = 1; snd = true}).snd end");
+                "do Pair = fn[A : Type, B : Type] -> struct fst: A; snd: B; end; (Pair[I64, Bool]{fst = 1; snd = True}).snd end");
           Alcotest.test_case "record type declaration" `Quick
             (check_i64 "record type declaration" 2L
                "do type Point = {x: I64; y: I64}; (Point{x = 1; y = 2}).y end");
@@ -2718,22 +2727,22 @@ let () =
                 p = Point{y = 20; x = 10}; p.x + p.y end");
           Alcotest.test_case "parameterized record type declaration" `Quick
             (check_bool "parameterized record type declaration" true
-               "do type Pair A B = {fst: A; snd: B}; (Pair{fst = 1; snd = true}).snd end");
+               "do type Pair A B = {fst: A; snd: B}; (Pair{fst = 1; snd = True}).snd end");
            Alcotest.test_case "polymorphic record multiple instantiations" `Quick
              (check_i64 "polymorphic record multiple instantiations" 13L
                 "do type Pair A B = {fst: A; snd: B}; \
                  p1 = Pair{fst = 10; snd = 20}; \
-                 p2 = Pair{fst = true; snd = 3}; \
+                 p2 = Pair{fst = True; snd = 3}; \
                  if p2.fst do p1.fst + p2.snd else 0 end end");
             Alcotest.test_case "parameterized record method" `Quick
               (check_bool "parameterized record method" true
-                 "do Pair = fn[A : Type, B : Type] -> struct fst: A; snd: B; pub swap = fn(p) -> (p.snd, p.fst) end; (Pair[I64, Bool].swap(Pair[I64, Bool]{fst = 1; snd = true})).0 end");
+                 "do Pair = fn[A : Type, B : Type] -> struct fst: A; snd: B; pub swap = fn(p) -> (p.snd, p.fst) end; (Pair[I64, Bool].swap(Pair[I64, Bool]{fst = 1; snd = True})).0 end");
             Alcotest.test_case "method uses self" `Quick
               (check_i64 "method uses self" 1L
                  "do Box = fn[A : Type] -> struct value: A; pub method get() do self.value end end; Box[I64].get(Box[I64]{value = 1}) end");
             Alcotest.test_case "parameterized method uses self" `Quick
               (check_bool "parameterized method uses self" true
-                 "do Pair = fn[A : Type, B : Type] -> struct fst: A; snd: B; pub method swap() do (self.snd, self.fst) end end; (Pair[I64, Bool].swap(Pair[I64, Bool]{fst = 1; snd = true})).0 end");
+                 "do Pair = fn[A : Type, B : Type] -> struct fst: A; snd: B; pub method swap() do (self.snd, self.fst) end end; (Pair[I64, Bool].swap(Pair[I64, Bool]{fst = 1; snd = True})).0 end");
            Alcotest.test_case "method extra parameter" `Quick
              (check_i64 "method extra parameter" 3L
                 "do Counter = struct value: I64; pub method add(x) do self.value + x end end; Counter.add(Counter{value = 1})(2) end");
@@ -2769,8 +2778,8 @@ let () =
           Alcotest.test_case "record pattern literal dispatch" `Quick
             (check_i64 "record pattern literal dispatch" 4L
                "do Flag = struct flag: Bool; value: I64; end; \
-                match Flag{flag = false; value = 3} do \
-                | Flag {flag = true; value} -> value | Flag {flag = false; value} -> value + 1 end end");
+                match Flag{flag = False; value = 3} do \
+                | Flag {flag = True; value} -> value | Flag {flag = False; value} -> value + 1 end end");
            Alcotest.test_case "qualified record pattern" `Quick
              (check_i64 "qualified record pattern" 3L
                 "do M = module pub Point = struct x: I64; y: I64; end end; \
@@ -2879,7 +2888,7 @@ let () =
                   match (if perform StateBool.get(()) do perform StateI64.get(()) else 0 end) do \
                     x -> x \
                   | effect StateI64.get () -> resume(1) \
-                  | effect StateBool.get () -> resume(true) \
+                  | effect StateBool.get () -> resume(True) \
                   end end");
         ] );
       ( "conv",
@@ -2907,7 +2916,7 @@ let () =
         [
           Alcotest.test_case "var" `Quick test_neutral_var;
           Alcotest.test_case "ap" `Quick test_neutral_ap;
-          Alcotest.test_case "if" `Quick test_neutral_if;
+          Alcotest.test_case "match" `Quick test_neutral_match;
         ] );
       ( "meta",
         [

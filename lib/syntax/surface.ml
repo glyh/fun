@@ -56,7 +56,6 @@ and t =
   | Ap of t * Explicitness.t * t
   | Lam of param * t
   | Let of { name : string; type_ : t option; value : t; body : t; recursive : bool }
-  | If of { cond : t; then_ : t; else_ : t }
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list

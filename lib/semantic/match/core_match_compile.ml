@@ -301,8 +301,7 @@ let collect_leaf_bindings m =
   r.bindings @ extra
 
 let all_atoms = function
-  | Atom_ty.TBool -> Some [ Atom.Bool true; Bool false ]
-  | Atom_ty.TUnit -> Some [ Unit ]
+  | Atom_ty.TUnit -> Some [ Atom.Unit ]
   | Atom_ty.TAbsurd -> Some []
   | Atom_ty.TI64 | Atom_ty.TChar | Atom_ty.TString -> None
 

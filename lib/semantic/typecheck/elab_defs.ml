@@ -133,7 +133,6 @@ let rec shift_term amount cutoff term =
           domain = shift cutoff domain;
           effects = { effects = List.map (shift (cutoff + 1)) effects.effects; tail = Option.map (shift (cutoff + 1)) effects.tail };
           codomain = shift (cutoff + 1) codomain }
-  | If (cond, then_, else_) -> If (shift cutoff cond, shift cutoff then_, shift cutoff else_)
   | Prod elems -> Prod (List.map (shift cutoff) elems)
   | ProdTy elems -> ProdTy (List.map (shift cutoff) elems)
   | EffectRowTy -> EffectRowTy

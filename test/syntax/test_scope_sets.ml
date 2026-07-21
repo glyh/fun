@@ -20,8 +20,8 @@ let lexical_shadowing_chooses_largest_scope () =
   let tbl = Binding.create () in
   let outer = Scope_set.of_list [ 1 ] in
   let inner = Scope_set.of_list [ 1; 2 ] in
-  Binding.extend tbl ~name:"x" ~scope:outer ~resolved_name:"outer";
-  Binding.extend tbl ~name:"x" ~scope:inner ~resolved_name:"inner";
+  Binding.extend tbl ~name:"x" ~scope:outer ~kind:Binding.Value ~resolved_name:"outer";
+  Binding.extend tbl ~name:"x" ~scope:inner ~kind:Binding.Value ~resolved_name:"inner";
   check_resolves "inner occurrence" (Some "inner") tbl (id "x" inner);
   check_resolves "outer occurrence" (Some "outer") tbl (id "x" outer)
 
@@ -29,8 +29,8 @@ let macro_introduced_names_do_not_capture_user_names () =
   let tbl = Binding.create () in
   let user_scope = Scope_set.singleton 10 in
   let macro_scope = Scope_set.singleton 20 in
-  Binding.extend tbl ~name:"tmp" ~scope:user_scope ~resolved_name:"user_tmp";
-  Binding.extend tbl ~name:"tmp" ~scope:macro_scope ~resolved_name:"macro_tmp";
+  Binding.extend tbl ~name:"tmp" ~scope:user_scope ~kind:Binding.Value ~resolved_name:"user_tmp";
+  Binding.extend tbl ~name:"tmp" ~scope:macro_scope ~kind:Binding.Value ~resolved_name:"macro_tmp";
   check_resolves "user occurrence" (Some "user_tmp") tbl (id "tmp" user_scope);
   check_resolves "macro occurrence" (Some "macro_tmp") tbl (id "tmp" macro_scope)
 
@@ -38,14 +38,14 @@ let user_names_do_not_capture_macro_names () =
   let tbl = Binding.create () in
   let user_scope = Scope_set.singleton 1 in
   let macro_scope = Scope_set.singleton 2 in
-  Binding.extend tbl ~name:"helper" ~scope:macro_scope ~resolved_name:"macro_helper";
-  Binding.extend tbl ~name:"helper" ~scope:user_scope ~resolved_name:"user_helper";
+  Binding.extend tbl ~name:"helper" ~scope:macro_scope ~kind:Binding.Value ~resolved_name:"macro_helper";
+  Binding.extend tbl ~name:"helper" ~scope:user_scope ~kind:Binding.Value ~resolved_name:"user_helper";
   check_resolves "macro helper" (Some "macro_helper") tbl (id "helper" macro_scope)
 
 let ambiguous_best_binding_is_rejected () =
   let tbl = Binding.create () in
-  Binding.extend tbl ~name:"x" ~scope:(Scope_set.singleton 1) ~resolved_name:"left";
-  Binding.extend tbl ~name:"x" ~scope:(Scope_set.singleton 2) ~resolved_name:"right";
+  Binding.extend tbl ~name:"x" ~scope:(Scope_set.singleton 1) ~kind:Binding.Value ~resolved_name:"left";
+  Binding.extend tbl ~name:"x" ~scope:(Scope_set.singleton 2) ~kind:Binding.Value ~resolved_name:"right";
   match Binding.resolve tbl (id "x" (Scope_set.of_list [ 1; 2 ])) with
   | exception Failure msg when String.starts_with ~prefix:"ambiguous binding" msg -> ()
   | exception exn -> Alcotest.failf "unexpected exception: %s" (Printexc.to_string exn)

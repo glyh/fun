@@ -32,8 +32,6 @@ and lower_expr (stx : Syntax.t) : Surface.t =
                   value = lower_expr value;
                   body = lower_expr body;
                   recursive }
-  | Syntax.If { cond; then_; else_ } ->
-    Surface.If { cond = lower_expr cond; then_ = lower_expr then_; else_ = lower_expr else_ }
   | Syntax.Annotated { inner; typ } ->
     Surface.Annotated { inner = lower_expr inner; typ = lower_expr typ }
   | Syntax.Prod xs -> Surface.Prod (List.map lower_expr xs)

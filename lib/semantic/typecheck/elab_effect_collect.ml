@@ -22,8 +22,6 @@ let rec compile_time_safe (expr : Surface.t) : bool =
   | Surface.Lam (_, body) -> compile_time_safe body
   | Surface.Let { type_; value; body; _ } ->
       Option.fold ~none:true ~some:compile_time_safe type_ && compile_time_safe value && compile_time_safe body
-  | Surface.If { cond; then_; else_ } ->
-      compile_time_safe cond && compile_time_safe then_ && compile_time_safe else_
   | Surface.Annotated { inner; typ } -> compile_time_safe inner && compile_time_safe typ
   | Surface.Prod elems | Surface.ProdTy elems -> List.for_all compile_time_safe elems
   | Surface.Arrow (_, _, a, row, b) ->
@@ -147,8 +145,6 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let fix_core = Fix (ops.check (Ctx.bind ctx name rec_ty) value rec_ty) in
       let fix_val = Ctx.eval ctx fix_core in
       union_expr_effects ctx (ops.collect_effects (Ctx.bind ctx name rec_ty) value) (ops.collect_effects (Ctx.define ctx name rec_ty fix_val) body)
-  | Surface.If { cond; then_; else_ } ->
-      union_many_expr_effects ctx [ ops.collect_effects ctx cond; ops.collect_effects ctx then_; ops.collect_effects ctx else_ ]
   | Surface.Annotated { inner; typ } ->
       require_empty_effects ctx (ops.collect_effects ctx typ);
       ops.collect_effects ctx inner

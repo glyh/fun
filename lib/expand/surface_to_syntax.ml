@@ -31,8 +31,6 @@ and expr (e : Surface.t) : Syntax.t =
     | Lam (p, body) -> Syntax.Lam (param p, expr body)
     | Let { name; type_; value; body; recursive } ->
       Syntax.Let { name = id name; type_ = Option.map expr type_; value = expr value; body = expr body; recursive }
-    | If { cond; then_; else_ } ->
-      Syntax.If { cond = expr cond; then_ = expr then_; else_ = expr else_ }
     | Annotated { inner; typ } ->
       Syntax.Annotated { inner = expr inner; typ = expr typ }
     | Prod xs -> Syntax.Prod (List.map expr xs)

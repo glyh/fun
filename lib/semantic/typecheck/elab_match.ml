@@ -101,7 +101,17 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
         | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
         | Surface.PatType _ -> Some VU
         | Surface.PatProd ps ->
-            Some (VProdTy (List.map (fun _ -> Ctx.raw_meta ctx) ps))
+            (* Refine each element from its sub-pattern where possible (e.g. a
+               constructor sub-pattern pins that element to its nominal type),
+               falling back to a fresh meta for wildcards/binders. *)
+            Some
+              (VProdTy
+                 (List.map
+                    (fun p ->
+                      match find_pat p with
+                      | Some t -> t
+                      | None -> Ctx.raw_meta ctx)
+                    ps))
         | Surface.PatRecord { typ_path; typ; _ } ->
             let record_value, ty = resolve_path_value ctx typ_path typ in
             (match Nbe.force ctx.Ctx.metas ty with

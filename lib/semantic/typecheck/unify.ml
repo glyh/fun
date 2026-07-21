@@ -229,9 +229,6 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
       (fun acc frame ->
         match frame with
         | FApp v -> Ap (acc, Explicit, go d v)
-        | FIf { then_; else_ } ->
-            If (acc, go d (Nbe.eval mc then_.env then_.body),
-                     go d (Nbe.eval mc else_.env else_.body))
         | FProj i -> Proj (acc, i)
         | FDot name -> Dot (acc, name)
         | FRefGet -> RefGet acc
@@ -345,7 +342,6 @@ let value_form = function
       "atom type "
       ^ (match atom_ty with
         | Atom_ty.TI64 -> "I64"
-        | Atom_ty.TBool -> "Bool"
         | Atom_ty.TUnit -> "Unit"
         | Atom_ty.TChar -> "Char"
         | Atom_ty.TString -> "String"
@@ -560,23 +556,14 @@ and unify_neutral (mc : MetaContext.t) (env : env) (depth : lvl) (n1 : neutral) 
   unify_frames mc env depth n1.frames n2.frames
 
 (** Unify two frame stacks element-wise. FApp frames unify their arguments;
-    FIf frames unify the then-branches and else-branches (via [eval] to
-    unfold closures); FProj frames unify the projection index. *)
+    FMatch frames unify their branch bodies (via [eval] to unfold closures);
+    FProj frames unify the projection index. *)
 and unify_frames (mc : MetaContext.t) (env : env) (depth : lvl) (fs1 : frame list)
     (fs2 : frame list) : unit =
   match (fs1, fs2) with
   | [], [] -> ()
   | FApp v1 :: rest1, FApp v2 :: rest2 ->
       unify mc env depth v1 v2;
-      unify_frames mc env depth rest1 rest2
-  | FIf { then_ = t1; else_ = e1 } :: rest1, FIf { then_ = t2; else_ = e2 } :: rest2
-    ->
-      unify mc env depth
-        (Nbe.eval mc t1.env t1.body)
-        (Nbe.eval mc t2.env t2.body);
-      unify mc env depth
-        (Nbe.eval mc e1.env e1.body)
-        (Nbe.eval mc e2.env e2.body);
       unify_frames mc env depth rest1 rest2
   | FProj i1 :: rest1, FProj i2 :: rest2 when i1 = i2 ->
       unify_frames mc env depth rest1 rest2

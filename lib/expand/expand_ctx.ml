@@ -71,25 +71,39 @@ let fresh_resolved_name (ctx : t) name =
 
 let extend (ctx : t) ~name ~resolved_name =
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope ~resolved_name;
+  Binding.extend ctx.binding_table ~name ~scope ~kind:Binding.Value ~resolved_name;
   scope
 
 let extend_fresh (ctx : t) ~name =
   let resolved_name = fresh_resolved_name ctx name in
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope ~resolved_name;
+  Binding.extend ctx.binding_table ~name ~scope ~kind:Binding.Value ~resolved_name;
   (scope, resolved_name)
 
 let extend_at (ctx : t) ~name ~base_scope ~resolved_name =
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~resolved_name;
+  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind:Binding.Value ~resolved_name;
   scope
 
-let extend_at_fresh (ctx : t) ~name ~base_scope =
+(** Like [extend_at] but tags the binding with an explicit [kind], so a
+    procedural-macro definition can register itself as a [Macro] binding in the
+    scope-aware table (name resolution then dispatches expand-vs-call by kind). *)
+let extend_at_kinded (ctx : t) ~name ~base_scope ~kind ~resolved_name =
+  let scope = fresh_scope_set ctx in
+  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name;
+  scope
+
+(** Like [extend_at] but allocates a fresh [resolved_name] (uniquified when
+    the written name is already bound) and tags an explicit [kind], so nested
+    definitions shadow lexically. Used for expression-level macro definitions. *)
+let extend_at_fresh_kinded (ctx : t) ~name ~base_scope ?(kind = Binding.Value) () =
   let resolved_name = fresh_resolved_name ctx name in
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~resolved_name;
+  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name;
   (scope, resolved_name)
+
+let extend_at_fresh (ctx : t) ~name ~base_scope =
+  extend_at_fresh_kinded ctx ~name ~base_scope ()
 
 let copy (ctx : t) : t =
   { binding_table = Binding.copy ctx.binding_table;

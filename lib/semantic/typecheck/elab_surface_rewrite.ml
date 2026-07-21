@@ -33,8 +33,6 @@ let rewrite_record_self_refs record_name params expr =
                 value = go bound value;
                 body = go (name :: bound) body;
                 recursive }
-        | Surface.If { cond; then_; else_ } ->
-            Surface.If { cond = go bound cond; then_ = go bound then_; else_ = go bound else_ }
         | Surface.Annotated { inner; typ } -> Surface.Annotated { inner = go bound inner; typ = go bound typ }
         | Surface.Prod elems -> Surface.Prod (List.map (go bound) elems)
         | Surface.ProdTy elems -> Surface.ProdTy (List.map (go bound) elems)

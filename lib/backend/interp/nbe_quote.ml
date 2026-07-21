@@ -157,11 +157,6 @@ and quote_frames ops (mc : MetaContext.t) (depth : lvl) (head : term) (frames : 
     (fun acc frame ->
       match frame with
       | FApp v -> Ap (acc, Explicit, quote ops mc depth v)
-      | FIf { then_; else_ } ->
-          If
-            ( acc,
-              quote ops mc depth (ops.eval mc then_.env then_.body),
-              quote ops mc depth (ops.eval mc else_.env else_.body) )
       | FProj i -> Proj (acc, i)
       | FDot name -> Dot (acc, name)
       | FRefGet -> RefGet acc
@@ -323,11 +318,6 @@ and conv_frames ops (mc : MetaContext.t) (depth : lvl) (fs1 : frame list) (fs2 :
   | [], [] -> true
   | FApp v1 :: rest1, FApp v2 :: rest2 ->
       conv ops mc depth v1 v2 && conv_frames ops mc depth rest1 rest2
-  | ( FIf { then_ = t1; else_ = e1 } :: rest1,
-      FIf { then_ = t2; else_ = e2 } :: rest2 ) ->
-      conv ops mc depth (ops.eval mc t1.env t1.body) (ops.eval mc t2.env t2.body)
-      && conv ops mc depth (ops.eval mc e1.env e1.body) (ops.eval mc e2.env e2.body)
-      && conv_frames ops mc depth rest1 rest2
   | FProj i1 :: rest1, FProj i2 :: rest2 -> i1 = i2 && conv_frames ops mc depth rest1 rest2
   | FDot n1 :: rest1, FDot n2 :: rest2 ->
       String.equal n1 n2 && conv_frames ops mc depth rest1 rest2

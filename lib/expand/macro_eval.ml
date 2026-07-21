@@ -39,7 +39,13 @@ type syntax_nominals = {
   list : value;
   pat : value;
   r_ : value;
+  bool : value;
 }
+
+(* [Bool] is a library ADT; reflected boolean flags (a [let]'s recursive/public
+   markers) are its nullary constructors [True]/[False], not atoms. *)
+let vcon_bool nominals b =
+  VCon { name = (if b then "True" else "False"); spine = []; nominal = nominals.bool }
 
 let vcon_none nominals =
   VCon { name = Compiler_names.Constructor_name.none; spine = []; nominal = nominals.option_ }
@@ -122,7 +128,6 @@ let explicitness_to_value nominals (e : Explicitness.t) : value =
 let atom_to_atomval nominals (a : Atom.t) : value =
   match a with
   | Atom.I64 n -> VCon { name = "I64Atom"; spine = [ VAtom (I64 n) ]; nominal = nominals.atom_val }
-  | Atom.Bool b -> VCon { name = "BoolAtom"; spine = [ VAtom (Bool b) ]; nominal = nominals.atom_val }
   | Atom.Char c -> VCon { name = "CharAtom"; spine = [ VAtom (Char c) ]; nominal = nominals.atom_val }
   | Atom.String s -> VCon { name = "StringAtom"; spine = [ VAtom (String s) ]; nominal = nominals.atom_val }
   | Atom.Unit -> VCon { name = "UnitAtom"; spine = []; nominal = nominals.atom_val }
@@ -131,8 +136,6 @@ let atomval_to_atom ?nominals (v : value) : Atom.t option =
   match v with
   | VCon { name; spine = [ VAtom (I64 n) ]; nominal }
     when atom_val_con_matches ?nominals "I64Atom" name nominal -> Some (Atom.I64 n)
-  | VCon { name; spine = [ VAtom (Bool b) ]; nominal }
-    when atom_val_con_matches ?nominals "BoolAtom" name nominal -> Some (Atom.Bool b)
   | VCon { name; spine = [ VAtom (Char c) ]; nominal }
     when atom_val_con_matches ?nominals "CharAtom" name nominal -> Some (Atom.Char c)
   | VCon { name; spine = [ VAtom (String s) ]; nominal }
@@ -180,7 +183,7 @@ and wrap_stx_sub nominals (stx : Syntax.t) : value =
                [ span_opt; id_to_value nominals name; type_val;
                  wrap_stx_sub nominals value;
                  wrap_stx_sub nominals body;
-                 VAtom (if recursive then Bool true else Bool false) ];
+                 vcon_bool nominals recursive ];
              nominal = nominals.expr }
   | _ ->
       VStx (StxExpr stx)
@@ -217,7 +220,7 @@ let wrap_stx ~nominals (stx : Syntax.t) : value =
                [ span_opt; id_to_value nominals name; type_val;
                  wrap_stx_sub nominals value;
                  wrap_stx_sub nominals body;
-                  VAtom (if recursive then Bool true else Bool false) ];
+                 vcon_bool nominals recursive ];
              nominal = nominals.expr }
   | _ ->
       VStx (StxExpr stx)
@@ -275,7 +278,10 @@ and value_to_param ?nominals (v : value) : Syntax.param =
         type_ = None; trait_bounds = []; explicitness = Explicitness.Explicit }
 
 and value_to_bool (v : value) : bool =
-  match v with VAtom (Bool b) -> b | _ -> false
+  match v with
+  | VCon { name = "True"; _ } -> true
+  | VCon { name = "False"; _ } -> false
+  | _ -> false
 
 let rec unwind_stx ?nominals (v : value) : Syntax.t option =
   match v with
@@ -352,7 +358,7 @@ let wrap_stx_decl ~nominals (bindings : Syntax.struct_binding list) : value =
         | Syntax.LetBinding { name; value; public; _ } :: rest ->
             let id_val = id_to_value n name in
             let expr_val = wrap_stx_sub n value in
-            let pub_val = VAtom (if public then Bool true else Bool false) in
+            let pub_val = vcon_bool n public in
             let head = VCon { name = "DeclLet"; spine = [ id_val; expr_val; pub_val ]; nominal = n.decl } in
             VCon { name = "Cons"; spine = [ head; go rest ]; nominal = n.list }
         | _ :: rest -> go rest  (* skip non-LetBindings for now *)

@@ -11,14 +11,11 @@ let parse_pat_terms terms =
         | Token { kind = Char c; _ } -> (Syntax.PatAtom (Atom.Char c), rest)
         | Token { kind = Unit; _ } -> (Syntax.PatAtom Atom.Unit, rest)
         | Token { kind = KwUnit; _ } -> (Syntax.PatType Atom_ty.TUnit, rest)
-        | Token { kind = KwTrue; _ } -> (Syntax.PatAtom (Atom.Bool true), rest)
-        | Token { kind = KwFalse; _ } -> (Syntax.PatAtom (Atom.Bool false), rest)
         | Token { kind = Ident name; _ } ->
             let pat =
               match name with
               | "_" -> Syntax.PatWild
               | "I64" -> Syntax.PatType Atom_ty.TI64
-              | "Bool" -> Syntax.PatType Atom_ty.TBool
               | "Unit" -> Syntax.PatType Atom_ty.TUnit
               | "Char" -> Syntax.PatType Atom_ty.TChar
               | "String" -> Syntax.PatType Atom_ty.TString

@@ -131,9 +131,6 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                            };
                        })
               | _ -> raise (EvalError "assignment to non-ref")))
-  | If (cond, then_, else_) ->
-      bind_result (eval_result mc env cond) (fun vc ->
-          eval_if mc env vc then_ else_)
   | Prod elems ->
       sequence_values mc env elems (fun values -> Done (VProd values))
   | ProdTy elems ->
@@ -481,20 +478,6 @@ and normalize_effect_row_value (mc : MetaContext.t) (row : effect_row_value) : e
         tail_value = tail_row.tail_value }
   | tail_value -> { row with tail_value }
 
-and eval_if (mc : MetaContext.t) (env : env) (vc : value) (then_ : term)
-    (else_ : term) : result =
-  match vc with
-  | VAtom (Bool true) -> eval_result mc env then_
-  | VAtom (Bool false) -> eval_result mc env else_
-  | _ ->
-      let head, base_frames = stuck_head_frames vc in
-      let if_frame =
-        FIf { then_ = { env; body = then_ }; else_ = { env; body = else_ } }
-      in
-      Done
-        (VNeutral
-           { ty = VU; neutral = { head; frames = base_frames @ [ if_frame ] } })
-
 (* Extract the head and existing frames from a stuck value *)
 and stuck_head_frames (v : value) : head * frame list =
   match v with
@@ -558,9 +541,10 @@ and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : term)
   let value_branches, effect_branches = close_match_branches env branches in
   let rec handle_scrutinee = function
     | Done v ->
-        if List.is_empty effect_branches then
-          Done (eval_match mc env v value_branches)
-        else handle_body (eval_match_result_value mc env v value_branches)
+        (* Always evaluate the selected branch body effect-awarely, even with no
+           effect branches: a [perform] in a branch body must propagate to an
+           outer handler (this path also covers [if], now desugared to [match]). *)
+        handle_body (eval_match_result_value mc env v value_branches)
     | Effect request -> handle_effect handle_scrutinee request
   and handle_body = function
     | Done v -> Done v

@@ -118,7 +118,6 @@ let keyword_name = function
   | KwFun -> Some "fun"
   | KwThen -> Some "then"
   | KwSig -> Some "sig"
-  | KwIf -> Some "if"
   | KwElse -> Some "else"
   | KwMatch -> Some "match"
   | KwWith -> Some "with"
@@ -176,7 +175,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 
 let is_expr_start env term =
   match term.datum with
-  | Token { kind = Int _ | Char _ | String _ | Unit | KwTrue | KwFalse | KwUnit | KwSelf | KwSelfType | KwDo | KwFn | KwIf | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
+  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwDo | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
   | Token { kind = Operator s; _ } -> Option.is_some (Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false

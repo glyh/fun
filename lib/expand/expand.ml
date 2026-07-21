@@ -57,8 +57,6 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
           value = go value;
           body = go body;
           recursive }
-  | If { cond; then_; else_ } ->
-    If { cond = go cond; then_ = go then_; else_ = go else_ }
   | Annotated { inner; typ } ->
     Annotated { inner = go inner; typ = go typ }
   | Prod xs -> Prod (List.map go xs)
@@ -235,6 +233,46 @@ let strip_leading_lam (value : Syntax.t) : Syntax.t =
   | Syntax.Lam (_, inner) -> inner
   | _ -> value
 
+(** Flatten a curried application spine into its head and the argument list
+    in application order (leftmost-written argument first). *)
+let rec flatten_ap (stx : t) (acc : (Explicitness.t * t) list) :
+    t * (Explicitness.t * t) list =
+  match stx.kind with
+  | Ap (f, e, a) -> flatten_ap f ((e, a) :: acc)
+  | _ -> (stx, acc)
+
+(** Number of parameters a compiled macro transformer accepts, i.e. how many
+    curried arguments belong to one macro call. Counts the leading [Lam]s of
+    the closure body (the same heuristic as the operator-macro path). *)
+let macro_arity (v : Core.value) : int =
+  let rec count = function Core.Lam body -> 1 + count body | _ -> 0 in
+  match v with
+  | Core.VLam { body = { body; _ } } -> 1 + count body
+  | _ -> 0
+
+(** Resolve an application/head identifier through the unified binding table
+    and decide whether it names a macro. Returns [None] when the name
+    resolves to a value binding (so a local value cleanly shadows a macro of
+    the same name), or is simply unbound and has no macro entry. Otherwise
+    returns [Some (key, entry_opt, provisional)] where [key] is the macro
+    table key (the hygienic [resolved_name] for a local macro, or the surface
+    name for an imported/operator macro). *)
+let macro_head_key (ctx : Expand_ctx.t) (id : Syntax.id) :
+    (string * Expand_ctx.macro_entry option * bool) option =
+  match Expand_ctx.resolve ctx id with
+  | Some { Binding.kind = Binding.Value; _ } -> None
+  | Some { Binding.kind = Binding.Macro; resolved_name; _ } ->
+      Some
+        ( resolved_name,
+          Expand_ctx.lookup_macro_entry ctx resolved_name,
+          Expand_ctx.is_provisional_macro ctx resolved_name )
+  | None -> (
+      match Expand_ctx.lookup_macro_entry ctx id.name with
+      | Some _ as e -> Some (id.name, e, Expand_ctx.is_provisional_macro ctx id.name)
+      | None ->
+          if Expand_ctx.is_provisional_macro ctx id.name then Some (id.name, None, true)
+          else None)
+
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
@@ -260,9 +298,43 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let name = bind_id scope resolved_name name in
     { stx with kind = Let { name; type_ = Option.map (expand ctx) type_; value; body; recursive } }
   | Ap (f, e, a) ->
-    { stx with kind = Ap (expand ctx f, e, expand ctx a) }
-  | If { cond; then_; else_ } ->
-    { stx with kind = If { cond = expand ctx cond; then_ = expand ctx then_; else_ = expand ctx else_ } }
+    let default () = { stx with kind = Ap (expand ctx f, e, expand ctx a) } in
+    let head, spine = flatten_ap stx [] in
+    begin match head.kind with
+    | Var id ->
+      begin match macro_head_key ctx id with
+      | Some (key, Some macro_entry, _) ->
+        (* The head is a macro: gather its arity-many arguments from the
+           spine, expand the call in place (or defer type-aware macros to the
+           elaborator), and re-apply any remaining spine arguments as an
+           ordinary application around the macro's result. *)
+        let arity = macro_arity macro_entry.Expand_ctx.value in
+        let n = List.length spine in
+        let take = if arity <= 0 || arity > n then n else arity in
+        let rec split k xs =
+          if k <= 0 then ([], xs)
+          else match xs with
+            | x :: tl -> let a, b = split (k - 1) tl in (x :: a, b)
+            | [] -> ([], [])
+        in
+        let macro_spine, rest = split take spine in
+        let macro_args = List.map snd macro_spine in
+        let head_stx = { head with kind = Var { id with name = key } } in
+        let macro_result = run_macro_call ctx stx ~key ~macro_entry ~head:head_stx macro_args in
+        begin match rest with
+        | [] -> macro_result
+        | _ ->
+          List.fold_left
+            (fun acc (expl, arg) ->
+              { stx with kind = Ap (acc, expl, expand ctx arg) })
+            macro_result rest
+        end
+      | Some (_, None, true) ->
+        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
+      | Some (_, None, false) | None -> default ()
+      end
+    | _ -> default ()
+    end
   | Annotated { inner; typ } ->
     { stx with kind = Annotated { inner = expand ctx inner; typ = expand ctx typ } }
   | Prod xs -> { stx with kind = Prod (List.map (expand ctx) xs) }
@@ -341,69 +413,35 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
       let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
-      Expand_ctx.register_macro ctx ~name:name.name ~value:macro_fn;
-      Expand_ctx.register_macro_kind ctx ~name:name.name ~kind:resolved_kind;
-      if Syntax.MacroKind.has_type_binding resolved_kind then
-        expand ctx body (* Keep macro in table for elaborator *)
-      else begin
-        let previous = Expand_ctx.lookup_macro_entry ctx name.name in
-        let previous_kind = Expand_ctx.lookup_macro_kind ctx name.name in
-        Fun.protect
-          ~finally:(fun () ->
-            match previous, previous_kind with
-            | Some entry, Some kind ->
-              Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals:entry.syntax_nominals ~name:name.name ~value:entry.value;
-              Expand_ctx.register_macro_kind ctx ~name:name.name ~kind
-            | _ -> (Hashtbl.remove ctx.Expand_ctx.macro_table name.name;
-                    Hashtbl.remove ctx.Expand_ctx.macro_kind_table name.name))
-          (fun () -> expand ctx body)
-      end
+      (* Promote the macro into the scope-aware binding table with a fresh
+         hygienic [resolved_name] and a [Macro] kind, then key its compiled
+         entry by that [resolved_name]. This replaces the old macro_table
+         save/restore shadowing hack with ordinary lexical scoping: an inner
+         macro (or a value) named [name] cleanly shadows an outer one, and the
+         macro's call sites resolve to it through normal binding resolution. *)
+      let scope, resolved_name =
+        Expand_ctx.extend_at_fresh_kinded ctx ~name:name.name ~base_scope:name.scope ~kind:Binding.Macro () in
+      Expand_ctx.register_macro ctx ~name:resolved_name ~value:macro_fn;
+      Expand_ctx.register_macro_kind ctx ~name:resolved_name ~kind:resolved_kind;
+      expand ctx (add_scope_within stx.span scope body)
     | None ->
       failwith "macro definition requires an elaboration callback in expand context"
     end
   | MacroCall (f, args) ->
-    begin match f.kind, args with
-    | Var id, _ ->
-      begin match Expand_ctx.lookup_macro_entry ctx id.name with
-      | Some macro_entry ->
-        let macro_fn = macro_entry.Expand_ctx.value in
-        let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
-        let macro_kind =
-          match Expand_ctx.lookup_macro_kind ctx id.name with
-          | Some k -> k
-          | None -> Syntax.MacroKind.default
-        in
-        let ctx_kind = Expand_ctx.get_context_kind ctx in
-        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
-        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
-        if macro_base <> ctx_base then
-          failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
-                      id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
-        if Syntax.MacroKind.has_type_binding macro_kind then
-          (* Defer to elaborator: wrap args in Stx to survive lowering *)
-          let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
-          { stx with kind = MacroCall (expand ctx f, List.map (fun a -> wrap_stx (expand ctx a)) args) }
-        else begin match ctx.Expand_ctx.eval_and_apply with
-        | Some apply_fn ->
-          Expand_ctx.with_macro_fuel ctx ~name:id.name (fun () ->
-            let result =
-              with_syntax_operator_context (List.hd args) (fun () ->
-                  List.fold_left (fun fn arg ->
-                      let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
-                      apply_fn fn arg_stx)
-                    macro_fn args)
-            in
-            begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
-            | Some expanded -> expand ctx expanded
-            | None ->
-                failwith (syntax_operator_failure (List.hd args)
-                  ("macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
-            end)
-        | None -> failwith "macro call requires an apply callback in expand context"
-        end
-      | None when Expand_ctx.is_provisional_macro ctx id.name ->
+    (* [MacroCall] nodes are now compiler-derived (there is no surface [@]
+       syntax). They still arrive here from the operator-macro prefix path.
+       The argument list is exact (not a curried spine), so it is passed
+       through verbatim. *)
+    begin match f.kind with
+    | Var id ->
+      begin match macro_head_key ctx id with
+      | Some (key, Some macro_entry, _) ->
+        let head_stx = { f with kind = Var { id with name = key } } in
+        run_macro_call ctx stx ~key ~macro_entry ~head:head_stx args
+      | Some (_, None, true) ->
         failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
-      | None -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
+      | Some (_, None, false) | None ->
+        { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
       end
     | _ -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
     end
@@ -451,6 +489,51 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | _ ->
       { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span } }
     end
+
+(** Run a resolved procedural-macro call: check kind compatibility against the
+    current context, then either defer a type-aware macro to the elaborator
+    (producing the internal [MacroCall] node with [Stx]-wrapped args) or expand
+    it in place by applying the compiled transformer to its syntax arguments.
+    [macro_args] is the exact argument list; [head] is the head with its
+    macro-table key as name (so a deferred node resolves in the elaborator). *)
+and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
+    ~(macro_entry : Expand_ctx.macro_entry) ~(head : t) (macro_args : t list) : t =
+  let macro_fn = macro_entry.Expand_ctx.value in
+  let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
+  let macro_kind =
+    match Expand_ctx.lookup_macro_kind ctx key with
+    | Some k -> k
+    | None -> Syntax.MacroKind.default
+  in
+  let ctx_kind = Expand_ctx.get_context_kind ctx in
+  let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
+  let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
+  if macro_base <> ctx_base then
+    failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
+                key (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
+  if Syntax.MacroKind.has_type_binding macro_kind then
+    (* Defer to elaborator: wrap args in Stx to survive lowering *)
+    let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
+    { stx with kind = MacroCall (head, List.map (fun a -> wrap_stx (expand ctx a)) macro_args) }
+  else begin match ctx.Expand_ctx.eval_and_apply with
+    | Some apply_fn ->
+      Expand_ctx.with_macro_fuel ctx ~name:key (fun () ->
+        let ctx_arg = match macro_args with a :: _ -> a | [] -> stx in
+        let result =
+          with_syntax_operator_context ctx_arg (fun () ->
+              List.fold_left (fun fn arg ->
+                  let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
+                  apply_fn fn arg_stx)
+                macro_fn macro_args)
+        in
+        begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
+        | Some expanded -> expand ctx expanded
+        | None ->
+            failwith (syntax_operator_failure ctx_arg
+              ("macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
+        end)
+    | None -> failwith "macro call requires an apply callback in expand context"
+  end
 
 and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc all_scopes = function
@@ -562,7 +645,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
          expansion/elaboration so the macro's own name is known during its
          definition (for future re-expansion-recursion support). The
          provisional marker prevents premature callable lookup. *)
-      let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+      let scope = Expand_ctx.extend_at_kinded ctx ~name:binding_name ~base_scope:name.scope ~kind:Binding.Macro ~resolved_name:binding_name in
       let macro_snapshot = Expand_ctx.snapshot_macro ctx binding_name in
       Expand_ctx.register_provisional_macro ctx ~name:binding_name ();
       Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
@@ -582,23 +665,23 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
       ([MacroBinding { name; value = expand ctx value; public; kind }], [[]])
     end
   | MacroCallBinding { f; args } ->
-    begin match f.kind, args with
-    | Var id, _ ->
-      begin match Expand_ctx.lookup_macro_entry ctx id.name with
-      | Some macro_entry ->
+    begin match f.kind with
+    | Var id ->
+      begin match macro_head_key ctx id with
+      | Some (key, Some macro_entry, _) ->
         let macro_fn = macro_entry.Expand_ctx.value in
         let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
         begin match ctx.Expand_ctx.eval_and_apply with
         | Some apply_fn ->
-          let macro_kind = match Expand_ctx.lookup_macro_kind ctx id.name with
+          let macro_kind = match Expand_ctx.lookup_macro_kind ctx key with
             | Some k -> k | None -> Syntax.MacroKind.default in
           let ctx_kind = Expand_ctx.get_context_kind ctx in
         let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
         let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
         if macro_base <> ctx_base then
             failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
-                        id.name (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
-           Expand_ctx.with_macro_fuel ctx ~name:id.name (fun () ->
+                        key (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
+           Expand_ctx.with_macro_fuel ctx ~name:key (fun () ->
              let fn = List.fold_left (fun fn arg ->
                 let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals arg in
                 apply_fn fn arg_stx) macro_fn args in
@@ -618,12 +701,12 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
                     annotations are resolved, macros are compiled/registered,
                     and sibling-generated scopes thread in source order. *)
                  expand_struct_bindings_with_scopes ctx bindings
-             | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" id.name)))
+             | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" key)))
         | None -> failwith "macro call requires an apply callback in expand context"
         end
-      | None when Expand_ctx.is_provisional_macro ctx id.name ->
+      | Some (_, None, true) ->
         failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
-      | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
+      | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
       end
     | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
     end

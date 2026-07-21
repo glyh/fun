@@ -101,8 +101,8 @@ let left_associativity () =
   | _ -> Alcotest.fail "expected left associative subtraction"
 
 let prefix_not () =
-  match parse "not true" with
-  | Ap (Var "not", Explicit, Atom (Atom.Bool true)) -> ()
+  match parse "not True" with
+  | Ap (Var "not", Explicit, Var "True") -> ()
   | _ -> Alcotest.fail "expected prefix not application"
 
 let ref_assignment () =
@@ -192,16 +192,20 @@ let fn_rejects_late_implicit_params () =
   | _ -> Alcotest.fail "expected implicit params after explicit params to be rejected"
 
 let if_do_else_end () =
-  match parse "if true do 1 else 2 end" with
-  | If { cond = Atom (Atom.Bool true); then_ = Atom (Atom.I64 1L); else_ = Atom (Atom.I64 2L) } -> ()
+  match parse "if True do 1 else 2 end" with
+  | Match
+      ( Var "True",
+        [ ValueBranch (PatCon ([], "True", []), Atom (Atom.I64 1L));
+          ValueBranch (PatCon ([], "False", []), Atom (Atom.I64 2L)) ] ) ->
+      ()
   | _ -> Alcotest.fail "expected if do else end shape"
 
 let match_do_end () =
-  match parse "match true do true -> 1 | false -> 0 end" with
+  match parse "match True do True -> 1 | False -> 0 end" with
   | Match
-      ( Atom (Atom.Bool true),
-        [ ValueBranch (PatAtom (Atom.Bool true), Atom (Atom.I64 1L));
-          ValueBranch (PatAtom (Atom.Bool false), Atom (Atom.I64 0L)) ] ) ->
+      ( Var "True",
+        [ ValueBranch (PatCon ([], "True", []), Atom (Atom.I64 1L));
+          ValueBranch (PatCon ([], "False", []), Atom (Atom.I64 0L)) ] ) ->
       ()
   | _ -> Alcotest.fail "expected match do end branches"
 
@@ -354,12 +358,12 @@ let fn_with_arrow_type () =
   | _ -> Alcotest.fail "expected arrow type in fn param"
 
 let fn_with_product_type () =
-  match parse "fn(f : I64 * Bool -> Bool) -> f(1, true)" with
+  match parse "fn(f : I64 * Bool -> Bool) -> f(1, True)" with
   | Lam
       ( { name = "f";
           type_ = Some (Arrow (Explicit, None, ProdTy [Var "I64"; Var "Bool"], None, Var "Bool"));
           _ },
-        Ap (Ap (Var "f", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.Bool true)) ) ->
+        Ap (Ap (Var "f", Explicit, Atom (Atom.I64 1L)), Explicit, Var "True") ) ->
       ()
   | _ -> Alcotest.fail "expected product type in fn param"
 
@@ -431,7 +435,7 @@ pub test = do twice 1 end" with
 let operator_rhs_can_use_earlier_macro () =
   match parse_with_macros "do
   macro one_body(_) -> Syntax.i64(1)
-  syntax choose do | choose $x -> one_body @ (0) end
+  syntax choose do | choose $x -> one_body(0) end
   choose 0
 end" with
   | Atom (Atom.I64 1L) -> ()

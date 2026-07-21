@@ -14,38 +14,6 @@ let parse_group_arg callbacks items =
   | [] -> unit ()
   | _ -> callbacks.parse_expr_terms items
 
-let collect_if_branches terms =
-  let rec collect_then depth acc = function
-    | [] -> error "unterminated if block"
-    | term :: rest when token_kind KwDo term -> collect_then (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then error "if block requires else"
-        else collect_then (depth - 1) (term :: acc) rest
-    | term :: rest when token_kind KwElse term && depth = 0 ->
-        let then_terms = List.rev acc in
-        let else_terms, rest, end_span = collect_else 0 [] rest in
-        (then_terms, else_terms, rest, end_span)
-    | term :: rest -> collect_then depth (term :: acc) rest
-  and collect_else depth acc = function
-    | [] -> error "unterminated else block"
-    | term :: rest when token_kind KwDo term -> collect_else (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then (List.rev acc, rest, term.span)
-        else collect_else (depth - 1) (term :: acc) rest
-    | term :: rest -> collect_else depth (term :: acc) rest
-  in
-  collect_then 0 [] terms
-
-let parse_if callbacks start_span terms =
-  match split_at_token KwDo terms with
-  | None -> error "if requires do/else/end syntax"
-  | Some (cond_terms, _do_kw, rest) ->
-      let cond = callbacks.parse_expr_terms cond_terms in
-      let then_terms, else_terms, rest, end_span = collect_if_branches rest in
-      let then_ = callbacks.parse_do_body_terms (syntax_span then_terms) then_terms in
-      let else_ = callbacks.parse_do_body_terms (syntax_span else_terms) else_terms in
-      (stx ~span:(span_between start_span end_span) (Syntax.If { cond; then_; else_ }), rest)
-
 let parse_match callbacks start_span terms =
   match split_at_token KwDo terms with
   | None -> error "match requires do/end syntax"

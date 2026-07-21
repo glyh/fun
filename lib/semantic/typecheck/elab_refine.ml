@@ -17,7 +17,6 @@ let term_mentions_var target term =
         || List.exists (go (target + 1)) effects.effects
         || (match effects.tail with Some tail -> go (target + 1) tail | None -> false)
         || go (target + 1) codomain
-    | If (cond, then_, else_) -> go target cond || go target then_ || go target else_
     | Prod elems | ProdTy elems -> List.exists (go target) elems
     | EffectRowTy -> false
     | EffectRowLit row ->
@@ -133,7 +132,6 @@ and subst_neutral_var mc target replacement neutral =
     List.map
       (function
         | FApp value -> FApp (subst_value_var mc target replacement value)
-        | FIf { then_; else_ } -> FIf { then_ = subst_closure_var mc target replacement then_; else_ = subst_closure_var mc target replacement else_ }
         | FProj _ as frame -> frame
         | FDot _ as frame -> frame
         | FRefGet as frame -> frame
@@ -190,7 +188,6 @@ let close_recursive_payload_term nominal_name num_params =
                   { effects = List.map (go (cutoff + 1)) effects.effects;
                     tail = Option.map (go (cutoff + 1)) effects.tail };
                 codomain = go (cutoff + 1) codomain }
-        | If (cond, then_, else_) -> If (go cutoff cond, go cutoff then_, go cutoff else_)
         | Prod elems -> Prod (List.map (go cutoff) elems)
         | ProdTy elems -> ProdTy (List.map (go cutoff) elems)
         | EffectRowTy -> EffectRowTy

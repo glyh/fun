@@ -21,7 +21,6 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
         && List.for_all (closed_under (depth + 1)) effects.effects
         && Option.fold ~none:true ~some:(closed_under (depth + 1)) effects.tail
         && closed_under (depth + 1) codomain
-    | If (cond, then_, else_) -> closed_under depth cond && closed_under depth then_ && closed_under depth else_
     | Prod elems | ProdTy elems -> List.for_all (closed_under depth) elems
     | EffectRowTy -> true
     | EffectRowLit row ->

@@ -347,7 +347,6 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
       { stx with kind = Syntax.Lam ({ (map_param captures p) with type_ = Option.map go p.type_ }, go body) }
   | Syntax.Let { name; type_; value; body; recursive } ->
       { stx with kind = Syntax.Let { name = map_binder_id captures name; type_ = Option.map go type_; value = go value; body = go body; recursive } }
-  | Syntax.If { cond; then_; else_ } -> { stx with kind = Syntax.If { cond = go cond; then_ = go then_; else_ = go else_ } }
   | Syntax.Annotated { inner; typ } -> { stx with kind = Syntax.Annotated { inner = go inner; typ = go typ } }
   | Syntax.Prod xs -> { stx with kind = Syntax.Prod (List.map go xs) }
   | Syntax.ProdTy xs -> { stx with kind = Syntax.ProdTy (List.map go xs) }

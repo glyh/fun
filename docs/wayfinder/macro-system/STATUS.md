@@ -51,7 +51,7 @@ double-elaboration/nominal freshness drift.
 
 | Stage | Description | Status |
 |-------|-------------|--------|
-| 11 | Macro-powered language features | No spec |
+| 11 | Macro-powered language features | In progress — direction = demote built-in constructs to library. Increment 1 (Bool ADT + `if`⇒`match`, `Core.If`/`FIf` removed) done, 778 tests green. See [Bool and `if` as library features](../topics/bool-and-if-as-library.md). |
 | 12 | Macro diagnostics & expansion UX | No spec |
 
 ## Key documents

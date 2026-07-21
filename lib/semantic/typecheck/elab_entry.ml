@@ -13,7 +13,8 @@ let init_ctx () : Ctx.t =
   let ctx = Ctx.empty () in
   let add_type ctx name v = Ctx.define ctx name VU v in
   let ctx = add_type ctx Compiler_names.Type_name.i64 (VAtomTy Atom_ty.TI64) in
-  let ctx = add_type ctx Compiler_names.Type_name.bool (VAtomTy Atom_ty.TBool) in
+  (* [Bool] is no longer a builtin atom type — it is the nominal ADT defined in
+     the prelude ([type Bool = False | True]). *)
   let ctx = add_type ctx Compiler_names.Type_name.unit (VAtomTy Atom_ty.TUnit) in
   let ctx = add_type ctx Compiler_names.Type_name.char (VAtomTy Atom_ty.TChar) in
   let ctx = add_type ctx Compiler_names.Type_name.string (VAtomTy Atom_ty.TString) in

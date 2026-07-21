@@ -60,12 +60,10 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
         Printf.sprintf "{%s%s}" (String.concat ", " effects)
           (match tail with None -> "" | Some tail -> " | " ^ tail)
     | VAtom (I64 n) -> Int64.to_string n
-    | VAtom (Bool b) -> string_of_bool b
     | VAtom Unit -> "()"
     | VAtom (Char c) -> Atom.pp (Char c)
     | VAtom (String s) -> Atom.pp (String s)
     | VAtomTy Atom_ty.TI64 -> "I64"
-    | VAtomTy Atom_ty.TBool -> "Bool"
     | VAtomTy Atom_ty.TUnit -> "Unit"
     | VAtomTy Atom_ty.TChar -> "Char"
     | VAtomTy Atom_ty.TString -> "String"

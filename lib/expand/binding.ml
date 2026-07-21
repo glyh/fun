@@ -1,6 +1,12 @@
+(** Whether a resolved binding names a value or a (procedural) macro.
+    Under the unified namespace, name resolution returns exactly one
+    binding and its [kind] decides expand-vs-call at an application head. *)
+type binding_kind = Value | Macro
+
 type binding_info = {
   scope : Scope_set.t;
   resolved_name : string;
+  kind : binding_kind;
 }
 
 type t = (string, binding_info list) Hashtbl.t
@@ -12,8 +18,8 @@ let copy (tbl : t) : t =
   Hashtbl.iter (fun k v -> Hashtbl.add new_tbl k v) tbl;
   new_tbl
 
-let extend (tbl : t) ~name ~scope ~resolved_name =
-  let info = { scope; resolved_name } in
+let extend (tbl : t) ~name ~scope ~kind ~resolved_name =
+  let info = { scope; resolved_name; kind } in
   let existing = try Hashtbl.find tbl name with Not_found -> [] in
   Hashtbl.replace tbl name (info :: existing)
 

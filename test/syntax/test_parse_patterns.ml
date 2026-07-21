@@ -17,7 +17,7 @@ let struct_type_pattern_open_shape () =
 
 let struct_type_pattern_closed_shape () =
   match Parse_expand.parse_expr "match T do struct x: I64; y: Bool end -> I64 | _ -> Bool end" with
-  | Match (_, [ ValueBranch (PatStructType { fields = [ ("x", PatType Atom_ty.TI64); ("y", PatType Atom_ty.TBool) ]; partial = false }, _); _ ]) -> ()
+  | Match (_, [ ValueBranch (PatStructType { fields = [ ("x", PatType Atom_ty.TI64); ("y", PatCon ([], "Bool", [])) ]; partial = false }, _); _ ]) -> ()
   | _ -> Alcotest.fail "expected closed struct type pattern"
 
 let struct_type_pattern_nominal_field_shape () =

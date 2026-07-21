@@ -411,8 +411,6 @@ and form_callbacks env =
     is_expr_start = is_expr_start env;
   }
 
-and parse_if env start_span terms =
-  Enforest_forms.parse_if (form_callbacks env) start_span terms
 
 and parse_match env start_span terms =
   Enforest_forms.parse_match (form_callbacks env) start_span terms
@@ -495,10 +493,6 @@ and parse_primary env terms =
           (atom ~span:term.span (Atom.String s), rest)
       | Token { kind = Char c; _ } -> (atom ~span:term.span (Atom.Char c), rest)
       | Token { kind = Unit; _ } -> (unit ~span:term.span (), rest)
-      | Token { kind = KwTrue; _ } ->
-          (atom ~span:term.span (Atom.Bool true), rest)
-      | Token { kind = KwFalse; _ } ->
-          (atom ~span:term.span (Atom.Bool false), rest)
       | Token { kind = KwUnit; _ } -> (var ~span:term.span "Unit", rest)
       | Token { kind = KwSelf; _ } -> (stx ~span:term.span Syntax.Self, rest)
       | Token { kind = KwSelfType; _ } ->
@@ -526,7 +520,6 @@ and parse_primary env terms =
       | Token { kind = KwFn; _ } ->
           let _, expr, rest = parse_fn env term.span rest in
           (expr, rest)
-      | Token { kind = KwIf; _ } -> parse_if env term.span rest
       | Token { kind = KwMatch; _ } -> parse_match env term.span rest
       | Token { kind = KwRef; _ } -> parse_ref env term.span rest
       | Token { kind = KwDeref; _ } -> parse_deref env term.span rest
@@ -659,17 +652,6 @@ and parse_postfix_infix env min_prec lhs terms =
         stx
           ~span:(span_between lhs.span typ.span)
           (Syntax.Annotated { inner = lhs; typ })
-      in
-      parse_postfix_infix env min_prec lhs rest
-  | at :: { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest
-    when token_kind At at ->
-      let args =
-        match drop_separators items with
-        | [] -> [ unit ~span () ]
-        | _ -> parse_args env items
-      in
-      let lhs =
-        stx ~span:(span_between lhs.span span) (Syntax.MacroCall (lhs, args))
       in
       parse_postfix_infix env min_prec lhs rest
   | ({ datum = Group (Raw_syntax.Paren, items, span); _ } as term) :: rest ->
@@ -1456,6 +1438,10 @@ match Parse_spec.parse header _env stmt with
   | None -> None
 
 and parse_macro_call_binding env stmt =
+  (* A bare application statement [f(args)] at declaration position is a
+     (decl-)macro invocation: the head is resolved to a macro by the expander,
+     which reclassifies it into the internal [MacroCallBinding]. There is no
+     [@] marker; the same [f(args)] surface is used as for function calls. *)
   let args_spec =
     Parse_spec.custom_spec ~name:"args" (fun _env items ->
         let items = Enforest_util.drop_separators items in
@@ -1468,10 +1454,10 @@ and parse_macro_call_binding env stmt =
   in
   Parse_spec.to_option
     (Parse_spec.map
-       (Parse_spec.seq4 Parse_spec.str_ident (Parse_spec.punct At)
+       (Parse_spec.seq3 Parse_spec.str_ident
           (Parse_spec.paren_group args_spec)
           Parse_spec.eof)
-       (fun ((name, name_span), (), (args, _), ()) ->
+       (fun ((name, name_span), (args, _), ()) ->
          let f = var ~span:name_span name in
          Syntax.MacroCallBinding { f; args }))
     env stmt
@@ -1691,20 +1677,6 @@ and parse_struct_items env body_terms =
 
 let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms
 
-let parse_expr ?file ?load_syntax source =
-  let env = env ?load_syntax () in
-  try Raw_syntax.read ?file source |> parse_terms env
-  with Raw_syntax.Error msg -> error msg
-
-let parse_type ?file source =
-  let env = env ~syntax_class:Syntax_class.TypeExpr () in
-  try Raw_syntax.read ?file source |> parse_all (parse_type_entry env)
-  with Raw_syntax.Error msg -> error msg
-
-let parse_pat ?file source =
-  try Raw_syntax.read ?file source |> parse_pat_terms
-  with Raw_syntax.Error msg -> error msg
-
 let parse_public_syntax_exports ?file ?load_syntax source =
   let env = env ?load_syntax () in
   try
@@ -1717,8 +1689,38 @@ let parse_public_syntax_exports ?file ?load_syntax source =
     exports
   with Raw_syntax.Error msg -> error msg
 
+(* Built-in library syntax, seeded into every expression/module parse. Control
+   flow such as [if] is not a keyword — it is a prefix syntax template defined in
+   the standard library (see [Elab_prelude.stdlib_source]) that rewrites to a
+   [match] on the [Bool] ADT. The stdlib lives in the semantic layer, which
+   depends on this [expand] layer, so the dependency is inverted here: the
+   semantic layer registers the stdlib's public syntax exports into this hook at
+   startup. When nothing is registered (e.g. a parse with no stdlib) the hook is
+   empty and [if] is just an ordinary identifier. *)
+let builtin_syntax_hook : (unit -> Operator_env.export list) ref =
+  ref (fun () -> [])
+
+let seed_builtin_syntax env =
+  env.operators <-
+    Operator_env.apply_exports env.operators (!builtin_syntax_hook ());
+  env
+
+let parse_expr ?file ?load_syntax source =
+  let env = seed_builtin_syntax (env ?load_syntax ()) in
+  try Raw_syntax.read ?file source |> parse_terms env
+  with Raw_syntax.Error msg -> error msg
+
+let parse_type ?file source =
+  let env = env ~syntax_class:Syntax_class.TypeExpr () in
+  try Raw_syntax.read ?file source |> parse_all (parse_type_entry env)
+  with Raw_syntax.Error msg -> error msg
+
+let parse_pat ?file source =
+  try Raw_syntax.read ?file source |> parse_pat_terms
+  with Raw_syntax.Error msg -> error msg
+
 let parse_module ?file ?load_syntax source =
-  let env = env ?load_syntax () in
+  let env = seed_builtin_syntax (env ?load_syntax ()) in
   try
     let bindings = Raw_syntax.read ?file source |> parse_module_bindings env in
     stx (Syntax.Module { bindings })

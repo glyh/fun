@@ -219,7 +219,6 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
 let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   match expr with
   | Atom (I64 n) -> (Atom (I64 n), VAtomTy Atom_ty.TI64)
-  | Atom (Bool b) -> (Atom (Bool b), VAtomTy Atom_ty.TBool)
   | Atom Unit -> (Atom Unit, VAtomTy Atom_ty.TUnit)
   | Atom (Char c) -> (Atom (Char c), VAtomTy Atom_ty.TChar)
   | Atom (String s) -> (Atom (String s), VAtomTy Atom_ty.TString)
@@ -299,11 +298,6 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
         let body_core, body_ty = ops.infer ctx' body in
         (Let (ty_term, gen_val_core, body_core), body_ty)
       end
-  | If { cond; then_; else_ } ->
-      let cond_core = ops.check ctx cond (VAtomTy Atom_ty.TBool) in
-      let then_core, then_ty = ops.infer ctx then_ in
-      let else_core = ops.check ctx else_ then_ty in
-      (If (cond_core, then_core, else_core), then_ty)
   | Lam (param, body) -> infer_lam ops ctx param body
   | Annotated { inner; typ } ->
       require_empty_effects ctx (ops.collect_effects ctx typ);

@@ -13,7 +13,6 @@ type token_kind =
   | KwFn
   | KwDo
   | KwEnd
-  | KwIf
   | KwElse
   | KwMatch
   | KwWith
@@ -37,8 +36,6 @@ type token_kind =
   | KwPerform
   | KwResume
   | KwMethod
-  | KwTrue
-  | KwFalse
   | KwUnit
   | LParen
   | RParen
@@ -99,7 +96,6 @@ let keyword = function
   | "fn" -> Some KwFn
   | "do" -> Some KwDo
   | "end" -> Some KwEnd
-  | "if" -> Some KwIf
   | "else" -> Some KwElse
   | "match" -> Some KwMatch
   | "with" -> Some KwWith
@@ -123,8 +119,6 @@ let keyword = function
   | "perform" -> Some KwPerform
   | "resume" -> Some KwResume
   | "method" -> Some KwMethod
-  | "true" -> Some KwTrue
-  | "false" -> Some KwFalse
   | "Unit" -> Some KwUnit
   | _ -> None
 
@@ -263,7 +257,6 @@ let read ?file source =
     | KwFn -> "fn"
     | KwDo -> "do"
     | KwEnd -> "end"
-    | KwIf -> "if"
     | KwElse -> "else"
     | KwMatch -> "match"
     | KwWith -> "with"
@@ -287,8 +280,6 @@ let read ?file source =
     | KwPerform -> "perform"
     | KwResume -> "resume"
     | KwMethod -> "method"
-    | KwTrue -> "true"
-    | KwFalse -> "false"
     | KwUnit -> "Unit"
     | Int _ -> "integer"
     | Char _ -> "char"
