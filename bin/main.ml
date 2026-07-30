@@ -11,7 +11,7 @@ let run source =
   let macro_ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals macro_ctx in
   let elaborate expr =
-    let core, _ty = Elaborate.on_expr ~loader macro_ctx expr in
+    let core, _ty = Elaborate.on_macro_body ~loader macro_ctx expr in
     Elaborate.Ctx.eval macro_ctx core
   in
   let eval_and_apply fn arg =
@@ -25,7 +25,7 @@ let run source =
       ~syntax_nominals
       ~load_macros:(Macro_driver.visit_macros loader)
       ~load_syntax:(Core_loader.load_syntax_exports loader)
-      ~builtin_syntax
+      ~open_prelude:true
       source
   in
   let ctx = Elaborate.init_ctx () in

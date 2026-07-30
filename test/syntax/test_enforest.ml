@@ -1,11 +1,15 @@
 open Surface
 
-(* Prelude syntax exports so raw-parse tests can still use [+]/[==]/[not]/… now
-   that operators are prelude [pub infix]/[pub prefix] declarations rather than
-   compiler builtins. *)
+(* Operators are prelude [pub infix]/[pub prefix] declarations under the strict
+   phase rule, so raw-parse tests open the prelude ([~open_prelude:true], the
+   exports resolved via [std_load_syntax]) to exercise [+]/[==]/[not]/…. That
+   wraps the body in [Open (Import "std", body)]; [unwrap_std] peels it back off
+   so the structural assertions match the bare parse as before. *)
 let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
-let parse source = Parse_expand.parse_expr ~builtin_syntax source
-let parse_module source = Parse_expand.parse_module ~builtin_syntax source
+let unwrap_std (e : Surface.t) : Surface.t =
+  match e with Open (Import "std", body) -> body | other -> other
+let parse source = unwrap_std (Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
+let parse_module source = Parse_expand.parse_module ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
 
 let string_contains text needle =
   let needle_len = String.length needle in
@@ -16,31 +20,31 @@ let string_contains text needle =
   in
   String.equal needle "" || go 0
 
-let parse_with_macros ?load_macros ?load_syntax source =
+let parse_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax) source =
   let ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
-    let core, _ty = Elaborate.on_expr ctx expr in
+    let core, _ty = Elaborate.on_macro_body ctx expr in
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply fn arg =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_expr ?load_macros ?load_syntax ~builtin_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
+  unwrap_std (Parse_expand.parse_expr ?load_macros ~open_prelude:true ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
-let parse_module_with_macros ?load_macros ?load_syntax source =
+let parse_module_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax) source =
   let ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
-    let core, _ty = Elaborate.on_expr ctx expr in
+    let core, _ty = Elaborate.on_macro_body ctx expr in
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply fn arg =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_module ?load_macros ?load_syntax ~builtin_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
+  Parse_expand.parse_module ?load_macros ~open_prelude:true ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let with_modules modules f =
   let dir = Filename.temp_dir "fun_syntax_test" "" in
@@ -82,6 +86,17 @@ let dollar_token_is_separate () =
   match Raw_syntax.read "$x" with
   | [ { datum = Token { kind = Operator "$"; _ }; _ }; { datum = Token { kind = Ident "x"; _ }; _ } ] -> ()
   | _ -> Alcotest.fail "expected $ to be tokenized separately from the identifier"
+
+let strict_phase_rule_operators_need_std () =
+  (* Strict phase rule: with no [open (import "std")] and no prelude seed, the
+     arithmetic operators are unknown, so [1 + 2] does not parse as an operator
+     application (it fails on the dangling [+]). Contrast [operator_precedence],
+     which parses the same shape after opening the prelude. *)
+  match Parse_expand.parse_expr "1 + 2" with
+  | exception _ -> ()
+  | Ap (Ap (Var "+", _, _), _, _) ->
+      Alcotest.fail "expected + to be unknown without opening std"
+  | _ -> ()
 
 let operator_precedence () =
   match parse "1 + 2 * 3" with
@@ -605,6 +620,7 @@ let suites =
         Alcotest.test_case "comments" `Quick line_and_block_comments;
         Alcotest.test_case "datum comment" `Quick datum_comment;
         Alcotest.test_case "$ token is separate" `Quick dollar_token_is_separate;
+        Alcotest.test_case "strict phase rule: operators need std" `Quick strict_phase_rule_operators_need_std;
         Alcotest.test_case "operator precedence" `Quick operator_precedence;
         Alcotest.test_case "left associativity" `Quick left_associativity;
         Alcotest.test_case "prefix not" `Quick prefix_not;

@@ -81,7 +81,7 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
   (match eval_and_apply with
    | Some _ ->
        let source = read_module_source resolved in
-        let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ?syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) ~builtin_syntax:t.builtin_syntax source in
+        let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ?syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) ~open_prelude:true source in
        (* Cache macros from expansion context so elaborator can find them *)
         Hashtbl.iter (fun name entry ->
           let kind = match Hashtbl.find_opt ctx.Expand_ctx.macro_kind_table name with
@@ -95,7 +95,7 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
        | Some surface -> surface
        | None ->
            let source = read_module_source resolved in
-           let surface = Parse_expand.parse_module ~load_macros ~load_syntax:(load_syntax_exports t) ~builtin_syntax:t.builtin_syntax source in
+           let surface = Parse_expand.parse_module ~load_macros ~load_syntax:(load_syntax_exports t) ~open_prelude:true source in
            Hashtbl.replace t.runtime_surface_cache resolved surface;
            surface)
 
@@ -124,7 +124,7 @@ let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
         | None -> ()
       in
       if not (Sys.file_exists resolved) then raise (ImportNotFound path);
-      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) ~builtin_syntax:t.builtin_syntax (read_module_source resolved) in
+      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) ~open_prelude:true (read_module_source resolved) in
       Hashtbl.replace t.active resolved path;
       let result =
         Fun.protect

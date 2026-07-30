@@ -12,3 +12,4 @@ let resolve_stdlib = Elab_entry.resolve_stdlib
 let syntax_nominals = Elab_stdlib.syntax_nominals
 let on_expr = Elab_entry.on_expr
 let on_expr_effects = Elab_entry.on_expr_effects
+let on_macro_body = Elab_entry.on_macro_body

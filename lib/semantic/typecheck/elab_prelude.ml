@@ -137,12 +137,21 @@ end
 |}
 
 (* The stdlib's public syntax exports (templates like [if]; the arithmetic and
-   comparison operators). Callers that can name the prelude (entry points, the
-   loader) pass these into the parser via [?builtin_syntax] so user/imported code
-   sees them — replacing the old [builtin_syntax_hook] inversion ref. Collecting
-   the exports uses a non-seeded env, so there is no recursion even though this
-   same source is later parsed for elaboration. *)
+   comparison operators). Under the strict phase rule these are delivered only
+   where [std] is opened: the parser resolves them through [load_syntax] on the
+   reserved [import "std"] path (see [std_load_syntax] and [Core_loader]), rather
+   than through the old [builtin_syntax_hook] inversion ref. Collecting the
+   exports uses a non-seeded env, so there is no recursion even though this same
+   source is later parsed for elaboration. *)
 let stdlib_syntax_exports = lazy (Enforest.parse_public_syntax_exports stdlib_source)
+
+(* A [load_syntax] resolver for parses that have no loader (expression eval,
+   the REPL's non-file input): it answers the reserved [import "std"] path with
+   the prelude's exports and knows no other module. Compose with the loader's
+   own [load_syntax_exports] when files must also resolve. *)
+let std_load_syntax path =
+  if String.equal path Compiler_names.Module_name.std_import_path
+  then Lazy.force stdlib_syntax_exports else []
 
 (* The prelude body itself uses only prim calls and [match] (no infix operators),
    so it parses correctly without any [builtin_syntax] seed. *)

@@ -101,13 +101,13 @@ downward), not at a blanket expand-layer seed.
    install `<-` as a base binding; delete `Operator_env.t`. **[DONE]**
 2. **Driver-carries-operators.** Route `open`/import operator delivery through
    `Macro_driver` alongside macros; delete `builtin_syntax_hook` and the
-   `load_syntax_exports` static path. **[partial]** — the global mutable
-   `builtin_syntax_hook` ref is *deleted* (see progress note part 3): prelude
-   syntax exports are now injected explicitly via a `?builtin_syntax` parameter
-   (entry points / REPL) and a `Core_loader.builtin_syntax` field (imported
-   modules), and the reserved `import "std"` returns them. Remaining: the delivery
-   is still a *blanket* per-parse seed, not yet `open`-scoped / in statement order,
-   and the static `load_imports_in_terms` harvest still exists.
+   `load_syntax_exports` static path. **[done]** — the global mutable
+   `builtin_syntax_hook` ref is deleted, and the blanket `?builtin_syntax` seed is
+   gone (see progress notes 3–4). Operators are now delivered **only** where `std`
+   is opened, resolved through `load_syntax` on the reserved `import "std"` path
+   (in statement order via `Enforest_forms.parse_import`). The static
+   `load_imports_in_terms` scan survives only for `syntax`-template bodies, not as
+   the operator-delivery path.
 3. **Explicit prelude.** Reserved `"std"` → builtin prelude; `open (import "std")`;
    lift `Surface.Open`/`Syntax.Open` to accept an expression (core `Open` already
    takes an arbitrary term); delete implicit `open_stdlib` + fallback tables.
@@ -241,6 +241,41 @@ cleanly to C#. **What remains**: make delivery `open (import "std")`-triggered i
 statement order (retire the static `load_imports_in_terms` harvest) and drop the
 implicit `open_stdlib` in favor of the explicit open — the last of step 2 + the
 deletions in step 3.
+
+## Progress note (2026-07-30, part 4) — strict phase rule; REPL opens std by default
+
+The blanket `?builtin_syntax` seed is **removed**; the prelude is now delivered
+strictly through `open (import "std")`. 792 tests green.
+
+- **Enforest**: `parse_expr`/`parse_module` drop `?builtin_syntax` and gain
+  `?open_prelude`. With `open_prelude:true` the parser harvests `std`'s exports
+  (via `load_syntax` on the reserved path) *before* parsing and wraps an
+  expression body in `Open (Import "std", body)`. Without it — and without an
+  in-source `open (import "std")` (which `parse_import` harvests in statement
+  order) — `+`/`if`/… are unbound identifiers. New regression test
+  `strict phase rule: operators need std`.
+- **Entry points open `std` by default**: the REPL and the program-evaluation
+  test helpers pass `open_prelude:true`; loader-loaded modules likewise (there is
+  no module-level `open` form yet). `Elab_prelude.std_load_syntax` answers the
+  reserved path for parses with no loader.
+- **`on_expr` no longer wraps** — the `open` is carried in the parsed term (from
+  `open_prelude` or written by the program), so `on_expr` elaborates as-is. A
+  program that opens nothing elaborates in the bare base context.
+- **Macro transformer bodies** are compiler-facing (they use the `Syntax` API and
+  operators), so they always elaborate with `std` open via the new
+  `Elaborate.on_macro_body` (which wraps the body in `Open (Import "std", …)`);
+  the macro-compilation callbacks route through it. This mirrors what
+  `Macro_driver` already did with `open_stdlib`.
+- **Raw-parse `test/syntax`** suites open the prelude explicitly (`open_prelude`
+  + `std_load_syntax`) and peel the wrapper with a local `unwrap_std` so structural
+  assertions are unchanged.
+
+Ticket substance complete: operators are library declarations, delivery is the
+single explicit-`open` path, no global mutable ref, and the phase rule is strict.
+The remaining implicit `open_stdlib` survives only as a ctx-extension helper for
+macro compilation. A genuinely module-level `open` form (so imported `.fun` files
+are strict too, rather than auto-opened by the loader) is the one loose end, and
+depends on adding module-level `open` support — out of scope here.
 
 ## Risks
 

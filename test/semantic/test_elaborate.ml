@@ -55,7 +55,7 @@ let () =
     | _ -> None)
 
 let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
-let parse_expr source = Parse_expand.parse_expr ~builtin_syntax source
+let parse_expr source = Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
 let pi explicitness domain codomain = Pi { explicitness; domain; effects = empty_effect_row; codomain }
 
 let elab source =

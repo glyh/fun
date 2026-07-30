@@ -1,16 +1,17 @@
-let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
+let unwrap_std (e : Surface.t) : Surface.t =
+  match e with Surface.Open (Surface.Import "std", body) -> body | other -> other
 let parse source =
   let ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
-    let core, _ty = Elaborate.on_expr ctx expr in
+    let core, _ty = Elaborate.on_macro_body ctx expr in
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply fn arg =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_expr ~builtin_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
+  unwrap_std (Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
 let identity_macro_shape () =
   match parse "do macro id(stx) -> stx; id(42) end" with
