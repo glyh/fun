@@ -126,7 +126,7 @@ let parse_pat_terms terms =
     let fields = List.filter (fun (name, pat_opt) -> not (String.equal name "_" && Option.is_none pat_opt)) fields in
     (fields, partial)
   and parse_pat_or terms =
-    match split_at_token bar terms with
+    match split_at_token Bar terms with
     | Some (lhs_terms, _, rhs_terms) -> Syntax.PatOr (parse_pat_all lhs_terms, parse_pat_all rhs_terms)
     | None ->
         let lhs, rest = parse_pat_atom terms in

@@ -48,6 +48,7 @@ type token_kind =
   | Colon
   | Equals
   | Semi
+  | Bar
   | ThinArrow
   | DatumComment
   | Operator of string
@@ -149,6 +150,7 @@ let rec raw_token buf =
   | ":" -> Colon
   | "=" -> Equals
   | ";" -> Semi
+  | "|" -> Bar
   | Plus '0' .. '9' -> Int (Sedlexing.Utf8.lexeme buf |> Int64.of_string)
   | '"' -> read_string buf (Buffer.create 16)
   | "'", '\\', 'n', "'" -> Char '\n'
@@ -236,6 +238,7 @@ let read ?file source =
     | Colon -> ":"
     | Equals -> "="
     | Semi -> ";"
+    | Bar -> "|"
     | ThinArrow -> "->"
     | DatumComment -> "#_"
     | Ident s | Operator s -> s

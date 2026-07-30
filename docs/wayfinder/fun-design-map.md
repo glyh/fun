@@ -102,9 +102,10 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
 - [Add short-circuit && / || operators](tickets/add-short-circuit-and-or-operators.md)
   (closed & **implemented**) — Stage 11 increment: stdlib `pub infix` templates
   expanding to `match` over Bool (short-circuit for free), seeded like `if`; the
-  lexer was simplified alongside (`Bar`/`At` tokens removed, `&`/`|` join
-  `operator_chars`, `|` is an ordinary operator given its separator role by the
-  enforester).
+  lexer was simplified alongside: `&`/`|` join `operator_chars` (so `&&`/`||`
+  lex by maximal munch, no per-operator rules), redundant rules and the dead
+  `At` token removed. Settled line: operator space lexes uniformly, but
+  structural punctuation (`|` Bar, `->`, `=`) keeps dedicated tokens.
 
 ## Fog
 

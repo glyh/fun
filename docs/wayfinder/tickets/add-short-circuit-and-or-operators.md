@@ -5,7 +5,7 @@ labels:
   - wayfinder:task
 status: closed
 assignee: glyh
-resolution: Implemented as stdlib `pub infix` syntax templates expanding to `match` over Bool (not builtin operator_env entries), with a lexer simplification — Bar and At tokens removed, `&`/`|` folded into operator_chars, `|` is now Operator "|" given its separator role by the enforester.
+resolution: Implemented as stdlib `pub infix` syntax templates expanding to `match` over Bool (not builtin operator_env entries), with a lexer simplification — `&`/`|` folded into operator_chars (so `&&`/`||` lex by maximal munch), redundant per-operator rules and the dead At token removed. Structural punctuation (`|` Bar, `->`, `=`) keeps dedicated tokens.
 closed_date: 2026-07-30
 blocked_by:
 ---
@@ -38,12 +38,14 @@ entries (better than the sketch above: nothing hardcoded in the compiler):
   seeded into every parse through the existing builtin-syntax hook (same
   mechanism as `if`). Template expansion defers `$b`, so both short-circuit.
   Precedence: comparisons (5) > `&&` (4) > `||` (3) > `<-` (1).
-- Lexer simplified rather than special-cased: dedicated `Bar` and (dead) `At`
-  tokens removed; `&`/`|` folded into `operator_chars`; the redundant explicit
-  rules for `<-`/`==`/`!=`/`>=`/`<=` deleted (subsumed by `operator_chars`).
-  `|` now lexes as `Operator "|"` and the enforester gives it its separator
-  role (match branches, or-patterns, sum types, effect rows) via the shared
-  `Enforest_util.bar` kind.
+- Lexer simplified rather than special-cased: `&`/`|` folded into
+  `operator_chars`, so `&&`/`||` (and future ops like `|>`) lex by maximal
+  munch with no per-operator rules; the redundant explicit rules for
+  `<-`/`==`/`!=`/`>=`/`<=` and the dead `At` token deleted. The design line
+  settled on: **operator space lexes uniformly as `Operator`, but structural
+  punctuation keeps dedicated tokens** — a lone `|` is `Bar` (separator for
+  match branches / or-patterns / sum types / effect rows, not an operator),
+  same category as `->`/`=`.
 - Regression tests in `test_core.ml` eval suite: truth tables, both
   short-circuit directions (`panic` on the unevaluated side), `&&`-over-`||`
   and comparison-over-`&&` precedence, use inside `if`.

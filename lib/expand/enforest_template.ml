@@ -310,7 +310,7 @@ let rec rewrite_template_holes ?(bound = []) terms =
 and rewrite_nested_syntax_body bound body_terms =
   let branch_separator () =
     let span = Source_span.synthetic in
-    { datum = Token { kind = bar; span }; span }
+    { datum = Token { kind = Bar; span }; span }
   in
   let rec join_branches = function
     | [] -> []
@@ -488,7 +488,7 @@ let rec rewrite_decl_template_holes ?(bound = []) captures terms =
 and rewrite_decl_nested_syntax_body captures bound body_terms =
   let branch_separator () =
     let span = Source_span.synthetic in
-    { datum = Token { kind = bar; span }; span }
+    { datum = Token { kind = Bar; span }; span }
   in
   let rec join_branches = function
     | [] -> []

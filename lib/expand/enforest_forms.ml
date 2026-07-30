@@ -42,7 +42,7 @@ let parse_effect_row_terms callbacks terms =
   match drop_separators terms with
   | [] -> { Syntax.effects = []; tail = None }
   | _ -> (
-      match split_at_token bar terms with
+      match split_at_token Bar terms with
       | Some (effect_terms, _, tail_terms) ->
           let effects =
             match drop_separators effect_terms with
