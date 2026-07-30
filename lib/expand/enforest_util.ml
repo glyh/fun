@@ -28,32 +28,17 @@ type env = {
   errors : Parse_error.t list ref;
 }
 
-(* The compiler-known base operators. Formerly [Operator_env]'s hardcoded
-   [infix_table]/[prefix_table] fallback; now seeded as ordinary [Binding]
-   entries into every parse env, so there is no separate fallback table.
-   [<-] lives here (ref-assignment core machinery), not in the prelude. *)
+(* The compiler-known base operators. Only [<-] remains here: it is core
+   ref-assignment machinery ([BuiltinRefSet]), always in scope, not a stdlib
+   feature. The arithmetic/comparison operators ([+ - * / % == != < > <= >=])
+   and prefix [not] were demoted into the prelude as ordinary [pub infix] /
+   [pub prefix] declarations; they now reach parse envs through the prelude's
+   syntax exports (see [Elab_prelude.stdlib_syntax_exports]), not this table. *)
 let base_operators () : Binding.t =
   let tbl = Binding.create () in
-  let infix symbol precedence associativity =
-    Binding.make_operator ~symbol ~fixity:Binding.Infix ~precedence ~associativity
-      ~expansion:Binding.BuiltinApply ()
-  in
   List.iter (Binding.add_operator tbl)
     [ Binding.make_operator ~symbol:"<-" ~fixity:Binding.Infix ~precedence:1
-        ~associativity:Binding.Right ~expansion:Binding.BuiltinRefSet ();
-      infix "==" 5 Binding.Left;
-      infix "!=" 5 Binding.Left;
-      infix "<" 5 Binding.Left;
-      infix ">" 5 Binding.Left;
-      infix "<=" 5 Binding.Left;
-      infix ">=" 5 Binding.Left;
-      infix "+" 10 Binding.Left;
-      infix "-" 10 Binding.Left;
-      infix "*" 20 Binding.Left;
-      infix "/" 20 Binding.Left;
-      infix "%" 20 Binding.Left;
-      Binding.make_operator ~symbol:"not" ~fixity:Binding.Prefix ~precedence:30
-        ~associativity:Binding.Left ~expansion:Binding.BuiltinApply () ];
+        ~associativity:Binding.Right ~expansion:Binding.BuiltinRefSet () ];
   tbl
 
 let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () =

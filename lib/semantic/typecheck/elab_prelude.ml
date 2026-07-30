@@ -59,6 +59,18 @@ pub impl Eq(Unit) = module fn eq(x, y) -> i64_to_bool(eq_unit(x, y)) end;
 pub impl Eq(String) = module fn eq(x, y) -> i64_to_bool(eq_string(x, y)) end;
 pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
 pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs));
+pub infix (==) 5 Left;
+pub infix (!=) 5 Left;
+pub infix (<) 5 Left;
+pub infix (>) 5 Left;
+pub infix (<=) 5 Left;
+pub infix (>=) 5 Left;
+pub infix (+) 10 Left;
+pub infix (-) 10 Left;
+pub infix (*) 20 Left;
+pub infix (/) 20 Left;
+pub infix (%) 20 Left;
+pub prefix (not) 30;
 pub type Option(A) = Some(A) | None;
 pub type List(A) = Nil | Cons(A, List(A));
 pub module Syntax do

@@ -110,9 +110,14 @@ downward), not at a blanket expand-layer seed.
    resolving to the builtin prelude module. The *delete implicit `open_stdlib` +
    fallback tables* part is deferred (it is coupled to steps 2/4).
 4. **Demote operators.** Move `+ - * / % < > <= >= == !=` and prefix `not` into the
-   prelude as `pub infix` / `pub prefix`. **[not started]**
+   prelude as `pub infix` / `pub prefix`. **[DONE]** — see progress note
+   (2026-07-30, part 2). Done *before* the reroute (step 2), deviating from
+   decision #1's "reroute first"; see the note for why that is safe here.
 5. **Tests to their layer.** `test/syntax/*` stay prelude-less (they test raw
    parsing); `eval_with_macros` / REPL / `macro_driver` adopt `open (import "std")`.
+   **[not needed as feared]** — `test/syntax/dune` links `core_tt_typecheck`, so
+   `elab_prelude` fills `builtin_syntax_hook` at startup and the demoted operators
+   reach those parses too. All 133 syntax tests stayed green with zero edits.
    **[not started]**
 
 ## Progress note (2026-07-30) — structural foundation landed
@@ -158,6 +163,45 @@ remainder must choose how the expression entry points obtain prelude fixity —
 recommended: **auto-advance a synthetic `open (import "std")` before parsing the
 body** (keeps `eval_with_macros "1+2"` working, concentrates churn in the entry
 points, not the ~700 test strings). This was surfaced but not yet decided.
+
+## Progress note (2026-07-30, part 2) — operators demoted into the prelude
+
+Step 4 is done; all suites green (339 core tests). Two commits:
+
+1. **Bodyless operator-declaration grammar** (`enforest.ml`). The prelude needs
+   *fixity-only* `BuiltinApply` operators (`a op b` → `op(a, b)` against the
+   same-named value), but the grammar only had `Template`/`MacroOp` forms and *no*
+   `prefix` form at all. Added `infix (op) prec assoc` (no body) → `BuiltinApply`
+   infix, and a new `prefix (op) prec` → `BuiltinApply` prefix. Both emit an
+   export-only `TemplateSyntaxDecl` (operator info, no runtime `Let`), so a `pub`
+   one is harvested into a module's syntax exports like any other operator.
+2. **Demotion** (`elab_prelude.ml` + `enforest_util.ml`). Added `pub infix
+   (==) 5 Left … (%) 20 Left` and `pub prefix (not) 30` to `stdlib_source`;
+   shrank `base_operators()` to just `<-`. The operators' *semantics* were already
+   in the prelude (prims `+ - * / %`; functions `(<) (==) …`); only the fixity
+   metadata moved out of the compiler.
+
+**Why demote before reroute (deviating from decision #1).** Decision #1 said
+"reroute first, then demote" to avoid *leaving duplication*. Demoting into the
+prelude's single existing export channel (`stdlib_syntax_exports` →
+`builtin_syntax_hook`) while *deleting* the parallel `base_operators` entries
+*reduces* channels (2 → 1 for prelude operators), so it does not create the
+duplication the decision guarded against. The remaining reroute (delete the global
+`builtin_syntax_hook` ref + the static `load_syntax_exports` path, deliver via the
+driver/`open`) is now the final cleanup and is unaffected by this order.
+
+**No test churn.** The feared `test/syntax` breakage did not happen:
+`test/syntax/dune` links `core_tt_typecheck`, so `elab_prelude`'s
+`builtin_syntax_hook :=` runs at startup and the demoted operators reach raw-parse
+tests too. All 133 syntax tests green untouched.
+
+**What is left on this ticket** (the reroute, decision #1's mechanism):
+delete `builtin_syntax_hook` (the OCaml global ref) and the static
+`load_syntax_exports`/`load_imports_in_terms` harvest; deliver prelude + imported
+operators through `open (import "…")` in statement order; resolve the entry-point
+fork (auto-advance a synthetic `open (import "std")`) and delete implicit
+`open_stdlib`. That is the C#-rewrite-survivability cleanup; the *user-visible*
+goal (operators are no longer hardcoded in the compiler) is achieved.
 
 ## Risks
 
