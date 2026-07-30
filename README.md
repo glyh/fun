@@ -34,7 +34,7 @@ source → Raw_syntax → Enforest → Expand + Lower → Surface.t → Elaborat
 
 ## Where things live
 
-- **[`AGENTS.md`](AGENTS.md)** — how to work in this repo: build/test, source
+- **[`CLAUDE.md`](CLAUDE.md)** — how to work in this repo: build/test, source
   layout, conventions, and recurring gotchas.
 - **[`docs/STATUS.md`](docs/STATUS.md)** — canonical snapshot of *what is built*.
   When another doc disagrees on completion status, STATUS wins.

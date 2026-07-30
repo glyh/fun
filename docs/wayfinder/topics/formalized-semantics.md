@@ -149,7 +149,7 @@ Miller pattern unification for flex metas:
 Mismatch types:
 `NonLinearSpine | OccursCheck | CannotUnify | TupleLengthMismatch | SpineLengthMismatch | NeutralHeadMismatch | FrameMismatch | NominalMismatch | EffectMismatch | EffectRowMismatch`
 
-### Known bug patterns (from AGENTS.md and the direction map)
+### Known bug patterns (from `CLAUDE.md` and the direction map)
 
 1. **De Bruijn index mismatches** between elaboration and NBE — `List.nth` failures, `VNeutral` where `VLam` expected
 2. **rest = [] bugs** in parser — discarding unconsumed tokens silently
@@ -186,12 +186,12 @@ to pursue it hangs on the [CLR/C# rewrite shape](../fun-design-map.md#fog).
 - `lib/semantic/typecheck/elab_infer.ml` — bidirectional elaboration
 - `lib/semantic/typecheck/unify.ml` — structural unification
 - `lib/semantic/typecheck/elab_ctx.ml` — elaboration context
-- `AGENTS.md` — project conventions, common bugs, style guide
+- `CLAUDE.md` — project conventions, common bugs, style guide
 - [direction map](../fun-design-map.md) — decisions, open tickets, and fog (incl. the C# rewrite)
 - [`docs/STATUS.md`](../../STATUS.md) — current implementation status
 - `lib/expand/enforest.ml` — parser / enforestation (source of `rest=[]` bugs)
 
-## Recurring Conventions (from AGENTS.md)
+## Recurring Conventions (from `CLAUDE.md`)
 
 - `(wrapped false)` everywhere — all `.ml` are flat top-level modules, no `.mli` files
 - `Syntax.t` is the surface AST node, NOT an OCaml `t` type alias

@@ -17,5 +17,5 @@ tickets), and the macro reference library lives under
 `wayfinder/macro-system/`.
 
 For *how to work in the repo* (build/test, source layout, conventions), see the
-root [`AGENTS.md`](../AGENTS.md). For the project overview and design philosophy,
+root [`CLAUDE.md`](../CLAUDE.md). For the project overview and design philosophy,
 see the root [`README.md`](../README.md).

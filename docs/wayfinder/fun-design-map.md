@@ -34,7 +34,7 @@ topic doc that holds its detail.
     [`macro-system/STATUS.md`](macro-system/STATUS.md) (macros). Canonical; when
     other docs disagree on completion status, STATUS wins. These track *state*,
     not direction, and live outside the decision flow on purpose.
-  - **How to *work* in the repo** — root [`AGENTS.md`](../../AGENTS.md).
+  - **How to *work* in the repo** — root [`CLAUDE.md`](../../CLAUDE.md).
   - **What is *decided* / *open*** — this map and its tickets.
   - **Macro reference library** — [`macro-system/`](macro-system/) (design plans,
     papers, extracted Klister notes; its own [`INDEX.md`](macro-system/INDEX.md)).

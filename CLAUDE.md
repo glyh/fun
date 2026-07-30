@@ -1,17 +1,30 @@
-# AGENTS.md — project overview, recurring issues, conventions
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project overview
 
-`fun` is a programming language compiler/interpreter in OCaml. `(wrapped false)` everywhere — all `.ml` are flat top-level modules, no `.mli` files.
+`fun` is a programming language compiler/interpreter in OCaml. The core (`core_tt`) is dependently typed with bidirectional elaboration, NbE, nominal ADTs, structural records/modules, traits, algebraic effects, and a hygienic enforestation-based macro system.
+
+Design philosophy: **Consistency > Flexibility > Correctness** — one construct for many roles (`struct` = record/module/namespace), types are values, type-case on open `Type` is acceptable.
+
+`(wrapped false)` everywhere — all `.ml` are flat top-level modules, no `.mli` files. Library names are `core_tt_*` (see dependency graph below), distinct from directory names.
 
 ### Build & test
 
 ```sh
 dune build                     # build
 dune test                      # all tests
-dune exec bin/main.exe         # REPL
+dune exec fun                  # REPL (bin/main.ml)
 dune exec test/backend/test_core.exe -- test macros -e 'name'  # single test
 ```
+
+Test executables: `test/backend/test_core.exe`, `test/backend/test_macro_driver_stage7.exe`, `test/semantic/test_elaborate.exe`, `test/syntax/test_syntax.exe` (a single Alcotest binary aggregating all `test/syntax/test_*.ml` suites, including `test_line_counts`).
+
+### Documentation hierarchy
+
+- `docs/STATUS.md` — **authoritative** snapshot of what is built; when any doc disagrees on completion status, STATUS wins.
+- `docs/wayfinder/` — direction map (decided / open tickets / fog); start at `docs/wayfinder/fun-design-map.md`. Macro-system reference lives in `docs/wayfinder/macro-system/`.
 
 ### Pipeline
 
@@ -21,10 +34,10 @@ source → Raw_syntax → Enforest Syntax.t → Expand + Lower → Surface.t →
 
 ### Source layout
 
-- `lib/core_kernel/` — `Atom`, `Core`, `Debug`, `Syntax`
+- `lib/core_kernel/` — `Atom`, `Core`, `Debug`, `Syntax`, `Compiler_names` (centralized compiler-known names), `Scope_set`
 - `lib/syntax/` — `Surface.t`, `Raw_syntax` reader
-- `lib/expand/` — `Enforest`, `Expand`, `Parse_expand`, `Macro_eval`, `Expand_ctx`
-- `lib/semantic/typecheck/` — `Elaborate`, `Elab_infer`, `Unify`, `Elab_patterns`, `Elab_prelude`
+- `lib/expand/` — `Enforest` (+ `enforest_forms`/`_pat`/`_template`/`_decl_helpers`), `Expand`, `Parse_expand`, `Macro_eval`, `Expand_ctx`, `Lower_surface`, `Surface_to_syntax`
+- `lib/semantic/typecheck/` — `Elaborate` split across many `elab_*` modules (`elab_infer`, `elab_check`, `elab_patterns`, `elab_prelude`, `elab_driver`, …), `Unify`, `Macro_driver` (type-aware macro interleaving), `Macro_resolver`
 - `lib/semantic/match/` — `Core_match_compile`, `Core_decision_tree`
 - `lib/backend/interp/` — `Nbe`
 - `lib/loader/` — `Core_loader`
