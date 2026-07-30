@@ -386,6 +386,13 @@ let load_syntax_exports env path =
       (match Binding.duplicate_operator_exports_message exports with Some msg -> error msg | None -> ());
       Binding.apply_operator_exports env.operators exports
 
+(* Recursively scan a term list for [import "path"] occurrences and eagerly
+   harvest each one's syntax exports. Operator delivery everywhere else goes
+   through the in-order [Enforest_forms.parse_import] harvest; this whole-body
+   pre-scan survives at exactly ONE call site — [parse_syntax_template_decl] in
+   enforest.ml — where a syntax-template body's imports must be resolved before
+   the branches are enforested (for out-of-order operator use and for circular
+   syntax-visit detection). See that call site for the full rationale. *)
 let rec load_imports_in_terms env = function
   | { datum = Token { kind = KwImport; _ }; _ }
     :: { datum = Token { kind = String path; _ }; _ } :: rest ->

@@ -116,6 +116,16 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   order). `Open` carries a module expression; the REPL and program-eval entry
   points open `std` by default. Two loose ends spun out as their own tickets
   (module-level `open`; retire `load_imports_in_terms`/`open_stdlib`).
+- [Retire load_imports_in_terms and the open_stdlib survivor](tickets/retire-static-import-harvest-and-open-stdlib.md)
+  (closed & **resolved**) — investigated both mechanisms the operator-demotion
+  ticket bypassed; both are load-bearing, so both are **kept with documented
+  rationale** (no behavior change, 792 tests green). `load_imports_in_terms` can't
+  route through the in-order `parse_import` harvest — removing it breaks eager
+  circular-syntax-visit detection for template bodies — so it stays as one
+  documented use. `open_stdlib` is the persistent ctx-builder counterpart of
+  `on_macro_body`'s per-expression `Open (import "std")`; both share
+  `open_module_value`, and `Macro_driver`'s advancement hook needs the ctx-builder
+  form, so it stays (its dead `ix` return dropped).
 
 ## Fog
 
@@ -185,10 +195,6 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
   — add `open <module-expr>` at module top level so imported `.fun` files can open
   `std` themselves and be strict like expressions (today the loader auto-opens
   them). Split from the now-closed operator-demotion ticket.
-- [Retire load_imports_in_terms and the open_stdlib survivor](tickets/retire-static-import-harvest-and-open-stdlib.md)
-  — delete the two mechanisms the operator-demotion ticket bypassed but left live
-  (static import scan for `syntax`-template bodies; `open_stdlib` for macro
-  compilation). Cleanup, no user-visible change.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.

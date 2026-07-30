@@ -3,7 +3,7 @@ title: Retire load_imports_in_terms and the open_stdlib survivor
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -62,4 +62,35 @@ single story:
 
 ## Resolution
 
-_Unresolved (cleanup; low risk, no user-visible change)._
+**Resolved — both mechanisms investigated; both are load-bearing and kept with
+documented rationale (the acceptance criteria's "single documented use" /
+"explicitly kept with a one-line rationale" branches). No behavior change; the
+full suite (792 tests) stays green.**
+
+### `load_imports_in_terms` — reduced to one documented use
+
+Empirically confirmed it cannot route through the in-order
+`Enforest_forms.parse_import` harvest. Removing the sole call at
+`enforest.ml` `parse_syntax_template_decl` breaks three cycle-detection tests
+(`syntax extension circular`, `7I: generated syntax cycle`,
+`7I: generated macro cycle`), because a syntax-template body's imports must be
+harvested *before* the branches are enforested — both so the replacement can use
+imported operators at positions the reader reaches ahead of the `import`
+statement, and so circular syntax imports unwind on the `load_syntax` visit stack
+at declaration time. Restored the call with a full rationale comment at the site,
+and documented the definition (`enforest_util.ml`) as the single sanctioned use.
+
+### `open_stdlib` — kept as the ctx-builder counterpart of `on_macro_body`
+
+Both `open_stdlib` (ctx extension) and `on_macro_body` (surface-level
+`Open (import "std", body)`) bottom out in the same `open_module_value` on `std`
+— they are not two divergent mechanisms but two shapes of one. `Macro_driver`
+needs the *persistent* ctx-builder shape because its per-binding advancement hook
+elaborates module bindings via `elab_module_binding` directly (no expression to
+wrap in `Open`), and its shared `elaborate` callback would double-open (shifting
+de Bruijn indices) if it used `on_macro_body`. So `open_stdlib` stays, now with a
+doc comment that explains the relationship and explicitly supersedes the parent
+ticket's "delete implicit open_stdlib" line (the *user-code* implicit open is
+already gone via `on_expr`). Small real cleanup landed alongside: `open_stdlib`
+returned `(ix, ctx)` but its only caller discarded `ix`, so it now returns just
+`ctx`.

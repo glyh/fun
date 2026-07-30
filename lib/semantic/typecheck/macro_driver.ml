@@ -40,7 +40,7 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
   (* Open stdlib so the per-binding advancement context matches module
      elaboration semantics (stdlib types are available during resolution).
      [init_ctx] defines stdlib as a module but does not open it. *)
-  let _, elab_ctx0 = Elaborate.open_stdlib elab_ctx0 in
+  let elab_ctx0 = Elaborate.open_stdlib elab_ctx0 in
   let elab_ctx = ref elab_ctx0 in
   let syntax_nominals = Elaborate.syntax_nominals !elab_ctx in
   (* Build expand context with the same callbacks used by [eval_decl_module]. *)

@@ -1115,6 +1115,19 @@ and parse_operator_assoc assoc_str =
 and parse_syntax_template_decl env head_term head do_span body_rest =
   let body_terms, rest, _body_span = collect_until_end do_span body_rest in
   ensure_no_rest "syntax declaration" rest;
+  (* Sole surviving use of [load_imports_in_terms]: eagerly harvest every
+     [import "…"] referenced anywhere in the template body *before* the branches
+     are enforested. This cannot route through the ordinary in-order
+     [Enforest_forms.parse_import] harvest (which covers every other import site)
+     for two reasons:
+       1. The replacement may use operators from an imported module at a position
+          the reader reaches before that module's [import] statement is parsed, so
+          the operators must be registered up front, not in statement order.
+       2. Circular syntax imports (a template body importing a module whose body
+          imports back) are detected on the [load_syntax] visit stack at
+          declaration time; the eager scan is what unwinds that stack. Deferring
+          to branch parsing loses the detection (see the "syntax extension
+          circular" / "7I: generated {syntax,macro} cycle" tests). *)
   load_imports_in_terms env body_terms;
   let inherited_captures = env.template_captures in
   let available = List.map fst inherited_captures in

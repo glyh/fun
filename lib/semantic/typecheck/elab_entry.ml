@@ -34,10 +34,25 @@ let init_ctx () : Ctx.t =
   let ctx = Ctx.hide_names ctx syntax_primitive_names in
   Ctx.define ctx Compiler_names.Module_name.stdlib stdlib_ty stdlib_value
 
+(* Return [ctx] extended with the prelude's public fields in scope — the
+   ctx-builder counterpart of [on_macro_body], which brings the prelude into
+   scope for a *single* expression by wrapping it in the [Open (import "std", …)]
+   construct. Both bottom out in the same [open_module_value] on [std]; this form
+   exists for the one caller ([Macro_driver]) that needs a *persistent*
+   prelude-opened context, reused across every macro-body compilation and the
+   per-binding advancement hook (which elaborates module bindings via
+   [elab_module_binding] directly, not through an expression that could carry an
+   [Open]). Because that context is opened once here, [Macro_driver] elaborates
+   macro bodies with [Elab_driver.infer] rather than [on_macro_body] — the latter
+   would open [std] a second time and shift the de Bruijn indices.
+
+   This supersedes the parent operator-demotion ticket's "delete implicit
+   open_stdlib" line: the *user-code* implicit open is gone (see [on_expr]); this
+   surviving use is a deliberate, non-user-facing macro-compilation mechanism. *)
 let open_stdlib ctx =
   let ix, ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
   let value = Ctx.eval ctx (Var ix) in
-  (ix, open_module_value ctx ty value)
+  open_module_value ctx ty value
 
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
   Elab_stdlib.resolve ctx path
