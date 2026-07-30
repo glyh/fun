@@ -1722,6 +1722,22 @@ let test_operator_mixed_precedence () =
        2 +++ 3 *** 4
      end" ()
 
+let test_operator_bodyless_infix_builtin_apply () =
+  check_i64_macro "bodyless infix applies same-named value" 7L
+    "do
+       myfst = fn(x, y) -> x
+       infix (myfst) 5 Left
+       7 myfst 2
+     end" ()
+
+let test_operator_bodyless_prefix_builtin_apply () =
+  check_i64_macro "bodyless prefix applies same-named value" 5L
+    "do
+       ident = fn(x) -> x
+       prefix (ident) 30
+       ident 5
+     end" ()
+
 let test_operator_rhs_can_use_earlier_macro () =
   check_i64_macro "operator RHS macro path" 5L
     "do
@@ -3030,6 +3046,8 @@ let () =
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
           Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
           Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
+          Alcotest.test_case "bodyless infix builtin-apply" `Quick test_operator_bodyless_infix_builtin_apply;
+          Alcotest.test_case "bodyless prefix builtin-apply" `Quick test_operator_bodyless_prefix_builtin_apply;
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;

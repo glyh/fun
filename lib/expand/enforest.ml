@@ -1181,6 +1181,11 @@ and parse_decl_template_use env parse_decl stmt =
       | _ -> None)
   | _ -> None
 
+and operator_symbol kind sym_items =
+  match drop_separators sym_items with
+  | [ term ] when Option.is_some (token_text term) -> Option.get (token_text term)
+  | _ -> error (kind ^ " requires a symbol in parens")
+
 and parse_operator_shape stmt =
   match drop_separators stmt with
   | { datum = Token { kind = Ident ifx; _ }; _ }
@@ -1189,19 +1194,48 @@ and parse_operator_shape stmt =
     :: { datum = Token { kind = Ident assoc_str; _ }; span = assoc_span }
     :: value_terms
     when String.equal ifx "infix" ->
-      let sym =
-        match drop_separators sym_items with
-        | [ term ] when Option.is_some (token_text term) ->
-            Option.get (token_text term)
-        | _ -> error "infix requires a symbol in parens"
-      in
       let prec = Int64.to_int p in
       let assoc = parse_operator_assoc assoc_str in
-      Some (`Infix (sym, sym_span, prec, assoc, assoc_span, value_terms))
+      Some (`Infix (operator_symbol "infix" sym_items, sym_span, prec, assoc, assoc_span, value_terms))
+  | { datum = Token { kind = Ident pfx; _ }; _ }
+    :: { datum = Group (Raw_syntax.Paren, sym_items, sym_span); _ }
+    :: { datum = Token { kind = Int p; _ }; _ }
+    :: value_terms
+    when String.equal pfx "prefix" ->
+      Some (`Prefix (operator_symbol "prefix" sym_items, sym_span, Int64.to_int p, value_terms))
   | _ -> None
 
 and parse_operator_decl env stmt =
   match parse_operator_shape stmt with
+  | Some (`Prefix (name, name_span, prec, value_terms)) ->
+      (* Bodyless [prefix (op) prec] declares a builtin-apply prefix operator:
+         [op x] expands to [op(x)] against the same-named value binding.
+         (A future extension may add template/macro prefix bodies.) *)
+      (match drop_separators value_terms with
+       | [] ->
+           let op =
+             Binding.make_operator ~declaration_span:name_span ~symbol:name
+               ~fixity:Binding.Prefix ~precedence:prec ~associativity:Binding.Left
+               ~expansion:Binding.BuiltinApply ()
+           in
+           Binding.add_operator env.operators op;
+           Some (TemplateSyntaxDecl { syntax_name = id ~span:name_span name; syntax_export = op })
+       | _ -> error "prefix operator with a body is not supported")
+  | Some (`Infix (name, name_span, prec, assoc, assoc_span, value_terms))
+    when drop_separators value_terms = [] ->
+      (* Bodyless [infix (op) prec assoc] declares a builtin-apply infix
+         operator: [a op b] expands to [op(a, b)] against the same-named value
+         binding. This is the fixity-only form the demoted prelude operators
+         ([+ - * / % == != < > <= >=]) use — the value is a separate [pub]
+         binding (a prim or prelude function). *)
+      ignore assoc_span;
+      let op =
+        Binding.make_operator ~declaration_span:name_span ~symbol:name
+          ~fixity:Binding.Infix ~precedence:prec ~associativity:assoc
+          ~expansion:Binding.BuiltinApply ()
+      in
+      Binding.add_operator env.operators op;
+      Some (TemplateSyntaxDecl { syntax_name = id ~span:name_span name; syntax_export = op })
   | Some (`Infix (name, name_span, prec, assoc, assoc_span, value_terms)) ->
       let is_template =
         match drop_separators value_terms with
