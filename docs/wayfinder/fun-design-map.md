@@ -171,8 +171,14 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
   increment 1 (Bool + `if`) landed; **stays open** for more increments.
-- [Prelude-as-implicit-syntax-import for operator demotion](tickets/prelude-implicit-syntax-import-operator-demotion.md)
-  — mechanism needed before `+`/`==`/`<` can move out of `operator_env.ml`.
+- [Unify operators into the scope-aware binding table](tickets/unify-operators-into-scope-aware-binding-table.md)
+  — collapse `Operator_env.t` into the one hygienic `binding_table` (fixity as a
+  `Binding` attribute, like macros). The structural precondition for the operator
+  demotion below; unblocked, and the next concrete implementation work.
+- [Explicit prelude open for operator demotion](tickets/explicit-prelude-open-operator-demotion.md)
+  — make the prelude an explicit `open (import "std")`, deliver operators through
+  the `Macro_driver` interleaving (not the static hook/harvest), then move
+  `+`/`==`/`<` out of `operator_env.ml`. **Blocked on** the table unification above.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.

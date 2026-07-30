@@ -64,7 +64,7 @@ next increment toward fully library-defined control forms — see
 - Demoting the **operator table** (`+`, `==`, `<`, …) out of `operator_env.ml`
   needs a new mechanism — the prelude is *not* currently an implicit syntax import,
   so prelude-declared operators do not reach user enforestation. See
-  [Prelude-as-implicit-syntax-import for operator demotion](../tickets/prelude-implicit-syntax-import-operator-demotion.md).
+  [Explicit prelude open for operator demotion](../tickets/explicit-prelude-open-operator-demotion.md).
 - `&&` / `||` short-circuit operators — feasible now as builtin-table operators
   expanding to `match`. See
   [Add short-circuit && / || operators](../tickets/add-short-circuit-and-or-operators.md).

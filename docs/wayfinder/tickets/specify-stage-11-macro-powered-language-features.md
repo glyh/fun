@@ -54,7 +54,8 @@ dictionaries, effects) — the idea store for future increments:
 
 - [Add short-circuit && / || operators](add-short-circuit-and-or-operators.md)
   — feasible now via the builtin operator table.
-- [Prelude-as-implicit-syntax-import for operator demotion](prelude-implicit-syntax-import-operator-demotion.md)
-  — needed before `+`/`==`/`<` can move out of `operator_env.ml`.
+- [Explicit prelude open for operator demotion](explicit-prelude-open-operator-demotion.md)
+  — needed before `+`/`==`/`<` can move out of `operator_env.ml`; blocked on
+  [Unify operators into the scope-aware binding table](unify-operators-into-scope-aware-binding-table.md).
 - [Reflect Match in the Expr macro ADT](reflect-match-in-expr-macro-adt.md)
   — required for a *true* prelude-macro `if` (macros can't construct `Match` today).
