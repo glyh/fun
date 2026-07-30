@@ -73,7 +73,7 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
   | Module { bindings } ->
     Module { bindings = List.map (go_struct_binding ?within s) bindings }
   | Import _ -> k
-  | Open (m, body) -> Open (add_id_scope_if within s m, go body)
+  | Open (m, body) -> Open (go m, go body)
   | RecordTypeDef { name; params; fields; body } ->
     RecordTypeDef { name = add_id_scope_if within s name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | TypeDef { name; params; ctors; body } ->
@@ -358,12 +358,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | Module { bindings } ->
     { stx with kind = Module { bindings = expand_struct_bindings ctx bindings } }
   | Open (m, body) ->
-    let m =
-      match Expand_ctx.resolve ctx m with
-      | Some info -> { m with name = info.resolved_name }
-      | None -> m
-    in
-    { stx with kind = Open (m, expand ctx body) }
+    { stx with kind = Open (expand ctx m, expand ctx body) }
   | RecordTypeDef { name; params; fields; body } ->
     let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
     let name = add_id_scope scope name in

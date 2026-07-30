@@ -17,6 +17,10 @@ end
 module Module_name = struct
   let syntax = "Syntax"
   let stdlib = "stdlib"
+
+  (* Reserved import path: [import "std"] resolves to the builtin prelude
+     module rather than reading a [std.fun] file from disk. *)
+  let std_import_path = "std"
 end
 
 module Syntax_name = struct

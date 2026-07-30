@@ -98,17 +98,66 @@ downward), not at a blanket expand-layer seed.
 ## Implementation sequence
 
 1. **(child ticket)** Fixity into the binding table; precedence parser reads it;
-   install `<-` as a base binding; delete `Operator_env.t`.
+   install `<-` as a base binding; delete `Operator_env.t`. **[DONE]**
 2. **Driver-carries-operators.** Route `open`/import operator delivery through
    `Macro_driver` alongside macros; delete `builtin_syntax_hook` and the
-   `load_syntax_exports` static path.
+   `load_syntax_exports` static path. **[not started]**
 3. **Explicit prelude.** Reserved `"std"` → builtin prelude; `open (import "std")`;
    lift `Surface.Open`/`Syntax.Open` to accept an expression (core `Open` already
    takes an arbitrary term); delete implicit `open_stdlib` + fallback tables.
+   **[partial]** — the two structural pieces landed (see progress note): `Open`
+   now carries a module *expression*, and `import "std"` is a reserved path
+   resolving to the builtin prelude module. The *delete implicit `open_stdlib` +
+   fallback tables* part is deferred (it is coupled to steps 2/4).
 4. **Demote operators.** Move `+ - * / % < > <= >= == !=` and prefix `not` into the
-   prelude as `pub infix` / `pub prefix`.
+   prelude as `pub infix` / `pub prefix`. **[not started]**
 5. **Tests to their layer.** `test/syntax/*` stay prelude-less (they test raw
    parsing); `eval_with_macros` / REPL / `macro_driver` adopt `open (import "std")`.
+   **[not started]**
+
+## Progress note (2026-07-30) — structural foundation landed
+
+Steps 1–2 of the *structural* work are in; 789 tests green. What changed:
+
+- **`open` takes an arbitrary module expression.** `Surface.Open` / `Syntax.Open`
+  went from `(name, body)` to `(module_expr, body)` (core `Open` already took a
+  term). `parse_open_statement` now parses the operand as an expression, so
+  `open (import "std")` and `open <any module expr>` parse. Elaboration infers the
+  module expr, checks it is a `VModule` (new `NotAModule` elab error replaces the
+  old `UnboundVariable` hack), and opens it. All `Open` sites updated
+  (expand add-scope/expand, lower/raise, template mapping, surface-rewrite,
+  effect-collect).
+- **`import "std"` is a reserved path → builtin prelude.** Resolved in the
+  *typecheck* layer (`elab_infer`, returning the `stdlib` binding `init_ctx`
+  already builds) so the loader never has to name the prelude upward across the
+  layer boundary. The parse-time harvest paths that a loader triggers
+  (`Core_loader.load_syntax_exports`, `Macro_driver.visit_macros`) short-circuit
+  `"std"` to empty — the prelude's operators/`if`/`&&`/`||` are still delivered by
+  `base_operators` + `builtin_syntax_hook` in this increment, so `"std"`
+  contributes nothing extra yet and must not try to read a `std.fun` file.
+  `Compiler_names.Module_name.std_import_path` is the single source of the name.
+
+This is a deliberately *non-breaking, additive* stopping point: `open (import
+"std")` works (redundantly with the still-implicit `open_stdlib` and the still-live
+`base_operators`), so nothing is demoted or deleted yet. Regression tests:
+`test/backend/test_core.ml` "open (import std) evaluates" / "… prelude value in
+scope".
+
+### Deferred, and the one open fork for step 3's remainder
+
+The reroute+demote remainder (steps 2, 4, 5, and the deletions in step 3) is
+coupled and was intentionally left for a follow-up. The **fork to decide first**:
+the primary expression entry points (`eval_with_macros`, REPL `on_expr`) parse the
+whole expression at once and rely on `base_operators`/`builtin_syntax_hook` seeding
+fixity at *parse* time. Once operators are demoted to the prelude, parsing `1 + 2`
+needs `+`'s fixity before elaboration runs — but explicit `open (import "std")`
+only delivers it during elaboration. The interleaving driver resolves this at the
+*declaration* level (advance the `open`, harvest operators, then parse the next
+binding); a bare top-level *expression* has no such per-binding seam. So step 3's
+remainder must choose how the expression entry points obtain prelude fixity —
+recommended: **auto-advance a synthetic `open (import "std")` before parsing the
+body** (keeps `eval_with_macros "1+2"` working, concentrates churn in the entry
+points, not the ~700 test strings). This was surfaced but not yet decided.
 
 ## Risks
 

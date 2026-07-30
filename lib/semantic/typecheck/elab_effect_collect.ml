@@ -39,7 +39,7 @@ let rec compile_time_safe (expr : Surface.t) : bool =
       List.for_all (fun (_, ty) -> compile_time_safe ty) con_fields
       && List.for_all compile_time_safe_struct_binding bindings
   | Surface.Module { bindings } -> List.for_all compile_time_safe_struct_binding bindings
-  | Surface.Open (_, body) -> compile_time_safe body
+  | Surface.Open (m, body) -> compile_time_safe m && compile_time_safe body
   | Surface.RecordTypeDef { fields; body; _ } ->
       List.for_all (fun (_, ty) -> compile_time_safe ty) fields && compile_time_safe body
   | Surface.TypeDef { ctors; body; _ } ->
@@ -210,10 +210,15 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
                  | _ -> None)
           |> union_many_expr_effects ctx
       | _ -> empty_expr_effects)
-  | Surface.Open (name, body) ->
-      let ix, ty = Ctx.lookup ctx name in
-      let value = Ctx.eval ctx (Var ix) in
-      ops.collect_effects (open_module_value ctx ty value) body
+  | Surface.Open (mod_expr, body) ->
+      let mod_core, mod_ty = ops.infer ctx mod_expr in
+      let mod_value = Ctx.eval ctx mod_core in
+      (match (Nbe.force ctx.Ctx.metas mod_ty, Nbe.force ctx.Ctx.metas mod_value) with
+       | VModule _, VModule _ ->
+           union_many_expr_effects ctx
+             [ ops.collect_effects ctx mod_expr;
+               ops.collect_effects (open_module_value ctx mod_ty mod_value) body ]
+       | _ -> ops.collect_effects ctx body)
   | Surface.RecordTypeDef { fields; body; _ } ->
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects ctx body ])
   | Surface.TypeDef { ctors; body; _ } ->

@@ -9,6 +9,7 @@ let () =
           | ApplyingNonFunction -> "ApplyingNonFunction"
           | TupleLengthMismatch -> "TupleLengthMismatch"
           | NotANominalType -> "NotANominalType"
+          | NotAModule -> "NotAModule"
           | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
           | PatternArityMismatch -> "PatternArityMismatch"
           | PatternBindingMismatch -> "PatternBindingMismatch"

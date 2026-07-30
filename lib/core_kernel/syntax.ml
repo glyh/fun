@@ -107,7 +107,7 @@ and kind =
     }
   | Module of { bindings : struct_binding list }
   | Import of string
-  | Open of id * t
+  | Open of t * t
   | RecordTypeDef of {
       name : id;
       params : id list;

@@ -39,6 +39,11 @@ let read_module_source resolved =
   In_channel.with_open_text resolved In_channel.input_all
 
 let rec load_syntax_exports t path =
+  (* [import "std"] is the reserved builtin prelude, not a file. Its syntax
+     exports (operators, [if]/[&&]/[||]) are still delivered through the
+     compiler's base operator table and [builtin_syntax_hook], so the static
+     harvest for "std" contributes nothing and must not try to read a file. *)
+  if String.equal path Compiler_names.Module_name.std_import_path then [] else
   let resolved = resolved_path t path in
   if not (Sys.file_exists resolved) then raise (ImportNotFound path);
   match Hashtbl.find_opt t.syntax_cache resolved with

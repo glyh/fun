@@ -69,7 +69,7 @@ and t =
     }
   | Module of { bindings : struct_binding list }
   | Import of string
-  | Open of string * t
+  | Open of t * t
   | RecordTypeDef of {
       name : string;
       params : string list;

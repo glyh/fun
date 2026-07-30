@@ -1008,12 +1008,12 @@ and parse_impl_binding env public stmt =
   | _ -> None
 
 and parse_open_statement env stmt =
-  let spec =
-    Parse_spec.map
-      (Parse_spec.seq (Parse_spec.punct KwOpen) Parse_spec.str_ident)
-      (fun ((), (name, span)) -> id ~span name)
-  in
-  Parse_spec.to_option spec env stmt
+  match drop_separators stmt with
+  | open_kw :: rest when token_kind KwOpen open_kw ->
+      let value, rest = parse_expr_prec env 0 rest in
+      ensure_no_rest "open statement" rest;
+      Some value
+  | _ -> None
 
 and parse_import_statement env stmt =
   let spec = Parse_spec.punct KwImport in

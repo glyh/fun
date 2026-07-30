@@ -50,7 +50,7 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.Module { bindings } ->
     Surface.Module { bindings = List.map lower_struct_binding bindings }
   | Syntax.Import s -> Surface.Import s
-  | Syntax.Open (m, body) -> Surface.Open (lower_id m, lower_expr body)
+  | Syntax.Open (m, body) -> Surface.Open (lower_expr m, lower_expr body)
   | Syntax.RecordTypeDef { name; params; fields; body } ->
     Surface.RecordTypeDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.TypeDef { name; params; ctors; body } ->

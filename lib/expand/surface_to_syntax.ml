@@ -47,7 +47,7 @@ and expr (e : Surface.t) : Syntax.t =
     | Module { bindings } ->
       Syntax.Module { bindings = List.map struct_binding bindings }
     | Import path -> Syntax.Import path
-    | Open (name, body) -> Syntax.Open (id name, expr body)
+    | Open (m, body) -> Syntax.Open (expr m, expr body)
     | RecordTypeDef { name; params; fields; body } ->
       Syntax.RecordTypeDef { name = id name; params = List.map id params; fields = List.map (fun (name, typ) -> (name, expr typ)) fields; body = expr body }
     | TypeDef { name; params; ctors; body } ->

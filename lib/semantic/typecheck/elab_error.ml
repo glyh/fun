@@ -3,6 +3,7 @@ type elab_error =
   | ApplyingNonFunction
   | TupleLengthMismatch
   | NotANominalType
+  | NotAModule
   | UnknownConstructor of string
   | PatternArityMismatch
   | PatternBindingMismatch
@@ -32,6 +33,7 @@ let string_of_elab_error = function
   | ApplyingNonFunction -> "ApplyingNonFunction"
   | TupleLengthMismatch -> "TupleLengthMismatch"
   | NotANominalType -> "NotANominalType"
+  | NotAModule -> "NotAModule"
   | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
   | PatternArityMismatch -> "PatternArityMismatch"
   | PatternBindingMismatch -> "PatternBindingMismatch"

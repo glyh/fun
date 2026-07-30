@@ -154,6 +154,10 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
     namespace — then registers them into [ctx]. Results are cached in the
     loader's [macro_cache]; circular macro visits are rejected. *)
 and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) : unit =
+  (* [import "std"] is the reserved builtin prelude, not a file. Its public
+     macros ([if]/[&&]/[||]) are still delivered through [builtin_syntax_hook],
+     so there is nothing to harvest from a "std" file here. *)
+  if String.equal path Compiler_names.Module_name.std_import_path then () else
   let resolved = Core_loader.resolved_path loader path in
   if not (Sys.file_exists resolved) then raise (Core_loader.ImportNotFound path);
   let register_cached macros =

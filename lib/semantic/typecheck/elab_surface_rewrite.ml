@@ -144,7 +144,7 @@ let rewrite_record_self_refs record_name params expr =
         | Surface.RefNew e -> Surface.RefNew (go bound e)
         | Surface.RefGet e -> Surface.RefGet (go bound e)
         | Surface.RefSet (r, e) -> Surface.RefSet (go bound r, go bound e)
-        | Surface.Open (name, body) -> Surface.Open (name, go bound body)
+        | Surface.Open (m, body) -> Surface.Open (go bound m, go bound body)
         | Surface.RecordTypeDef { name; params; fields; body } ->
             Surface.RecordTypeDef
               { name; params;

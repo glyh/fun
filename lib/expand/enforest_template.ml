@@ -360,7 +360,7 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.Struct { con_fields; bindings } ->
       { stx with kind = Syntax.Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields; bindings = List.map (map_template_struct_binding captures go) bindings } }
   | Syntax.Module { bindings } -> { stx with kind = Syntax.Module { bindings = List.map (map_template_struct_binding captures go) bindings } }
-  | Syntax.Open (m, body) -> { stx with kind = Syntax.Open (map_reference_id captures m, go body) }
+  | Syntax.Open (m, body) -> { stx with kind = Syntax.Open (go m, go body) }
   | Syntax.RecordTypeDef { name; params; fields; body } ->
       { stx with kind = Syntax.RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
   | Syntax.TypeDef { name; params; ctors; body } ->

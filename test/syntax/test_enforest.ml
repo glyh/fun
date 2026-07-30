@@ -243,7 +243,7 @@ let import_shape () =
 
 let open_in_do_block () =
   match parse "do open M; x end" with
-  | Open ("M", Var "x") -> ()
+  | Open (Var "M", Var "x") -> ()
   | _ -> Alcotest.fail "expected open statement in do block"
 
 let module_pub_value_decl () =

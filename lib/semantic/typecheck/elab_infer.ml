@@ -431,6 +431,13 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
             raise (ElabError TupleLengthMismatch);
           (Proj (e_core, i), Nbe.force ctx.metas (List.nth tys i))
       | _ -> raise (ElabError ApplyingNonFunction))
+  | Import path when String.equal path Compiler_names.Module_name.std_import_path ->
+      (* Reserved path: [import "std"] resolves to the builtin prelude module,
+         already elaborated and bound by [init_ctx] as [stdlib]. Resolving it
+         here (typecheck layer) keeps the loader from having to name the prelude
+         upward across the layer boundary. *)
+      let ix, ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
+      (Var ix, ty)
   | Import path -> (
       match ctx.loader with
       | Some loader ->
@@ -734,14 +741,14 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       in
       (Struct { con_fields = result_con_fields; bindings = core_bindings; partial = false },
        VStruct { entries = type_entries; partial = false })
-  | Open (name, body) ->
-      let ix, ty = Ctx.lookup ctx name in
-      let value = Ctx.eval ctx (Var ix) in
-      (match (Nbe.force ctx.metas ty, Nbe.force ctx.metas value) with
+  | Open (mod_expr, body) ->
+      let mod_core, mod_ty = ops.infer ctx mod_expr in
+      let mod_value = Ctx.eval ctx mod_core in
+      (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
       | VModule _, VModule _ ->
-          let body_core, body_ty = ops.infer (open_module_value ctx ty value) body in
-          (Open (Var ix, body_core), body_ty)
-      | _ -> raise (ElabError (UnboundVariable name (* not a module *))))
+          let body_core, body_ty = ops.infer (open_module_value ctx mod_ty mod_value) body in
+          (Open (mod_core, body_core), body_ty)
+      | _ -> raise (ElabError NotAModule))
   | RecordTypeDef { name; params; fields; body } ->
       check_duplicate_names (List.map fst fields);
       let rewritten_fields =

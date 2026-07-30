@@ -2678,6 +2678,13 @@ let () =
              (check_i64 "qualified constructor alias pattern" 1L
                 "do S = module pub type Color = Red | Green end; \
                  N = S; open N; match Red do Red -> 1 | Green -> 2 end end");
+           Alcotest.test_case "open (import std) evaluates" `Quick
+             (check_i64 "open import std" 3L
+                "do open (import \"std\"); 1 + 2 end");
+           Alcotest.test_case "open (import std) prelude value in scope" `Quick
+             (check_i64 "open import std prelude value" 1L
+                "do open (import \"std\"); \
+                 match not(False) do True -> 1 | False -> 0 end end");
           Alcotest.test_case "match int literal hit" `Quick
             (check_i64 "match int literal hit" 10L
                "match 1 do 1 -> 10 | _ -> 20 end");
