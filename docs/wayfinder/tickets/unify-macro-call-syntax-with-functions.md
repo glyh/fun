@@ -3,8 +3,11 @@ title: Unify procedural macro call syntax with function calls
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee: glyh
+resolution: Implemented in commit 0441c9a — `@` removed, procedural macros invoked with ordinary `f(args)` application syntax; macros promoted into the scope-aware binding table with a Value/Macro kind tag (one namespace, innermost-lexical shadowing), replacing the save/restore hack. Internal MacroCall node is now compiler-derived; the type-aware driver path is unchanged.
+closed_date: 2026-07-30
+implemented_date: 2026-07-21
 blocked_by:
 ---
 
@@ -85,4 +88,13 @@ the save/restore hack — macros stop being quasi-global-by-string.
 
 ## Resolution
 
-_Unresolved._
+Implemented in commit `0441c9a` ("Demote Bool/if to library; unify macro call
+syntax; chart Stage 11"), exactly per the decided design:
+
+- `@` macro-call marker removed; procedural macros are invoked with ordinary
+  application syntax `f(args)`.
+- Macros live in the scope-aware `binding_table` with a Value/Macro kind tag —
+  one namespace, innermost-lexical shadowing (model (i)), replacing the old
+  save/restore shadowing hack. Macro scoping is now genuinely lexical/hygienic.
+- The expander derives the internal `MacroCall` node (design (a)); the
+  type-aware interleaving driver path is unchanged.

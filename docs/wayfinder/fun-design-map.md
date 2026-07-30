@@ -95,6 +95,10 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   `Core.If`/`FIf` removed (sound — `FMatch` subsumes them). Implemented, 778 tests
   green. Stage 11 (["macro-powered language features"](tickets/specify-stage-11-macro-powered-language-features.md))
   stays **open** as the umbrella for further demotion increments.
+- [Unify procedural macro call syntax with function calls](tickets/unify-macro-call-syntax-with-functions.md)
+  (closed & **implemented**, commit `0441c9a`) — `@` removed, macros invoked as
+  `f(args)`; macros live in the scope-aware binding table with a Value/Macro kind
+  tag (one namespace, innermost-lexical shadowing).
 
 ## Fog
 
@@ -171,9 +175,6 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
   — enables a true prelude-macro `if`, `matches?`, pattern DSLs, `derive`. Design
   decided via grilling; **blocked on** mutually-recursive nominal types (for the
   dedicated `Branch` ADT).
-- [Unify procedural macro call syntax with functions](tickets/unify-macro-call-syntax-with-functions.md)
-  — Stage 11 increment; design decided (drop `@`, `f(args)` for macros, macros
-  become scope-aware bindings dispatched by kind). Ready to implement.
 - [Specify Stage 12 macro diagnostics and expansion UX](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md)
   — diagnostics scope pre- vs post-rewrite.
 - [Design trait library deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md)
