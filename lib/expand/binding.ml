@@ -3,10 +3,35 @@
     binding and its [kind] decides expand-vs-call at an application head. *)
 type binding_kind = Value | Macro
 
+(* Operator fixity/precedence carried as an optional attribute on a binding.
+   An operator is a binding that also carries [operator_info]; [kind]
+   (Value/Macro) and operator-ness are orthogonal — e.g. [(+)] is a callable
+   value that is also an infix operator, and [&&] is a macro that is also an
+   infix operator. Lifted from the former [Operator_env] so that fixity lives
+   in the one binding table rather than a parallel structure. *)
+type associativity = Left | Right
+type operator_fixity = Prefix | Infix
+type operator_expansion =
+  | BuiltinApply
+  | BuiltinRefSet
+  | MacroOp
+  | Template of Syntax_template.t
+
+type operator_info = {
+  symbol : string;
+  fixity : operator_fixity;
+  precedence : int;
+  associativity : associativity;
+  syntax_class : Syntax_class.t;
+  expansion : operator_expansion;
+  declaration_span : Source_span.t;
+}
+
 type binding_info = {
   scope : Scope_set.t;
   resolved_name : string;
   kind : binding_kind;
+  operator : operator_info option;
 }
 
 type t = (string, binding_info list) Hashtbl.t
@@ -19,7 +44,7 @@ let copy (tbl : t) : t =
   new_tbl
 
 let extend (tbl : t) ~name ~scope ~kind ~resolved_name =
-  let info = { scope; resolved_name; kind } in
+  let info = { scope; resolved_name; kind; operator = None } in
   let existing = try Hashtbl.find tbl name with Not_found -> [] in
   Hashtbl.replace tbl name (info :: existing)
 
@@ -53,3 +78,74 @@ let resolve (tbl : t) (id : Syntax.id) : binding_info option =
     | [] -> None
     | _ ->
       Some (List.fold_left (more_specific id.name) (List.hd matches) (List.tl matches))
+
+(* --- Operators as bindings ---------------------------------------------- *)
+
+(* Operator resolution is string-keyed and newest-wins, NOT scope-based like
+   [resolve]: during enforestation there are no scope sets yet (they are added
+   only in the expand phase), so [resolve]'s [more_specific] fold would return
+   the OLDEST candidate on equal/empty scopes — wrong for shadowing. [extend]
+   prepends, so [List.find_map] over the stacked infos returns the most recently
+   added operator; builtins seeded first sit at the tail and act as fallback.
+   (Hygienic, scope-set-keyed operator resolution is deferred to the interleaving
+   driver, which is the only phase with scopes to key against.) *)
+let find_operator (tbl : t) ~fixity ~syntax_class name : operator_info option =
+  match Hashtbl.find_opt tbl name with
+  | None -> None
+  | Some infos ->
+      List.find_map
+        (fun info ->
+          match info.operator with
+          | Some op when op.fixity = fixity && op.syntax_class = syntax_class -> Some op
+          | _ -> None)
+        infos
+
+let add_operator (tbl : t) (op : operator_info) =
+  let info =
+    { scope = Scope_set.empty; resolved_name = op.symbol; kind = Value; operator = Some op }
+  in
+  let existing = try Hashtbl.find tbl op.symbol with Not_found -> [] in
+  Hashtbl.replace tbl op.symbol (info :: existing)
+
+let make_operator ?(syntax_class = Syntax_class.Expr)
+    ?(declaration_span = Source_span.synthetic) ~symbol ~fixity ~precedence
+    ~associativity ~expansion () =
+  { symbol; fixity; precedence; associativity; syntax_class; expansion; declaration_span }
+
+let template_infix ?(declaration_span = Source_span.synthetic) symbol template precedence associativity =
+  make_operator ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity
+    ~expansion:(Template template) ()
+
+let template_prefix ?(declaration_span = Source_span.synthetic) symbol template precedence =
+  make_operator ~declaration_span ~symbol ~fixity:Prefix ~precedence
+    ~associativity:Left ~expansion:(Template template) ()
+
+let macro_infix ?(declaration_span = Source_span.synthetic) symbol precedence associativity =
+  make_operator ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity
+    ~expansion:MacroOp ()
+
+let apply_operator_exports (tbl : t) (ops : operator_info list) =
+  List.iter (fun op -> add_operator tbl op) ops
+
+let same_operator_key a b =
+  String.equal a.symbol b.symbol && a.fixity = b.fixity && a.syntax_class = b.syntax_class
+
+let fixity_name = function Prefix -> "prefix" | Infix -> "infix"
+
+let duplicate_operator_exports_message (exports : operator_info list) =
+  let rec go seen = function
+    | [] -> None
+    | op :: rest -> (
+        match List.find_opt (same_operator_key op) seen with
+        | Some previous ->
+            Some
+              (Printf.sprintf
+                 "ambiguous syntax extension candidates for %s %s operator %S: declarations at %s and %s"
+                 (fixity_name op.fixity)
+                 (Syntax_class.to_string op.syntax_class)
+                 op.symbol
+                 (Format.asprintf "%a" Source_span.pp previous.declaration_span)
+                 (Format.asprintf "%a" Source_span.pp op.declaration_span))
+        | None -> go (op :: seen) rest)
+  in
+  go [] exports

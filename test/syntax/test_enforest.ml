@@ -503,8 +503,8 @@ let pub_syntax_rejected_in_struct () =
 
 let syntax_exports_include_operator_metadata () =
   match Enforest.parse_public_syntax_exports "pub infix (~) 15 Right (stx) -> stx" with
-  | [ { symbol = "~"; fixity = Operator_env.Infix; precedence = 15; associativity = Operator_env.Right;
-        syntax_class = Syntax_class.Expr; expansion = Operator_env.Macro; _ } ] ->
+  | [ { symbol = "~"; fixity = Binding.Infix; precedence = 15; associativity = Binding.Right;
+        syntax_class = Syntax_class.Expr; expansion = Binding.MacroOp; _ } ] ->
       ()
   | _ -> Alcotest.fail "expected public syntax export to include operator metadata"
 

@@ -531,10 +531,10 @@ and parse_primary env terms =
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
       | Token { kind = Ident name; _ } -> (
           match
-            Operator_env.find_prefix ~syntax_class:env.syntax_class
-              env.operators name
+            Binding.find_operator env.operators ~fixity:Binding.Prefix
+              ~syntax_class:env.syntax_class name
           with
-          | Some { Operator_env.expansion = Operator_env.Template template; _ }
+          | Some { Binding.expansion = Binding.Template template; _ }
             ->
               expand_syntax_template env term.span template (term :: rest)
           | Some op ->
@@ -543,7 +543,7 @@ and parse_primary env terms =
               let f = var ~span:term.span name in
               let expr =
                 match op.expansion with
-                | Operator_env.Macro ->
+                | Binding.MacroOp ->
                     stx ~span
                       (Syntax.MacroCall
                          ( f,
@@ -551,7 +551,7 @@ and parse_primary env terms =
                              syntax_operator_arg ~span ~use_span:term.span op
                                [ rhs ];
                            ] ))
-                | Operator_env.Template _ ->
+                | Binding.Template _ ->
                     error
                       "internal error: template syntax should expand before \
                        operand parsing"
@@ -561,10 +561,10 @@ and parse_primary env terms =
           | None -> (var ~span:term.span name, rest))
       | Token { kind = Operator name; _ } -> (
           match
-            Operator_env.find_prefix ~syntax_class:env.syntax_class
-              env.operators name
+            Binding.find_operator env.operators ~fixity:Binding.Prefix
+              ~syntax_class:env.syntax_class name
           with
-          | Some { Operator_env.expansion = Operator_env.Template template; _ }
+          | Some { Binding.expansion = Binding.Template template; _ }
             ->
               expand_syntax_template env term.span template (term :: rest)
           | Some op ->
@@ -573,7 +573,7 @@ and parse_primary env terms =
               let f = var ~span:term.span name in
               let expr =
                 match op.expansion with
-                | Operator_env.Macro ->
+                | Binding.MacroOp ->
                     stx ~span
                       (Syntax.MacroCall
                          ( f,
@@ -581,7 +581,7 @@ and parse_primary env terms =
                              syntax_operator_arg ~span ~use_span:term.span op
                                [ rhs ];
                            ] ))
-                | Operator_env.Template _ ->
+                | Binding.Template _ ->
                     error
                       "internal error: template syntax should expand before \
                        operand parsing"
@@ -709,8 +709,8 @@ and parse_postfix_infix env min_prec lhs terms =
       match token_text term with
       | Some symbol -> (
           match
-            Operator_env.find_infix ~syntax_class:env.syntax_class env.operators
-              symbol
+            Binding.find_operator env.operators ~fixity:Binding.Infix
+              ~syntax_class:env.syntax_class symbol
           with
           | Some op when op.precedence >= min_prec ->
               let next_min =
@@ -722,9 +722,9 @@ and parse_postfix_infix env min_prec lhs terms =
               let span = span_between lhs.span rhs.span in
               let lhs =
                 match op.expansion with
-                | Operator_env.BuiltinRefSet ->
+                | Binding.BuiltinRefSet ->
                     stx ~span (Syntax.RefSet (lhs, rhs))
-                | Template template ->
+                | Binding.Template template ->
                     let branch = List.hd template.Syntax_template.branches in
                     let holes =
                       Enforest_template.collect_pattern_holes branch.pattern
@@ -743,13 +743,13 @@ and parse_postfix_infix env min_prec lhs terms =
                     let parsed, _ = parse_expr_prec env 0 branch.replacement in
                     Enforest_template.substitute_template_captures captures
                       parsed
-                | Macro ->
+                | Binding.MacroOp ->
                     let arg =
                       syntax_operator_arg ~span ~use_span:term.span op
                         [ lhs; rhs ]
                     in
                     arg
-                | BuiltinApply ->
+                | Binding.BuiltinApply ->
                     ap ~span
                       (ap ~span
                          (var ~span:term.span op.symbol)
@@ -1100,22 +1100,16 @@ and parse_operator_template_decl env sym sym_span prec assoc value_terms =
       inherited_captures = [];
     }
   in
-  env.operators <-
-    Operator_env.add_template_infix ~declaration_span:sym_span env.operators sym
-      template prec assoc;
+  let op = Binding.template_infix ~declaration_span:sym_span sym template prec assoc in
+  Binding.add_operator env.operators op;
   Some
     (TemplateSyntaxDecl
-       {
-         syntax_name = id ~span:sym_span sym;
-         syntax_export =
-           Operator_env.template_infix ~declaration_span:sym_span sym template
-             prec assoc;
-       })
+       { syntax_name = id ~span:sym_span sym; syntax_export = op })
 
 and parse_operator_assoc assoc_str =
   match assoc_str with
-  | "Left" -> Operator_env.Left
-  | "Right" -> Operator_env.Right
+  | "Left" -> Binding.Left
+  | "Right" -> Binding.Right
   | _ -> error "operator infix associativity must be Left or Right"
 
 and parse_syntax_template_decl env head_term head do_span body_rest =
@@ -1133,16 +1127,10 @@ and parse_syntax_template_decl env head_term head do_span body_rest =
       inherited_captures;
     }
   in
-  env.operators <-
-    Operator_env.add_template_prefix ~declaration_span:head_term.span
-      env.operators head template 50;
+  let op = Binding.template_prefix ~declaration_span:head_term.span head template 50 in
+  Binding.add_operator env.operators op;
   TemplateSyntaxDecl
-    {
-      syntax_name = id ~span:head_term.span head;
-      syntax_export =
-        Operator_env.template_prefix ~declaration_span:head_term.span head
-          template 50;
-    }
+    { syntax_name = id ~span:head_term.span head; syntax_export = op }
 
 and template_callbacks env parse_decl =
   {
@@ -1181,10 +1169,10 @@ and parse_decl_template_use env parse_decl stmt =
   | ({ datum = Token { kind = Ident head; _ }; span; _ } as _head_term) :: _
     -> (
       match
-        Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators
-          head
+        Binding.find_operator env.operators ~fixity:Binding.Prefix
+          ~syntax_class:env.syntax_class head
       with
-      | Some { Operator_env.expansion = Operator_env.Template template; _ } ->
+      | Some { Binding.expansion = Binding.Template template; _ } ->
           let bindings, rest =
             expand_decl_syntax_template env parse_decl span template stmt
           in
@@ -1235,17 +1223,14 @@ and parse_operator_decl env stmt =
       else begin
         let value, rest = parse_operator_value env assoc_span value_terms in
         ensure_no_rest "infix declaration" rest;
-        env.operators <-
-          Operator_env.add_infix ~declaration_span:name_span env.operators name
-            prec assoc;
+        let op = Binding.macro_infix ~declaration_span:name_span name prec assoc in
+        Binding.add_operator env.operators op;
         Some
           (MacroSyntaxDecl
              {
                syntax_name = id ~span:name_span name;
                syntax_value = value;
-               syntax_export =
-                 Operator_env.macro_infix ~declaration_span:name_span name prec
-                   assoc;
+               syntax_export = op;
              })
       end
   | None -> (
@@ -1683,7 +1668,7 @@ let parse_public_syntax_exports ?file ?load_syntax source =
     env.exports_collector := [];
     Raw_syntax.read ?file source |> collect_public_syntax_exports env;
     let exports = List.rev !(env.exports_collector) in
-    (match Operator_env.duplicate_exports_message exports with
+    (match Binding.duplicate_operator_exports_message exports with
     | Some msg -> error msg
     | None -> ());
     exports
@@ -1697,12 +1682,11 @@ let parse_public_syntax_exports ?file ?load_syntax source =
    semantic layer registers the stdlib's public syntax exports into this hook at
    startup. When nothing is registered (e.g. a parse with no stdlib) the hook is
    empty and [if] is just an ordinary identifier. *)
-let builtin_syntax_hook : (unit -> Operator_env.export list) ref =
+let builtin_syntax_hook : (unit -> Binding.operator_info list) ref =
   ref (fun () -> [])
 
 let seed_builtin_syntax env =
-  env.operators <-
-    Operator_env.apply_exports env.operators (!builtin_syntax_hook ());
+  Binding.apply_operator_exports env.operators (!builtin_syntax_hook ());
   env
 
 let parse_expr ?file ?load_syntax source =

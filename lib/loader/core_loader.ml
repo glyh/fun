@@ -16,7 +16,7 @@ type t = {
   runtime_surface_cache : (string, Surface.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
   macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
-  syntax_cache : (string, Operator_env.export list) Hashtbl.t;
+  syntax_cache : (string, Binding.operator_info list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
   macro_active : (string, string) Hashtbl.t;
   syntax_active : (string, string) Hashtbl.t;

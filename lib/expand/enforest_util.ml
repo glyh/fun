@@ -12,24 +12,52 @@ type syntax_decl =
   | MacroSyntaxDecl of {
       syntax_name : Syntax.id;
       syntax_value : Syntax.t;
-      syntax_export : Operator_env.export;
+      syntax_export : Binding.operator_info;
     }
   | TemplateSyntaxDecl of {
       syntax_name : Syntax.id;
-      syntax_export : Operator_env.export;
+      syntax_export : Binding.operator_info;
     }
 
 type env = {
-  mutable operators : Operator_env.t;
+  mutable operators : Binding.t;
   mutable template_captures : (string * Syntax_template.captured) list;
-  exports_collector : Operator_env.export list ref;
-  load_syntax : (string -> Operator_env.export list) option;
+  exports_collector : Binding.operator_info list ref;
+  load_syntax : (string -> Binding.operator_info list) option;
   syntax_class : Syntax_class.t;
   errors : Parse_error.t list ref;
 }
 
+(* The compiler-known base operators. Formerly [Operator_env]'s hardcoded
+   [infix_table]/[prefix_table] fallback; now seeded as ordinary [Binding]
+   entries into every parse env, so there is no separate fallback table.
+   [<-] lives here (ref-assignment core machinery), not in the prelude. *)
+let base_operators () : Binding.t =
+  let tbl = Binding.create () in
+  let infix symbol precedence associativity =
+    Binding.make_operator ~symbol ~fixity:Binding.Infix ~precedence ~associativity
+      ~expansion:Binding.BuiltinApply ()
+  in
+  List.iter (Binding.add_operator tbl)
+    [ Binding.make_operator ~symbol:"<-" ~fixity:Binding.Infix ~precedence:1
+        ~associativity:Binding.Right ~expansion:Binding.BuiltinRefSet ();
+      infix "==" 5 Binding.Left;
+      infix "!=" 5 Binding.Left;
+      infix "<" 5 Binding.Left;
+      infix ">" 5 Binding.Left;
+      infix "<=" 5 Binding.Left;
+      infix ">=" 5 Binding.Left;
+      infix "+" 10 Binding.Left;
+      infix "-" 10 Binding.Left;
+      infix "*" 20 Binding.Left;
+      infix "/" 20 Binding.Left;
+      infix "%" 20 Binding.Left;
+      Binding.make_operator ~symbol:"not" ~fixity:Binding.Prefix ~precedence:30
+        ~associativity:Binding.Left ~expansion:Binding.BuiltinApply () ];
+  tbl
+
 let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () =
-  { operators = Operator_env.empty; template_captures = []; load_syntax; syntax_class;
+  { operators = base_operators (); template_captures = []; load_syntax; syntax_class;
     exports_collector = ref []; errors = ref [] }
 
 let unsupported msg = raise (Unsupported msg)
@@ -60,8 +88,8 @@ let stx ?(span = Source_span.synthetic) kind = { Syntax.kind; span }
 let atom ?span atom = stx ?span (Syntax.Atom atom)
 let var ?span name = stx ?span (Syntax.Var (id ?span name))
 
-let syntax_operator_arg ~span ~use_span (op : Operator_env.operator) operands =
-  let fixity = match op.fixity with Operator_env.Prefix -> Syntax.PrefixOp | Operator_env.Infix -> Syntax.InfixOp in
+let syntax_operator_arg ~span ~use_span (op : Binding.operator_info) operands =
+  let fixity = match op.fixity with Binding.Prefix -> Syntax.PrefixOp | Binding.Infix -> Syntax.InfixOp in
   stx ~span
     (Syntax.SyntaxOperatorUse
        { operator = id ~span:use_span op.symbol;
@@ -175,7 +203,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 let is_expr_start env term =
   match term.datum with
   | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwDo | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
-  | Token { kind = Operator s; _ } -> Option.is_some (Operator_env.find_prefix ~syntax_class:env.syntax_class env.operators s)
+  | Token { kind = Operator s; _ } -> Option.is_some (Binding.find_operator env.operators ~fixity:Binding.Prefix ~syntax_class:env.syntax_class s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false
 
@@ -356,7 +384,9 @@ let ensure_no_rest what rest =
   | _ -> error (what ^ " has trailing terms")
 
 let with_operator_scope env f =
-  f { env with operators = env.operators; template_captures = env.template_captures }
+  (* [operators] is a mutable Hashtbl; copy it so operator definitions inside the
+     nested scope do not leak to the outer env (outer ones stay visible). *)
+  f { env with operators = Binding.copy env.operators; template_captures = env.template_captures }
 
 let syntax_name term = token_text term
 
@@ -368,8 +398,8 @@ let load_syntax_exports env path =
   | None -> ()
   | Some load ->
       let exports = load path in
-      (match Operator_env.duplicate_exports_message exports with Some msg -> error msg | None -> ());
-      env.operators <- Operator_env.apply_exports env.operators exports
+      (match Binding.duplicate_operator_exports_message exports with Some msg -> error msg | None -> ());
+      Binding.apply_operator_exports env.operators exports
 
 let rec load_imports_in_terms env = function
   | { datum = Token { kind = KwImport; _ }; _ }
