@@ -42,15 +42,23 @@ let open_stdlib ctx =
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
   Elab_stdlib.resolve ctx path
 
+(* The prelude is opened for user code by the same [open (import "std")]
+   construct a program could write itself, rather than a bespoke implicit-open
+   path: wrap the body in [Surface.Open (Import "std", body)] and elaborate that.
+   [import "std"] is the reserved prelude (see [elab_infer]); the [Open] case
+   checks it is a module and opens it. The operator side of this synthetic open
+   is delivered at parse time via [?builtin_syntax] (the exports the caller
+   injects), so [+]/[if]/… are in scope while the body parses. *)
+let open_prelude (expr : Surface.t) : Surface.t =
+  Surface.Open (Surface.Import Compiler_names.Module_name.std_import_path, expr)
+
 (** Entry point: elaborate a surface expression in the given context. *)
 let on_expr ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value =
   let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
-  let stdlib_ix, ctx = open_stdlib ctx in
-  let core, ty = Elab_driver.infer ctx expr in
-  (Open (Var stdlib_ix, core), ty)
+  Elab_driver.infer ctx (open_prelude expr)
 
 let on_expr_effects ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value * Elab_effects.expr_effects =
   let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
-  let stdlib_ix, ctx = open_stdlib ctx in
-  let core, ty = Elab_driver.infer ctx expr in
-  (Open (Var stdlib_ix, core), ty, Elab_driver.collect_effects ctx expr)
+  let wrapped = open_prelude expr in
+  let core, ty = Elab_driver.infer ctx wrapped in
+  (core, ty, Elab_driver.collect_effects ctx wrapped)

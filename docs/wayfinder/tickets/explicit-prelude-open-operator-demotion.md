@@ -111,10 +111,15 @@ downward), not at a blanket expand-layer seed.
 3. **Explicit prelude.** Reserved `"std"` → builtin prelude; `open (import "std")`;
    lift `Surface.Open`/`Syntax.Open` to accept an expression (core `Open` already
    takes an arbitrary term); delete implicit `open_stdlib` + fallback tables.
-   **[partial]** — the two structural pieces landed (see progress note): `Open`
-   now carries a module *expression*, and `import "std"` is a reserved path
-   resolving to the builtin prelude module. The *delete implicit `open_stdlib` +
-   fallback tables* part is deferred (it is coupled to steps 2/4).
+   **[mostly done]** — `Open` carries a module *expression*; `import "std"` is a
+   reserved path resolving to the builtin prelude; the base fallback operator table
+   is gone (only `<-` remains). The expression entry points (`on_expr` /
+   `on_expr_effects`) now open the prelude via the **general**
+   `Open (Import "std", body)` construct — the same one user code writes — instead
+   of a bespoke implicit-open wrap. `open_stdlib` survives only as a ctx-extension
+   helper for the macro driver's elaboration context. The one remaining "implicit"
+   is that the entry points still auto-wrap the synthetic open (rather than the
+   user typing it) and still seed operators via the blanket `?builtin_syntax` DI.
 4. **Demote operators.** Move `+ - * / % < > <= >= == !=` and prefix `not` into the
    prelude as `pub infix` / `pub prefix`. **[DONE]** — see progress note
    (2026-07-30, part 2). Done *before* the reroute (step 2), deviating from
