@@ -43,6 +43,8 @@ let stdlib_source =
   {|
 pub type Bool = False | True;
 pub syntax if do | if $c do $t else $e end -> match $c do True -> $t | False -> $e end end;
+pub infix (&&) 4 Left ($a, $b) -> match $a do True -> $b | False -> False end;
+pub infix (||) 3 Left ($a, $b) -> match $a do True -> True | False -> $b end;
 pub i64_to_bool = fn(n) -> match n do 0 -> False | _ -> True end;
 pub not = fn(b) -> match b do True -> False | False -> True end;
 pub (<) = fn(x, y) -> i64_to_bool(lt_i64(x, y));

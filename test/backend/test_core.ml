@@ -2519,6 +2519,20 @@ let () =
             (check_i64 "lambda shadows outer let" 7L "do x = 1; (fn(x) -> x : I64 -> I64)(7) end");
           Alcotest.test_case "if True" `Quick (check_i64 "if True" 1L "if True do 1 else 2 end");
           Alcotest.test_case "if False" `Quick (check_i64 "if False" 2L "if False do 1 else 2 end");
+          Alcotest.test_case "and true true" `Quick (check_bool "and true true" true "True && True");
+          Alcotest.test_case "and true false" `Quick (check_bool "and true false" false "True && False");
+          Alcotest.test_case "and short-circuits" `Quick
+            (check_bool "and short-circuits" false "False && panic[Bool](\"and rhs evaluated\")");
+          Alcotest.test_case "or false true" `Quick (check_bool "or false true" true "False || True");
+          Alcotest.test_case "or false false" `Quick (check_bool "or false false" false "False || False");
+          Alcotest.test_case "or short-circuits" `Quick
+            (check_bool "or short-circuits" true "True || panic[Bool](\"or rhs evaluated\")");
+          Alcotest.test_case "and binds tighter than or" `Quick
+            (check_bool "and binds tighter than or" true "True || False && False");
+          Alcotest.test_case "comparison binds tighter than and" `Quick
+            (check_bool "comparison binds tighter than and" false "1 < 2 && 3 < 2");
+          Alcotest.test_case "and or in if condition" `Quick
+            (check_i64 "and or in if condition" 1L "if 1 < 2 && 2 < 3 || False do 1 else 2 end");
           Alcotest.test_case "prod" `Quick test_eval_prod;
           Alcotest.test_case "proj" `Quick (check_i64 "proj" 42L "(42, True).0");
           Alcotest.test_case "dot" `Quick test_eval_dot;

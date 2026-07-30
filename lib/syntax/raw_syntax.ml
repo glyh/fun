@@ -48,9 +48,7 @@ type token_kind =
   | Colon
   | Equals
   | Semi
-  | Bar
   | ThinArrow
-  | At
   | DatumComment
   | Operator of string
   | Eof
@@ -86,7 +84,7 @@ let id =
     ( ('a' .. 'z' | 'A' .. 'Z' | '_'),
       Star ('a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9' | '?' | '!') )]
 
-let operator_chars = [%sedlex.regexp? Plus ('+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '@' | '~')]
+let operator_chars = [%sedlex.regexp? Plus ('+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '@' | '~' | '&' | '|')]
 
 let keyword = function
   | "let" -> Some KwLet
@@ -140,11 +138,6 @@ let rec raw_token buf =
   | "#_" -> DatumComment
   | "#" -> skip_line_comment buf
   | "->" -> ThinArrow
-  | "<-" -> Operator "<-"
-  | "==" -> Operator "=="
-  | "!=" -> Operator "!="
-  | ">=" -> Operator ">="
-  | "<=" -> Operator "<="
   | "(" -> LParen
   | ")" -> RParen
   | "[" -> LBracket
@@ -156,8 +149,6 @@ let rec raw_token buf =
   | ":" -> Colon
   | "=" -> Equals
   | ";" -> Semi
-  | "|" -> Bar
-  | "@" -> At
   | Plus '0' .. '9' -> Int (Sedlexing.Utf8.lexeme buf |> Int64.of_string)
   | '"' -> read_string buf (Buffer.create 16)
   | "'", '\\', 'n', "'" -> Char '\n'
@@ -245,9 +236,7 @@ let read ?file source =
     | Colon -> ":"
     | Equals -> "="
     | Semi -> ";"
-    | Bar -> "|"
     | ThinArrow -> "->"
-    | At -> "@"
     | DatumComment -> "#_"
     | Ident s | Operator s -> s
     | KwLet -> "let"

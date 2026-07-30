@@ -3,8 +3,10 @@ title: Add short-circuit && / || operators
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Implemented as stdlib `pub infix` syntax templates expanding to `match` over Bool (not builtin operator_env entries), with a lexer simplification — Bar and At tokens removed, `&`/`|` folded into operator_chars, `|` is now Operator "|" given its separator role by the enforester.
+closed_date: 2026-07-30
 blocked_by:
 ---
 
@@ -27,4 +29,21 @@ Add `&&` and `||` as short-circuit boolean operators over the library `Bool` ADT
 
 ## Resolution
 
-_Unresolved._
+Implemented — as **stdlib syntax templates**, not builtin `operator_env.ml`
+entries (better than the sketch above: nothing hardcoded in the compiler):
+
+- `elab_prelude.ml` `stdlib_source` gains
+  `pub infix (&&) 4 Left ($a, $b) -> match $a do True -> $b | False -> False end`
+  and `pub infix (||) 3 Left ($a, $b) -> match $a do True -> True | False -> $b end`,
+  seeded into every parse through the existing builtin-syntax hook (same
+  mechanism as `if`). Template expansion defers `$b`, so both short-circuit.
+  Precedence: comparisons (5) > `&&` (4) > `||` (3) > `<-` (1).
+- Lexer simplified rather than special-cased: dedicated `Bar` and (dead) `At`
+  tokens removed; `&`/`|` folded into `operator_chars`; the redundant explicit
+  rules for `<-`/`==`/`!=`/`>=`/`<=` deleted (subsumed by `operator_chars`).
+  `|` now lexes as `Operator "|"` and the enforester gives it its separator
+  role (match branches, or-patterns, sum types, effect rows) via the shared
+  `Enforest_util.bar` kind.
+- Regression tests in `test_core.ml` eval suite: truth tables, both
+  short-circuit directions (`panic` on the unevaluated side), `&&`-over-`||`
+  and comparison-over-`&&` precedence, use inside `if`.

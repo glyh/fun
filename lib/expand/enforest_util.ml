@@ -111,6 +111,10 @@ let token_kind kind term =
   | Token { kind = k; _ } -> k = kind
   | _ -> false
 
+(* [|] lexes as an ordinary operator; the enforester gives it its separator
+   role (match branches, or-patterns, sum types, effect-row tails). *)
+let bar = Operator "|"
+
 let keyword_name = function
   | KwFn -> Some "fn"
   | KwEnd -> Some "end"
@@ -154,9 +158,7 @@ let punct_name = function
   | Colon -> Some ":"
   | Equals -> Some "="
   | Semi -> Some ";"
-  | Bar -> Some "|"
   | ThinArrow -> Some "->"
-  | At -> Some "@"
   | DatumComment -> Some "#_"
   | _ -> None
 
@@ -286,7 +288,7 @@ let is_multi_block_start term =
 let split_by_top_level_bar terms =
   let rec go depth current acc = function
     | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when depth = 0 && token_kind Bar term -> go depth [] (List.rev current :: acc) rest
+    | term :: rest when depth = 0 && token_kind bar term -> go depth [] (List.rev current :: acc) rest
     | term :: rest when token_kind KwDo term || token_kind KwSig term -> go (depth + 1) (term :: current) acc rest
     | term :: rest when token_kind KwModule term ->
         if starts_named_do_block rest then go depth (term :: current) acc rest
@@ -302,9 +304,9 @@ let split_by_top_level_bar terms =
 let split_match_branches terms =
   let rec go depth seen_arrow current acc = function
     | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when depth = 0 && token_kind Bar term && drop_separators current = [] ->
+    | term :: rest when depth = 0 && token_kind bar term && drop_separators current = [] ->
         go depth false current acc rest
-    | term :: rest when depth = 0 && token_kind Bar term && seen_arrow ->
+    | term :: rest when depth = 0 && token_kind bar term && seen_arrow ->
         go depth false [] (List.rev current :: acc) rest
     | term :: rest when depth = 0 && token_kind ThinArrow term ->
         go depth true (term :: current) acc rest
@@ -413,11 +415,11 @@ and split_statements terms =
     | [ last ] -> List.rev (last :: acc)
     | a :: b :: rest ->
         let a_ends_bar = match List.rev a with
-          | (term : Raw_syntax.t) :: _ when token_kind Bar term -> true
+          | (term : Raw_syntax.t) :: _ when token_kind bar term -> true
           | _ -> false
         in
         let b_starts_bar = match drop_separators b with
-          | (term : Raw_syntax.t) :: _ when token_kind Bar term -> true
+          | (term : Raw_syntax.t) :: _ when token_kind bar term -> true
           | _ -> false
         in
         if a_ends_bar || b_starts_bar then

@@ -99,6 +99,12 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   (closed & **implemented**, commit `0441c9a`) — `@` removed, macros invoked as
   `f(args)`; macros live in the scope-aware binding table with a Value/Macro kind
   tag (one namespace, innermost-lexical shadowing).
+- [Add short-circuit && / || operators](tickets/add-short-circuit-and-or-operators.md)
+  (closed & **implemented**) — Stage 11 increment: stdlib `pub infix` templates
+  expanding to `match` over Bool (short-circuit for free), seeded like `if`; the
+  lexer was simplified alongside (`Bar`/`At` tokens removed, `&`/`|` join
+  `operator_chars`, `|` is an ordinary operator given its separator role by the
+  enforester).
 
 ## Fog
 
@@ -164,8 +170,6 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
   increment 1 (Bool + `if`) landed; **stays open** for more increments.
-- [Add short-circuit && / || operators](tickets/add-short-circuit-and-or-operators.md)
-  — Stage 11 increment; feasible now via the builtin operator table.
 - [Prelude-as-implicit-syntax-import for operator demotion](tickets/prelude-implicit-syntax-import-operator-demotion.md)
   — mechanism needed before `+`/`==`/`<` can move out of `operator_env.ml`.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
