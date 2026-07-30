@@ -6,8 +6,13 @@ open Unify
 let mc () = MetaContext.create ()
 let pure_effects = effect_row_closure [] empty_effect_row
 
+(* Prelude syntax exports (operators, [if]) — passed into every parse so test
+   sources can use [+]/[==]/[if]/… now that these are prelude features rather
+   than compiler builtins. Mirrors what the entry points and loader inject. *)
+let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
+
 let parse_expr source =
-  Parse_expand.parse_expr source
+  Parse_expand.parse_expr ~builtin_syntax source
 
 let fail_with_source label source message =
   Alcotest.fail (Printf.sprintf "%s: %s\nsource:\n%s" label message source)
@@ -31,7 +36,7 @@ let with_modules modules f =
       let path = Filename.concat dir (name ^ ".fun") in
       Out_channel.with_open_text path (fun oc -> output_string oc source))
     modules;
-  let loader = Core_loader.create ~base_dir:dir in
+  let loader = Core_loader.create ~base_dir:dir ~builtin_syntax () in
   f loader
 
 let check_import_i64 label modules expected source () =
@@ -842,7 +847,7 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr (None, None))) sour
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~context_kind source in
+  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~builtin_syntax ~context_kind source in
   Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
       | Some k -> k | None -> Syntax.MacroKind.default in
@@ -873,7 +878,7 @@ let eval_decl_module source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals source in
+  let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~builtin_syntax source in
   (* Register macros from expander in elaborator context *)
   Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
@@ -903,6 +908,7 @@ let eval_with_imported_macros modules source =
           ~syntax_nominals
           ~load_macros:(Macro_driver.visit_macros loader)
           ~load_syntax:(Core_loader.load_syntax_exports loader)
+          ~builtin_syntax
           source
       in
       let ctx = Elaborate.init_ctx () in
@@ -1278,7 +1284,7 @@ let test_binder_body_type_mismatch () =
 (** Stage 3: helper that produces a driver_output via the new [Macro_driver].
     Parses source, runs the driver, and returns the output. *)
 let run_driver source : Macro_driver.driver_output =
-  let stx = Enforest.parse_module source in
+  let stx = Enforest.parse_module ~builtin_syntax source in
   Macro_driver.run stx
 
 (** Stage 3: equivalence helper — runs both the old pipeline
@@ -1297,7 +1303,7 @@ let driver_vs_pipeline source =
   in
   let pipeline_surface, _expand_ctx =
     Parse_expand.parse_module_with_ctx
-      ~elaborate ~eval_and_apply ~syntax_nominals:nominals source
+      ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~builtin_syntax source
   in
   let driver_output = run_driver source in
   (pipeline_surface, driver_output.surface)
@@ -1536,7 +1542,7 @@ let test_generated_type_before_macro_stays_binder () =
 (** Stage 8: driver run with a loader over temp modules. *)
 let run_driver_with_modules modules source f =
   with_modules modules (fun loader ->
-      let stx = Enforest.parse_module ~load_syntax:(Core_loader.load_syntax_exports loader) source in
+      let stx = Enforest.parse_module ~load_syntax:(Core_loader.load_syntax_exports loader) ~builtin_syntax source in
       f (Macro_driver.run ~loader stx))
 
 let exported_kind_with_modules modules source macro_name =

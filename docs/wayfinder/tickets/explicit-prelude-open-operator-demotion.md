@@ -101,7 +101,13 @@ downward), not at a blanket expand-layer seed.
    install `<-` as a base binding; delete `Operator_env.t`. **[DONE]**
 2. **Driver-carries-operators.** Route `open`/import operator delivery through
    `Macro_driver` alongside macros; delete `builtin_syntax_hook` and the
-   `load_syntax_exports` static path. **[not started]**
+   `load_syntax_exports` static path. **[partial]** — the global mutable
+   `builtin_syntax_hook` ref is *deleted* (see progress note part 3): prelude
+   syntax exports are now injected explicitly via a `?builtin_syntax` parameter
+   (entry points / REPL) and a `Core_loader.builtin_syntax` field (imported
+   modules), and the reserved `import "std"` returns them. Remaining: the delivery
+   is still a *blanket* per-parse seed, not yet `open`-scoped / in statement order,
+   and the static `load_imports_in_terms` harvest still exists.
 3. **Explicit prelude.** Reserved `"std"` → builtin prelude; `open (import "std")`;
    lift `Surface.Open`/`Syntax.Open` to accept an expression (core `Open` already
    takes an arbitrary term); delete implicit `open_stdlib` + fallback tables.
@@ -202,6 +208,34 @@ operators through `open (import "…")` in statement order; resolve the entry-po
 fork (auto-advance a synthetic `open (import "std")`) and delete implicit
 `open_stdlib`. That is the C#-rewrite-survivability cleanup; the *user-visible*
 goal (operators are no longer hardcoded in the compiler) is achieved.
+
+## Progress note (2026-07-30, part 3) — the OCaml global ref is gone
+
+The `builtin_syntax_hook` inversion ref — the specific "OCaml-ism that will not
+survive the C# rewrite" that motivated this ticket — is **deleted**, replaced by
+explicit dependency injection. 791 tests green.
+
+- `Enforest.parse_expr` / `parse_module` (and the `Parse_expand` wrappers) gained a
+  `?builtin_syntax` parameter; `seed_syntax` seeds it instead of reading the global
+  ref. A parse with no stdlib passes nothing (prelude-less), so `if`/`+`/… are just
+  identifiers — the raw-parse `test/syntax` suites now pass the exports explicitly.
+- The prelude cannot be named from the expand/loader layers, so the exports are
+  injected downward: entry points and the REPL pass
+  `Lazy.force Elab_prelude.stdlib_syntax_exports`; `Core_loader.create` takes a
+  `?builtin_syntax` and threads it into every module parse (so imported `.fun`
+  files still see the operators) and returns it for the reserved `import "std"`.
+- `Macro_driver.visit_macros` passes the loader's `builtin_syntax` when parsing
+  imported modules for macros.
+- `elab_prelude` no longer sets the ref; it just exposes `stdlib_syntax_exports`
+  for callers to inject.
+
+This is still a *blanket* per-parse seed (every parse that opts in gets the whole
+prelude's operators), not yet the `open`-scoped, statement-ordered delivery. But
+the layering inversion is dissolved: delivery is now ordinary downward DI that maps
+cleanly to C#. **What remains**: make delivery `open (import "std")`-triggered in
+statement order (retire the static `load_imports_in_terms` harvest) and drop the
+implicit `open_stdlib` in favor of the explicit open — the last of step 2 + the
+deletions in step 3.
 
 ## Risks
 

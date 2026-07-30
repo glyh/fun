@@ -13,6 +13,11 @@ let () =
 
 type t = {
   base_dir : string;
+  (* Prelude syntax exports, injected at [create] by a layer that can name the
+     prelude (the loader layer cannot). Seeded into every module parse so
+     imported [.fun] files see the stdlib operators/[if], and returned for the
+     reserved [import "std"] path. Replaces the old [builtin_syntax_hook] ref. *)
+  builtin_syntax : Binding.operator_info list;
   runtime_surface_cache : (string, Surface.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
   macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
@@ -22,8 +27,9 @@ type t = {
   syntax_active : (string, string) Hashtbl.t;
 }
 
-let create ~base_dir =
+let create ~base_dir ?(builtin_syntax = []) () =
   { base_dir;
+    builtin_syntax;
     runtime_surface_cache = Hashtbl.create 16;
     runtime_elab_cache = Hashtbl.create 16;
     macro_cache = Hashtbl.create 16;
@@ -39,11 +45,10 @@ let read_module_source resolved =
   In_channel.with_open_text resolved In_channel.input_all
 
 let rec load_syntax_exports t path =
-  (* [import "std"] is the reserved builtin prelude, not a file. Its syntax
-     exports (operators, [if]/[&&]/[||]) are still delivered through the
-     compiler's base operator table and [builtin_syntax_hook], so the static
-     harvest for "std" contributes nothing and must not try to read a file. *)
-  if String.equal path Compiler_names.Module_name.std_import_path then [] else
+  (* [import "std"] is the reserved builtin prelude, not a file: its syntax
+     exports are the injected [builtin_syntax] (operators, [if]/[&&]/[||]), not
+     the contents of a [std.fun] file. *)
+  if String.equal path Compiler_names.Module_name.std_import_path then t.builtin_syntax else
   let resolved = resolved_path t path in
   if not (Sys.file_exists resolved) then raise (ImportNotFound path);
   match Hashtbl.find_opt t.syntax_cache resolved with
@@ -76,7 +81,7 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
   (match eval_and_apply with
    | Some _ ->
        let source = read_module_source resolved in
-        let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ?syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) source in
+        let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ?syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) ~builtin_syntax:t.builtin_syntax source in
        (* Cache macros from expansion context so elaborator can find them *)
         Hashtbl.iter (fun name entry ->
           let kind = match Hashtbl.find_opt ctx.Expand_ctx.macro_kind_table name with
@@ -90,7 +95,7 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
        | Some surface -> surface
        | None ->
            let source = read_module_source resolved in
-           let surface = Parse_expand.parse_module ~load_macros ~load_syntax:(load_syntax_exports t) source in
+           let surface = Parse_expand.parse_module ~load_macros ~load_syntax:(load_syntax_exports t) ~builtin_syntax:t.builtin_syntax source in
            Hashtbl.replace t.runtime_surface_cache resolved surface;
            surface)
 
@@ -119,7 +124,7 @@ let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
         | None -> ()
       in
       if not (Sys.file_exists resolved) then raise (ImportNotFound path);
-      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) (read_module_source resolved) in
+      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) ~builtin_syntax:t.builtin_syntax (read_module_source resolved) in
       Hashtbl.replace t.active resolved path;
       let result =
         Fun.protect

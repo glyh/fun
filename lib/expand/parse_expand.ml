@@ -11,18 +11,18 @@ let expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals
 let expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ?context_kind surface =
   Surface_to_syntax.expr surface |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ?context_kind |> fst
 
-let parse_expr_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source =
+let parse_expr_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?builtin_syntax ?syntax_nominals ?context_kind source =
   let context_kind = match context_kind with Some k -> k | None -> Syntax.MacroKind.(Expr (None, None)) in
-  Enforest.parse_expr ?load_syntax source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~context_kind
+  Enforest.parse_expr ?load_syntax ?builtin_syntax source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~context_kind
 
-let parse_expr ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source =
-  let surface, _ctx = parse_expr_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source in
+let parse_expr ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?builtin_syntax ?syntax_nominals ?context_kind source =
+  let surface, _ctx = parse_expr_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?builtin_syntax ?syntax_nominals ?context_kind source in
   surface
 
-let parse_module_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source =
+let parse_module_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?builtin_syntax ?syntax_nominals ?context_kind source =
   let context_kind = match context_kind with Some k -> k | None -> Syntax.MacroKind.Decl in
-  Enforest.parse_module ?load_syntax source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~context_kind
+  Enforest.parse_module ?load_syntax ?builtin_syntax source |> expand_lower_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~context_kind
 
-let parse_module ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source =
-  let surface, _ctx = parse_module_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals ?context_kind source in
+let parse_module ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?builtin_syntax ?syntax_nominals ?context_kind source =
+  let surface, _ctx = parse_module_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?builtin_syntax ?syntax_nominals ?context_kind source in
   surface

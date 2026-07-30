@@ -1,7 +1,11 @@
 open Surface
 
-let parse = Parse_expand.parse_expr
-let parse_module = Parse_expand.parse_module
+(* Prelude syntax exports so raw-parse tests can still use [+]/[==]/[not]/… now
+   that operators are prelude [pub infix]/[pub prefix] declarations rather than
+   compiler builtins. *)
+let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
+let parse source = Parse_expand.parse_expr ~builtin_syntax source
+let parse_module source = Parse_expand.parse_module ~builtin_syntax source
 
 let string_contains text needle =
   let needle_len = String.length needle in
@@ -23,7 +27,7 @@ let parse_with_macros ?load_macros ?load_syntax source =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_expr ?load_macros ?load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
+  Parse_expand.parse_expr ?load_macros ?load_syntax ~builtin_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let parse_module_with_macros ?load_macros ?load_syntax source =
   let ctx = Elaborate.init_ctx () in
@@ -36,7 +40,7 @@ let parse_module_with_macros ?load_macros ?load_syntax source =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_module ?load_macros ?load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
+  Parse_expand.parse_module ?load_macros ?load_syntax ~builtin_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let with_modules modules f =
   let dir = Filename.temp_dir "fun_syntax_test" "" in
@@ -45,7 +49,7 @@ let with_modules modules f =
       let path = Filename.concat dir (name ^ ".fun") in
       Out_channel.with_open_text path (fun oc -> output_string oc source))
     modules;
-  let loader = Core_loader.create ~base_dir:dir in
+  let loader = Core_loader.create ~base_dir:dir ~builtin_syntax () in
   f loader
 
 let raw_grouping () =

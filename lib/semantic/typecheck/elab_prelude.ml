@@ -136,12 +136,14 @@ pub module Syntax do
 end
 |}
 
-(* The stdlib's public syntax templates (e.g. [if]) are seeded into every user
-   parse. We invert the layering here: [Enforest] (in the [expand] layer) exposes
-   a hook, and this semantic-layer module fills it with the stdlib's exports.
-   Parsing the exports uses a non-seeded env, so there is no recursion even
-   though this same source is later parsed (seeded) for elaboration. *)
+(* The stdlib's public syntax exports (templates like [if]; the arithmetic and
+   comparison operators). Callers that can name the prelude (entry points, the
+   loader) pass these into the parser via [?builtin_syntax] so user/imported code
+   sees them — replacing the old [builtin_syntax_hook] inversion ref. Collecting
+   the exports uses a non-seeded env, so there is no recursion even though this
+   same source is later parsed for elaboration. *)
 let stdlib_syntax_exports = lazy (Enforest.parse_public_syntax_exports stdlib_source)
-let () = Enforest.builtin_syntax_hook := fun () -> Lazy.force stdlib_syntax_exports
 
+(* The prelude body itself uses only prim calls and [match] (no infix operators),
+   so it parses correctly without any [builtin_syntax] seed. *)
 let parsed_stdlib = lazy (Parse_expand.parse_module stdlib_source)

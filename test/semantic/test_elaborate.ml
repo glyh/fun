@@ -54,7 +54,8 @@ let () =
           | EffectRowMismatch -> "EffectRowMismatch"))
     | _ -> None)
 
-let parse_expr = Parse_expand.parse_expr
+let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
+let parse_expr source = Parse_expand.parse_expr ~builtin_syntax source
 let pi explicitness domain codomain = Pi { explicitness; domain; effects = empty_effect_row; codomain }
 
 let elab source =
@@ -74,7 +75,7 @@ let with_modules modules f =
       let path = Filename.concat dir (name ^ ".fun") in
       Out_channel.with_open_text path (fun oc -> output_string oc source))
     modules;
-  let loader = Core_loader.create ~base_dir:dir in
+  let loader = Core_loader.create ~base_dir:dir ~builtin_syntax () in
   f loader
 
 let check_import_type modules source expected () =
@@ -1350,7 +1351,7 @@ let imports =
          "do M = import \"m\"; Alias = M; Alias.secret end");
     Alcotest.test_case "missing import" `Quick
       (fun () ->
-        let loader = Core_loader.create ~base_dir:(Filename.temp_dir "fun_core_test" "") in
+        let loader = Core_loader.create ~base_dir:(Filename.temp_dir "fun_core_test" "") ~builtin_syntax () in
         match elab_with_loader loader "import \"missing\"" with
         | exception Core_loader.ImportNotFound "missing" -> ()
         | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)

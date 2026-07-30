@@ -6,7 +6,8 @@ let rec user_input prompt callback =
 
 let run source =
   let base = Sys.getcwd () in
-  let loader = Core_loader.create ~base_dir:base in
+  let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports in
+  let loader = Core_loader.create ~base_dir:base ~builtin_syntax () in
   let macro_ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals macro_ctx in
   let elaborate expr =
@@ -24,6 +25,7 @@ let run source =
       ~syntax_nominals
       ~load_macros:(Macro_driver.visit_macros loader)
       ~load_syntax:(Core_loader.load_syntax_exports loader)
+      ~builtin_syntax
       source
   in
   let ctx = Elaborate.init_ctx () in

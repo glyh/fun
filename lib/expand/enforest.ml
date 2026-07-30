@@ -1708,23 +1708,21 @@ let parse_public_syntax_exports ?file ?load_syntax source =
     exports
   with Raw_syntax.Error msg -> error msg
 
-(* Built-in library syntax, seeded into every expression/module parse. Control
-   flow such as [if] is not a keyword — it is a prefix syntax template defined in
-   the standard library (see [Elab_prelude.stdlib_source]) that rewrites to a
-   [match] on the [Bool] ADT. The stdlib lives in the semantic layer, which
-   depends on this [expand] layer, so the dependency is inverted here: the
-   semantic layer registers the stdlib's public syntax exports into this hook at
-   startup. When nothing is registered (e.g. a parse with no stdlib) the hook is
-   empty and [if] is just an ordinary identifier. *)
-let builtin_syntax_hook : (unit -> Binding.operator_info list) ref =
-  ref (fun () -> [])
-
-let seed_builtin_syntax env =
-  Binding.apply_operator_exports env.operators (!builtin_syntax_hook ());
+(* Built-in library syntax, seeded into an expression/module parse. Control flow
+   such as [if] is not a keyword — it is a prefix syntax template defined in the
+   standard library (see [Elab_prelude.stdlib_source]) that rewrites to a [match]
+   on the [Bool] ADT; likewise the arithmetic/comparison operators are prelude
+   [pub infix]/[pub prefix] declarations. The stdlib lives in the semantic layer,
+   which depends on this [expand] layer, so the exports cannot be named here.
+   Rather than invert the layering through a global mutable ref, callers that can
+   name the prelude pass its exports in explicitly via [?builtin_syntax]; a parse
+   with no stdlib passes nothing and [if]/[+]/… are just ordinary identifiers. *)
+let seed_syntax builtin_syntax env =
+  Binding.apply_operator_exports env.operators builtin_syntax;
   env
 
-let parse_expr ?file ?load_syntax source =
-  let env = seed_builtin_syntax (env ?load_syntax ()) in
+let parse_expr ?file ?load_syntax ?(builtin_syntax = []) source =
+  let env = seed_syntax builtin_syntax (env ?load_syntax ()) in
   try Raw_syntax.read ?file source |> parse_terms env
   with Raw_syntax.Error msg -> error msg
 
@@ -1737,8 +1735,8 @@ let parse_pat ?file source =
   try Raw_syntax.read ?file source |> parse_pat_terms
   with Raw_syntax.Error msg -> error msg
 
-let parse_module ?file ?load_syntax source =
-  let env = seed_builtin_syntax (env ?load_syntax ()) in
+let parse_module ?file ?load_syntax ?(builtin_syntax = []) source =
+  let env = seed_syntax builtin_syntax (env ?load_syntax ()) in
   try
     let bindings = Raw_syntax.read ?file source |> parse_module_bindings env in
     stx (Syntax.Module { bindings })
