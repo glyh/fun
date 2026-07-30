@@ -3,8 +3,10 @@ title: Explicit prelude open for operator demotion
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+closed_date: 2026-07-30
+resolution: Implemented — operators demoted to prelude pub infix/pub prefix (base_operators is just <-); builtin_syntax_hook ref and the blanket seed deleted; prelude delivered strictly via open (import "std") resolved through load_syntax on the reserved "std" path; Open carries a module expression; strict phase rule with REPL/entry points opening std by default. 792 tests green. Loose ends split into module-level-open-strict-imported-modules.md and retire-static-import-harvest-and-open-stdlib.md.
 blocked_by:
   - unify-operators-into-scope-aware-binding-table.md
 ---
@@ -111,15 +113,13 @@ downward), not at a blanket expand-layer seed.
 3. **Explicit prelude.** Reserved `"std"` → builtin prelude; `open (import "std")`;
    lift `Surface.Open`/`Syntax.Open` to accept an expression (core `Open` already
    takes an arbitrary term); delete implicit `open_stdlib` + fallback tables.
-   **[mostly done]** — `Open` carries a module *expression*; `import "std"` is a
-   reserved path resolving to the builtin prelude; the base fallback operator table
-   is gone (only `<-` remains). The expression entry points (`on_expr` /
-   `on_expr_effects`) now open the prelude via the **general**
-   `Open (Import "std", body)` construct — the same one user code writes — instead
-   of a bespoke implicit-open wrap. `open_stdlib` survives only as a ctx-extension
-   helper for the macro driver's elaboration context. The one remaining "implicit"
-   is that the entry points still auto-wrap the synthetic open (rather than the
-   user typing it) and still seed operators via the blanket `?builtin_syntax` DI.
+   **[done]** — `Open` carries a module *expression*; `import "std"` is a reserved
+   path resolving to the builtin prelude; the base fallback operator table is gone
+   (only `<-` remains); the implicit `open_stdlib` for user code is deleted
+   (`on_expr` elaborates as-is, the `open` is carried in the parsed term). The
+   blanket `?builtin_syntax` DI is gone too (progress note part 4). `open_stdlib`
+   survives *only* as a ctx-extension helper for macro compilation — split into
+   [retire-static-import-harvest-and-open-stdlib](retire-static-import-harvest-and-open-stdlib.md).
 4. **Demote operators.** Move `+ - * / % < > <= >= == !=` and prefix `not` into the
    prelude as `pub infix` / `pub prefix`. **[DONE]** — see progress note
    (2026-07-30, part 2). Done *before* the reroute (step 2), deviating from
@@ -289,5 +289,20 @@ depends on adding module-level `open` support — out of scope here.
 
 ## Resolution
 
-_Unresolved (design decided; implementation pending, blocked on the table
-unification child)._
+**Resolved (implemented).** Operators (`+ - * / % == != < > <= >=`, prefix `not`)
+are prelude `pub infix` / `pub prefix` declarations; `base_operators()` is just
+`<-`. The global mutable `builtin_syntax_hook` ref and the blanket operator seed
+are gone — prelude syntax is delivered strictly through `open (import "std")`
+(resolved via `load_syntax` on the reserved `"std"` path, in statement order).
+`Open` carries a module expression; the REPL and program-eval entry points open
+`std` by default; the phase rule is strict (a program that opens nothing sees
+`+`/`if`/… as unbound). 792 tests green. See progress notes parts 1–4.
+
+Two loose ends were split into their own tickets rather than block closure:
+
+- [Module-level open form (strict imported modules)](module-level-open-strict-imported-modules.md)
+  — imported `.fun` modules are still auto-opened by the loader because there is no
+  module-level `open` form yet; adding it lets modules be strict too.
+- [Retire load_imports_in_terms and the open_stdlib survivor](retire-static-import-harvest-and-open-stdlib.md)
+  — the static import scan and `open_stdlib` are off the delivery path but not yet
+  deleted (both are still live for `syntax`-template bodies / macro compilation).

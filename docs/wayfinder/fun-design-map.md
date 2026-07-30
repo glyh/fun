@@ -106,6 +106,16 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   lex by maximal munch, no per-operator rules), redundant rules and the dead
   `At` token removed. Settled line: operator space lexes uniformly, but
   structural punctuation (`|` Bar, `->`, `=`) keeps dedicated tokens.
+- [Explicit prelude open for operator demotion](tickets/explicit-prelude-open-operator-demotion.md)
+  (closed & **implemented**) — the arithmetic/comparison operators and prefix
+  `not` are demoted out of the compiler into the prelude as `pub infix` /
+  `pub prefix` declarations (`base_operators()` is just `<-`); the global mutable
+  `builtin_syntax_hook` ref and the blanket operator seed are deleted. Prelude
+  syntax is delivered under a **strict phase rule**: only where `std` is opened,
+  resolved through `load_syntax` on the reserved `import "std"` path (in statement
+  order). `Open` carries a module expression; the REPL and program-eval entry
+  points open `std` by default. Two loose ends spun out as their own tickets
+  (module-level `open`; retire `load_imports_in_terms`/`open_stdlib`).
 
 ## Fog
 
@@ -171,12 +181,14 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
   increment 1 (Bool + `if`) landed; **stays open** for more increments.
-- [Explicit prelude open for operator demotion](tickets/explicit-prelude-open-operator-demotion.md)
-  — make the prelude an explicit `open (import "std")`, deliver operators through
-  the `Macro_driver` interleaving (not the static hook/harvest), then move
-  `+`/`==`/`<` out of the compiler. **Now unblocked** — its precondition (the table
-  unification) landed. The remaining single-live-table + operator-hygiene work
-  (deferred by the child) folds into this ticket's interleaving step.
+- [Module-level open form (strict imported modules)](tickets/module-level-open-strict-imported-modules.md)
+  — add `open <module-expr>` at module top level so imported `.fun` files can open
+  `std` themselves and be strict like expressions (today the loader auto-opens
+  them). Split from the now-closed operator-demotion ticket.
+- [Retire load_imports_in_terms and the open_stdlib survivor](tickets/retire-static-import-harvest-and-open-stdlib.md)
+  — delete the two mechanisms the operator-demotion ticket bypassed but left live
+  (static import scan for `syntax`-template bodies; `open_stdlib` for macro
+  compilation). Cleanup, no user-visible change.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
