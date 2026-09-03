@@ -146,16 +146,15 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
 Dim directions — real, but not yet sharp enough to be tickets. Signposts, cleared
 as the frontier reaches them.
 
-- **CLR / C# rewrite shape** — the rewrite is on the active agenda: keep the
-  `core_tt` language model, implement the compiler/runtime in C#, target the CLR
-  (GC/JIT/tooling for free) rather than a custom VM, preserve room for effects via
-  CPS/trampolining. What maps directly from the OCaml prototype and what changes
-  structurally is still unknown.
+- ~~**CLR / C# rewrite shape**~~ — promoted out of fog to
+  [port `core_tt` to .NET (F#/C#)](tickets/port-core-tt-to-dotnet.md), now with an
+  explicit blocking set. F#-vs-C# is an open question inside that ticket.
 - **Formalized core semantics as cross-rewrite truth** — proposal to write
   `Core.term` / `Core.value` / `eval` (and optionally elaboration) as a Lean 4 (or
   Coq) spec used as an AI-checked structural-correspondence reference across the
-  OCaml→C# rewrite. Detail: [formalized-semantics](topics/formalized-semantics.md).
-  Hangs on the rewrite shape above.
+  port. Detail: [formalized-semantics](topics/formalized-semantics.md). Needs the
+  vocabulary from [domain model for `core_tt`](tickets/domain-model-core-tt.md)
+  first.
 - **Surface syntax after the macro model settles** — whether broad surface syntax
   (possibly less ML-flavored, Ruby/Elixir-style `do … end`) should change once the
   macro expansion model is finalized; the syntax redesign now enters through
@@ -177,54 +176,44 @@ as the frontier reaches them.
   its own investigation (what each layer actually buys: hygiene/scope-set carriage,
   macro reflection boundaries, the two desugaring seams at enforest and elaborate)
   before any merge decision. Do **not** pre-slice into tickets yet.
-- **Primitive ↔ symbolic-name wiring is stringly-typed and fragile** — a primitive's
-  identity is replicated by bare string across three places that must stay in
-  lockstep: the runtime reducer table (`nbe_prim.ml` `prim_table`), the type map
-  (`elab_prelude.ml` `prims`), and the base-context binding (`elab_entry.ml`, each
-  name bound `Var name → HPrim name`) — plus the prelude `stdlib_source` references
-  each prim by string literal (`eq_i64(x, y)`, `panic[…]`, …). No single source of
-  truth; adding or renaming a prim (e.g. this session's `<` → `lt_i64`) means editing
-  every copy by hand, and the "holes" in the stdlib (typed slots the prelude expects
-  the compiler to fill) are wired the same brittle way. Want a **maintainable, not
-  hacky** scheme — one declaration of `(name, type, reducer)` that the runtime,
-  elaborator, base context, and prelude all derive from, with no stringly-typed
-  drift. Needs its own investigation of the options (a single registry, generated
-  bindings, a typed prim GADT, …) before choosing.
-- ~~**Known deferred bug — nested-module ADT constructor resolution**~~ — confirmed
-  live and promoted out of fog to
-  [constructor lookup matches the type name](tickets/constructor-lookup-matches-type-name.md).
+- ~~**Primitive ↔ symbolic-name wiring is stringly-typed and fragile**~~ — promoted
+  out of fog to [one declaration per primitive](tickets/unify-primitive-declaration.md);
+  it blocks the port.
 
 ## Open questions
 
 The current frontier — open tickets under [`tickets/`](tickets/), in intended
-order. All are unblocked (the ticket that blocked enforester work is now closed).
+order.
+
+### Blocking the .NET port
+
+[Port `core_tt` to .NET (F#/C#)](tickets/port-core-tt-to-dotnet.md) is the
+destination; it is **blocked** until the model exists and the defects a port
+would faithfully reproduce are gone. A port carries code, not invariants — and
+every defect below is an invariant with no name in the source.
+
+- [Domain model for `core_tt` before the port](tickets/domain-model-core-tt.md)
+  — the port's specification. First pass scoped to the elaborate ↔ evaluate
+  boundary, where most of the unnamed invariants live. **Do this first.**
+- [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)
+  — importing one module twice crashes whenever its body mentions a name it did
+  not bind itself. Demonstrated, with controls, in the ticket.
+- [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
+  — the de Bruijn contract written twice, in two libraries, unnamed and unchecked.
+- [One declaration per primitive](tickets/unify-primitive-declaration.md)
+  — four hand-synced string copies per prim; best leverage-to-effort of the set.
+- [Constructor lookup matches the type name, not the constructor name](tickets/constructor-lookup-matches-type-name.md)
+  — confirmed live: `find_nominal_template_opt`'s env scan compares `n.name`.
+- [Core term traversals ignore binder depth in binding lists](tickets/core-traversals-ignore-binding-list-depth.md)
+  — the same env-width invariant broken in a third place. Latent today.
+- [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
+  — settle the rule before the struct elaborator is written a second time.
+
+### Language and macro work
 
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
   increment 1 (Bool + `if`) landed; **stays open** for more increments.
-- [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)
-  — an imported `.fun` module is elaborated in the *importing* expression's
-  context, so prelude values leak into modules that never opened `std`. Strictness
-  is enforced on the syntax side only. Split from the now-closed module-level-open
-  ticket.
-- [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
-  — the de Bruijn contract between `elab_infer.ml` and `nbe.ml` is written twice,
-  in two libraries, with nothing naming or checking it. Mis-transcribing it is
-  silent. **Pre-rewrite.**
-- [Constructor lookup matches the type name, not the constructor name](tickets/constructor-lookup-matches-type-name.md)
-  — promoted from fog and confirmed live: `find_nominal_template_opt`'s env scan
-  compares `n.name`, so resolving a constructor by name never hits.
-- [Core term traversals ignore binder depth in binding lists](tickets/core-traversals-ignore-binding-list-depth.md)
-  — `shift_term`, `close_recursive_payload_term` and `closed_under` walk module
-  and struct binding lists with a constant cutoff, though each binding extends
-  the environment; `OpenBind`'s width is not even recoverable from the term.
-  Latent (only constructor payloads reach them today). Found while building
-  module-level open.
-- [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
-  — record field types elaborate as a group before the binding fold, so an open
-  in a struct body reaches later bindings but not the fields; `open` therefore
-  means something slightly different in `struct` than in `module`. Found while
-  building module-level open.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
