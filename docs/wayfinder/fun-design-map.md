@@ -210,6 +210,17 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
   context, so prelude values leak into modules that never opened `std`. Strictness
   is enforced on the syntax side only. Split from the now-closed module-level-open
   ticket.
+- [Core term traversals ignore binder depth in binding lists](tickets/core-traversals-ignore-binding-list-depth.md)
+  — `shift_term`, `close_recursive_payload_term` and `closed_under` walk module
+  and struct binding lists with a constant cutoff, though each binding extends
+  the environment; `OpenBind`'s width is not even recoverable from the term.
+  Latent (only constructor payloads reach them today). Found while building
+  module-level open.
+- [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
+  — record field types elaborate as a group before the binding fold, so an open
+  in a struct body reaches later bindings but not the fields; `open` therefore
+  means something slightly different in `struct` than in `module`. Found while
+  building module-level open.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
