@@ -68,6 +68,7 @@ and compile_time_safe_struct_binding = function
   | Surface.MacroBinding _ -> true
   | Surface.MacroCallBinding _ -> true
   | Surface.PatternSynBinding _ -> true
+  | Surface.OpenBinding m -> compile_time_safe m
 
 let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
   match expr with

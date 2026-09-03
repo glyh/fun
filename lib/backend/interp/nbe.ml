@@ -10,6 +10,23 @@ let result_value = Nbe_support.result_value
 let atom_ty_of_atom = Nbe_prim.atom_ty_of_atom
 let prim_table = Nbe_prim.prim_table
 
+(* Runtime scope extension for [open]: the values an opened module contributes,
+   in entry order, innermost-last. This must stay in lockstep with the
+   elaborator's [Elab_resolve.open_module_value], which defines exactly one
+   context entry per public field and one per public impl — otherwise the
+   de Bruijn indices the elaborator produced for the opened body would not line
+   up at runtime. ([Method] is unreachable in a module: module bindings are only
+   ever [Public]/[Private]. It is matched here so the filter also reads correctly
+   for any module-shaped value quoted from elsewhere.) *)
+let push_opened_values env entries =
+  List.fold_left
+    (fun e entry ->
+      match entry with
+      | ModuleField (_, k, v) when k = Public || k = Method -> v :: e
+      | ModuleImpl (k, _, v) when k = Public -> v :: e
+      | _ -> e)
+    env entries
+
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
 
@@ -168,6 +185,11 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
             eval_binds (vdef :: env) (ModuleImpl (kind, ty, vdef) :: acc) rest
         | PatternSynBind (name, kind, syn) :: rest ->
             eval_binds (syn :: env) (ModuleField (name, kind, syn) :: acc) rest
+        | OpenBind def :: rest -> (
+            match eval mc env def with
+            | VModule { entries; partial = _ } ->
+                eval_binds (push_opened_values env entries) acc rest
+            | _ -> raise (EvalError "open of non-module"))
       in
       let _env, entries = eval_binds env [] bindings in
       Done (VModule { entries; partial = false })
@@ -213,6 +235,11 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
               rest
         | PatternSynBind (name, kind, syn) :: rest ->
             eval_binds (syn :: env) (StructField (name, kind, syn) :: acc_entries) rest
+        | OpenBind def :: rest -> (
+            match eval mc env def with
+            | VModule { entries; partial = _ } ->
+                eval_binds (push_opened_values env entries) acc_entries rest
+            | _ -> raise (EvalError "open of non-module"))
       in
       let _env, bind_entries = eval_binds env [] bindings in
       let con_entries =
@@ -264,17 +291,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       bind_result (eval_result mc env s) (fun vs ->
           match vs with
           | VModule { entries; partial = _ } ->
-              let vals =
-                List.filter_map
-                  (function
-                    | ModuleField (_, k, v) when k = Public || k = Method ->
-                        Some v
-                    | ModuleImpl (k, _, v) when k = Public -> Some v
-                    | _ -> None)
-                  entries
-              in
-              let env' = List.fold_left (fun e v -> v :: e) env vals in
-              eval_result mc env' body
+              eval_result mc (push_opened_values env entries) body
           | _ -> raise (EvalError "open of non-module"))
   | Fix body -> Done (VFix { body = { env; body } })
   | Con name -> Done (eval_con env name)

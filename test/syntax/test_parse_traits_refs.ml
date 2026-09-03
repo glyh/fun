@@ -1,6 +1,6 @@
 let unwrap_std (e : Surface.t) : Surface.t = match e with Surface.Open (Surface.Import "std", body) -> body | other -> other
 let parse_expr source = unwrap_std (Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
-let parse_module source = Parse_expand.parse_module ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+let parse_module source = Parse_expand.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
 open Surface
 
 let trait_decl_shape () =
@@ -9,8 +9,8 @@ let trait_decl_shape () =
   | _ -> Alcotest.fail "expected trait declaration"
 
 let impl_decl_shape () =
-  match parse_module "impl Eq(I64) = module fn eq(x, y) -> x == y end" with
-  | Module { bindings = [ ImplBinding { trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; public = false } ] } -> ()
+  match parse_module "open (import \"std\")\nimpl Eq(I64) = module fn eq(x, y) -> x == y end" with
+  | Module { bindings = [ OpenBinding _; ImplBinding { trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; public = false } ] } -> ()
   | _ -> Alcotest.fail "expected impl declaration"
 
 let single_trait_bound_shape () =

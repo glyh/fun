@@ -104,6 +104,7 @@ and lower_struct_binding = function
     Surface.PatternSynBinding { name = lower_id name;
                                 params = List.map lower_id params;
                                 rhs = lower_pat rhs; public }
+  | Syntax.OpenBinding m -> Surface.OpenBinding (lower_expr m)
 
 and lower_match_branch = function
   | Syntax.ValueBranch (p, body) -> Surface.ValueBranch (lower_pat p, lower_expr body)

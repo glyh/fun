@@ -183,6 +183,12 @@ and struct_binding_term =
           scope for trait resolution but is not an ordinary named field. *)
   | PatternSynBind of string * struct_field_kind * value
       (** name, kind, VPatternSyn value. *)
+  | OpenBind of term
+      (** [open <module-term>] inside a binding list — the binding-list
+          counterpart of the expression form [Open]. Contributes no field; it
+          extends the runtime scope with the opened module's public values (in
+          entry order) so the de Bruijn indices of the *subsequent* bindings,
+          which the elaborator resolved against the opened context, line up. *)
 
 and module_entry =
   | ModuleField of string * struct_field_kind * value

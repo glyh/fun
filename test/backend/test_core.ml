@@ -878,7 +878,7 @@ let eval_decl_module source =
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
+  let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source in
   (* Register macros from expander in elaborator context *)
   Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
@@ -1284,7 +1284,7 @@ let test_binder_body_type_mismatch () =
 (** Stage 3: helper that produces a driver_output via the new [Macro_driver].
     Parses source, runs the driver, and returns the output. *)
 let run_driver source : Macro_driver.driver_output =
-  let stx = Enforest.parse_module ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
+  let stx = Enforest.parse_module ~load_syntax:Elab_prelude.std_load_syntax source in
   Macro_driver.run stx
 
 (** Stage 3: equivalence helper — runs both the old pipeline
@@ -1303,7 +1303,7 @@ let driver_vs_pipeline source =
   in
   let pipeline_surface, _expand_ctx =
     Parse_expand.parse_module_with_ctx
-      ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+      ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source
   in
   let driver_output = run_driver source in
   (pipeline_surface, driver_output.surface)
@@ -1311,7 +1311,7 @@ let driver_vs_pipeline source =
 (** Stage 3: structural equivalence — a module with only runtime bindings
     produces the same binding structure from both pipelines. *)
 let test_driver_equiv_runtime () =
-  let source = "pub x : I64 = 42\npub y = x + 1\n" in
+  let source = "open (import \"std\")\npub x : I64 = 42\npub y = x + 1\n" in
   let a, b = driver_vs_pipeline source in
   Alcotest.(check bool)
     "driver matches pipeline for runtime module" true (a = b)
@@ -1542,7 +1542,7 @@ let test_generated_type_before_macro_stays_binder () =
 (** Stage 8: driver run with a loader over temp modules. *)
 let run_driver_with_modules modules source f =
   with_modules modules (fun loader ->
-      let stx = Enforest.parse_module ~load_syntax:(Core_loader.load_syntax_exports loader) ~open_prelude:true source in
+      let stx = Enforest.parse_module ~load_syntax:(Core_loader.load_syntax_exports loader) source in
       f (Macro_driver.run ~loader stx))
 
 let exported_kind_with_modules modules source macro_name =
@@ -1925,7 +1925,8 @@ let test_7g_diag_inner_binders_named () =
 let test_7i_generated_syntax_later_wins_shadow () =
   match
     eval_with_imported_macros
-      [ ("gen", "syntax build_inc do\n\
+      [ ("gen", "open (import \"std\");\n\
+                 syntax build_inc do\n\
                  | build_inc ->\n\
                      multi\n\
                        syntax inc do | inc $x -> $x + 1 end\n\
@@ -2309,7 +2310,8 @@ let test_decl_template_multi_generates_siblings () =
   match
     eval_with_imported_macros
       [ ( "decls",
-          "syntax pair do
+          "open (import \"std\");
+           syntax pair do
            | pair -> multi
                base = 40;
                pub answer = base + 2
@@ -2379,7 +2381,8 @@ let test_7i_generated_pub_syntax_across_imports () =
 
 let test_7i_generated_syntax_usable_later_same_module () =
   check_import_i64 "7I generated syntax usable later" 
-    [ ("gen", "syntax make_inc do
+    [ ("gen", "open (import \"std\");
+               syntax make_inc do
                | make_inc ->
                    multi
                      syntax inc do | inc $x -> $x + 1 end
@@ -2844,13 +2847,38 @@ let () =
                "do Color = module pub type Color = Red | Green | Blue end; \
                 open Color; match Red do Red -> 1 | Green -> 2 | Blue -> 3 end end");
         ] );
+      ( "module-level open",
+        [
+            (* The open extends the runtime scope of the bindings that follow
+               it, so every de Bruijn index in the module — for names bound
+               before the open as well as after it — must still line up. *)
+            Alcotest.test_case "opened values usable in later bindings" `Quick
+              (check_import_i64 "opened values usable in later bindings"
+                 [ ("base", "pub a = 1; pub b = 2");
+                   ("user", "open (import \"std\")\n\
+                             local = 10\n\
+                             open (import \"base\")\n\
+                             pub r = local + a + b") ]
+                 13L "do M = import \"user\"; M.r end");
+            Alcotest.test_case "opened constructors usable in later bindings" `Quick
+              (check_import_i64 "opened constructors usable in later bindings"
+                 [ ("color", "pub type Color = Red | Green");
+                   ("user", "open (import \"color\")\npub v = Red") ]
+                 1L "do M = import \"user\"; match M.v do Green -> 2 | Red -> 1 end end");
+            Alcotest.test_case "inline module open" `Quick
+              (check_i64 "inline module open" 3L
+                 "do B = module pub x = 3 end; M = module open B; pub y = x end; M.y end");
+            Alcotest.test_case "struct-level open" `Quick
+              (check_i64 "struct-level open" 7L
+                 "do M = module pub k = 7 end; S = struct open M; pub m = k end; S.m end");
+        ] );
       ( "imports",
         [
             Alcotest.test_case "basic import" `Quick
-              (check_import_i64 "basic import" [ ("math", "pub x = 41; pub y = x + 1") ] 42L
+              (check_import_i64 "basic import" [ ("math", "open (import \"std\"); pub x = 41; pub y = x + 1") ] 42L
                  "do M = import \"math\"; M.y end");
             Alcotest.test_case "imported public function" `Quick
-              (check_import_i64 "imported public function" [ ("math", "pub fn double(x) -> x + x") ] 10L
+              (check_import_i64 "imported public function" [ ("math", "open (import \"std\"); pub fn double(x) -> x + x") ] 10L
                  "do M = import \"math\"; M.double(5) end");
             Alcotest.test_case "nested import" `Quick
               (check_import_i64 "nested import"
@@ -2865,7 +2893,7 @@ let () =
                  "do W = import \"wrapper\"; open W; open M; x end");
             Alcotest.test_case "open imported module local only" `Quick
               (check_import_i64 "open imported module local only"
-                 [ ("base", "pub x = 41"); ("wrapper", "B = import \"base\"; pub y = do open B; x + 1 end") ]
+                 [ ("base", "pub x = 41"); ("wrapper", "open (import \"std\"); B = import \"base\"; pub y = do open B; x + 1 end") ]
                  42L
                  "do W = import \"wrapper\"; W.y end");
             Alcotest.test_case "repeated import" `Quick

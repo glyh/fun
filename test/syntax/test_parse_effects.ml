@@ -1,6 +1,6 @@
 let unwrap_std (e : Surface.t) : Surface.t = match e with Surface.Open (Surface.Import "std", body) -> body | other -> other
 let parse_expr source = unwrap_std (Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
-let parse_module source = Parse_expand.parse_module ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+let parse_module source = Parse_expand.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
 open Surface
 
 let effect_expr_shape () =

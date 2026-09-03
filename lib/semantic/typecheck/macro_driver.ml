@@ -182,7 +182,7 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
             let stx =
               Enforest.parse_module ~file:resolved
                 ~load_syntax:(Core_loader.load_syntax_exports loader)
-                ~open_prelude:true source
+                source
             in
             let output = run ~loader stx in
             List.filter_map

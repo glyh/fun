@@ -1224,16 +1224,55 @@ let effects =
           (match perform Ping.hit(1) do x -> x | effect Ping.hit n -> perform Ping.hit(n + 1) end : I64) end");
   ]
 
+(* Any failure, including the enforestation errors a strict module raises when
+   it uses prelude syntax it never opened. *)
+let import_fail modules source () =
+  with_modules modules (fun loader ->
+      match elab_with_loader loader source with
+      | exception _ -> ()
+      | _ -> Alcotest.fail "expected failure")
+
+let module_level_open =
+  [
+    Alcotest.test_case "module opens the prelude for itself" `Quick
+      (check_import_type
+         [ ("math", "open (import \"std\")\npub y = 1 + 1") ]
+         "do M = import \"math\"; M.y end" (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "module without the prelude open is strict" `Quick
+      (import_fail [ ("math", "pub y = 1 + 1") ] "do M = import \"math\"; M.y end");
+    Alcotest.test_case "module open scopes over later bindings only" `Quick
+      (import_fail
+         [ ("base", "pub x = 5"); ("user", "pub y = x\nopen (import \"base\")") ]
+         "do M = import \"user\"; M.y end");
+    Alcotest.test_case "module open exposes an imported module's values" `Quick
+      (check_import_type
+         [ ("base", "pub x = 5"); ("user", "open (import \"base\")\npub y = x") ]
+         "do M = import \"user\"; M.y end" (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "module open does not re-export" `Quick
+      (import_elab_fail
+         [ ("base", "pub x = 5"); ("user", "open (import \"base\")\npub y = x") ]
+         "do M = import \"user\"; M.x end");
+    Alcotest.test_case "module open exposes constructors" `Quick
+      (check_import_type
+         [ ("color", "pub type Color = Red | Green");
+           ("user", "open (import \"color\")\npub v = Red") ]
+         "do M = import \"user\"; match M.v do Red -> 1 | Green -> 2 end end"
+         (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "open of a non-module is rejected" `Quick
+      (import_elab_fail [ ("user", "k = 1\nopen k\npub y = 2") ]
+         "do M = import \"user\"; M.y end");
+  ]
+
 let imports =
   [
     Alcotest.test_case "basic import" `Quick
-      (check_import_type [ ("math", "pub x = 41; pub y = x + 1") ]
+      (check_import_type [ ("math", "open (import \"std\"); pub x = 41; pub y = x + 1") ]
          "do M = import \"math\"; M.y end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "private import member hidden" `Quick
-      (import_elab_fail [ ("m", "secret = 1; pub exposed = secret + 1") ]
+      (import_elab_fail [ ("m", "open (import \"std\"); secret = 1; pub exposed = secret + 1") ]
          "do M = import \"m\"; M.secret end");
     Alcotest.test_case "private import member usable internally" `Quick
-      (check_import_type [ ("m", "secret = 1; pub exposed = secret + 1") ]
+      (check_import_type [ ("m", "open (import \"std\"); secret = 1; pub exposed = secret + 1") ]
          "do M = import \"m\"; M.exposed end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "nested import" `Quick
       (check_import_type [ ("base", "pub x = 42"); ("wrapper", "pub M = import \"base\"") ]
@@ -1249,7 +1288,7 @@ let imports =
          "do W = import \"wrapper\"; open W; open M; x end" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module does not re-export" `Quick
       (import_elab_fail
-         [ ("base", "pub x = 41"); ("wrapper", "B = import \"base\"; pub y = do open B; x + 1 end") ]
+         [ ("base", "pub x = 41"); ("wrapper", "open (import \"std\"); B = import \"base\"; pub y = do open B; x + 1 end") ]
          "do W = import \"wrapper\"; W.x end");
     Alcotest.test_case "imported ADT match" `Quick
       (check_import_type
@@ -1421,6 +1460,7 @@ let () =
       ("traits", traits);
       ("effects", effects);
       ("imports", imports);
+      ("module-level open", module_level_open);
       ("references", references);
       ("let_rec", let_rec);
     ]

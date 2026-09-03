@@ -90,6 +90,7 @@ let rewrite_record_self_refs record_name params expr =
                 | Surface.MacroCallBinding { f; args } ->
                     Surface.MacroCallBinding { f = go bound f; args = List.map (go bound) args }
                 | Surface.PatternSynBinding binding -> Surface.PatternSynBinding binding
+                | Surface.OpenBinding m -> Surface.OpenBinding (go bound m)
             in
             Surface.Module { bindings = List.map binding bindings }
         | Surface.Struct { con_fields; bindings } ->
@@ -134,6 +135,7 @@ let rewrite_record_self_refs record_name params expr =
                 | Surface.MacroCallBinding { f; args } ->
                     Surface.MacroCallBinding { f = go bound f; args = List.map (go bound) args }
                 | Surface.PatternSynBinding binding -> Surface.PatternSynBinding binding
+                | Surface.OpenBinding m -> Surface.OpenBinding (go bound m)
             in
             Surface.Struct
               { con_fields = List.map (fun (name, ty) -> (name, go bound ty)) con_fields;

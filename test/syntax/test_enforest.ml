@@ -9,7 +9,7 @@ let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
 let unwrap_std (e : Surface.t) : Surface.t =
   match e with Open (Import "std", body) -> body | other -> other
 let parse source = unwrap_std (Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
-let parse_module source = Parse_expand.parse_module ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+let parse_module source = Parse_expand.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
 
 let string_contains text needle =
   let needle_len = String.length needle in
@@ -44,7 +44,7 @@ let parse_module_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_module ?load_macros ~open_prelude:true ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
+  Parse_expand.parse_module ?load_macros ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let with_modules modules f =
   let dir = Filename.temp_dir "fun_syntax_test" "" in
@@ -234,11 +234,12 @@ let ref_call_deref () =
   | _ -> Alcotest.fail "expected deref(ref(expr)) shape"
 
 let module_newline_separators () =
-  match parse_module "pub x = 1\npub y = x + 1" with
+  match parse_module "open (import \"std\")\npub x = 1\npub y = x + 1" with
   | Module
       {
         bindings =
-          [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _};
+          [ OpenBinding _;
+            LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _};
             LetBinding
               {
                 name = "y";
@@ -264,6 +265,50 @@ let open_in_do_block () =
   match parse "do open M; x end" with
   | Open (Var "M", Var "x") -> ()
   | _ -> Alcotest.fail "expected open statement in do block"
+
+let module_level_open_shape () =
+  match parse_module "open M\npub x = 1" with
+  | Module { bindings = [ OpenBinding (Var "M"); LetBinding { name = "x"; _ } ] } -> ()
+  | _ -> Alcotest.fail "expected module-level open binding"
+
+let module_level_open_import_shape () =
+  match parse_module "open (import \"std\")\npub x = 1" with
+  | Module { bindings = [ OpenBinding (Import "std"); LetBinding { name = "x"; _ } ] } -> ()
+  | _ -> Alcotest.fail "expected module-level open of import"
+
+let struct_level_open_shape () =
+  match parse_module "S = struct open M; pub y = 1 end" with
+  | Module
+      { bindings =
+          [ LetBinding
+              { name = "S";
+                value = Struct { bindings = [ OpenBinding (Var "M"); LetBinding { name = "y"; _ } ]; _ };
+                _ } ] } -> ()
+  | _ -> Alcotest.fail "expected struct-level open binding"
+
+let module_level_pub_open_rejected () =
+  match parse_module "pub open M" with
+  | exception Enforest_util.Error _ -> ()
+  | _ -> Alcotest.fail "expected pub open to be rejected"
+
+(* Modules are strict about the prelude: without an [open (import "std")] the
+   prelude operators are not in the parse env, so [+] does not enforest. *)
+let module_without_open_has_no_prelude_operators () =
+  match parse_module "pub y = 1 + 1" with
+  | exception Enforest_util.Unsupported _ -> ()
+  | exception Enforest_util.Error _ -> ()
+  | _ -> Alcotest.fail "expected prelude operator to be unavailable"
+
+let module_open_scopes_later_statements_only () =
+  (* The harvest happens where the open is written, so a use *before* it does
+     not see the operator while a use after it does. *)
+  (match parse_module "pub a = 1 + 1\nopen (import \"std\")" with
+   | exception Enforest_util.Unsupported _ -> ()
+   | exception Enforest_util.Error _ -> ()
+   | _ -> Alcotest.fail "expected operator before the open to be unavailable");
+  match parse_module "open (import \"std\")\npub a = 1 + 1" with
+  | Module { bindings = [ OpenBinding _; LetBinding { name = "a"; _ } ] } -> ()
+  | _ -> Alcotest.fail "expected operator after the open to enforest"
 
 let module_pub_value_decl () =
   match parse_module "pub x = 1" with
@@ -644,6 +689,14 @@ let suites =
         Alcotest.test_case "resume unit call" `Quick resume_unit_call;
         Alcotest.test_case "import shape" `Quick import_shape;
         Alcotest.test_case "open in do block" `Quick open_in_do_block;
+        Alcotest.test_case "module-level open shape" `Quick module_level_open_shape;
+        Alcotest.test_case "module-level open of import shape" `Quick module_level_open_import_shape;
+        Alcotest.test_case "struct-level open shape" `Quick struct_level_open_shape;
+        Alcotest.test_case "module-level pub open rejected" `Quick module_level_pub_open_rejected;
+        Alcotest.test_case "module without open has no prelude operators" `Quick
+          module_without_open_has_no_prelude_operators;
+        Alcotest.test_case "module open scopes later statements only" `Quick
+          module_open_scopes_later_statements_only;
         Alcotest.test_case "module pub value decl" `Quick module_pub_value_decl;
         Alcotest.test_case "module typed value decl" `Quick module_typed_value_decl;
         Alcotest.test_case "do typed and recursive decls" `Quick do_typed_and_recursive_decls;

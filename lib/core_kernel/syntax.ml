@@ -80,6 +80,10 @@ and struct_binding =
   | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
+  | OpenBinding of t
+      (** [open <module-expr>] at module/struct top level — the binding-list
+          counterpart of the expression-level [Open]. Scopes over the subsequent
+          bindings only. *)
 
 and t = {
   kind : kind;

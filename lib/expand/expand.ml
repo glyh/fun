@@ -130,6 +130,7 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
     MacroCallBinding { f = add_scope ?within s f; args = List.map (add_scope ?within s) args }
   | PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = add_id_scope_if within s name; params; rhs; public }
+  | OpenBinding m -> OpenBinding (add_scope ?within s m)
 
 and go_match_branch ?within s = function
   | ValueBranch (p, body) -> ValueBranch (go_pat ?within s p, add_scope ?within s body)
@@ -622,6 +623,10 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [[]])
   | PatternSynBinding { name; params; rhs; public } ->
      ([PatternSynBinding { name; params; rhs; public }], [[]])
+  | OpenBinding m ->
+    (* An open binds no name of its own; the names it brings into scope are
+       resolved by the elaborator, not the expander. *)
+    ([OpenBinding (expand ctx m)], [[]])
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->

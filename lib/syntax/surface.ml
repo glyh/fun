@@ -47,6 +47,12 @@ and struct_binding =
   | MacroBinding of { name : string; value : t; public : bool; kind : Syntax.MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
+  | OpenBinding of t
+      (** [open <module-expr>] at module/struct top level. Brings the module's
+          public fields into scope for the *subsequent* bindings only (statement
+          order), and contributes no field of its own. In a [Struct] it scopes
+          over later bindings but not over [con_fields]: record field types are
+          elaborated as a group before the binding list. *)
 
 and t =
   | Atom of Atom.t

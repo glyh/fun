@@ -104,6 +104,7 @@ and struct_binding = function
   | Surface.PatternSynBinding { name; params; rhs; public } ->
     Syntax.PatternSynBinding { name = id name; params = List.map id params;
                                rhs = pat_ rhs; public }
+  | Surface.OpenBinding m -> Syntax.OpenBinding (expr m)
 
 and match_branch = function
   | Surface.ValueBranch (pat, body) -> Syntax.ValueBranch (pat_ pat, expr body)

@@ -30,6 +30,7 @@ let term_mentions_var target term =
           (function
             | LetBind (_, _, value) -> go target value
             | ImplBind (_, value, _) -> go target value
+            | OpenBind value -> go target value
             | TypeBind _ | EffectBind _ | PatternSynBind _ -> false)
           bindings
     | Struct { con_fields; bindings; _ } ->
@@ -38,6 +39,7 @@ let term_mentions_var target term =
              (function
                | LetBind (_, _, value) -> go target value
                | ImplBind (_, value, _) -> go target value
+               | OpenBind value -> go target value
                | TypeBind _ | EffectBind _ | PatternSynBind _ -> false)
              bindings
     | RecordConstruct { typ; fields } ->
@@ -208,6 +210,7 @@ let close_recursive_payload_term nominal_name num_params =
               | EffectBind (field, kind, eff) -> EffectBind (field, kind, eff)
               | ImplBind (kind, value, ty) -> ImplBind (kind, go cutoff value, ty)
               | PatternSynBind (field, kind, syn) -> PatternSynBind (field, kind, syn)
+              | OpenBind value -> OpenBind (go cutoff value)
             in
             Module { bindings = List.map binding bindings }
         | Struct { con_fields; bindings; partial } ->
@@ -218,6 +221,7 @@ let close_recursive_payload_term nominal_name num_params =
               | EffectBind (field, kind, eff) -> EffectBind (field, kind, eff)
               | ImplBind (kind, value, ty) -> ImplBind (kind, go cutoff value, ty)
               | PatternSynBind (field, kind, syn) -> PatternSynBind (field, kind, syn)
+              | OpenBind value -> OpenBind (go cutoff value)
             in
             Struct { con_fields; bindings = List.map binding bindings; partial }
         | RecordConstruct { typ; fields } ->

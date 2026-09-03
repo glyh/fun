@@ -402,6 +402,7 @@ and map_template_struct_binding captures go = function
       Syntax.MacroBinding { name = map_binder_id captures name; value = go value; public; kind = None }
   | Syntax.MacroCallBinding { f; args } -> Syntax.MacroCallBinding { f = go f; args = List.map go args }
   | Syntax.PatternSynBinding binding -> Syntax.PatternSynBinding binding
+  | Syntax.OpenBinding m -> Syntax.OpenBinding (go m)
 
 and map_template_match_branch captures go = function
   | Syntax.ValueBranch (pat, body) -> Syntax.ValueBranch (map_template_pat captures pat, go body)

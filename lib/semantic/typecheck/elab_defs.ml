@@ -169,6 +169,7 @@ let rec shift_term amount cutoff term =
       let binding = function
         | LetBind (field, kind, value) -> LetBind (field, kind, shift cutoff value)
         | ImplBind (kind, value, ty) -> ImplBind (kind, shift cutoff value, ty)
+        | OpenBind value -> OpenBind (shift cutoff value)
         | TypeBind _ | EffectBind _ | PatternSynBind _ as binding -> binding
       in
       Module { bindings = List.map binding bindings }
@@ -176,6 +177,7 @@ let rec shift_term amount cutoff term =
       let binding = function
         | LetBind (field, kind, value) -> LetBind (field, kind, shift cutoff value)
         | ImplBind (kind, value, ty) -> ImplBind (kind, shift cutoff value, ty)
+        | OpenBind value -> OpenBind (shift cutoff value)
         | TypeBind _ | EffectBind _ | PatternSynBind _ as binding -> binding
       in
       Struct { con_fields = List.map (fun (field, ty) -> (field, shift cutoff ty)) con_fields; bindings = List.map binding bindings; partial }

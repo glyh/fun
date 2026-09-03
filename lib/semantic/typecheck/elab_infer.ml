@@ -41,6 +41,17 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
       let kind = if public then Public else Private in
       let ctx' = Ctx.define ctx name VU syn_val in
       (ctx', [PatternSynBind (name, kind, syn_val)], [ModuleField (name, kind, VU)])
+  | Surface.OpenBinding mod_expr ->
+      (* Module-level [open]: the opened module's public fields are in scope for
+         the bindings that *follow* (the caller folds this ctx forward), and the
+         open exports nothing itself. [OpenBind] carries the same scope
+         extension to the evaluator. *)
+      let mod_core, mod_ty = ops.infer ctx mod_expr in
+      let mod_value = Ctx.eval ctx mod_core in
+      (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
+       | VModule _, VModule _ ->
+           (open_module_value ctx mod_ty mod_value, [OpenBind mod_core], [])
+       | _ -> raise (ElabError NotAModule))
   | Surface.LetBinding { name; value; public; recursive } ->
       let rec_ty = Ctx.raw_meta ctx in
       let value_ctx = Ctx.clear_self_scope ctx in
@@ -572,6 +583,14 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                (PatternSynBind (name, kind, syn_val) :: acc_binds,
                 StructField (name, kind, VU) :: acc_entries)
               rest
+        | Surface.OpenBinding mod_expr :: rest ->
+            let mod_core, mod_ty = ops.infer ctx mod_expr in
+            let mod_value = Ctx.eval ctx mod_core in
+            (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
+             | VModule _, VModule _ ->
+                 go (open_module_value ctx mod_ty mod_value)
+                   (OpenBind mod_core :: acc_binds, acc_entries) rest
+             | _ -> raise (ElabError NotAModule))
         | Surface.LetBinding { name; value; public; recursive; _ } :: rest ->
             let rec_ty = Ctx.raw_meta ctx in
             let value_ctx = Ctx.clear_self ctx in

@@ -1529,6 +1529,18 @@ and parse_value_binding env public stmt =
         (Syntax.LetBinding { name; value; public; recursive = decl_recursive })
   | None -> None
 
+(* [open <module-expr>] as a module/struct item. The operator side of the open is
+   already handled by parsing the module expression: an [import "path"] inside it
+   goes through [Enforest_forms.parse_import], which harvests that module's syntax
+   exports into [env] — and because statements are parsed in source order, the
+   harvest scopes over exactly the items that follow, matching the elaborator's
+   treatment of [OpenBinding]. *)
+and parse_open_binding env public stmt =
+  match parse_open_statement env stmt with
+  | Some _ when public -> error "open is not a public item"
+  | Some mod_expr -> Some (Syntax.OpenBinding mod_expr)
+  | None -> None
+
 and parse_module_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
@@ -1546,6 +1558,7 @@ and parse_module_binding env stmt =
       match
         first_some
           [
+            parse_open_binding env public;
             parse_macro_binding env public;
             parse_macro_call_binding env;
             parse_pattern_syn_binding env public;
@@ -1597,7 +1610,11 @@ and collect_public_syntax_statement env stmt =
       | Some (MacroSyntaxDecl { syntax_export; _ }) ->
           if public then
             env.exports_collector := syntax_export :: !(env.exports_collector)
-      | None -> ())
+      | None ->
+          (* Not a syntax declaration. It may still be an [open] whose module
+             expression harvests operators the *later* declarations in this scan
+             need, so parse it for that effect and discard the binding. *)
+          ignore (parse_open_binding env public stmt))
 
 and collect_public_syntax_exports env body_terms =
   with_operator_scope env (fun env ->
@@ -1660,6 +1677,7 @@ and parse_struct_binding env stmt =
               match
                 first_some
                   [
+                    parse_open_binding env public;
                     parse_method_binding env public;
                     parse_type_binding env public;
                     parse_effect_binding env public;
@@ -1726,10 +1744,12 @@ let parse_public_syntax_exports ?file ?load_syntax source =
    [if]/[&&]/[||] templates — becomes available only where [std] is opened. An
    explicit in-source [open (import "std")] harvests it in statement order (see
    [Enforest_forms.parse_import], which resolves the path through [load_syntax]).
-   [?open_prelude] is the entry-point convenience (the REPL, top-level program
-   evaluation): it harvests [std]'s exports before parsing and wraps the result in
-   [Open (Import "std", body)], i.e. an implicit leading [open (import "std")]. A
-   parse without either sees [+]/[if]/… as ordinary identifiers. The prelude
+   [?open_prelude] is the *expression* entry-point convenience (the REPL, top-level
+   program evaluation): it harvests [std]'s exports before parsing and wraps the
+   result in [Open (Import "std", body)], i.e. an implicit leading
+   [open (import "std")]. It exists only because a bare expression has nowhere to
+   write the open; modules have [parse_open_binding] and get no such flag. A parse
+   without either sees [+]/[if]/… as ordinary identifiers. The prelude
    exports themselves are resolved through [load_syntax] (the reserved [std]
    path), so this [expand] layer never needs to name the semantic-layer prelude. *)
 let std_import_stx () = stx (Syntax.Import Compiler_names.Module_name.std_import_path)
@@ -1754,12 +1774,14 @@ let parse_pat ?file source =
   try Raw_syntax.read ?file source |> parse_pat_terms
   with Raw_syntax.Error msg -> error msg
 
-let parse_module ?file ?load_syntax ?(open_prelude = false) source =
+(* Modules are strict: there is no [?open_prelude] convenience here. A module
+   that wants the prelude writes [open (import "std")] as its first item, which
+   both harvests the operators (in statement order, via [parse_open_binding])
+   and carries the semantic open to the elaborator as an [OpenBinding]. The
+   expression entry points keep the flag because a bare expression has nowhere
+   to write the open. *)
+let parse_module ?file ?load_syntax source =
   let env = env ?load_syntax () in
-  (* Modules have no single expression to wrap in an [Open]; there is also no
-     module-level [open] form yet, so a module that opts into the prelude simply
-     harvests its operators (an implicit module-wide [open std]). *)
-  if open_prelude then harvest_prelude env;
   try
     let bindings = Raw_syntax.read ?file source |> parse_module_bindings env in
     stx (Syntax.Module { bindings })
