@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after Type-aware macro interleaving Stages 8–9 (July 2026).
+Last updated: after module-level `open` / strict imported modules (September 2026).
 
 ---
 
@@ -31,6 +31,16 @@ Last updated: after Type-aware macro interleaving Stages 8–9 (July 2026).
 ### References
 - `Ref(A)`, `ref(e)`, `deref(r)`, `r <- e`. Opaque mutable cells, aliasing and
   closure-capture semantics preserved. See [references](wayfinder/topics/references.md).
+
+### Modules and the strict phase rule
+- `open <module-expr>` is an item of a module or struct body, not only a `do`-block
+  statement: it scopes over the *subsequent* bindings, exports nothing, and carries
+  its runtime scope extension as `Core.OpenBind`. Imported modules are strict about
+  prelude **syntax** — `Enforest.parse_module` has no `?open_prelude` flag and the
+  loader no longer harvests the prelude for them, so a module that uses `+` writes
+  `open (import "std")` itself. Prelude *values* still reach a module through the
+  importer's elaboration context; see
+  [imported module elaboration context](wayfinder/tickets/imported-module-elaboration-context.md).
 
 ### Macro system — Stages 0–10
 - Stages 0 through 10 are complete: substrate, hygiene, expansion, phase-aware imports,

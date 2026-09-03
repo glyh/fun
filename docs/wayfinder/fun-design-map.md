@@ -126,6 +126,20 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   `on_macro_body`'s per-expression `Open (import "std")`; both share
   `open_module_value`, and `Macro_driver`'s advancement hook needs the ctx-builder
   form, so it stays (its dead `ix` return dropped).
+- [Module-level open form (strict imported modules)](tickets/module-level-open-strict-imported-modules.md)
+  (closed & **implemented**) — `open <module-expr>` is now an item of a module or
+  struct body (`Syntax`/`Surface.OpenBinding`, `Core.OpenBind`), scoping over the
+  *subsequent* bindings only and exporting nothing. The operator harvest rides on
+  the existing in-order `parse_import`; the runtime scope extension shares one
+  helper with the expression-level `Open` so de Bruijn indices stay in lockstep
+  with `open_module_value`. `Enforest.parse_module`'s `?open_prelude` parameter is
+  **deleted**, along with the blanket harvest in `Core_loader` and
+  `Macro_driver.visit_macros`: imported modules are now strict about prelude
+  **syntax** exactly like expressions, and write `open (import "std")` themselves.
+  `parse_expr` keeps the flag — a bare expression has nowhere to write the open.
+  The prelude source stays special (`std` must not open itself). 809 tests green.
+  One loose end spun out: prelude *values* still reach a module through the
+  importer's context (see the ticket below).
 
 ## Fog
 
@@ -191,10 +205,11 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
   increment 1 (Bool + `if`) landed; **stays open** for more increments.
-- [Module-level open form (strict imported modules)](tickets/module-level-open-strict-imported-modules.md)
-  — add `open <module-expr>` at module top level so imported `.fun` files can open
-  `std` themselves and be strict like expressions (today the loader auto-opens
-  them). Split from the now-closed operator-demotion ticket.
+- [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)
+  — an imported `.fun` module is elaborated in the *importing* expression's
+  context, so prelude values leak into modules that never opened `std`. Strictness
+  is enforced on the syntax side only. Split from the now-closed module-level-open
+  ticket.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
