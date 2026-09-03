@@ -201,7 +201,9 @@ every defect below is an invariant with no name in the source.
 - [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
   — the de Bruijn contract written twice, in two libraries, unnamed and unchecked.
 - [One declaration per primitive](tickets/unify-primitive-declaration.md)
-  — four hand-synced string copies per prim; best leverage-to-effort of the set.
+  — two hand-synced tables plus prelude source strings. Ticket now records why
+  the obvious refactor resists (`panic` does not fit a `(name, type, reducer)`
+  record) and a ~10-line assertion that captures most of the value first.
 - [Constructor lookup matches the type name, not the constructor name](tickets/constructor-lookup-matches-type-name.md)
   — confirmed live: `find_nominal_template_opt`'s env scan compares `n.name`.
 - [Core term traversals ignore binder depth in binding lists](tickets/core-traversals-ignore-binding-list-depth.md)

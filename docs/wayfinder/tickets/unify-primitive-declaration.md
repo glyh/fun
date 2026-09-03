@@ -17,38 +17,73 @@ stay in lockstep. What is the one declaration the rest should derive from?
 Promoted from the design map's fog list, where it was recorded as needing its
 own investigation before choosing a scheme.
 
-## Evidence
+## Anatomy (corrected — the fog note over-counted)
 
-For a single prim such as `eq_i64`:
+There are **three** sites, not four, and one of them cannot be fixed by a table:
 
-- `lib/backend/interp/nbe_prim.ml` — `prim_table`, the runtime reducer
-- `lib/semantic/typecheck/elab_prelude.ml` — `prims`, the type
-- `lib/semantic/typecheck/elab_entry.ml` — the base-context binding
-  (`Var name → HPrim name`)
-- `elab_prelude.stdlib_source` — referenced by string literal from the prelude
-  source (`eq_i64(x, y)`, `panic[…]`, …)
+1. `lib/backend/interp/nbe_prim.ml` — `prim_table : name -> (Atom.t list -> Atom.t option)`
+2. `lib/semantic/typecheck/elab_prelude.ml` — `prims : name -> value` (the type)
+3. `elab_prelude.stdlib_source` — referenced by string literal from prelude source
 
-No single source of truth. Adding or renaming a prim means editing every copy by
-hand; nothing catches a missed one at compile time. The "holes" in the stdlib —
-typed slots the prelude expects the compiler to fill — are wired the same way.
+`elab_entry.ml` is **not** a fourth copy: it folds over `prims` and binds each as
+`HPrim name`. It is already derived.
+
+Separately, `atom_ty_of_atom` is duplicated verbatim in `nbe_prim.ml` and
+`elab_prelude.ml` — trivially collapsible, unrelated to the rest.
+
+## Why a naive `(name, type, reducer)` record fights back
+
+Prims are not one shape. Three exist today:
+
+| shape | example | reducer |
+|---|---|---|
+| atom-to-atom | `+`, `eq_i64` | `Atom.t list -> Atom.t option` |
+| special-cased by name | `panic` | none — hardcoded in `Nbe.try_prim_reduce`, needs the *frame* list and raises |
+| type-only | (any future hole) | none |
+
+A single record with a `reducer` field cannot hold `panic`; making the field a
+variant (`AtomReducer | Special | None`) is possible, but at that point the
+unified table is carrying less weight than it first appeared to. **Anyone
+attempting this refactor should decide the variant up front rather than
+discovering `panic` halfway through.**
+
+## The payoff is smaller than it looks — measure it before refactoring
+
+Which desyncs actually hurt?
+
+- **name in `stdlib_source`, missing from `prims`** → already loud. Prelude
+  elaboration fails inside `init_ctx`, so every test dies immediately. Not a
+  problem worth solving.
+- **name in `prims`, missing from `prim_table`** → **silent**. `try_prim_reduce`
+  falls through to `| None -> None`, the application stays a stuck neutral, and
+  evaluation yields a `VNeutral(HPrim …)` where a number was expected. This is
+  the whole bug class.
+
+So the value is concentrated in one direction of one pair.
+
+## Cheaper alternative — do this first
+
+Assert the invariant instead of removing the duplication. At `init_ctx`, check
+that every name in `prims` is either in `prim_table` or on an explicit
+`no_reducer_by_design` list (`panic` today). ~10 lines, catches the silent case,
+touches no library boundary, and leaves the tables where they are.
+
+Only pursue full unification if that check keeps firing.
+
+## If unification is still wanted: the structural obstacle
+
+It is three lines in the wrong library. `pure_effects`, `^->` and `^->>` live in
+`elab_common.ml` (`core_tt_typecheck`) but construct nothing above `Core` —
+`VPi`, `Pi`, `effect_row_closure`, `empty_effect_row` are all kernel. Move them
+down to the kernel and the type table can sit beside the reducer table in
+`core_tt_interp`, which `core_tt_typecheck` already depends on. There is no
+dependency cycle to break; the combinators are simply in the wrong place.
 
 ## Why it blocks the port
 
-This is the highest leverage-to-effort item before the rewrite. Ported as-is,
-the four copies become four copies in C#/F#, transcribed by hand, in a language
-where the mismatch is equally invisible. Collapsed first, the port moves one
-table.
-
-## Sketch of the work
-
-Investigate the options before choosing — a single registry keyed by name, a
-typed prim GADT/DU, generated bindings — and pick for maintainability, not
-cleverness. Requirements:
-
-1. One place declares `(name, type, reducer)`.
-2. Runtime, elaborator, base context, and prelude all derive from it.
-3. A prim referenced by the prelude source but absent from the registry is an
-   error at build time, not a runtime `UnboundVariable`.
+Whichever route: the mismatch is invisible to the compiler today and would be
+equally invisible after transcription into .NET. Settle the shape (and the
+`panic`-style exceptions) before the prim set is written out a second time.
 
 ## Resolution
 
