@@ -190,12 +190,9 @@ as the frontier reaches them.
   elaborator, base context, and prelude all derive from, with no stringly-typed
   drift. Needs its own investigation of the options (a single registry, generated
   bindings, a typed prim GADT, …) before choosing.
-- **Known deferred bug — nested-module ADT constructor resolution** —
-  `pub pattern PatWild = RawPatWild(_)` inside a module fails because
-  `find_nominal_template_opt` matches by *type* name, not constructor name, on the
-  `VNominal` path in `elab_patterns.ml`. Affects pattern matching in macro bodies
-  for module-scoped ADTs. Salvaged from the old handover snapshot; revisit when
-  macro feature work needs it.
+- ~~**Known deferred bug — nested-module ADT constructor resolution**~~ — confirmed
+  live and promoted out of fog to
+  [constructor lookup matches the type name](tickets/constructor-lookup-matches-type-name.md).
 
 ## Open questions
 
@@ -210,6 +207,13 @@ order. All are unblocked (the ticket that blocked enforester work is now closed)
   context, so prelude values leak into modules that never opened `std`. Strictness
   is enforced on the syntax side only. Split from the now-closed module-level-open
   ticket.
+- [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
+  — the de Bruijn contract between `elab_infer.ml` and `nbe.ml` is written twice,
+  in two libraries, with nothing naming or checking it. Mis-transcribing it is
+  silent. **Pre-rewrite.**
+- [Constructor lookup matches the type name, not the constructor name](tickets/constructor-lookup-matches-type-name.md)
+  — promoted from fog and confirmed live: `find_nominal_template_opt`'s env scan
+  compares `n.name`, so resolving a constructor by name never hits.
 - [Core term traversals ignore binder depth in binding lists](tickets/core-traversals-ignore-binding-list-depth.md)
   — `shift_term`, `close_recursive_payload_term` and `closed_under` walk module
   and struct binding lists with a constant cutoff, though each binding extends

@@ -3,6 +3,7 @@ title: Imported modules elaborate in the importer's context
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
+  - severity:soundness
 status: open
 assignee:
 blocked_by:
@@ -31,6 +32,44 @@ the prelude, which the top-level entry points open by default.
   importer's context.
 - So the strict phase rule is currently half-enforced for modules: prelude
   *syntax* requires the open, prelude *values* do not.
+
+## It is a crash, not only a leak
+
+Importing the same module **twice** crashes whenever the module's body mentions
+any name it did not bind itself:
+
+```
+("m", "pub v = Some(1)")
+do A = import "m"; B = import "m"; match B.v do Some(k) -> k | None -> 0 end end
+  => EvalError("bd mask length mismatch")
+
+("m", "open (import \"std\")\npub v = Some(1)")   (* strict module, writes its own open *)
+do A = import "m"; B = import "m"; ... end
+  => EvalError("open of non-module")
+```
+
+Three facts compose into it:
+
+1. the module elaborates in the *importer's* context (above);
+2. so any name it did not bind itself — a leaked prelude value, or the `Var`
+   that `import "std"` itself elaborates to — becomes a **free variable** whose
+   index is relative to that context;
+3. `Core_loader.runtime_elab_cache` is keyed by resolved path, so the second
+   import splices that same core term in at a different binder depth.
+
+Controls that isolate it: two *distinct* files with identical content at those
+same depths work; a self-contained module (`pub type T = C(I64); pub v = C(1)`)
+at differing depths works; a closed module (`pub x = 21`) works. Only a
+path-cached term with free variables breaks.
+
+Note that writing `open (import "std")` does **not** avoid it — `import "std"`
+is itself a `Var` into the importer's context. Strict modules are equally
+affected.
+
+## Why the test suite never caught it
+
+Every existing repeated-import test uses a closed module (`pub x = 21`). Worth
+adding a non-closed double-import case regardless of how this is resolved.
 
 ## Why it is not simply a bug fix
 
