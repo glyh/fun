@@ -219,6 +219,12 @@ every defect below is an invariant with no name in the source.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
+- [Mutually-recursive record type declarations](tickets/mutually-recursive-record-types.md)
+  — deferred remainder of the nominal ticket: records excluded from `and` chains
+  until a value-level knot mechanism is designed.
+- [Mutual type chains in scoped do-heads](tickets/type-def-chains-in-scoped-do-heads.md)
+  — deferred remainder of the nominal ticket: `and` chains rejected in scoped
+  `do type … ; body` heads until expression-position group knots are designed.
 - [Reflect Match in the Expr macro ADT](tickets/reflect-match-in-expr-macro-adt.md)
   — enables a true prelude-macro `if`, `matches?`, pattern DSLs, `derive`. Design
   decided via grilling; **blocked on** mutually-recursive nominal types (for the
