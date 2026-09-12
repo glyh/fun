@@ -46,7 +46,7 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
   (* Build expand context with the same callbacks used by [eval_decl_module]. *)
   let expand_ctx = Expand_ctx.create () in
   Expand_ctx.set_syntax_nominals expand_ctx syntax_nominals;
-  Expand_ctx.set_context_kind expand_ctx Syntax.MacroKind.Decl;
+  Expand_ctx.set_expansion_position expand_ctx Syntax.MacroKind.Decl;
   (* Use [Elab_driver.infer] directly instead of [Elaborate.on_expr] because
      [!elab_ctx] already has stdlib opened. [on_expr] would open stdlib again,
      causing a double-open with wrong de Bruijn indices for macro body
@@ -164,12 +164,18 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
   let register_cached macros =
     List.iter
       (fun (name, value, kind, syntax_nominals) ->
-        Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals ~name ~value;
-        Expand_ctx.register_macro_kind ctx ~name ~kind)
+        Expand_ctx.register_unit_macro ctx ~path ~name ~value ~kind ~syntax_nominals)
       macros
   in
+  (* Whatever the unit's own expander learned has to cross into this one, or a
+     macro one unit further away stays invisible here. *)
+  let absorb () =
+    match Hashtbl.find_opt loader.Core_loader.driver_surface_cache resolved with
+    | Some (_, driver_ctx) -> Expand_ctx.absorb_units ~from:driver_ctx ctx
+    | None -> ()
+  in
   match Hashtbl.find_opt loader.Core_loader.macro_cache resolved with
-  | Some macros -> register_cached macros
+  | Some macros -> register_cached macros; absorb ()
   | None ->
       if Hashtbl.mem loader.Core_loader.macro_active resolved then
         raise (Core_loader.CircularMacroVisit path);
@@ -185,6 +191,14 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
                 source
             in
             let output = run ~loader stx in
+            (* Keep the expanded surface, not just the exports. This is the one
+               pass that expands the unit with macros live; without it the
+               loader re-expands the file with no [elaborate] callback and every
+               macro call inside it dies as an unbound variable. *)
+            Hashtbl.replace loader.Core_loader.driver_surface_cache resolved
+              (output.surface, output.expand_ctx);
+            Hashtbl.replace output.expand_ctx.Expand_ctx.unit_members path
+              output.expand_ctx.Expand_ctx.own_unit_members;
             List.filter_map
               (fun (e : macro_export) ->
                 if e.public then Some (e.name, e.compiled, e.kind, e.syntax_nominals)
@@ -192,4 +206,5 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
               output.macro_exports)
       in
       Hashtbl.replace loader.Core_loader.macro_cache resolved macros;
-      register_cached macros
+      register_cached macros;
+      absorb ()

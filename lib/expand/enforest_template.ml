@@ -369,8 +369,8 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
       { stx with kind = Syntax.EffectDef { name; params; ops = List.map (fun (op : Syntax.effect_op) -> { op with input = go op.input; output = go op.output }) ops; body = go body } }
   | Syntax.TraitDef { name; params; fields; body } ->
       { stx with kind = Syntax.TraitDef { name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
-  | Syntax.ImplDef { trait_path; trait_name; args; fields; body } ->
-      { stx with kind = Syntax.ImplDef { trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
+  | Syntax.ImplDef { name; trait_path; trait_name; args; fields; body } ->
+      { stx with kind = Syntax.ImplDef { name; trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
   | Syntax.Perform { effect_path; op; arg } -> { stx with kind = Syntax.Perform { effect_path; op; arg = go arg } }
   | Syntax.Resume e -> { stx with kind = Syntax.Resume (go e) }
   | Syntax.RefNew e -> { stx with kind = Syntax.RefNew (go e) }
@@ -384,8 +384,8 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
          with annotated generated macro definitions remain a Stage 2+ limitation. *)
       { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body; kind = None } }
   | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, List.map go a) }
-  | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
-      { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span } }
+  | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
+      { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span; unit } }
 
 and map_template_struct_binding captures go = function
   | Syntax.LetBinding { name; value; public; recursive } -> Syntax.LetBinding { name = map_binder_id captures name; value = go value; public; recursive }
@@ -394,7 +394,7 @@ and map_template_struct_binding captures go = function
   | Syntax.RecordTypeBinding { name; params; fields; public } -> Syntax.RecordTypeBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.EffectBinding { name; params; ops; public } -> Syntax.EffectBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; ops = List.map (fun (op : Syntax.effect_op) -> { op with input = go op.input; output = go op.output }) ops; public }
   | Syntax.TraitBinding { name; params; fields; public } -> Syntax.TraitBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
-  | Syntax.ImplBinding { trait_path; trait_name; args; fields; public } -> Syntax.ImplBinding { trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
+  | Syntax.ImplBinding { name; trait_path; trait_name; args; fields; public } -> Syntax.ImplBinding { name; trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.MacroBinding { name; value; public; _ } ->
       (* Deliberately drop annotation after macro registration: the resolved
          kind is carried by the macro registry/table. Macro-generating macros

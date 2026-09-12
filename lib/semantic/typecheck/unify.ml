@@ -152,7 +152,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
                   | Method | PrivateMethod | Field ->
                       validate_module_fields fields;
                       failwith "unreachable")
-              | ModuleImpl (kind, ty, value) -> ImplBind (kind, go d value, ty))
+              | ModuleImpl (name, kind, ty, value) -> ImplBind (name, kind, go d value, ty))
             entries
         in
         Module { bindings }
@@ -172,7 +172,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
                   | Method -> Some (LetBind (n, Method, go d v))
                   | PrivateMethod -> Some (LetBind (n, PrivateMethod, go d v))
                   | _ -> None)
-              | StructImpl (kind, ty, value) -> Some (ImplBind (kind, go d value, ty)))
+              | StructImpl (name, kind, ty, value) -> Some (ImplBind (name, kind, go d value, ty)))
             entries
         in
         Struct { con_fields; bindings; partial }
@@ -285,7 +285,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter
               (function
                 | ModuleField (_, _, v) -> occurs_check v
-                | ModuleImpl (_, ty, value) ->
+                | ModuleImpl (_, _, ty, value) ->
                     occurs_check ty;
                     occurs_check value)
               entries
@@ -293,7 +293,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter
               (function
                 | StructField (_, _, v) -> occurs_check v
-                | StructImpl (_, ty, value) -> occurs_check ty; occurs_check value)
+                | StructImpl (_, _, ty, value) -> occurs_check ty; occurs_check value)
               entries
         | VRecord { typ; fields } ->
             occurs_check typ;

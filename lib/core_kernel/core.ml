@@ -127,6 +127,14 @@ and term =
   | RefNew of term
   | RefGet of term
   | RefSet of term * term
+  | Imported of value
+      (** A compilation unit spliced in at its import site. The unit is
+          elaborated against the base context, so its *term* is anchored there
+          and would carry the wrong de Bruijn indices anywhere else - notably at
+          a second import, at a different binder depth. Its *value* carries its
+          own environment, so transporting that is always sound. [eval] returns
+          it unchanged.
+          See docs/wayfinder/tickets/imported-module-elaboration-context.md. *)
   | Stx of Syntax.t
 
 and match_branch =
@@ -178,9 +186,13 @@ and struct_binding_term =
   | EffectBind of string * struct_field_kind * value
       (** name, kind, effect_family_value. Operations are metadata and are not
           exposed as fields in phase one. *)
-  | ImplBind of struct_field_kind * term * value
-      (** kind, dictionary term, dictionary type. Impl evidence extends runtime
-          scope for trait resolution but is not an ordinary named field. *)
+  | ImplBind of string option * struct_field_kind * term * value
+      (** name, kind, dictionary term, dictionary type. Impl evidence extends
+          runtime scope for trait resolution. An impl is anonymous by default;
+          [impl NAME : Trait(Args) = …] names it, and a named impl is also
+          reachable as a member, so a use site can say WHICH impl it means
+          instead of having to [open] the module that defines it.
+          See docs/wayfinder/topics/impl-visibility.md. *)
   | PatternSynBind of string * struct_field_kind * value
       (** name, kind, VPatternSyn value. *)
   | OpenBind of term
@@ -192,14 +204,14 @@ and struct_binding_term =
 
 and module_entry =
   | ModuleField of string * struct_field_kind * value
-  | ModuleImpl of struct_field_kind * value * value
-      (** kind, dictionary type, dictionary value. Kept in source order with
+  | ModuleImpl of string option * struct_field_kind * value * value
+      (** name, kind, dictionary type, dictionary value. Kept in source order with
           fields so de Bruijn references across module bindings remain valid. *)
 
 and struct_entry =
   | StructField of string * struct_field_kind * value
-  | StructImpl of struct_field_kind * value * value
-      (** kind, dictionary type, dictionary value. Kept in source order with
+  | StructImpl of string option * struct_field_kind * value * value
+      (** name, kind, dictionary type, dictionary value. Kept in source order with
           fields so de Bruijn references across struct bindings remain valid. *)
 
 and syntax_object =
@@ -400,6 +412,71 @@ let effect_row_closure env row = { env; effects = row.effects; tail = row.tail }
 let validate_module_fields fields =
   if List.exists (fun (_, kind, _) -> kind = Field || kind = Method || kind = PrivateMethod) fields then
     failwith "VModule invariant violation: non-module field"
+
+(* A dotted lookup resolves to the LAST field of a given name, so a later
+   binding shadows an earlier one exactly as it does in a [do] block or through
+   [open]. Duplicate field names are legal and reachable: [type T = T I64] binds
+   the type and the constructor both as [T], and the constructor, coming later,
+   is what [M.T] means. Every field lookup in the elaborator and the evaluator
+   must use this, or the two disagree about which binding a path denotes. *)
+(* THE binding-list environment-width contract, in one place.
+
+   For every [struct_binding_term] the elaborator and the evaluator must extend
+   their environments by the same number of entries in the same order, or the de
+   Bruijn index of every later binding is wrong - and wrong quietly, yielding a
+   [Failure "nth"] or a silently incorrect value rather than a type error. The
+   two sides live in different libraries and carry different payloads (types on
+   one side, values on the other), so they cannot share the extension code; this
+   function is what they can share, and what a port must reproduce.
+
+   [OpenBind] returns [None]: its width is the number of public entries of a
+   module that has to be evaluated first, so it is not recoverable from the term.
+   See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
+let binding_width : struct_binding_term -> int option = function
+  | LetBind _ | EffectBind _ | ImplBind _ | PatternSynBind _ -> Some 1
+  | TypeBind (_, _, nominal, ctors) ->
+      let params =
+        match nominal with VNominal { num_params; _ } -> num_params | _ -> 0
+      in
+      Some (params + List.length ctors + 1)
+  | OpenBind _ -> None
+
+(* Total width of a binding list, or [None] if it contains an [open]. *)
+let binding_list_width bindings =
+  List.fold_left
+    (fun acc b ->
+      match (acc, binding_width b) with
+      | Some n, Some w -> Some (n + w)
+      | _ -> None)
+    (Some 0) bindings
+
+(* A named impl is also a member: [M.eq_C] denotes it. Anonymous impls are not
+   reachable this way and stay available only through [open]. The type view of a
+   module and its value view both carry (type, value) on an impl entry, so which
+   one a lookup wants has to be said at the call site. *)
+let module_impl_type_opt entries name =
+  List.find_map
+    (function
+      | ModuleImpl (Some n, kind, ty, _) when String.equal n name -> Some (kind, ty)
+      | _ -> None)
+    entries
+
+let module_impl_value_opt entries name =
+  List.find_map
+    (function
+      | ModuleImpl (Some n, kind, _, v) when String.equal n name -> Some (kind, v)
+      | _ -> None)
+    entries
+
+let struct_impl_type_opt entries name =
+  List.find_map
+    (function
+      | StructImpl (Some n, kind, ty, _) when String.equal n name -> Some (kind, ty)
+      | _ -> None)
+    entries
+
+let find_field_last p fields =
+  List.fold_left (fun acc field -> if p field then Some field else acc) None fields
 
 let module_entry_fields entries =
   List.filter_map (function ModuleField (name, kind, value) -> Some (name, kind, value) | ModuleImpl _ -> None) entries

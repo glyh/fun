@@ -59,6 +59,34 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   dispatched by type rather than a single generic operator.
 - [Pipeline wiring checklist](topics/pipeline-wiring-checklist.md) — the how-to for
   threading a new feature through every pipeline stage (reference/checklist).
+- [Impl visibility](topics/impl-visibility.md) — **decided:** impls arrive through
+  `open`, matching OCaml's modular implicits, but only after **named impls** land
+  as a compile-time handle (`same[A.C, A.eq_C](…)`). Ordering is the decision:
+  scoped resolution with no way to name an impl is the one combination no
+  precedent uses. Global coherence is unavailable to a language whose modules are
+  values.
+- [Domain model — elaborate ↔ evaluate](topics/core-tt-domain-model.md) — first
+  pass of the port's specification: a scope is one sequence seen through columns,
+  and the evaluator holds one of them rather than a peer environment. Vocabulary
+  in the root [`CONTEXT.md`](../../CONTEXT.md).
+- [Constructor lookup matches the type name](tickets/constructor-lookup-matches-type-name.md)
+  (closed) — premise was stale; the symptom already passed. Pattern-head
+  resolution tries the type name first and the constructor name second, and that
+  order is now written down in one place instead of hand-inlined in two.
+  Also fixed `type T = T I64`: dotted field lookup took the first matching field
+  while `open` and `do` bindings take the last, and a type and its constructors
+  were bound as scope-set siblings rather than nested. Last-wins is now one named
+  helper, `Core.find_field_last`, instead of seven hand-written scans.
+- [Core traversals ignore binder depth in binding lists](tickets/core-traversals-ignore-binding-list-depth.md)
+  (closed) — instrumented all four cases and ran the suite: never reached. The
+  condition that makes them safe is now named and enforced, rather than
+  arithmetic being invented for a case that has never occurred.
+- [The base context borrows the importer's mutable expander state](tickets/base-context-shared-state.md)
+  (closed) — probed every field `unit_base` shares with the importer. The shared
+  macro table does not collide (deferred calls carry unit keys, not written
+  names), the shared metas are load-bearing, and strictness holds. The one real
+  defect, the importer's `expand_ctx` being repointed at the last imported unit's
+  expander, is deleted; it was never load-bearing.
 
 ### Language features
 - [Regression coverage](topics/regression-coverage.md) — approach for locking in
@@ -199,15 +227,14 @@ every defect below is an invariant with no name in the source.
   — importing one module twice crashes whenever its body mentions a name it did
   not bind itself. Demonstrated, with controls, in the ticket.
 - [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
-  — the de Bruijn contract written twice, in two libraries, unnamed and unchecked.
+  — now named as `Core.binding_width` and **checked on the evaluator side**; open
+  for the other half, having the elaborator derive its `Ctx` extension from it
+  rather than merely agreeing with it.
 - [One declaration per primitive](tickets/unify-primitive-declaration.md)
-  — two hand-synced tables plus prelude source strings. Ticket now records why
-  the obvious refactor resists (`panic` does not fit a `(name, type, reducer)`
-  record) and a ~10-line assertion that captures most of the value first.
-- [Constructor lookup matches the type name, not the constructor name](tickets/constructor-lookup-matches-type-name.md)
-  — confirmed live: `find_nominal_template_opt`'s env scan compares `n.name`.
-- [Core term traversals ignore binder depth in binding lists](tickets/core-traversals-ignore-binding-list-depth.md)
-  — the same env-width invariant broken in a third place. Latent today.
+  — two hand-synced tables plus prelude source strings. The ~10-line assertion is
+  **done** (a typed primitive with no reducer now aborts at startup), as is the
+  division-by-zero leak it turned up. Open only for the unification question,
+  which should wait until that check actually fires.
 - [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
   — settle the rule before the struct elaborator is written a second time.
 
@@ -232,7 +259,10 @@ every defect below is an invariant with no name in the source.
 - [Specify Stage 12 macro diagnostics and expansion UX](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md)
   — diagnostics scope pre- vs post-rewrite.
 - [Design trait library deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md)
-  — library-level deriving/protocol ops for traits.
+  — library-level deriving/protocol ops for traits. Now carries two inputs from
+  [impl-visibility](topics/impl-visibility.md): deriving inherits the
+  mandatory-open tax, and scoped impl resolution gives up coherence, which any
+  ordered or hashed collection would inherit as a soundness hazard.
 - [Design private type visibility model](tickets/design-private-type-visibility-model.md)
   — decision on private/opaque type visibility.
 - [Scope generated symbol cleanup](tickets/scope-generated-symbol-cleanup.md)

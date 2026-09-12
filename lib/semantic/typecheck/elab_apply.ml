@@ -57,7 +57,7 @@ let infer_ap ops (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
           match resolve_trait_evidence_opt ctx trait_info args with
           | Ok (Some (evidence_core, _)) -> evidence_core
           | Ok None when unresolved_trait_arg args -> Ctx.fresh_meta ctx
-          | Ok None -> raise (ElabError (UnknownTrait trait_info.trait_name))
+          | Ok None -> raise (ElabError (MissingTraitImplementation (trait_key trait_info.trait_name args)))
           | Error err -> raise (ElabError err)
         in
         Ap (core, Implicit, evidence_core))

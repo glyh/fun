@@ -77,9 +77,9 @@ let rewrite_record_self_refs record_name params expr =
                     { name; params;
                       fields = List.map (fun (field, ty) -> (field, go (params @ bound) ty)) fields;
                       public }
-                | Surface.ImplBinding { trait_path; trait_name; args; fields; public } ->
+                | Surface.ImplBinding { name; trait_path; trait_name; args; fields; public } ->
                     Surface.ImplBinding
-                      { trait_path; trait_name;
+                      { name; trait_path; trait_name;
                         args = List.map (go bound) args;
                         fields = List.map (fun (field, value) -> (field, go bound value)) fields;
                         public }
@@ -122,9 +122,9 @@ let rewrite_record_self_refs record_name params expr =
                     { name; params;
                       fields = List.map (fun (field, ty) -> (field, go (params @ bound) ty)) fields;
                       public }
-                | Surface.ImplBinding { trait_path; trait_name; args; fields; public } ->
+                | Surface.ImplBinding { name; trait_path; trait_name; args; fields; public } ->
                     Surface.ImplBinding
-                      { trait_path; trait_name;
+                      { name; trait_path; trait_name;
                         args = List.map (go bound) args;
                         fields = List.map (fun (field, value) -> (field, go bound value)) fields;
                         public }
@@ -170,9 +170,9 @@ let rewrite_record_self_refs record_name params expr =
               { name; params;
                 fields = List.map (fun (field, ty) -> (field, go (params @ bound) ty)) fields;
                 body = go (name :: bound) body }
-        | Surface.ImplDef { trait_path; trait_name; args; fields; body } ->
+        | Surface.ImplDef { name = impl_name; trait_path; trait_name; args; fields; body } ->
             Surface.ImplDef
-              { trait_path; trait_name;
+              { name = impl_name; trait_path; trait_name;
                 args = List.map (go bound) args;
                 fields = List.map (fun (field, value) -> (field, go bound value)) fields;
                 body = go bound body }

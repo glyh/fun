@@ -38,6 +38,7 @@ and struct_binding =
       public : bool;
     }
   | ImplBinding of {
+      name : string option;
       trait_path : string list;
       trait_name : string;
       args : t list;
@@ -101,6 +102,7 @@ and t =
       body : t;
     }
   | ImplDef of {
+      name : string option;
       trait_path : string list;
       trait_name : string;
       args : t list;

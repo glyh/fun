@@ -1,11 +1,9 @@
 open Core
 open Elab_common
 
-let atom_ty_of_atom = function
-  | Atom.I64 _ -> Atom_ty.TI64
-  | Unit -> Atom_ty.TUnit
-  | Char _ -> Atom_ty.TChar
-  | String _ -> Atom_ty.TString
+(* Was duplicated verbatim from [Nbe_prim]; kept as an alias so the mapping from
+   an atom to its type has one definition. *)
+let atom_ty_of_atom = Nbe_prim.atom_ty_of_atom
 
 (* Primitives never mention [Bool]: all predicates return I64 (1/0). The prelude
    wraps them into the library [Bool] ADT via [i64_to_bool]. *)
@@ -36,6 +34,33 @@ let prims =
     ("ge_i64", i64_predicate);
   ]
   |> NameMap.of_list
+
+(* Primitives that carry a type but deliberately have no entry in
+   [Nbe_prim.prim_table]. [panic] is special-cased inside [Nbe.try_prim_reduce]
+   because it needs the frame list and raises rather than returning an atom. *)
+let prims_without_reducer = [ "panic" ]
+
+(* The one desync that is silent, and so the only one worth a check.
+   A name in [prims] but missing from [Nbe_prim.prim_table] type-checks fine and
+   then fails to reduce: [try_prim_reduce] falls through to [None], the
+   application stays a stuck neutral, and evaluation yields a [VNeutral (HPrim …)]
+   where a number was expected - no error, just a wrong value. The other
+   direction is already loud, since a name in the prelude source with no type
+   fails prelude elaboration and takes every test with it.
+   See docs/wayfinder/tickets/unify-primitive-declaration.md. *)
+let () =
+  let missing =
+    NameMap.bindings prims
+    |> List.filter_map (fun (name, _) ->
+           if List.mem name prims_without_reducer
+              || Hashtbl.mem Nbe_prim.prim_table name
+           then None
+           else Some name)
+  in
+  if missing <> [] then
+    failwith
+      ("primitives declared with a type but with no reducer, and not listed in "
+      ^ "prims_without_reducer: " ^ String.concat ", " missing)
 
 let syntax_primitive_names = []
 

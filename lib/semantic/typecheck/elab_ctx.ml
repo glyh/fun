@@ -2,10 +2,16 @@ open Core
 open Elab_error
 open Elab_common
 
+(* A SCOPE: one ordered sequence of entries, viewed through several columns that
+   must stay the same length, [lvl]. [env] is the column the evaluator receives -
+   NbE is handed that projection alone, never the scope. [bds] records, per entry,
+   whether it is a bound variable or a definition, and is the mask a meta is
+   abstracted over. An entry's *type* lives in [name_table], not in a column;
+   there used to be a parallel [types] list, but nothing ever read it except the
+   code that rebuilt it. See docs/wayfinder/topics/core-tt-domain-model.md. *)
 module Ctx = struct
   type t = {
     env : env;
-    types : value list;
     lvl : lvl;
     metas : MetaContext.t;
     bds : bd list;
@@ -18,13 +24,18 @@ module Ctx = struct
     loader : Core_loader.t option;
     macro_table : (string, Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) Hashtbl.t;
     mutable expand_ctx : Expand_ctx.t option;
+    (* The base context this one grew out of: the atom types, the primitives and
+       [stdlib] bound as a name. Set once, by [init_ctx]; every extension carries
+       it forward, so an imported compilation unit can be elaborated against it
+       instead of against whatever the importer happened to have in scope.
+       [None] only in the half-built context [init_ctx] is itself assembling. *)
+    base : t option;
   }
 
   let empty () : t =
     let metas = MetaContext.create () in
     {
       env = [];
-      types = [];
       lvl = 0;
       metas;
       bds = [];
@@ -37,65 +48,49 @@ module Ctx = struct
       loader = None;
       macro_table = Hashtbl.create 4;
       expand_ctx = None;
+      base = None;
     }
+
+  (* The context an imported compilation unit is elaborated against: this
+     context's base, carrying the live loader, macro table and expander state so
+     the unit can import and expand in turn. Shares [metas], so metas the unit
+     leaves unsolved stay meaningful to the importer.
+     See docs/wayfinder/tickets/imported-module-elaboration-context.md. *)
+  let unit_base (ctx : t) : t =
+    match ctx.base with
+    | None -> ctx
+    | Some base ->
+        { base with loader = ctx.loader; macro_table = ctx.macro_table;
+                    expand_ctx = ctx.expand_ctx }
 
   let bind (ctx : t) (name : string) (ty : value) : t =
-    let var = VRigid { lvl = ctx.lvl; spine = [] } in
-    {
-      env = var :: ctx.env;
-      types = ty :: ctx.types;
+    { ctx with
+      env = VRigid { lvl = ctx.lvl; spine = [] } :: ctx.env;
       lvl = ctx.lvl + 1;
-      metas = ctx.metas;
       bds = Bound :: ctx.bds;
-      name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
-      traits = ctx.traits;
-      trait_evidence = ctx.trait_evidence;
-      self_entry = ctx.self_entry;
-      self_type = ctx.self_type;
-      resume_entry = ctx.resume_entry;
-      loader = ctx.loader;
-      macro_table = ctx.macro_table;
-      expand_ctx = ctx.expand_ctx;
-    }
+      name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table }
 
   let bind_anonymous (ctx : t) (ty : value) : t * name_entry =
-    let entry = { level = ctx.lvl; ty } in
-    let var = VRigid { lvl = ctx.lvl; spine = [] } in
-    ({
-       env = var :: ctx.env;
-       types = ty :: ctx.types;
+    ({ ctx with
+       env = VRigid { lvl = ctx.lvl; spine = [] } :: ctx.env;
        lvl = ctx.lvl + 1;
-       metas = ctx.metas;
-       bds = Bound :: ctx.bds;
-       name_table = ctx.name_table;
-       traits = ctx.traits;
-       trait_evidence = ctx.trait_evidence;
-       self_entry = ctx.self_entry;
-       self_type = ctx.self_type;
-       resume_entry = ctx.resume_entry;
-        loader = ctx.loader;
-        macro_table = ctx.macro_table;
-        expand_ctx = ctx.expand_ctx;
-      },
-     entry)
+       bds = Bound :: ctx.bds },
+     { level = ctx.lvl; ty })
 
   let define (ctx : t) (name : string) (ty : value) (v : value) : t =
-    {
+    { ctx with
       env = v :: ctx.env;
-      types = ty :: ctx.types;
       lvl = ctx.lvl + 1;
-      metas = ctx.metas;
       bds = Defined :: ctx.bds;
-      name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table;
-      traits = ctx.traits;
-      trait_evidence = ctx.trait_evidence;
-      self_entry = ctx.self_entry;
-      self_type = ctx.self_type;
-      resume_entry = ctx.resume_entry;
-      loader = ctx.loader;
-      macro_table = ctx.macro_table;
-      expand_ctx = ctx.expand_ctx;
-    }
+      name_table = NameMap.add name { level = ctx.lvl; ty } ctx.name_table }
+
+  (* Give an entry that already exists a name, without widening the context. A
+     named impl occupies exactly the one entry [define_anonymous] pushed for it;
+     naming it must not add a second, or the elaborator and the evaluator would
+     disagree about that binding's width.
+     See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
+  let alias (ctx : t) (name : string) (entry : name_entry) : t =
+    { ctx with name_table = NameMap.add name entry ctx.name_table }
 
   let hide_names (ctx : t) names : t =
     {
@@ -104,24 +99,8 @@ module Ctx = struct
     }
 
   let define_anonymous (ctx : t) (ty : value) (v : value) : t * name_entry =
-    let entry = { level = ctx.lvl; ty } in
-    ({
-       env = v :: ctx.env;
-       types = ty :: ctx.types;
-       lvl = ctx.lvl + 1;
-       metas = ctx.metas;
-       bds = Defined :: ctx.bds;
-       name_table = ctx.name_table;
-       traits = ctx.traits;
-       trait_evidence = ctx.trait_evidence;
-       self_entry = ctx.self_entry;
-       self_type = ctx.self_type;
-       resume_entry = ctx.resume_entry;
-        loader = ctx.loader;
-        macro_table = ctx.macro_table;
-        expand_ctx = ctx.expand_ctx;
-      },
-     entry)
+    ({ ctx with env = v :: ctx.env; lvl = ctx.lvl + 1; bds = Defined :: ctx.bds },
+     { level = ctx.lvl; ty })
 
   let lookup (ctx : t) (name : string) : ix * value =
     match NameMap.find_opt name ctx.name_table with

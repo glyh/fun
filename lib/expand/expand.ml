@@ -82,8 +82,8 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
     EffectDef { name = add_id_scope_if within s name; params; ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; body = go body }
   | TraitDef { name; params; fields; body } ->
     TraitDef { name = add_id_scope_if within s name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
-  | ImplDef { trait_path; trait_name; args; fields; body } ->
-    ImplDef { trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
+  | ImplDef { name; trait_path; trait_name; args; fields; body } ->
+    ImplDef { name; trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | Perform { effect_path; op; arg } ->
     Perform { effect_path; op; arg = go arg }
   | Resume e -> Resume (go e)
@@ -96,8 +96,8 @@ and go_kind ?within (s : Scope_set.t) (k : kind) : kind =
     MacroDef { name = add_id_scope_if within s name; value = go value; body = go body; kind }
   | MacroCall (f, args) ->
     MacroCall (go f, List.map go args)
-  | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
-    SyntaxOperatorUse { operator = add_id_scope_if within s operator; fixity; operands = List.map go operands; declaration_span; use_span }
+  | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
+    SyntaxOperatorUse { operator = add_id_scope_if within s operator; fixity; operands = List.map go operands; declaration_span; use_span; unit }
 
 and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding) : Syntax.struct_binding =
   match binding with
@@ -121,8 +121,8 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
   | TraitBinding { name; params; fields; public } ->
     TraitBinding { name = add_id_scope_if within s name;
                    params; fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
-  | ImplBinding { trait_path; trait_name; args; fields; public } ->
-    ImplBinding { trait_path; trait_name; args = List.map (add_scope ?within s) args;
+  | ImplBinding { name; trait_path; trait_name; args; fields; public } ->
+    ImplBinding { name; trait_path; trait_name; args = List.map (add_scope ?within s) args;
                   fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
   | MacroBinding { name; value; public; kind } ->
     MacroBinding { name = add_id_scope_if within s name; value = add_scope ?within s value; public; kind }
@@ -274,6 +274,59 @@ let macro_head_key (ctx : Expand_ctx.t) (id : Syntax.id) :
           if Expand_ctx.is_provisional_macro ctx id.name then Some (id.name, None, true)
           else None)
 
+(* The unit a module expression denotes, when it denotes one: [import "m"]
+   directly, or a name bound to one. Macros are members of a unit, so this is
+   what both [M.answer(0)] and [open M] need in order to find them. *)
+let rec unit_path_of (ctx : Expand_ctx.t) (m : t) : string option =
+  match m.kind with
+  | Import path -> Some path
+  | Var id -> (
+      match Expand_ctx.resolve ctx id with
+      | Some { Binding.resolved_name; _ } -> Expand_ctx.module_unit ctx resolved_name
+      | None -> Expand_ctx.module_unit ctx id.name)
+  (* [M.I] where [I] is a unit-valued member of the unit [M] names, so a macro
+     reached through a re-export resolves at any depth. *)
+  | FieldAccess (inner, field) ->
+      Option.bind (unit_path_of ctx inner)
+        (fun path -> Expand_ctx.unit_member ctx ~path ~name:field)
+  | _ -> None
+
+(* [M.answer] in head position, where [M] names a unit exporting macro [answer].
+   [M.answer] on its own is NOT resolved here - a macro is not a runtime value,
+   so it stays the field-access error it already was. *)
+let macro_member_key (ctx : Expand_ctx.t) (head : t) :
+    (string * Expand_ctx.macro_entry) option =
+  match head.kind with
+  | FieldAccess (m, field) -> (
+      match unit_path_of ctx m with
+      | Some path ->
+          let key = Expand_ctx.unit_macro_key ~path ~name:field in
+          Option.map (fun e -> (key, e)) (Expand_ctx.lookup_macro_entry ctx key)
+      | None -> None)
+  | _ -> None
+
+(* [open]ing a unit delivers its macros bare, the way it delivers its values.
+   Each arrives as an ordinary [Macro] binding in the scope-aware binding table,
+   under a fresh scope the caller adds to whatever the open covers - so an open
+   inside a [do] block does not leak, and a local binding of the same name
+   shadows it by the usual rule. *)
+let open_unit_macro_scopes (ctx : Expand_ctx.t) (m : t) : Scope_set.t list =
+  match unit_path_of ctx m with
+  | None -> []
+  | Some path ->
+      List.map
+        (fun name ->
+          Expand_ctx.extend_at_kinded ctx ~name ~base_scope:Scope_set.empty
+            ~kind:Binding.Macro
+            ~resolved_name:(Expand_ctx.unit_macro_key ~path ~name))
+        (Expand_ctx.unit_macro_names ctx path)
+
+(* The scope set to hang a dotted macro call's synthesised head on: the one the
+   module expression itself carries, so the rewritten head stays in the same
+   hygienic position as what it replaces. *)
+let member_scope (m : t) : Scope_set.t =
+  match m.kind with Var id -> id.scope | _ -> Scope_set.empty
+
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
@@ -295,46 +348,56 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let binding_name = id_name name in
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~name:binding_name ~base_scope:name.scope in
     let value = if recursive then expand ctx (add_scope_within stx.span scope value) else expand ctx value in
+    (* [M = import "m"] makes [M] a handle on the unit, so [M.answer(0)] can
+       find its macros. Checked after expansion, since the import may itself be
+       what a macro produced. *)
+    (match value.kind with
+     | Import path -> Expand_ctx.bind_module_unit ctx ~resolved_name ~path
+     | _ -> ());
     let body = expand ctx (add_scope_within stx.span scope body) in
     let name = bind_id scope resolved_name name in
     { stx with kind = Let { name; type_ = Option.map (expand ctx) type_; value; body; recursive } }
   | Ap (f, e, a) ->
     let default () = { stx with kind = Ap (expand ctx f, e, expand ctx a) } in
     let head, spine = flatten_ap stx [] in
-    begin match head.kind with
-    | Var id ->
+    (* The head is a macro: gather its arity-many arguments from the spine,
+       expand the call in place (or defer type-aware macros to the elaborator),
+       and re-apply any remaining spine arguments as an ordinary application
+       around the macro's result. *)
+    let expand_macro_head ~key ~macro_entry ~head_id =
+      let arity = macro_arity macro_entry.Expand_ctx.value in
+      let n = List.length spine in
+      let take = if arity <= 0 || arity > n then n else arity in
+      let rec split k xs =
+        if k <= 0 then ([], xs)
+        else match xs with
+          | x :: tl -> let a, b = split (k - 1) tl in (x :: a, b)
+          | [] -> ([], [])
+      in
+      let macro_spine, rest = split take spine in
+      let macro_args = List.map snd macro_spine in
+      let head_stx = { head with kind = Var { head_id with name = key } } in
+      let macro_result = run_macro_call ctx stx ~key ~macro_entry ~head:head_stx macro_args in
+      match rest with
+      | [] -> macro_result
+      | _ ->
+        List.fold_left
+          (fun acc (expl, arg) ->
+            { stx with kind = Ap (acc, expl, expand ctx arg) })
+          macro_result rest
+    in
+    begin match head.kind, macro_member_key ctx head with
+    | FieldAccess (m, field), Some (key, macro_entry) ->
+      let head_id = { Syntax.name = field; span = head.span; scope = member_scope m } in
+      expand_macro_head ~key ~macro_entry ~head_id
+    | Var id, _ ->
       begin match macro_head_key ctx id with
-      | Some (key, Some macro_entry, _) ->
-        (* The head is a macro: gather its arity-many arguments from the
-           spine, expand the call in place (or defer type-aware macros to the
-           elaborator), and re-apply any remaining spine arguments as an
-           ordinary application around the macro's result. *)
-        let arity = macro_arity macro_entry.Expand_ctx.value in
-        let n = List.length spine in
-        let take = if arity <= 0 || arity > n then n else arity in
-        let rec split k xs =
-          if k <= 0 then ([], xs)
-          else match xs with
-            | x :: tl -> let a, b = split (k - 1) tl in (x :: a, b)
-            | [] -> ([], [])
-        in
-        let macro_spine, rest = split take spine in
-        let macro_args = List.map snd macro_spine in
-        let head_stx = { head with kind = Var { id with name = key } } in
-        let macro_result = run_macro_call ctx stx ~key ~macro_entry ~head:head_stx macro_args in
-        begin match rest with
-        | [] -> macro_result
-        | _ ->
-          List.fold_left
-            (fun acc (expl, arg) ->
-              { stx with kind = Ap (acc, expl, expand ctx arg) })
-            macro_result rest
-        end
+      | Some (key, Some macro_entry, _) -> expand_macro_head ~key ~macro_entry ~head_id:id
       | Some (_, None, true) ->
         failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
       | Some (_, None, false) | None -> default ()
       end
-    | _ -> default ()
+    | _, _ -> default ()
     end
   | Annotated { inner; typ } ->
     { stx with kind = Annotated { inner = expand ctx inner; typ = expand ctx typ } }
@@ -359,7 +422,12 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | Module { bindings } ->
     { stx with kind = Module { bindings = expand_struct_bindings ctx bindings } }
   | Open (m, body) ->
-    { stx with kind = Open (expand ctx m, expand ctx body) }
+    (* Expand the module expression first: an [open (import "m")] is what loads
+       that unit's macros, and they have to be there before the open can bind
+       them for the body. *)
+    let m' = expand ctx m in
+    let scopes = open_unit_macro_scopes ctx m in
+    { stx with kind = Open (m', expand ctx (add_scopes_within stx.span scopes body)) }
   | RecordTypeDef { name; params; fields; body } ->
     let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
     let name = add_id_scope scope name in
@@ -373,7 +441,18 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       List.split
         (List.map
            (fun ((cname : Syntax.id), payload) ->
-             let ctor_scope = Expand_ctx.extend_at ctx ~name:cname.name ~base_scope:cname.scope ~resolved_name:cname.name in
+             (* The constructor is introduced *after* the type name by the same
+                declaration, so it is bound under the type's scope rather than
+                beside it. As siblings the two scope sets are incomparable, and
+                [type T = T I64] - where a constructor shares its type's written
+                name - resolves as an ambiguous binding instead of shadowing.
+                Nesting makes the constructor strictly more specific, which is
+                the same last-wins rule a dotted path and [open] already use. *)
+             let ctor_scope =
+               Expand_ctx.extend_at ctx ~name:cname.name
+                 ~base_scope:(Scope_set.union scope cname.scope)
+                 ~resolved_name:cname.name
+             in
              ((add_id_scope ctor_scope cname, payload), ctor_scope))
            ctors)
     in
@@ -388,8 +467,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
     { stx with kind = TraitDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes_within e.span param_scopes e))) fields; body = expand ctx (add_scope_within stx.span scope body) } }
-  | ImplDef { trait_path; trait_name; args; fields; body } ->
-    { stx with kind = ImplDef { trait_path; trait_name; args = List.map (expand ctx) args;
+  | ImplDef { name; trait_path; trait_name; args; fields; body } ->
+    { stx with kind = ImplDef { name; trait_path; trait_name; args = List.map (expand ctx) args;
                                 fields = List.map (fun (n, e) -> (n, expand ctx e)) fields;
                                 body = expand ctx body } }
   | Perform { effect_path; op; arg } ->
@@ -441,8 +520,22 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       end
     | _ -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
     end
-  | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
-    begin match Expand_ctx.lookup_macro_entry ctx operator.name with
+  | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
+    (* Take the body from the unit whose declaration won the fixity. The node
+       carries that unit, so there is nothing to resolve here and no way for the
+       precedence and the body to come from different units. Falls back to the
+       written name for an operator declared in this file, and for the prelude's
+       own operators, which are not unit members. *)
+    let operator_entry =
+      let by_unit =
+        Option.bind unit (fun path ->
+          Expand_ctx.lookup_macro_entry ctx (Expand_ctx.unit_macro_key ~path ~name:operator.name))
+      in
+      match by_unit with
+      | Some _ as e -> e
+      | None -> Expand_ctx.lookup_macro_entry ctx operator.name
+    in
+    begin match operator_entry with
     | Some macro_entry ->
       let macro_fn = macro_entry.Expand_ctx.value in
       let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
@@ -466,16 +559,16 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
                   apply_fn (apply_fn macro_fn lhs_stx) rhs_stx
                 else
                   apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
-                    { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
+                    { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } })
             | [ single ] ->
                 let stx = Macro_eval.wrap_stx ~nominals:macro_nominals single in
                 apply_fn macro_fn stx
             | _ -> apply_fn macro_fn (Macro_eval.wrap_stx ~nominals:macro_nominals
-                     { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } })
+                     { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } })
           in
           begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
           | Some expanded -> expand ctx expanded
-          | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } }
+          | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } }
                                 ("operator macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
           end)
       | None -> failwith "operator macro call requires an apply callback"
@@ -483,7 +576,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | _ when Expand_ctx.is_provisional_macro ctx operator.name ->
       failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" operator.name)
     | _ ->
-      { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span } }
+      { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span; unit } }
     end
 
 (** Run a resolved procedural-macro call: check kind compatibility against the
@@ -501,7 +594,7 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     | Some k -> k
     | None -> Syntax.MacroKind.default
   in
-  let ctx_kind = Expand_ctx.get_context_kind ctx in
+  let ctx_kind = Expand_ctx.get_expansion_position ctx in
   let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
   let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
   if macro_base <> ctx_base then
@@ -569,12 +662,19 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let value =
-      let prev = Expand_ctx.get_context_kind ctx in
-      Expand_ctx.set_context_kind ctx Syntax.MacroKind.(Expr (None, None));
+      let prev = Expand_ctx.get_expansion_position ctx in
+      Expand_ctx.set_expansion_position ctx Syntax.MacroKind.(Expr (None, None));
       let v = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
-      Expand_ctx.set_context_kind ctx prev;
+      Expand_ctx.set_expansion_position ctx prev;
       v
     in
+    (* Same handle as the expression-level [Let]: [I = import "inner"] inside a
+       module makes [I.answer(0)] expand. *)
+    (match value.kind with
+     | Import path ->
+       Expand_ctx.bind_module_unit ctx ~resolved_name:binding_name ~path;
+       if public then Expand_ctx.record_own_unit_member ctx ~name:binding_name ~path
+     | _ -> ());
     ([LetBinding { name = add_id_scope scope name; value; public; recursive }], [[ scope ]])
   | MethodBinding { name; params; body; public } ->
     let binding_name = id_name name in
@@ -589,7 +689,18 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
       List.split
         (List.map
            (fun ((cname : Syntax.id), payload) ->
-             let ctor_scope = Expand_ctx.extend_at ctx ~name:cname.name ~base_scope:cname.scope ~resolved_name:cname.name in
+             (* The constructor is introduced *after* the type name by the same
+                declaration, so it is bound under the type's scope rather than
+                beside it. As siblings the two scope sets are incomparable, and
+                [type T = T I64] - where a constructor shares its type's written
+                name - resolves as an ambiguous binding instead of shadowing.
+                Nesting makes the constructor strictly more specific, which is
+                the same last-wins rule a dotted path and [open] already use. *)
+             let ctor_scope =
+               Expand_ctx.extend_at ctx ~name:cname.name
+                 ~base_scope:(Scope_set.union scope cname.scope)
+                 ~resolved_name:cname.name
+             in
              ((add_id_scope ctor_scope cname, payload), ctor_scope))
            ctors)
     in
@@ -617,8 +728,8 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     ([TraitBinding { name = add_id_scope scope name;
                      params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
      [[ scope ]])
-  | ImplBinding { trait_path; trait_name; args; fields; public } ->
-    ([ImplBinding { trait_path; trait_name; args = List.map (expand ctx) args;
+  | ImplBinding { name; trait_path; trait_name; args; fields; public } ->
+    ([ImplBinding { name; trait_path; trait_name; args = List.map (expand ctx) args;
                    fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public }],
      [[]])
   | PatternSynBinding { name; params; rhs; public } ->
@@ -626,7 +737,8 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   | OpenBinding m ->
     (* An open binds no name of its own; the names it brings into scope are
        resolved by the elaborator, not the expander. *)
-    ([OpenBinding (expand ctx m)], [[]])
+    let m' = expand ctx m in
+    ([OpenBinding m'], [ open_unit_macro_scopes ctx m ])
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
@@ -665,9 +777,15 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
       ([MacroBinding { name; value = expand ctx value; public; kind }], [[]])
     end
   | MacroCallBinding { f; args } ->
+    let head_macro =
+      match f.kind, macro_member_key ctx f with
+      | FieldAccess _, Some (key, entry) -> Some (key, Some entry, false)
+      | Var id, _ -> macro_head_key ctx id
+      | _, _ -> None
+    in
     begin match f.kind with
-    | Var id ->
-      begin match macro_head_key ctx id with
+    | Var _ | FieldAccess _ ->
+      begin match head_macro with
       | Some (key, Some macro_entry, _) ->
         let macro_fn = macro_entry.Expand_ctx.value in
         let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
@@ -675,7 +793,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
         | Some apply_fn ->
           let macro_kind = match Expand_ctx.lookup_macro_kind ctx key with
             | Some k -> k | None -> Syntax.MacroKind.default in
-          let ctx_kind = Expand_ctx.get_context_kind ctx in
+          let ctx_kind = Expand_ctx.get_expansion_position ctx in
         let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
         let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
         if macro_base <> ctx_base then
@@ -704,8 +822,8 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
              | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" key)))
         | None -> failwith "macro call requires an apply callback in expand context"
         end
-      | Some (_, None, true) ->
-        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
+      | Some (key, None, true) ->
+        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" key)
       | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
       end
     | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])

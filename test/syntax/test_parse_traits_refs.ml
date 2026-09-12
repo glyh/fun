@@ -10,8 +10,15 @@ let trait_decl_shape () =
 
 let impl_decl_shape () =
   match parse_module "open (import \"std\")\nimpl Eq(I64) = module fn eq(x, y) -> x == y end" with
-  | Module { bindings = [ OpenBinding _; ImplBinding { trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; public = false } ] } -> ()
+  | Module { bindings = [ OpenBinding _; ImplBinding { name = None; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; public = false } ] } -> ()
   | _ -> Alcotest.fail "expected impl declaration"
+
+(* [impl NAME : Trait(Args) = …] names the impl; the name is optional and the
+   unnamed form above is unchanged. See docs/wayfinder/topics/impl-visibility.md. *)
+let named_impl_decl_shape () =
+  match parse_module "open (import \"std\")\nimpl eq_i64 : Eq(I64) = module fn eq(x, y) -> x == y end" with
+  | Module { bindings = [ OpenBinding _; ImplBinding { name = Some "eq_i64"; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; _ } ] } -> ()
+  | _ -> Alcotest.fail "expected named impl declaration"
 
 let single_trait_bound_shape () =
   match parse_expr "[A : Eq] -> A -> A" with
@@ -49,6 +56,7 @@ let suites =
       [
         Alcotest.test_case "trait declaration shape" `Quick trait_decl_shape;
         Alcotest.test_case "impl declaration shape" `Quick impl_decl_shape;
+    Alcotest.test_case "named impl declaration shape" `Quick named_impl_decl_shape;
         Alcotest.test_case "single trait bound shape" `Quick single_trait_bound_shape;
         Alcotest.test_case "multi trait bound shape" `Quick multi_trait_bound_shape;
       ] );

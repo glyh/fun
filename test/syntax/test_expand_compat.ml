@@ -1,12 +1,12 @@
-let expand_lower surface =
-  surface
-  |> Surface_to_syntax.expr
-  |> Expand.expand_expr
-  |> Lower_surface.lower_expr
-
+(* These previously round-tripped a lowered [Surface.t] back through
+   [Surface_to_syntax] and compared with [Alcotest.pass] - a testable that always
+   succeeds, so the comparison asserted nothing. (Verified: substituting an
+   unrelated parse still passed.) The reverse conversion had no production caller
+   and has been deleted; what these cases actually provided was "this source
+   parses and lowers without raising", which is now what they say. *)
 let check_compat source () =
-  let parsed = Parse_expand.parse_expr source in
-  Alcotest.(check pass) source parsed (expand_lower parsed)
+  match Parse_expand.parse_expr source with
+  | _ -> ()
 
 let token_spans () =
   match Raw_syntax.raw_tokens_with_spans "do x = 42; x end" with
@@ -25,8 +25,8 @@ let token_spans () =
   | _ -> Alcotest.fail "unexpected token stream"
 
 let module_compat () =
-  let parsed = Parse_expand.parse_module "pub x = 1; pub type Option A = Some A | None" in
-  Alcotest.(check pass) "module compat" parsed (expand_lower parsed)
+  match Parse_expand.parse_module "pub x = 1; pub type Option A = Some A | None" with
+  | _ -> ()
 
 let nested_same_name_lets_preserve_resolved_identity () =
   match Parse_expand.parse_expr "do x = 1; x = 2; x end" with

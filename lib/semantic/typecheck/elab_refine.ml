@@ -29,7 +29,7 @@ let term_mentions_var target term =
         List.exists
           (function
             | LetBind (_, _, value) -> go target value
-            | ImplBind (_, value, _) -> go target value
+            | ImplBind (_, _, value, _) -> go target value
             | OpenBind value -> go target value
             | TypeBind _ | EffectBind _ | PatternSynBind _ -> false)
           bindings
@@ -38,7 +38,7 @@ let term_mentions_var target term =
         || List.exists
              (function
                | LetBind (_, _, value) -> go target value
-               | ImplBind (_, value, _) -> go target value
+               | ImplBind (_, _, value, _) -> go target value
                | OpenBind value -> go target value
                | TypeBind _ | EffectBind _ | PatternSynBind _ -> false)
              bindings
@@ -63,7 +63,7 @@ let term_mentions_var target term =
     | EffectDef { ops; body; _ } ->
         List.exists (fun (_, input, output) -> go target input || go target output) ops || go target body
     | Perform { eff; arg; _ } -> go target eff || go target arg
-    | Stx _ -> false
+    | Stx _ | Imported _ -> false
     | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ -> false
   in
   go target term
@@ -87,8 +87,8 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
         List.map
           (function
             | ModuleField (name, kind, value) -> ModuleField (name, kind, subst_value_var mc target replacement value)
-            | ModuleImpl (kind, ty, value) ->
-                ModuleImpl (kind, subst_value_var mc target replacement ty, subst_value_var mc target replacement value))
+            | ModuleImpl (name, kind, ty, value) ->
+                ModuleImpl (name, kind, subst_value_var mc target replacement ty, subst_value_var mc target replacement value))
           entries
       in
       VModule { entries; partial }
@@ -97,8 +97,8 @@ let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value
         List.map
           (function
             | StructField (name, kind, value) -> StructField (name, kind, subst_value_var mc target replacement value)
-            | StructImpl (kind, ty, value) ->
-                StructImpl (kind, subst_value_var mc target replacement ty, subst_value_var mc target replacement value))
+            | StructImpl (name, kind, ty, value) ->
+                StructImpl (name, kind, subst_value_var mc target replacement ty, subst_value_var mc target replacement value))
           entries
       in
       VStruct { entries; partial }
@@ -158,8 +158,7 @@ let refine_context_type_var ctx target replacement =
   let substitute = subst_value_var ctx.Ctx.metas target replacement in
   {
     ctx with
-    Ctx.types = List.map substitute ctx.Ctx.types;
-    name_table = NameMap.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.name_table;
+    Ctx.name_table = NameMap.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.name_table;
     self_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.self_entry;
     resume_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.resume_entry;
   }
@@ -204,11 +203,13 @@ let close_recursive_payload_term nominal_name num_params =
         | Proj (e, i) -> Proj (go cutoff e, i)
         | Dot (e, field) -> Dot (go cutoff e, field)
         | Module { bindings } ->
+            if not (Elab_defs.binding_list_depth_is_tracked bindings) then
+              Elab_defs.reject_untracked_binding_list "close_recursive_payload_term";
             let binding = function
               | LetBind (field, kind, value) -> LetBind (field, kind, go cutoff value)
               | TypeBind (field, kind, nominal, ctors) -> TypeBind (field, kind, nominal, ctors)
               | EffectBind (field, kind, eff) -> EffectBind (field, kind, eff)
-              | ImplBind (kind, value, ty) -> ImplBind (kind, go cutoff value, ty)
+              | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, go cutoff value, ty)
               | PatternSynBind (field, kind, syn) -> PatternSynBind (field, kind, syn)
               | OpenBind value -> OpenBind (go cutoff value)
             in
@@ -219,7 +220,7 @@ let close_recursive_payload_term nominal_name num_params =
               | LetBind (field, kind, value) -> LetBind (field, kind, go cutoff value)
               | TypeBind (field, kind, nominal, ctors) -> TypeBind (field, kind, nominal, ctors)
               | EffectBind (field, kind, eff) -> EffectBind (field, kind, eff)
-              | ImplBind (kind, value, ty) -> ImplBind (kind, go cutoff value, ty)
+              | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, go cutoff value, ty)
               | PatternSynBind (field, kind, syn) -> PatternSynBind (field, kind, syn)
               | OpenBind value -> OpenBind (go cutoff value)
             in
@@ -258,7 +259,7 @@ let close_recursive_payload_term nominal_name num_params =
                 ops = List.map (fun (op, input, output) -> (op, go cutoff input, go cutoff output)) ops;
                 body = go cutoff body }
         | Perform { eff; op; arg } -> Perform { eff = go cutoff eff; op; arg = go cutoff arg }
-        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | Stx _ as term -> term)
+        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | Stx _ | Imported _ as term -> term)
   in
   go 0
 

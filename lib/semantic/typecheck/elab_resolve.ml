@@ -29,14 +29,14 @@ let resolve_path_core_value ctx path name =
         | segment :: rest -> (
             match Nbe.force ctx.Ctx.metas current_ty with
             | VModule { entries; partial = _ } -> (
-                match List.find_opt (fun (n, _, _) -> String.equal n segment) (visible_module_fields entries) with
+                match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_module_fields entries) with
                 | Some (_, _, field_ty) ->
                     let next_core = Dot (current_core, segment) in
                     let next_value = Nbe.dot_value current_value segment in
                     go next_core next_value field_ty rest
                 | None -> raise (ElabError (UnboundVariable segment)))
             | VStruct { entries; _ } -> (
-                match List.find_opt (fun (n, _, _) -> String.equal n segment) (visible_struct_members (struct_entry_fields entries)) with
+                match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_struct_members (struct_entry_fields entries)) with
                 | Some (_, _, field_ty) ->
                     let next_core = Dot (current_core, segment) in
                     let next_value = Nbe.dot_value current_value segment in
@@ -68,11 +68,11 @@ let resolve_path_value_opt ctx path name =
             | segment :: rest -> (
                 match Nbe.force ctx.Ctx.metas current_ty with
                 | VModule { entries; partial = _ } -> (
-                    match List.find_opt (fun (n, _, _) -> String.equal n segment) (visible_module_fields entries) with
+                    match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_module_fields entries) with
                     | Some (_, _, field_ty) -> go (Nbe.dot_value current_value segment) field_ty rest
                     | None -> None)
                 | VStruct { entries; _ } -> (
-                    match List.find_opt (fun (n, _, _) -> String.equal n segment) (visible_struct_members (struct_entry_fields entries)) with
+                    match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_struct_members (struct_entry_fields entries)) with
                     | Some (_, _, field_ty) -> go (Nbe.dot_value current_value segment) field_ty rest
                     | None -> None)
                 | _ -> None)
@@ -105,7 +105,7 @@ let struct_trait_evidence ctx trait_info args =
   | [ (VStruct { entries; _ } as self_ty) ] ->
       List.filter_map
         (function
-          | StructImpl (Public, impl_ty, impl_value) -> (
+          | StructImpl (_, Public, impl_ty, impl_value) -> (
               match Nbe.force ctx.Ctx.metas impl_ty with
               | VTraitDict { trait_id; args = [ impl_arg ]; _ }
                 when trait_id = trait_info.trait_id && Ctx.conv ctx impl_arg self_ty ->
@@ -135,7 +135,11 @@ let resolve_trait_evidence_opt ctx trait_info args =
 let resolve_trait_evidence ctx trait_info args =
   match resolve_trait_evidence_opt ctx trait_info args with
   | Ok (Some evidence) -> evidence
-  | Ok None -> raise (ElabError (UnknownTrait trait_info.trait_name))
+  (* The trait IS known here - it was looked up to get [trait_info]. What is
+     missing is an impl. Reusing [UnknownTrait] for this sent the
+     impl-visibility investigation looking for a trait that was in scope the
+     whole time. *)
+  | Ok None -> raise (ElabError (MissingTraitImplementation (trait_key trait_info.trait_name args)))
   | Error err -> raise (ElabError err)
 
 let resolve_trait_dict_ty ctx = function
@@ -152,6 +156,24 @@ let resolve_trait_dict_ty ctx = function
       Some (trait_info, args, trait_dict_ty ~trait_id:trait_info.trait_id trait_info.trait_name args fields)
   | _ -> None
 
+(* The value an evidence entry stands for. Entries are addressed by level; the
+   environment is most-recent-first. *)
+let evidence_value ctx evidence =
+  List.nth ctx.Ctx.env (ctx.Ctx.lvl - evidence.evidence_level - 1)
+
+(* [open] is idempotent: opening the same module twice brings the same impl into
+   consideration twice, and two copies of one impl are not an ambiguity. Identity
+   is the impl value itself, so two *different* impls for the same trait and
+   arguments still collide, which is the report worth making. *)
+let duplicate_impl_evidence ctx trait_info args impl_value =
+  List.exists
+    (fun ev ->
+      ev.evidence_trait_id = trait_info.trait_id
+      && List.length ev.evidence_args = List.length args
+      && List.for_all2 (Ctx.conv ctx) ev.evidence_args args
+      && Ctx.conv ctx (evidence_value ctx ev) impl_value)
+    ctx.Ctx.trait_evidence
+
 let add_opened_field ctx fname field_ty value =
   let ctx = Ctx.define ctx fname field_ty value in
   let ctx =
@@ -163,7 +185,7 @@ let add_opened_field ctx fname field_ty value =
     | _ -> ctx
   in
   match resolve_trait_dict_ty ctx field_ty with
-  | Some (trait_info, args, _) ->
+  | Some (trait_info, args, _) when not (duplicate_impl_evidence ctx trait_info args value) ->
       let level = ctx.Ctx.lvl - 1 in
       let evidence =
         { evidence_trait_id = trait_info.trait_id;
@@ -173,21 +195,31 @@ let add_opened_field ctx fname field_ty value =
           evidence_ty = field_ty }
       in
       Ctx.add_trait_evidence ctx evidence
-  | None -> ctx
+  | Some _ | None -> ctx
 
 let add_opened_impl ctx impl_ty impl_value =
+  (* The entry is pushed either way - [Nbe] widens the environment once per
+     public impl, and the two sides must agree on the count. Only the evidence
+     is deduplicated. *)
+  let duplicate =
+    match resolve_trait_dict_ty ctx impl_ty with
+    | Some (trait_info, args, _) -> duplicate_impl_evidence ctx trait_info args impl_value
+    | None -> false
+  in
   let ctx, entry = Ctx.define_anonymous ctx impl_ty impl_value in
-  match resolve_trait_dict_ty ctx impl_ty with
-  | Some (trait_info, args, _) ->
-      let evidence =
-        { evidence_trait_id = trait_info.trait_id;
-          evidence_trait_name = trait_info.trait_name;
-          evidence_args = args;
-          evidence_level = entry.level;
-          evidence_ty = impl_ty }
-      in
-      Ctx.add_trait_evidence ctx evidence
-  | None -> ctx
+  if duplicate then ctx
+  else
+    match resolve_trait_dict_ty ctx impl_ty with
+    | Some (trait_info, args, _) ->
+        let evidence =
+          { evidence_trait_id = trait_info.trait_id;
+            evidence_trait_name = trait_info.trait_name;
+            evidence_args = args;
+            evidence_level = entry.level;
+            evidence_ty = impl_ty }
+        in
+        Ctx.add_trait_evidence ctx evidence
+    | None -> ctx
 
 let open_module_value ctx module_ty module_value =
   match (Nbe.force ctx.Ctx.metas module_ty, Nbe.force ctx.Ctx.metas module_value) with
@@ -197,17 +229,17 @@ let open_module_value ctx module_ty module_value =
           match type_entry, value_entry with
           | ModuleField (fname, Public, field_ty), ModuleField (vname, Public, value) when String.equal fname vname ->
               add_opened_field c fname field_ty value
-          | ModuleImpl (Public, impl_ty, _), ModuleImpl (Public, _, impl_value) ->
+          | ModuleImpl (_, Public, impl_ty, _), ModuleImpl (_, Public, _, impl_value) ->
               add_opened_impl c impl_ty impl_value
           | ModuleField (_, Private, _), ModuleField (_, Private, _)
-          | ModuleImpl (Private, _, _), ModuleImpl (Private, _, _) -> c
+          | ModuleImpl (_, Private, _, _), ModuleImpl (_, Private, _, _) -> c
           | _ -> c)
         ctx type_entries value_entries
   | _ -> ctx
 
 let resolve_trait_method ctx trait_info method_name =
   match List.find_opt (fun evidence -> evidence.evidence_trait_id = trait_info.trait_id) ctx.Ctx.trait_evidence with
-  | None -> raise (ElabError (UnknownTrait trait_info.trait_name))
+  | None -> raise (ElabError (MissingTraitImplementation trait_info.trait_name))
   | Some evidence -> (
       match Nbe.force ctx.Ctx.metas evidence.evidence_ty with
       | VTraitDict { fields; _ } -> (
@@ -250,11 +282,6 @@ let find_nominal_template_opt ctx path name =
           | _ -> None)
       | None -> None)
 
-let find_nominal_template ctx path name =
-  match find_nominal_template_opt ctx path name with
-  | Some nominal -> nominal
-  | None -> raise (ElabError (UnknownConstructor name))
-
 let nominal_from_constructor_type_opt ctx ctor_ty =
   let rec follow ty =
     match Nbe.force ctx.Ctx.metas ty with
@@ -278,6 +305,10 @@ let nominal_for_constructor_path_opt ctx path name =
       | _ -> None)
   | None -> None
 
+(* Resolution order for a pattern head: the name is looked up as a *type* name
+   first ([find_nominal_template_opt], which only ever matches [n.name]), then as
+   a *constructor* name. A qualified head has no constructor fallback beyond its
+   own path - it must resolve through its module. *)
 let find_nominal_for_pattern_head_opt ctx path name =
   match find_nominal_template_opt ctx path name with
   | Some nominal -> Some nominal

@@ -49,11 +49,19 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
         List.for_all (fun (_, payloads) -> List.for_all (closed_under depth) payloads) ctors && closed_under depth body
     | EffectDef { ops; body; _ } ->
         List.for_all (fun (_, input, output) -> closed_under depth input && closed_under depth output) ops && closed_under depth body
+    (* Same constant-cutoff problem as [Elab_defs.shift_term], but this one is a
+       predicate, so it has a safe answer rather than needing to fail: a term
+       whose binder depths we cannot track is not KNOWN to be closed. Saying so
+       only declines the generalization below, which is always sound. *)
+    | Module { bindings } when not (Elab_defs.binding_list_depth_is_tracked bindings) ->
+        false
+    | Struct { bindings; _ } when not (Elab_defs.binding_list_depth_is_tracked bindings) ->
+        false
     | Module { bindings } ->
         List.for_all
           (function
             | LetBind (_, _, value) -> closed_under depth value
-            | ImplBind (_, value, _) -> closed_under depth value
+            | ImplBind (_, _, value, _) -> closed_under depth value
             | OpenBind value -> closed_under depth value
             | TypeBind _ | EffectBind _ | PatternSynBind _ -> true)
           bindings
@@ -62,11 +70,11 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
         && List.for_all
              (function
                | LetBind (_, _, value) -> closed_under depth value
-               | ImplBind (_, value, _) -> closed_under depth value
+               | ImplBind (_, _, value, _) -> closed_under depth value
                | OpenBind value -> closed_under depth value
                | TypeBind _ | EffectBind _ | PatternSynBind _ -> true)
              bindings
-    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Perform _ | Stx _ -> true
+    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Perform _ | Stx _ | Imported _ -> true
   in
   let has_bound = List.exists (fun bd -> bd = Bound) ctx.bds in
   let eligible = match val_core with

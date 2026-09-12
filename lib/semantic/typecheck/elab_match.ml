@@ -91,13 +91,12 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
   | _ ->
       let rec find_pat = function
         | Surface.PatCon (path, name, _) -> (
+            (* Type name first, constructor second - see
+               [find_nominal_for_pattern_head_opt]. A type-name hit means the
+               pattern head is a type, so the scrutinee is [Type] itself. *)
             match find_nominal_template_opt ctx path name with
             | Some _ -> Some VU
-            | None -> (
-                match nominal_for_constructor_path_opt ctx path name with
-                | Some nominal -> Some nominal
-                | None when path = [] -> find_nominal_for_constructor ctx name
-                | None -> None))
+            | None -> find_nominal_for_pattern_head_opt ctx path name)
         | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
         | Surface.PatType _ -> Some VU
         | Surface.PatProd ps ->

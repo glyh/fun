@@ -71,6 +71,7 @@ and struct_binding =
       public : bool;
     }
   | ImplBinding of {
+      name : id option;   (* [impl NAME : Trait(Args) = …] - see impl-visibility *)
       trait_path : string list;
       trait_name : string;
       args : t list;
@@ -137,6 +138,7 @@ and kind =
       body : t;
     }
   | ImplDef of {
+      name : id option;
       trait_path : string list;
       trait_name : string;
       args : t list;
@@ -158,6 +160,9 @@ and kind =
       operands : t list;
       declaration_span : Source_span.t;
       use_span : Source_span.t;
+      (* The unit that supplied this operator, so its macro body is looked up in
+         the same declaration the fixity came from. [None] when declared here. *)
+      unit : string option;
     }
 
 and operator_fixity = PrefixOp | InfixOp

@@ -81,7 +81,8 @@ let syntax_operator_arg ~span ~use_span (op : Binding.operator_info) operands =
          fixity;
          operands;
          declaration_span = op.declaration_span;
-         use_span })
+         use_span;
+         unit = op.unit })
 
 let span_between (a : Source_span.t) (b : Source_span.t) =
   if a.synthetic || b.synthetic then Source_span.synthetic
@@ -382,7 +383,7 @@ let load_syntax_exports env path =
   match env.load_syntax with
   | None -> ()
   | Some load ->
-      let exports = load path in
+      let exports = Binding.from_unit path (load path) in
       (match Binding.duplicate_operator_exports_message exports with Some msg -> error msg | None -> ());
       Binding.apply_operator_exports env.operators exports
 

@@ -59,8 +59,9 @@ and lower_expr (stx : Syntax.t) : Surface.t =
     Surface.EffectDef { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; body = lower_expr body }
   | Syntax.TraitDef { name; params; fields; body } ->
     Surface.TraitDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
-  | Syntax.ImplDef { trait_path; trait_name; args; fields; body } ->
-    Surface.ImplDef { trait_path; trait_name; args = List.map lower_expr args;
+  | Syntax.ImplDef { name; trait_path; trait_name; args; fields; body } ->
+    Surface.ImplDef { name = Option.map (fun (i : Syntax.id) -> i.name) name;
+                      trait_path; trait_name; args = List.map lower_expr args;
                       fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.Perform { effect_path; op; arg } ->
     Surface.Perform { effect_path; op; arg = lower_expr arg }
@@ -76,7 +77,7 @@ and lower_expr (stx : Syntax.t) : Surface.t =
        syntax node. *)
     Surface.MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body; kind = None }
   | Syntax.MacroCall (f, a) -> Surface.MacroCall (lower_expr f, List.map lower_expr a)
-  | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span } ->
+  | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit = _ } ->
     let fixity = match fixity with Syntax.PrefixOp -> Surface.PrefixOp | Syntax.InfixOp -> Surface.InfixOp in
     Surface.SyntaxOperatorUse { operator = lower_id operator; fixity; operands = List.map lower_expr operands; declaration_span; use_span }
 
@@ -93,8 +94,9 @@ and lower_struct_binding = function
     Surface.EffectBinding { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; public }
   | Syntax.TraitBinding { name; params; fields; public } ->
     Surface.TraitBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
-  | Syntax.ImplBinding { trait_path; trait_name; args; fields; public } ->
-    Surface.ImplBinding { trait_path; trait_name; args = List.map lower_expr args;
+  | Syntax.ImplBinding { name; trait_path; trait_name; args; fields; public } ->
+    Surface.ImplBinding { name = Option.map (fun (i : Syntax.id) -> i.name) name;
+                          trait_path; trait_name; args = List.map lower_expr args;
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.MacroBinding { name; value; public; kind } ->
     Surface.MacroBinding { name = lower_id name; value = lower_expr value; public; kind }

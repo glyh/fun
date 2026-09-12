@@ -87,8 +87,8 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
                 | Method, _ | PrivateMethod, _ | Field, _ ->
                     validate_module_fields fields;
                     failwith "unreachable")
-            | ModuleImpl (kind, ty, value) ->
-                ImplBind (kind, quote ops mc depth value, ty))
+            | ModuleImpl (name, kind, ty, value) ->
+                ImplBind (name, kind, quote ops mc depth value, ty))
           entries
       in
       Module { bindings }
@@ -110,7 +110,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
                 | Method, _ -> Some (LetBind (n, Method, quote ops mc depth v))
                 | PrivateMethod, _ -> Some (LetBind (n, PrivateMethod, quote ops mc depth v))
                 | _ -> None)
-            | StructImpl (kind, ty, value) -> Some (ImplBind (kind, quote ops mc depth value, ty)))
+            | StructImpl (name, kind, ty, value) -> Some (ImplBind (name, kind, quote ops mc depth value, ty)))
           entries
       in
       Struct { con_fields; bindings; partial }

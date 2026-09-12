@@ -58,7 +58,7 @@ let rec is_type_like_value ctx value =
               match kind with
               | Private | PrivateMethod -> true
               | Field | Public | Method -> is_type_like_value ctx value)
-          | StructImpl (_, ty, value) -> is_type_like_value ctx ty && is_type_like_value ctx value)
+          | StructImpl (_, _, ty, value) -> is_type_like_value ctx ty && is_type_like_value ctx value)
         entries
   | _ -> false
 

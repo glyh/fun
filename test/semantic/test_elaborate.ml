@@ -2,35 +2,6 @@ open Core
 
 let () =
   Printexc.register_printer (function
-    | Elaborate.ElabError e ->
-        let open Elaborate in
-        Some (Printf.sprintf "ElabError(%s)" (match e with
-          | UnboundVariable n -> "UnboundVariable \"" ^ n ^ "\""
-          | ApplyingNonFunction -> "ApplyingNonFunction"
-          | TupleLengthMismatch -> "TupleLengthMismatch"
-          | NotANominalType -> "NotANominalType"
-          | NotAModule -> "NotAModule"
-          | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
-          | PatternArityMismatch -> "PatternArityMismatch"
-          | PatternBindingMismatch -> "PatternBindingMismatch"
-          | UnknownRecordField n -> "UnknownRecordField \"" ^ n ^ "\""
-          | DuplicateRecordField n -> "DuplicateRecordField \"" ^ n ^ "\""
-          | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
-          | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
-          | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
-          | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
-          | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
-          | ExpectedEffect -> "ExpectedEffect"
-          | DuplicateEffect -> "DuplicateEffect"
-	             | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
-	             | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
-	             | EffectOperationPathExpected -> "EffectOperationPathExpected"
-	             | UnhandledEffects -> "UnhandledEffects"
-	             | UnknownTrait n -> "UnknownTrait \"" ^ n ^ "\""
-	             | UnknownTraitMethod n -> "UnknownTraitMethod \"" ^ n ^ "\""
-	             | DuplicateTraitField n -> "DuplicateTraitField \"" ^ n ^ "\""
-	             | MissingTraitField n -> "MissingTraitField \"" ^ n ^ "\""
-	             | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""))
     | Core_loader.CircularImport path -> Some ("CircularImport \"" ^ path ^ "\"")
     | Core_loader.ImportNotFound path -> Some ("ImportNotFound \"" ^ path ^ "\"")
     | Unify.UnifyError e ->
@@ -372,6 +343,17 @@ let structs =
   [
     Alcotest.test_case "empty module" `Quick
       (elab_ok "module end");
+    (* A [type] member inside a [struct] used to push one context entry too many
+       (two, when parameterised), so every member after it resolved to the wrong
+       de Bruijn index. See env-width-contract-is-unnamed. *)
+    Alcotest.test_case "struct type member then value member" `Quick
+      (check_type
+         "do S = struct x : I64; type L = N | C(I64); pub g = 5 end; S.g end"
+         (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "struct parameterised type member then value member" `Quick
+      (check_type
+         "do S = struct x : I64; type P(a) = Q(a); pub g = 7 end; S.g end"
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open module" `Quick
       (check_type
          "do S = module pub x = 42 end; open S; x end"
@@ -896,6 +878,14 @@ let match_tests =
           end; \
           match M.B.X(7) do M.PX(n) -> n | M.B.Y -> 0 end end"
          (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "same-module pattern synonym constructor" `Quick
+      (check_type
+         "do M = module \
+            pub type T = X I64 | Y; \
+            pub pattern PX(n) = X(n) \
+          end; \
+          match M.X(7) do M.PX(n) -> n | M.Y -> 0 end end"
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record pattern shorthand" `Quick
       (check_type
          "do Point = struct x: I64; y: I64; end; \
@@ -1002,6 +992,50 @@ let traits =
       (check_type_src
          "do trait Eq(A) = sig eq : A -> A -> Bool end; \
           impl Eq(I64) = module eq = fn(x, y) -> x == y end; \
+          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) -> Eq.eq(x, y); same(1, 1) end"
+         "Bool");
+    (* [open] is idempotent: the same impl arriving twice is not two impls.
+       This used to report AmbiguousTraitImplementation. *)
+    Alcotest.test_case "repeated open of the same impl is not ambiguous" `Quick
+      (check_type_src
+         "do trait Eq(A) = sig eq : A -> A -> Bool end; \
+          M = module pub impl Eq(I64) = module eq = fn(x, y) -> x == y end end; \
+          open M; open M; \
+          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) -> Eq.eq(x, y); same(1, 1) end"
+         "Bool");
+    Alcotest.test_case "two different impls for one trait stay ambiguous" `Quick
+      (elab_fail
+         "do trait Eq(A) = sig eq : A -> A -> Bool end; \
+          M = module pub impl Eq(I64) = module eq = fn(x, y) -> x == y end end; \
+          N = module pub impl Eq(I64) = module eq = fn(x, y) -> x != y end end; \
+          open M; open N; \
+          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) -> Eq.eq(x, y); same(1, 1) end");
+    (* Named impls: the escape hatch that makes "impls arrive through open"
+       livable. [M.eq_C] is a compile-time handle on one impl, usable in
+       evidence position without opening M.
+       See docs/wayfinder/topics/impl-visibility.md. *)
+    Alcotest.test_case "named impl in evidence position needs no open" `Quick
+      (check_type_src
+         "do trait Eq(A) = sig eq : A -> A -> Bool end; \
+          M = module pub type C = R; pub impl eq_C : Eq(C) = module eq = fn(x, y) -> True end end; \
+          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) -> Eq.eq(x, y); \
+          same[M.C, M.eq_C](M.R, M.R) end"
+         "Bool");
+    Alcotest.test_case "unnamed impl still needs the open" `Quick
+      (elab_fail
+         "do trait Eq(A) = sig eq : A -> A -> Bool end; \
+          M = module pub type C = R; pub impl Eq(C) = module eq = fn(x, y) -> True end end; \
+          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) -> Eq.eq(x, y); \
+          same(M.R, M.R) end");
+    Alcotest.test_case "private named impl is not a member" `Quick
+      (elab_fail
+         "do trait Eq(A) = sig eq : A -> A -> Bool end; \
+          M = module pub type C = R; impl eq_C : Eq(C) = module eq = fn(x, y) -> True end end; \
+          M.eq_C end");
+    Alcotest.test_case "named impl resolves in its own module" `Quick
+      (check_type_src
+         "do trait Eq(A) = sig eq : A -> A -> Bool end; \
+          impl eq_i64 : Eq(I64) = module eq = fn(x, y) -> x == y end; \
           same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) -> Eq.eq(x, y); same(1, 1) end"
          "Bool");
     Alcotest.test_case "missing impl rejected" `Quick
@@ -1306,6 +1340,30 @@ let imports =
     Alcotest.test_case "repeated import" `Quick
       (check_import_type [ ("m", "pub x = 21") ]
          "do A = import \"m\"; B = import \"m\"; A.x + B.x end" (AtomTy Atom_ty.TI64));
+    (* Every repeated-import test above this one uses a closed unit, which is why
+       the cache splicing a base-anchored term into a deeper context went
+       unnoticed. These units are NOT closed - [import "std"] stays a free
+       variable - and the second import lands at a different binder depth.
+       See imported-module-elaboration-context. *)
+    Alcotest.test_case "repeated import of non-closed unit" `Quick
+      (check_import_type [ ("m", "open (import \"std\"); pub v = Some(1)") ]
+         "do A = import \"m\"; B = import \"m\"; match B.v do Some(k) -> k | None -> 0 end end"
+         (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "repeated import of non-closed unit at differing depths" `Quick
+      (check_import_type [ ("m", "open (import \"std\"); pub v = Some(1)") ]
+         "do A = import \"m\"; pad = 1; B = import \"m\"; match B.v do Some(k) -> k | None -> pad end end"
+         (AtomTy Atom_ty.TI64));
+    (* A unit's meaning must not depend on the importer's choice of local names. *)
+    Alcotest.test_case "unit cannot see importer's locals" `Quick
+      (import_elab_fail [ ("u", "pub v = outer_val") ]
+         "do outer_val = 9; U = import \"u\"; U.v end");
+    Alcotest.test_case "unit cannot see prelude values without its own open" `Quick
+      (import_elab_fail [ ("u", "pub v = Some(1)") ]
+         "do U = import \"u\"; U.v end");
+    Alcotest.test_case "unit reaches the prelude qualified without an open" `Quick
+      (check_import_type [ ("u", "pub v = stdlib.Some(1)") ]
+         "do U = import \"u\"; match U.v do stdlib.Some(k) -> k | stdlib.None -> 0 end end"
+         (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported record field access" `Quick
       (check_import_type [ ("shapes", "pub type Point = {x: I64; y: I64}") ]
          "do S = import \"shapes\"; (S.Point{x = 1; y = 2}).x end" (AtomTy Atom_ty.TI64));

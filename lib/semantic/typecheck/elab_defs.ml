@@ -34,7 +34,11 @@ let elaborate_trait ops ctx name params fields =
   let trait_ty = VTrait { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name } in
   (trait_info, trait_ty)
 
-let elaborate_impl ops ctx trait_name args fields =
+(* [impl_name] is the optional name of [impl NAME : Trait(Args) = …]. It names
+   the entry the impl already occupies rather than adding one, so the impl is
+   reachable as a member without changing what the binding contributes.
+   See docs/wayfinder/topics/impl-visibility.md. *)
+let elaborate_impl ?impl_name ops ctx trait_name args fields =
   let trait_info = lookup_trait ctx trait_name in
   let arg_cores =
     List.map
@@ -79,7 +83,13 @@ let elaborate_impl ops ctx trait_name args fields =
       evidence_level = entry.level;
       evidence_ty = expected_dict_ty }
   in
-  (Ctx.add_trait_evidence ctx' evidence, impl_effects, evidence, expected_dict_ty, impl_core)
+  let ctx' = Ctx.add_trait_evidence ctx' evidence in
+  let ctx' =
+    match impl_name with
+    | Some n -> Ctx.alias ctx' n { level = entry.level; ty = expected_dict_ty }
+    | None -> ctx'
+  in
+  (ctx', impl_effects, evidence, expected_dict_ty, impl_core)
 
 
 let elaborate_eff_family ops (ctx : Ctx.t) (name : string) (params : string list)
@@ -119,11 +129,34 @@ let elaborate_eff_family ops (ctx : Ctx.t) (name : string) (params : string list
   in
   (effect_id, eff, eff_ty, elaborated_ops)
 
+(* A [Module]/[Struct] binding list is walked with the de Bruijn cutoff held
+   CONSTANT, but every binding extends the environment - one entry per
+   [LetBind]/[ImplBind]/[PatternSynBind], several per [TypeBind], and for
+   [OpenBind] a count that is not recoverable from the term at all (it is the
+   number of public fields of a module the traversal would have to evaluate).
+   So a [Var] in the k-th binding is shifted as though no earlier binding had
+   bound anything.
+
+   That is harmless only while a list holds at most one binding, since nothing
+   then follows the binding that widens the environment. Instrumenting all four
+   of these cases and running the whole suite produced no hits at all, so the
+   general case has never arisen. Rather than leave arithmetic that reads as if
+   it handled it, refuse it loudly - a wrong index here yields a silently wrong
+   value, not a type error.
+   See docs/wayfinder/tickets/core-traversals-ignore-binding-list-depth.md. *)
+let binding_list_depth_is_tracked bindings =
+  match bindings with [] | [ _ ] -> true | _ -> false
+
+let reject_untracked_binding_list where =
+  failwith
+    (where
+     ^ ": binding list with more than one binding, where each binding widens         the environment but this traversal holds the de Bruijn cutoff constant         (see core-traversals-ignore-binding-list-depth)")
+
 let rec shift_term amount cutoff term =
   let shift = shift_term amount in
   match term with
   | Var ix when ix >= cutoff -> Var (ix + amount)
-  | Var _ | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Stx _ -> term
+  | Var _ | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Stx _ | Imported _ -> term
   | Lam body -> Lam (shift (cutoff + 1) body)
   | Ap (f, expl, a) -> Ap (shift cutoff f, expl, shift cutoff a)
   | Let (ty, def, body) -> Let (shift cutoff ty, shift cutoff def, shift (cutoff + 1) body)
@@ -166,17 +199,21 @@ let rec shift_term amount cutoff term =
       EffectDef { id; name; num_params; ops = List.map (fun (op, input, output) -> (op, shift cutoff input, shift cutoff output)) ops; body = shift cutoff body }
   | Perform { eff; op; arg } -> Perform { eff = shift cutoff eff; op; arg = shift cutoff arg }
   | Module { bindings } ->
+      if not (binding_list_depth_is_tracked bindings) then
+        reject_untracked_binding_list "shift_term";
       let binding = function
         | LetBind (field, kind, value) -> LetBind (field, kind, shift cutoff value)
-        | ImplBind (kind, value, ty) -> ImplBind (kind, shift cutoff value, ty)
+        | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, shift cutoff value, ty)
         | OpenBind value -> OpenBind (shift cutoff value)
         | TypeBind _ | EffectBind _ | PatternSynBind _ as binding -> binding
       in
       Module { bindings = List.map binding bindings }
   | Struct { con_fields; bindings; partial } ->
+      if not (binding_list_depth_is_tracked bindings) then
+        reject_untracked_binding_list "shift_term";
       let binding = function
         | LetBind (field, kind, value) -> LetBind (field, kind, shift cutoff value)
-        | ImplBind (kind, value, ty) -> ImplBind (kind, shift cutoff value, ty)
+        | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, shift cutoff value, ty)
         | OpenBind value -> OpenBind (shift cutoff value)
         | TypeBind _ | EffectBind _ | PatternSynBind _ as binding -> binding
       in

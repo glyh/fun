@@ -641,7 +641,9 @@ let test_eval_type_case_type_name_string () =
 
 let test_eval_equality_nominal_rejected () =
   match eval_source "do type Color = Red; Red == Red end" with
-  | exception Elaborate.ElabError (UnknownTrait "Eq") -> ()
+  (* [Eq] is in scope; what is missing is an impl. The error used to say
+     [UnknownTrait]. See the impl-visibility topic. *)
+  | exception Elaborate.ElabError (MissingTraitImplementation _) -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected missing Eq impl"
 
@@ -826,7 +828,13 @@ let test_eval_continuation_reuse_error () =
       | _ -> Alcotest.fail "expected continuation reuse error")
   | _ -> Alcotest.fail "unexpected continuation result"
 
-let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr (None, None))) source =
+let check_div_by_zero label source () =
+  match eval_source source with
+  | exception EvalError "division by zero" -> ()
+  | exception e -> Alcotest.fail (label ^ ": unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail (label ^ ": expected a division-by-zero error")
+
+let eval_with_macros ?(expansion_position = Syntax.MacroKind.(Expr (None, None))) source =
   let ctx = Elaborate.init_ctx () in
   let nominals =
     { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];
@@ -847,7 +855,7 @@ let eval_with_macros ?(context_kind = Syntax.MacroKind.(Expr (None, None))) sour
     let mc = MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~context_kind source in
+  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~expansion_position source in
   Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
       | Some k -> k | None -> Syntax.MacroKind.default in
@@ -950,13 +958,165 @@ let test_imported_macro_expands () =
   match
     eval_with_imported_macros
       [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
-      "do M = import \"macros\"; answer(0) end"
+      "do M = import \"macros\"; M.answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "imported macro" 42L n
   | v ->
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "imported macro: %s" (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "imported macro: %s" (Printexc.to_string e))
+
+(* Macros are members of a unit. Binding an import no longer injects them as
+   bare names; a dotted call reaches one, [open] delivers them bare, and two
+   units exporting the same macro name no longer overwrite each other.
+   See docs/wayfinder/tickets/imported-module-elaboration-context.md. *)
+let test_bare_import_does_not_inject_macros () =
+  match
+    eval_with_imported_macros
+      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      "do M = import \"macros\"; answer(0) end"
+  with
+  | exception _ -> ()
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "bare import injected a macro: %s" (Debug.pp_value_short mc v))
+
+let test_open_delivers_macros_bare () =
+  match
+    eval_with_imported_macros
+      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      "do open (import \"macros\"); answer(0) end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "open delivers macro" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "open delivers macro: %s" (Debug.pp_value_short mc v))
+
+let test_open_bound_import_delivers_macros_bare () =
+  match
+    eval_with_imported_macros
+      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      "do M = import \"macros\"; open M; answer(0) end"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "open bound import" 42L n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "open bound import: %s" (Debug.pp_value_short mc v))
+
+(* Two units exporting the same macro name used to overwrite each other in one
+   flat string-keyed table, so the answer depended on import order. *)
+let test_same_macro_name_in_two_units () =
+  let modules =
+    [ ("m1", "pub macro answer(_) -> Syntax.i64(1)");
+      ("m2", "pub macro answer(_) -> Syntax.i64(2)") ]
+  in
+  let one =
+    eval_with_imported_macros modules
+      "do A = import \"m1\"; B = import \"m2\"; A.answer(0) end"
+  in
+  let two =
+    eval_with_imported_macros modules
+      "do B = import \"m2\"; A = import \"m1\"; A.answer(0) end"
+  in
+  match (one, two) with
+  | VAtom (I64 a), VAtom (I64 b) ->
+      Alcotest.(check int64) "first order" 1L a;
+      Alcotest.(check int64) "reversed order" 1L b
+  | _ -> Alcotest.fail "same macro name in two units"
+
+(* A macro call written INSIDE a .fun unit used to die as an unbound variable,
+   whichever way it got there - including a call to a macro the same file
+   defines. The unit was expanded twice: once by the macro driver, with macros
+   live, and once by the loader with no [elaborate] callback, and the second,
+   inert surface was the one that got elaborated. The loader now keeps the
+   driver's surface. *)
+let macro_in_unit label expected modules src =
+  match eval_with_imported_macros modules src with
+  | VAtom (I64 n) -> Alcotest.(check int64) label expected n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+
+let answers_42 = ("inner", "pub macro answer(_) -> Syntax.i64(42)")
+
+(* An operator's fixity resolves last-wins by design, so a user operator can
+   override a builtin. Its macro body now comes from that same declaration: the
+   use node carries the unit that supplied the operator. Previously the body was
+   found by scanning units for the written name, which neither import order nor
+   definition order decided - it was the unit path's hash - so the precedence
+   and the body could come from different units. *)
+let check_operator label expected modules src =
+  match eval_with_imported_macros modules src with
+  | VAtom (I64 n) -> Alcotest.(check int64) label expected n
+  | v ->
+      let mc = MetaContext.create () in
+      Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+
+let op_returns_1 = ("opa", "pub infix (~) 15 Left (stx) -> Syntax.i64(1)")
+
+let test_imported_operator_used_inside_a_unit () =
+  check_operator "operator inside a unit" 1L
+    [ op_returns_1; ("mid", "open (import \"opa\")\npub v = 1 ~ 2") ]
+    "do M = import \"mid\"; M.v end"
+
+let test_operator_declared_and_used_in_one_unit () =
+  check_operator "operator declared and used in one unit" 3L
+    [ ("mid", "pub infix (~) 15 Left (stx) -> Syntax.i64(3)\npub v = 1 ~ 2") ]
+    "do M = import \"mid\"; M.v end"
+
+(* A locally declared operator is added after the import, and [find_operator]
+   takes the most recently added, so it wins - and its body is found by written
+   name because it carries no unit. Fixity and body agree here too. *)
+let test_local_operator_shadows_imported () =
+  check_operator "local operator shadows imported" 9L
+    [ op_returns_1 ]
+    "do A = import \"opa\"; infix (~) 15 Left (stx) -> Syntax.i64(9); 1 ~ 2 end"
+
+(* An operator's fixity resolves last-wins by design, so a user operator can
+   override a builtin. Its macro body now comes from that same declaration: the
+   use node carries the unit that supplied the operator. Previously the body was
+   found by scanning units for the written name, which neither import order nor
+   definition order decided - it was the unit path's hash - so the precedence
+   and the body could come from different units. *)
+let test_operator_body_follows_last_import () =
+  let modules =
+    [ ("opa", "pub infix (~) 15 Left (stx) -> Syntax.i64(1)");
+      ("opb", "pub infix (~) 15 Left (stx) -> Syntax.i64(2)") ]
+  in
+  let run label expected src =
+    match eval_with_imported_macros modules src with
+    | VAtom (I64 n) -> Alcotest.(check int64) label expected n
+    | v ->
+        let mc = MetaContext.create () in
+        Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
+    | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+  in
+  run "opb imported last" 2L "do A = import \"opa\"; B = import \"opb\"; 1 ~ 2 end";
+  run "opa imported last" 1L "do B = import \"opb\"; A = import \"opa\"; 1 ~ 2 end"
+
+let test_unit_uses_its_own_macro () =
+  macro_in_unit "own macro" 7L
+    [ ("mid", "pub macro answer(_) -> Syntax.i64(7)\npub v = answer(0)") ]
+    "do M = import \"mid\"; M.v end"
+
+let test_unit_calls_imported_macro_dotted () =
+  macro_in_unit "dotted call inside a unit" 42L
+    [ answers_42; ("mid", "I = import \"inner\"\npub v = I.answer(0)") ]
+    "do M = import \"mid\"; M.v end"
+
+let test_unit_calls_imported_macro_via_open () =
+  macro_in_unit "open inside a unit" 42L
+    [ answers_42; ("mid", "open (import \"inner\")\npub v = answer(0)") ]
+    "do M = import \"mid\"; M.v end"
+
+(* A unit-valued member is itself a handle on a unit, so a macro stays reachable
+   through a re-export at any depth. *)
+let test_macro_through_reexported_member () =
+  macro_in_unit "macro two dots away" 42L
+    [ answers_42; ("mid", "pub I = import \"inner\"") ]
+    "do M = import \"mid\"; M.I.answer(0) end"
 
 let test_imported_macro_not_runtime_field () =
   match
@@ -985,7 +1145,7 @@ let test_macro_generated_import_loads_macros () =
     eval_with_imported_macros
       [ ("loader", "pub macro through(stx) -> stx");
         ("target", "pub macro answer(_) -> Syntax.i64(42)") ]
-      "do L = import \"loader\"; T = through(import \"target\"); answer(0) end"
+      "do L = import \"loader\"; T = L.through(import \"target\"); T.answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "macro-generated import" 42L n
   | v ->
@@ -1006,9 +1166,12 @@ let test_macro_generated_import_checks_missing () =
 let test_imported_macro_calls_regular_function () =
   match
     eval_with_imported_macros
-      [ ("helper", "pub make_answer = fn(stx) -> Syntax.i64(42)");
+      (* [helper] writes its own [open]: a unit elaborates against the base
+         context, where [stdlib] is bound but not opened, so bare [Syntax] is
+         not in scope for free. *)
+      [ ("helper", "open (import \"std\")\npub make_answer = fn(stx) -> Syntax.i64(42)");
         ("macros", "pub macro answer(stx) -> do H = import \"helper\"; H.make_answer(stx) end") ]
-      "do M = import \"macros\"; answer(0) end"
+      "do M = import \"macros\"; M.answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "macro calls function" 42L n
   | v ->
@@ -1523,7 +1686,7 @@ let test_generated_type_before_macro_stays_binder () =
     (* Simulate: 'GenTag' is not a known type in this simple test *)
     if String.equal name "GenTag" then (Syntax.MacroKind.Expr (None, Some "GenTag"), None)
     else (Syntax.MacroKind.Expr (Some name, None), Some { Syntax.name = id name; explicitness = Implicit; type_ = None; trait_bounds = [] }));
-  Expand_ctx.set_context_kind ctx Syntax.MacroKind.Decl;
+  Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_type; generated_macro ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
@@ -1597,7 +1760,7 @@ let test_visit_macros_imported_annotation_uses_module_context () =
     (fun loader ->
       let ctx = Expand_ctx.create () in
       Macro_driver.visit_macros loader ctx "macros_mod";
-      match Expand_ctx.lookup_macro_kind ctx "mk" with
+      match Expand_ctx.lookup_macro_kind ctx (Expand_ctx.unit_macro_key ~path:"macros_mod" ~name:"mk") with
       | Some kind ->
           Alcotest.(check bool) "imported Expr(Tag) is constraint" false
             (Syntax.MacroKind.has_type_binding kind);
@@ -1612,10 +1775,15 @@ let test_visit_macros_private_not_registered () =
     (fun loader ->
       let ctx = Expand_ctx.create () in
       Macro_driver.visit_macros loader ctx "macros_mod";
+      let key name = Expand_ctx.unit_macro_key ~path:"macros_mod" ~name in
       Alcotest.(check bool) "private macro not registered" true
-        (Option.is_none (Expand_ctx.lookup_macro ctx "hidden"));
+        (Option.is_none (Expand_ctx.lookup_macro ctx (key "hidden")));
       Alcotest.(check bool) "public macro registered" true
-        (Option.is_some (Expand_ctx.lookup_macro ctx "shown")))
+        (Option.is_some (Expand_ctx.lookup_macro ctx (key "shown")));
+      (* A macro is a member of its unit, so it is not reachable as a bare
+         name until something opens that unit. *)
+      Alcotest.(check bool) "not injected bare" true
+        (Option.is_none (Expand_ctx.lookup_macro ctx "shown")))
 
 (** Stage 6: Decl macro generated MacroBinding nodes are recursively
     re-entered through expand_struct_binding. This lower-level regression
@@ -1637,7 +1805,7 @@ let test_generated_macro_binding_reentered () =
   ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
   ctx.Expand_ctx.resolve_macro_kind <- Some (fun _ann ->
     (Syntax.MacroKind.Expr (None, Some "I64"), None));
-  Expand_ctx.set_context_kind ctx Syntax.MacroKind.Decl;
+  Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_macro ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
@@ -1679,7 +1847,7 @@ let test_generated_multi_binding_scope_threading () =
   ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
   ctx.Expand_ctx.resolve_macro_kind <- Some (fun _ann ->
     (Syntax.MacroKind.Expr (None, None), None));
-  Expand_ctx.set_context_kind ctx Syntax.MacroKind.Decl;
+  Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_x; generated_y ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
@@ -2420,7 +2588,7 @@ let test_7i_generated_pub_macro_across_imports () =
                       end
                   end;
                   export_macro") ]
-      "do M = import \"gen\"; answer(0) end"
+      "do M = import \"gen\"; M.answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "7I generated pub macro across imports" 42L n
   | v ->
@@ -2703,6 +2871,24 @@ let () =
              (check_i64 "qualified constructor alias pattern" 1L
                 "do S = module pub type Color = Red | Green end; \
                  N = S; open N; match Red do Red -> 1 | Green -> 2 end end");
+           Alcotest.test_case "division by zero is a language error" `Quick
+             (check_div_by_zero "division by zero" "do 1 / 0 end");
+           Alcotest.test_case "remainder by zero is a language error" `Quick
+             (check_div_by_zero "remainder by zero" "do 1 % 0 end");
+           Alcotest.test_case "division by zero through a call" `Quick
+             (check_div_by_zero "division by zero through a call"
+                "do f = fn(x: I64) -> 1 / x; f(0) end");
+           Alcotest.test_case "constructor sharing its type name" `Quick
+             (check_i64 "constructor sharing its type name" 7L
+                "do type T = T(I64) | Y; \
+                 match T(7) do T(n) -> n | Y -> 0 end end");
+           Alcotest.test_case "qualified constructor sharing its type name" `Quick
+             (check_i64 "qualified constructor sharing its type name" 7L
+                "do M = module pub type T = T(I64) | Y end; \
+                 match M.T(7) do M.T(n) -> n | M.Y -> 0 end end");
+           Alcotest.test_case "duplicate module field resolves to last" `Quick
+             (check_i64 "duplicate module field resolves to last" 2L
+                "do M = module pub x = 1; pub x = 2 end; M.x end");
            Alcotest.test_case "open (import std) evaluates" `Quick
              (check_i64 "open import std" 3L
                 "do open (import \"std\"); 1 + 2 end");
@@ -3019,6 +3205,18 @@ let () =
           Alcotest.test_case "hygiene: user binder does not capture macro" `Quick test_macro_hygiene_user_no_capture_macro;
           Alcotest.test_case "panic message propagates" `Quick test_macro_panic_has_message;
           Alcotest.test_case "imported macro expands" `Quick test_imported_macro_expands;
+          Alcotest.test_case "imported operator used inside a unit" `Quick test_imported_operator_used_inside_a_unit;
+          Alcotest.test_case "operator declared and used in one unit" `Quick test_operator_declared_and_used_in_one_unit;
+          Alcotest.test_case "local operator shadows imported" `Quick test_local_operator_shadows_imported;
+          Alcotest.test_case "operator body follows last import" `Quick test_operator_body_follows_last_import;
+          Alcotest.test_case "unit uses its own macro" `Quick test_unit_uses_its_own_macro;
+          Alcotest.test_case "unit calls imported macro dotted" `Quick test_unit_calls_imported_macro_dotted;
+          Alcotest.test_case "unit calls imported macro via open" `Quick test_unit_calls_imported_macro_via_open;
+          Alcotest.test_case "macro through re-exported member" `Quick test_macro_through_reexported_member;
+          Alcotest.test_case "bare import does not inject macros" `Quick test_bare_import_does_not_inject_macros;
+          Alcotest.test_case "open delivers macros bare" `Quick test_open_delivers_macros_bare;
+          Alcotest.test_case "open bound import delivers macros bare" `Quick test_open_bound_import_delivers_macros_bare;
+          Alcotest.test_case "same macro name in two units" `Quick test_same_macro_name_in_two_units;
           Alcotest.test_case "imported macro not runtime field" `Quick test_imported_macro_not_runtime_field;
           Alcotest.test_case "imported macro circular visit" `Quick test_imported_macro_circular_visit;
           Alcotest.test_case "macro-generated import loads macros" `Quick test_macro_generated_import_loads_macros;

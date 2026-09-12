@@ -50,7 +50,7 @@ let test_macro_fuel_shared_across_copy () =
 let test_decl_macro_fuel_exhausts () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ _ -> VStx (StxDecls []));
-  Expand_ctx.set_context_kind ctx Syntax.MacroKind.Decl;
+  Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VAtom Unit);
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
   ctx.Expand_ctx.macro_fuel := 0;

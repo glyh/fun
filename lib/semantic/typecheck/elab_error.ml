@@ -25,6 +25,8 @@ type elab_error =
   | DuplicateTraitField of string
   | MissingTraitField of string
   | AmbiguousTraitImplementation of string
+  | MissingTraitImplementation of string
+  | BindingWidthDrift of { pushed : int; expected : int }
 
 exception ElabError of elab_error
 
@@ -55,6 +57,11 @@ let string_of_elab_error = function
   | DuplicateTraitField n -> "DuplicateTraitField \"" ^ n ^ "\""
   | MissingTraitField n -> "MissingTraitField \"" ^ n ^ "\""
   | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""
+  | MissingTraitImplementation n -> "MissingTraitImplementation \"" ^ n ^ "\""
+  | BindingWidthDrift { pushed; expected } ->
+      Printf.sprintf
+        "BindingWidthDrift(elaborator pushed %d entries, Core.binding_width says %d; see env-width-contract-is-unnamed)"
+        pushed expected
 
 let () =
   Printexc.register_printer (function

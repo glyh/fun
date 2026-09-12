@@ -21,16 +21,23 @@ let dot_value (value : value) (name : string) : value =
       let fields = module_entry_fields entries in
       validate_module_fields fields;
       match
-        List.find_opt
+        find_field_last
           (fun (n, k, _) -> String.equal n name && visible_kind k)
           fields
       with
       | Some (_, _, v) -> v
-      | None -> raise (Nbe_error.EvalError "field not found"))
+      (* A named impl is a member too: [M.eq_C] denotes the dictionary the
+         [impl eq_C : …] binding produced. Anonymous impls stay unreachable by
+         name and arrive only through [open].
+         See docs/wayfinder/topics/impl-visibility.md. *)
+      | None -> (
+          match module_impl_value_opt entries name with
+          | Some (k, v) when visible_kind k -> v
+          | _ -> raise (Nbe_error.EvalError "field not found")))
   | VStruct { entries; _ } -> (
       let fields = struct_entry_fields entries in
       match
-        List.find_opt
+        find_field_last
           (fun (n, k, _) -> String.equal n name && visible_kind k)
           fields
       with

@@ -10,6 +10,18 @@ module Prim = struct
     | [ I64 a; I64 b ] -> Some (I64 (f a b))
     | _ -> None
 
+  (* [/] and [%] are the only primitives that can fail on well-typed input.
+     They raise the same [EvalError] as [panic] rather than letting the host's
+     [Division_by_zero] escape: a division by zero is a language-level runtime
+     error, so it must be reported through the language's own channel and not
+     left for a port to rediscover as whatever its host happens to throw.
+     [None] is not available here - it means "does not reduce", which would
+     silently leave a stuck neutral term instead of failing. *)
+  let i64_div (f : int64 -> int64 -> int64) : reducer = function
+    | [ I64 _; I64 0L ] -> raise (Nbe_error.EvalError "division by zero")
+    | [ I64 a; I64 b ] -> Some (I64 (f a b))
+    | _ -> None
+
   let i64_cmp (f : int64 -> int64 -> bool) : reducer = function
     | [ I64 a; I64 b ] -> Some (i64_of_bool (f a b))
     | _ -> None
@@ -38,8 +50,8 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
   [ ("+", i64_binop Int64.add);
     ("-", i64_binop Int64.sub);
     ("*", i64_binop Int64.mul);
-    ("/", i64_binop Int64.div);
-    ("%", i64_binop Int64.rem);
+    ("/", i64_div Int64.div);
+    ("%", i64_div Int64.rem);
     ("eq_i64", i64_cmp Int64.equal);
     ("neq_i64", i64_cmp (fun a b -> not (Int64.equal a b)));
     ("eq_char", char_cmp Char.equal);

@@ -25,6 +25,13 @@ type operator_info = {
   syntax_class : Syntax_class.t;
   expansion : operator_expansion;
   declaration_span : Source_span.t;
+  (* The compilation unit this operator was imported from, if it was imported.
+     An operator's fixity and its macro body must come from the SAME
+     declaration: [find_operator] resolves fixity last-wins, so a body found
+     independently - by scanning units for the written name - could belong to a
+     different unit than the precedence the parse already committed to. Carrying
+     the unit here means there is nothing left to resolve separately. *)
+  unit : string option;
 }
 
 type binding_info = {
@@ -108,9 +115,14 @@ let add_operator (tbl : t) (op : operator_info) =
   Hashtbl.replace tbl op.symbol (info :: existing)
 
 let make_operator ?(syntax_class = Syntax_class.Expr)
-    ?(declaration_span = Source_span.synthetic) ~symbol ~fixity ~precedence
+    ?(declaration_span = Source_span.synthetic) ?unit ~symbol ~fixity ~precedence
     ~associativity ~expansion () =
-  { symbol; fixity; precedence; associativity; syntax_class; expansion; declaration_span }
+  { symbol; fixity; precedence; associativity; syntax_class; expansion; declaration_span; unit }
+
+(* Stamp exports with the unit they were loaded from, at the import site - the
+   only place that knows the written path. *)
+let from_unit path (ops : operator_info list) =
+  List.map (fun op -> { op with unit = Some path }) ops
 
 let template_infix ?(declaration_span = Source_span.synthetic) symbol template precedence associativity =
   make_operator ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity

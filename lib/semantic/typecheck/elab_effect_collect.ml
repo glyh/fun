@@ -232,8 +232,9 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
       let body_ctx = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects body_ctx body ])
-  | Surface.ImplDef { trait_path = []; trait_name; args; fields; body } ->
-      let ctx', impl_effects, _impl_name, _impl_ty, _impl_core = elaborate_impl ops ctx trait_name args fields in
+  | Surface.ImplDef { name; trait_path = []; trait_name; args; fields; body } ->
+      let ctx', impl_effects, _evidence, _impl_ty, _impl_core =
+        elaborate_impl ?impl_name:name ops ctx trait_name args fields in
       union_many_expr_effects ctx (impl_effects @ [ ops.collect_effects ctx' body ])
   | Surface.ImplDef { trait_path = _ :: _; trait_name; _ } ->
       raise (ElabError (UnknownTrait trait_name))

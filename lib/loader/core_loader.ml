@@ -20,6 +20,12 @@ type t = {
   builtin_syntax : Binding.operator_info list;
   runtime_surface_cache : (string, Surface.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
+  (* The surface [Macro_driver.run] produced for a unit, with its expander.
+     The driver interleaves expansion and elaboration, so a macro a unit defines
+     is compiled and its calls inside that unit expand. Re-expanding the unit
+     here instead would run an expander with no [elaborate] callback, which
+     compiles no macro and leaves every macro call in the file unexpanded. *)
+  driver_surface_cache : (string, Surface.t * Expand_ctx.t) Hashtbl.t;
   macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
   syntax_cache : (string, Binding.operator_info list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
@@ -32,6 +38,7 @@ let create ~base_dir ?(builtin_syntax = []) () =
     builtin_syntax;
     runtime_surface_cache = Hashtbl.create 16;
     runtime_elab_cache = Hashtbl.create 16;
+    driver_surface_cache = Hashtbl.create 16;
     macro_cache = Hashtbl.create 16;
     syntax_cache = Hashtbl.create 16;
     active = Hashtbl.create 16;
@@ -69,6 +76,10 @@ let rec load_syntax_exports t path =
 let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
   let resolved = resolved_path t path in
   if not (Sys.file_exists resolved) then raise (ImportNotFound path);
+  (* Restores THIS unit's own compiled macros when it is re-parsed from cache,
+     so its later bindings still see its earlier ones. Not the import path: a
+     macro an [import] delivers arrives through [Macro_driver.visit_macros],
+     filed under its own unit. *)
   let load_macros ctx _path =
     match Hashtbl.find_opt t.macro_cache resolved with
     | Some macros ->
@@ -124,7 +135,13 @@ let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
         | None -> ()
       in
       if not (Sys.file_exists resolved) then raise (ImportNotFound path);
-      let surface, expand_ctx = Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) (read_module_source resolved) in
+      let surface, expand_ctx =
+        match Hashtbl.find_opt t.driver_surface_cache resolved with
+        | Some cached -> cached
+        | None ->
+            Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals
+              ~load_macros ~load_syntax:(load_syntax_exports t) (read_module_source resolved)
+      in
       Hashtbl.replace t.active resolved path;
       let result =
         Fun.protect

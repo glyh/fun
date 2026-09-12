@@ -23,9 +23,28 @@ let push_opened_values env entries =
     (fun e entry ->
       match entry with
       | ModuleField (_, k, v) when k = Public || k = Method -> v :: e
-      | ModuleImpl (k, _, v) when k = Public -> v :: e
+      | ModuleImpl (_, k, _, v) when k = Public -> v :: e
       | _ -> e)
     env entries
+
+(* Cross-check the evaluator's own env growth against the shared contract in
+   [Core.binding_width]. Both sides of the elaborate/evaluate boundary are meant
+   to widen their environment by the same amount for the same binding, so a drift
+   trips here instead of surfacing later as a wrong de Bruijn index or a silently
+   wrong value. Skipped when the list contains an [open], whose width is not
+   recoverable from the term.
+   See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
+let check_binding_list_width ~before ~after bindings =
+  match Core.binding_list_width bindings with
+  | None -> ()
+  | Some expected ->
+      let actual = List.length after - List.length before in
+      if actual <> expected then
+        raise
+          (EvalError
+             (Printf.sprintf
+                "binding-list env width: evaluator pushed %d entries, but                  Core.binding_width says %d (env-width-contract-is-unnamed)"
+                actual expected))
 
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
@@ -65,6 +84,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Atom a -> Done (VAtom a)
   | AtomTy t -> Done (VAtomTy t)
   | Stx stx -> Done (VStx (StxExpr stx))
+  (* Anchor-independent: a unit's value carries its own environment. *)
+  | Imported v -> Done v
   | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))
   | RefNew e ->
       bind_result (eval_result mc env e) (fun value -> Done (VRef (ref value)))
@@ -180,9 +201,9 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
               rest
         | EffectBind (name, kind, eff) :: rest ->
             eval_binds (eff :: env) (ModuleField (name, kind, eff) :: acc) rest
-        | ImplBind (kind, def, ty) :: rest ->
+        | ImplBind (name, kind, def, ty) :: rest ->
             let vdef = eval mc env def in
-            eval_binds (vdef :: env) (ModuleImpl (kind, ty, vdef) :: acc) rest
+            eval_binds (vdef :: env) (ModuleImpl (name, kind, ty, vdef) :: acc) rest
         | PatternSynBind (name, kind, syn) :: rest ->
             eval_binds (syn :: env) (ModuleField (name, kind, syn) :: acc) rest
         | OpenBind def :: rest -> (
@@ -191,7 +212,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                 eval_binds (push_opened_values env entries) acc rest
             | _ -> raise (EvalError "open of non-module"))
       in
-      let _env, entries = eval_binds env [] bindings in
+      let env', entries = eval_binds env [] bindings in
+      check_binding_list_width ~before:env ~after:env' bindings;
       Done (VModule { entries; partial = false })
   | Struct { con_fields; bindings; partial } ->
       (* con_fields: all at same scope, no sequential dependency *)
@@ -228,10 +250,10 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
             eval_binds (eff :: env)
               (StructField (name, kind, eff) :: acc_entries)
               rest
-        | ImplBind (kind, def, ty) :: rest ->
+        | ImplBind (name, kind, def, ty) :: rest ->
             let vdef = eval mc env def in
             eval_binds (vdef :: env)
-              (StructImpl (kind, ty, vdef) :: acc_entries)
+              (StructImpl (name, kind, ty, vdef) :: acc_entries)
               rest
         | PatternSynBind (name, kind, syn) :: rest ->
             eval_binds (syn :: env) (StructField (name, kind, syn) :: acc_entries) rest
@@ -241,7 +263,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                 eval_binds (push_opened_values env entries) acc_entries rest
             | _ -> raise (EvalError "open of non-module"))
       in
-      let _env, bind_entries = eval_binds env [] bindings in
+      let env', bind_entries = eval_binds env [] bindings in
+      check_binding_list_width ~before:env ~after:env' bindings;
       let con_entries =
         List.map
           (fun (name, kind, value) -> StructField (name, kind, value))

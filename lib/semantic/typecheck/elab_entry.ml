@@ -32,7 +32,11 @@ let init_ctx () : Ctx.t =
   let stdlib_core, stdlib_ty = Elab_driver.infer ctx (Lazy.force parsed_stdlib) in
   let stdlib_value = Ctx.eval ctx stdlib_core in
   let ctx = Ctx.hide_names ctx syntax_primitive_names in
-  Ctx.define ctx Compiler_names.Module_name.stdlib stdlib_ty stdlib_value
+  let ctx = Ctx.define ctx Compiler_names.Module_name.stdlib stdlib_ty stdlib_value in
+  (* Freeze this as THE base context: a compilation unit's meaning depends only
+     on its own source plus what it imports and opens, so every import
+     elaborates against this rather than against the import site. *)
+  { ctx with base = Some ctx }
 
 (* Return [ctx] extended with the prelude's public fields in scope — the
    ctx-builder counterpart of [on_macro_body], which brings the prelude into

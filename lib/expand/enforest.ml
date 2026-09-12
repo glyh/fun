@@ -973,6 +973,20 @@ and parse_impl_binding env public stmt =
       match split_at_token Equals rest with
       | Some (trait_terms, _, module_kw :: module_rest)
         when token_kind KwModule module_kw ->
+          (* [impl NAME : Trait(Args) = …] names the impl, making it reachable
+             as a member so a use site can say which impl it means instead of
+             having to [open] the defining module. The name is optional; without
+             it the impl stays anonymous and arrives only through [open].
+             See docs/wayfinder/topics/impl-visibility.md. *)
+          let name, trait_terms =
+            match split_at_token Colon trait_terms with
+            | Some (name_terms, _, after) -> (
+                match drop_separators name_terms with
+                | [ { datum = Token { kind = Ident n; _ }; span } ] ->
+                    (Some (id ~span n), after)
+                | _ -> error "impl name must be a single identifier")
+            | None -> (None, trait_terms)
+          in
           let (trait_path, trait_name), arg_terms =
             dotted_id_from_terms trait_terms
           in
@@ -1002,7 +1016,7 @@ and parse_impl_binding env public stmt =
                 | None -> error "expected impl let field")
           in
           Some
-            (Syntax.ImplBinding { trait_path; trait_name; args; fields; public })
+            (Syntax.ImplBinding { name; trait_path; trait_name; args; fields; public })
       | Some _ -> error "impl binding requires = module ... end"
       | None -> error "impl binding requires = module ... end")
   | _ -> None
@@ -1330,10 +1344,10 @@ and scoped_binding_to_expr env span stmt body =
               match parse_impl_binding env false stmt with
               | Some
                   (Syntax.ImplBinding
-                     { trait_path; trait_name; args; fields; _ }) ->
+                     { name; trait_path; trait_name; args; fields; _ }) ->
                   stx ~span
                     (Syntax.ImplDef
-                       { trait_path; trait_name; args; fields; body })
+                       { name; trait_path; trait_name; args; fields; body })
               | Some _ -> error "unexpected non-impl binding"
               | None -> error "not a scoped binding")))
 

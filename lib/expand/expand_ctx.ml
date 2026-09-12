@@ -21,7 +21,7 @@ type t = {
   mutable macro_table : (string, macro_entry) Hashtbl.t;
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
   mutable provisional_macros : (string, unit) Hashtbl.t;
-  mutable context_kind : Syntax.MacroKind.t;
+  mutable expansion_position : Syntax.MacroKind.t;
   mutable resolve_macro_kind : (Syntax.MacroAnnotation.t -> Syntax.MacroKind.t * Syntax.param option) option;
   mutable elaborate : (Surface.t -> Core.value) option;
   mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
@@ -29,6 +29,22 @@ type t = {
   mutable syntax_nominals : Macro_eval.syntax_nominals option;
   mutable macro_fuel_limit : int;
   mutable macro_fuel : int ref;
+  (* Macros are MEMBERS of a compilation unit, not names a bare [import]
+     injects. [unit_macros] records, per unit path, the macro names that unit
+     exports; each is registered in [macro_table] under [unit_macro_key], a key
+     no source name can collide with - so two units exporting the same macro
+     name no longer overwrite each other. [module_units] maps the resolved name
+     of a binding like [M = import "m"] back to that unit, which is what lets
+     [M.answer(0)] find the macro.
+     See docs/wayfinder/tickets/imported-module-elaboration-context.md. *)
+  mutable unit_macros : (string, string list) Hashtbl.t;
+  mutable module_units : (string, string) Hashtbl.t;
+  (* [unit_members] is, per unit path, that unit's public members which are
+     themselves units - so [M.I.answer(0)] can find [answer] two dots down.
+     [own_unit_members] is the same list for the unit THIS expander is currently
+     expanding, harvested when its expansion finishes. *)
+  mutable unit_members : (string, (string * string) list) Hashtbl.t;
+  mutable own_unit_members : (string * string) list;
   loader : unit option;
 }
 
@@ -40,7 +56,7 @@ let create ?loader () =
     macro_table = Hashtbl.create 8;
     macro_kind_table = Hashtbl.create 8;
     provisional_macros = Hashtbl.create 4;
-    context_kind = Syntax.MacroKind.(Expr (None, None));
+    expansion_position = Syntax.MacroKind.(Expr (None, None));
     resolve_macro_kind = None;
     elaborate = None;
     eval_and_apply = None;
@@ -48,6 +64,10 @@ let create ?loader () =
     syntax_nominals = None;
     macro_fuel_limit = default_macro_fuel_limit;
     macro_fuel = ref default_macro_fuel_limit;
+    unit_macros = Hashtbl.create 4;
+    module_units = Hashtbl.create 4;
+    unit_members = Hashtbl.create 4;
+    own_unit_members = [];
     loader }
 
 let set_syntax_nominals ctx nominals = ctx.syntax_nominals <- Some nominals
@@ -113,7 +133,7 @@ let copy (ctx : t) : t =
     macro_table = Hashtbl.copy ctx.macro_table;
     macro_kind_table = Hashtbl.copy ctx.macro_kind_table;
     provisional_macros = Hashtbl.copy ctx.provisional_macros;
-    context_kind = ctx.context_kind;
+    expansion_position = ctx.expansion_position;
     resolve_macro_kind = ctx.resolve_macro_kind;
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
@@ -121,6 +141,10 @@ let copy (ctx : t) : t =
     syntax_nominals = ctx.syntax_nominals;
     macro_fuel_limit = ctx.macro_fuel_limit;
     macro_fuel = ctx.macro_fuel;
+    unit_macros = Hashtbl.copy ctx.unit_macros;
+    module_units = Hashtbl.copy ctx.module_units;
+    unit_members = Hashtbl.copy ctx.unit_members;
+    own_unit_members = ctx.own_unit_members;
     loader = ctx.loader }
 
 let register_macro_with_nominals ctx ~syntax_nominals ~name ~value =
@@ -131,6 +155,65 @@ let register_macro ctx ~name ~value =
 
 let register_macro_kind (ctx : t) ~name ~kind =
   Hashtbl.replace ctx.macro_kind_table name kind
+
+(* The [macro_table] key under which unit [path]'s macro [name] is filed. The
+   separator cannot occur in a source identifier, so a unit's macro is reachable
+   only through the paths that deliberately look it up: a dotted call on a bound
+   import, or a name an [open] introduced. *)
+let unit_macro_key ~path ~name = path ^ "\x00" ^ name
+
+(* Record that unit [path] exports macro [name]. *)
+let note_unit_macro ctx ~path ~name =
+  let names = Option.value ~default:[] (Hashtbl.find_opt ctx.unit_macros path) in
+  if not (List.mem name names) then
+    Hashtbl.replace ctx.unit_macros path (name :: names)
+
+let register_unit_macro ctx ~path ~name ~value ~kind ~syntax_nominals =
+  let key = unit_macro_key ~path ~name in
+  register_macro_with_nominals ctx ~syntax_nominals ~name:key ~value;
+  register_macro_kind ctx ~name:key ~kind;
+  note_unit_macro ctx ~path ~name
+
+let unit_macro_names ctx path =
+  Option.value ~default:[] (Hashtbl.find_opt ctx.unit_macros path)
+
+(* [M = import "m"] makes [M] a handle on a unit, so [M.answer(0)] can expand. *)
+let bind_module_unit ctx ~resolved_name ~path =
+  Hashtbl.replace ctx.module_units resolved_name path
+
+let module_unit ctx resolved_name = Hashtbl.find_opt ctx.module_units resolved_name
+
+(* [pub I = import "inner"] makes [I] a unit-valued member of the unit being
+   expanded, so an importer can reach through it. *)
+let record_own_unit_member ctx ~name ~path =
+  ctx.own_unit_members <- (name, path) :: ctx.own_unit_members
+
+let unit_member ctx ~path ~name =
+  match Hashtbl.find_opt ctx.unit_members path with
+  | Some members -> List.assoc_opt name members
+  | None -> None
+
+(* Carry what a unit's own expander learned into the expander that imports it:
+   the macros of every unit it pulled in, and every unit-valued member of every
+   unit it knows about. Without this the knowledge stops at the file boundary
+   and a macro two dots away is invisible. *)
+let absorb_units ~(from : t) (ctx : t) =
+  Hashtbl.iter
+    (fun path names ->
+      List.iter
+        (fun name ->
+          let key = unit_macro_key ~path ~name in
+          match Hashtbl.find_opt from.macro_table key with
+          | Some entry ->
+              Hashtbl.replace ctx.macro_table key entry;
+              (match Hashtbl.find_opt from.macro_kind_table key with
+               | Some kind -> Hashtbl.replace ctx.macro_kind_table key kind
+               | None -> ());
+              note_unit_macro ctx ~path ~name
+          | None -> ())
+        names)
+    from.unit_macros;
+  Hashtbl.iter (fun path members -> Hashtbl.replace ctx.unit_members path members) from.unit_members
 
 let lookup_macro (ctx : t) name =
   Option.map (fun entry -> entry.value) (Hashtbl.find_opt ctx.macro_table name)
@@ -179,11 +262,11 @@ let with_macro_fuel ctx ~name f =
   reserve_macro_fuel ctx ~name;
   Fun.protect ~finally:(fun () -> release_macro_fuel ctx) f
 
-let set_context_kind (ctx : t) kind =
-  ctx.context_kind <- kind
+let set_expansion_position (ctx : t) kind =
+  ctx.expansion_position <- kind
 
-let get_context_kind (ctx : t) =
-  ctx.context_kind
+let get_expansion_position (ctx : t) =
+  ctx.expansion_position
 
 let resolve (ctx : t) (id : Syntax.id) : Binding.binding_info option =
   Binding.resolve ctx.binding_table id

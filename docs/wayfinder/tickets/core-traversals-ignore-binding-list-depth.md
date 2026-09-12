@@ -3,8 +3,8 @@ title: Core term traversals ignore binder depth in binding lists
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
 blocked_by:
 ---
 
@@ -51,4 +51,32 @@ So either these traversals must never see a binding list containing an open, or
 
 ## Resolution
 
-_Unresolved._
+**Measured, then made loud.** Step 1 asked whether the three traversals can
+actually reach a module or struct binding list. They cannot, as far as the test
+suite goes.
+
+All four cases were instrumented and the whole suite run: **zero hits**. The
+instrumentation was then confirmed to fire by calling `shift_term` directly on a
+`Module` term, so zero means never reached rather than a broken probe.
+
+The wrongness is only harmless while a list holds at most one binding, since
+nothing then follows the binding that widens the environment. That condition now
+has a name, `Elab_defs.binding_list_depth_is_tracked`, and the three traversals
+use it:
+
+- `Elab_defs.shift_term` (`Module` and `Struct`) and
+  `Elab_refine.close_recursive_payload_term` (`Module`) must return a term, so
+  they refuse a longer list via `Elab_defs.reject_untracked_binding_list`.
+- `Elab_generalize.closed_under` is a predicate and so has a safe answer instead:
+  a term whose binder depths cannot be tracked is not *known* to be closed, so it
+  returns `false`. That only declines the generalization it gates, which is
+  always sound.
+
+No arithmetic was invented for a case that has never occurred — and the
+`OpenBind` obstacle this ticket raised is unchanged, so inventing it would have
+meant guessing at a width that is not in the term. If one of these ever fires,
+the message names this ticket.
+
+Suite green, 816 tests. The shared contract this depends on now lives in
+`Core.binding_width`; see
+[env-width-contract-is-unnamed](env-width-contract-is-unnamed.md).
