@@ -61,7 +61,7 @@ That check fires only if a meta is actually evaluated in the offending context.
 
 ### I2 — elaborator and evaluator widen a context identically per binding
 
-**Status: enforced by construction, except for impls and traits.**
+**Status: enforced by construction.**
 
 `Core.binding_slots` states what a binding contributes: an ordered list of slots,
 one per entry, each carrying a name where there is one and where its payload
@@ -81,9 +81,12 @@ function — was not achievable as stated: a count cannot produce named typed
 entries. The slot list is what both sides can genuinely share, and the payload
 stays each side's own.
 
-Impls and traits extend the context inside their own elaborator rather than
-through slots, so their contribution is still a second opinion and is checked
-against the contract at the binding-list level.
+Every binding kind goes through it, impls included: an impl's contribution is
+now worked out without touching the context, and the evidence and optional name
+that ride along with its entry are installed separately. Traits were never an
+exception — their elaborator does not extend the context at all. With nothing
+left computing a second opinion, both width checks and the drift error are
+deleted.
 
 `open` returns no width: its contribution is the public-entry count of a module
 that must be evaluated first, so it is not recoverable from the term. Every
@@ -225,11 +228,11 @@ asserts the value form errors.
 
 ### I4e — the elaborator's expander handle is a capability, not a context
 
-**Status: the latch is gone; the name is still wrong.** The importer-side
-mutation was deleted (see
+**Status: fixed.** The importer-side mutation was deleted (see
 [base-context-shared-state](../tickets/base-context-shared-state.md)), so the
-field no longer survives as a last-writer-wins latch. It is still called
-`expand_ctx` while being read for two capabilities, which is the part left.
+field no longer survives as a last-writer-wins latch, and the field itself is now
+a `macro_runtime`: how to run a macro, and the expansion-depth budget to run it
+under. The elaborator no longer holds a reference to the expander at all.
 
 `Elab_ctx.Ctx.expand_ctx` reads as "the expander's context", i.e. a namespace. It is
 read for exactly two things: `eval_and_apply`, which is how to run a macro, and

@@ -229,11 +229,13 @@ every defect below is an invariant with no name in the source.
   meaning no longer depends on what the importer happened to have in scope, and
   the double-import crash is gone. Macros became members in the same change.
 - [Impls and traits extend the context outside the slot list](tickets/bring-impls-and-traits-into-the-slot-list.md)
-  — the two binding kinds the slot list does not yet cover; a width check is what
-  stands in for it today.
+  (closed) — every binding kind now extends the context through one helper driven
+  by the slot list, so both width checks and the drift error are gone. An impl's
+  contribution is separated from the evidence that rides along with it.
 - [The elaborator's expander handle is named as a context](tickets/expander-handle-is-a-capability-not-a-context.md)
-  — it is read for two capabilities and never for a namespace. The latch is
-  already deleted; the misleading name and the over-wide handle are not.
+  (closed) — it holds a `macro_runtime`, how to run a macro and the fuel to run it
+  under, instead of a borrowed expander. One adapter is where the two libraries
+  meet.
 - [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
   (closed) — a binding's contribution is now one ordered slot list in
   `Core.binding_slots`, pushed by the evaluator and zipped by the elaborator, so

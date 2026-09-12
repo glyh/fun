@@ -3,8 +3,10 @@ title: The elaborator's expander handle is named as a context but used as a capa
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Elab_ctx.Ctx now holds a macro_runtime — how to run a macro, and the expansion-depth budget to run it under — instead of a borrowed Expand_ctx.t. The adapter that narrows an expander to those two capabilities is the only place the elaborator sees the expander at all.
+closed_date: 2026-09-12
 blocked_by:
 ---
 
@@ -40,3 +42,18 @@ not model a dependency that is not there.
 Worth doing before the port rather than after: it is a rename plus two call
 sites, and it removes a link between two libraries that a port would otherwise
 reproduce as a real coupling.
+
+
+## Resolution
+
+`Elab_ctx.Ctx.expand_ctx` is now `macro_runtime`, a record of the two
+capabilities the elaborator actually uses: `run_macro`, how to apply a macro
+value, and `with_fuel`, the expansion-depth budget to apply it under. The
+elaborator no longer holds a reference to the expander, and the type says so.
+
+`Ctx.macro_runtime_of_expander` narrows an expander to those two and is the only
+place the two libraries meet on this path. It returns `None` when the expander
+cannot run a macro at all, which collapses the two nested "is it there" matches
+at each call site into one.
+
+842 tests green.

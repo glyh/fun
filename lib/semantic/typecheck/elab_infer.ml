@@ -16,6 +16,27 @@ open Elab_generalize
 open Elab_apply
 open Elab_ops
 
+(* The one place a module or struct binding extends the elaboration context.
+   [Core.binding_slots] owns the order and the count; the payloads - a type and a
+   value per slot - are the elaborator's own, and a disagreement between the term
+   a binding emits and the entries it pushes fails here rather than surfacing
+   later as a wrong de Bruijn index.
+   See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
+let extend_from_slots (ctx : Ctx.t) (bind : Core.struct_binding_term) payloads =
+  let slots =
+    match Core.binding_slots bind with
+    | Some slots -> slots
+    | None -> failwith "binding contributes no slot list"
+  in
+  List.fold_left2
+    (fun (ctx : Ctx.t) _slot payload ->
+      match payload with
+      | `Param param_name ->
+          Ctx.define ctx param_name VU (VRigid { lvl = ctx.Ctx.lvl; spine = [] })
+      | `Entry (name, ty, value) -> Ctx.define ctx name ty value
+      | `Anonymous (ty, value) -> fst (Ctx.define_anonymous ctx ty value))
+    ctx slots payloads
+
 (* THE nominal-type binding elaboration, in one place.
 
    [type T(p...) = C1(..) | C2(..)] as a module or struct member. Three things
@@ -102,50 +123,17 @@ let elab_type_binding (ops : Elab_ops.t) (ctx : Ctx.t) ~name ~params ~ctors ~pub
   in
   let kind = if public then Public else Private in
   let bind = TypeBind (name, kind, nominal, ctor_values) in
-  (* The entries this binding contributes, zipped against the shared slot list
-     instead of derived a second time: [Core.binding_slots] owns their order and
-     count, and only the payloads - a type and a value per slot - are the
-     elaborator's own. A shape disagreement fails here, while the context is
-     being built, rather than later as a wrong de Bruijn index. *)
-  let slots =
-    match Core.binding_slots bind with
-    | Some slots -> slots
-    | None -> failwith "TypeBind contributes no slots"
-  in
-  let payloads =
-    List.map (fun p -> `Param p) params
-    @ List.map2
-        (fun (cname, ctor_value) (_, ctor_ty) -> `Entry (cname, ctor_ty, ctor_value))
-        ctor_values ctor_types
-    @ [ `Entry (name, nominal_ty, nominal) ]
-  in
   let ctx' =
-    List.fold_left2
-      (fun ctx _slot payload ->
-        match payload with
-        | `Param param_name ->
-            Ctx.define ctx param_name VU (VRigid { lvl = ctx.Ctx.lvl; spine = [] })
-        | `Entry (entry_name, ty, value) -> Ctx.define ctx entry_name ty value)
-      ctx slots payloads
+    extend_from_slots ctx bind
+      (List.map (fun p -> `Param p) params
+      @ List.map2
+          (fun (cname, ctor_value) (_, ctor_ty) -> `Entry (cname, ctor_ty, ctor_value))
+          ctor_values ctor_types
+      @ [ `Entry (name, nominal_ty, nominal) ])
   in
   ( ctx',
     bind,
     (name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types )
-
-(* The binding kinds whose context extension happens inside their own
-   elaborator - impls and traits - do not go through [Core.binding_slots], so
-   their contribution is still a second opinion and is checked here against the
-   contract. The nominal case is zipped against the slot list and cannot drift.
-   See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
-let check_binding_list_width ~(before : Ctx.t) ~(after : Ctx.t) bindings =
-  match Core.binding_list_width bindings with
-  | None -> ()
-  | Some expected ->
-      let actual = after.Ctx.lvl - before.Ctx.lvl in
-      if actual <> expected then
-        raise
-          (ElabError
-             (BindingWidthDrift { pushed = actual; expected }))
 
 (** Stage 7: per-binding module elaboration. Processes a single
     [Surface.struct_binding] and returns the updated elaboration context,
@@ -170,8 +158,9 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
       let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
       let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
       let kind = if public then Public else Private in
-      let ctx' = Ctx.define ctx name VU syn_val in
-      (ctx', [PatternSynBind (name, kind, syn_val)], [ModuleField (name, kind, VU)])
+      let bind = PatternSynBind (name, kind, syn_val) in
+      let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, syn_val) ] in
+      (ctx', [bind], [ModuleField (name, kind, VU)])
   | Surface.OpenBinding mod_expr ->
       (* Module-level [open]: the opened module's public fields are in scope for
          the bindings that *follow* (the caller folds this ctx forward), and the
@@ -192,27 +181,35 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
       let val_core = if recursive then Fix val_core else val_core in
       let val_val = Ctx.eval ctx val_core in
       let kind = if public then Public else Private in
-      let ctx' = Ctx.define ctx name val_ty val_val in
-      (ctx', [LetBind (name, kind, val_core)], [ModuleField (name, kind, val_ty)])
+      let bind = LetBind (name, kind, val_core) in
+      let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
+      (ctx', [bind], [ModuleField (name, kind, val_ty)])
   | Surface.EffectBinding { name; params; ops = eff_ops; public } ->
       let _effect_id, eff, eff_ty, _elaborated_ops =
         elaborate_eff_family ops ctx name params eff_ops
       in
       let kind = if public then Public else Private in
-      let ctx' = Ctx.define ctx name eff_ty eff in
-      (ctx', [EffectBind (name, kind, eff)], [ModuleField (name, kind, eff_ty)])
+      let bind = EffectBind (name, kind, eff) in
+      let ctx' = extend_from_slots ctx bind [ `Entry (name, eff_ty, eff) ] in
+      (ctx', [bind], [ModuleField (name, kind, eff_ty)])
   | Surface.TraitBinding { name; params; fields; public } ->
       let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
       let kind = if public then Public else Private in
-      let ctx' = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
-      (ctx', [LetBind (name, kind, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name })],
-       [ModuleField (name, kind, VU)])
+      let bind =
+        LetBind (name, kind, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name })
+      in
+      let ctx' = Ctx.add_trait (extend_from_slots ctx bind [ `Entry (name, VU, trait_ty) ]) trait_info in
+      (ctx', [bind], [ModuleField (name, kind, VU)])
   | Surface.ImplBinding { name; trait_path = []; trait_name; args; fields; public } ->
-      let ctx', _impl_effects, _evidence, impl_ty, impl_core =
-        elaborate_impl ?impl_name:name ops ctx trait_name args fields in
+      let c = elaborate_impl_contribution ops ctx trait_name args fields in
       let kind = if public then Public else Private in
-      (ctx', [ImplBind (name, kind, impl_core, impl_ty)],
-       [ModuleImpl (name, kind, impl_ty, Ctx.eval ctx impl_core)])
+      let bind = ImplBind (name, kind, c.impl_core, c.impl_dict_ty) in
+      let level = ctx.Ctx.lvl in
+      let ctx' =
+        extend_from_slots ctx bind [ `Anonymous (c.impl_dict_ty, c.impl_value) ]
+      in
+      let ctx', _evidence = install_impl_evidence ?impl_name:name ctx' c ~level in
+      (ctx', [bind], [ModuleImpl (name, kind, c.impl_dict_ty, c.impl_value)])
   | Surface.ImplBinding { trait_path = _ :: _; trait_name; _ } ->
       raise (ElabError (UnknownTrait trait_name))
   | Surface.RecordTypeBinding { name; params; fields; public } ->
@@ -242,8 +239,9 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
       let val_core, val_ty = elaborate_params ctx [] params in
       let val_val = Ctx.eval ctx val_core in
       let kind = if public then Public else Private in
-      let ctx' = Ctx.define ctx name val_ty val_val in
-      (ctx', [LetBind (name, kind, val_core)], [ModuleField (name, kind, val_ty)])
+      let bind = LetBind (name, kind, val_core) in
+      let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
+      (ctx', [bind], [ModuleField (name, kind, val_ty)])
   | Surface.TypeBinding { name; params; ctors; public } ->
       let ctx', bind, fields = elab_type_binding ops ctx ~name ~params ~ctors ~public in
       (ctx', [bind],
@@ -492,7 +490,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                        both would otherwise come from the last imported unit.
                        See docs/wayfinder/tickets/base-context-shared-state.md. *)
                     let unit_ctx = Ctx.unit_base ctx in
-                    unit_ctx.expand_ctx <- Some expand_ctx;
+                    unit_ctx.macro_runtime <- Ctx.macro_runtime_of_expander expand_ctx;
                     let core, ty = ops.infer unit_ctx imported in
                     (core, Ctx.eval unit_ctx core, ty))
                 ~eval_and_apply:(fun fn arg ->
@@ -534,14 +532,13 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | Module { bindings } ->
       let binding_ctx = Ctx.clear_self_scope ctx in
-      let end_ctx, core_bindings, entries =
+      let _end_ctx, core_bindings, entries =
         List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
           let ctx', b, e = elab_module_binding ops ctx b in
           (ctx', b @ acc_binds, e @ acc_entries))
         (binding_ctx, [], []) bindings
       in
       let core_bindings = List.rev core_bindings in
-      check_binding_list_width ~before:binding_ctx ~after:end_ctx core_bindings;
       let entries = List.rev entries in
       let fields = module_entry_fields entries in
       validate_module_fields fields;
@@ -617,9 +614,10 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
             let core_rhs, _binders = Elab_patterns.elaborate_pat_binders ctx rhs scrutinee_ty in
             let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
             let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name VU syn_val in
+            let bind = PatternSynBind (name, kind, syn_val) in
+            let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, syn_val) ] in
             go ctx'
-               (PatternSynBind (name, kind, syn_val) :: acc_binds,
+               (bind :: acc_binds,
                 StructField (name, kind, VU) :: acc_entries)
               rest
         | Surface.OpenBinding mod_expr :: rest ->
@@ -639,20 +637,22 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
             let val_core = if recursive then Fix val_core else val_core in
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name val_ty val_val in
+            let bind = LetBind (name, kind, val_core) in
+            let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
             go ctx'
-              (LetBind (name, kind, val_core) :: acc_binds,
+              (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
         | Surface.MethodBinding { name; params; body; public } :: rest ->
             let method_core, method_ty = elaborate_method ctx params body in
             let method_val = Ctx.eval ctx method_core in
             let kind = if public then Method else PrivateMethod in
-            let ctx' = Ctx.define ctx name method_ty method_val in
+            let bind = LetBind (name, kind, method_core) in
+            let ctx' = extend_from_slots ctx bind [ `Entry (name, method_ty, method_val) ] in
             let entries = if public then [ StructField (name, kind, method_ty) ] else [] in
             go ctx'
-              (LetBind (name, kind, method_core) :: acc_binds,
+              (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
         | Surface.EffectBinding { name; params; ops = eff_ops; public } :: rest ->
@@ -660,21 +660,27 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
               elaborate_eff_family ops ctx name params eff_ops
             in
             let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name eff_ty eff in
+            let bind = EffectBind (name, kind, eff) in
+            let ctx' = extend_from_slots ctx bind [ `Entry (name, eff_ty, eff) ] in
             let entries = if public then [ StructField (name, kind, eff_ty) ] else [] in
             go ctx'
-              (EffectBind (name, kind, eff) :: acc_binds,
+              (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
         | Surface.TraitBinding _ :: _ ->
             raise (ElabError ApplyingNonFunction)
         | Surface.ImplBinding { name; trait_path = []; trait_name; args; fields; public } :: rest ->
-            let ctx', _impl_effects, _evidence, impl_ty, impl_core =
-              elaborate_impl ?impl_name:name ops ctx trait_name args fields in
+            let c = elaborate_impl_contribution ops ctx trait_name args fields in
             let kind = if public then Public else Private in
+            let bind = ImplBind (name, kind, c.impl_core, c.impl_dict_ty) in
+            let level = ctx.Ctx.lvl in
+            let ctx' =
+              extend_from_slots ctx bind [ `Anonymous (c.impl_dict_ty, c.impl_value) ]
+            in
+            let ctx', _evidence = install_impl_evidence ?impl_name:name ctx' c ~level in
             go ctx'
-              (ImplBind (name, kind, impl_core, impl_ty) :: acc_binds,
-               StructImpl (name, kind, impl_ty, Ctx.eval ctx impl_core) :: acc_entries)
+              (bind :: acc_binds,
+               StructImpl (name, kind, c.impl_dict_ty, c.impl_value) :: acc_entries)
               rest
         | Surface.ImplBinding { trait_path = _ :: _; trait_name; _ } :: _ ->
             raise (ElabError (UnknownTrait trait_name))
@@ -705,10 +711,11 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
             let val_core, val_ty = elaborate_params ctx [] params in
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
-            let ctx' = Ctx.define ctx name val_ty val_val in
+            let bind = LetBind (name, kind, val_core) in
+            let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
             go ctx'
-              (LetBind (name, kind, val_core) :: acc_binds,
+              (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
         | Surface.TypeBinding { name; params; ctors; public } :: rest ->
@@ -720,8 +727,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (bind :: acc_binds, List.rev_append type_entries acc_entries)
               rest
       in
-      let end_ctx, core_bindings, extra_entries = go binding_ctx ([], []) bindings in
-      check_binding_list_width ~before:binding_ctx ~after:end_ctx core_bindings;
+      let _end_ctx, core_bindings, extra_entries = go binding_ctx ([], []) bindings in
       let result_con_fields = List.map (fun (n, c, _) -> (n, c)) con_cores in
       let type_entries =
         List.map (fun (n, _, ty) -> StructField (n, Field, ty)) con_cores
@@ -916,10 +922,9 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
        | Some name ->
            (match Hashtbl.find_opt ctx.macro_table name with
              | Some (macro_fn, macro_kind, macro_nominals) ->
-                (match ctx.expand_ctx with
-                 | Some expand_ctx ->
-                     (match expand_ctx.Expand_ctx.eval_and_apply with
-                      | Some apply_fn ->
+                (match ctx.macro_runtime with
+                 | Some runtime ->
+                     let apply_fn = runtime.Ctx.run_macro in
                           let ty = Ctx.raw_meta ctx in
                           (match Syntax.MacroKind.type_constraint_name macro_kind with
                            | Some constraint_name ->
@@ -933,7 +938,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                                  VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ty]; nominal = nominals.Macro_eval.r_ }
                              | None -> ty
                           in
-                          Expand_ctx.with_macro_fuel expand_ctx ~name (fun () ->
+                          runtime.Ctx.with_fuel ~name (fun () ->
                             let fn = apply_fn macro_fn wrapped_ty in
                             let fn = List.fold_left (fun fn arg ->
                               match arg with
@@ -947,8 +952,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                              | None ->
                                  let ty = Ctx.raw_meta ctx in
                                  (Ctx.fresh_meta ctx, ty)))
-                      | None -> failwith "eval_and_apply required")
-                 | None -> failwith "expand_ctx required")
+                 | None -> failwith "macro runtime required")
             | None -> failwith "macro-only syntax should not reach elaboration")
        | None -> failwith "macro-only syntax should not reach elaboration")
   | MacroDef _ | SyntaxOperatorUse _ ->

@@ -23,7 +23,12 @@ module Ctx = struct
     resume_entry : name_entry option;
     loader : Core_loader.t option;
     macro_table : (string, Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) Hashtbl.t;
-    mutable expand_ctx : Expand_ctx.t option;
+    (* The capabilities the elaborator needs from the expander to run a
+       type-aware macro, and nothing more: how to apply a macro value, and the
+       expansion-depth budget to apply it under. It never consults the
+       expander's binding table, so it is handed these rather than a context.
+       See docs/wayfinder/tickets/expander-handle-is-a-capability-not-a-context.md. *)
+    mutable macro_runtime : macro_runtime option;
     (* The base context this one grew out of: the atom types, the primitives and
        [stdlib] bound as a name. Set once, by [init_ctx]; every extension carries
        it forward, so an imported compilation unit can be elaborated against it
@@ -31,6 +36,20 @@ module Ctx = struct
        [None] only in the half-built context [init_ctx] is itself assembling. *)
     base : t option;
   }
+
+and macro_runtime = {
+  run_macro : value -> value -> value;
+  with_fuel : 'a. name:string -> (unit -> 'a) -> 'a;
+}
+
+  (* The expander, narrowed to the two capabilities above. [None] when the
+     expander cannot run a macro at all. *)
+  let macro_runtime_of_expander (ectx : Expand_ctx.t) : macro_runtime option =
+    Option.map
+      (fun run_macro ->
+        { run_macro;
+          with_fuel = (fun ~name f -> Expand_ctx.with_macro_fuel ectx ~name f) })
+      ectx.Expand_ctx.eval_and_apply
 
   let empty () : t =
     let metas = MetaContext.create () in
@@ -47,7 +66,7 @@ module Ctx = struct
       resume_entry = None;
       loader = None;
       macro_table = Hashtbl.create 4;
-      expand_ctx = None;
+      macro_runtime = None;
       base = None;
     }
 
@@ -61,7 +80,7 @@ module Ctx = struct
     | None -> ctx
     | Some base ->
         { base with loader = ctx.loader; macro_table = ctx.macro_table;
-                    expand_ctx = ctx.expand_ctx }
+                    macro_runtime = ctx.macro_runtime }
 
   let bind (ctx : t) (name : string) (ty : value) : t =
     { ctx with

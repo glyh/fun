@@ -34,11 +34,23 @@ let elaborate_trait ops ctx name params fields =
   let trait_ty = VTrait { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name } in
   (trait_info, trait_ty)
 
-(* [impl_name] is the optional name of [impl NAME : Trait(Args) = …]. It names
-   the entry the impl already occupies rather than adding one, so the impl is
-   reachable as a member without changing what the binding contributes.
-   See docs/wayfinder/topics/impl-visibility.md. *)
-let elaborate_impl ?impl_name ops ctx trait_name args fields =
+(* What an impl contributes, worked out without touching the context: the
+   dictionary type and value that occupy its single entry, plus the trait
+   identity the evidence needs. Separated from installing it so a binding fold
+   can extend the context from [Core.binding_slots] like every other binding,
+   rather than receiving a context someone else extended.
+   See docs/wayfinder/tickets/bring-impls-and-traits-into-the-slot-list.md. *)
+type impl_contribution = {
+  impl_effects : Elab_effects.expr_effects list;
+  impl_dict_ty : value;
+  impl_core : term;
+  impl_value : value;
+  impl_trait_id : int;
+  impl_trait_name : string;
+  impl_args : value list;
+}
+
+let elaborate_impl_contribution ops ctx trait_name args fields =
   let trait_info = lookup_trait ctx trait_name in
   let arg_cores =
     List.map
@@ -74,22 +86,42 @@ let elaborate_impl ?impl_name ops ctx trait_name args fields =
       fields
   in
   let impl_core = Struct { con_fields = []; bindings = List.map (fun (name, value) -> LetBind (name, Public, value)) field_cores; partial = false } in
-  let impl_value = Ctx.eval ctx impl_core in
-  let ctx', entry = Ctx.define_anonymous ctx expected_dict_ty impl_value in
+  { impl_effects;
+    impl_dict_ty = expected_dict_ty;
+    impl_core;
+    impl_value = Ctx.eval ctx impl_core;
+    impl_trait_id = trait_info.trait_id;
+    impl_trait_name = trait_name;
+    impl_args = arg_values }
+
+(* The furniture that rides along with an impl's entry but adds no entry of its
+   own: the evidence resolution searches, and the name an [impl NAME : …] is
+   reachable by. [impl_name] names the entry the impl already occupies rather
+   than adding one, so the impl is reachable as a member without changing what
+   the binding contributes. See docs/wayfinder/topics/impl-visibility.md. *)
+let install_impl_evidence ?impl_name ctx (c : impl_contribution) ~level =
   let evidence =
-    { evidence_trait_id = trait_info.trait_id;
-      evidence_trait_name = trait_name;
-      evidence_args = arg_values;
-      evidence_level = entry.level;
-      evidence_ty = expected_dict_ty }
+    { evidence_trait_id = c.impl_trait_id;
+      evidence_trait_name = c.impl_trait_name;
+      evidence_args = c.impl_args;
+      evidence_level = level;
+      evidence_ty = c.impl_dict_ty }
   in
-  let ctx' = Ctx.add_trait_evidence ctx' evidence in
-  let ctx' =
+  let ctx = Ctx.add_trait_evidence ctx evidence in
+  let ctx =
     match impl_name with
-    | Some n -> Ctx.alias ctx' n { level = entry.level; ty = expected_dict_ty }
-    | None -> ctx'
+    | Some n -> Ctx.alias ctx n { level; ty = c.impl_dict_ty }
+    | None -> ctx
   in
-  (ctx', impl_effects, evidence, expected_dict_ty, impl_core)
+  (ctx, evidence)
+
+(* An impl in expression position, where there is no binding term and so no slot
+   list: contribute, take the entry, install. *)
+let elaborate_impl ?impl_name ops ctx trait_name args fields =
+  let c = elaborate_impl_contribution ops ctx trait_name args fields in
+  let ctx', entry = Ctx.define_anonymous ctx c.impl_dict_ty c.impl_value in
+  let ctx', evidence = install_impl_evidence ?impl_name ctx' c ~level:entry.level in
+  (ctx', c.impl_effects, evidence, c.impl_dict_ty, c.impl_core)
 
 
 let elaborate_eff_family ops (ctx : Ctx.t) (name : string) (params : string list)

@@ -145,7 +145,7 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
       Hashtbl.replace !elab_ctx.Elab_ctx.Ctx.macro_table name
         (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
-  !elab_ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
+  !elab_ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   { surface; expand_ctx; elab_ctx = !elab_ctx; macro_exports }
 
 (** Stage 8: driver-based import loading. Compiles the public macros of

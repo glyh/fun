@@ -144,17 +144,16 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                  | Some (constraint_val, _) -> Ctx.unify ctx expected constraint_val
                  | None -> raise (ElabError (UnboundVariable constraint_name)))
             | None -> ());
-           (match ctx.expand_ctx with
-            | Some expand_ctx ->
-                (match expand_ctx.Expand_ctx.eval_and_apply with
-                 | Some apply_fn ->
+           (match ctx.macro_runtime with
+            | Some runtime ->
+                let apply_fn = runtime.Ctx.run_macro in
                      let wrapped_ty =
                          match macro_nominals with
                         | Some nominals ->
                             VCon { name = Compiler_names.Constructor_name.r_expr; spine = [expected]; nominal = nominals.Macro_eval.r_ }
                         | None -> expected
                      in
-                     Expand_ctx.with_macro_fuel expand_ctx ~name:macro_name (fun () ->
+                     runtime.Ctx.with_fuel ~name:macro_name (fun () ->
                        let fn = apply_fn macro_fn wrapped_ty in
                        let fn = List.fold_left (fun fn arg ->
                          match arg with
@@ -170,7 +169,6 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
                             let core = Ctx.fresh_meta ctx in
                             Ctx.unify ctx expected inferred;
                             core))
-                 | None -> fallback ())
             | None -> fallback ())
        | _ -> fallback ())
   | _ ->

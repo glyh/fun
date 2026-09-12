@@ -3,8 +3,10 @@ title: Domain model for core_tt before the port
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
 assignee: glyh
+resolution: First pass done — model in ../topics/core-tt-domain-model.md, vocabulary in the root CONTEXT.md. Five invariants named and classified, one latent defect found and fixed, one dead column deleted, and three decisions carried into the tree (macros as members, the base-context rule, one slot list per binding). Later passes — surface and enforestation, macro hygiene, effects — are out of this ticket's scope and get their own.
+closed_date: 2026-09-12
 blocked_by:
 ---
 

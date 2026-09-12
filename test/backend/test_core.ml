@@ -861,7 +861,7 @@ let eval_with_macros ?(expansion_position = Syntax.MacroKind.(Expr (None, None))
       | Some k -> k | None -> Syntax.MacroKind.default in
     Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
-  ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
+  ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
@@ -893,7 +893,7 @@ let eval_decl_module source =
       | Some k -> k | None -> Syntax.MacroKind.default in
     Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
-  ctx.Elab_ctx.Ctx.expand_ctx <- Some expand_ctx;
+  ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
@@ -1509,11 +1509,11 @@ let test_driver_macro_exports_decl () =
     (Syntax.MacroKind.to_string Syntax.MacroKind.Decl)
     (Syntax.MacroKind.to_string (List.hd output.macro_exports).kind)
 
-(** Stage 3: [driver_output.elab_ctx.expand_ctx] is populated. *)
-let test_driver_elab_ctx_has_expand_ctx () =
+(** Stage 3: [driver_output.elab_ctx.macro_runtime] is populated. *)
+let test_driver_elab_ctx_has_macro_runtime () =
   let output = run_driver "pub x : I64 = 42\n" in
-  Alcotest.(check bool) "elab_ctx.expand_ctx is populated" true
-    (Option.is_some output.elab_ctx.Elab_ctx.Ctx.expand_ctx)
+  Alcotest.(check bool) "elab_ctx.macro_runtime is populated" true
+    (Option.is_some output.elab_ctx.Elab_ctx.Ctx.macro_runtime)
 
 (** Stage 4: helper to get the kind of a named macro export from a driver run. *)
 let exported_macro source macro_name =
@@ -3256,7 +3256,7 @@ let () =
           Alcotest.test_case "driver equiv module with macro" `Quick test_driver_equiv_macro;
           Alcotest.test_case "driver macro_exports default kind" `Quick test_driver_macro_exports_default;
           Alcotest.test_case "driver macro_exports Decl kind" `Quick test_driver_macro_exports_decl;
-          Alcotest.test_case "driver elab_ctx.expand_ctx populated" `Quick test_driver_elab_ctx_has_expand_ctx;
+          Alcotest.test_case "driver elab_ctx.macro_runtime populated" `Quick test_driver_elab_ctx_has_macro_runtime;
           Alcotest.test_case "driver Expr(I64) constraint kind" `Quick test_driver_expr_i64_constraint;
           Alcotest.test_case "driver constraint no binder arity" `Quick test_driver_constraint_no_binder_arity;
           Alcotest.test_case "driver Expr(Intt) binder kind" `Quick test_driver_expr_intt_binder;
