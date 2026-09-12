@@ -44,6 +44,13 @@ An entry whose value is known. A meta skips over these rather than abstracting
 over them.
 _Avoid_: transparent, concrete, let-bound
 
+**Slot**:
+What a binding contributes to a context, stated once for both sides: an ordered
+list, one item per entry it adds, each carrying a name where it has one and
+where its payload comes from. The elaborator hangs a type and a value on each,
+the evaluator a value; the order and the count belong to neither.
+_Avoid_: contribution, field, width (that is the list's length)
+
 **Level**:
 A position counted from the outermost entry. Stable as the context grows, so it
 is what a name resolves to.

@@ -66,9 +66,10 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   precedent uses. Global coherence is unavailable to a language whose modules are
   values.
 - [Domain model — elaborate ↔ evaluate](topics/core-tt-domain-model.md) — first
-  pass of the port's specification: a scope is one sequence seen through columns,
-  and the evaluator holds one of them rather than a peer environment. Vocabulary
-  in the root [`CONTEXT.md`](../../CONTEXT.md).
+  pass of the port's specification: a context is one sequence seen through
+  columns, and the evaluator holds one of them rather than a peer environment.
+  *Scope* stays the hygiene word and is not a synonym for it. Vocabulary in the
+  root [`CONTEXT.md`](../../CONTEXT.md).
 - [Constructor lookup matches the type name](tickets/constructor-lookup-matches-type-name.md)
   (closed) — premise was stale; the symptom already passed. Pattern-head
   resolution tries the type name first and the constructor name second, and that
@@ -224,12 +225,20 @@ every defect below is an invariant with no name in the source.
   — the port's specification. First pass scoped to the elaborate ↔ evaluate
   boundary, where most of the unnamed invariants live. **Do this first.**
 - [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)
-  — importing one module twice crashes whenever its body mentions a name it did
-  not bind itself. Demonstrated, with controls, in the ticket.
+  (closed) — a compilation unit now elaborates against the base context, so its
+  meaning no longer depends on what the importer happened to have in scope, and
+  the double-import crash is gone. Macros became members in the same change.
+- [Impls and traits extend the context outside the slot list](tickets/bring-impls-and-traits-into-the-slot-list.md)
+  — the two binding kinds the slot list does not yet cover; a width check is what
+  stands in for it today.
+- [The elaborator's expander handle is named as a context](tickets/expander-handle-is-a-capability-not-a-context.md)
+  — it is read for two capabilities and never for a namespace. The latch is
+  already deleted; the misleading name and the over-wide handle are not.
 - [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
-  — now named as `Core.binding_width` and **checked on the evaluator side**; open
-  for the other half, having the elaborator derive its `Ctx` extension from it
-  rather than merely agreeing with it.
+  (closed) — a binding's contribution is now one ordered slot list in
+  `Core.binding_slots`, pushed by the evaluator and zipped by the elaborator, so
+  order and count exist once instead of three times. Width is its length. The
+  evaluator's two binding folds became one. Remainder is its own ticket below.
 - [One declaration per primitive](tickets/unify-primitive-declaration.md)
   — two hand-synced tables plus prelude source strings. The ~10-line assertion is
   **done** (a typed primitive with no reducer now aborts at startup), as is the

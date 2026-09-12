@@ -69,8 +69,8 @@ defect found and fixed, one dead concept deleted.
 
 The pass corrected the ticket's own framing. `Elab_ctx.Ctx` and the NbE `env` are
 not "two views of one thing": the evaluator holds **one column of** the
-elaborator's scope and never sees the rest. No operation on a scope uses all of
-it — evaluation takes the value column, quoting takes the width, meta creation
+elaborator's context and never sees the rest. No operation on a context uses all
+of it — evaluation takes the value column, quoting takes the width, meta creation
 takes the bound/defined mask. Modelling them as peers is precisely the mistake a
 port would have made.
 
@@ -84,14 +84,19 @@ and the width but not the mask, breaking the equal-length invariant every other
 site maintains. Latent — it surfaces only as `bd mask length mismatch`, and no
 program in the suite triggers it. Fixed. Suite green, 816 tests.
 
-### Where the model is weakest
+### The weakest point, since named and closed
 
-There is still **no notion of a closed term** — one whose indices refer to
-nothing outside itself. Nothing distinguishes a term safe to cache or to carry
-across a module boundary from one that is not, which is the unnamed rule behind
-[imported-module-elaboration-context](imported-module-elaboration-context.md).
-Naming it is the highest-value item in the next pass, and that ticket is probably
-unfixable-by-design until it exists.
+The pass's first draft said the model had **no notion of a closed term**, and
+that naming it was the next pass's highest-value item. It was named within this
+one, and the name is not *closed*: a unit's term keeps free indices — `import
+"std"` stays a variable — so the condition that makes transport sound is
+**base-anchored**, every free index pointing into the base context that every
+importer shares. Weaker than closedness, and sufficient.
+
+That closed [imported-module-elaboration-context](imported-module-elaboration-context.md),
+which is now implemented rather than merely decided: a unit elaborates against
+the base context, and its meaning no longer depends on what the importer happened
+to have in scope.
 
 ### The fourth bullet, finished
 
@@ -114,6 +119,24 @@ while the parenthesised `(+)` rebinds fine. `binding.ml` documents this and
 defers scope-keyed operator resolution to the interleaving work. A name therefore
 has a **syntactic role** as well as a scope entry, and the two resolve by
 different rules.
+
+### What else the pass decided, and what became of it
+
+Three decisions arrived late in the pass and are in the tree:
+
+- **Macros are members** (I4d). A qualified call expands, `open` delivers them
+  bare, and binding an import no longer injects them as a side effect. Two units
+  exporting the same macro name no longer overwrite each other silently.
+- **A binding's contribution is one slot list** (I2). `Core.binding_slots`
+  states the order and count once; the evaluator pushes it and the elaborator
+  zips its types and values onto it. Width is the list's length. Closes
+  [env-width-contract-is-unnamed](env-width-contract-is-unnamed.md) on a design
+  the original step 1 could not have reached, since a count cannot produce named
+  typed entries.
+- **The expander handle is a capability** (I4e). The latch was deleted with
+  [base-context-shared-state](base-context-shared-state.md); the misleading name
+  is [its own ticket](expander-handle-is-a-capability-not-a-context.md), as is
+  [the slot list's remaining exception](bring-impls-and-traits-into-the-slot-list.md).
 
 ### Remaining passes (not this ticket)
 

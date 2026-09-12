@@ -61,13 +61,29 @@ That check fires only if a meta is actually evaluated in the offending context.
 
 ### I2 — elaborator and evaluator widen a context identically per binding
 
-**Status: checked on one side.**
+**Status: enforced by construction, except for impls and traits.**
 
-`Core.binding_width` is now the single statement of how much each binding adds.
-The evaluator cross-checks its own growth against it after each binding fold.
-The elaborator still derives its extension independently and is only *compatible*
-with the function, not derived from it. Closing that is the open half of
-[env-width-contract-is-unnamed](../tickets/env-width-contract-is-unnamed.md).
+`Core.binding_slots` states what a binding contributes: an ordered list of slots,
+one per entry, each carrying a name where there is one and where its payload
+comes from — a term to evaluate, a value the term already holds, or a stand-in
+each side fills in for itself. Width is the length of that list rather than
+arithmetic repeated per site.
+
+Both sides now consume it. The evaluator pushes exactly those slots, and its two
+folds — one for modules, one for structs — collapsed into one parameterised by
+the entry constructors, deleting a 55-line copy. The elaborator zips its own
+payloads, a type and a value per slot, onto the same list, so a shape
+disagreement fails while the context is being built instead of surfacing as a
+wrong de Bruijn index.
+
+The earlier ask — that the elaborator *derive* its extension from the width
+function — was not achievable as stated: a count cannot produce named typed
+entries. The slot list is what both sides can genuinely share, and the payload
+stays each side's own.
+
+Impls and traits extend the context inside their own elaborator rather than
+through slots, so their contribution is still a second opinion and is checked
+against the contract at the binding-list level.
 
 `open` returns no width: its contribution is the public-entry count of a module
 that must be evaluated first, so it is not recoverable from the term. Every
@@ -143,7 +159,11 @@ to the expander's context, which is the same coupling seen from the other side.
 
 ### I4d — macros resolve on a different axis from every other name
 
-**Status: violated, and decided. See "Decision" below.**
+**Status: decided and implemented.** The decision below is in the tree, with
+tests for the qualified call, for a bare import no longer injecting macros, for
+the `open` form, and for the import-order case that used to answer differently
+depending on which unit was imported first. The measurements that follow record
+the behaviour as it was.
 
 Not merely "less strict". Measured, macros arrive by a form that delivers nothing
 else, and do not arrive by the form that delivers everything else:
@@ -205,7 +225,11 @@ asserts the value form errors.
 
 ### I4e — the elaborator's expander handle is a capability, not a context
 
-**Status: unchecked convention; misnamed.**
+**Status: the latch is gone; the name is still wrong.** The importer-side
+mutation was deleted (see
+[base-context-shared-state](../tickets/base-context-shared-state.md)), so the
+field no longer survives as a last-writer-wins latch. It is still called
+`expand_ctx` while being read for two capabilities, which is the part left.
 
 `Elab_ctx.Ctx.expand_ctx` reads as "the expander's context", i.e. a namespace. It is
 read for exactly two things: `eval_and_apply`, which is how to run a macro, and
@@ -223,8 +247,11 @@ delivering one projection.
 
 ### I5 — a term may only be transported if it is closed
 
-**Status: unchecked convention, and actively contradicted. The weakest point in
-the model.**
+**Status: decided and implemented.** A compilation unit is elaborated against
+the base context (`Elab_ctx.Ctx.unit_base`), not the importer's. The double
+import below now answers, and a unit no longer resolves a name the importer
+happened to bind. What follows records the reasoning and the behaviour it
+replaced.
 
 Every term's indices are relative to a context — its **anchor**. The anchor is
 implicit everywhere and recorded nowhere, which is fine for as long as a term
@@ -351,9 +378,14 @@ program in the suite does. A port would have copied it silently.
 
 ## What the port's types should be named after
 
-- `Scope`, with `environment` as a named projection rather than a field that
-  happens to be passed.
-- `Binding` for a module member, since that is what a user writes. Scope slots
+- `Context` for the ordered sequence, with `environment` as a named projection
+  rather than a field that happens to be passed. Not `Scope`: that word is the
+  hygiene one and has no synonym.
+- `Binding` for a module member, since that is what a user writes. Context slots
   are `entry`; the expander's hygiene records are not bindings at all.
-- `BindingWidth` as a function on a binding, not arithmetic at each use site.
-- Something for I5 that does not exist yet — the closed-term notion.
+- `Slot` for what a binding contributes, as a list produced once and consumed by
+  both sides, with width as its length. Impls and traits should join it, which
+  the prototype leaves undone.
+- `BaseAnchored` for the transport condition — every free index pointing into the
+  base context every unit shares — rather than the closedness it is easily
+  mistaken for.

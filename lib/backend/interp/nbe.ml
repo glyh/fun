@@ -27,25 +27,6 @@ let push_opened_values env entries =
       | _ -> e)
     env entries
 
-(* Cross-check the evaluator's own env growth against the shared contract in
-   [Core.binding_width]. Both sides of the elaborate/evaluate boundary are meant
-   to widen their environment by the same amount for the same binding, so a drift
-   trips here instead of surfacing later as a wrong de Bruijn index or a silently
-   wrong value. Skipped when the list contains an [open], whose width is not
-   recoverable from the term.
-   See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
-let check_binding_list_width ~before ~after bindings =
-  match Core.binding_list_width bindings with
-  | None -> ()
-  | Some expected ->
-      let actual = List.length after - List.length before in
-      if actual <> expected then
-        raise
-          (EvalError
-             (Printf.sprintf
-                "binding-list env width: evaluator pushed %d entries, but                  Core.binding_width says %d (env-width-contract-is-unnamed)"
-                actual expected))
-
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
 
@@ -58,6 +39,77 @@ and sequence_values mc env terms k =
   | term :: rest ->
       bind_result (eval_result mc env term) (fun value ->
           sequence_values mc env rest (fun values -> k (value :: values)))
+
+(* The one place a binding list extends a scope. [Core.binding_slots] states
+   what each binding contributes and in what order; this pushes exactly that,
+   so the evaluator no longer derives the order and count of its own and then
+   checks them against the contract. [Module] and [Struct] differ only in which
+   entry constructors they build, which is what [field] and [impl] supply.
+   See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
+and eval_bindings :
+      'entry.
+      MetaContext.t ->
+      env ->
+      Core.struct_binding_term list ->
+      field:(string -> struct_field_kind -> value -> 'entry) ->
+      impl:(string option -> struct_field_kind -> value -> value -> 'entry) ->
+      env * 'entry list =
+ fun mc env bindings ~field ~impl ->
+  let rec go env acc = function
+    | [] -> (env, List.rev acc)
+    | OpenBind def :: rest -> (
+        (* An open's contribution is not recoverable from the term: it is the
+           public entries of a module that has to be evaluated first. *)
+        match eval mc env def with
+        | VModule { entries; partial = _ } ->
+            go (push_opened_values env entries) acc rest
+        | _ -> raise (EvalError "open of non-module"))
+    | b :: rest ->
+        let slots =
+          match Core.binding_slots b with
+          | Some slots -> slots
+          | None -> raise (EvalError "binding with no slot list")
+        in
+        let env, values =
+          List.fold_left
+            (fun (env, values) (sl : Core.slot) ->
+              let v =
+                match sl.Core.sl_source with
+                | Core.SlotDef t -> eval mc env t
+                | Core.SlotValue v -> v
+                | Core.SlotPlaceholder -> VAtomTy Atom_ty.TUnit
+              in
+              (v :: env, v :: values))
+            (env, []) slots
+        in
+        let entries = binding_entries ~field ~impl b slots (List.rev values) in
+        go env (List.rev_append entries acc) rest
+  in
+  go env [] bindings
+
+(* The entries a binding exports, in view order — which is not push order: a
+   nominal's own entry precedes its constructors', so that a constructor sharing
+   its type's name is the one a path resolves to (see [find_field_last]).
+   Unnamed slots — a nominal's parameters — export nothing. *)
+and binding_entries :
+      'entry.
+      field:(string -> struct_field_kind -> value -> 'entry) ->
+      impl:(string option -> struct_field_kind -> value -> value -> 'entry) ->
+      Core.struct_binding_term ->
+      Core.slot list ->
+      value list ->
+      'entry list =
+ fun ~field ~impl b slots values ->
+  match b with
+  | ImplBind (name, kind, _, ty) -> [ impl name kind ty (List.hd values) ]
+  | _ -> (
+      let named =
+        List.filter_map
+          (fun ((sl : Core.slot), v) ->
+            Option.map (fun n -> field n sl.Core.sl_kind v) sl.Core.sl_name)
+          (List.combine slots values)
+      in
+      match List.rev named with [] -> [] | last :: earlier -> last :: List.rev earlier)
 
 and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   match t with
@@ -174,101 +226,23 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | ProdTy elems ->
       sequence_values mc env elems (fun values -> Done (VProdTy values))
   | Module { bindings } ->
-      let rec eval_binds env acc = function
-        | [] -> (env, List.rev acc)
-        | LetBind (name, kind, def) :: rest ->
-            let vdef = eval mc env def in
-            eval_binds (vdef :: env)
-              (ModuleField (name, kind, vdef) :: acc)
-              rest
-        | TypeBind (name, kind, nominal, ctors) :: rest ->
-            let ctor_entries =
-              List.map (fun (n, v) -> ModuleField (n, kind, v)) ctors
-            in
-            let env =
-              match nominal with
-              | VNominal { num_params; _ } when num_params > 0 ->
-                  List.fold_left
-                    (fun e _ -> (VAtomTy Atom_ty.TUnit) :: e)
-                    env (List.init num_params (fun _ -> ()))
-              | _ -> env
-            in
-            let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
-            let env = nominal :: env in
-            eval_binds env
-              (List.rev_append ctor_entries
-                 (ModuleField (name, kind, nominal) :: acc))
-              rest
-        | EffectBind (name, kind, eff) :: rest ->
-            eval_binds (eff :: env) (ModuleField (name, kind, eff) :: acc) rest
-        | ImplBind (name, kind, def, ty) :: rest ->
-            let vdef = eval mc env def in
-            eval_binds (vdef :: env) (ModuleImpl (name, kind, ty, vdef) :: acc) rest
-        | PatternSynBind (name, kind, syn) :: rest ->
-            eval_binds (syn :: env) (ModuleField (name, kind, syn) :: acc) rest
-        | OpenBind def :: rest -> (
-            match eval mc env def with
-            | VModule { entries; partial = _ } ->
-                eval_binds (push_opened_values env entries) acc rest
-            | _ -> raise (EvalError "open of non-module"))
+      let _env, entries =
+        eval_bindings mc env bindings
+          ~field:(fun name kind v -> ModuleField (name, kind, v))
+          ~impl:(fun name kind ty v -> ModuleImpl (name, kind, ty, v))
       in
-      let env', entries = eval_binds env [] bindings in
-      check_binding_list_width ~before:env ~after:env' bindings;
       Done (VModule { entries; partial = false })
   | Struct { con_fields; bindings; partial } ->
       (* con_fields: all at same scope, no sequential dependency *)
-      let con_vals =
-        List.map (fun (name, ty) -> (name, Field, eval mc env ty)) con_fields
-      in
-      (* bindings: sequential, TypeBind stores values directly *)
-      let rec eval_binds env acc_entries = function
-        | [] -> (env, List.rev acc_entries)
-        | LetBind (name, kind, def) :: rest ->
-            let vdef = eval mc env def in
-            eval_binds (vdef :: env)
-              (StructField (name, kind, vdef) :: acc_entries)
-              rest
-        | TypeBind (name, kind, nominal, ctors) :: rest ->
-            let ctor_entries =
-              List.map (fun (n, v) -> StructField (n, kind, v)) ctors
-            in
-            let env =
-              match nominal with
-              | VNominal { num_params; _ } when num_params > 0 ->
-                  List.fold_left
-                    (fun e _ -> (VAtomTy Atom_ty.TUnit) :: e)
-                    env (List.init num_params (fun _ -> ()))
-              | _ -> env
-            in
-            let env = List.fold_left (fun e (_, v) -> v :: e) env ctors in
-            let env = nominal :: env in
-            eval_binds env
-              (List.rev_append ctor_entries
-                 (StructField (name, kind, nominal) :: acc_entries))
-              rest
-        | EffectBind (name, kind, eff) :: rest ->
-            eval_binds (eff :: env)
-              (StructField (name, kind, eff) :: acc_entries)
-              rest
-        | ImplBind (name, kind, def, ty) :: rest ->
-            let vdef = eval mc env def in
-            eval_binds (vdef :: env)
-              (StructImpl (name, kind, ty, vdef) :: acc_entries)
-              rest
-        | PatternSynBind (name, kind, syn) :: rest ->
-            eval_binds (syn :: env) (StructField (name, kind, syn) :: acc_entries) rest
-        | OpenBind def :: rest -> (
-            match eval mc env def with
-            | VModule { entries; partial = _ } ->
-                eval_binds (push_opened_values env entries) acc_entries rest
-            | _ -> raise (EvalError "open of non-module"))
-      in
-      let env', bind_entries = eval_binds env [] bindings in
-      check_binding_list_width ~before:env ~after:env' bindings;
       let con_entries =
         List.map
-          (fun (name, kind, value) -> StructField (name, kind, value))
-          con_vals
+          (fun (name, ty) -> StructField (name, Field, eval mc env ty))
+          con_fields
+      in
+      let _env, bind_entries =
+        eval_bindings mc env bindings
+          ~field:(fun name kind v -> StructField (name, kind, v))
+          ~impl:(fun name kind ty v -> StructImpl (name, kind, ty, v))
       in
       Done (VStruct { entries = con_entries @ bind_entries; partial })
   | RecordConstruct { typ; fields } ->

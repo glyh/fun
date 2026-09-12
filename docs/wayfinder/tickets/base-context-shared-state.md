@@ -80,6 +80,6 @@ type rather than reproduce the convention.
 
 The caching note on
 [imported-module-elaboration-context](imported-module-elaboration-context.md):
-the base scope's width is implicitly part of every cached term. Safe because the
+the base context's width is implicitly part of every cached term. Safe because the
 cache lives in a per-run loader and is never persisted; a port that persisted it
 would have to key on the base.

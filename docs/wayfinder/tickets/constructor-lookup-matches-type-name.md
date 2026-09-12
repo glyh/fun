@@ -108,7 +108,7 @@ seven. Same family as
 `expand.ml` the type name and each constructor were bound with sibling scope
 sets, both fresh from the enclosing scope. Set-of-scopes resolution needs one
 candidate to be a subset of the other; incomparable siblings are an ambiguity
-error. Ordinary shadowing avoids this because a later `do` binding's base scope
+error. Ordinary shadowing avoids this because a later `do` binding's base context
 already contains the earlier one's.
 
 Constructors are now bound under the type's scope rather than beside it, at both

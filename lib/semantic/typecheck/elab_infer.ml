@@ -101,21 +101,41 @@ let elab_type_binding (ops : Elab_ops.t) (ctx : Ctx.t) ~name ~params ~ctors ~pub
          elaborated_ctors)
   in
   let kind = if public then Public else Private in
-  let ctx' =
-    List.fold_left
-      (fun ctx ((ctor_name, ctor_value), (_, ctor_ty)) ->
-        Ctx.define ctx ctor_name ctor_ty ctor_value)
-      param_ctx (List.combine ctor_values ctor_types)
+  let bind = TypeBind (name, kind, nominal, ctor_values) in
+  (* The entries this binding contributes, zipped against the shared slot list
+     instead of derived a second time: [Core.binding_slots] owns their order and
+     count, and only the payloads - a type and a value per slot - are the
+     elaborator's own. A shape disagreement fails here, while the context is
+     being built, rather than later as a wrong de Bruijn index. *)
+  let slots =
+    match Core.binding_slots bind with
+    | Some slots -> slots
+    | None -> failwith "TypeBind contributes no slots"
   in
-  let ctx' = Ctx.define ctx' name nominal_ty nominal in
+  let payloads =
+    List.map (fun p -> `Param p) params
+    @ List.map2
+        (fun (cname, ctor_value) (_, ctor_ty) -> `Entry (cname, ctor_ty, ctor_value))
+        ctor_values ctor_types
+    @ [ `Entry (name, nominal_ty, nominal) ]
+  in
+  let ctx' =
+    List.fold_left2
+      (fun ctx _slot payload ->
+        match payload with
+        | `Param param_name ->
+            Ctx.define ctx param_name VU (VRigid { lvl = ctx.Ctx.lvl; spine = [] })
+        | `Entry (entry_name, ty, value) -> Ctx.define ctx entry_name ty value)
+      ctx slots payloads
+  in
   ( ctx',
-    TypeBind (name, kind, nominal, ctor_values),
+    bind,
     (name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types )
 
-(* The elaborator's half of the binding-list width contract. [Nbe] cross-checks
-   its env growth against [Core.binding_width]; without the same check here the
-   contract is pinned on one side only, and a drift in the elaborator still
-   surfaces as a wrong de Bruijn index rather than as an error.
+(* The binding kinds whose context extension happens inside their own
+   elaborator - impls and traits - do not go through [Core.binding_slots], so
+   their contribution is still a second opinion and is checked here against the
+   contract. The nominal case is zipped against the slot list and cannot drift.
    See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
 let check_binding_list_width ~(before : Ctx.t) ~(after : Ctx.t) bindings =
   match Core.binding_list_width bindings with

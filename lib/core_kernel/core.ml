@@ -419,36 +419,62 @@ let validate_module_fields fields =
    the type and the constructor both as [T], and the constructor, coming later,
    is what [M.T] means. Every field lookup in the elaborator and the evaluator
    must use this, or the two disagree about which binding a path denotes. *)
-(* THE binding-list environment-width contract, in one place.
+(* THE binding-list contribution contract, in one place.
 
-   For every [struct_binding_term] the elaborator and the evaluator must extend
-   their environments by the same number of entries in the same order, or the de
-   Bruijn index of every later binding is wrong - and wrong quietly, yielding a
-   [Failure "nth"] or a silently incorrect value rather than a type error. The
-   two sides live in different libraries and carry different payloads (types on
-   one side, values on the other), so they cannot share the extension code; this
-   function is what they can share, and what a port must reproduce.
+   A [struct_binding_term] contributes an ordered list of *slots* to the scope.
+   The elaborator and the evaluator must push exactly these, in this order, or
+   the de Bruijn index of every later binding is wrong - and wrong quietly,
+   yielding a [Failure "nth"] or a silently incorrect value rather than a type
+   error. The two sides hang different payloads on a slot (a type and a value on
+   one, a value on the other), which is why the slot carries the payload's
+   *source* rather than the payload: what the term already holds, what has to be
+   evaluated, and what each side fills in for itself.
 
-   [OpenBind] returns [None]: its width is the number of public entries of a
+   [OpenBind] has no slot list: its contribution is the public-entry count of a
    module that has to be evaluated first, so it is not recoverable from the term.
    See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
-let binding_width : struct_binding_term -> int option = function
-  | LetBind _ | EffectBind _ | ImplBind _ | PatternSynBind _ -> Some 1
-  | TypeBind (_, _, nominal, ctors) ->
-      let params =
+type slot_source =
+  | SlotDef of term  (** evaluate this term in the scope so far *)
+  | SlotValue of value  (** the term already holds the value *)
+  | SlotPlaceholder
+      (** a nominal's parameter: each side supplies its own stand-in, since the
+          term records how many there are but not what they are called *)
+
+type slot = {
+  sl_name : string option;
+  sl_kind : struct_field_kind;
+  sl_source : slot_source;
+}
+
+let slot ?name kind sl_source = { sl_name = name; sl_kind = kind; sl_source }
+
+let binding_slots : struct_binding_term -> slot list option = function
+  | LetBind (name, kind, def) -> Some [ slot ~name kind (SlotDef def) ]
+  | EffectBind (name, kind, eff) -> Some [ slot ~name kind (SlotValue eff) ]
+  | PatternSynBind (name, kind, syn) -> Some [ slot ~name kind (SlotValue syn) ]
+  | ImplBind (name, kind, def, _ty) ->
+      Some [ { sl_name = name; sl_kind = kind; sl_source = SlotDef def } ]
+  | TypeBind (name, kind, nominal, ctors) ->
+      let num_params =
         match nominal with VNominal { num_params; _ } -> num_params | _ -> 0
       in
-      Some (params + List.length ctors + 1)
+      Some
+        (List.init num_params (fun _ -> slot kind SlotPlaceholder)
+        @ List.map (fun (n, v) -> slot ~name:n kind (SlotValue v)) ctors
+        @ [ slot ~name kind (SlotValue nominal) ])
   | OpenBind _ -> None
 
-(* Total width of a binding list, or [None] if it contains an [open]. *)
-let binding_list_width bindings =
+(* The slots of a binding list, or [None] if it contains an [open]. *)
+let binding_list_slots bindings =
   List.fold_left
     (fun acc b ->
-      match (acc, binding_width b) with
-      | Some n, Some w -> Some (n + w)
+      match (acc, binding_slots b) with
+      | Some slots, Some s -> Some (slots @ s)
       | _ -> None)
-    (Some 0) bindings
+    (Some []) bindings
+
+let binding_list_width bindings =
+  Option.map List.length (binding_list_slots bindings)
 
 (* A named impl is also a member: [M.eq_C] denotes it. Anonymous impls are not
    reachable this way and stay available only through [open]. The type view of a

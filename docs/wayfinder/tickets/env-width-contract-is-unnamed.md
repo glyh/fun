@@ -108,3 +108,34 @@ implementations are one `elab_type_binding`, used by both folds, and the drift
 was the difference between them: the `Struct` copy named the type once before its
 constructors and once after. The shared version names it once, after, which is
 the order `Nbe` pushes.
+
+## Closed again, on a different design
+
+The ticket asked, as step 1, that the elaborator *derive* its extension from
+`Core.binding_width`. That is not achievable as written: the function returns a
+count, and the elaborator pushes entries carrying a name, a type and a value in a
+chosen order, alongside scaffolding entries that are deliberately not part of the
+width. Deriving would amount to calling the function and asserting on the result,
+which is the check that already existed.
+
+What both sides can genuinely share is the **shape**. `Core.binding_slots`
+replaces `binding_width` with an ordered list of slots, one per entry a binding
+adds, each carrying a name where it has one and where its payload comes from: a
+term to evaluate, a value the term already holds, or a stand-in each side fills
+in for itself. `OpenBind` still has no list, for the same reason it had no width.
+Width survives only as the length of that list.
+
+- **Evaluator:** pushes the slots directly. Its module fold and struct fold were
+  the same 55 lines twice, differing only in which entry constructors they built;
+  they are now one fold parameterised by those constructors. Its own cross-check
+  is deleted, because it would compare the contract with itself.
+- **Elaborator:** zips its payloads — a type and a value per slot — onto the same
+  list in `elab_type_binding`. A shape disagreement now fails while the context is
+  being built rather than as a wrong de Bruijn index later.
+- **Impls and traits** extend the context inside their own elaborator and do not
+  go through slots, so their contribution is still a second opinion and keeps the
+  binding-list check. That is the remaining seam, and it is the one the port
+  should close by construction.
+
+Verified load-bearing the same way as before: adding one slot to the nominal case
+fails the suite broadly, removing it restores it. 842 tests green.

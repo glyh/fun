@@ -106,11 +106,11 @@ adding a non-closed double-import case regardless of how this is resolved.
 ticket needed.
 
 **The rule.** A compilation unit's meaning depends only on its own source plus
-what it imports and opens. It elaborates against a base scope, not the
+what it imports and opens. It elaborates against a base context, not the
 importer's. One rule for values, operators, macros and syntax — today only syntax
 obeys it.
 
-**The base scope** holds the atom types, the primitives, and `stdlib` *bound as a
+**The base context** holds the atom types, the primitives, and `stdlib` *bound as a
 name, not opened*. So `pub v = stdlib.Some(1)` needs no open (it already works
 today — `init_ctx` binds `stdlib`), while bare `Some(1)` and `1 + 2` require the
 unit to write `open (import "std")`. That keeps
@@ -119,7 +119,7 @@ than restoring the blanket prelude open it deleted.
 
 **The invariant is base-anchored, not closed.** A unit's term keeps free indices
 — `import "std"` stays a `Var` — and is safe only because every importer shares
-the same base. Consequence worth writing down: the base scope's width is
+the same base. Consequence worth writing down: the base context's width is
 implicitly part of every cached term. Safe today because the cache lives in a
 per-run loader and is never persisted; a port that persisted it would have to key
 on the base.
@@ -252,3 +252,25 @@ import site - the only place that knows the written path - and
 `Syntax.SyntaxOperatorUse` carries it through to the expander. The body comes from
 the declaration that won the fixity, so the two cannot disagree by construction,
 the name scan is gone, and last-wins holds for both halves.
+
+## Implemented
+
+All four items above are in the tree; the resolution's "implementation not
+started" line described the state at the time it was written.
+
+`Elab_ctx.Ctx` now carries the base context it grew out of, set once by
+`init_ctx` and passed forward by every extension, and `Ctx.unit_base` hands an
+imported unit that base rather than the import-site context. Macros became
+members, keyed per unit, reachable through a qualified call or an `open` and no
+longer injected by binding an import. Confirmed against the current tree:
+
+```
+do outer_val = 9; U = import "u"; U.v end   => UnboundVariable "outer_val"
+do A = import "s"; B = import "s"; 1 end    => 1          (* s uses stdlib.Some *)
+```
+
+The double import of a non-closed unit, which used to fail with `bd mask length
+mismatch`, is covered by a regression, as are the macro cases: the qualified
+call, the bare import that no longer delivers, the `open` form, and the
+import-order pair that used to answer differently depending on which unit came
+first.
