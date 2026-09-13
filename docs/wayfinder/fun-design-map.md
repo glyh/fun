@@ -183,7 +183,7 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   form, so it stays (its dead `ix` return dropped).
 - [Module-level open form (strict imported modules)](tickets/module-level-open-strict-imported-modules.md)
   (closed & **implemented**) — `open <module-expr>` is now an item of a module or
-  struct body (`Syntax`/`Surface.OpenBinding`, `Core.OpenBind`), scoping over the
+  struct body (`Syntax.OpenBinding`, `Core.OpenBind`), scoping over the
   *subsequent* bindings only and exporting nothing. The operator harvest rides on
   the existing in-order `parse_import`; the runtime scope extension shares one
   helper with the expression-level `Open` so de Bruijn indices stay in lockstep
@@ -219,9 +219,8 @@ as the frontier reaches them.
   implementation shape is stable). Broad polish in the OCaml prototype is avoided
   because that code is expected to be replaced.
   Concrete input: elaborator errors carry **no source location at all**. `Elab_error`
-  has no span fields, and `Surface.t` has no spans to give it (see
-  [Syntax.t vs Surface.t](tickets/syntax-vs-surface-ir-layer.md)). Deleting
-  `Surface.t` makes spans available but does not attach them.
+  has no span fields. Since delete-surface-ir the elaborator reads `Syntax.t`, so
+  every form it sees has a span; attaching them to errors is the remaining work.
 - **`Self` names two things** — the record-recursion placeholder
   (`VSelfType args`, set by record declarations) and the partial struct type seen
   by struct method bodies (`elab_infer.ml`, `Struct` case). Both share
@@ -237,7 +236,7 @@ as the frontier reaches them.
   are desirable but should not drive the prototype agenda now.
 - ~~**Too many IR layers — can one be removed?**~~ — researched in
   [Syntax.t vs Surface.t](tickets/syntax-vs-surface-ir-layer.md). `Surface.t` is
-  `Syntax.t` with information thrown away, so it can be deleted (ticket below).
+  `Syntax.t` with information thrown away, and it is now deleted (ticket below).
   The other layers (`Raw_syntax`, `Core.term`, values) were not examined.
 - ~~**Primitive ↔ symbolic-name wiring is stringly-typed and fragile**~~ — promoted
   out of fog to [one declaration per primitive](tickets/unify-primitive-declaration.md);
@@ -356,7 +355,7 @@ every defect below is an invariant with no name in the source.
   constant-42 machine; replacement ids are re-enforested at the use site and
   the declarer's scope never reaches them. Found by the pass-2 model.
 - [Macros have no quoted syntax](tickets/macros-have-no-quoted-syntax.md)
-  (`quote(…)` landed; the spelling tier stays until `open` binds in the expander)
+  (closed — `quote(…)` with typed holes; bare names resolve to binders or open choices)
   — ids can only be built from strings with empty scope sets, so the
   implementation resolves them by spelling at elaboration. The model: quoted
   syntax resolves at the definition site; a context-less id is unbound.
@@ -369,6 +368,23 @@ every defect below is an invariant with no name in the source.
 - [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
   (closed) — one IR: the elaborator reads expanded `Syntax.t`, so spans and ids
   reach it.
+
+### Macro model distances still open (from the 2026-09-14 implementation run)
+
+The macro model's M1–M3, M6, M10–M11 and most of M2 and M12 are now enforced.
+What remains, in the recommended order:
+
+- [Path heads, traits and effects resolve without spelling](tickets/names-resolve-without-spelling.md)
+  — finish M12: path heads get open choices too, and traits and nominals are
+  located through the entry a head resolved to. **Do next.**
+- [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
+  (listed above).
+- [Macro fuel is the evaluation budget](tickets/macro-fuel-is-the-evaluation-budget.md)
+  — M5 + M8. **Blocked on** the checker evaluation budget below.
+- [Template and operator heads resolve by scope set](tickets/template-heads-resolve-by-scope-set.md)
+  — M7. Needs scopes at parse time (Honu's lazy enforestation); grill first.
+- [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
+  Structural only now; retires the template region rule in `add_id_scope_if`.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 

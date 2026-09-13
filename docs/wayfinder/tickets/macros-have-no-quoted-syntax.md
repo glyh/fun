@@ -3,8 +3,10 @@ title: Macros have no quoted syntax
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: "`quote(…)` is implemented, with typed holes and definition-site scopes. Bare names never resolve by spelling among locals: expansion produces binders or open choices. A context-less id reaches only the base context. The remaining spelling-based lookups (path heads, traits, effects) moved to names-resolve-without-spelling."
+closed_date: 2026-09-14
 blocked_by:
 ---
 

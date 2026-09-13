@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after module-level `open` / strict imported modules (September 2026).
+Last updated: after the macro-model implementation run (hygiene, open choices, delete Surface.t), 2026-09-14.
 
 ---
 
@@ -41,6 +41,32 @@ Last updated: after module-level `open` / strict imported modules (September 202
   `open (import "std")` itself. Prelude *values* still reach a module through the
   importer's elaboration context; see
   [imported module elaboration context](wayfinder/tickets/imported-module-elaboration-context.md).
+
+### Macro model enforcement and one IR (2026-09-14)
+- **One IR.** `Surface.t` and lowering are deleted; the elaborator reads expanded
+  `Syntax.t`, so ids, paths and spans reach it
+  ([delete-surface-ir](wayfinder/tickets/delete-surface-ir.md)).
+- **Hygiene.** Every macro application (untyped, type-aware, decl, operator) goes
+  through `Expand.application`: use-site and intro scopes on what it receives,
+  intro flipped on what it returns. `quote(…)` builds syntax with
+  definition-site scopes and holes typed by position (`Expr`/`Pattern`/`Id`).
+  Scope sets are opaque `Scopes` values. Macros no longer capture their
+  arguments, and template literals resolve at the definition.
+- **Reflection is total.** The prelude's `Syntax` ADTs have one constructor per
+  form (one `and` chain), and the round trip is the identity on every field.
+- **Name resolution.** Local binders always get fresh resolved names
+  (`x__0`). A path's head is an id. A bare name resolves to a binder or to an
+  **open choice** (the candidate opens by scope set, then the shadowed binder),
+  settled by the elaborator against each open's members; no bare name is found
+  by spelling among locals. Path heads, traits and effects are still located by
+  spelling ([names-resolve-without-spelling](wayfinder/tickets/names-resolve-without-spelling.md)).
+- **Macro bodies** elaborate inside the unit opens around their definition,
+  nothing ambient (M3). Units that write macros open the prelude themselves.
+- **Types.** `type A = … and B = …` chains are mutually recursive nominals. Nested
+  patterns through recursive positions work (they read constructors by nominal id).
+- Still open from the macro model: explicit `[A]` binders, M5/M8 (one budget,
+  error values), M7 (scope-keyed template heads), M9 (templates desugar to
+  macros). See the design map's "Macro model distances still open".
 
 ### Macro system — Stages 0–10
 - Stages 0 through 10 are complete: substrate, hygiene, expansion, phase-aware imports,
