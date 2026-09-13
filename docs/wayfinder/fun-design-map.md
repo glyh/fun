@@ -70,6 +70,15 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   columns, and the evaluator holds one of them rather than a peer environment.
   *Scope* stays the hygiene word and is not a synonym for it. Vocabulary in the
   root [`CONTEXT.md`](../../CONTEXT.md).
+- [Domain model — surface and enforestation](topics/core-tt-domain-model-surface.md)
+  (closed) — second pass of the port's specification: the reader commits to
+  nothing but grouping, enforestation is parsing interleaved with expansion,
+  resolution is sets-of-scopes (largest subset wins, ambiguity loud), expansion
+  alpha-renames values only, and lowering is safe only because expand already
+  ran. The three macro paths measured against the model's one hygiene contract
+  — every divergence a defect ticket; `Surface.t` named as an erasure plus one
+  escape hatch, not a language level. Vocabulary in the root
+  [`CONTEXT.md`](../../CONTEXT.md).
 - [Constructor lookup matches the type name](tickets/constructor-lookup-matches-type-name.md)
   (closed) — premise was stale; the symptom already passed. Pattern-head
   resolution tries the type name first and the constructor name second, and that
@@ -210,8 +219,10 @@ as the frontier reaches them.
   by struct method bodies (`elab_infer.ml`, `Struct` case). Both share
   `ctx.self_type`. Giving the record one an identity
   ([self-type-has-no-identity](tickets/self-type-has-no-identity.md)) may force
-  them apart; whether they should be one concept is a naming question for the
-  [surface domain-model pass](tickets/domain-model-surface-enforestation.md).
+  them apart; whether they should be one concept remains a naming question —
+  the
+  [surface domain-model pass](tickets/domain-model-surface-enforestation.md)
+  closed without taking it.
 - **Library-level features vs compiler machinery** — how much future feature work
   (deriving/fallback, protocol-style ops, UFCS, FFI/native bindings) should be
   library-level macros / type-case rather than new compiler machinery. UFCS and FFI
@@ -237,8 +248,11 @@ would faithfully reproduce are gone. A port carries code, not invariants — and
 every defect below is an invariant with no name in the source.
 
 - [Domain model for `core_tt` before the port](tickets/domain-model-core-tt.md)
-  — the port's specification. First pass scoped to the elaborate ↔ evaluate
-  boundary, where most of the unnamed invariants live. **Do this first.**
+  (closed) — the port's specification, written in passes: first (elaborate ↔
+  evaluate) done, second (surface and enforestation) done, fourth (effects)
+  done — the
+  [third](domain-model-macro-hygiene.md) (macro evaluation and hygiene) is the
+  remaining one.
 - [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)
   (closed) — a compilation unit now elaborates against the base context, so its
   meaning no longer depends on what the importer happened to have in scope, and
@@ -270,10 +284,6 @@ every defect below is an invariant with no name in the source.
 - [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
   — a macro defined in a `struct`/`module`/`do` is callable after the block,
   `pub` or not. Found by the research above.
-- [Domain model — surface and enforestation](tickets/domain-model-surface-enforestation.md)
-  — second pass of the port's specification: the reader, the enforester, and the
-  seam where the expander hands the elaborator its output — the same class of
-  unnamed invariants pass one found a phase earlier.
 - [Domain model — macro evaluation and hygiene](tickets/domain-model-macro-hygiene.md)
   — third pass of the port's specification: the hygiene contract as one
   invariant over the three application paths, the syntax↔value round trip
