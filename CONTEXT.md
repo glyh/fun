@@ -139,16 +139,20 @@ An entry standing for a variable with no known value — a genuine binder. A met
 is abstracted over these.
 _Avoid_: rigid, abstract, opaque
 
+**Meta**:
+An unknown term the elaborator solves by unification, standing for a function of
+the bound entries in scope where it was created.
+_Avoid_: hole, unification variable, flex
+
 **Defined entry**:
 An entry whose value is known. A meta skips over these rather than abstracting
 over them.
 _Avoid_: transparent, concrete, let-bound
 
 **Slot**:
-What a binding contributes to a context, stated once for both sides: an ordered
-list, one item per entry it adds, each carrying a name where it has one and
-where its payload comes from. The elaborator hangs a type and a value on each,
-the evaluator a value; the order and the count belong to neither.
+What a binding contributes to a context: an ordered list, one item per entry it
+adds, each with a name where it has one. Elaboration and evaluation both read
+the same list, so they cannot disagree on order or count.
 _Avoid_: contribution, field, width (that is the list's length)
 
 **Level**:
@@ -209,10 +213,16 @@ pattern synonym, an impl, or an open. A named public binding is reached from
 outside as a member.
 _Avoid_: declaration, member, definition
 
+**Open**:
+A binding that brings a module's public members into scope as bare names, in
+order, so they shadow earlier names and later bindings shadow them. Delivers
+macros and syntactic roles the same way it delivers values.
+_Avoid_: import (that reaches a unit), include, using
+
 **Binding width**:
 How many entries a single binding adds to the context. Known from the binding for
-every kind except `open`, whose width is the public-entry count of a module that
-must be evaluated first.
+every kind except `open`, whose width is the number of public members in the
+opened module's type — known at elaboration, like every other width.
 _Avoid_: arity, size, contribution
 
 **Module**:

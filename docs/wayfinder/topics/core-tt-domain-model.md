@@ -93,6 +93,13 @@ that must be evaluated first, so it is not recoverable from the term. Every
 traversal that walks a binding list with a constant cutoff is wrong for the same
 reason, which is why they now refuse lists they cannot account for.
 
+**Pass 2 refinement.** In the model the width of `open e` is the number of public
+members in `e`'s *type*, known when elaboration reaches the `open`; the members'
+values are run-time projections of one evaluation of `e`. Needing the module
+*value* is a defect: `open_module_value` (`elab_resolve.ml`) folds the type's
+entries against the evaluated value's entries and silently opens nothing when
+the value is not a `VModule` (`| _ -> ctx`).
+
 ### I3 — a dotted path denotes the last member of that name
 
 **Status: enforced by construction.**

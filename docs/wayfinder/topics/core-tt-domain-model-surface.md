@@ -114,7 +114,12 @@ carry no scopes. Pattern constructor heads are bare names: `PatCon` holding
 strings is a defect, the pattern-position twin of
 [template-literals-resolve-at-use-site](../tickets/template-literals-resolve-at-use-site.md).
 
-## Three macro paths, three hygiene contracts
+## Three macro paths, three hygiene contracts (today)
+
+The model has one contract for every macro and template application: an intro
+scope and a use-site scope, quoted ids resolving at the definition site, splices
+keeping their scopes, and output expanded in place. The table records how far
+each implementation path is from it; every bold cell is a defect.
 
 | path | runs | heads keyed by | spliced args | written literals | output |
 |---|---|---|---|---|---|
@@ -135,12 +140,19 @@ macro binder's fresh scope (S4's always-inside rule), and is captured.
 
 The type-aware row's output column is the IR-layers ticket's finding 4.
 
-**There is no single hygiene invariant yet** — there are three, one per path,
-only one of which (untyped heads) is both hygienic and tested. Settling what
-the *one* contract should be is the hygiene pass's first question; the three
-defect tickets above are its evidence.
+**The implementation has no single hygiene invariant yet** — there are three,
+one per path, only one of which (untyped heads) is both hygienic and tested.
+What the one contract *is* is settled (above, and in `CONTEXT.md`); the defect
+tickets are the distance to it, joined by
+[macros-have-no-quoted-syntax](../tickets/macros-have-no-quoted-syntax.md) for
+the written-literals column.
 
-## The seam
+## The seam (today)
+
+No counterpart in the model: expansion and elaboration interleave binding by
+binding, so there is no hand-off tree. Recorded because the port must know what
+the current tree carries, and because
+[delete-surface-ir](../tickets/delete-surface-ir.md) removes it.
 
 What the expander hands the elaborator: a `Surface.t` whose value names are
 alpha-unique strings, whose type-namespace names are written strings, whose
