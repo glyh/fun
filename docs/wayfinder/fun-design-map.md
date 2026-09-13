@@ -293,8 +293,9 @@ every defect below is an invariant with no name in the source.
   order is load-bearing for `self` seeing later fields. Recommended: source-order
   scoping with deferred method bodies. Awaiting grilling.
 - [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
-  — a macro defined in a `struct`/`module`/`do` is callable after the block,
-  `pub` or not. Found by the research above.
+  (closed) — the written-name fallback now serves only context-less
+  (string-built) ids, so a source-written call resolves by scope set alone and a
+  block's macro is not reachable after it.
 
 ### Language and macro work
 

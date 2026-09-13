@@ -267,6 +267,11 @@ let macro_head_key (ctx : Expand_ctx.t) (id : Syntax.id) :
         ( resolved_name,
           Expand_ctx.lookup_macro_entry ctx resolved_name,
           Expand_ctx.is_provisional_macro ctx resolved_name )
+  (* Only a context-less id (empty scope set: built from a string) falls back to
+     its written name — the string fall-through (S6) that quoted syntax
+     retires. An id written in source resolves by scope set alone, so a macro
+     bound inside a block is not reachable after it. *)
+  | None when not (Scope_set.is_empty id.scope) -> None
   | None -> (
       match Expand_ctx.lookup_macro_entry ctx id.name with
       | Some _ as e -> Some (id.name, e, Expand_ctx.is_provisional_macro ctx id.name)

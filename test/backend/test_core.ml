@@ -1362,6 +1362,18 @@ let test_expr_binding () =
        mk(0)
      end" ()
 
+let test_block_local_macros_do_not_leak () =
+  List.iter (fun src ->
+    match eval_with_macros src with
+    | _ -> Alcotest.fail ("block-local macro leaked: " ^ src)
+    | exception _ -> ())
+    [ "do x = do macro mi(_) -> Syntax.i64(7); 0 end; mi(0) end";
+      "do M = module macro mi(_) -> Syntax.i64(7) end; mi(0) end";
+      "do R = struct macro mi(_) -> Syntax.i64(7) end; mi(0) end";
+      "do Q = struct macro mi(_) -> Syntax.var(\"I64\"); g : I64 end; R = struct f : mi(0) end; R{f = 1}.f end" ];
+  check_i64_macro "block-local macro usable inside its block" 7L
+    "do R = struct macro mi(_) -> Syntax.i64(7); pub h = mi(0) end; R.h end" ()
+
 let test_type_aware_output_is_expanded () =
   check_i64_macro "type-aware output expands nested macro" 1L
     "do
@@ -3248,6 +3260,7 @@ let () =
           Alcotest.test_case "type-aware default macro" `Quick test_type_aware_macro;
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
           Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
+          Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;
           Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
           Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
           Alcotest.test_case "R-type match non-exhaustive missing ctors" `Quick test_rtype_match_non_exhaustive_missing_ctors;
