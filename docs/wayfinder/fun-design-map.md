@@ -337,8 +337,8 @@ every defect below is an invariant with no name in the source.
 ### IR layers (from [Syntax.t vs Surface.t](tickets/syntax-vs-surface-ir-layer.md))
 
 - [Type-aware macro output is not expanded](tickets/type-aware-macro-output-is-not-expanded.md)
-  — `: Expr(A)` macro output skips `expand`, so a nested macro call inside it is
-  unbound. Small fix; **do first**.
+  (closed) — both type-aware call sites share one helper that expands the output
+  before lowering; a non-syntax result is an error naming the macro, not a hole.
 - [Procedural macros capture use-site variables](tickets/procedural-macros-capture-use-site-variables.md)
   — **diagnosed** (pass-2 model): the `Syntax.t` ↔ value round-trip drops scope
   sets (`value_to_id` hardcodes empty), so a spliced argument loses its
@@ -363,7 +363,7 @@ every defect below is an invariant with no name in the source.
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
   — `macro m[A](x) : Expr(A)`; names in an annotation only refer.
 - [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
-  — mechanical collapse of the duplicate IR. **Blocked on** the first ticket.
+  — mechanical collapse of the duplicate IR. Unblocked.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 

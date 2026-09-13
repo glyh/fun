@@ -87,6 +87,28 @@ let resolve_dotted_value_opt ctx dotted =
   | [] -> None
   | name :: rev_path -> resolve_path_value_opt ctx (List.rev rev_path) name
 
+(** Run a type-aware macro call whose result type [ty] is already unified with
+    the annotation's constraint: apply the macro to [ty] and its syntax
+    arguments under the runtime's fuel, then expand the output in place like
+    every macro's output (M6). A result that is not syntax is an error naming
+    the macro, never a hole. *)
+let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nominals ty args =
+  let wrapped_ty =
+    match macro_nominals with
+    | Some nominals ->
+        VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ty]; nominal = nominals.Macro_eval.r_ }
+    | None -> ty
+  in
+  runtime.Ctx.with_fuel ~name (fun () ->
+    let fn = runtime.run_macro macro_fn wrapped_ty in
+    let fn = List.fold_left (fun fn arg ->
+      match arg with
+      | Surface.StxExpr stx_arg -> runtime.run_macro fn (Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg)
+      | _ -> fn) fn args in
+    match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
+    | Some expanded -> Lower_surface.lower_expr (runtime.expand expanded)
+    | None -> raise (ElabError (MacroDidNotReturnSyntax name)))
+
 let lookup_trait ctx name =
   match NameMap.find_opt name ctx.Ctx.traits with
   | Some info -> info

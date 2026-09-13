@@ -114,20 +114,18 @@ in [`CONTEXT.md`](../../../CONTEXT.md), extended to count macro applications;
 
 ### M6 — a type-aware call is deferred, and its output is expanded in place
 
-**Status: deferred enforced; expansion not implemented.** When a macro's
+**Status: enforced.** When a macro's
 annotation names a type, the *call* is deferred to the elaborator: the
 annotation was resolved semantically at the definition (against what was
 elaborated before it), so the call must land where the expected type is known.
 The arguments travel as syntax objects — transport, not opacity; under total
 reflection there is no other way for them to travel. At the call site the
 elaborator unifies the expected type with the annotation's constraint and
-applies. The output, like every macro's output, **is expanded in place** —
-today it is lowered directly and never expanded, which is
-[type-aware-macro-output-is-not-expanded](../tickets/type-aware-macro-output-is-not-expanded.md).
-This pass adds a second defect at the same site: when unwrapping the result
-fails, the elaborator silently mints a fresh meta — a failed expansion becomes
-an unsolved hole instead of an error. Both belong to the one helper that
-ticket asks for.
+applies. The output, like every macro's output, **is expanded in place**, and
+a result that is not syntax is an error naming the macro, never an unsolved
+hole. Both live in one helper shared by the infer and check sites
+([type-aware-macro-output-is-not-expanded](../tickets/type-aware-macro-output-is-not-expanded.md),
+closed).
 
 ### M7 — template heads resolve by scope set
 

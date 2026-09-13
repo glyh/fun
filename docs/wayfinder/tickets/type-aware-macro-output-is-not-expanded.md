@@ -3,8 +3,10 @@ title: Type-aware macro output is not expanded
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Both call sites now share one helper, `run_type_aware_macro` (elab_resolve.ml). It expands the output through the macro runtime's new `expand` capability before lowering, and a non-syntax result raises `MacroDidNotReturnSyntax` naming the macro instead of minting a meta. The probe is a regression test.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

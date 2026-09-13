@@ -924,34 +924,14 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
              | Some (macro_fn, macro_kind, macro_nominals) ->
                 (match ctx.macro_runtime with
                  | Some runtime ->
-                     let apply_fn = runtime.Ctx.run_macro in
-                          let ty = Ctx.raw_meta ctx in
-                          (match Syntax.MacroKind.type_constraint_name macro_kind with
-                           | Some constraint_name ->
-                               (match resolve_dotted_value_opt ctx constraint_name with
-                                | Some (constraint_val, _) -> Ctx.unify ctx ty constraint_val
-                                | None -> raise (ElabError (UnboundVariable constraint_name)))
-                           | None -> ());
-                          let wrapped_ty =
-                              match macro_nominals with
-                             | Some nominals ->
-                                 VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ty]; nominal = nominals.Macro_eval.r_ }
-                             | None -> ty
-                          in
-                          runtime.Ctx.with_fuel ~name (fun () ->
-                            let fn = apply_fn macro_fn wrapped_ty in
-                            let fn = List.fold_left (fun fn arg ->
-                              match arg with
-                              | Surface.StxExpr stx_arg ->
-                                   let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg in
-                                   apply_fn fn arg_stx
-                               | _ -> fn) fn args in
-                             (match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
-                             | Some expanded ->
-                                 ops.infer ctx (Lower_surface.lower_expr expanded)
-                             | None ->
-                                 let ty = Ctx.raw_meta ctx in
-                                 (Ctx.fresh_meta ctx, ty)))
+                     let ty = Ctx.raw_meta ctx in
+                     (match Syntax.MacroKind.type_constraint_name macro_kind with
+                      | Some constraint_name ->
+                          (match resolve_dotted_value_opt ctx constraint_name with
+                           | Some (constraint_val, _) -> Ctx.unify ctx ty constraint_val
+                           | None -> raise (ElabError (UnboundVariable constraint_name)))
+                      | None -> ());
+                     ops.infer ctx (run_type_aware_macro runtime ~name macro_fn macro_nominals ty args)
                  | None -> failwith "macro runtime required")
             | None -> failwith "macro-only syntax should not reach elaboration")
        | None -> failwith "macro-only syntax should not reach elaboration")

@@ -1362,6 +1362,15 @@ let test_expr_binding () =
        mk(0)
      end" ()
 
+let test_type_aware_output_is_expanded () =
+  check_i64_macro "type-aware output expands nested macro" 1L
+    "do
+       macro one(_) -> Syntax.i64(1)
+       macro m(e) : Expr(A) do do _ = A; Syntax.ap(Syntax.var(\"one\"), e) end end
+       y : I64 = m(0)
+       y
+     end" ()
+
 let test_expected_type_reaches_macro () =
   let _ = eval_decl_module
     "macro typed(_) : Expr(A) do Syntax.i64(42) end
@@ -3238,6 +3247,7 @@ let () =
           Alcotest.test_case "Pattern wild round-trip" `Quick test_pattern_round_trip;
           Alcotest.test_case "type-aware default macro" `Quick test_type_aware_macro;
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
+          Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
           Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
           Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
           Alcotest.test_case "R-type match non-exhaustive missing ctors" `Quick test_rtype_match_non_exhaustive_missing_ctors;
