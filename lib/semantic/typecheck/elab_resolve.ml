@@ -100,13 +100,15 @@ let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nomi
     | None -> ty
   in
   runtime.Ctx.with_fuel ~name (fun () ->
+    let app = runtime.application () in
     let fn = runtime.run_macro macro_fn wrapped_ty in
     let fn = List.fold_left (fun fn arg ->
       match arg with
-      | Surface.StxExpr stx_arg -> runtime.run_macro fn (Macro_eval.wrap_stx ~nominals:macro_nominals stx_arg)
+      | Surface.StxExpr stx_arg ->
+          runtime.run_macro fn (Macro_eval.wrap_stx ~nominals:macro_nominals (app.Expand.receive stx_arg))
       | _ -> fn) fn args in
     match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
-    | Some expanded -> Lower_surface.lower_expr (runtime.expand expanded)
+    | Some expanded -> Lower_surface.lower_expr (runtime.expand (app.emit expanded))
     | None -> raise (ElabError (MacroDidNotReturnSyntax name)))
 
 let lookup_trait ctx name =

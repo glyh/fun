@@ -974,3 +974,23 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | MacroDef _ | SyntaxOperatorUse _ ->
       failwith "macro-only syntax should not reach elaboration"
   | StxExpr _ -> failwith "stx-only syntax should not reach elaboration"
+  | Quote { template; holes } ->
+      (* Quoted syntax is its reflection value, built here with the scopes it
+         was written with. Each hole is checked against the reflection type
+         its position gives it (M10); one hole in two kinds of position is an
+         error, not a coercion. *)
+      let ns = Elab_stdlib.syntax_nominals ctx in
+      let template_value = Macro_eval.wrap_stx ~nominals:(Some ns) template in
+      let occurrences = Quote_holes.occurrences template_value in
+      let hole_core (name, hole) =
+        let kinds = List.filter_map (fun (n, k) -> if String.equal n name then Some k else None) occurrences in
+        let expected =
+          match List.sort_uniq compare kinds with
+          | [ Quote_holes.Expr ] -> ns.Macro_eval.expr
+          | [ Quote_holes.Pattern ] -> ns.pat
+          | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Id" ]
+          | _ -> raise (ElabError (QuoteHoleKindConflict name))
+        in
+        (name, ops.check ctx hole expected)
+      in
+      (Quote { template = template_value; holes = List.map hole_core holes }, ns.expr)

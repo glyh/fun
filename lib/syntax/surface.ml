@@ -111,7 +111,8 @@ and t =
   | RefNew of t
   | RefGet of t
   | RefSet of t * t
-  | StxExpr of Syntax.t (* opaque syntax wrapper — survives lowering intact *)
+  | StxExpr of Syntax.t
+  | Quote of { template : Syntax.t; holes : (string * t) list } (* opaque syntax wrapper — survives lowering intact *)
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
   | MacroDef of { name : string; value : t; body : t; kind : Syntax.MacroAnnotation.t option }
   | MacroCall of t * t list

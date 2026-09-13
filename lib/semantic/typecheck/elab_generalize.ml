@@ -74,6 +74,7 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
                | OpenBind value -> closed_under depth value
                | TypeBind _ | EffectBind _ | PatternSynBind _ -> true)
              bindings
+    | Quote { holes; _ } -> List.for_all (fun (_, h) -> closed_under depth h) holes
     | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Perform _ | Stx _ | Imported _ -> true
   in
   let has_bound = List.exists (fun bd -> bd = Bound) ctx.bds in

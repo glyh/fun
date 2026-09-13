@@ -151,6 +151,10 @@ and kind =
   | RefSet of t * t
   | Match of t * match_branch list
   | Stx of t  (* opaque syntax wrapper *)
+  | Quote of { template : t; holes : (string * t) list }
+      (** [quote(…)]: syntax written literally in a macro body. Each hole [$x]
+          stands in [template] as an id spelled ["$x"] - [$] cannot begin a
+          source identifier - and in [holes] as the ordinary reference [x]. *)
   | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {

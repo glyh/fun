@@ -3,6 +3,8 @@ type t = int list
 let empty = []
 let is_empty = function [] -> true | _ -> false
 
+let filter = List.filter
+
 let union a b =
   let rec go a b =
     match a, b with

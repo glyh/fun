@@ -52,6 +52,7 @@ type syntax_nominals = {
   fixity : value;
   ann_arg : value;
   macro_ann : value;
+  quote_hole : value;
 }
 
 (* Reflection: [Syntax.t] and the reflection ADTs of the prelude's [Syntax]
@@ -184,6 +185,9 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | RefSet (l, r) -> e "RawRefSet" [ x l; x r ]
   | Match (scrut, branches) -> e "RawMatch" [ x scrut; w_list ns (w_branch ns) branches ]
   | Stx inner -> e "RawStx" [ x inner ]
+  | Quote { template; holes } ->
+      e "RawQuote"
+        [ x template; w_list ns (fun (n, h) -> con ns.quote_hole "MkQuoteHole" [ w_string n; x h ]) holes ]
   | MacroDef { name; value; body; kind } ->
       e "RawMacroDef" [ w_id ns name; x value; x body; w_option ns (w_macro_ann ns) kind ]
   | MacroCall (f, args) -> e "RawMacroCall" [ x f; w_list ns x args ]
@@ -457,6 +461,17 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* branches = u_list ns (u_branch ns) branches in
           mk (Match (scrut, branches))
       | "RawStx", [ inner ] -> let* inner = x inner in mk (Stx inner)
+      | "RawQuote", [ template; holes ] ->
+          let* template = x template in
+          let* holes =
+            u_list ns
+              (fun h ->
+                match payload ns.quote_hole h with
+                | Some ("MkQuoteHole", [ n; e ]) -> let* n = u_string n in let* e = x e in Some (n, e)
+                | _ -> None)
+              holes
+          in
+          mk (Quote { template; holes })
       | "RawMacroDef", [ name; value; body; kind ] ->
           let* name = u_id ns name in
           let* value = x value in

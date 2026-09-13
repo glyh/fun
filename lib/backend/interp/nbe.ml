@@ -136,6 +136,9 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Atom a -> Done (VAtom a)
   | AtomTy t -> Done (VAtomTy t)
   | Stx stx -> Done (VStx (StxExpr stx))
+  | Quote { template; holes } ->
+      sequence_values mc env (List.map snd holes) (fun values ->
+          Done (Quote_holes.fill template (List.combine (List.map fst holes) values)))
   (* Anchor-independent: a unit's value carries its own environment. *)
   | Imported v -> Done v
   | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))

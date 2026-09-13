@@ -43,4 +43,5 @@ let syntax_nominals ctx : Macro_eval.syntax_nominals =
     atom_ty = resolve ctx [Compiler_names.Module_name.syntax; "AtomTy"];
     fixity = resolve ctx [Compiler_names.Module_name.syntax; "Fixity"];
     ann_arg = resolve ctx [Compiler_names.Module_name.syntax; "AnnArg"];
-    macro_ann = resolve ctx [Compiler_names.Module_name.syntax; "MacroAnn"] }
+    macro_ann = resolve ctx [Compiler_names.Module_name.syntax; "MacroAnn"];
+    quote_hole = resolve ctx [Compiler_names.Module_name.syntax; "QuoteHole"] }

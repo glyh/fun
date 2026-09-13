@@ -529,6 +529,9 @@ and parse_primary env terms =
       | Token { kind = KwModule; _ } -> parse_module_expr env term.span rest
       | Token { kind = KwSig; _ } -> parse_sig_expr env term.span rest
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
+      | Token { kind = Ident "quote"; _ }
+        when (match drop_separators rest with { datum = Group (Raw_syntax.Paren, _, _); _ } :: _ -> true | _ -> false) ->
+          Enforest_forms.parse_quote (form_callbacks env) term.span rest
       | Token { kind = Ident name; _ } -> (
           match
             Binding.find_operator env.operators ~fixity:Binding.Prefix

@@ -27,6 +27,7 @@ type elab_error =
   | AmbiguousTraitImplementation of string
   | MissingTraitImplementation of string
   | MacroDidNotReturnSyntax of string
+  | QuoteHoleKindConflict of string
 
 exception ElabError of elab_error
 
@@ -59,6 +60,7 @@ let string_of_elab_error = function
   | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""
   | MissingTraitImplementation n -> "MissingTraitImplementation \"" ^ n ^ "\""
   | MacroDidNotReturnSyntax n -> "MacroDidNotReturnSyntax \"" ^ n ^ "\""
+  | QuoteHoleKindConflict n -> "QuoteHoleKindConflict \"" ^ n ^ "\""
 
 let () =
   Printexc.register_printer (function

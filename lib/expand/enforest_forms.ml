@@ -76,6 +76,27 @@ let parse_ref callbacks start_span terms =
       (stx ~span:(span_between start_span arg.span) (Syntax.RefNew arg), rest)
   | _ -> error "ref requires an argument"
 
+(* [quote(form)]: syntax written literally (M10). Each [$x] becomes an id spelled
+   ["$x"] where it stands, so the form parses as written, and a reference [x]
+   in the hole list, so the macro's own variable is resolved like any other. *)
+let parse_quote callbacks start_span terms =
+  match drop_separators terms with
+  | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
+      let holes = ref [] in
+      let rec rewrite = function
+        | { datum = Token { kind = Operator "$"; _ }; _ } :: { datum = Token { kind = Ident name; _ }; span } :: rest ->
+            let hole = "$" ^ name in
+            if not (List.mem_assoc hole !holes) then holes := (hole, var ~span name) :: !holes;
+            { datum = Token { kind = Ident hole; span }; span } :: rewrite rest
+        | { datum = Group (delimiter, items, span); _ } :: rest ->
+            { datum = Group (delimiter, rewrite items, span); span } :: rewrite rest
+        | term :: rest -> term :: rewrite rest
+        | [] -> []
+      in
+      let template = parse_group_arg callbacks (rewrite items) in
+      (stx ~span:(span_between start_span span) (Syntax.Quote { template; holes = List.rev !holes }), rest)
+  | _ -> error "quote requires a parenthesized form"
+
 let parse_deref callbacks start_span terms =
   match drop_separators terms with
   | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->

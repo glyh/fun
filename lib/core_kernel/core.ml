@@ -136,6 +136,10 @@ and term =
           it unchanged.
           See docs/wayfinder/tickets/imported-module-elaboration-context.md. *)
   | Stx of Syntax.t
+  | Quote of { template : value; holes : (string * term) list }
+      (** Quoted syntax: [template] is the reflection value of the quoted
+          form, holes still in place; evaluating fills each hole with its
+          term's value (see [Quote_holes]). *)
 
 and match_branch =
   | ValueBranch of core_pat * term

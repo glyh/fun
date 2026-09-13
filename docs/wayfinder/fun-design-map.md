@@ -341,7 +341,7 @@ every defect below is an invariant with no name in the source.
   (closed) — both type-aware call sites share one helper that expands the output
   before lowering; a non-syntax result is an error naming the macro, not a hole.
 - [Procedural macros capture use-site variables](tickets/procedural-macros-capture-use-site-variables.md)
-  — **diagnosed** (pass-2 model): the `Syntax.t` ↔ value round-trip drops scope
+  (closed — one application contract, use-site + intro scopes) — **diagnosed** (pass-2 model): the `Syntax.t` ↔ value round-trip drops scope
   sets (`value_to_id` hardcodes empty), so a spliced argument loses its
   occurrence scope and the macro's binder captures it. Templates' splices are
   clean — their written literals are the remaining hole:
@@ -355,6 +355,7 @@ every defect below is an invariant with no name in the source.
   constant-42 machine; replacement ids are re-enforested at the use site and
   the declarer's scope never reaches them. Found by the pass-2 model.
 - [Macros have no quoted syntax](tickets/macros-have-no-quoted-syntax.md)
+  (`quote(…)` landed; the spelling tier stays until `open` binds in the expander)
   — ids can only be built from strings with empty scope sets, so the
   implementation resolves them by spelling at elaboration. The model: quoted
   syntax resolves at the definition site; a context-less id is unbound.

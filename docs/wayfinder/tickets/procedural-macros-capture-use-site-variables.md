@@ -3,8 +3,10 @@ title: Procedural macros capture use-site variables
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Fixed by the Racket-faithful direction. Scope sets survive the round trip. Every macro application (untyped, type-aware, decl and operator) goes through `Expand.application`, which adds a use-site scope and an intro scope to what the macro receives and flips the intro scope on what it returns. All three repros answer 1 in `test_macro_does_not_capture_argument`, which fails with an ambiguous binding when the contract is disabled.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

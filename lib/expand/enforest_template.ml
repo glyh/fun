@@ -378,6 +378,8 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.RefSet (l, r) -> { stx with kind = Syntax.RefSet (go l, go r) }
   | Syntax.Match (scrut, branches) -> { stx with kind = Syntax.Match (go scrut, List.map (map_template_match_branch captures go) branches) }
   | Syntax.Stx s -> { stx with kind = Syntax.Stx (go s) }
+  | Syntax.Quote { template; holes } ->
+      { stx with kind = Syntax.Quote { template = go template; holes = List.map (fun (n, h) -> (n, go h)) holes } }
   | Syntax.MacroDef { name; value; body; _ } ->
       (* Deliberately drop annotation after macro registration: the resolved
          kind is carried by the macro registry/table. Macro-generating macros

@@ -1410,11 +1410,30 @@ let test_block_local_macros_do_not_leak () =
   check_i64_macro "block-local macro usable inside its block" 7L
     "do R = struct macro mi(_) -> Syntax.i64(7); pub h = mi(0) end; R.h end" ()
 
+(* M2: a macro's binder does not capture what it received, whether the binder
+   was quoted or built from a string, on the untyped and the type-aware path;
+   a template's splice keeps its scope too. Each answers the caller's x. *)
+let test_macro_does_not_capture_argument () =
+  List.iter
+    (fun src -> check_i64_macro src 1L src ())
+    [ "do x = 1; macro m(e) -> Syntax.ap(Syntax.lam(\"x\", e), Syntax.i64(2)); y : I64 = m(x); y end";
+      "do x = 1; macro m(e) -> quote((fn(x) -> $e)(2)); y : I64 = m(x); y end";
+      "do x = 1; macro m(e) : Expr(A) do do _ = A; Syntax.ap(Syntax.lam(\"x\", e), Syntax.i64(2)) end end; y : I64 = m(x); y end";
+      "do x = 1; syntax li do | li $body -> do x = 2; $body end end; y : I64 = li x; y end" ]
+
+let test_quote_splices_holes () =
+  check_i64_macro "quote splices an expression hole" 42L "do macro m(e) -> quote($e + 1); m(41) end" ();
+  check_i64_macro "quoted syntax parses where written" 1L
+    "do macro m(e) -> quote(match $e do True -> 1 | False -> 0 end); m(True) end" ();
+  match eval_with_macros "do macro m(e) -> quote(fn($e) -> $e); m(1) end" with
+  | _ -> Alcotest.fail "a hole in both binder and expression position must be rejected"
+  | exception _ -> ()
+
 let test_type_aware_output_is_expanded () =
   check_i64_macro "type-aware output expands nested macro" 1L
     "do
        macro one(_) -> Syntax.i64(1)
-       macro m(e) : Expr(A) do do _ = A; Syntax.ap(Syntax.var(\"one\"), e) end end
+       macro m(e) : Expr(A) do do _ = A; quote(one($e)) end end
        y : I64 = m(0)
        y
      end" ()
@@ -2052,7 +2071,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "one constructor per expression form" 33 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 34 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true
@@ -3294,6 +3313,8 @@ let () =
           Alcotest.test_case "type-aware default macro" `Quick test_type_aware_macro;
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
           Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
+          Alcotest.test_case "macro does not capture its argument" `Quick test_macro_does_not_capture_argument;
+          Alcotest.test_case "quote splices holes" `Quick test_quote_splices_holes;
           Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;
           Alcotest.test_case "reflection round trip is the identity" `Quick test_round_trip_is_identity;
           Alcotest.test_case "unit-level type chain" `Quick test_unit_level_type_chain;

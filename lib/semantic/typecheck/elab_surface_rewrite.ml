@@ -189,6 +189,8 @@ let rewrite_record_self_refs record_name params expr =
                   Surface.EffectBranch { effect_path; op; arg_pat; body = go bound body }
             in
             Surface.Match (go bound scrutinee, List.map go_branch branches)
+        | Quote { template; holes } ->
+            Surface.Quote { template; holes = List.map (fun (n, h) -> (n, go bound h)) holes }
         | Atom _ | Var _ | Self | SelfType | StxExpr _ -> expr
         | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ -> failwith "macro-only syntax should not reach elaboration")
   in

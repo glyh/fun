@@ -67,7 +67,10 @@ total reflection these are not two bugs but one distance: the ADTs do not yet
 
 ### M2 — one hygiene contract governs every application
 
-**Status: decided (pass two), not implemented.** Every macro or template
+**Status: enforced for macros (2026-09-14); templates pending M9.** Every
+macro application (untyped, type-aware, decl and operator) goes through
+`Expand.application`, which is the contract below. Templates still mint their
+own intro scope at enforestation, until they desugar to macros. Every macro or template
 application mints an intro scope and a use-site scope; ids written in the
 application resolve where the macro was *defined*; splices keep their
 occurrence scopes; output is expanded in place. Pass two measured the three
@@ -163,7 +166,8 @@ behind [template-literals-resolve-at-use-site](../tickets/template-literals-reso
 
 ### M10 — quoted syntax is parsed where it is written
 
-**Status: decided (2026-09-14), not implemented.** A macro builds syntax by
+**Status: implemented for macros (2026-09-14); templates pending M9.**
+`Quote_holes` finds and fills the holes on the reflection value. A macro builds syntax by
 writing it: `quote(one($e))`. Strings build no hygienic syntax — gensym and
 spelling-resolution (Common Lisp, Clojure) are rejected. Quoted ids carry the
 definition site's scopes. The quote is **parsed at the definition**, so its
@@ -181,7 +185,8 @@ gains a kind it lacks today.
 
 ### M11 — scope sets are opaque values; borrowing is construction
 
-**Status: decided (2026-09-14), not implemented.** `Id.scope` carries the
+**Status: enforced (2026-09-14).** `Scopes` is an atom type with no literal
+syntax and no primitives except `no_scopes`. `Id.scope` carries the
 real scope set as an opaque `Scopes` value — no constructors, no inspection.
 A macro holds one only by quoting (definition site) or receiving syntax (use
 site), so it cannot forge a scope set matching an unrelated binder, and its

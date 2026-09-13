@@ -41,6 +41,7 @@ and macro_runtime = {
   run_macro : value -> value -> value;
   with_fuel : 'a. name:string -> (unit -> 'a) -> 'a;
   expand : Syntax.t -> Syntax.t;
+  application : unit -> Expand.application;
 }
 
   (* The expander, narrowed to the capabilities above. [None] when the
@@ -50,7 +51,8 @@ and macro_runtime = {
       (fun run_macro ->
         { run_macro;
           with_fuel = (fun ~name f -> Expand_ctx.with_macro_fuel ectx ~name f);
-          expand = Expand.expand ectx })
+          expand = Expand.expand ectx;
+          application = (fun () -> Expand.application ectx) })
       ectx.Expand_ctx.eval_and_apply
 
   let empty () : t =

@@ -14,6 +14,10 @@ let default_macro_fuel_limit = 256
 type t = {
   binding_table : Binding.t;
   mutable scope_counter : int;
+  (* While a macro's own definition is being expanded, the first scope minted
+     for it: quoted syntax is pruned of every scope from here on (see
+     [in_macro_definition]). *)
+  mutable macro_definition_floor : int option;
   mutable name_counter : int;
   mutable macro_table : (string, macro_entry) Hashtbl.t;
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
@@ -48,6 +52,7 @@ type t = {
 let create ?loader () =
   { binding_table = Binding.create ();
     scope_counter = 0;
+    macro_definition_floor = None;
     name_counter = 0;
     macro_table = Hashtbl.create 8;
     macro_kind_table = Hashtbl.create 8;
@@ -76,6 +81,20 @@ let fresh_scope (ctx : t) : int =
 
 let fresh_scope_set (ctx : t) : Scope_set.t =
   Scope_set.singleton (fresh_scope ctx)
+
+(* Expand a macro's definition. Quoted syntax in it keeps the scopes of where
+   the macro was defined, but not those of the binding forms inside the macro
+   itself - its parameters and local lets - which do not exist where its output
+   lands (Flatt 2016, quote-syntax pruning). *)
+let in_macro_definition (ctx : t) f =
+  let saved = ctx.macro_definition_floor in
+  ctx.macro_definition_floor <- Some ctx.scope_counter;
+  Fun.protect ~finally:(fun () -> ctx.macro_definition_floor <- saved) f
+
+let prune_to_definition_site (ctx : t) (scope : Scope_set.t) =
+  match ctx.macro_definition_floor with
+  | Some floor -> Scope_set.filter (fun s -> s < floor) scope
+  | None -> scope
 
 let fresh_resolved_name (ctx : t) name =
   if Binding.has_name ctx.binding_table name then begin
@@ -124,6 +143,7 @@ let extend_at_fresh (ctx : t) ~name ~base_scope =
 let copy (ctx : t) : t =
   { binding_table = Binding.copy ctx.binding_table;
     scope_counter = ctx.scope_counter;
+    macro_definition_floor = ctx.macro_definition_floor;
     name_counter = ctx.name_counter;
     macro_table = Hashtbl.copy ctx.macro_table;
     macro_kind_table = Hashtbl.copy ctx.macro_kind_table;

@@ -20,6 +20,8 @@ and lower_effect_op (op : Syntax.effect_op) : Surface.effect_op =
 and lower_expr (stx : Syntax.t) : Surface.t =
   match stx.kind with
   | Syntax.Stx s -> Surface.StxExpr s
+  | Syntax.Quote { template; holes } ->
+    Surface.Quote { template; holes = List.map (fun (n, h) -> (n, lower_expr h)) holes }
   | Syntax.Atom a -> Surface.Atom a
   | Syntax.Var id -> Surface.Var (lower_id id)
   | Syntax.Self -> Surface.Self

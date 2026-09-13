@@ -189,6 +189,7 @@ let rec shift_term amount cutoff term =
   match term with
   | Var ix when ix >= cutoff -> Var (ix + amount)
   | Var _ | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | TraitRef _ | Stx _ | Imported _ -> term
+  | Quote { template; holes } -> Quote { template; holes = List.map (fun (n, h) -> (n, shift cutoff h)) holes }
   | Lam body -> Lam (shift (cutoff + 1) body)
   | Ap (f, expl, a) -> Ap (shift cutoff f, expl, shift cutoff a)
   | Let (ty, def, body) -> Let (shift cutoff ty, shift cutoff def, shift (cutoff + 1) body)

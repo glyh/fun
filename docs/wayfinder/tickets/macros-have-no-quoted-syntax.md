@@ -41,6 +41,20 @@ Vocabulary is in [`CONTEXT.md`](../../../CONTEXT.md): **Quoted syntax** and
 Deleting the tier breaks every existing macro that writes a prelude name by
 string; they must move to quoted syntax or borrowed context in the same change.
 
+## Progress (2026-09-14)
+
+`quote(…)` is implemented. It is parsed where it is written, and its ids keep
+the definition site's scopes, pruned of the macro's own binding forms. It
+elaborates to its reflection value, with each hole checked against the type
+its position gives it, and evaluation fills the holes. A procedural macro no
+longer needs string-built ids for names it means.
+
+**Still open: removing the second resolution tier.** Names that arrive through
+`open`, the prelude included, are never binders in the expander's table; the
+elaborator resolves them by spelling. A context-less id therefore still
+reaches the prelude, and so does a quoted one whose scopes find no binder. That
+tier can only go once `open` binds the names it brings in, during expansion.
+
 ## Decided (2026-09-14)
 
 See [M9–M11](../topics/core-tt-domain-model-macros.md). Spelling is
