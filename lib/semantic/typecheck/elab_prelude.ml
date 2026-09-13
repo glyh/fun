@@ -107,7 +107,7 @@ pub module Syntax do
 
   pub type Id = {name: String; span: Option(Span); scope: Scopes}
 
-  pub type TraitBound = {path: List(String); name: String}
+  pub type Path = {head: Id; members: List(String)}
   pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom | ScopesAtom(Scopes)
   pub type AtomTy = TyI64 | TyUnit | TyChar | TyString | TyScopes | TyAbsurd
   pub type Fixity = PrefixFixity | InfixFixity
@@ -136,8 +136,8 @@ pub module Syntax do
     | RawTypeDef(Option(Span), TypeDecl, Expr)
     | RawEffectDef(Option(Span), Id, List(Id), List(EffectOp), Expr)
     | RawTraitDef(Option(Span), Id, List(Id), List(Field), Expr)
-    | RawImplDef(Option(Span), Option(Id), List(String), String, List(Expr), List(Field), Expr)
-    | RawPerform(Option(Span), List(String), String, Expr)
+    | RawImplDef(Option(Span), Option(Id), Path, List(Expr), List(Field), Expr)
+    | RawPerform(Option(Span), Path, Expr)
     | RawResume(Option(Span), Expr)
     | RawRefNew(Option(Span), Expr)
     | RawRefGet(Option(Span), Expr)
@@ -150,20 +150,20 @@ pub module Syntax do
     | RawOperatorUse(Option(Span), Id, Fixity, List(Expr), Option(Span), Option(Span), Option(String))
   and Field = MkField(String, Expr)
   and QuoteHole = MkQuoteHole(String, Expr)
-  and Param = MkParam(Id, Option(Expr), List(TraitBound), Explicitness)
+  and Param = MkParam(Id, Option(Expr), List(Path), Explicitness)
   and EffectRow = MkEffectRow(List(Expr), Option(Expr))
   and EffectOp = MkEffectOp(String, Expr, Expr)
   and TypeDecl = MkTypeDecl(Id, List(Id), List(Ctor))
   and Ctor = MkCtor(Id, List(Expr))
-  and Branch = ValueBranch(Pattern, Expr) | EffectBranch(List(String), String, Pattern, Expr)
+  and Branch = ValueBranch(Pattern, Expr) | EffectBranch(Path, Pattern, Expr)
   and Pattern =
     | RawPatWild(Option(Span))
     | RawPatBind(Option(Span), Id)
-    | RawPatCon(Option(Span), List(String), Id, List(Pattern))
+    | RawPatCon(Option(Span), Path, List(Pattern))
     | RawPatAtom(Option(Span), AtomVal)
     | RawPatProd(Option(Span), List(Pattern))
     | RawPatOr(Option(Span), Pattern, Pattern)
-    | RawPatRecord(Option(Span), List(String), String, List(PatField), Bool)
+    | RawPatRecord(Option(Span), Path, List(PatField), Bool)
     | RawPatStructType(Option(Span), List(PatField), Bool)
     | RawPatType(Option(Span), AtomTy)
   and PatField = MkPatField(String, Option(Pattern))
@@ -174,7 +174,7 @@ pub module Syntax do
     | DeclRecordType(Id, List(Id), List(Field), Bool)
     | DeclEffect(Id, List(Id), List(EffectOp), Bool)
     | DeclTrait(Id, List(Id), List(Field), Bool)
-    | DeclImpl(Option(Id), List(String), String, List(Expr), List(Field), Bool)
+    | DeclImpl(Option(Id), Path, List(Expr), List(Field), Bool)
     | DeclMacro(Id, Expr, Bool, Option(MacroAnn))
     | DeclMacroCall(Expr, List(Expr))
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
@@ -187,13 +187,13 @@ pub module Syntax do
   pub TypeExpr : Type = Type
   pub pat_wild = RawPatWild(None)
   pub pat_var = fn(id) -> RawPatBind(None, id)
-  pub pat_con = fn(name, args) -> RawPatCon(None, Nil, name, args)
+  pub pat_con = fn(name, args) -> RawPatCon(None, Path{head = name; members = Nil}, args)
   pub pat_atom = fn(val) -> RawPatAtom(None, val)
   pub pat_prod = fn(pats) -> RawPatProd(None, pats)
   pub pat_or = fn(l, r) -> RawPatOr(None, l, r)
   pub pattern PatWild = RawPatWild(_)
   pub pattern PatBind(name) = RawPatBind(_, name)
-  pub pattern PatCon(name, args) = RawPatCon(_, _, name, args)
+  pub pattern PatCon(path, args) = RawPatCon(_, path, args)
   pub pattern PatAtom(val) = RawPatAtom(_, val)
   pub pattern PatProd(pats) = RawPatProd(_, pats)
   pub pattern PatOr(l, r) = RawPatOr(_, l, r)

@@ -2,8 +2,9 @@
     already been alpha-resolved; we can use it directly as the Var name. *)
 let lower_id (id : Syntax.id) : string = id.name
 
-let lower_trait_bound (b : Trait_bound.t) : Trait_bound.t =
-  { trait_path = b.trait_path; trait_name = b.trait_name }
+let lower_trait_bound (b : Syntax.path) : Trait_bound.t =
+  let trait_path, trait_name = Syntax.path_split b in
+  { trait_path; trait_name }
 
 let rec lower_param (p : Syntax.param) : Surface.param =
   { name = lower_id p.name;
@@ -61,11 +62,13 @@ and lower_expr (stx : Syntax.t) : Surface.t =
     Surface.EffectDef { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; body = lower_expr body }
   | Syntax.TraitDef { name; params; fields; body } ->
     Surface.TraitDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
-  | Syntax.ImplDef { name; trait_path; trait_name; args; fields; body } ->
+  | Syntax.ImplDef { name; trait; args; fields; body } ->
+    let trait_path, trait_name = Syntax.path_split trait in
     Surface.ImplDef { name = Option.map (fun (i : Syntax.id) -> i.name) name;
                       trait_path; trait_name; args = List.map lower_expr args;
                       fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
-  | Syntax.Perform { effect_path; op; arg } ->
+  | Syntax.Perform { op; arg } ->
+    let effect_path, op = Syntax.path_split op in
     Surface.Perform { effect_path; op; arg = lower_expr arg }
   | Syntax.Resume e -> Surface.Resume (lower_expr e)
   | Syntax.RefNew e -> Surface.RefNew (lower_expr e)
@@ -103,7 +106,8 @@ and lower_struct_binding = function
     Surface.EffectBinding { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; public }
   | Syntax.TraitBinding { name; params; fields; public } ->
     Surface.TraitBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
-  | Syntax.ImplBinding { name; trait_path; trait_name; args; fields; public } ->
+  | Syntax.ImplBinding { name; trait; args; fields; public } ->
+    let trait_path, trait_name = Syntax.path_split trait in
     Surface.ImplBinding { name = Option.map (fun (i : Syntax.id) -> i.name) name;
                           trait_path; trait_name; args = List.map lower_expr args;
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
@@ -119,12 +123,16 @@ and lower_struct_binding = function
 
 and lower_match_branch = function
   | Syntax.ValueBranch (p, body) -> Surface.ValueBranch (lower_pat p, lower_expr body)
-  | Syntax.EffectBranch { effect_path; op; arg_pat; body } ->
+  | Syntax.EffectBranch { op; arg_pat; body } ->
+    let effect_path, op = Syntax.path_split op in
     Surface.EffectBranch { effect_path; op; arg_pat = lower_pat arg_pat; body = lower_expr body }
 
 and lower_pat = function
-  | Syntax.PatCon (path, name, ps) -> Surface.PatCon (path, name, List.map lower_pat ps)
-  | Syntax.PatRecord { typ_path; typ; fields; partial } ->
+  | Syntax.PatCon (path, ps) ->
+    let path, name = Syntax.path_split path in
+    Surface.PatCon (path, name, List.map lower_pat ps)
+  | Syntax.PatRecord { typ; fields; partial } ->
+    let typ_path, typ = Syntax.path_split typ in
     Surface.PatRecord { typ_path; typ; fields = List.map (fun (n, p) -> (n, Option.map lower_pat p)) fields; partial }
   | Syntax.PatStructType { fields; partial } ->
     Surface.PatStructType { fields = List.map (fun (n, p) -> (n, lower_pat p)) fields; partial }

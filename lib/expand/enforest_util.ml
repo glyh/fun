@@ -215,14 +215,18 @@ let split_last_expr terms =
   in
   go [] (drop_separators terms)
 
-let dotted_id_from_terms terms =
-  let rec go path = function
-    | { datum = Token { kind = Ident name; _ }; _ } :: dot :: rest when token_kind Dot dot ->
-        go (path @ [ name ]) rest
-    | { datum = Token { kind = Ident name; _ }; _ } :: rest -> ((path, name), rest)
-    | _ -> error "expected dotted identifier"
-  in
-  go [] (drop_separators terms)
+(* [M.N.x]: the head is a bare name, carried as an id; the rest are labels. *)
+let path_from_terms terms : Syntax.path * Raw_syntax.t list =
+  match drop_separators terms with
+  | { datum = Token { kind = Ident head; _ }; span } :: rest ->
+      let rec members acc = function
+        | dot :: { datum = Token { kind = Ident name; _ }; _ } :: rest when token_kind Dot dot ->
+            members (name :: acc) rest
+        | rest -> (List.rev acc, rest)
+      in
+      let members, rest = members [] rest in
+      ({ Syntax.head = id ~span head; members }, rest)
+  | _ -> error "expected dotted identifier"
 
 let binding_name_term = function
   | { datum = Token { kind = Ident name; _ }; span } -> Some (id ~span name)

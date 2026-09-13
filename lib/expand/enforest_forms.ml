@@ -25,10 +25,10 @@ let parse_match callbacks start_span terms =
         |> List.map (fun branch_terms ->
                match split_at_arrow branch_terms with
                | Some ({ datum = Token { kind = KwEffect; _ }; _ } :: effect_terms, _, body_terms) ->
-                   let (path, op), arg_terms = dotted_id_from_terms effect_terms in
+                   let op, arg_terms = path_from_terms effect_terms in
                    let arg_pat = callbacks.parse_pat_terms arg_terms in
                    let body = callbacks.parse_expr_terms body_terms in
-                   Syntax.EffectBranch { effect_path = path; op; arg_pat; body }
+                   Syntax.EffectBranch { op; arg_pat; body }
                | Some (pat_terms, _, body_terms) ->
                    let pat = callbacks.parse_pat_terms pat_terms in
                    let body = callbacks.parse_expr_terms body_terms in
@@ -115,9 +115,9 @@ let parse_resume callbacks start_span terms =
   | _ -> error "resume requires an argument"
 
 let parse_perform callbacks start_span terms =
-  let (path, op), rest = dotted_id_from_terms terms in
+  let op, rest = path_from_terms terms in
   let arg, rest = callbacks.parse_expr_prec 41 rest in
-  (stx ~span:(span_between start_span arg.span) (Syntax.Perform { effect_path = path; op; arg }), rest)
+  (stx ~span:(span_between start_span arg.span) (Syntax.Perform { op; arg }), rest)
 
 let parse_import env start_span terms =
   match drop_separators terms with

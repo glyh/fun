@@ -35,11 +35,16 @@ type id = {
 type param = {
   name : id;
   type_ : t option;
-  trait_bounds : Trait_bound.t list;
+  trait_bounds : path list;
   explicitness : Explicitness.t;
 }
 
 and effect_op = { name : string; input : t; output : t }
+
+(** A dotted name, [M.N.x]: its head is a bare name - an id, resolved by scope
+    set and renamed like any other occurrence - and the rest are member labels,
+    resolved by their container. A single name is a path with no members. *)
+and path = { head : id; members : string list }
 
 and type_decl = { name : id; params : id list; ctors : (id * t list) list }
 
@@ -71,8 +76,7 @@ and struct_binding =
     }
   | ImplBinding of {
       name : id option;   (* [impl NAME : Trait(Args) = …] - see impl-visibility *)
-      trait_path : string list;
-      trait_name : string;
+      trait : path;
       args : t list;
       fields : (string * t) list;
       public : bool;
@@ -138,13 +142,12 @@ and kind =
     }
   | ImplDef of {
       name : id option;
-      trait_path : string list;
-      trait_name : string;
+      trait : path;
       args : t list;
       fields : (string * t) list;
       body : t;
     }
-  | Perform of { effect_path : string list; op : string; arg : t }
+  | Perform of { op : path; arg : t }
   | Resume of t
   | RefNew of t
   | RefGet of t
@@ -173,15 +176,14 @@ and operator_fixity = PrefixOp | InfixOp
 and match_branch =
   | ValueBranch of pat * t
   | EffectBranch of {
-      effect_path : string list;
-      op : string;
+      op : path;
       arg_pat : pat;
       body : t;
     }
 
 and pat =
-  | PatCon of string list * string * pat list
-  | PatRecord of { typ_path : string list; typ : string; fields : (string * pat option) list; partial : bool }
+  | PatCon of path * pat list
+  | PatRecord of { typ : path; fields : (string * pat option) list; partial : bool }
   | PatStructType of { fields : (string * pat) list; partial : bool }
   | PatOr of pat * pat
   | PatProd of pat list
@@ -192,6 +194,21 @@ and pat =
 
 let fresh_id ?(span = Source_span.synthetic) ?(scope = Scope_set.empty) name =
   { name; span; scope }
+
+let path_of_id head = { head; members = [] }
+
+(* [(M.N, x)] for [M.N.x]: the prefix and the last segment, as the string lists
+   everything after lowering speaks. *)
+let path_split (p : path) : string list * string =
+  match List.rev (p.head.name :: p.members) with
+  | last :: rev_prefix -> (List.rev rev_prefix, last)
+  | [] -> assert false
+
+let path_of_segments ?span = function
+  | head :: members -> { head = fresh_id ?span head; members }
+  | [] -> invalid_arg "path_of_segments: empty path"
+
+let path_last (p : path) = snd (path_split p)
 
 (** STAGE 2: Uniform binder-only resolution. All leading-uppercase names
     produce [Expr(Some name, None)] + synthesized implicit param. No

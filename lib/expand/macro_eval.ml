@@ -125,8 +125,8 @@ let atom_ty_names =
 
 let w_atom_ty ns t = con ns.atom_ty (List.assoc t atom_ty_names) []
 
-let w_trait_bound ns (b : Trait_bound.t) =
-  record [ ("path", w_list ns w_string b.trait_path); ("name", w_string b.trait_name) ]
+let w_path ns (p : Syntax.path) =
+  record [ ("head", w_id ns p.head); ("members", w_list ns w_string p.members) ]
 
 let w_ann_arg ns = function
   | Syntax.MacroAnnotation.Wildcard -> con ns.ann_arg "AnnWildcard" []
@@ -174,11 +174,9 @@ let rec w_expr ns (stx : Syntax.t) : value =
       e "RawEffectDef" [ w_id ns name; ids params; w_list ns (w_effect_op ns) ops; x body ]
   | TraitDef { name; params; fields; body } ->
       e "RawTraitDef" [ w_id ns name; ids params; w_fields ns fields; x body ]
-  | ImplDef { name; trait_path; trait_name; args; fields; body } ->
-      e "RawImplDef"
-        [ w_option ns (w_id ns) name; w_list ns w_string trait_path; w_string trait_name;
-          w_list ns x args; w_fields ns fields; x body ]
-  | Perform { effect_path; op; arg } -> e "RawPerform" [ w_list ns w_string effect_path; w_string op; x arg ]
+  | ImplDef { name; trait; args; fields; body } ->
+      e "RawImplDef" [ w_option ns (w_id ns) name; w_path ns trait; w_list ns x args; w_fields ns fields; x body ]
+  | Perform { op; arg } -> e "RawPerform" [ w_path ns op; x arg ]
   | Resume a -> e "RawResume" [ x a ]
   | RefNew a -> e "RawRefNew" [ x a ]
   | RefGet a -> e "RawRefGet" [ x a ]
@@ -200,7 +198,7 @@ and w_fields ns fields = w_list ns (fun (n, v) -> con ns.field "MkField" [ w_str
 
 and w_param ns (p : Syntax.param) =
   con ns.param "MkParam"
-    [ w_id ns p.name; w_option ns (w_expr ns) p.type_; w_list ns (w_trait_bound ns) p.trait_bounds;
+    [ w_id ns p.name; w_option ns (w_expr ns) p.type_; w_list ns (w_path ns) p.trait_bounds;
       w_explicitness ns p.explicitness ]
 
 and w_effect_row ns (row : Syntax.effect_row) =
@@ -216,8 +214,8 @@ and w_type_decl ns (d : Syntax.type_decl) =
 
 and w_branch ns = function
   | Syntax.ValueBranch (p, body) -> con ns.branch "ValueBranch" [ w_pat ns p; w_expr ns body ]
-  | EffectBranch { effect_path; op; arg_pat; body } ->
-      con ns.branch "EffectBranch" [ w_list ns w_string effect_path; w_string op; w_pat ns arg_pat; w_expr ns body ]
+  | EffectBranch { op; arg_pat; body } ->
+      con ns.branch "EffectBranch" [ w_path ns op; w_pat ns arg_pat; w_expr ns body ]
 
 and w_pat ns (p : Syntax.pat) =
   (* Patterns carry no span in [Syntax.pat]; the reflected span is always [None]. *)
@@ -226,15 +224,12 @@ and w_pat ns (p : Syntax.pat) =
   match p with
   | PatWild -> pc "RawPatWild" []
   | PatBind id -> pc "RawPatBind" [ w_id ns id ]
-  | PatCon (path, ctor, args) ->
-      (* A constructor head is a plain string in [Syntax.pat]: no span or scope. *)
-      pc "RawPatCon"
-        [ w_list ns w_string path; w_id ns (Syntax.fresh_id ctor); w_list ns (w_pat ns) args ]
+  | PatCon (path, args) -> pc "RawPatCon" [ w_path ns path; w_list ns (w_pat ns) args ]
   | PatAtom a -> pc "RawPatAtom" [ w_atom ns a ]
   | PatProd ps -> pc "RawPatProd" [ w_list ns (w_pat ns) ps ]
   | PatOr (l, r) -> pc "RawPatOr" [ w_pat ns l; w_pat ns r ]
-  | PatRecord { typ_path; typ; fields; partial } ->
-      pc "RawPatRecord" [ w_list ns w_string typ_path; w_string typ; w_list ns pat_field fields; w_bool ns partial ]
+  | PatRecord { typ; fields; partial } ->
+      pc "RawPatRecord" [ w_path ns typ; w_list ns pat_field fields; w_bool ns partial ]
   | PatStructType { fields; partial } ->
       pc "RawPatStructType" [ w_list ns pat_field (List.map (fun (n, p) -> (n, Some p)) fields); w_bool ns partial ]
   | PatType t -> pc "RawPatType" [ w_atom_ty ns t ]
@@ -254,10 +249,8 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclEffect" [ w_id ns name; ids params; w_list ns (w_effect_op ns) ops; w_bool ns public ]
   | TraitBinding { name; params; fields; public } ->
       d "DeclTrait" [ w_id ns name; ids params; w_fields ns fields; w_bool ns public ]
-  | ImplBinding { name; trait_path; trait_name; args; fields; public } ->
-      d "DeclImpl"
-        [ w_option ns (w_id ns) name; w_list ns w_string trait_path; w_string trait_name;
-          w_list ns (w_expr ns) args; w_fields ns fields; w_bool ns public ]
+  | ImplBinding { name; trait; args; fields; public } ->
+      d "DeclImpl" [ w_option ns (w_id ns) name; w_path ns trait; w_list ns (w_expr ns) args; w_fields ns fields; w_bool ns public ]
   | MacroBinding { name; value; public; kind } ->
       d "DeclMacro" [ w_id ns name; w_expr ns value; w_bool ns public; w_option ns (w_macro_ann ns) kind ]
   | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_expr ns) args ]
@@ -346,10 +339,10 @@ let u_atom_ty ns v =
   | Some (name, []) -> List.find_map (fun (t, n) -> if String.equal n name then Some t else None) atom_ty_names
   | _ -> None
 
-let u_trait_bound ns v : Trait_bound.t option =
-  let* trait_path = let* p = u_field "path" v in u_list ns u_string p in
-  let* trait_name = let* n = u_field "name" v in u_string n in
-  Some { Trait_bound.trait_path; trait_name }
+let u_path ns v : Syntax.path option =
+  let* head = let* h = u_field "head" v in u_id ns h in
+  let* members = let* m = u_field "members" v in u_list ns u_string m in
+  Some { Syntax.head; members }
 
 let u_ann_arg ns v : Syntax.MacroAnnotation.arg option =
   match payload ns.ann_arg v with
@@ -373,7 +366,7 @@ let u_fixity ns v =
   | _ -> None
 
 let rec u_expr ns (v : value) : Syntax.t option =
-  let x = u_expr ns and ids = u_list ns (u_id ns) and strings = u_list ns u_string in
+  let x = u_expr ns and ids = u_list ns (u_id ns) in
   match v with
   | VStx (StxExpr stx) -> Some stx
   | _ -> (
@@ -439,19 +432,17 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* fields = u_fields ns fields in
           let* body = x body in
           mk (TraitDef { name; params; fields; body })
-      | "RawImplDef", [ name; trait_path; trait_name; args; fields; body ] ->
+      | "RawImplDef", [ name; trait; args; fields; body ] ->
           let* name = u_option ns (u_id ns) name in
-          let* trait_path = strings trait_path in
-          let* trait_name = u_string trait_name in
+          let* trait = u_path ns trait in
           let* args = u_list ns x args in
           let* fields = u_fields ns fields in
           let* body = x body in
-          mk (ImplDef { name; trait_path; trait_name; args; fields; body })
-      | "RawPerform", [ path; op; arg ] ->
-          let* effect_path = strings path in
-          let* op = u_string op in
+          mk (ImplDef { name; trait; args; fields; body })
+      | "RawPerform", [ op; arg ] ->
+          let* op = u_path ns op in
           let* arg = x arg in
-          mk (Perform { effect_path; op; arg })
+          mk (Perform { op; arg })
       | "RawResume", [ a ] -> let* a = x a in mk (Resume a)
       | "RawRefNew", [ a ] -> let* a = x a in mk (RefNew a)
       | "RawRefGet", [ a ] -> let* a = x a in mk (RefGet a)
@@ -502,7 +493,7 @@ and u_param ns v : Syntax.param option =
   | Some ("MkParam", [ name; ty; bounds; ex ]) ->
       let* name = u_id ns name in
       let* type_ = u_option ns (u_expr ns) ty in
-      let* trait_bounds = u_list ns (u_trait_bound ns) bounds in
+      let* trait_bounds = u_list ns (u_path ns) bounds in
       let* explicitness = u_explicitness ns ex in
       Some { Syntax.name; type_; trait_bounds; explicitness }
   | _ -> None
@@ -546,12 +537,11 @@ and u_type_decl ns v : Syntax.type_decl option =
 and u_branch ns v : Syntax.match_branch option =
   match payload ns.branch v with
   | Some ("ValueBranch", [ p; body ]) -> let* p = u_pat ns p in let* body = u_expr ns body in Some (Syntax.ValueBranch (p, body))
-  | Some ("EffectBranch", [ path; op; p; body ]) ->
-      let* effect_path = u_list ns u_string path in
-      let* op = u_string op in
+  | Some ("EffectBranch", [ op; p; body ]) ->
+      let* op = u_path ns op in
       let* arg_pat = u_pat ns p in
       let* body = u_expr ns body in
-      Some (Syntax.EffectBranch { effect_path; op; arg_pat; body })
+      Some (Syntax.EffectBranch { op; arg_pat; body })
   | _ -> None
 
 and u_pat ns v : Syntax.pat option =
@@ -569,20 +559,18 @@ and u_pat ns v : Syntax.pat option =
       match name, args with
       | "RawPatWild", [] -> Some Syntax.PatWild
       | "RawPatBind", [ id ] -> let* id = u_id ns id in Some (Syntax.PatBind id)
-      | "RawPatCon", [ path; ctor; ps ] ->
-          let* path = u_list ns u_string path in
-          let* ctor = u_id ns ctor in
+      | "RawPatCon", [ path; ps ] ->
+          let* path = u_path ns path in
           let* ps = u_list ns (u_pat ns) ps in
-          Some (Syntax.PatCon (path, ctor.name, ps))
+          Some (Syntax.PatCon (path, ps))
       | "RawPatAtom", [ a ] -> let* a = u_atom ns a in Some (Syntax.PatAtom a)
       | "RawPatProd", [ ps ] -> let* ps = u_list ns (u_pat ns) ps in Some (Syntax.PatProd ps)
       | "RawPatOr", [ l; r ] -> let* l = u_pat ns l in let* r = u_pat ns r in Some (Syntax.PatOr (l, r))
-      | "RawPatRecord", [ path; typ; fields; partial ] ->
-          let* typ_path = u_list ns u_string path in
-          let* typ = u_string typ in
+      | "RawPatRecord", [ typ; fields; partial ] ->
+          let* typ = u_path ns typ in
           let* fields = pat_fields fields in
           let* partial = u_bool ns partial in
-          Some (Syntax.PatRecord { typ_path; typ; fields; partial })
+          Some (Syntax.PatRecord { typ; fields; partial })
       | "RawPatStructType", [ fields; partial ] ->
           let* fields = pat_fields fields in
           let* fields = option_all (List.map (fun (n, p) -> Option.map (fun p -> (n, p)) p) fields) in
@@ -632,14 +620,13 @@ and u_decl ns v : Syntax.struct_binding option =
           let* fields = u_fields ns fields in
           let* public = u_bool ns public in
           Some (Syntax.TraitBinding { name; params; fields; public })
-      | "DeclImpl", [ name; trait_path; trait_name; args; fields; public ] ->
+      | "DeclImpl", [ name; trait; args; fields; public ] ->
           let* name = u_option ns (u_id ns) name in
-          let* trait_path = u_list ns u_string trait_path in
-          let* trait_name = u_string trait_name in
+          let* trait = u_path ns trait in
           let* args = u_list ns (u_expr ns) args in
           let* fields = u_fields ns fields in
           let* public = u_bool ns public in
-          Some (Syntax.ImplBinding { name; trait_path; trait_name; args; fields; public })
+          Some (Syntax.ImplBinding { name; trait; args; fields; public })
       | "DeclMacro", [ name; value; public; kind ] ->
           let* name = u_id ns name in
           let* value = u_expr ns value in

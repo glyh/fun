@@ -30,10 +30,12 @@ let add_id_scopes scopes id =
 let bind_id scope resolved_name (id : Syntax.id) : Syntax.id =
   { name = resolved_name; span = id.span; scope = Scope_set.union id.scope scope }
 
+let map_path (on_id : Syntax.id -> Syntax.id) (p : Syntax.path) : Syntax.path = { p with head = on_id p.head }
+
 let map_param (on_id : Syntax.id -> Syntax.id) (f : Syntax.t -> Syntax.t) (param : Syntax.param) : Syntax.param =
   { name = on_id param.name;
     type_ = Option.map f param.type_;
-    trait_bounds = param.trait_bounds;
+    trait_bounds = List.map (map_path on_id) param.trait_bounds;
     explicitness = param.explicitness }
 
 (** Apply [on_id] to every identifier - occurrence and binder - in a form. *)
@@ -83,10 +85,10 @@ and go_kind (on_id : Syntax.id -> Syntax.id) (k : kind) : kind =
     EffectDef { name = on_id name; params; ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; body = go body }
   | TraitDef { name; params; fields; body } ->
     TraitDef { name = on_id name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
-  | ImplDef { name; trait_path; trait_name; args; fields; body } ->
-    ImplDef { name; trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
-  | Perform { effect_path; op; arg } ->
-    Perform { effect_path; op; arg = go arg }
+  | ImplDef { name; trait; args; fields; body } ->
+    ImplDef { name; trait = map_path on_id trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
+  | Perform { op; arg } ->
+    Perform { op = map_path on_id op; arg = go arg }
   | Resume e -> Resume (go e)
   | RefNew e -> RefNew (go e)
   | RefGet e -> RefGet (go e)
@@ -124,8 +126,8 @@ and go_struct_binding (on_id : Syntax.id -> Syntax.id) (binding : Syntax.struct_
   | TraitBinding { name; params; fields; public } ->
     TraitBinding { name = on_id name;
                    params; fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
-  | ImplBinding { name; trait_path; trait_name; args; fields; public } ->
-    ImplBinding { name; trait_path; trait_name; args = List.map (map_ids on_id) args;
+  | ImplBinding { name; trait; args; fields; public } ->
+    ImplBinding { name; trait = map_path on_id trait; args = List.map (map_ids on_id) args;
                   fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
   | MacroBinding { name; value; public; kind } ->
     MacroBinding { name = on_id name; value = map_ids on_id value; public; kind }
@@ -137,13 +139,13 @@ and go_struct_binding (on_id : Syntax.id -> Syntax.id) (binding : Syntax.struct_
 
 and go_match_branch on_id = function
   | ValueBranch (p, body) -> ValueBranch (go_pat on_id p, map_ids on_id body)
-  | EffectBranch { effect_path; op; arg_pat; body } ->
-    EffectBranch { effect_path; op; arg_pat = go_pat on_id arg_pat; body = map_ids on_id body }
+  | EffectBranch { op; arg_pat; body } ->
+    EffectBranch { op = map_path on_id op; arg_pat = go_pat on_id arg_pat; body = map_ids on_id body }
 
 and go_pat on_id k = match k with
-  | PatCon (path, name, ps) -> PatCon (path, name, List.map (go_pat on_id) ps)
-  | PatRecord { typ_path; typ; fields; partial } ->
-    PatRecord { typ_path; typ;
+  | PatCon (path, ps) -> PatCon (map_path on_id path, List.map (go_pat on_id) ps)
+  | PatRecord { typ; fields; partial } ->
+    PatRecord { typ = map_path on_id typ;
                 fields = List.map (fun (n, p) -> (n, Option.map (go_pat on_id) p)) fields;
                 partial }
   | PatStructType { fields; partial } ->
@@ -364,6 +366,13 @@ let open_unit_macro_scopes (ctx : Expand_ctx.t) (m : t) : Scope_set.t list =
 let member_scope (m : t) : Scope_set.t =
   match m.kind with Var id -> id.scope | _ -> Scope_set.empty
 
+(* A path's head is an occurrence like any other: resolved by scope set and
+   renamed to its binder's resolved name. Its members are labels, left alone. *)
+let expand_path (ctx : Expand_ctx.t) (p : Syntax.path) : Syntax.path =
+  match Expand_ctx.resolve ctx p.head with
+  | Some info -> { p with head = { p.head with name = info.resolved_name } }
+  | None -> p
+
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
@@ -509,12 +518,12 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
     { stx with kind = TraitDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes_within e.span param_scopes e))) fields; body = expand ctx (add_scope_within stx.span scope body) } }
-  | ImplDef { name; trait_path; trait_name; args; fields; body } ->
-    { stx with kind = ImplDef { name; trait_path; trait_name; args = List.map (expand ctx) args;
+  | ImplDef { name; trait; args; fields; body } ->
+    { stx with kind = ImplDef { name; trait = expand_path ctx trait; args = List.map (expand ctx) args;
                                 fields = List.map (fun (n, e) -> (n, expand ctx e)) fields;
                                 body = expand ctx body } }
-  | Perform { effect_path; op; arg } ->
-    { stx with kind = Perform { effect_path; op; arg = expand ctx arg } }
+  | Perform { op; arg } ->
+    { stx with kind = Perform { op = expand_path ctx op; arg = expand ctx arg } }
   | Resume e -> { stx with kind = Resume (expand ctx e) }
   | RefNew e -> { stx with kind = RefNew (expand ctx e) }
   | RefGet e -> { stx with kind = RefGet (expand ctx e) }
@@ -787,8 +796,8 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     ([TraitBinding { name = add_id_scope scope name;
                      params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
      [[ scope ]])
-  | ImplBinding { name; trait_path; trait_name; args; fields; public } ->
-    ([ImplBinding { name; trait_path; trait_name; args = List.map (expand ctx) args;
+  | ImplBinding { name; trait; args; fields; public } ->
+    ([ImplBinding { name; trait = expand_path ctx trait; args = List.map (expand ctx) args;
                    fields = List.map (fun (n, e) -> (n, expand ctx e)) fields; public }],
      [[]])
   | PatternSynBinding { name; params; rhs; public } ->
@@ -894,16 +903,16 @@ and expand_match_branch ctx = function
     let ctx' = Expand_ctx.copy ctx in
     let binder_scopes = expand_pat_binders ctx' p in
     ValueBranch (expand_pat ctx' (add_pat_scopes binder_scopes p), expand ctx' (add_scopes binder_scopes body))
-  | EffectBranch { effect_path; op; arg_pat; body } ->
+  | EffectBranch { op; arg_pat; body } ->
     let ctx' = Expand_ctx.copy ctx in
     let binder_scopes = expand_pat_binders ctx' arg_pat in
-    EffectBranch { effect_path; op; arg_pat = expand_pat ctx' (add_pat_scopes binder_scopes arg_pat); body = expand ctx' (add_scopes binder_scopes body) }
+    EffectBranch { op = expand_path ctx op; arg_pat = expand_pat ctx' (add_pat_scopes binder_scopes arg_pat); body = expand ctx' (add_scopes binder_scopes body) }
 
 and expand_pat_binders ctx pat =
   let rec collect (acc : Syntax.id list) = function
     | PatBind id ->
       if List.exists (fun (existing : Syntax.id) -> String.equal existing.name id.name) acc then acc else id :: acc
-    | PatCon (_, _, ps) | PatProd ps -> List.fold_left collect acc ps
+    | PatCon (_, ps) | PatProd ps -> List.fold_left collect acc ps
     | PatRecord { fields; _ } ->
       List.fold_left (fun acc (_, p) -> match p with Some p -> collect acc p | None -> acc) acc fields
     | PatStructType { fields; _ } ->
@@ -922,9 +931,9 @@ and expand_pat ctx k = match k with
     let info = Expand_ctx.resolve ctx id in
     let resolved = match info with Some i -> i.Binding.resolved_name | None -> id.name in
     PatBind { id with name = resolved }
-  | PatCon (path, name, ps) -> PatCon (path, name, List.map (expand_pat ctx) ps)
-  | PatRecord { typ_path; typ; fields; partial } ->
-    PatRecord { typ_path; typ; fields = List.map (fun (n, p) -> (n, Option.map (expand_pat ctx) p)) fields; partial }
+  | PatCon (path, ps) -> PatCon (expand_path ctx path, List.map (expand_pat ctx) ps)
+  | PatRecord { typ; fields; partial } ->
+    PatRecord { typ = expand_path ctx typ; fields = List.map (fun (n, p) -> (n, Option.map (expand_pat ctx) p)) fields; partial }
   | PatStructType { fields; partial } ->
     PatStructType { fields = List.map (fun (n, p) -> (n, expand_pat ctx p)) fields; partial }
   | PatOr (l, r) -> PatOr (expand_pat ctx l, expand_pat ctx r)

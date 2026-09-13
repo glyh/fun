@@ -369,9 +369,9 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
       { stx with kind = Syntax.EffectDef { name; params; ops = List.map (fun (op : Syntax.effect_op) -> { op with input = go op.input; output = go op.output }) ops; body = go body } }
   | Syntax.TraitDef { name; params; fields; body } ->
       { stx with kind = Syntax.TraitDef { name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
-  | Syntax.ImplDef { name; trait_path; trait_name; args; fields; body } ->
-      { stx with kind = Syntax.ImplDef { name; trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
-  | Syntax.Perform { effect_path; op; arg } -> { stx with kind = Syntax.Perform { effect_path; op; arg = go arg } }
+  | Syntax.ImplDef { name; trait; args; fields; body } ->
+      { stx with kind = Syntax.ImplDef { name; trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
+  | Syntax.Perform { op; arg } -> { stx with kind = Syntax.Perform { op; arg = go arg } }
   | Syntax.Resume e -> { stx with kind = Syntax.Resume (go e) }
   | Syntax.RefNew e -> { stx with kind = Syntax.RefNew (go e) }
   | Syntax.RefGet e -> { stx with kind = Syntax.RefGet (go e) }
@@ -404,7 +404,7 @@ and map_template_struct_binding captures go = function
   | Syntax.RecordTypeBinding { name; params; fields; public } -> Syntax.RecordTypeBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.EffectBinding { name; params; ops; public } -> Syntax.EffectBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; ops = List.map (fun (op : Syntax.effect_op) -> { op with input = go op.input; output = go op.output }) ops; public }
   | Syntax.TraitBinding { name; params; fields; public } -> Syntax.TraitBinding { name = map_binder_id captures name; params = List.map (map_binder_id captures) params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
-  | Syntax.ImplBinding { name; trait_path; trait_name; args; fields; public } -> Syntax.ImplBinding { name; trait_path; trait_name; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
+  | Syntax.ImplBinding { name; trait; args; fields; public } -> Syntax.ImplBinding { name; trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
   | Syntax.MacroBinding { name; value; public; _ } ->
       (* Deliberately drop annotation after macro registration: the resolved
          kind is carried by the macro registry/table. Macro-generating macros
@@ -416,12 +416,12 @@ and map_template_struct_binding captures go = function
 
 and map_template_match_branch captures go = function
   | Syntax.ValueBranch (pat, body) -> Syntax.ValueBranch (map_template_pat captures pat, go body)
-  | Syntax.EffectBranch { effect_path; op; arg_pat; body } -> Syntax.EffectBranch { effect_path; op; arg_pat = map_template_pat captures arg_pat; body = go body }
+  | Syntax.EffectBranch { op; arg_pat; body } -> Syntax.EffectBranch { op; arg_pat = map_template_pat captures arg_pat; body = go body }
 
 and map_template_pat captures = function
-  | Syntax.PatCon (path, name, pats) -> Syntax.PatCon (path, name, List.map (map_template_pat captures) pats)
-  | Syntax.PatRecord { typ_path; typ; fields; partial } ->
-      Syntax.PatRecord { typ_path; typ; fields = List.map (fun (field, pat) -> (field, Option.map (map_template_pat captures) pat)) fields; partial }
+  | Syntax.PatCon (path, pats) -> Syntax.PatCon (path, List.map (map_template_pat captures) pats)
+  | Syntax.PatRecord { typ; fields; partial } ->
+      Syntax.PatRecord { typ; fields = List.map (fun (field, pat) -> (field, Option.map (map_template_pat captures) pat)) fields; partial }
   | Syntax.PatStructType { fields; partial } ->
       Syntax.PatStructType { fields = List.map (fun (field, pat) -> (field, map_template_pat captures pat)) fields; partial }
   | Syntax.PatOr (lhs, rhs) -> Syntax.PatOr (map_template_pat captures lhs, map_template_pat captures rhs)

@@ -1012,9 +1012,7 @@ and parse_impl_binding env public stmt =
                 | _ -> error "impl name must be a single identifier")
             | None -> (None, trait_terms)
           in
-          let (trait_path, trait_name), arg_terms =
-            dotted_id_from_terms trait_terms
-          in
+          let trait, arg_terms = path_from_terms trait_terms in
           let args =
             match drop_separators arg_terms with
             | [ { datum = Group (Raw_syntax.Paren, items, _); _ } ] -> (
@@ -1041,7 +1039,7 @@ and parse_impl_binding env public stmt =
                 | None -> error "expected impl let field")
           in
           Some
-            (Syntax.ImplBinding { name; trait_path; trait_name; args; fields; public })
+            (Syntax.ImplBinding { name; trait; args; fields; public })
       | Some _ -> error "impl binding requires = module ... end"
       | None -> error "impl binding requires = module ... end")
   | _ -> None
@@ -1371,10 +1369,10 @@ and scoped_binding_to_expr env span stmt body =
               match parse_impl_binding env false stmt with
               | Some
                   (Syntax.ImplBinding
-                     { name; trait_path; trait_name; args; fields; _ }) ->
+                     { name; trait; args; fields; _ }) ->
                   stx ~span
                     (Syntax.ImplDef
-                       { name; trait_path; trait_name; args; fields; body })
+                       { name; trait; args; fields; body })
               | Some _ -> error "unexpected non-impl binding"
               | None -> error "not a scoped binding")))
 

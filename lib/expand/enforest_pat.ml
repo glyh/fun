@@ -21,7 +21,7 @@ let parse_pat_terms terms =
               | "String" -> Syntax.PatType Atom_ty.TString
               | "Absurd" -> Syntax.PatType Atom_ty.TAbsurd
               | _ when name <> "" && Char.uppercase_ascii name.[0] = name.[0] ->
-                  Syntax.PatCon ([], name, [])
+                  Syntax.PatCon (Syntax.path_of_id (id ~span:term.span name), [])
               | _ -> Syntax.PatBind (id ~span:term.span name)
             in
             (pat, rest)
@@ -46,8 +46,8 @@ let parse_pat_terms terms =
         in
         let lhs =
           match lhs with
-          | Syntax.PatCon (path, name, []) -> Syntax.PatCon (path @ [ name ], field_name, [])
-          | Syntax.PatBind name -> Syntax.PatCon ([ name.name ], field_name, [])
+          | Syntax.PatCon (path, []) -> Syntax.PatCon ({ path with members = path.members @ [ field_name ] }, [])
+          | Syntax.PatBind name -> Syntax.PatCon ({ Syntax.head = name; members = [ field_name ] }, [])
           | _ -> error "only constructor patterns can be qualified"
         in
         parse_pat_postfix lhs rest
@@ -59,7 +59,7 @@ let parse_pat_terms terms =
         in
         let lhs =
           match lhs with
-          | Syntax.PatCon (path, name, []) -> Syntax.PatCon (path, name, args)
+          | Syntax.PatCon (path, []) -> Syntax.PatCon (path, args)
           | _ -> error "only constructor patterns can take arguments"
         in
         parse_pat_postfix lhs rest
@@ -67,8 +67,8 @@ let parse_pat_terms terms =
         let fields, partial = parse_pat_record_fields items in
         let lhs =
           match lhs with
-          | Syntax.PatCon (path, name, []) ->
-              Syntax.PatRecord { typ_path = path; typ = name; fields; partial }
+          | Syntax.PatCon (typ, []) ->
+              Syntax.PatRecord { typ; fields; partial }
           | _ -> error "record pattern fields must follow a type name"
         in
         parse_pat_postfix lhs rest
@@ -76,7 +76,7 @@ let parse_pat_terms terms =
         let arg, rest = parse_pat_atom (term :: rest) in
         let lhs =
           match lhs with
-          | Syntax.PatCon (path, name, args) -> Syntax.PatCon (path, name, args @ [ arg ])
+          | Syntax.PatCon (path, args) -> Syntax.PatCon (path, args @ [ arg ])
           | _ -> error "only constructor patterns can take arguments"
         in
         parse_pat_postfix lhs rest
