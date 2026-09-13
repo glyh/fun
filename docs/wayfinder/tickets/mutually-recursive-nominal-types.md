@@ -3,8 +3,10 @@ title: Mutually-recursive nominal type declarations
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
 assignee: glyh
+resolution: Implemented as decided. `TypeBinding { members; public }` is one node per chain through every stage. The expander introduces all member names before any payload. `elab_type_group` runs the three-phase knot and is shared by the module and struct paths; a single declaration is the one-member chain. Also found and fixed on the way: nested patterns through any recursive position failed language-wide (`Cons(_, Cons(y, _))` included), because a payload's type is the registration placeholder, which has no constructors. The finished constructors are now recorded by nominal id, and every read goes through `Core.nominal_constructors`.
+closed_date: 2026-09-14
 blocked_by:
 ---
 
@@ -56,8 +58,7 @@ in any order. Today only **self**-recursion works.
 
 ## Resolution
 
-_Unresolved (design decided via grilling 2026-09-06 — see Decided below;
-implementation pending)._
+Implemented 2026-09-14 (see front matter).
 
 ## Decided (grilling, 2026-09-06)
 

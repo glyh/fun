@@ -60,7 +60,7 @@ let rec pattern_binder_types ctx scrutinee_ty = function
   | CPatCon (name, _num_type_params, sub_pats) -> (
       match Nbe.force ctx.Ctx.metas scrutinee_ty with
       | VNominal n -> (
-          match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
+          match List.find_opt (fun (cname, _) -> String.equal cname name) (nominal_constructors n.id n.constructors) with
           | Some (_, payloads) ->
               let payload_tys =
                 List.map
@@ -205,7 +205,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
             match find_nominal_for_pattern_head_opt ctx path name with
             | Some (VNominal n) ->
                 let ctor_params =
-                  match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
+                  match List.find_opt (fun (cname, _) -> String.equal cname name) (nominal_constructors n.id n.constructors) with
                   | Some (_, params) -> List.length params
                   | None -> n.num_params
                 in
@@ -271,7 +271,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           (match Nbe.force ctx.metas scrutinee_ty with
           | VNominal n ->
               Option.iter (Ctx.unify ctx scrutinee_ty) resolved_nominal;
-              (match List.find_opt (fun (cname, _) -> String.equal cname name) n.constructors with
+              (match List.find_opt (fun (cname, _) -> String.equal cname name) (nominal_constructors n.id n.constructors) with
               | Some (_, payloads) ->
                   let num_type_params = List.length n.params in
                   if List.length sub_pats <> List.length payloads then

@@ -551,6 +551,22 @@ end = struct
     id
 end
 
+(* A recursive nominal is registered as a placeholder - its id, no
+   constructors - before its payloads are elaborated, and the payloads' types
+   keep pointing at that placeholder: a value cannot contain itself. The
+   placeholder and the finished nominal share one id, and that identity is
+   what ties the knot. [finish_nominal] records a declaration's constructors
+   under its id once they exist; [nominal_constructors] is the one way to read
+   a nominal's constructors, so a placeholder answers with its finished set. *)
+let finished_nominals : (nominal_id, (string * closure list) list) Hashtbl.t = Hashtbl.create 64
+
+let finish_nominal id constructors = Hashtbl.replace finished_nominals id constructors
+
+let nominal_constructors id constructors =
+  match constructors with
+  | [] -> Option.value (Hashtbl.find_opt finished_nominals id) ~default:[]
+  | _ -> constructors
+
 (** Global counter for fresh effect family identities.
     Equality of effect families compares by id and instantiated params, not by
     operation names or signatures. *)

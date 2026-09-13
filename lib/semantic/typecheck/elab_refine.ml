@@ -163,20 +163,31 @@ let refine_context_type_var ctx target replacement =
     resume_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.resume_entry;
   }
 
-let close_recursive_payload_term nominal_name num_params =
+(* A payload elaborated in a context where a type chain's member names were
+   temporarily defined, last member innermost: rewrite each reference to a
+   member into a [NomRef] by name, and drop the temporary slots. [members] is
+   the chain in declaration order, as [(name, num_params)]. *)
+let close_recursive_payload_group members =
+  let width = List.length members in
+  let member_at cutoff ix =
+    let rel = ix - cutoff in
+    if rel >= 0 && rel < width then Some (List.nth members (width - 1 - rel)) else None
+  in
   let rec collect_apps acc = function
     | Ap (f, Explicit, a) -> collect_apps (a :: acc) f
     | f -> (f, acc)
   in
   let rec go cutoff term =
     match collect_apps [] term with
-    | Var ix, args when ix = cutoff && List.length args = num_params ->
-        NomRef (nominal_name, List.map (go cutoff) args)
+    | Var ix, args
+      when (match member_at cutoff ix with Some (_, n) -> List.length args = n | None -> false) ->
+        NomRef (fst (Option.get (member_at cutoff ix)), List.map (go cutoff) args)
     | _ -> (
         match term with
-        | Var ix when ix = cutoff ->
+        | Var ix when Option.is_some (member_at cutoff ix) ->
+            let nominal_name, num_params = Option.get (member_at cutoff ix) in
             NomRef (nominal_name, List.init num_params (fun i -> Var (num_params - 1 - i)))
-        | Var ix when ix > cutoff -> Var (ix - 1)
+        | Var ix when ix >= cutoff + width -> Var (ix - width)
         | Var ix -> Var ix
         | Lam body -> Lam (go (cutoff + 1) body)
         | Ap (f, expl, a) -> Ap (go cutoff f, expl, go cutoff a)
@@ -204,7 +215,7 @@ let close_recursive_payload_term nominal_name num_params =
         | Dot (e, field) -> Dot (go cutoff e, field)
         | Module { bindings } ->
             if not (Elab_defs.binding_list_depth_is_tracked bindings) then
-              Elab_defs.reject_untracked_binding_list "close_recursive_payload_term";
+              Elab_defs.reject_untracked_binding_list "close_recursive_payload_group";
             let binding = function
               | LetBind (field, kind, value) -> LetBind (field, kind, go cutoff value)
               | TypeBind (field, kind, nominal, ctors) -> TypeBind (field, kind, nominal, ctors)
@@ -262,6 +273,10 @@ let close_recursive_payload_term nominal_name num_params =
         | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | Stx _ | Imported _ as term -> term)
   in
   go 0
+
+
+let close_recursive_payload_term nominal_name num_params =
+  close_recursive_payload_group [ (nominal_name, num_params) ]
 
 let rec refinement_for_nominal_head ctx = function
   | Surface.PatCon (path, name, _) -> (

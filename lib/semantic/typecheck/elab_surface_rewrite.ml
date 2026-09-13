@@ -54,10 +54,13 @@ let rewrite_record_self_refs record_name params expr =
               | Surface.LetBinding { name; value; public; recursive } ->
                   Surface.LetBinding { name; value = go bound value; public; recursive }
               | Surface.MethodBinding _ -> failwith "module binding cannot be method"
-              | Surface.TypeBinding { name; params; ctors; public } ->
+              | Surface.TypeBinding { members; public } ->
                   Surface.TypeBinding
-                    { name; params;
-                      ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go (params @ bound)) payloads)) ctors;
+                    { members =
+                        List.map
+                          (fun (m : Surface.type_decl) ->
+                            { m with ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go (m.params @ bound)) payloads)) m.ctors })
+                          members;
                       public }
               | Surface.RecordTypeBinding { name; params; fields; public } ->
                   Surface.RecordTypeBinding
@@ -99,10 +102,13 @@ let rewrite_record_self_refs record_name params expr =
                   Surface.LetBinding { name; value = go bound value; public; recursive }
               | Surface.MethodBinding { name; params; body; public } ->
                   Surface.MethodBinding { name; params; body = go (param_names params @ bound) body; public }
-              | Surface.TypeBinding { name; params; ctors; public } ->
+              | Surface.TypeBinding { members; public } ->
                   Surface.TypeBinding
-                    { name; params;
-                      ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go (params @ bound)) payloads)) ctors;
+                    { members =
+                        List.map
+                          (fun (m : Surface.type_decl) ->
+                            { m with ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go (m.params @ bound)) payloads)) m.ctors })
+                          members;
                       public }
               | Surface.RecordTypeBinding { name; params; fields; public } ->
                   Surface.RecordTypeBinding

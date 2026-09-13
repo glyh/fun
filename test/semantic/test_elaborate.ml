@@ -1496,10 +1496,50 @@ let let_rec =
          "Bool");
   ]
 
+let eval_i64 source expected () =
+  let ctx = Elaborate.init_ctx () in
+  let core, _ = Elaborate.on_expr ctx (parse_expr source) in
+  match Elaborate.Ctx.eval ctx core with
+  | VAtom (I64 n) -> Alcotest.(check int64) source expected n
+  | _ -> Alcotest.fail ("expected an I64: " ^ source)
+
+let rejected source () =
+  match elab source with
+  | exception _ -> ()
+  | _ -> Alcotest.fail ("expected rejection: " ^ source)
+
+(* [type A = … and B = …] chains, and nested patterns through recursive
+   positions, which read a placeholder's constructors by id. *)
+let type_chains =
+  let ab = "M = module pub type A = MkA(B) | NoA and B = MkB(A) | NoB end" in
+  [
+    Alcotest.test_case "nested pattern through a self-recursive type" `Quick
+      (eval_i64 "match Cons(1, Cons(2, Nil)) do Cons(_, Cons(y, _)) -> y | _ -> 0 end" 2L);
+    Alcotest.test_case "chain members refer to each other" `Quick
+      (eval_i64 ("do " ^ ab ^ "; match M.MkA(M.MkB(M.NoA)) do M.MkA(M.MkB(M.NoA)) -> 1 | _ -> 0 end end") 1L);
+    Alcotest.test_case "parameterised chain" `Quick
+      (eval_i64
+         "do M = module pub type Tree(X) = Leaf(X) | Node(Forest(X)) and Forest(X) = Empty | More(Tree(X), Forest(X)) end; \
+          match M.Node(M.More(M.Leaf(7), M.Empty)) do M.Node(M.More(M.Leaf(n), _)) -> n | _ -> 0 end end" 7L);
+    Alcotest.test_case "chain members are distinct types" `Quick
+      (rejected ("do " ^ ab ^ "; x : M.A = M.MkB(M.NoA); 0 end"));
+    Alcotest.test_case "exhaustiveness sees through the chain" `Quick
+      (rejected ("do " ^ ab ^ "; match M.MkA(M.NoB) do M.MkA(M.MkB(_)) -> 1 end end"));
+    Alcotest.test_case "separate statements stay sequential" `Quick
+      (rejected "do M = module pub type A = MkA(B) | NoA; pub type B = MkB(A) | NoB end; 0 end");
+    Alcotest.test_case "duplicate chain member" `Quick
+      (rejected "do M = module pub type A = MkA and A = NoB end; 0 end");
+    Alcotest.test_case "record in a chain" `Quick
+      (rejected "do M = module pub type A = MkA(B) and B = {x: A} end; 0 end");
+    Alcotest.test_case "chain in a scoped do head" `Quick
+      (rejected "do type A = MkA(B) and B = MkB(A); 0 end");
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
       ("constants", constants);
+      ("type_chains", type_chains);
       ("let_bindings", let_bindings);
       ("conditionals", conditionals);
       ("lambdas", lambdas);

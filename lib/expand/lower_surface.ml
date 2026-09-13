@@ -86,8 +86,15 @@ and lower_struct_binding = function
     Surface.LetBinding { name = lower_id name; value = lower_expr value; public; recursive }
   | Syntax.MethodBinding { name; params; body; public } ->
     Surface.MethodBinding { name = lower_id name; params = List.map lower_param params; body = lower_expr body; public }
-  | Syntax.TypeBinding { name; params; ctors; public } ->
-    Surface.TypeBinding { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors; public }
+  | Syntax.TypeBinding { members; public } ->
+    Surface.TypeBinding
+      { members =
+          List.map
+            (fun ({ name; params; ctors } : Syntax.type_decl) ->
+              { Surface.name = lower_id name; params = List.map lower_id params;
+                ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors })
+            members;
+        public }
   | Syntax.RecordTypeBinding { name; params; fields; public } ->
     Surface.RecordTypeBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.EffectBinding { name; params; ops; public } ->

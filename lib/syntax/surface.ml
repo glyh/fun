@@ -8,17 +8,14 @@ type param = {
 
 and effect_op = { name : string; input : t; output : t }
 
+and type_decl = { name : string; params : string list; ctors : (string * t list) list }
+
 and effect_row = { effects : t list; tail : t option }
 
 and struct_binding =
   | LetBinding of { name : string; value : t; public : bool; recursive : bool }
   | MethodBinding of { name : string; params : param list; body : t; public : bool }
-  | TypeBinding of {
-      name : string;
-      params : string list;
-      ctors : (string * t list) list;  (* (ctor_name, payload_types) *)
-      public : bool;
-    }
+  | TypeBinding of { members : type_decl list; public : bool }
   | RecordTypeBinding of {
       name : string;
       params : string list;

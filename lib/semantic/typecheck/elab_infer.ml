@@ -54,24 +54,19 @@ let extend_from_slots (ctx : Ctx.t) (bind : Core.struct_binding_term) payloads =
      placeholder outermost so [NomRef] can find it by name.
 
    See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
-let elab_type_binding (ops : Elab_ops.t) (ctx : Ctx.t) ~name ~params ~ctors ~public
-    : Ctx.t * Core.struct_binding_term * (string * struct_field_kind * value) list =
-  let num_params = List.length params in
-  let param_ctx =
+let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Surface.type_decl list) ~public
+    : Ctx.t * (Core.struct_binding_term * (string * struct_field_kind * value) list) list =
+  let group = List.map (fun (m : Surface.type_decl) -> (m.name, List.length m.params)) members in
+  let param_ctx_of (m : Surface.type_decl) =
     List.fold_left
       (fun ctx param_name ->
         Ctx.define ctx param_name VU (VRigid { lvl = ctx.Ctx.lvl; spine = [] }))
-      ctx params
+      ctx m.params
   in
-  let nominal_id = NominalId.fresh () in
-  let nominal_placeholder =
-    VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] }
-  in
-  let placeholder_env = nominal_placeholder :: param_ctx.Ctx.env in
   (* The type's own type: [Type] when nullary, an explicit [Pi] chain otherwise
      so [T I64] elaborates. *)
-  let nominal_ty =
-    if num_params = 0 then VU
+  let nominal_ty_of (m : Surface.type_decl) placeholder_env param_ctx =
+    if m.params = [] then VU
     else
       let depth = List.length param_ctx.Ctx.env + 1 in
       List.fold_right
@@ -79,61 +74,96 @@ let elab_type_binding (ops : Elab_ops.t) (ctx : Ctx.t) ~name ~params ~ctors ~pub
           VPi { explicitness = Explicit; domain = VU;
                 effects = effect_row_closure placeholder_env empty_effect_row;
                 codomain = { env = placeholder_env; body = Nbe.quote param_ctx.Ctx.metas depth acc } })
-        params VU
+        m.params VU
   in
-  (* Temporary: names the type for its own payloads. Contributes no width. *)
-  let self_ctx =
-    if num_params = 0 then Ctx.define param_ctx name VU nominal_placeholder
-    else
-      let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
-      let type_core_term =
-        List.fold_right (fun _ acc -> Lam acc) params (NomRef (name, type_var_terms))
-      in
-      let type_val = Nbe.eval param_ctx.Ctx.metas placeholder_env type_core_term in
-      Ctx.define param_ctx name nominal_ty type_val
-  in
-  let elaborated_ctors =
+  (* Phase 1, register: a placeholder per member, sharing its id with the
+     finished nominal, so payloads written against it mean the finished type. *)
+  let registered =
     List.map
-      (fun (cname, payloads) ->
-        let payload_clos =
-          List.map
-            (fun payload_expr ->
-              let payload_core, payload_ty = ops.infer self_ctx payload_expr in
-              check_type_like self_ctx payload_ty (Ctx.eval self_ctx payload_core);
-              let payload_core = close_recursive_payload_term name num_params payload_core in
-              { env = ctx.Ctx.env @ [ nominal_placeholder ]; body = payload_core })
-            payloads
+      (fun (m : Surface.type_decl) ->
+        let nominal_id = NominalId.fresh () in
+        let placeholder =
+          VNominal { id = nominal_id; name = m.name; num_params = 0; params = []; constructors = [] }
         in
-        (cname, payload_clos))
-      ctors
+        let param_ctx = param_ctx_of m in
+        let placeholder_env = placeholder :: param_ctx.Ctx.env in
+        (m, nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty_of m placeholder_env param_ctx))
+      members
   in
-  let nominal =
-    VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors }
+  let placeholders = List.map (fun (_, _, p, _, _, _) -> p) registered in
+  (* Phase 2, elaborate: every member's payloads, in a context naming every
+     member. Those names are temporary - they contribute no width. *)
+  let elaborated =
+    List.map
+      (fun ((m : Surface.type_decl), nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty) ->
+        let group_ctx =
+          List.fold_left
+            (fun gctx ((other : Surface.type_decl), _, other_placeholder, _, _, other_ty) ->
+              let num_params = List.length other.params in
+              if num_params = 0 then Ctx.define gctx other.name VU other_placeholder
+              else
+                let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) other.params in
+                let type_core_term =
+                  List.fold_right (fun _ acc -> Lam acc) other.params (NomRef (other.name, type_var_terms))
+                in
+                let type_val = Nbe.eval param_ctx.Ctx.metas (other_placeholder :: param_ctx.Ctx.env) type_core_term in
+                Ctx.define gctx other.name other_ty type_val)
+            param_ctx registered
+        in
+        let elaborated_ctors =
+          List.map
+            (fun (cname, payloads) ->
+              ( cname,
+                List.map
+                  (fun payload_expr ->
+                    let payload_core, payload_ty = ops.infer group_ctx payload_expr in
+                    check_type_like group_ctx payload_ty (Ctx.eval group_ctx payload_core);
+                    { env = ctx.Ctx.env @ placeholders; body = close_recursive_payload_group group payload_core })
+                  payloads ))
+            m.ctors
+        in
+        (m, nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty, elaborated_ctors))
+      registered
   in
-  let ctor_values, ctor_types =
-    List.split
-      (List.map
-         (fun (cname, payload_clos) ->
-           let ctor_value, ctor_ty =
-             build_ctor param_ctx.Ctx.metas (nominal :: placeholder_env) name cname num_params
-               payload_clos
-           in
-           ((cname, ctor_value), (cname, ctor_ty)))
-         elaborated_ctors)
-  in
+  (* Phase 3, finish: build each nominal and its constructors, and extend the
+     context in chain order - params, constructors, then the type. *)
   let kind = if public then Public else Private in
-  let bind = TypeBind (name, kind, nominal, ctor_values) in
-  let ctx' =
-    extend_from_slots ctx bind
-      (List.map (fun p -> `Param p) params
-      @ List.map2
-          (fun (cname, ctor_value) (_, ctor_ty) -> `Entry (cname, ctor_ty, ctor_value))
-          ctor_values ctor_types
-      @ [ `Entry (name, nominal_ty, nominal) ])
+  let ctx', results =
+    List.fold_left
+      (fun (ctx, acc) (i, ((m : Surface.type_decl), nominal_id, _, param_ctx, placeholder_env, nominal_ty, elaborated_ctors)) ->
+        let num_params = List.length m.params in
+        let nominal =
+          VNominal { id = nominal_id; name = m.name; num_params; params = []; constructors = elaborated_ctors }
+        in
+        finish_nominal nominal_id elaborated_ctors;
+        let ctor_values, ctor_types =
+          List.split
+            (List.map
+               (fun (cname, payload_clos) ->
+                 let ctor_value, ctor_ty =
+                   (* The other members' placeholders sit under the head so a
+                      constructor type naming them re-evaluates; levels count
+                      from the tail, so no index moves. *)
+                   let others = List.filteri (fun j _ -> j <> i) placeholders in
+                   build_ctor param_ctx.Ctx.metas (nominal :: others @ placeholder_env) m.name cname num_params payload_clos
+                 in
+                 ((cname, ctor_value), (cname, ctor_ty)))
+               elaborated_ctors)
+        in
+        let bind = TypeBind (m.name, kind, nominal, ctor_values) in
+        let ctx' =
+          extend_from_slots ctx bind
+            (List.map (fun p -> `Param p) m.params
+            @ List.map2
+                (fun (cname, ctor_value) (_, ctor_ty) -> `Entry (cname, ctor_ty, ctor_value))
+                ctor_values ctor_types
+            @ [ `Entry (m.name, nominal_ty, nominal) ])
+        in
+        let fields = (m.name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
+        (ctx', (bind, fields) :: acc))
+      (ctx, []) (List.mapi (fun i e -> (i, e)) elaborated)
   in
-  ( ctx',
-    bind,
-    (name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types )
+  (ctx', List.rev results)
 
 (** Stage 7: per-binding module elaboration. Processes a single
     [Surface.struct_binding] and returns the updated elaboration context,
@@ -242,10 +272,12 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
       let bind = LetBind (name, kind, val_core) in
       let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
       (ctx', [bind], [ModuleField (name, kind, val_ty)])
-  | Surface.TypeBinding { name; params; ctors; public } ->
-      let ctx', bind, fields = elab_type_binding ops ctx ~name ~params ~ctors ~public in
-      (ctx', [bind],
-       List.rev_map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) fields)
+  | Surface.TypeBinding { members; public } ->
+      (* The module fold prepends each binding's results and reverses at the
+         end, so a chain's binds and entries come back last member first. *)
+      let ctx', results = elab_type_group ops ctx ~members ~public in
+      (ctx', List.rev_map fst results,
+       List.rev_map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) (List.concat_map snd results))
 
 let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   match expr with
@@ -719,14 +751,16 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
-        | Surface.TypeBinding { name; params; ctors; public } :: rest ->
-            let ctx', bind, fields = elab_type_binding ops ctx ~name ~params ~ctors ~public in
-            let type_entries =
-              List.map (fun (name, kind, ty) -> StructField (name, kind, ty)) fields
+        | Surface.TypeBinding { members; public } :: rest ->
+            let ctx', results = elab_type_group ops ctx ~members ~public in
+            let acc =
+              List.fold_left
+                (fun (acc_binds, acc_entries) (bind, fields) ->
+                  let type_entries = List.map (fun (name, kind, ty) -> StructField (name, kind, ty)) fields in
+                  (bind :: acc_binds, List.rev_append type_entries acc_entries))
+                (acc_binds, acc_entries) results
             in
-            go ctx'
-              (bind :: acc_binds, List.rev_append type_entries acc_entries)
-              rest
+            go ctx' acc rest
       in
       let _end_ctx, core_bindings, extra_entries = go binding_ctx ([], []) bindings in
       let result_con_fields = List.map (fun (n, c, _) -> (n, c)) con_cores in
@@ -819,6 +853,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
           ctors
       in
       let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
+      finish_nominal nominal_id elaborated_ctors;
       (* For parameterized types, build an Explicit VPi chain so Option I64 works.
          For nullary types, just bind with VU as before. *)
       let body_ctx =

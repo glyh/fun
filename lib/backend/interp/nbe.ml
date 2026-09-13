@@ -915,11 +915,11 @@ and eval_match_direct_result (mc : MetaContext.t) (env : env)
 and nominal_constructors (mc : MetaContext.t) (nom : value) :
     (string * int * int) list =
   match force mc nom with
-  | VNominal { params; constructors; _ } ->
+  | VNominal { id; params; constructors; _ } ->
       let ntp = List.length params in
       List.map
         (fun (name, payloads) -> (name, ntp, List.length payloads))
-        constructors
+        (Core.nominal_constructors id constructors)
   | _ -> raise (EvalError "match scrutinee type is not a nominal")
 
 and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)

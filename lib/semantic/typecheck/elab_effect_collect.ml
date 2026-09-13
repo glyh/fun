@@ -57,8 +57,10 @@ let rec compile_time_safe (expr : Surface.t) : bool =
 and compile_time_safe_struct_binding = function
   | Surface.LetBinding { value; _ } -> compile_time_safe value
   | Surface.MethodBinding { body; _ } -> compile_time_safe body
-  | Surface.TypeBinding { ctors; _ } ->
-      List.for_all (fun (_, payloads) -> List.for_all compile_time_safe payloads) ctors
+  | Surface.TypeBinding { members; _ } ->
+      List.for_all
+        (fun (m : Surface.type_decl) -> List.for_all (fun (_, payloads) -> List.for_all compile_time_safe payloads) m.ctors)
+        members
   | Surface.RecordTypeBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
   | Surface.EffectBinding { ops; _ } ->
       List.for_all (fun (op : Surface.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops

@@ -41,17 +41,16 @@ type param = {
 
 and effect_op = { name : string; input : t; output : t }
 
+and type_decl = { name : id; params : id list; ctors : (id * t list) list }
+
 and effect_row = { effects : t list; tail : t option }
 
 and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }
   | MethodBinding of { name : id; params : param list; body : t; public : bool }
-  | TypeBinding of {
-      name : id;
-      params : id list;
-      ctors : (id * t list) list;
-      public : bool;
-    }
+  | TypeBinding of { members : type_decl list; public : bool }
+      (** [type A = … and B = …]: one binding per chain, its members mutually
+          recursive; a single declaration is the one-member chain. *)
   | RecordTypeBinding of {
       name : id;
       params : id list;

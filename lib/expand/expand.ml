@@ -109,9 +109,11 @@ and go_struct_binding ?within (s : Scope_set.t) (binding : Syntax.struct_binding
     let new_params = List.map (map_param ?within s (add_scope ?within s)) params in
     MethodBinding { name = new_name; params = new_params;
                     body = add_scope ?within s body; public }
-  | TypeBinding { name; params; ctors; public } ->
-    TypeBinding { name = add_id_scope_if within s name;
-                  params; ctors = List.map (fun (n, ps) -> (n, List.map (add_scope ?within s) ps)) ctors; public }
+  | TypeBinding { members; public } ->
+    TypeBinding { members = List.map (fun (m : type_decl) ->
+                    { m with name = add_id_scope_if within s m.name;
+                             ctors = List.map (fun (n, ps) -> (n, List.map (add_scope ?within s) ps)) m.ctors }) members;
+                  public }
   | RecordTypeBinding { name; params; fields; public } ->
     RecordTypeBinding { name = add_id_scope_if within s name;
                         params; fields = List.map (fun (n, e) -> (n, add_scope ?within s e)) fields; public }
@@ -686,32 +688,46 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let params, body = expand_method_params_body ctx params body in
     ([MethodBinding { name = add_id_scope scope name; params; body; public }], [[ scope ]])
-  | TypeBinding { name; params; ctors; public } ->
-    let binding_name = id_name name in
-    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
-    let params, param_scopes = expand_id_params ctx [] params in
-    let ctors, ctor_scopes =
-      List.split
-        (List.map
-           (fun ((cname : Syntax.id), payload) ->
-             (* The constructor is introduced *after* the type name by the same
-                declaration, so it is bound under the type's scope rather than
-                beside it. As siblings the two scope sets are incomparable, and
-                [type T = T I64] - where a constructor shares its type's written
-                name - resolves as an ambiguous binding instead of shadowing.
-                Nesting makes the constructor strictly more specific, which is
-                the same last-wins rule a dotted path and [open] already use. *)
-             let ctor_scope =
-               Expand_ctx.extend_at ctx ~name:cname.name
-                 ~base_scope:(Scope_set.union scope cname.scope)
-                 ~resolved_name:cname.name
-             in
-             ((add_id_scope ctor_scope cname, payload), ctor_scope))
-           ctors)
+  | TypeBinding { members; public } ->
+    (* Every member name is introduced before any payload is expanded, so a
+       chain's members see each other; separate statements stay sequential. *)
+    let member_scopes =
+      List.map
+        (fun (m : type_decl) ->
+          Expand_ctx.extend_at ctx ~name:(id_name m.name) ~base_scope:m.name.scope ~resolved_name:(id_name m.name))
+        members
     in
-    ([TypeBinding { name = add_id_scope scope name;
-                    params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) ps)) ctors; public }],
-     [scope :: ctor_scopes])
+    let members, ctor_scopes =
+      List.split
+        (List.map2
+           (fun (m : type_decl) scope ->
+             let params, param_scopes = expand_id_params ctx [] m.params in
+             let ctors, ctor_scopes =
+               List.split
+                 (List.map
+                    (fun ((cname : Syntax.id), payload) ->
+                      (* The constructor is introduced *after* the type name by the same
+                         declaration, so it is bound under the type's scope rather than
+                         beside it. As siblings the two scope sets are incomparable, and
+                         [type T = T I64] - where a constructor shares its type's written
+                         name - resolves as an ambiguous binding instead of shadowing.
+                         Nesting makes the constructor strictly more specific, which is
+                         the same last-wins rule a dotted path and [open] already use. *)
+                      let ctor_scope =
+                        Expand_ctx.extend_at ctx ~name:cname.name
+                          ~base_scope:(Scope_set.union scope cname.scope)
+                          ~resolved_name:cname.name
+                      in
+                      ((add_id_scope ctor_scope cname, payload), ctor_scope))
+                    m.ctors)
+             in
+             let payload_scopes = member_scopes @ param_scopes in
+             ( { name = add_id_scope scope m.name; params;
+                 ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes payload_scopes p)) ps)) ctors },
+               ctor_scopes ))
+           members member_scopes)
+    in
+    ([TypeBinding { members; public }], [member_scopes @ List.concat ctor_scopes])
   | RecordTypeBinding { name; params; fields; public } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in

@@ -847,6 +847,28 @@ and parse_value_decl_after_prefix env ~recursive stmt =
 
 and parse_type_binding env public stmt =
   match drop_separators stmt with
+  | ({ datum = Token { kind = KwType; _ }; _ } as type_kw) :: rest -> (
+      match split_type_chain rest with
+      | [] | [ _ ] -> parse_type_decl env public stmt
+      | segments ->
+          let members =
+            List.map
+              (fun segment ->
+                match parse_type_decl env public (type_kw :: segment) with
+                | Some (Syntax.TypeBinding { members = [ member ]; _ }) -> member
+                | Some (Syntax.RecordTypeBinding _) -> error "record types cannot be part of an and chain"
+                | _ -> error "expected type declaration in and chain")
+              segments
+          in
+          let names = List.map (fun (m : Syntax.type_decl) -> m.name.name) members in
+          (match List.find_opt (fun n -> List.length (List.filter (String.equal n) names) > 1) names with
+           | Some dup -> error ("duplicate type in and chain: " ^ dup)
+           | None -> ());
+          Some (Syntax.TypeBinding { members; public }))
+  | _ -> None
+
+and parse_type_decl env public stmt =
+  match drop_separators stmt with
   | { datum = Token { kind = KwType; _ }; _ }
     :: { datum = Token { kind = Ident name; _ }; span = name_span }
     :: rest -> (
@@ -924,7 +946,7 @@ and parse_type_binding env public stmt =
           in
           Some
             (Syntax.TypeBinding
-               { name = id ~span:name_span name; params; ctors; public })
+               { members = [ { name = id ~span:name_span name; params; ctors } ]; public })
       | None -> error "type binding requires =")
   | _ -> None
 
@@ -1325,8 +1347,10 @@ and scoped_binding_to_expr env span stmt body =
   let public, stmt = parse_public_prefix stmt in
   if public then error "pub is not supported inside do blocks";
   match parse_type_binding env false stmt with
-  | Some (Syntax.TypeBinding { name; params; ctors; _ }) ->
+  | Some (Syntax.TypeBinding { members = [ { name; params; ctors } ]; _ }) ->
       stx ~span (Syntax.TypeDef { name; params; ctors; body })
+  | Some (Syntax.TypeBinding _) ->
+      error "and chains are not supported in a scoped do head; declare the chain as a do-body statement"
   | Some (Syntax.RecordTypeBinding { name; params; fields; _ }) ->
       stx ~span (Syntax.RecordTypeDef { name; params; fields; body })
   | Some _ -> error "unexpected non-type binding"

@@ -303,8 +303,9 @@ every defect below is an invariant with no name in the source.
   — umbrella for demoting built-in constructs to library. Direction decided;
   increment 1 (Bool + `if`) landed; **stays open** for more increments.
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
-  — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
-  self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
+  (closed) — `type A = … and B = …` chains, elaborated by one three-phase knot.
+  Nested patterns through recursive positions (broken for every recursive type,
+  `List` included) now read a placeholder's constructors by nominal id.
 - [Mutually-recursive record type declarations](tickets/mutually-recursive-record-types.md)
   — deferred remainder of the nominal ticket. **Researched:** self-recursive records
   do not work either, and `Self` has no identity. Recommended knot: give the
@@ -319,8 +320,7 @@ every defect below is an invariant with no name in the source.
   `do type … ; body` heads until expression-position group knots are designed.
 - [Reflect Match in the Expr macro ADT](tickets/reflect-match-in-expr-macro-adt.md)
   — enables a true prelude-macro `if`, `matches?`, pattern DSLs, `derive`. Design
-  decided via grilling; **blocked on** mutually-recursive nominal types (for the
-  dedicated `Branch` ADT).
+  decided via grilling; unblocked (mutual nominal types landed).
 - [Specify Stage 12 macro diagnostics and expansion UX](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md)
   — diagnostics scope pre- vs post-rewrite.
 - [Design trait library deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md)

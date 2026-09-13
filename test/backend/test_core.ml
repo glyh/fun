@@ -1382,6 +1382,17 @@ let test_round_trip_is_identity () =
   Alcotest.(check bool) "pattern" true
     (Macro_eval.unwrap_stx_pat ?nominals:n (Macro_eval.wrap_stx_pat ~nominals:n pat) = Some pat)
 
+let test_unit_level_type_chain () =
+  match eval_decl_module
+    "pub type A = MkA(B) | NoA and B = MkB(A) | NoB
+     pub x = match MkA(MkB(NoA)) do MkA(MkB(NoA)) -> 1 | _ -> 0 end"
+  with
+  | VModule { entries; _ } ->
+      (match List.find_map (function ModuleField ("x", _, _) -> Some () | _ -> None) entries with
+       | Some () -> ()
+       | None -> Alcotest.fail "x missing")
+  | v -> Alcotest.fail (Debug.pp_value_short (MetaContext.create ()) v)
+
 let test_block_local_macros_do_not_leak () =
   List.iter (fun src ->
     match eval_with_macros src with
@@ -1702,9 +1713,7 @@ let test_generated_type_before_macro_stays_binder () =
   let id name = Syntax.fresh_id name in
   let generated_type =
     Syntax.TypeBinding {
-      name = id "GenTag";
-      params = [];
-      ctors = [];
+      members = [ { name = id "GenTag"; params = []; ctors = [] } ];
       public = false;
     }
   in
@@ -3282,6 +3291,7 @@ let () =
           Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
           Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;
           Alcotest.test_case "reflection round trip is the identity" `Quick test_round_trip_is_identity;
+          Alcotest.test_case "unit-level type chain" `Quick test_unit_level_type_chain;
           Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
           Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
           Alcotest.test_case "R-type match non-exhaustive missing ctors" `Quick test_rtype_match_non_exhaustive_missing_ctors;

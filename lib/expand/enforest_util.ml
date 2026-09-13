@@ -296,10 +296,10 @@ let is_multi_block_start term =
   | Token { kind = Ident "multi"; _ } -> true
   | _ -> false
 
-let split_by_top_level_bar terms =
+let split_by_top_level is_separator terms =
   let rec go depth current acc = function
     | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when depth = 0 && token_kind Bar term -> go depth [] (List.rev current :: acc) rest
+    | term :: rest when depth = 0 && is_separator term -> go depth [] (List.rev current :: acc) rest
     | term :: rest when token_kind KwDo term || token_kind KwSig term -> go (depth + 1) (term :: current) acc rest
     | term :: rest when token_kind KwModule term ->
         if starts_named_do_block rest then go depth (term :: current) acc rest
@@ -311,6 +311,13 @@ let split_by_top_level_bar terms =
     | term :: rest -> go depth (term :: current) acc rest
   in
   go 0 [] [] terms |> List.filter (fun part -> drop_separators part <> [])
+
+let split_by_top_level_bar terms = split_by_top_level (token_kind Bar) terms
+
+(* [type A = … and B = …]: [and] separates the members of a type chain. It is
+   contextual, not a keyword - it only means this directly inside a [type]. *)
+let split_type_chain terms =
+  split_by_top_level (fun term -> match term.datum with Token { kind = Ident "and"; _ } -> true | _ -> false) terms
 
 let split_match_branches terms =
   let rec go depth seen_arrow current acc = function

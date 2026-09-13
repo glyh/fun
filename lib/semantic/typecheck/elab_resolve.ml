@@ -274,7 +274,7 @@ let find_nominal_for_constructor ctx name =
   List.find_map (fun entry ->
     match entry with
     | VNominal n ->
-        if List.exists (fun (cname, _) -> String.equal cname name) n.constructors then
+        if List.exists (fun (cname, _) -> String.equal cname name) (nominal_constructors n.id n.constructors) then
           Some (VNominal n)
         else None
     | _ -> None)
