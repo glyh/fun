@@ -42,6 +42,108 @@ fix is a change to how structs elaborate, not to the open.
    what a field type referring to a type *bound in the same struct* would need,
    so check whether that is wanted at the same time.
 
+## Research (2026-09-13)
+
+Read-only: code reading plus REPL probes (`dune exec fun < probe`). No source
+changes.
+
+### Finding 1 — the split is in all three layers, not just the elaborator
+
+| Layer | What happens | Where |
+|---|---|---|
+| Enforest | `parse_struct_items` sorts each statement into `fields` or `bindings`. **Source order between the two is lost before expansion runs.** | `enforest.ml:1730` |
+| Expand | `con_fields` are expanded first, in the struct's outer context. The binding list is expanded afterwards, threading the scopes each binding introduces to later bindings. Field types never receive those scopes. | `expand.ml:419` |
+| Elaborate | `con_fields` are elaborated first, as a group, to build the partial struct type that method bodies see as `Self`/`self`. Then the binding fold runs. | `elab_infer.ml`, `Struct` case |
+
+Fixing only the elaborator is impossible, because it no longer knows where the
+`open` stood relative to the fields.
+
+### Finding 2 — what a field type can see today
+
+| # | Probe | Result |
+|---|---|---|
+| 1 | `M = module pub T = I64 end; R = struct open M; f : T end` | `UnboundVariable "T"` (the ticket's case) |
+| 2 | `do open M; struct f : T end end` | works; expression-level `open` is the workaround |
+| 3 | `R = struct pub T = I64; f : T end` | `UnboundVariable "T"`: fields don't see same-struct bindings either |
+| 4 | `R = struct n : Type; v : n end` | `UnboundVariable "n"`: fields don't see earlier fields (no dependent records) |
+| 5 | `N = module open M; pub x : T = 4 end` | works: modules follow statement order |
+| 6 | `N = module pub x : T = 4; open M end` | `UnboundVariable "T"`: consistent forward-reference rule |
+| 7 | `T = Bool; M = module pub T = I64 end; R = struct open M; f : T end; R{f = 1}` | **`CannotUnify(Bool vs I64)`**: the field silently binds the *outer* `T`, not the opened one |
+| 8 | `T = I64; M = module pub T = Bool end; R = struct open M; f : T; pub g : T = True end` | accepted: within one struct, `T` means `I64` in the field and `Bool` in the binding |
+
+Probes 7 and 8 matter most. When an outer name exists, the asymmetry doesn't
+produce an error. The same written name silently resolves to different types
+depending on whether it sits in a field or a binding.
+
+### Finding 3 — the two-phase split is load-bearing for `self`
+
+```
+C = struct pub method get() -> self.value; value: I64 end;  C.get(C{value = 4})  → 4
+C = struct a: I64; pub method get() -> self.b; b: I64 end;   C.get(C{a=1; b=9})   → 9
+```
+
+Methods see **every** field, including fields declared after them. That works
+only because all field types are elaborated before any binding. A naive
+"one source-ordered pass" would break it: `self`'s type would lack the later
+fields.
+
+(Unrelated but observed: `self.value + C.k` inside `C` gives
+`UnboundVariable "C"`, while plain `k` works. A struct can't name itself from
+its own body.)
+
+### Finding 4 — side discovery: macros escape their block
+
+While probing whether macros reach field types, a macro defined inside a
+`struct`, `module` or nested `do`, `pub` or not, turned out to be callable
+**after the block ends**. Spun out as
+[block-local-macros-leak-by-written-name](block-local-macros-leak-by-written-name.md).
+This is also why a macro defined in a struct body appears to reach that struct's
+field types in either order. It is not evidence that fields see bindings.
+
+### The design space
+
+The real question is not "should `open` reach fields" but **what a field
+declaration is**. Two readings fit the evidence:
+
+- **(A) Fields are a signature in the outer scope.** Keep today's behaviour and
+  make it the stated rule: field types see only what's outside the struct.
+  Consistency cost: `open` means something different in `struct` and in
+  `module`, and probes 7 and 8 stay silently confusing. At minimum, an `open`
+  (or type binding) that textually precedes a field should then be an error or
+  warning, not ignored.
+- **(B) Scope in source order, `self` over all fields.** Each field type sees
+  the preceding opens and non-method bindings. Method bodies are checked after
+  every field is known, as class members are in Scala, Kotlin and C#, or as
+  OCaml `module rec` checks against the full signature. This needs:
+  1. an interleaved item list out of the enforester (e.g. a field as a
+     `struct_binding` variant, which triggers the field-propagation checklist in
+     `CLAUDE.md`);
+  2. expander scope threading that includes field types;
+  3. an elaborator that walks items in order, **defers method bodies** until all
+     field types exist, and rejects a field type that depends on a method
+     (otherwise it's a cycle: field → method → `self` → all fields).
+
+  This matches `module` statement order (Consistency > Flexibility) and fixes
+  probes 1, 3, 7 and 8. It also opens the door to probe 4 (dependent fields)
+  later, but doesn't require it.
+
+A third option, letting only `open` reach fields as a special case, fixes probe 1
+but not 3, 7 or 8, and adds a rule of its own. Not recommended.
+
+**Recommendation: (B)**, with deferred method bodies. It's the only reading
+under which one written name means one thing throughout a struct.
+
+Interactions to carry into grilling:
+- Record declarations (`type R A = {…}`) elaborate through the same `Struct`
+  case with `ctx.self_type = VSelfType`, and
+  [recursive-records-cannot-hold-a-record](recursive-records-cannot-hold-a-record.md)
+  will rework that path. Settle this ticket first, so the struct elaborator is
+  rewritten once.
+- Whether dependent fields (probe 4) are wanted. Under (B) they become a
+  telescope over fields. That's a separate decision, but it shouldn't be closed
+  off by accident.
+
 ## Resolution
 
-_Unresolved._
+_Unresolved._ The rule is a grilling decision between (A) and (B), with (B)
+recommended.

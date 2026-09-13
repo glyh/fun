@@ -80,7 +80,6 @@ When adding a field to `Syntax.struct_binding` variants (e.g. `kind` to `MacroBi
 you MUST update EVERY constructor of that variant across the codebase:
 
 - `lower_surface.ml` — `Syntax.Foo { ...; new_field } → Surface.Foo { ...; new_field }`
-- `surface_to_syntax.ml` — the reverse
 - `expand.ml` `add_scope` functions — check each `struct_binding` case
   (look for `kind = None` hardcodes — there were 3 of them)
 - `enforest_template.ml` — template helpers reconstruct bindings

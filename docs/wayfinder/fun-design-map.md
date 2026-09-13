@@ -192,6 +192,17 @@ as the frontier reaches them.
   (only to unblock feature work/tests) vs post-rewrite (broad polish, when the
   implementation shape is stable). Broad polish in the OCaml prototype is avoided
   because that code is expected to be replaced.
+  Concrete input: elaborator errors carry **no source location at all**. `Elab_error`
+  has no span fields, and `Surface.t` has no spans to give it (see
+  [Syntax.t vs Surface.t](tickets/syntax-vs-surface-ir-layer.md)). Deleting
+  `Surface.t` makes spans available but does not attach them.
+- **`Self` names two things** — the record-recursion placeholder
+  (`VSelfType args`, set by record declarations) and the partial struct type seen
+  by struct method bodies (`elab_infer.ml`, `Struct` case). Both share
+  `ctx.self_type`. Giving the record one an identity
+  ([self-type-has-no-identity](tickets/self-type-has-no-identity.md)) may force
+  them apart; whether they should be one concept is a naming question for the
+  [surface domain-model pass](tickets/domain-model-surface-enforestation.md).
 - **Library-level features vs compiler machinery** — how much future feature work
   (deriving/fallback, protocol-style ops, UFCS, FFI/native bindings) should be
   library-level macros / type-case rather than new compiler machinery. UFCS and FFI
@@ -243,6 +254,13 @@ every defect below is an invariant with no name in the source.
   which should wait until that check actually fires.
 - [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
   — settle the rule before the struct elaborator is written a second time.
+  **Researched:** the split lives in enforest, expand *and* elaborate. With an
+  outer name in scope it misbinds silently rather than erroring. The two-phase
+  order is load-bearing for `self` seeing later fields. Recommended: source-order
+  scoping with deferred method bodies. Awaiting grilling.
+- [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
+  — a macro defined in a `struct`/`module`/`do` is callable after the block,
+  `pub` or not. Found by the research above.
 - [Domain model — surface and enforestation](tickets/domain-model-surface-enforestation.md)
   — second pass of the port's specification: the reader, the enforester, and the
   seam where the expander hands the elaborator its output — the same class of
@@ -257,8 +275,14 @@ every defect below is an invariant with no name in the source.
   — language gap: `type A … B …` + `type B … A …` don't elaborate today (only
   self-recursion). Blocks the clean `Branch` ADT below; useful on its own.
 - [Mutually-recursive record type declarations](tickets/mutually-recursive-record-types.md)
-  — deferred remainder of the nominal ticket: records excluded from `and` chains
-  until a value-level knot mechanism is designed.
+  — deferred remainder of the nominal ticket. **Researched:** self-recursive records
+  do not work either, and `Self` has no identity. Recommended knot: give the
+  recursive record an identity and unfold on demand (Go-style). Awaiting grilling.
+- [Recursive records cannot hold a record](tickets/recursive-records-cannot-hold-a-record.md)
+  — `Som(l)` in a recursive field fails; `Self` is never unfolded. Direction
+  depends on the knot decision.
+- [Self type has no identity, so unrelated recursive records unify](tickets/self-type-has-no-identity.md)
+  — latent soundness hole; becomes live if the bug above is fixed alone.
 - [Mutual type chains in scoped do-heads](tickets/type-def-chains-in-scoped-do-heads.md)
   — deferred remainder of the nominal ticket: `and` chains rejected in scoped
   `do type … ; body` heads until expression-position group knots are designed.
