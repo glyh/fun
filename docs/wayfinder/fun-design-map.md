@@ -115,6 +115,9 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   [macro-interleaving-design](topics/macro-interleaving-design.md); the full
   nine-stage migration (Stages 1–9) is implemented — see
   [`macro-system/STATUS.md`](macro-system/STATUS.md).
+  Its annotation-resolution rule is superseded by
+  [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
+  — binders move to `macro m[A](x)`; names in `: Expr(…)` only refer.
 - Macro Stages 0–10 (substrate, hygiene, enforestation, syntax templates,
   kind-tagged macros, Decl/Pattern ADTs, type-aware macros) are complete; the
   design library lives in [`macro-system/`](macro-system/).
@@ -318,5 +321,20 @@ every defect below is an invariant with no name in the source.
   — a use-site `False = 42` silently turns the prelude's own `&&` into a
   constant-42 machine; replacement ids are re-enforested at the use site and
   the declarer's scope never reaches them. Found by the pass-2 model.
+- [Macros have no quoted syntax](tickets/macros-have-no-quoted-syntax.md)
+  — ids can only be built from strings with empty scope sets, so the
+  implementation resolves them by spelling at elaboration. The model: quoted
+  syntax resolves at the definition site; a context-less id is unbound.
+- [Macro bodies implicitly open the prelude](tickets/macro-bodies-implicitly-open-the-prelude.md)
+  — `Macro_driver` elaborates every macro body prelude-opened; the model
+  elaborates it in its definition site's scope, nothing ambient.
+- [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
+  — `macro m[A](x) : Expr(A)`; names in an annotation only refer.
+- [Nominal identity is applicative by purity](tickets/nominal-identity-applicative-by-purity.md)
+  — same declaration + convertible free variables = same type; generative only
+  under a run-time effect. Today a nominal declared under a binder does not
+  evaluate at all. **Blocked on** refs in effect rows.
+- [Refs belong in effect rows](tickets/refs-in-effect-rows.md) — reopens the
+  references pass: purity must be visible in types for generativity to be.
 - [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
   — mechanical collapse of the duplicate IR. **Blocked on** the first ticket.

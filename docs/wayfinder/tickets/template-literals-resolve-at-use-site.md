@@ -80,3 +80,11 @@ declarer's scope environment at instantiation time. Options to weigh:
 Whichever is chosen, the two prelude repros above become regression tests; the
 fix changes `&&`/`||` expansion for shadowing programs, so land it with the
 [regression-coverage](../../topics/regression-coverage.md) suite in mind.
+
+## Second symptom: pattern heads
+
+Pattern constructor heads are plain strings (`Syntax.PatCon`), so they carry no
+scope set at all. A template or macro that writes `match x do True -> … end`
+gets whichever `True` the caller has in scope. In the model a pattern head is a
+bare name (`CONTEXT.md`) and resolves at the definition site like any other
+quoted id.

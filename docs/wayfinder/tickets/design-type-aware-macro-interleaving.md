@@ -31,6 +31,9 @@ task-queue expander.
 - Parser/expander-only sets are insufficient because they cannot see all
   elaboration-context facts that should affect this arity decision.
 
+> **Partly superseded:** the annotation-resolution bullet below is replaced by
+> [macro-type-binders-should-be-explicit](macro-type-binders-should-be-explicit.md).
+
 ## Resolution
 
 **Resolved and implemented.** Design completed — see

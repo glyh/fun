@@ -13,13 +13,24 @@ the two trees and recommends deleting `Surface.t`. This document records what
 each layer *is* and what invariants hold across it — the part a port (or that
 deletion) must carry regardless of how many trees survive.
 
+The *model* is the macro-system design: Honu enforestation, Flatt's sets of
+scopes, and an ordered, binding-at-a-time interleaving of expansion with
+elaboration (papers in [`macro-system/papers/`](../macro-system/papers/), design in
+[macro-interleaving-design](macro-interleaving-design.md));
+the glossary follows it. The S-invariants below describe the current
+implementation, which imitates that model imperfectly: it runs enforest,
+expand, lower and elaborate as fixed passes (so lowering, and `Surface.t`, have
+no counterpart in the model), keys operator lookup by string, and mints no
+use-site scope for any application and no intro scope for procedural macros.
+Where the two disagree, the implementation is the defect.
+
 ## The four layers, and what each one commits to
 
 | layer | produces | commits to |
 |---|---|---|
 | reader (`Raw_syntax`) | tokens and delimiter groups | nothing — no forms, no names resolved |
 | enforestation (`Syntax.t`, `Enforest`) | typed forms, ids carrying scope sets | what a *form* is; where macros interrupt the parse |
-| expansion (`Expand`) | the same tree, alpha-renamed | which binding each occurrence denotes |
+| expansion (`Expand`) | the same tree, alpha-renamed | which binder each occurrence denotes |
 | lowering (`Surface.t`, `Lower_surface`) | the elaborator's input | strips spans, scope sets, `MacroDef.kind`, `SyntaxOperatorUse.unit` — nothing else |
 
 **The reader commits to nothing but grouping** (S1, enforced by construction).
@@ -42,9 +53,9 @@ than every later resolution.
 ## Scope sets and resolution
 
 **Resolution is sets-of-scopes** (S3, enforced by construction).
-`Binding.resolve`: candidates are the bindings sharing the occurrence's
-*written* name; keep those whose binding scope ⊆ occurrence scope; the **largest**
-binding scope wins; two incomparable candidates raise `ambiguous binding` —
+`Binding.resolve`: candidates are the binders sharing the occurrence's
+*written* name; keep those whose binder scope ⊆ occurrence scope; the **largest**
+binder scope wins; two incomparable candidates raise `ambiguous binding` —
 loud, not last-wins. This is Flatt's model, with the ambiguity made an error
 rather than a silent pick.
 
@@ -82,7 +93,7 @@ its *written* name; the elaborator resolves that string against its flat
 namespace (pass one's I4). The tier is what lets a macro write `Syntax.var("True")`
 and reach the prelude constructor — macro-written free names have no scope set,
 so the first tier can never see them. It is also unhygienic by construction:
-the name resolves by spelling, so it lands on whichever binding of that
+the name resolves by spelling, so it lands on whichever binder of that
 spelling the elaborator's context holds — the outer one, if the inner was
 renamed ([block-local-macros-leak-by-written-name](../tickets/block-local-macros-leak-by-written-name.md)
 is the macro-table side of the same fall-through). The port must know this
@@ -96,6 +107,12 @@ plain strings throughout. This is the syntactic mirror of pass one's I4b: the
 bare-name namespace is exactly the hygienic one, and the member namespace is
 exactly the elaborator-resolved one. A macro that writes `M.field` writes the
 field name as a string and means it.
+
+In the model the split is *bare names vs labels*, not *bare names vs
+everything else*. Members are labels, resolved by their container, and rightly
+carry no scopes. Pattern constructor heads are bare names: `PatCon` holding
+strings is a defect, the pattern-position twin of
+[template-literals-resolve-at-use-site](../tickets/template-literals-resolve-at-use-site.md).
 
 ## Three macro paths, three hygiene contracts
 
@@ -143,7 +160,7 @@ Not restated here — each lives in its ticket:
 - [procedural-macros-capture-use-site-variables](../tickets/procedural-macros-capture-use-site-variables.md)
   — diagnosed this pass: scope sets die at the macro value boundary.
 - [template-literals-resolve-at-use-site](../tickets/template-literals-resolve-at-use-site.md)
-  — found this pass: `&&`/`||` silently corruptible by a use-site binding.
+  — found this pass: `&&`/`||` silently corruptible by a use-site binder.
 - [type-aware-macro-output-is-not-expanded](../tickets/type-aware-macro-output-is-not-expanded.md)
   and [block-local-macros-leak-by-written-name](../tickets/block-local-macros-leak-by-written-name.md)
   — found by the IR-layers research; this pass places them in the model
@@ -154,12 +171,15 @@ Not restated here — each lives in its ticket:
 - **Reader** for the grouping pass; **Group** for its one structural notion.
 - **Form** for a typed node; **Syntax object** for the macro-visible tree
   (`Syntax.t`) whose ids carry scope sets.
-- **Resolved name** for the alpha-unique key a value binder is registered and
-  rewritten to — the string the elaboration context is keyed by.
-- **Intro scope** for the fresh scope distinguishing one expansion from
-  another. Distinct from a binder's scope; templates mint one, macros don't.
-- **Template** for the parse-time rewrite; **macro** for the procedural one.
-  The port should not merge them back into one word: their hygiene contracts
-  differ (S8), and the difference is load-bearing.
-- **Fall-through** for the second resolution tier — a named mechanism, not an
-  accident, with its leak documented.
+- **Resolved name** for the alpha-unique key a binder is registered and
+  rewritten to — the string the elaboration context is keyed by. Every binder
+  gets one; the implementation's type-namespace exception (S5) is a defect.
+- **Intro scope** and **Use-site scope** for the two fresh scopes every macro
+  or template application mints. Today templates mint only the first and
+  macros neither.
+- **Template** for the pattern rewrite; **macro** for the procedural one. Two
+  declaration forms, one hygiene contract — the three contracts in the table
+  above are the implementation's defects, not a distinction to keep.
+- **Quoted syntax** and **Borrowed context** for how a macro writes names. The
+  implementation's string fall-through (S6) has no name in the port: it is
+  replaced, see [macros-have-no-quoted-syntax](../tickets/macros-have-no-quoted-syntax.md).

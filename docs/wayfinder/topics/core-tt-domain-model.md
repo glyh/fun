@@ -107,13 +107,24 @@ type's name unreachable through a path.
 
 **Status: unchecked convention, and deliberately so.**
 
-Types, constructors, fields, macros, operators and effect operations all share
-one namespace. A later binding shadows an earlier one. The consequence is
+Values, types, constructors, macros and operators all share one namespace (the
+bare names; fields and effect operations are members — see I4b). A later binding
+shadows an earlier one. The consequence is
 accepted rather than repaired: after `type T = T I64` the constructor shadows
 the type, so `T` no longer works in type position.
 
 This is a language decision, not a defect. Splitting the namespaces would
 contradict *types are values*.
+
+**Pass 2 refinement.** The single namespace stays; *where* shadowing is decided
+moves. In the model every binder gets a unique resolved name at expansion, so a
+later binder shadowing an earlier one is settled when the name is *resolved*
+(by scope set). Elaboration only *locates* a resolved name, and cannot meet two
+entries with the same one — so last-wins by spelling in the elaborator is an
+implementation property the model makes redundant, not a rule to port. Members
+are different: they are located by label in their container, and I3's
+last-wins stays a real rule there. Vocabulary: **Resolved name**, **Locate** in
+[`CONTEXT.md`](../../../CONTEXT.md).
 
 ### I4b — bare names share one namespace; members are not bare names
 
