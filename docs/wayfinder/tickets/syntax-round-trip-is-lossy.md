@@ -3,8 +3,10 @@ title: The syntax round trip is lossy
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Reflection is total and the round trip is the identity. The prelude's `Syntax` ADTs (one `and` chain, with `Expr`, `Decl`, `Pattern`, `Branch`, `Param`, `EffectRow`, `EffectOp`, `TypeDecl`, `Ctor`, `Field` and `PatField`) have one constructor per form. `Macro_eval` wraps and unwraps every one, and `test_round_trip_is_identity` checks a varied program before and after expansion. The one field that still cannot carry a scope is a pattern constructor head, which is a bare string in `Syntax.pat`; that is the pattern-head symptom of template-literals-resolve-at-use-site. Cost to note: prelude elaboration roughly doubled, to about 30 ms per init_ctx in bytecode.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

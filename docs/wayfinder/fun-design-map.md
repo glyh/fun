@@ -346,7 +346,7 @@ every defect below is an invariant with no name in the source.
   occurrence scope and the macro's binder captures it. Templates' splices are
   clean — their written literals are the remaining hole:
 - [The syntax round trip is lossy](tickets/syntax-round-trip-is-lossy.md)
-  — **found by pass three**: the round trip loses scope (at both ends), type
+  (closed — reflection total, round trip the identity) — **found by pass three**: the round trip loses scope (at both ends), type
   annotations, explicitness, `PatCon` paths and span positions, and degrades
   silently (`?` ids, garbage→`False`, skipped bindings). The general defect
   that the capture ticket is the soundness slice of.

@@ -449,7 +449,18 @@ and split_statements terms =
           | (term : Raw_syntax.t) :: _ when token_kind Bar term -> true
           | _ -> false
         in
-        if a_ends_bar || b_starts_bar then
+        (* A line starting with [and] continues a [type] chain. *)
+        let is_type_statement stmt =
+          match drop_separators stmt with
+          | (term : Raw_syntax.t) :: _ when token_kind KwType term -> true
+          | pub :: (term : Raw_syntax.t) :: _ when token_kind KwPub pub && token_kind KwType term -> true
+          | _ -> false
+        in
+        let b_continues_chain = match drop_separators b with
+          | { datum = Token { kind = Ident "and"; _ }; _ } :: _ -> is_type_statement a
+          | _ -> false
+        in
+        if a_ends_bar || b_starts_bar || b_continues_chain then
           merge_cont acc ((a @ b) :: rest)
         else
           merge_cont (a :: acc) (b :: rest) in

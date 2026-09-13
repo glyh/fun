@@ -31,9 +31,10 @@ performs: a macro application is a call.
 
 ### M1 — a syntax object is a value; the round trip is the identity
 
-**Status: round trip enforced on the reflected forms (2026-09-14); totality
-not implemented.** The table below is the defect as found; every row is now
-fixed for `Var`/`Atom`/`Ap`/`Lam`/`Let` and patterns. In the model a macro does not receive "a `Syntax.t` with a
+**Status: enforced (2026-09-14).** Reflection is total: one constructor per
+form. The round trip is pinned by a test over a varied program, before and
+after expansion. The table below is the defect as it was found. The one remaining hole is a
+pattern constructor head, a bare string in `Syntax.pat` with no scope set. In the model a macro does not receive "a `Syntax.t` with a
 conversion"; it receives a value of a datatype, the way Klister and Racket
 treat syntax. **Reflection is total** (decided this pass): every form is
 decomposable, the ADTs cover the whole grammar, and the `StxExpr` escape
@@ -206,8 +207,8 @@ dummy `I64 0` (M1's scope row).
 
 | model | implementation today |
 |---|---|
-| round trip is the identity | lossy both directions; four silent degradations |
-| total reflection | five `Expr` forms + `Pat`/`DeclLet` subsets; rest opaque via `StxExpr` |
+| round trip is the identity | enforced |
+| total reflection | enforced; pattern constructor heads carry no scope |
 | one hygiene contract | three contracts, one tested (pass two's table) |
 | definition-site scope, nothing ambient | prelude ambiently opened |
 | provisional name, loud self-call error | enforced |

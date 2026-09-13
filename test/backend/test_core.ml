@@ -837,15 +837,7 @@ let check_div_by_zero label source () =
 let eval_with_macros ?(expansion_position = Syntax.MacroKind.(Expr (None, None))) source =
   let ctx = Elaborate.init_ctx () in
   let nominals =
-    { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];
-      explicitness = Elaborate.resolve_stdlib ctx ["Syntax"; "Explicitness"];
-      atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
-      option_ = Elaborate.resolve_stdlib ctx ["Option"];
-      decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
-      list = Elaborate.resolve_stdlib ctx ["List"];
-      pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"];
-      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"];
-      bool = Elaborate.resolve_stdlib ctx ["Bool"] }
+    Elaborate.syntax_nominals ctx
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_macro_body ctx expr in
@@ -868,15 +860,7 @@ let eval_with_macros ?(expansion_position = Syntax.MacroKind.(Expr (None, None))
 let eval_decl_module source =
   let ctx = Elaborate.init_ctx () in
   let nominals =
-    { Macro_eval.expr = Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"];
-      explicitness = Elaborate.resolve_stdlib ctx ["Syntax"; "Explicitness"];
-      atom_val = Elaborate.resolve_stdlib ctx ["Syntax"; "AtomVal"];
-      option_ = Elaborate.resolve_stdlib ctx ["Option"];
-      decl = Elaborate.resolve_stdlib ctx ["Syntax"; "Decl"];
-      list = Elaborate.resolve_stdlib ctx ["List"];
-      pat = Elaborate.resolve_stdlib ctx ["Syntax"; "Pattern"];
-      r_ = Elaborate.resolve_stdlib ctx ["Syntax"; "R"];
-      bool = Elaborate.resolve_stdlib ctx ["Bool"] }
+    Elaborate.syntax_nominals ctx
   in
   let elaborate expr =
     let core, _ty = Elaborate.on_macro_body ctx expr in
@@ -1378,6 +1362,27 @@ let test_round_trip_is_identity () =
                      body = mk (Syntax.Ap (mk (Syntax.Var (id "x")), Explicitness.Implicit, mk (Syntax.Atom (Atom.I64 1L)))) })
   in
   Alcotest.(check bool) "expr" true (Macro_eval.unwrap_stx ?nominals:n (Macro_eval.wrap_stx ~nominals:n stx) = Some stx);
+  (* Total: a program over most of the grammar survives, before expansion and
+     after it (when every id carries scopes). *)
+  let program =
+    Enforest.parse_module
+      {|pub type A = MkA(B) | NoA and B = MkB(A) | NoB
+pub type P = {x: I64; y: A}
+pub effect Ask = sig ask : Unit -> I64 end
+pub trait Show(T) = sig show : T -> String end
+pub impl Show(I64) = module fn show(x) -> "n" end
+pub M = struct v : I64; pub method get() -> self.v end
+pub f = fn[T : Type](x : T, g : T -> T) -> g(x)
+pub h = fn(r) -> match r do P{x = 1; y = _} -> 1 | _ -> 2 end
+pub k = fn(z) -> do w = ref(1); (z, 3).0 end
+pub pattern Two(a) = MkA(a)
+open M|}
+  in
+  let expanded = Expand.expand (Expand_ctx.create ()) program in
+  List.iter
+    (fun (label, stx) ->
+      Alcotest.(check bool) label true (Macro_eval.unwrap_stx ?nominals:n (Macro_eval.wrap_stx ~nominals:n stx) = Some stx))
+    [ ("program", program); ("expanded program", expanded) ];
   let pat = Syntax.PatCon ([ "M" ], "C", [ Syntax.PatBind (id "y"); Syntax.PatWild ]) in
   Alcotest.(check bool) "pattern" true
     (Macro_eval.unwrap_stx_pat ?nominals:n (Macro_eval.wrap_stx_pat ~nominals:n pat) = Some pat)
@@ -2047,7 +2052,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "5 constructors" 5 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 33 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true
