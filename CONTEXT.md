@@ -5,10 +5,69 @@ term through enforestation, macro expansion and bidirectional elaboration, and a
 term becomes a value through normalisation by evaluation.
 
 This glossary covers the **elaborate ↔ evaluate boundary** — the vocabulary a
-port must reproduce. Surface syntax, macro expansion and effects are later
-passes and are not described here yet.
+port must reproduce — and, in the phases section, the reader, enforestation
+and expansion phases before it. Effects are not described here yet.
 
 ## Language
+
+### The phases before elaboration
+
+**Reader**:
+The pass that turns source text into tokens and delimiter groups. It decides no
+forms and resolves no names — keywords are fixed token kinds, operators are one
+uniform token shape.
+_Avoid_: lexer (it also groups), parser (nothing is parsed yet)
+
+**Group**:
+A delimiter-bounded sequence of terms — the one structural notion the reader
+produces. What a group becomes is decided later, by enforestation.
+_Avoid_: expression, block, parentheses
+
+**Enforestation**:
+Parsing interleaved with macro expansion. The operator table decides form and
+fixity; a macro head consumes the remaining input itself and returns a form.
+Runs before scope sets exist, so its name lookups are keyed by string alone.
+_Avoid_: parsing (only a part of it), expansion (a phase of it), reading
+
+**Form**:
+A typed node of the syntax tree, produced by enforestation — the unit macros
+return and the expander rewrites.
+_Avoid_: construct, expression, statement
+
+**Syntax object**:
+The macro-visible tree: a form, its span, and identifiers carrying scope sets.
+What macros inspect and build; what expansion consumes.
+_Avoid_: AST, syntax tree, Surface (that is the erased copy)
+
+**Resolved name**:
+The alpha-unique name a value binder is registered under and its occurrences
+are rewritten to during expansion. The string the elaboration context is keyed
+by. Type-namespace names keep their written names.
+_Avoid_: unique name, generated symbol, mangled name
+
+**Intro scope**:
+A fresh scope stamped on everything one macro expansion produced, so
+successive expansions stay distinguishable. It distinguishes; it does not
+bind.
+_Avoid_: macro scope, use-site scope
+
+**Template**:
+A parse-time pattern→replacement rewrite declared by `syntax` or `pub infix`.
+Holes splice captured syntax objects intact; ids written literally in the
+replacement are re-enforested where the template is *used*.
+_Avoid_: syntax macro (ambiguous with the procedural kind), macro
+
+**Fall-through**:
+The second resolution tier: an id unresolved at expansion keeps its written
+name and is resolved by the elaboration context. How macro-written names reach
+the prelude; also how they capture by spelling.
+_Avoid_: dynamic resolution, global scope
+
+**Lowering**:
+The erasure from syntax object to the elaborator's input: drops spans, scope
+sets, the macro kind annotation and operator provenance; adds nothing. Safe
+only because expansion has already run.
+_Avoid_: desugaring (it does none), translation, compilation
 
 ### The elaboration context
 

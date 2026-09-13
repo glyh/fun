@@ -310,6 +310,13 @@ every defect below is an invariant with no name in the source.
   — `: Expr(A)` macro output skips `expand`, so a nested macro call inside it is
   unbound. Small fix; **do first**.
 - [Procedural macros capture use-site variables](tickets/procedural-macros-capture-use-site-variables.md)
-  — ids built with `Syntax.*` escape hygiene; templates do not. Needs diagnosis.
+  — **diagnosed** (pass-2 model): the `Syntax.t` ↔ value round-trip drops scope
+  sets (`value_to_id` hardcodes empty), so a spliced argument loses its
+  occurrence scope and the macro's binder captures it. Templates' splices are
+  clean — their written literals are the remaining hole:
+- [Template literals resolve at the use site](tickets/template-literals-resolve-at-use-site.md)
+  — a use-site `False = 42` silently turns the prelude's own `&&` into a
+  constant-42 machine; replacement ids are re-enforested at the use site and
+  the declarer's scope never reaches them. Found by the pass-2 model.
 - [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
   — mechanical collapse of the duplicate IR. **Blocked on** the first ticket.

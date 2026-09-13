@@ -1,0 +1,165 @@
+# Domain model — surface and enforestation
+
+Second pass of the model asked for by
+[domain-model-surface-enforestation](../tickets/domain-model-surface-enforestation.md).
+Pass one modelled the [elaborate ↔ evaluate boundary](core-tt-domain-model.md);
+this pass models everything between the source text and that boundary: the
+reader, enforestation, expansion, and the lowering seam. Vocabulary lives in
+the root [`CONTEXT.md`](../../../CONTEXT.md).
+
+The question *is one of these layers removable* is owned elsewhere:
+[syntax-vs-surface-ir-layer](../tickets/syntax-vs-surface-ir-layer.md) compared
+the two trees and recommends deleting `Surface.t`. This document records what
+each layer *is* and what invariants hold across it — the part a port (or that
+deletion) must carry regardless of how many trees survive.
+
+## The four layers, and what each one commits to
+
+| layer | produces | commits to |
+|---|---|---|
+| reader (`Raw_syntax`) | tokens and delimiter groups | nothing — no forms, no names resolved |
+| enforestation (`Syntax.t`, `Enforest`) | typed forms, ids carrying scope sets | what a *form* is; where macros interrupt the parse |
+| expansion (`Expand`) | the same tree, alpha-renamed | which binding each occurrence denotes |
+| lowering (`Surface.t`, `Lower_surface`) | the elaborator's input | strips spans, scope sets, `MacroDef.kind`, `SyntaxOperatorUse.unit` — nothing else |
+
+**The reader commits to nothing but grouping** (S1, enforced by construction).
+`Raw_syntax.t` is `Token | Group(delimiter, items, span)`. Keywords are fixed
+token kinds the lexer owns; operators are one uniform `Operator of string`. No
+form is decided, no name is resolved — a group is a group whether it becomes a
+type annotation, a tuple, or a macro argument. This is what makes syntax
+extension possible at all: a macro receives raw material, not pre-parsed
+someone-else's-decision.
+
+**Enforestation is parsing interleaved with macro expansion** (S2). There is no
+grammar the enforester serves: the operator table decides precedence and
+fixity, and a macro head *hijacks* the parse — the macro's own parser consumes
+the remaining tokens and returns a form. This is where I4c lives bodily:
+operator lookup is string-keyed and newest-wins because scope sets do not exist
+yet at parse time (`Binding.find_operator`'s comment defers scope-keyed
+resolution). The syntactic role of a name is decided here, by different rules
+than every later resolution.
+
+## Scope sets and resolution
+
+**Resolution is sets-of-scopes** (S3, enforced by construction).
+`Binding.resolve`: candidates are the bindings sharing the occurrence's
+*written* name; keep those whose binding scope ⊆ occurrence scope; the **largest**
+binding scope wins; two incomparable candidates raise `ambiguous binding` —
+loud, not last-wins. This is Flatt's model, with the ambiguity made an error
+rather than a silent pick.
+
+**Scopes are minted per binder and added within source regions** (S4, enforced
+by construction, with one hole). Every binder form (`Lam`, `Let`, `TypeDef`,
+type params, `open`) mints one fresh scope and adds it to the ids inside its
+region — where *region* is a **source span**, and `span_contains` treats any
+synthetic span as always-inside. Two consequences, one wanted and one not:
+
+- ids macro-*written* with synthetic spans receive every enclosing binder's
+  scope — the machinery procedural-macro hygiene tests pass through;
+- ids *substituted* into an expansion receive it too — see D-A below. The
+  region rule approximates "written in this expansion", and the approximation
+  is exactly what fails.
+
+**Templates additionally mint an intro scope** — a fresh negative-int scope
+(`fresh_intro_scope`) stamped on everything the expansion produced, so one
+expansion's ids are distinguishable from another's. An intro scope
+distinguishes; it does not bind. Procedural macro output gets none.
+
+**Expansion alpha-renames values only** (S5, enforced by construction). `Lam`,
+`Let`, method and macro binders mint a fresh scope *and* a fresh
+`resolved_name` (`x` becomes `x__0` on collision); their occurrences are
+rewritten to it. Type, constructor, trait and effect names bind with
+`resolved_name = written name` — they pass through unchanged, distinguished by
+scope sets only until lowering throws the scopes away (the IR-layers ticket's
+finding 3). **Lowering is therefore only safe because expand already ran** —
+which is why the two lowering sites that skip expand
+([type-aware-macro-output-is-not-expanded](../tickets/type-aware-macro-output-is-not-expanded.md))
+are defects and not just asymmetries.
+
+**Resolution is two-tier, and the second tier is a string** (S6, unchecked
+convention, load-bearing). An id that resolves to nothing at expand time keeps
+its *written* name; the elaborator resolves that string against its flat
+namespace (pass one's I4). The tier is what lets a macro write `Syntax.var("True")`
+and reach the prelude constructor — macro-written free names have no scope set,
+so the first tier can never see them. It is also unhygienic by construction:
+the name resolves by spelling, so it lands on whichever binding of that
+spelling the elaborator's context holds — the outer one, if the inner was
+renamed ([block-local-macros-leak-by-written-name](../tickets/block-local-macros-leak-by-written-name.md)
+is the macro-table side of the same fall-through). The port must know this
+tier exists and why, or it will "fix" it and break every macro that writes a
+prelude name — or keep it and inherit the leak.
+
+**Hygiene governs only bare-name ids** (S7, enforced by construction).
+Scope sets ride on `Syntax.id`; members (`FieldAccess`'s string), pattern
+constructor heads (`PatCon`'s strings), effect operations and record fields are
+plain strings throughout. This is the syntactic mirror of pass one's I4b: the
+bare-name namespace is exactly the hygienic one, and the member namespace is
+exactly the elaborator-resolved one. A macro that writes `M.field` writes the
+field name as a string and means it.
+
+## Three macro paths, three hygiene contracts
+
+| path | runs | heads keyed by | spliced args | written literals | output |
+|---|---|---|---|---|---|
+| untyped procedural (`macro`) | expand time | resolved name (scope-aware) | value round-trip — **scope set dropped** | resolve in caller (two-tier) | re-expanded |
+| type-aware procedural (`: Expr(A)`) | elaborator time | resolved name | same round-trip loss | same | **never expanded** |
+| template (`syntax`, `pub infix`) | parse time, at use site | operator table (string) | direct `Syntax.t` splice — hygienic | **resolve at use site** | re-enforested in place |
+
+The template row's literals are the hole in "templates are hygienic": splices
+are clean (no round-trip), but ids *written in the replacement* resolve against
+the caller — which is how a use-site `False = 42` turns `&&` into a constant-42
+machine ([template-literals-resolve-at-use-site](../tickets/template-literals-resolve-at-use-site.md)).
+
+The untyped row's splice column is
+[procedural-macros-capture-use-site-variables](../tickets/procedural-macros-capture-use-site-variables.md),
+now diagnosed: `Macro_eval.value_to_id` hardcodes `scope = Scope_set.empty`,
+so a spliced occurrence forgets its occurrence scope, receives only the
+macro binder's fresh scope (S4's always-inside rule), and is captured.
+
+The type-aware row's output column is the IR-layers ticket's finding 4.
+
+**There is no single hygiene invariant yet** — there are three, one per path,
+only one of which (untyped heads) is both hygienic and tested. Settling what
+the *one* contract should be is the hygiene pass's first question; the three
+defect tickets above are its evidence.
+
+## The seam
+
+What the expander hands the elaborator: a `Surface.t` whose value names are
+alpha-unique strings, whose type-namespace names are written strings, whose
+spans and scope sets are gone, and whose `StxExpr` nodes are *unstripped*
+`Syntax.t` — opaque syntax deliberately smuggled past lowering for the macro
+reflection ADTs. `Surface.t` is not a language level; it is an erasure of one,
+plus one escape hatch.
+
+The elaborator holds no expander state — only the `macro_runtime` capability
+(pass one's I4e) and a copied macro table (I4d). Every macro it runs returns
+`Syntax.t` that skips the first tier entirely on the type-aware path.
+
+## Defects the modelling found
+
+Not restated here — each lives in its ticket:
+
+- [procedural-macros-capture-use-site-variables](../tickets/procedural-macros-capture-use-site-variables.md)
+  — diagnosed this pass: scope sets die at the macro value boundary.
+- [template-literals-resolve-at-use-site](../tickets/template-literals-resolve-at-use-site.md)
+  — found this pass: `&&`/`||` silently corruptible by a use-site binding.
+- [type-aware-macro-output-is-not-expanded](../tickets/type-aware-macro-output-is-not-expanded.md)
+  and [block-local-macros-leak-by-written-name](../tickets/block-local-macros-leak-by-written-name.md)
+  — found by the IR-layers research; this pass places them in the model
+  (S5's skipped-expand seam, S6's fall-through).
+
+## What the port's types should be named after
+
+- **Reader** for the grouping pass; **Group** for its one structural notion.
+- **Form** for a typed node; **Syntax object** for the macro-visible tree
+  (`Syntax.t`) whose ids carry scope sets.
+- **Resolved name** for the alpha-unique key a value binder is registered and
+  rewritten to — the string the elaboration context is keyed by.
+- **Intro scope** for the fresh scope distinguishing one expansion from
+  another. Distinct from a binder's scope; templates mint one, macros don't.
+- **Template** for the parse-time rewrite; **macro** for the procedural one.
+  The port should not merge them back into one word: their hygiene contracts
+  differ (S8), and the difference is load-bearing.
+- **Fall-through** for the second resolution tier — a named mechanism, not an
+  accident, with its leak documented.
