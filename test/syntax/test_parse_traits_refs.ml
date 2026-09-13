@@ -1,7 +1,7 @@
-let unwrap_std (e : Surface.t) : Surface.t = match e with Surface.Open (Surface.Import "std", body, _) -> body | other -> other
+let unwrap_std (e : Shape.t) : Shape.t = match e with Shape.Open (Shape.Import "std", body, _) -> body | other -> other
 let parse_expr source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
 let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
-open Surface
+open Shape
 
 let trait_decl_shape () =
   match parse_module "trait Eq(A) = sig eq : A -> A -> Bool end" with

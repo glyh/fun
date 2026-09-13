@@ -1,11 +1,11 @@
-(* These previously round-tripped a lowered [Surface.t] back through
+(* These previously round-tripped a lowered [Syntax.t] back through
    [Surface_to_syntax] and compared with [Alcotest.pass] - a testable that always
    succeeds, so the comparison asserted nothing. (Verified: substituting an
    unrelated parse still passed.) The reverse conversion had no production caller
    and has been deleted; what these cases actually provided was "this source
    parses and lowers without raising", which is now what they say. *)
 let check_compat source () =
-  match Parse_expand.parse_expr source with
+  match Shape.lower_expr (Parse_expand.parse_expr source) with
   | _ -> ()
 
 let token_spans () =
@@ -25,34 +25,34 @@ let token_spans () =
   | _ -> Alcotest.fail "unexpected token stream"
 
 let module_compat () =
-  match Parse_expand.parse_module "pub x = 1; pub type Option A = Some A | None" with
+  match Shape.lower_expr (Parse_expand.parse_module "pub x = 1; pub type Option A = Some A | None") with
   | _ -> ()
 
 let nested_same_name_lets_preserve_resolved_identity () =
-  match Parse_expand.parse_expr "do x = 1; x = 2; x end" with
-  | Surface.Let { name = outer; body = Surface.Let { name = inner; body = Surface.Var use; _ }; _ } ->
+  match Shape.lower_expr (Parse_expand.parse_expr "do x = 1; x = 2; x end") with
+  | Shape.Let { name = outer; body = Shape.Let { name = inner; body = Shape.Var use; _ }; _ } ->
       Alcotest.(check bool) "shadow gets distinct lowered name" true (not (String.equal outer inner));
       Alcotest.(check string) "use resolves to inner" inner use
   | _ -> Alcotest.fail "expected nested let shape"
 
 let lambda_parameter_shadows_outer_let () =
-  match Parse_expand.parse_expr "do x = 1; (fn(x) -> x : I64 -> I64) end" with
-  | Surface.Let { name = outer; body = Surface.Annotated { inner = Surface.Lam ({ name = inner; _ }, Surface.Var use); _ }; _ } ->
+  match Shape.lower_expr (Parse_expand.parse_expr "do x = 1; (fn(x) -> x : I64 -> I64) end") with
+  | Shape.Let { name = outer; body = Shape.Annotated { inner = Shape.Lam ({ name = inner; _ }, Shape.Var use); _ }; _ } ->
       Alcotest.(check bool) "lambda parameter gets distinct lowered name" true (not (String.equal outer inner));
       Alcotest.(check string) "use resolves to parameter" inner use
   | _ -> Alcotest.fail "expected lambda shadowing shape"
 
 let nonrec_let_rhs_does_not_see_own_binding () =
-  match Parse_expand.parse_expr "do x = 1; x = x; x end" with
-  | Surface.Let { name = outer; body = Surface.Let { name = inner; value = Surface.Var rhs; body = Surface.Var use; _ }; _ } ->
+  match Shape.lower_expr (Parse_expand.parse_expr "do x = 1; x = x; x end") with
+  | Shape.Let { name = outer; body = Shape.Let { name = inner; value = Shape.Var rhs; body = Shape.Var use; _ }; _ } ->
       Alcotest.(check bool) "inner lowered name is distinct" true (not (String.equal outer inner));
       Alcotest.(check string) "rhs resolves to outer" outer rhs;
       Alcotest.(check string) "body resolves to inner" inner use
   | _ -> Alcotest.fail "expected non-rec let shape"
 
 let pattern_binder_shadows_outer_only_in_branch () =
-  match Parse_expand.parse_expr "do x = 10; match 1 do x -> x end end" with
-  | Surface.Let { name = outer; body = Surface.Match (_, [ Surface.ValueBranch (Surface.PatBind inner, Surface.Var use) ]); _ } ->
+  match Shape.lower_expr (Parse_expand.parse_expr "do x = 10; match 1 do x -> x end end") with
+  | Shape.Let { name = outer; body = Shape.Match (_, [ Shape.ValueBranch (Shape.PatBind inner, Shape.Var use) ]); _ } ->
       Alcotest.(check bool) "pattern binder gets distinct lowered name" true (not (String.equal outer inner));
       Alcotest.(check string) "branch body resolves to pattern binder" inner use
   | _ -> Alcotest.fail "expected pattern shadowing shape"

@@ -42,17 +42,17 @@ let init_ctx () : Ctx.t =
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
   Elab_stdlib.resolve ctx path
 
-(* Elaborate a surface expression as-is. Under the strict phase rule the prelude
+(* Elaborate an expanded expression as-is. Under the strict phase rule the prelude
    is brought into scope by an [open (import "std")] carried in [expr] itself —
    either written by the program or injected by the parser's [~open_prelude]
    convenience (which wraps the body in [Open (Import "std", body)]). This entry
    point adds no implicit open: an [expr] with no such open elaborates in the bare
    base context, so [+]/[Some]/… are unbound unless the program opened [std]. *)
-let on_expr ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value =
+let on_expr ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
   Elab_driver.infer ctx expr
 
-let on_expr_effects ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value * Elab_effects.expr_effects =
+let on_expr_effects ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value * Elab_effects.expr_effects =
   let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
   let core, ty = Elab_driver.infer ctx expr in
   (core, ty, Elab_driver.collect_effects ctx expr)

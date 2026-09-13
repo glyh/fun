@@ -29,14 +29,14 @@ Test executables: `test/backend/test_core.exe`, `test/backend/test_macro_driver_
 ### Pipeline
 
 ```
-source → Raw_syntax → Enforest Syntax.t → Expand + Lower → Surface.t → Elaborate → Core.term → NBE → value
+source → Raw_syntax → Enforest Syntax.t → Expand → expanded Syntax.t → Elaborate → Core.term → NBE → value
 ```
 
 ### Source layout
 
 - `lib/core_kernel/` — `Atom`, `Core`, `Debug`, `Syntax`, `Compiler_names` (centralized compiler-known names), `Scope_set`
-- `lib/syntax/` — `Surface.t`, `Raw_syntax` reader
-- `lib/expand/` — `Enforest` (+ `enforest_forms`/`_pat`/`_template`/`_decl_helpers`), `Expand`, `Parse_expand`, `Macro_eval`, `Expand_ctx`, `Lower_surface`, `Surface_to_syntax`
+- `lib/syntax/` — `Raw_syntax` reader
+- `lib/expand/` — `Enforest` (+ `enforest_forms`/`_pat`/`_template`/`_decl_helpers`), `Expand`, `Parse_expand`, `Macro_eval`, `Expand_ctx`
 - `lib/semantic/typecheck/` — `Elaborate` split across many `elab_*` modules (`elab_infer`, `elab_check`, `elab_patterns`, `elab_prelude`, `elab_driver`, …), `Unify`, `Macro_driver` (type-aware macro interleaving), `Macro_resolver`
 - `lib/semantic/match/` — `Core_match_compile`, `Core_decision_tree`
 - `lib/backend/interp/` — `Nbe`
@@ -74,16 +74,16 @@ When adding a new nominal type for macros to inspect/construct:
    hardcodes `Expr` as the scrutinee (`elab_infer.ml`). Must also add the
    resolve-by-constructor-name fallback.
 
-## Lowering and scope-addition: preserve ALL fields
+## Reflection and scope-addition: preserve ALL fields
 
 When adding a field to `Syntax.struct_binding` variants (e.g. `kind` to `MacroBinding`),
 you MUST update EVERY constructor of that variant across the codebase:
 
-- `lower_surface.ml` — `Syntax.Foo { ...; new_field } → Surface.Foo { ...; new_field }`
+- `macro_eval.ml` — reflection must carry the field both ways (the round trip is the identity)
 - `expand.ml` `add_scope` functions — check each `struct_binding` case
   (look for `kind = None` hardcodes — there were 3 of them)
 - `enforest_template.ml` — template helpers reconstruct bindings
-- `elab_surface_rewrite.ml` — surface-level rewrites
+- `expand.ml` `map_forms` — the one traversal every scope, intro and rename goes through
 
 **Pattern**: `git grep` for the variant name (e.g. `MacroBinding {`) and check
 every match site preserves the new field or explicitly drops it.
@@ -115,7 +115,7 @@ module, its constructors become visible only AFTER the ADT binding is processed.
 
 - **Expander** (`Expand_ctx.t`): processes macros during parsing. Requires
   `elaborate` and `eval_and_apply` callbacks.
-- **Elaborator** (`Elaborate.Ctx.t`): processes core terms in `Surface.t` → `Core.term`.
+- **Elaborator** (`Elaborate.Ctx.t`): elaborates expanded `Syntax.t` → `Core.term`.
 - Macros are compiled by the EXPANDER using the `elaborate` callback.
 - Imported module macros are pre-compiled by `visit_macros` and cached in
   `macro_cache`. The `load_macros` callback pre-registers them in the expander.

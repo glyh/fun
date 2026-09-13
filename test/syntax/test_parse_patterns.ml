@@ -1,4 +1,4 @@
-open Surface
+open Shape
 
 let nominal_type_pattern_app_shape () =
   match Parse_written.parse_expr "match T do Option(x) -> x | _ -> I64 end" with

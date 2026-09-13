@@ -6,14 +6,14 @@ module Ctx = Elab_ctx.Ctx
 
 open Elab_ops
 
-(** Bidirectional type inference: given a surface expression, produce a
+(** Bidirectional type inference: given an expanded expression, produce a
     core term and its type. *)
-let type_value_of_expr ops ctx expr =
-  match expr with
-  | Surface.Module { bindings } ->
+let type_value_of_expr ops ctx (expr : Syntax.t) =
+  match expr.kind with
+  | Syntax.Module { bindings } ->
       let rec go ctx acc = function
         | [] -> List.rev acc
-        | Surface.LetBinding { name; value; _ } :: rest ->
+        | Syntax.LetBinding { name = { name; _ }; value; _ } :: rest ->
             let value_core, value_ty = ops.infer ctx value in
             let value_val = Ctx.eval ctx value_core in
             check_type_like ctx value_ty value_val;
@@ -32,9 +32,9 @@ let type_value_of_expr ops ctx expr =
       check_type_like ctx ty value;
       (core, ty, value)
 
-let elaborate_effect_row ops (ctx : Ctx.t) : Surface.effect_row option -> effect_row = function
+let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_row = function
   | None -> { effects = []; tail = Some (Meta (MetaContext.fresh ctx.Ctx.metas)) }
-  | Some (row : Surface.effect_row) ->
+  | Some (row : Syntax.effect_row) ->
       let entries =
         List.map
           (fun eff_expr ->

@@ -268,3 +268,17 @@ module MacroAnnotationAdapter = struct
   let resolve_kind_only ann = fst (resolve ann)
   let resolve_param ann = snd (resolve ann)
 end
+
+(* A form the compiler writes itself, with no source position. *)
+let synth kind = { kind; span = Source_span.synthetic }
+
+let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
+
+(* The name a bare-name form was written with, whether expansion resolved it to
+   a binder or left it an open choice. For the lookups still keyed by spelling:
+   traits, and the trait-bound sugar [A : Eq + Show]. *)
+let written_name (stx : t) =
+  match stx.kind with
+  | Var id -> Some id.name
+  | OpenChoice { name; _ } -> Some name.name
+  | _ -> None

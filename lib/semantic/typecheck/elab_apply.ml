@@ -12,7 +12,7 @@ open Elab_ops
 (** Application inference.
     Loops to insert fresh metas for implicit VPi domains before consuming
     the user's explicit argument. *)
-let infer_resume ops (ctx : Ctx.t) (arg : Surface.t) : term * value =
+let infer_resume ops (ctx : Ctx.t) (arg : Syntax.t) : term * value =
   let cont_ix, cont_ty = Ctx.lookup_resume ctx in
   match Nbe.force ctx.metas cont_ty with
   | VPi { explicitness = Explicit; domain; codomain; _ } ->
@@ -21,7 +21,7 @@ let infer_resume ops (ctx : Ctx.t) (arg : Surface.t) : term * value =
       (Ap (Var cont_ix, Explicit, arg_core), Nbe.closure_apply ctx.metas codomain arg_value)
   | _ -> raise (ElabError ApplyingNonFunction)
 
-let infer_ap ops (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
+let infer_ap ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * value =
   let f_core, f_ty = ops.infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in
   (* Insert leading implicit arguments before consuming the user's explicit argument. *)
@@ -111,7 +111,7 @@ let infer_ap ops (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
           | _ -> raise (ElabError ApplyingNonFunction)))
 
 (** Explicit implicit application ([f {arg}]). *)
-let infer_ap_implicit ops (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term * value =
+let infer_ap_implicit ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * value =
   let f_core, f_ty = ops.infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in
   match f_ty with
@@ -146,7 +146,7 @@ let infer_ap_implicit ops (ctx : Ctx.t) (f : Surface.t) (a : Surface.t) : term *
   | _ -> raise (ElabError ApplyingNonFunction)
 
 (** Lambda inference. *)
-let infer_lam ops (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
+let infer_lam ops (ctx : Ctx.t) (param : Syntax.param) (body : Syntax.t) :
     term * value =
   let a_ty =
     match param.type_ with
@@ -156,9 +156,9 @@ let infer_lam ops (ctx : Ctx.t) (param : Surface.param) (body : Surface.t) :
     | None ->
         Ctx.raw_meta ctx
   in
-  let ctx' = Ctx.bind ctx param.name a_ty in
+  let ctx' = Ctx.bind ctx param.name.name a_ty in
   let body_core, body_ty = ops.infer ctx' body in
   let body_effects = ops.collect_effects ctx' body in
   let body_ty_term = Ctx.quote ctx' body_ty in
-  let pi_ty = VPi { explicitness = expl_of_surface param.explicitness; domain = a_ty; effects = effect_row_closure ctx.env (effect_row_of_expr_effects ctx' body_effects); codomain = { env = ctx.env; body = body_ty_term } } in
+  let pi_ty = VPi { explicitness = expl_of_syntax param.explicitness; domain = a_ty; effects = effect_row_closure ctx.env (effect_row_of_expr_effects ctx' body_effects); codomain = { env = ctx.env; body = body_ty_term } } in
   (Lam body_core, pi_ty)

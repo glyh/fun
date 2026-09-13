@@ -5,7 +5,7 @@ open Elab_effects
 
 module Ctx = Elab_ctx.Ctx
 
-open Elab_surface_rewrite
+open Elab_syntax_util
 open Elab_resolve
 open Elab_refine
 open Elab_patterns
@@ -14,76 +14,77 @@ open Elab_defs
 open Elab_generalize
 open Elab_ops
 
-let rec compile_time_safe (expr : Surface.t) : bool =
-  match expr with
-  | Surface.RefNew _ | Surface.RefGet _ | Surface.RefSet _ -> false
-  | Surface.Atom _ | Surface.Var _ | Surface.Self | Surface.SelfType | Surface.StxExpr _ | Surface.Import _ -> true
-  | Surface.Quote { holes; _ } -> List.for_all (fun (_, h) -> compile_time_safe h) holes
-  | Surface.Ap (f, _, a) -> compile_time_safe f && compile_time_safe a
-  | Surface.Lam (_, body) -> compile_time_safe body
-  | Surface.Let { type_; value; body; _ } ->
+let rec compile_time_safe (expr : Syntax.t) : bool =
+  match expr.kind with
+  | Syntax.RefNew _ | Syntax.RefGet _ | Syntax.RefSet _ -> false
+  | Syntax.Atom _ | Syntax.Var _ | Syntax.Self | Syntax.SelfType | Syntax.Stx _ | Syntax.Import _ -> true
+  | Syntax.Quote { holes; _ } -> List.for_all (fun (_, h) -> compile_time_safe h) holes
+  | Syntax.Ap (f, _, a) -> compile_time_safe f && compile_time_safe a
+  | Syntax.Lam (_, body) -> compile_time_safe body
+  | Syntax.Let { type_; value; body; _ } ->
       Option.fold ~none:true ~some:compile_time_safe type_ && compile_time_safe value && compile_time_safe body
-  | Surface.Annotated { inner; typ } -> compile_time_safe inner && compile_time_safe typ
-  | Surface.Prod elems | Surface.ProdTy elems -> List.for_all compile_time_safe elems
-  | Surface.Arrow (_, _, a, row, b) ->
+  | Syntax.Annotated { inner; typ } -> compile_time_safe inner && compile_time_safe typ
+  | Syntax.Prod elems | Syntax.ProdTy elems -> List.for_all compile_time_safe elems
+  | Syntax.Arrow (_, _, a, row, b) ->
       let row_safe =
         match row with
         | None -> true
-        | Some (row : Surface.effect_row) ->
+        | Some (row : Syntax.effect_row) ->
             List.for_all compile_time_safe row.effects && Option.fold ~none:true ~some:compile_time_safe row.tail
       in
       compile_time_safe a && row_safe && compile_time_safe b
-  | Surface.FieldAccess (e, _) | Surface.Proj (e, _) -> compile_time_safe e
-  | Surface.RecordConstruct { typ; fields } ->
+  | Syntax.FieldAccess (e, _) | Syntax.Proj (e, _) -> compile_time_safe e
+  | Syntax.RecordConstruct { typ; fields } ->
       compile_time_safe typ && List.for_all (fun (_, value) -> compile_time_safe value) fields
-  | Surface.Struct { con_fields; bindings } ->
+  | Syntax.Struct { con_fields; bindings } ->
       List.for_all (fun (_, ty) -> compile_time_safe ty) con_fields
       && List.for_all compile_time_safe_struct_binding bindings
-  | Surface.Module { bindings } -> List.for_all compile_time_safe_struct_binding bindings
-  | Surface.Open (m, body, _) -> compile_time_safe m && compile_time_safe body
-  | Surface.OpenChoice _ -> true
-  | Surface.RecordTypeDef { fields; body; _ } ->
+  | Syntax.Module { bindings } -> List.for_all compile_time_safe_struct_binding bindings
+  | Syntax.Open (m, body, _) -> compile_time_safe m && compile_time_safe body
+  | Syntax.OpenChoice _ -> true
+  | Syntax.RecordTypeDef { fields; body; _ } ->
       List.for_all (fun (_, ty) -> compile_time_safe ty) fields && compile_time_safe body
-  | Surface.TypeDef { ctors; body; _ } ->
+  | Syntax.TypeDef { ctors; body; _ } ->
       List.for_all (fun (_, payloads) -> List.for_all compile_time_safe payloads) ctors && compile_time_safe body
-  | Surface.EffectDef { ops; body; _ } ->
-      List.for_all (fun (op : Surface.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops && compile_time_safe body
-  | Surface.TraitDef { fields; body; _ } ->
+  | Syntax.EffectDef { ops; body; _ } ->
+      List.for_all (fun (op : Syntax.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops && compile_time_safe body
+  | Syntax.TraitDef { fields; body; _ } ->
       List.for_all (fun (_, ty) -> compile_time_safe ty) fields && compile_time_safe body
-  | Surface.ImplDef { args; fields; body; _ } ->
+  | Syntax.ImplDef { args; fields; body; _ } ->
       List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields && compile_time_safe body
-  | Surface.Perform _ | Surface.Resume _ | Surface.Match _ -> false
-  | Surface.MacroDef _ | Surface.MacroCall _ | Surface.SyntaxOperatorUse _ ->
+  | Syntax.Perform _ | Syntax.Resume _ | Syntax.Match _ -> false
+  | Syntax.MacroDef _ | Syntax.MacroCall _ | Syntax.SyntaxOperatorUse _ ->
       failwith "macro-only syntax should not reach elaboration"
 
 and compile_time_safe_struct_binding = function
-  | Surface.LetBinding { value; _ } -> compile_time_safe value
-  | Surface.MethodBinding { body; _ } -> compile_time_safe body
-  | Surface.TypeBinding { members; _ } ->
+  | Syntax.LetBinding { value; _ } -> compile_time_safe value
+  | Syntax.MethodBinding { body; _ } -> compile_time_safe body
+  | Syntax.TypeBinding { members; _ } ->
       List.for_all
-        (fun (m : Surface.type_decl) -> List.for_all (fun (_, payloads) -> List.for_all compile_time_safe payloads) m.ctors)
+        (fun (m : Syntax.type_decl) -> List.for_all (fun (_, payloads) -> List.for_all compile_time_safe payloads) m.ctors)
         members
-  | Surface.RecordTypeBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
-  | Surface.EffectBinding { ops; _ } ->
-      List.for_all (fun (op : Surface.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops
-  | Surface.TraitBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
-  | Surface.ImplBinding { args; fields; _ } ->
+  | Syntax.RecordTypeBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
+  | Syntax.EffectBinding { ops; _ } ->
+      List.for_all (fun (op : Syntax.effect_op) -> compile_time_safe op.input && compile_time_safe op.output) ops
+  | Syntax.TraitBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
+  | Syntax.ImplBinding { args; fields; _ } ->
       List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields
-  | Surface.MacroBinding _ -> true
-  | Surface.MacroCallBinding _ -> true
-  | Surface.PatternSynBinding _ -> true
-  | Surface.OpenBinding (m, _) -> compile_time_safe m
+  | Syntax.MacroBinding _ -> true
+  | Syntax.MacroCallBinding _ -> true
+  | Syntax.PatternSynBinding _ -> true
+  | Syntax.OpenBinding (m, _) -> compile_time_safe m
 
-let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
-  match expr with
-  | Surface.Perform { effect_path; op; arg } ->
+let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
+  match expr.kind with
+  | Syntax.Perform { op = op_path; arg } ->
+      let effect_path, op = Syntax.path_split op_path in
       let effect_core, effect_value, input_ty, _output_ty = resolve_perform_operation ctx ~effect_path ~op in
       let _arg_core = ops.check ctx arg input_ty in
       union_expr_effects ctx (ops.collect_effects ctx arg) (singleton_expr_effect effect_core effect_value)
-  | Surface.Resume arg -> ops.collect_effects ctx arg
-  | Surface.RefNew e | Surface.RefGet e -> ops.collect_effects ctx e
-  | Surface.RefSet (r, e) -> union_expr_effects ctx (ops.collect_effects ctx r) (ops.collect_effects ctx e)
-  | Surface.Ap (f, Explicitness.Explicit, a) ->
+  | Syntax.Resume arg -> ops.collect_effects ctx arg
+  | Syntax.RefNew e | Syntax.RefGet e -> ops.collect_effects ctx e
+  | Syntax.RefSet (r, e) -> union_expr_effects ctx (ops.collect_effects ctx r) (ops.collect_effects ctx e)
+  | Syntax.Ap (f, Explicitness.Explicit, a) ->
       let f_core, f_ty = ops.infer ctx f in
       let _f_core, f_ty = insert_implicit_args ctx f_core f_ty in
       let f_ty = Nbe.force ctx.Ctx.metas f_ty in
@@ -102,7 +103,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         | _ -> (empty_expr_effects, Atom Atom.Unit)
       in
       union_many_expr_effects ctx [ ops.collect_effects ctx f; ops.collect_effects ctx a; latent ]
-  | Surface.Ap (f, Explicitness.Implicit, a) ->
+  | Syntax.Ap (f, Explicitness.Implicit, a) ->
       let _f_core, f_ty = ops.infer ctx f in
       let f_ty = Nbe.force ctx.Ctx.metas f_ty in
       let latent, _arg_core =
@@ -120,8 +121,8 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
         | _ -> (empty_expr_effects, Atom Atom.Unit)
       in
       union_many_expr_effects ctx [ ops.collect_effects ctx f; ops.collect_effects ctx a; latent ]
-  | Surface.Lam _ -> empty_expr_effects
-  | Surface.Let { name; type_; value; body; recursive = false } ->
+  | Syntax.Lam _ -> empty_expr_effects
+  | Syntax.Let { name = { name; _ }; type_; value; body; recursive = false } ->
       let value_effects = ops.collect_effects ctx value in
       let value_core, value_ty =
         match type_ with
@@ -138,7 +139,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       in
       let body_effects = ops.collect_effects body_ctx body in
       union_expr_effects ctx value_effects body_effects
-  | Surface.Let { name; type_; value; body; recursive = true } ->
+  | Syntax.Let { name = { name; _ }; type_; value; body; recursive = true } ->
       let rec_ty =
         match type_ with
         | Some ty_expr ->
@@ -150,12 +151,12 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
       let fix_core = Fix (ops.check (Ctx.bind ctx name rec_ty) value rec_ty) in
       let fix_val = Ctx.eval ctx fix_core in
       union_expr_effects ctx (ops.collect_effects (Ctx.bind ctx name rec_ty) value) (ops.collect_effects (Ctx.define ctx name rec_ty fix_val) body)
-  | Surface.Annotated { inner; typ } ->
+  | Syntax.Annotated { inner; typ } ->
       require_empty_effects ctx (ops.collect_effects ctx typ);
       ops.collect_effects ctx inner
-  | Surface.Prod elems | Surface.ProdTy elems -> union_many_expr_effects ctx (List.map (ops.collect_effects ctx) elems)
-  | Surface.Arrow (Explicitness.Implicit, Some name, a, row, b) -> (
-      match surface_trait_bound_names a with
+  | Syntax.Prod elems | Syntax.ProdTy elems -> union_many_expr_effects ctx (List.map (ops.collect_effects ctx) elems)
+  | Syntax.Arrow (Explicitness.Implicit, Some { name; _ }, a, row, b) -> (
+      match trait_bound_names a with
       | Some trait_names when List.for_all (fun trait_name -> NameMap.mem trait_name ctx.Ctx.traits) trait_names ->
           let type_ctx = Ctx.bind ctx name VU in
           let arg = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
@@ -175,26 +176,26 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
                 Ctx.add_trait_evidence c' evidence)
               type_ctx trait_names
           in
-          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects dict_ctx (ops.collect_effects dict_ctx eff)) row.effects; Option.iter (fun tail -> require_empty_effects dict_ctx (ops.collect_effects dict_ctx tail)) row.tail) row;
+          Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects dict_ctx (ops.collect_effects dict_ctx eff)) row.effects; Option.iter (fun tail -> require_empty_effects dict_ctx (ops.collect_effects dict_ctx tail)) row.tail) row;
           require_empty_effects dict_ctx (ops.collect_effects dict_ctx b)
       | _ ->
           require_empty_effects ctx (ops.collect_effects ctx a);
           let _a_core, _a_ty, a_val = ops.type_value_of_expr ctx a in
           let ctx' = Ctx.bind ctx name a_val in
-          Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (ops.collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (ops.collect_effects ctx' tail)) row.tail) row;
+          Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (ops.collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (ops.collect_effects ctx' tail)) row.tail) row;
           require_empty_effects ctx' (ops.collect_effects ctx' b));
       empty_expr_effects
-  | Surface.Arrow (_, name, a, row, b) ->
+  | Syntax.Arrow (_, name, a, row, b) ->
       require_empty_effects ctx (ops.collect_effects ctx a);
       let _a_core, _a_ty, a_val = ops.type_value_of_expr ctx a in
-      let ctx' = Ctx.bind ctx (Option.value name ~default:"_") a_val in
-      Option.iter (fun (row : Surface.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (ops.collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (ops.collect_effects ctx' tail)) row.tail) row;
+      let ctx' = Ctx.bind ctx (Option.fold ~none:"_" ~some:(fun (i : Syntax.id) -> i.name) name) a_val in
+      Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (ops.collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (ops.collect_effects ctx' tail)) row.tail) row;
       require_empty_effects ctx' (ops.collect_effects ctx' b);
       empty_expr_effects
-  | Surface.FieldAccess (e, _) | Surface.Proj (e, _) -> ops.collect_effects ctx e
-  | Surface.RecordConstruct { typ; fields } ->
+  | Syntax.FieldAccess (e, _) | Syntax.Proj (e, _) -> ops.collect_effects ctx e
+  | Syntax.RecordConstruct { typ; fields } ->
       union_many_expr_effects ctx (ops.collect_effects ctx typ :: List.map (fun (_, value) -> ops.collect_effects ctx value) fields)
-  | Surface.Module _ | Surface.Struct _ ->
+  | Syntax.Module _ | Syntax.Struct _ ->
       let core, _ty = ops.infer ctx expr in
       let value = Ctx.eval ctx core in
       (match Nbe.force ctx.Ctx.metas value with
@@ -215,7 +216,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
                  | _ -> None)
           |> union_many_expr_effects ctx
       | _ -> empty_expr_effects)
-  | Surface.Open (mod_expr, body, label) ->
+  | Syntax.Open (mod_expr, body, label) ->
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
       (match (Nbe.force ctx.Ctx.metas mod_ty, Nbe.force ctx.Ctx.metas mod_value) with
@@ -224,27 +225,30 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
              [ ops.collect_effects ctx mod_expr;
                ops.collect_effects (open_module_value ~label ctx mod_ty mod_value) body ]
        | _ -> ops.collect_effects ctx body)
-  | Surface.RecordTypeDef { fields; body; _ } ->
+  | Syntax.RecordTypeDef { fields; body; _ } ->
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects ctx body ])
-  | Surface.TypeDef { ctors; body; _ } ->
+  | Syntax.TypeDef { ctors; body; _ } ->
       union_many_expr_effects ctx (List.concat_map (fun (_, payloads) -> List.map (ops.collect_effects ctx) payloads) ctors @ [ ops.collect_effects ctx body ])
-  | Surface.EffectDef { name; params; ops = eff_ops; body } ->
+  | Syntax.EffectDef { name = { name; _ }; params; ops = eff_ops; body } ->
+      let params = Syntax.names params in
       let _effect_id, eff, eff_ty, _elaborated_ops = elaborate_eff_family ops ctx name params eff_ops in
-      let op_effects = List.concat_map (fun (op : Surface.effect_op) -> [ ops.collect_effects ctx op.input; ops.collect_effects ctx op.output ]) eff_ops in
+      let op_effects = List.concat_map (fun (op : Syntax.effect_op) -> [ ops.collect_effects ctx op.input; ops.collect_effects ctx op.output ]) eff_ops in
       union_many_expr_effects ctx (op_effects @ [ ops.collect_effects (Ctx.define ctx name eff_ty eff) body ])
-  | Surface.TraitDef { name; params; fields; body } ->
+  | Syntax.TraitDef { name = { name; _ }; params; fields; body } ->
+      let params = Syntax.names params in
       let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
       let body_ctx = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects body_ctx body ])
-  | Surface.ImplDef { name; trait_path = []; trait_name; args; fields; body } ->
+  | Syntax.ImplDef { name; trait = { members = []; head = { name = trait_name; _ } }; args; fields; body } ->
+      let impl_name = Option.map (fun (i : Syntax.id) -> i.name) name in
       let ctx', impl_effects, _evidence, _impl_ty, _impl_core =
-        elaborate_impl ?impl_name:name ops ctx trait_name args fields in
+        elaborate_impl ?impl_name ops ctx trait_name args fields in
       union_many_expr_effects ctx (impl_effects @ [ ops.collect_effects ctx' body ])
-  | Surface.ImplDef { trait_path = _ :: _; trait_name; _ } ->
-      raise (ElabError (UnknownTrait trait_name))
-  | Surface.Match (scrutinee, branches) ->
-      let value_branches = surface_value_branches branches in
-      let effect_branches = surface_effect_branches branches in
+  | Syntax.ImplDef { trait; _ } ->
+      raise (ElabError (UnknownTrait (Syntax.path_last trait)))
+  | Syntax.Match (scrutinee, branches) ->
+      let value_branches = value_branches_of branches in
+      let effect_branches = effect_branches_of branches in
       let scrut_core, scrut_ty = ops.infer ctx scrutinee in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
@@ -278,6 +282,6 @@ let collect_effects ops (ctx : Ctx.t) (expr : Surface.t) : expr_effects =
           effect_branches
       in
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
-  | Atom _ | Var _ | OpenChoice _ | Self | SelfType | StxExpr _ | Import _ -> empty_expr_effects
+  | Atom _ | Var _ | OpenChoice _ | Self | SelfType | Stx _ | Import _ -> empty_expr_effects
   | Quote { holes; _ } -> union_many_expr_effects ctx (List.map (fun (_, h) -> ops.collect_effects ctx h) holes)
   | MacroDef _ | MacroCall _ | SyntaxOperatorUse _ -> failwith "macro-only syntax should not reach elaboration"

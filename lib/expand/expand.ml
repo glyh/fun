@@ -386,12 +386,12 @@ let expand_path (ctx : Expand_ctx.t) (p : Syntax.path) : Syntax.path =
   | Some info -> { p with head = { p.head with name = info.resolved_name } }
   | None -> p
 
-(* A macro body, lowered, inside the unit opens around its definition (M3):
+(* An expanded macro body inside the unit opens around its definition (M3):
    its scope, and nothing ambient. *)
-let in_definition_site_opens (ctx : Expand_ctx.t) (name : Syntax.id) (body : Surface.t) : Surface.t =
+let in_definition_site_opens (ctx : Expand_ctx.t) (name : Syntax.id) (body : Syntax.t) : Syntax.t =
   List.fold_right
     (fun path body ->
-      Surface.Open (Surface.Import path, body, Compiler_names.Module_name.unit_open_label path))
+      { body with kind = Open (synth (Import path), body, Compiler_names.Module_name.unit_open_label path) })
     (Expand_ctx.enclosing_unit_opens ctx name.scope)
     body
 
@@ -563,8 +563,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
-      let lowered = in_definition_site_opens ctx name (Lower_surface.lower_expr value) in
-      let macro_fn = elab lowered in
+      let macro_fn = elab (in_definition_site_opens ctx name value) in
       let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
       (* Promote the macro into the scope-aware binding table with a fresh
          hygienic [resolved_name] and a [Macro] kind, then key its compiled
@@ -685,7 +684,7 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
                 key (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
   if Syntax.MacroKind.has_type_binding macro_kind then
-    (* Defer to elaborator: wrap args in Stx to survive lowering *)
+    (* Defer to the elaborator: args travel as syntax objects, marked [Stx]. *)
     let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
     { stx with kind = MacroCall (head, List.map wrap_stx macro_args) }
   else begin match ctx.Expand_ctx.eval_and_apply with
@@ -869,8 +868,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
           let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
           (* Strip parser-synthesized Lam when semantic resolution says constraint *)
           let value = if strip_lam then strip_leading_lam value else value in
-          let lowered = in_definition_site_opens ctx name (Lower_surface.lower_expr value) in
-          let macro_fn = elab lowered in
+          let macro_fn = elab (in_definition_site_opens ctx name value) in
           Expand_ctx.fill_provisional_macro ctx ~name:binding_name ~value:macro_fn;
           ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]]))
     | None ->

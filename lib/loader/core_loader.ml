@@ -18,14 +18,14 @@ type t = {
      imported [.fun] files see the stdlib operators/[if], and returned for the
      reserved [import "std"] path. Replaces the old [builtin_syntax_hook] ref. *)
   builtin_syntax : Binding.operator_info list;
-  runtime_surface_cache : (string, Surface.t) Hashtbl.t;
+  runtime_expanded_cache : (string, Syntax.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
-  (* The surface [Macro_driver.run] produced for a unit, with its expander.
+  (* The expanded unit [Macro_driver.run] produced, with its expander.
      The driver interleaves expansion and elaboration, so a macro a unit defines
      is compiled and its calls inside that unit expand. Re-expanding the unit
      here instead would run an expander with no [elaborate] callback, which
      compiles no macro and leaves every macro call in the file unexpanded. *)
-  driver_surface_cache : (string, Surface.t * Expand_ctx.t) Hashtbl.t;
+  driver_expanded_cache : (string, Syntax.t * Expand_ctx.t) Hashtbl.t;
   macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
   syntax_cache : (string, Binding.operator_info list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
@@ -36,9 +36,9 @@ type t = {
 let create ~base_dir ?(builtin_syntax = []) () =
   { base_dir;
     builtin_syntax;
-    runtime_surface_cache = Hashtbl.create 16;
+    runtime_expanded_cache = Hashtbl.create 16;
     runtime_elab_cache = Hashtbl.create 16;
-    driver_surface_cache = Hashtbl.create 16;
+    driver_expanded_cache = Hashtbl.create 16;
     macro_cache = Hashtbl.create 16;
     syntax_cache = Hashtbl.create 16;
     active = Hashtbl.create 16;
@@ -92,7 +92,7 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
   (match eval_and_apply with
    | Some _ ->
        let source = read_module_source resolved in
-        let surface, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ?syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) source in
+        let expanded, ctx = Parse_expand.parse_module_with_ctx ?eval_and_apply ?syntax_nominals ~load_macros ~load_syntax:(load_syntax_exports t) source in
        (* Cache macros from expansion context so elaborator can find them *)
         Hashtbl.iter (fun name entry ->
           let kind = match Hashtbl.find_opt ctx.Expand_ctx.macro_kind_table name with
@@ -100,15 +100,15 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
           Hashtbl.replace t.macro_cache resolved
             ((name, entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals) :: (Option.value ~default:[] (Hashtbl.find_opt t.macro_cache resolved))))
           ctx.Expand_ctx.macro_table;
-       surface
+       expanded
    | None ->
-       match Hashtbl.find_opt t.runtime_surface_cache resolved with
-       | Some surface -> surface
+       match Hashtbl.find_opt t.runtime_expanded_cache resolved with
+       | Some expanded -> expanded
        | None ->
            let source = read_module_source resolved in
-           let surface = Parse_expand.parse_module ~load_macros ~load_syntax:(load_syntax_exports t) source in
-           Hashtbl.replace t.runtime_surface_cache resolved surface;
-           surface)
+           let expanded = Parse_expand.parse_module ~load_macros ~load_syntax:(load_syntax_exports t) source in
+           Hashtbl.replace t.runtime_expanded_cache resolved expanded;
+           expanded)
 
 let load t path f =
   let resolved = resolved_path t path in
@@ -135,8 +135,8 @@ let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
         | None -> ()
       in
       if not (Sys.file_exists resolved) then raise (ImportNotFound path);
-      let surface, expand_ctx =
-        match Hashtbl.find_opt t.driver_surface_cache resolved with
+      let expanded, expand_ctx =
+        match Hashtbl.find_opt t.driver_expanded_cache resolved with
         | Some cached -> cached
         | None ->
             Parse_expand.parse_module_with_ctx ~eval_and_apply ~syntax_nominals
@@ -146,7 +146,7 @@ let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
       let result =
         Fun.protect
           ~finally:(fun () -> Hashtbl.remove t.active resolved)
-          (fun () -> elaborate surface expand_ctx)
+          (fun () -> elaborate expanded expand_ctx)
       in
       Hashtbl.replace t.runtime_elab_cache resolved result;
       result

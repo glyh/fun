@@ -27,7 +27,7 @@ type t = {
   mutable provisional_macros : (string, unit) Hashtbl.t;
   mutable expansion_position : Syntax.MacroKind.t;
   mutable resolve_macro_kind : (Syntax.MacroAnnotation.t -> Syntax.MacroKind.t * Syntax.param option) option;
-  mutable elaborate : (Surface.t -> Core.value) option;
+  mutable elaborate : (Syntax.t -> Core.value) option;
   mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
   mutable load_macros : (t -> string -> unit) option;
   mutable syntax_nominals : Macro_eval.syntax_nominals option;

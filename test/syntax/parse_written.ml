@@ -20,7 +20,7 @@ let lower_written stx =
     | Syntax.OpenChoice { name; _ } -> { form with kind = Syntax.Var name }
     | _ -> form
   in
-  Lower_surface.lower_expr
+  Shape.lower_expr
     (Expand.map_forms (fun id -> { id with Syntax.name = written_name id.Syntax.name }) unchoose stx)
 
 let expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~expansion_position stx =

@@ -23,7 +23,7 @@ type macro_export = {
 }
 
 type driver_output = {
-  surface : Surface.t;
+  expanded : Syntax.t;
   expand_ctx : Expand_ctx.t;
   elab_ctx : Elab_ctx.Ctx.t;
   macro_exports : macro_export list;
@@ -68,7 +68,7 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
        elab_ctx := Elab_ctx.Ctx.with_loader !elab_ctx loader
    | None -> ());
   (* Stage 7: per-binding semantic advancement hook.
-     After each source binding is expanded, lower and elaborate every
+     After each source binding is expanded, elaborate every
      non-macro expanded binding to advance the elaborator context.
      MacroBinding and MacroCallBinding are skipped — they are handled
      by the expander and do not contribute to the semantic namespace.
@@ -81,26 +81,22 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
       match b with
       | Syntax.MacroBinding _ | Syntax.MacroCallBinding _ -> ()
       | _ ->
-          let lowered = Lower_surface.lower_struct_binding b in
-          let ctx', _, _ = Elab_infer.elab_module_binding Elab_driver.ops !elab_ctx lowered in
+          let ctx', _, _ = Elab_infer.elab_module_binding Elab_driver.ops !elab_ctx b in
           elab_ctx := ctx')
       expanded
   in
   (* Expand all top-level bindings with scoped per-binding advancement.
-     Macro bindings are retained in the expanded list for surface output;
+     Macro bindings are retained in the expanded list for the output;
      the original [expand_struct_bindings] filtering is applied below. *)
   let expanded_bindings, _scopes =
     Expand.expand_struct_bindings_with_scopes ~after_binding expand_ctx bindings
   in
-  (* Filter out MacroBinding nodes from the surface (matching the behaviour
+  (* Filter out MacroBinding nodes from the output (matching the behaviour
      of [Expand.expand_struct_bindings]). MacroCallBinding nodes are kept. *)
-  let surface_bindings =
+  let kept_bindings =
     List.filter (function Syntax.MacroBinding _ -> false | _ -> true) expanded_bindings
   in
-  (* Rebuild lowered surface, preserving the original [stx] span. *)
-  let surface =
-    Lower_surface.lower_expr
-      { stx with kind = Syntax.Module { bindings = surface_bindings } }
+  let expanded = { stx with kind = Syntax.Module { bindings = kept_bindings } }
   in
   (* Collect compiled macro exports from the expand context's macro table.
      Publicness is determined by this module's own [MacroBinding] nodes;
@@ -140,7 +136,7 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
         (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
   !elab_ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
-  { surface; expand_ctx; elab_ctx = !elab_ctx; macro_exports }
+  { expanded; expand_ctx; elab_ctx = !elab_ctx; macro_exports }
 
 (** Stage 8: driver-based import loading. Compiles the public macros of
     the module at [path] through a full driver run — so their annotations
@@ -164,7 +160,7 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
   (* Whatever the unit's own expander learned has to cross into this one, or a
      macro one unit further away stays invisible here. *)
   let absorb () =
-    match Hashtbl.find_opt loader.Core_loader.driver_surface_cache resolved with
+    match Hashtbl.find_opt loader.Core_loader.driver_expanded_cache resolved with
     | Some (_, driver_ctx) -> Expand_ctx.absorb_units ~from:driver_ctx ctx
     | None -> ()
   in
@@ -185,12 +181,12 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
                 source
             in
             let output = run ~loader stx in
-            (* Keep the expanded surface, not just the exports. This is the one
+            (* Keep the expanded unit, not just the exports. This is the one
                pass that expands the unit with macros live; without it the
                loader re-expands the file with no [elaborate] callback and every
                macro call inside it dies as an unbound variable. *)
-            Hashtbl.replace loader.Core_loader.driver_surface_cache resolved
-              (output.surface, output.expand_ctx);
+            Hashtbl.replace loader.Core_loader.driver_expanded_cache resolved
+              (output.expanded, output.expand_ctx);
             Hashtbl.replace output.expand_ctx.Expand_ctx.unit_members path
               output.expand_ctx.Expand_ctx.own_unit_members;
             List.filter_map

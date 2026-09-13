@@ -1,4 +1,4 @@
-open Surface
+open Shape
 
 (* Operators are prelude [pub infix]/[pub prefix] declarations under the strict
    phase rule, so raw-parse tests open the prelude ([~open_prelude:true], the
@@ -6,7 +6,7 @@ open Surface
    wraps the body in [Open (Import "std", body)]; [unwrap_std] peels it back off
    so the structural assertions match the bare parse as before. *)
 let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
-let unwrap_std (e : Surface.t) : Surface.t =
+let unwrap_std (e : Shape.t) : Shape.t =
   match e with Open (Import "std", body, _) -> body | other -> other
 let parse source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
 let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.std_load_syntax source

@@ -15,12 +15,12 @@ open Elab_effect_collect
 open Elab_ops
 
 (** Bidirectional checking: verify [expr] against an [expected] type. *)
-let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
+let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
   let expected = Nbe.force ctx.metas expected in
-  match (expr, expected) with
+  match (expr.kind, expected) with
   | Lam (param, body), VPi { explicitness; domain = a_ty; effects; codomain = b_clo } ->
-      if expl_of_surface param.explicitness <> explicitness then raise (ElabError ApplyingNonFunction);
-      let ctx' = Ctx.bind ctx param.name a_ty in
+      if expl_of_syntax param.explicitness <> explicitness then raise (ElabError ApplyingNonFunction);
+      let ctx' = Ctx.bind ctx param.name.name a_ty in
       let binder = VRigid { lvl = ctx.lvl; spine = [] } in
       let rec insert_hidden_dicts ctx body_ty inserted =
         match Nbe.force ctx.Ctx.metas body_ty with
@@ -50,12 +50,12 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       Lam (List.fold_left (fun acc _ -> Lam acc) body_core (List.init inserted Fun.id))
   | Match (scrutinee, branches), VPi _ ->
       let scrutinee_effects = ops.collect_effects ctx scrutinee in
-      let effect_branches = surface_effect_branches branches in
+      let effect_branches = effect_branches_of branches in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       require_empty_effects ctx residual;
       let scrut_core = ops.check ctx scrutinee VU in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
-      let value_branches = surface_value_branches branches in
+      let value_branches = value_branches_of branches in
       let value_branches' =
         List.map
           (fun (pat, body) ->
@@ -74,7 +74,7 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
         raise (ElabError TupleLengthMismatch);
       let cores = List.map2 (ops.check ctx) elems tys in
       Prod cores
-  | Let { name; type_; value; body; recursive }, _ ->
+  | Let { name = { name; _ }; type_; value; body; recursive }, _ ->
       if recursive then begin
         let rec_ty =
           match type_ with
@@ -111,8 +111,8 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       end
   | Match (scrutinee, branches), _ ->
       let scrut_core, scrut_ty = ops.infer ctx scrutinee in
-      let value_branches = surface_value_branches branches in
-      let effect_branches = surface_effect_branches branches in
+      let value_branches = value_branches_of branches in
+      let effect_branches = effect_branches_of branches in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let scrutinee_effects = ops.collect_effects ctx scrutinee in
@@ -130,7 +130,7 @@ let check ops (ctx : Ctx.t) (expr : Surface.t) (expected : value) : term =
       let effect_branches' = List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches in
       check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
-  | MacroCall (Var macro_name, args), _ ->
+  | MacroCall ({ kind = Var { name = macro_name; _ }; _ }, args), _ ->
       let fallback () =
         let core, inferred = ops.infer ctx expr in
         Ctx.unify ctx expected inferred;

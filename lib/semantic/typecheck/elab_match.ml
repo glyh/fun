@@ -58,10 +58,10 @@ let domain_of_occurrence ctx scrut_ty occ =
   | None -> Unknown
 
 
-let surface_value_branches branches =
+let value_branches_of branches =
   List.filter_map (function
-    | Surface.ValueBranch (pat, body) -> Some (pat, body)
-    | Surface.EffectBranch _ -> None)
+    | Syntax.ValueBranch (pat, body) -> Some (pat, body)
+    | Syntax.EffectBranch _ -> None)
     branches
 
 let core_value_branches branches =
@@ -73,14 +73,15 @@ let core_value_branches branches =
 type surface_effect_branch = {
   effect_path : string list;
   op : string;
-  arg_pat : Surface.pat;
-  body : Surface.t;
+  arg_pat : Syntax.pat;
+  body : Syntax.t;
 }
 
-let surface_effect_branches branches =
+let effect_branches_of branches =
   List.filter_map (function
-    | Surface.ValueBranch _ -> None
-    | Surface.EffectBranch { effect_path; op; arg_pat; body } ->
+    | Syntax.ValueBranch _ -> None
+    | Syntax.EffectBranch { op = op_path; arg_pat; body } ->
+        let effect_path, op = Syntax.path_split op_path in
         Some { effect_path; op; arg_pat; body })
     branches
 
@@ -90,16 +91,17 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
   | VNominal _ | VAtomTy _ | VProdTy _ -> Some ty
   | _ ->
       let rec find_pat = function
-        | Surface.PatCon (path, name, _) -> (
+        | Syntax.PatCon (con_path, _) -> (
+            let path, name = Syntax.path_split con_path in
             (* Type name first, constructor second - see
                [find_nominal_for_pattern_head_opt]. A type-name hit means the
                pattern head is a type, so the scrutinee is [Type] itself. *)
             match find_nominal_template_opt ctx path name with
             | Some _ -> Some VU
             | None -> find_nominal_for_pattern_head_opt ctx path name)
-        | Surface.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
-        | Surface.PatType _ -> Some VU
-        | Surface.PatProd ps ->
+        | Syntax.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
+        | Syntax.PatType _ -> Some VU
+        | Syntax.PatProd ps ->
             (* Refine each element from its sub-pattern where possible (e.g. a
                constructor sub-pattern pins that element to its nominal type),
                falling back to a fresh meta for wildcards/binders. *)
@@ -111,15 +113,16 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
                       | Some t -> t
                       | None -> Ctx.raw_meta ctx)
                     ps))
-        | Surface.PatRecord { typ_path; typ; _ } ->
+        | Syntax.PatRecord { typ = typ_p; _ } ->
+            let typ_path, typ = Syntax.path_split typ_p in
             let record_value, ty = resolve_path_value ctx typ_path typ in
             (match Nbe.force ctx.Ctx.metas ty with
             | VU -> Some record_value
             | VStruct _ as record_ty -> Some record_ty
             | _ -> None)
-        | Surface.PatStructType _ -> (
+        | Syntax.PatStructType _ -> (
             match ty with VStruct _ -> Some ty | _ -> Some VU)
-        | Surface.PatOr (lhs, rhs) -> (
+        | Syntax.PatOr (lhs, rhs) -> (
             match find_pat lhs with Some _ as found -> found | None -> find_pat rhs)
         | PatWild | PatBind _ -> None
       in

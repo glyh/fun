@@ -107,19 +107,19 @@ let rec pattern_binder_types ctx scrutinee_ty = function
       if List.length lhs_types = List.length rhs_types then lhs_types else rhs_types
   | CPatSyn { rhs; _ } -> pattern_binder_types ctx scrutinee_ty rhs
 
-(** Elaborate a surface pattern against a scrutinee type, producing a core
+(** Elaborate a pattern against a scrutinee type, producing a core
     pattern and extending the context with bound pattern variables. *)
-let rec elaborate_pat (ctx : Ctx.t) (pat : Surface.pat) (scrutinee_ty : value)
+let rec elaborate_pat (ctx : Ctx.t) (pat : Syntax.pat) (scrutinee_ty : value)
     : core_pat * Ctx.t =
   let core_pat, binders = elaborate_pat_binders ctx pat scrutinee_ty in
   let ctx' = List.fold_left (fun ctx (name, ty) -> Ctx.bind ctx name ty) ctx binders in
   (core_pat, ctx')
 
-and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
+and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
     (scrutinee_ty : value) : core_pat * (string * value) list =
   match pat with
   | PatWild -> (CPatWild, [])
-  | PatBind name -> (CPatBind, [ (name, scrutinee_ty) ])
+  | PatBind { name; _ } -> (CPatBind, [ (name, scrutinee_ty) ])
   | PatAtom atom ->
       Ctx.unify ctx scrutinee_ty (VAtomTy (atom_ty_of_atom atom));
       (CPatAtom atom, [])
@@ -152,7 +152,8 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           in
           (CPatProd (List.rev core_subs), List.rev binders)
       | _ -> raise (ElabError TupleLengthMismatch))
-  | PatRecord { typ_path; typ; fields; partial } ->
+  | PatRecord { typ = typ_p; fields; partial } ->
+      let typ_path, typ = Syntax.path_split typ_p in
       let _record_value, record_ty = resolve_path_value ctx typ_path typ in
       Ctx.unify ctx scrutinee_ty record_ty;
       (match Nbe.force ctx.metas record_ty with
@@ -178,7 +179,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
                   | Some (_, ty) -> ty
                   | None -> raise (ElabError (UnknownRecordField name))
                 in
-                let field_pat = Option.value pat_opt ~default:(Surface.PatBind name) in
+                let field_pat = Option.value pat_opt ~default:(Syntax.PatBind (Syntax.fresh_id name)) in
                 let core_pat, binders = elaborate_pat_binders ctx field_pat field_ty in
                 ((name, core_pat) :: core_acc, binders @ binder_acc))
               ([], []) fields
@@ -198,7 +199,8 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Surface.pat)
           ([], []) fields
       in
       (CPatStructType { fields = List.rev core_fields; partial }, List.rev binders)
-  | PatCon (path, name, sub_pats) -> (
+  | PatCon (con_path, sub_pats) -> (
+      let path, name = Syntax.path_split con_path in
       match Nbe.force ctx.metas scrutinee_ty with
       | VU -> (
         let resolve =

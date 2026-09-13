@@ -76,7 +76,7 @@ let check_duplicate_names names =
 let check_duplicate_eff_ops ops =
   let seen = Hashtbl.create 8 in
   List.iter
-    (fun (op : Surface.effect_op) ->
+    (fun (op : Syntax.effect_op) ->
       if Hashtbl.mem seen op.name then raise (ElabError (DuplicateEffectOperation op.name));
       Hashtbl.replace seen op.name ())
     ops

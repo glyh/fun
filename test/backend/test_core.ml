@@ -1570,7 +1570,7 @@ let driver_vs_pipeline source =
       ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source
   in
   let driver_output = run_driver source in
-  (pipeline_surface, driver_output.surface)
+  (pipeline_surface, driver_output.expanded)
 
 (** Stage 3: structural equivalence — a module with only runtime bindings
     produces the same binding structure from both pipelines. *)
@@ -1658,10 +1658,10 @@ let test_driver_constraint_no_binder_arity () =
   (* Verify the surface is well-formed and contains the expected runtime binding *)
   let output = run_driver source in
   let has_x_binding =
-    match output.surface with
-    | Surface.Module { bindings } ->
+    match output.expanded.kind with
+    | Syntax.Module { bindings } ->
         List.exists (function
-          | Surface.LetBinding { name = "x"; _ } -> true
+          | Syntax.LetBinding { name = { name = "x"; _ }; _ } -> true
           | _ -> false) bindings
     | _ -> false
   in

@@ -145,8 +145,8 @@ and subst_neutral_var mc target replacement neutral =
   { neutral with frames }
 
 let rec branch_type_refinement = function
-  | Surface.PatType atom_ty -> Some (VAtomTy atom_ty)
-  | Surface.PatOr (lhs, rhs) -> (
+  | Syntax.PatType atom_ty -> Some (VAtomTy atom_ty)
+  | Syntax.PatOr (lhs, rhs) -> (
       match branch_type_refinement lhs with Some _ as found -> found | None -> branch_type_refinement rhs)
   | _ -> None
 
@@ -281,11 +281,12 @@ let close_recursive_payload_term nominal_name num_params =
   close_recursive_payload_group [ (nominal_name, num_params) ]
 
 let rec refinement_for_nominal_head ctx = function
-  | Surface.PatCon (path, name, _) -> (
+  | Syntax.PatCon (con_path, _) -> (
+      let path, name = Syntax.path_split con_path in
       match find_nominal_for_pattern_head_opt ctx path name with
       | Some (VNominal n) -> Some (VNominal { n with params = List.init n.num_params (fun _ -> Ctx.raw_meta ctx) })
       | Some _ | None -> None)
-  | Surface.PatOr (lhs, rhs) -> (
+  | Syntax.PatOr (lhs, rhs) -> (
       match refinement_for_nominal_head ctx lhs with
       | Some _ as found -> found
       | None -> refinement_for_nominal_head ctx rhs)

@@ -367,7 +367,8 @@ every defect below is an invariant with no name in the source.
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
   — `macro m[A](x) : Expr(A)`; names in an annotation only refer.
 - [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
-  — mechanical collapse of the duplicate IR. Unblocked.
+  (closed) — one IR: the elaborator reads expanded `Syntax.t`, so spans and ids
+  reach it.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 

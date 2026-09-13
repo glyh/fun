@@ -125,7 +125,7 @@ let elaborate_impl ?impl_name ops ctx trait_name args fields =
 
 
 let elaborate_eff_family ops (ctx : Ctx.t) (name : string) (params : string list)
-    (effect_ops : Surface.effect_op list) : effect_id * value * value * (string * term * term) list =
+    (effect_ops : Syntax.effect_op list) : effect_id * value * value * (string * term * term) list =
   check_duplicate_eff_ops effect_ops;
   let param_ctx =
     List.fold_left
@@ -136,7 +136,7 @@ let elaborate_eff_family ops (ctx : Ctx.t) (name : string) (params : string list
   let effect_id = EffectId.fresh () in
   let elaborated_ops =
     List.map
-      (fun (op : Surface.effect_op) ->
+      (fun (op : Syntax.effect_op) ->
         let input_core, _input_ty, _input_val = ops.type_value_of_expr param_ctx op.input in
         let output_core, _output_ty, _output_val = ops.type_value_of_expr param_ctx op.output in
         (op.name, input_core, output_core))

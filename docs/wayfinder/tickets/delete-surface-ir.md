@@ -3,8 +3,10 @@ title: Delete Surface.t; elaborate expanded Syntax.t
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: "`Surface.t` and `Lower_surface` are deleted, and the elaborator reads expanded `Syntax.t` directly. Nested record patterns (`name = { name; _ }`) keep most bodies on strings, paths are split where the elaborator still speaks strings, and elaborator-written forms use `Syntax.synth`. The record self-reference rewrite lost its shadow tracking: resolved names are unique, so it became a bottom-up `map_forms`. The parser shape tests assert on a test-only view (`test/syntax/shape.ml`: the old name-only tree and its converter), so the library carries one IR. Renamed away from surface vocabulary: `Parse_expand.expand_syntax`, `Macro_driver.driver_output.expanded`, `Elab_syntax_util`, `expl_of_syntax`, `value_branches_of`/`effect_branches_of`, and the loader caches. Spans now reach the elaborator; attaching them to `Elab_error` remains out of scope."
+closed_date: 2026-09-14
 blocked_by:
   - type-aware-macro-output-is-not-expanded.md
 ---
