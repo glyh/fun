@@ -1,1 +1,1 @@
-type t = TI64 | TUnit | TChar | TString | TAbsurd [@@deriving eq]
+type t = TI64 | TUnit | TChar | TString | TScopes | TAbsurd [@@deriving eq]

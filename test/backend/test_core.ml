@@ -1362,6 +1362,26 @@ let test_expr_binding () =
        mk(0)
      end" ()
 
+(* M1: reflecting syntax and rebuilding it is the identity on every field —
+   scope sets, annotations, explicitness, span positions, pattern paths. *)
+let test_round_trip_is_identity () =
+  let n = Some (Elaborate.syntax_nominals (Elaborate.init_ctx ())) in
+  let span = { Source_span.file = Some "f.fun"; start_byte = 3; end_byte = 9; start_line = Some 1;
+               start_col = Some 3; end_line = Some 1; end_col = Some 9; synthetic = false } in
+  let id name = { Syntax.name; span; scope = Scope_set.union (Scope_set.singleton 4) (Scope_set.singleton 7) } in
+  let mk kind = { Syntax.kind; span } in
+  let param = { Syntax.name = id "a"; type_ = Some (mk (Syntax.Var (id "T"))); trait_bounds = [];
+                explicitness = Explicitness.Implicit } in
+  let stx =
+    mk (Syntax.Let { name = id "x"; type_ = Some (mk (Syntax.Var (id "I64"))); recursive = true;
+                     value = mk (Syntax.Lam (param, mk (Syntax.Var (id "a"))));
+                     body = mk (Syntax.Ap (mk (Syntax.Var (id "x")), Explicitness.Implicit, mk (Syntax.Atom (Atom.I64 1L)))) })
+  in
+  Alcotest.(check bool) "expr" true (Macro_eval.unwrap_stx ?nominals:n (Macro_eval.wrap_stx ~nominals:n stx) = Some stx);
+  let pat = Syntax.PatCon ([ "M" ], "C", [ Syntax.PatBind (id "y"); Syntax.PatWild ]) in
+  Alcotest.(check bool) "pattern" true
+    (Macro_eval.unwrap_stx_pat ?nominals:n (Macro_eval.wrap_stx_pat ~nominals:n pat) = Some pat)
+
 let test_block_local_macros_do_not_leak () =
   List.iter (fun src ->
     match eval_with_macros src with
@@ -3261,6 +3281,7 @@ let () =
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
           Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
           Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;
+          Alcotest.test_case "reflection round trip is the identity" `Quick test_round_trip_is_identity;
           Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
           Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
           Alcotest.test_case "R-type match non-exhaustive missing ctors" `Quick test_rtype_match_non_exhaustive_missing_ctors;

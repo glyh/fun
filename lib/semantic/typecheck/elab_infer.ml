@@ -253,6 +253,7 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
   | Atom Unit -> (Atom Unit, VAtomTy Atom_ty.TUnit)
   | Atom (Char c) -> (Atom (Char c), VAtomTy Atom_ty.TChar)
   | Atom (String s) -> (Atom (String s), VAtomTy Atom_ty.TString)
+  | Atom (Scopes s) -> (Atom (Scopes s), VAtomTy Atom_ty.TScopes)
   | Var "EffectRow" -> (EffectRowTy, VU)
   | Var name ->
       let ix, ty = Ctx.lookup ctx name in

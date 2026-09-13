@@ -31,8 +31,9 @@ performs: a macro application is a call.
 
 ### M1 — a syntax object is a value; the round trip is the identity
 
-**Status: decided, not implemented — the round trip is lossy in both
-directions.** In the model a macro does not receive "a `Syntax.t` with a
+**Status: round trip enforced on the reflected forms (2026-09-14); totality
+not implemented.** The table below is the defect as found; every row is now
+fixed for `Var`/`Atom`/`Ap`/`Lam`/`Let` and patterns. In the model a macro does not receive "a `Syntax.t` with a
 conversion"; it receives a value of a datatype, the way Klister and Racket
 treat syntax. **Reflection is total** (decided this pass): every form is
 decomposable, the ADTs cover the whole grammar, and the `StxExpr` escape

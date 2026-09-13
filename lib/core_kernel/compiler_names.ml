@@ -4,6 +4,7 @@ module Type_name = struct
   let unit = "Unit"
   let char = "Char"
   let string = "String"
+  let scopes = "Scopes"
   let absurd = "Absurd"
   let type_ = "Type"
   let effect_row = "EffectRow"

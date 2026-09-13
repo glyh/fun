@@ -45,6 +45,21 @@ And four silent degradations, where the model demands a loud error:
 4. pattern argument lists that fail to unwind are `List.filter_map`-filtered
    rather than rejected.
 
+## Progress (2026-09-14)
+
+The round trip over the reflected forms is now the identity, pinned by
+`test_round_trip_is_identity`:
+- scope sets travel as an opaque `Scopes` atom (M11);
+- annotations, explicitness, span positions and `PatCon` paths are all carried;
+- `Id.span` is typed `Option(Span)`, as every other span is (it was declared
+  `Span` while reflection wrote an option);
+- all four silent degradations now fail the unwrap, which the call sites report
+  as errors.
+
+A non-`Let` binding in a decl list now rides as an undecomposed `VStx`.
+What remains is **totality**: every form beyond `Var`/`Atom`/`Ap`/`Lam`/`Let`
+is still undecomposed. That needs mutually recursive nominal types first.
+
 ## Why it matters
 
 - The **scope** row is the soundness slice already ticketed as

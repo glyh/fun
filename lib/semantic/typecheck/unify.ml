@@ -345,6 +345,7 @@ let value_form = function
         | Atom_ty.TUnit -> "Unit"
         | Atom_ty.TChar -> "Char"
         | Atom_ty.TString -> "String"
+        | Atom_ty.TScopes -> "Scopes"
         | Atom_ty.TAbsurd -> "Absurd")
   | VPi _ -> "function type"
   | VLam _ -> "lambda"

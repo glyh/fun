@@ -32,6 +32,7 @@ let prims =
     ("gt_i64", i64_predicate);
     ("le_i64", i64_predicate);
     ("ge_i64", i64_predicate);
+    ("no_scopes", VAtomTy Atom_ty.TUnit ^-> AtomTy Atom_ty.TScopes);
   ]
   |> NameMap.of_list
 
@@ -104,10 +105,10 @@ pub module Syntax do
 
   pub type Span = {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)}
 
-  pub type Id = {name: String; span: Span; scope: I64}
+  pub type Id = {name: String; span: Option(Span); scope: Scopes}
 
   pub type Param = {name: Id; type_: Option(Type); explicitness: Explicitness}
-  pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom
+  pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom | ScopesAtom(Scopes)
   pub type Expr =
     | RawVar(Option(Span), Id)
     | RawAtom(Option(Span), AtomVal)
@@ -123,19 +124,19 @@ pub module Syntax do
   pub type Pattern =
     | RawPatWild(Option(Span))
     | RawPatBind(Option(Span), Id)
-    | RawPatCon(Option(Span), Id, List(Pattern))
+    | RawPatCon(Option(Span), List(String), Id, List(Pattern))
     | RawPatAtom(Option(Span), AtomVal)
     | RawPatProd(Option(Span), List(Pattern))
     | RawPatOr(Option(Span), Pattern, Pattern)
   pub pat_wild = RawPatWild(None)
   pub pat_var = fn(id) -> RawPatBind(None, id)
-  pub pat_con = fn(name, args) -> RawPatCon(None, name, args)
+  pub pat_con = fn(name, args) -> RawPatCon(None, Nil, name, args)
   pub pat_atom = fn(val) -> RawPatAtom(None, val)
   pub pat_prod = fn(pats) -> RawPatProd(None, pats)
   pub pat_or = fn(l, r) -> RawPatOr(None, l, r)
   pub pattern PatWild = RawPatWild(_)
   pub pattern PatBind(name) = RawPatBind(_, name)
-  pub pattern PatCon(name, args) = RawPatCon(_, name, args)
+  pub pattern PatCon(name, args) = RawPatCon(_, _, name, args)
   pub pattern PatAtom(val) = RawPatAtom(_, val)
   pub pattern PatProd(pats) = RawPatProd(_, pats)
   pub pattern PatOr(l, r) = RawPatOr(_, l, r)
@@ -143,8 +144,7 @@ pub module Syntax do
   pub Decls = List(Decl)
   pub decl_let = fn(name, val, is_pub) -> DeclLet(name, val, is_pub)
   pub type R = RExpr(Type) | RDecls | RPat
-  pub synthetic_span = Span{file = None; start_byte = 0; end_byte = 0; start_line = None; start_col = None; end_line = None; end_col = None}
-  pub new_id = fn(name) -> Id{name = name; span = synthetic_span; scope = 0}
+  pub new_id = fn(name) -> Id{name = name; span = None; scope = no_scopes(())}
   pub atom_val = fn(val) -> RawAtom(None, val)
   pub var = fn(name) -> RawVar(None, new_id(name))
   pub ap = fn(f, a) -> RawAp(None, f, Explicit, a)

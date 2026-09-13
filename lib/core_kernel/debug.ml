@@ -63,10 +63,12 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VAtom Unit -> "()"
     | VAtom (Char c) -> Atom.pp (Char c)
     | VAtom (String s) -> Atom.pp (String s)
+    | VAtom (Scopes s) -> Atom.pp (Scopes s)
     | VAtomTy Atom_ty.TI64 -> "I64"
     | VAtomTy Atom_ty.TUnit -> "Unit"
     | VAtomTy Atom_ty.TChar -> "Char"
     | VAtomTy Atom_ty.TString -> "String"
+    | VAtomTy Atom_ty.TScopes -> "Scopes"
     | VAtomTy Atom_ty.TAbsurd -> "Absurd"
     | VFlex { id; spine } ->
         let base = Printf.sprintf "?%d" id in

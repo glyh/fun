@@ -303,7 +303,7 @@ let collect_leaf_bindings m =
 let all_atoms = function
   | Atom_ty.TUnit -> Some [ Atom.Unit ]
   | Atom_ty.TAbsurd -> Some []
-  | Atom_ty.TI64 | Atom_ty.TChar | Atom_ty.TString -> None
+  | Atom_ty.TI64 | Atom_ty.TChar | Atom_ty.TString | Atom_ty.TScopes -> None
 
 let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
   let module DTB = DT.Make () in

@@ -18,6 +18,7 @@ let init_ctx () : Ctx.t =
   let ctx = add_type ctx Compiler_names.Type_name.unit (VAtomTy Atom_ty.TUnit) in
   let ctx = add_type ctx Compiler_names.Type_name.char (VAtomTy Atom_ty.TChar) in
   let ctx = add_type ctx Compiler_names.Type_name.string (VAtomTy Atom_ty.TString) in
+  let ctx = add_type ctx Compiler_names.Type_name.scopes (VAtomTy Atom_ty.TScopes) in
   let ctx = add_type ctx Compiler_names.Type_name.absurd (VAtomTy Atom_ty.TAbsurd) in
   let ctx = Ctx.define ctx Compiler_names.Type_name.type_ VU VU in
   let ctx = Ctx.define ctx Compiler_names.Type_name.effect_row VU VEffectRowTy in

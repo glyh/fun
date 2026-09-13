@@ -44,6 +44,7 @@ let atom_ty_of_atom = function
   | Unit -> Atom_ty.TUnit
   | Char _ -> Atom_ty.TChar
   | String _ -> Atom_ty.TString
+  | Scopes _ -> Atom_ty.TScopes
 
 let prim_table : (string, Prim.reducer) Hashtbl.t =
   let open Prim in
@@ -63,5 +64,7 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
     ("lt_i64", i64_cmp (fun a b -> Int64.compare a b < 0));
     ("gt_i64", i64_cmp (fun a b -> Int64.compare a b > 0));
     ("le_i64", i64_cmp (fun a b -> Int64.compare a b <= 0));
-    ("ge_i64", i64_cmp (fun a b -> Int64.compare a b >= 0)) ]
+    ("ge_i64", i64_cmp (fun a b -> Int64.compare a b >= 0));
+    (* The empty scope set: what an id built from a name alone carries. *)
+    ("no_scopes", function [ Atom.Unit ] -> Some (Atom.Scopes Scope_set.empty) | _ -> None) ]
   |> List.to_seq |> Hashtbl.of_seq
