@@ -355,8 +355,16 @@ reduction depth
 **Handler**:
 A `match` with effect branches, handling the effects its scrutinee performs
 directly — not effects that tunnel through it from a function passed in, which
-belong to that function's row and reach the handler that row names.
+belong to that function's row and reach the handler that row names. Deep: it
+stays installed for the resumed continuation.
 _Avoid_: catch, try, effect handler block
+
+**Handler scope**:
+The region where a handler's effects may be performed. A stored continuation may
+be resumed after its branch returns — resuming re-enters the scope. A closure
+whose row names a handled effect may not leave the scope; that is a compile
+error, like an escaping existential.
+_Avoid_: dynamic extent, handler lifetime
 
 **Accidental handling**:
 A handler catching an effect it could not see in any type — an effect raised by

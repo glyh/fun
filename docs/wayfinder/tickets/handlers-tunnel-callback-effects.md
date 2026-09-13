@@ -63,3 +63,34 @@ under lexical routing.
 - [Lexical Effect Handlers, Directly (OOPSLA 2024)](https://cs.uwaterloo.ca/~yizhou/papers/lexa-oopsla2024.pdf)
 - [Zero-Overhead Lexical Effect Handlers](https://doi.org/10.1145/3763177)
 - [A Type System for Effect Handlers and Dynamic Labels](https://link.springer.com/chapter/10.1007/978-3-031-30044-8_9)
+
+## What may outlive a handler
+
+Decided with the tunneling rule; vocabulary **Handler scope**.
+
+Allowed — a continuation saved and resumed later (schedulers, async). Resuming
+re-enters the handler; one-shot is still checked at run time.
+
+```fun
+match task(()) do
+  v -> v
+  | effect Async.pause _ -> push(queue, fn(u) -> resume(()))
+end
+pop(queue)(())
+```
+
+Rejected at compile time — a closure whose row names an effect the handler
+handles, escaping that handler:
+
+```fun
+leak = match 0 do
+  v -> fn(u) -> perform Log.say("hi")
+  | effect Log.say s -> resume(())
+end
+-- error: `Log` is handled on line 3, but escapes it in the type of `leak`
+```
+
+The handler binds its effect like a type variable; the check is the same
+escape check existentials and `runST`-style brands need. Rejected alternatives:
+Effekt's second-class functions (too restrictive where everything is
+first-class) and a run-time error on the late call (silent until run).

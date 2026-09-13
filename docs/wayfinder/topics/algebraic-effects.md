@@ -145,7 +145,11 @@ Notes:
 - Handlers reuse `match`.
 - Effect branch arguments use normal pattern syntax.
 - Handler continuations use `resume arg`.
-- Handlers are deep for branch bodies and resumed continuations.
+- Handlers are deep for branch bodies and resumed continuations. Confirmed in
+  the domain-model pass: no shallow handlers for now — generators stepped one
+  value at a time, pipes and handlers that change per operation are written
+  with deep handlers plus state; revisit only if those prove common and
+  painful.
 - **Superseded in part:** handling is lexical (tunneling), not dynamic — see
   [handlers-tunnel-callback-effects](../tickets/handlers-tunnel-callback-effects.md).
 - `resume` is lexically available inside nested lambdas in an effect branch.
