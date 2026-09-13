@@ -136,6 +136,14 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
 - Macro Stages 0–10 (substrate, hygiene, enforestation, syntax templates,
   kind-tagged macros, Decl/Pattern ADTs, type-aware macros) are complete; the
   design library lives in [`macro-system/`](macro-system/).
+- [Domain model — macros](topics/core-tt-domain-model-macros.md) (closed) —
+  third pass of the port's specification: reflection is **total** and the
+  round trip must be the identity (today lossy in both directions — every
+  loss ticketed); one hygiene contract governs every application, template
+  heads included; macro applications count under the **one evaluation
+  budget**, retiring the depth fuel; a macro's name exists from its
+  definition's start (provisional), and its body elaborates in its definition
+  site's scope, nothing ambient. The dead `phase` field deleted.
 - [Bool and `if` as library features](topics/bool-and-if-as-library.md) — Stage 11's
   first increment: `Bool` demoted from a primitive to a prelude nominal ADT
   (`False | True`), primitives return `I64`, and `if` desugared to `match` with
@@ -248,11 +256,14 @@ would faithfully reproduce are gone. A port carries code, not invariants — and
 every defect below is an invariant with no name in the source.
 
 - [Domain model for `core_tt` before the port](tickets/domain-model-core-tt.md)
-  (closed) — the port's specification, written in passes: first (elaborate ↔
-  evaluate) done, second (surface and enforestation) done, fourth (effects)
-  done — the
-  [third](domain-model-macro-hygiene.md) (macro evaluation and hygiene) is the
-  remaining one.
+  (closed) — the port's specification, written in passes: **all four done** —
+  elaborate ↔ evaluate
+  ([pass 1](tickets/domain-model-core-tt.md)),
+  [surface and enforestation](tickets/domain-model-surface-enforestation.md),
+  [macro evaluation and hygiene](tickets/domain-model-macro-hygiene.md), and
+  [effects](../topics/core-tt-domain-model-effects.md). The specification is
+  written; what remains between the prototype and the port are the defect
+  tickets below — each an invariant's distance, none an unnamed rule.
 - [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)
   (closed) — a compilation unit now elaborates against the base context, so its
   meaning no longer depends on what the importer happened to have in scope, and
@@ -284,13 +295,6 @@ every defect below is an invariant with no name in the source.
 - [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
   — a macro defined in a `struct`/`module`/`do` is callable after the block,
   `pub` or not. Found by the research above.
-- [Domain model — macro evaluation and hygiene](tickets/domain-model-macro-hygiene.md)
-  — third pass of the port's specification: the hygiene contract as one
-  invariant over the three application paths, the syntax↔value round trip
-  (scope sets erased at both ends today), the macro evaluation model (fuel as
-  an application-nesting guard, provisional recursion, definition-site scope),
-  and what replaces the string fall-through. Raw material: pass two's
-  three-paths table.
 
 ### Language and macro work
 
@@ -340,6 +344,11 @@ every defect below is an invariant with no name in the source.
   sets (`value_to_id` hardcodes empty), so a spliced argument loses its
   occurrence scope and the macro's binder captures it. Templates' splices are
   clean — their written literals are the remaining hole:
+- [The syntax round trip is lossy](tickets/syntax-round-trip-is-lossy.md)
+  — **found by pass three**: the round trip loses scope (at both ends), type
+  annotations, explicitness, `PatCon` paths and span positions, and degrades
+  silently (`?` ids, garbage→`False`, skipped bindings). The general defect
+  that the capture ticket is the soundness slice of.
 - [Template literals resolve at the use site](tickets/template-literals-resolve-at-use-site.md)
   — a use-site `False = 42` silently turns the prelude's own `&&` into a
   constant-42 machine; replacement ids are re-enforested at the use site and

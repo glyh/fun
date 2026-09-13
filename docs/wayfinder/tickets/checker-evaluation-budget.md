@@ -19,6 +19,15 @@ Zig's model. Surface syntax is deliberately left open.
 - **An evaluation budget.** Evaluating a closed term counts function calls and
   loop iterations. Exceeding the budget is a compile error naming the call and
   how to raise the budget for that evaluation.
+  **Extended by the macro domain-model pass**
+  ([core-tt-domain-model-macros](../topics/core-tt-domain-model-macros.md),
+  M5): one budget counts every evaluation the checker performs — **macro
+  applications included, which are calls**. The macro-expansion depth fuel
+  retires into it: a depth guard cannot catch breadth blowup (each output
+  spawning two sibling calls at bounded depth), and the count, being a
+  property of the program, is stable across compiler versions. Expansion
+  failures — budget exhaustion included — become error values, retiring the
+  `failwith`s at the macro application sites.
 - **Only closed terms evaluate.** A call mentioning an unknown variable stays
   stuck and costs nothing: `fn(n : I64, y : loop(n)) -> …` is fine.
 - **What cannot run at check time is an error, not a stuck term.** An extern
@@ -54,7 +63,9 @@ hangs the checker (killed after 10 s). Under this decision it is a budget error.
    Limited to closed terms; the error must say which conversion demanded it.
 2. The budget counts semantic steps only, so it is stable across compiler
    versions and optimisations.
-3. The existing macro-expansion fuel is a separate guard with a separate name.
+3. ~~The existing macro-expansion fuel is a separate guard with a separate
+  name.~~ Superseded by the extension above: one budget, macro applications
+  counted with everything else; *fuel* is its retired name.
 
 ## Sources
 

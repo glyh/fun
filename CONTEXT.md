@@ -64,16 +64,37 @@ The `: …` after a macro's parameters. It fixes the macro kind and, for an
 reference; a macro binds type parameters the way a function does, in `[…]`.
 _Avoid_: macro signature, return annotation
 
+**Provisional macro**:
+A macro whose name is registered before its body is compiled, so the name
+exists during its own definition. A self-call in that window is a loud error;
+after the definition, recursion works by re-expansion, under the evaluation
+budget.
+_Avoid_: stub, forward reference, placeholder
+
 **Type-aware macro**:
 A macro whose annotation names a type, resolved against what was elaborated
 before the macro's definition. Only the annotation is type-aware; expanding a
-call stays syntactic.
+call stays syntactic. The call is deferred to the elaborator — the arguments
+travel as syntax objects — and the output is expanded in place, like any
+macro's.
 _Avoid_: typed macro, elaborator macro
 
 **Syntax object**:
 The macro-visible tree: a form, its span, and identifiers carrying scope sets.
 What macros inspect and build; what expansion consumes.
 _Avoid_: AST, syntax tree, Surface
+
+**Reflection**:
+The ADTs a macro sees syntax through — one constructor per form, covering the
+whole grammar. Total: nothing is opaque; what today rides as an undecomposed
+`StxExpr` is scaffolding, not a boundary.
+_Avoid_: macro AST, syntax value, wrap/unwrap view
+
+**Round trip**:
+Taking syntax apart through reflection and building it back. Must be the
+identity — name, span, scope, and every payload field survive. A macro that
+merely reflects and rebuilds changes nothing.
+_Avoid_: wrap/unwrap, conversion, serialization
 
 **Resolved name**:
 The unique name expansion assigns a binder, and rewrites every occurrence
@@ -380,10 +401,11 @@ and what makes a nominal declared in the call applicative.
 _Avoid_: total (pure code may diverge), side-effect free
 
 **Evaluation budget**:
-How many function calls and loop iterations the checker may spend evaluating a
-closed term while type checking. Exceeding it is a compile error, raisable per
-evaluation. Termination is never checked; divergence is not an effect.
-_Avoid_: fuel (that is the macro-expansion depth guard), termination check,
+How many semantic steps the checker may spend evaluating while type checking —
+function calls, loop iterations, and macro applications, which are calls.
+Exceeding it is a compile error naming the call, raisable per evaluation.
+Termination is never checked; divergence is not an effect.
+_Avoid_: fuel (the retired depth guard's name), termination check,
 reduction depth
 
 **Handler**:

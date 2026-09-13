@@ -42,3 +42,12 @@ Add the probe above as a regression test.
 
 Do this before [delete-surface-ir](delete-surface-ir.md), which changes the same
 call sites.
+
+## Second defect at the same site — silent meta on failed unwrap
+
+Found by the [macro domain-model pass](../topics/core-tt-domain-model-macros.md)
+(M6): when the type-aware macro's result fails to unwrap as syntax, the
+elaborator's `None` branch silently mints a fresh meta — a failed expansion
+becomes an unsolved hole, surfacing (if at all) as an unrelated type error far
+from the macro call. The model makes it an error naming the macro, and the fix
+belongs in the same shared helper as the expansion fix above.

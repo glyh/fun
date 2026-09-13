@@ -9,13 +9,10 @@ type macro_snapshot = {
   provisional : bool;
 }
 
-type phase = Runtime | CompileTime
-
 let default_macro_fuel_limit = 256
 
 type t = {
   binding_table : Binding.t;
-  phase : phase;
   mutable scope_counter : int;
   mutable name_counter : int;
   mutable macro_table : (string, macro_entry) Hashtbl.t;
@@ -50,7 +47,6 @@ type t = {
 
 let create ?loader () =
   { binding_table = Binding.create ();
-    phase = Runtime;
     scope_counter = 0;
     name_counter = 0;
     macro_table = Hashtbl.create 8;
@@ -127,7 +123,6 @@ let extend_at_fresh (ctx : t) ~name ~base_scope =
 
 let copy (ctx : t) : t =
   { binding_table = Binding.copy ctx.binding_table;
-    phase = ctx.phase;
     scope_counter = ctx.scope_counter;
     name_counter = ctx.name_counter;
     macro_table = Hashtbl.copy ctx.macro_table;

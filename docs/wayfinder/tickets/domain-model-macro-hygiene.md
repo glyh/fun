@@ -3,8 +3,10 @@ title: Domain model — macro evaluation and hygiene
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
 assignee: glyh
+resolution: Third pass done — model in ../topics/core-tt-domain-model-macros.md, vocabulary in the root CONTEXT.md (Reflection, Round trip, Provisional macro; Evaluation budget extended to count macro applications). Two decisions: reflection is total (the StxExpr escape hatch is scaffolding, not a boundary), and macro expansion is guarded by the one evaluation budget — a macro application is a call — retiring the depth fuel. The round trip's full loss inventory found and ticketed (the capture ticket is its scope slice); the type-aware site's silent-meta failure placed into its ticket; template heads placed inside the one hygiene contract; the dead `phase` field deleted. Suite green, 361 tests. All four passes of the port's specification are now done.
+closed_date: 2026-09-13
 blocked_by:
 ---
 
@@ -92,3 +94,55 @@ hygiene fixes — the defect tickets exist; this pass places them in the model.
 2. `CONTEXT.md` vocabulary for those layers.
 3. Defects and misnamed concepts spun out as their own tickets; corrections to
    the existing defect tickets where the model re-frames them.
+
+## Resolution
+
+**Done.** Model in
+[core-tt-domain-model-macros](../topics/core-tt-domain-model-macros.md),
+vocabulary in the root [`CONTEXT.md`](../../../CONTEXT.md). Eight invariants
+named and classified (M1–M8).
+
+Two decisions were made in the pass, both grilling-resolved:
+
+- **Reflection is total.** The ADTs cover the whole grammar; nothing is
+  opaque; the `StxExpr` escape hatch is scaffolding until they do, not a
+  boundary. This makes the round-trip question sharp: destructuring followed
+  by reconstruction must be the identity — and today it is lossy in both
+  directions.
+- **One evaluation budget.** A macro application is a call the checker
+  evaluates, so it counts under the same budget the effects pass designed —
+  calls, iterations, applications; one unit, one error, raisable. The
+  Racket/Klister-style depth fuel retires: it cannot catch breadth blowup
+  (bounded depth, unbounded sibling spawning), and its `failwith` delivery is
+  exception-as-control-flow at the boundary that most wants error values.
+  [checker-evaluation-budget](checker-evaluation-budget.md) is extended
+  accordingly.
+
+The pass found more than it was asked to model:
+
+- **The round trip's full loss inventory** — scope sets at both ends (the
+  wrap side writes a dummy `I64 0`; the unwrap side does not read the field),
+  type annotations dropped on reconstruction, `Ap` explicitness hardcoded
+  back to `Explicit`, `PatCon` paths destroyed by the wrap itself, span
+  line/col discarded, and four silent degradations (`?` ids,
+  garbage→`False` in `value_to_bool`, skipped non-`Let` bindings,
+  filtered pattern lists). Spun out as
+  [syntax-round-trip-is-lossy](syntax-round-trip-is-lossy.md), with
+  [procedural-macros-capture-use-site-variables](procedural-macros-capture-use-site-variables.md)
+  as its soundness slice.
+- **A silent failure at the type-aware site**: when the macro's result fails
+  to unwrap as syntax, the elaborator mints a fresh meta — a failed expansion
+  becomes an unsolved hole. Placed into
+  [type-aware-macro-output-is-not-expanded](type-aware-macro-output-is-not-expanded.md),
+  whose helper should fix both.
+- **Template heads belong inside the one hygiene contract** (M7): operators
+  and templates are binders with syntactic roles, resolved by scope set —
+  pass one's I4c seam, now placed rather than merely deferred.
+- **`Expand_ctx.phase` was dead** — `Runtime` constructed once, copied once,
+  never read, `CompileTime` never constructed. Deleted (pass one's dead
+  `types` column precedent). Suite green, 361 tests.
+
+With this, **all four passes of the port's specification are done**: the
+elaborate ↔ evaluate boundary, surface and enforestation, macro evaluation
+and hygiene, and effects. What remains between the prototype and the port are
+the defect tickets — each an invariant's distance — no longer unnamed rules.
