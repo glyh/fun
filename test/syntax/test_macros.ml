@@ -4,7 +4,7 @@ let parse source =
   let ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
-    let core, _ty = Elaborate.on_macro_body ctx expr in
+    let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply fn arg =

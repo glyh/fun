@@ -840,7 +840,7 @@ let eval_with_macros ?(expansion_position = Syntax.MacroKind.(Expr (None, None))
     Elaborate.syntax_nominals ctx
   in
   let elaborate expr =
-    let core, _ty = Elaborate.on_macro_body ctx expr in
+    let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply fn arg =
@@ -863,7 +863,7 @@ let eval_decl_module source =
     Elaborate.syntax_nominals ctx
   in
   let elaborate expr =
-    let core, _ty = Elaborate.on_macro_body ctx expr in
+    let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply fn arg =
@@ -886,7 +886,7 @@ let eval_with_imported_macros modules source =
       let macro_ctx = Elaborate.init_ctx () in
       let syntax_nominals = Elaborate.syntax_nominals macro_ctx in
       let elaborate expr =
-        let core, _ty = Elaborate.on_macro_body ~loader macro_ctx expr in
+        let core, _ty = Elaborate.on_expr ~loader macro_ctx expr in
         Elaborate.Ctx.eval macro_ctx core
       in
       let eval_and_apply fn arg =
@@ -941,7 +941,7 @@ let test_macro_panic_has_message () =
 let test_imported_macro_expands () =
   match
     eval_with_imported_macros
-      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      [ ("macros", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(42)") ]
       "do M = import \"macros\"; M.answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "imported macro" 42L n
@@ -957,7 +957,7 @@ let test_imported_macro_expands () =
 let test_bare_import_does_not_inject_macros () =
   match
     eval_with_imported_macros
-      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      [ ("macros", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(42)") ]
       "do M = import \"macros\"; answer(0) end"
   with
   | exception _ -> ()
@@ -968,7 +968,7 @@ let test_bare_import_does_not_inject_macros () =
 let test_open_delivers_macros_bare () =
   match
     eval_with_imported_macros
-      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      [ ("macros", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(42)") ]
       "do open (import \"macros\"); answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "open delivers macro" 42L n
@@ -979,7 +979,7 @@ let test_open_delivers_macros_bare () =
 let test_open_bound_import_delivers_macros_bare () =
   match
     eval_with_imported_macros
-      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      [ ("macros", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(42)") ]
       "do M = import \"macros\"; open M; answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "open bound import" 42L n
@@ -991,8 +991,8 @@ let test_open_bound_import_delivers_macros_bare () =
    flat string-keyed table, so the answer depended on import order. *)
 let test_same_macro_name_in_two_units () =
   let modules =
-    [ ("m1", "pub macro answer(_) -> Syntax.i64(1)");
-      ("m2", "pub macro answer(_) -> Syntax.i64(2)") ]
+    [ ("m1", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(1)");
+      ("m2", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(2)") ]
   in
   let one =
     eval_with_imported_macros modules
@@ -1022,7 +1022,7 @@ let macro_in_unit label expected modules src =
       Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
 
-let answers_42 = ("inner", "pub macro answer(_) -> Syntax.i64(42)")
+let answers_42 = ("inner", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(42)")
 
 (* An operator's fixity resolves last-wins by design, so a user operator can
    override a builtin. Its macro body now comes from that same declaration: the
@@ -1038,7 +1038,7 @@ let check_operator label expected modules src =
       Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
 
-let op_returns_1 = ("opa", "pub infix (~) 15 Left (stx) -> Syntax.i64(1)")
+let op_returns_1 = ("opa", "open (import \"std\")\npub infix (~) 15 Left (stx) -> Syntax.i64(1)")
 
 let test_imported_operator_used_inside_a_unit () =
   check_operator "operator inside a unit" 1L
@@ -1047,7 +1047,7 @@ let test_imported_operator_used_inside_a_unit () =
 
 let test_operator_declared_and_used_in_one_unit () =
   check_operator "operator declared and used in one unit" 3L
-    [ ("mid", "pub infix (~) 15 Left (stx) -> Syntax.i64(3)\npub v = 1 ~ 2") ]
+    [ ("mid", "open (import \"std\")\npub infix (~) 15 Left (stx) -> Syntax.i64(3)\npub v = 1 ~ 2") ]
     "do M = import \"mid\"; M.v end"
 
 (* A locally declared operator is added after the import, and [find_operator]
@@ -1066,8 +1066,8 @@ let test_local_operator_shadows_imported () =
    and the body could come from different units. *)
 let test_operator_body_follows_last_import () =
   let modules =
-    [ ("opa", "pub infix (~) 15 Left (stx) -> Syntax.i64(1)");
-      ("opb", "pub infix (~) 15 Left (stx) -> Syntax.i64(2)") ]
+    [ ("opa", "open (import \"std\")\npub infix (~) 15 Left (stx) -> Syntax.i64(1)");
+      ("opb", "open (import \"std\")\npub infix (~) 15 Left (stx) -> Syntax.i64(2)") ]
   in
   let run label expected src =
     match eval_with_imported_macros modules src with
@@ -1080,9 +1080,20 @@ let test_operator_body_follows_last_import () =
   run "opb imported last" 2L "do A = import \"opa\"; B = import \"opb\"; 1 ~ 2 end";
   run "opa imported last" 1L "do B = import \"opb\"; A = import \"opa\"; 1 ~ 2 end"
 
+(* M3: a macro body is elaborated in its definition site's scope, nothing
+   ambient - a unit that uses the Syntax API without opening the prelude has
+   no [Syntax] in scope, exactly as its runtime code would not. *)
+let test_macro_body_sees_nothing_ambient () =
+  match eval_with_imported_macros
+    [ ("bare", "pub macro answer(_) -> Syntax.i64(7)\npub v = answer(0)") ]
+    "do M = import \"bare\"; M.v end"
+  with
+  | _ -> Alcotest.fail "a macro body must not see the prelude its unit did not open"
+  | exception _ -> ()
+
 let test_unit_uses_its_own_macro () =
   macro_in_unit "own macro" 7L
-    [ ("mid", "pub macro answer(_) -> Syntax.i64(7)\npub v = answer(0)") ]
+    [ ("mid", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(7)\npub v = answer(0)") ]
     "do M = import \"mid\"; M.v end"
 
 let test_unit_calls_imported_macro_dotted () =
@@ -1105,7 +1116,7 @@ let test_macro_through_reexported_member () =
 let test_imported_macro_not_runtime_field () =
   match
     eval_with_imported_macros
-      [ ("macros", "pub macro answer(_) -> Syntax.i64(42)") ]
+      [ ("macros", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(42)") ]
       "do M = import \"macros\"; M.answer end"
   with
   | exception Elaborate.ElabError _ -> ()
@@ -1116,8 +1127,8 @@ let test_imported_macro_not_runtime_field () =
 let test_imported_macro_circular_visit () =
   match
     eval_with_imported_macros
-      [ ("a", "pub macro ma(_) -> do B = import \"b\"; Syntax.i64(1) end");
-        ("b", "pub macro mb(_) -> do A = import \"a\"; Syntax.i64(2) end") ]
+      [ ("a", "open (import \"std\")\npub macro ma(_) -> do B = import \"b\"; Syntax.i64(1) end");
+        ("b", "open (import \"std\")\npub macro mb(_) -> do A = import \"a\"; Syntax.i64(2) end") ]
       "do A = import \"a\"; ma(0) end"
   with
   | exception Core_loader.CircularMacroVisit "a" -> ()
@@ -1128,7 +1139,7 @@ let test_macro_generated_import_loads_macros () =
   match
     eval_with_imported_macros
       [ ("loader", "pub macro through(stx) -> stx");
-        ("target", "pub macro answer(_) -> Syntax.i64(42)") ]
+        ("target", "open (import \"std\")\npub macro answer(_) -> Syntax.i64(42)") ]
       "do L = import \"loader\"; T = L.through(import \"target\"); T.answer(0) end"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "macro-generated import" 42L n
@@ -1242,7 +1253,7 @@ let test_decl_kind_registered_persists () =
 
 let test_decl_macro_generates_binding () =
   let _ = eval_decl_module
-    "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) end
+    "open (import \"std\")\nmacro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) end
 mk(0)
 pub answer = 42"
   in
@@ -1251,7 +1262,7 @@ pub answer = 42"
 let test_imported_decl_macro () =
   match eval_with_imported_macros
     [ "imported_decl_module",
-      "macro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) end
+      "open (import \"std\")\nmacro mk(_) : Decl do Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) end
 mk(0)
 pub answer = 42" ]
     "do
@@ -1263,7 +1274,7 @@ pub answer = 42" ]
    | _ -> Alcotest.fail "expected 42"
 
 let test_decl_macro_two_calls () =
-  let _ = eval_decl_module "macro m1(_) : Decl do Nil end;macro m2(_) : Decl do Nil end;m2(0)"
+  let _ = eval_decl_module "open (import \"std\");macro m1(_) : Decl do Nil end;macro m2(_) : Decl do Nil end;m2(0)"
   in
   ()
 
@@ -1285,7 +1296,7 @@ let test_type_aware_macro () =
 
 let test_type_aware_checking () =
   let _module_val = eval_decl_module
-    "macro default(_) : A do
+    "open (import \"std\")\nmacro default(_) : A do
        match A do
        | RExpr(I64) -> Syntax.i64(42)
        | _ -> Syntax.i64(0)
@@ -1329,7 +1340,7 @@ let test_type_default_bool () =
 
 let test_rtype_match_non_exhaustive_missing_ctors () =
   match eval_decl_module
-    "macro default(_) : Expr(A) do
+    "open (import \"std\")\nmacro default(_) : Expr(A) do
        match A do
        | RExpr(I64) -> Syntax.i64(0)
        end
@@ -1454,14 +1465,14 @@ let test_type_aware_output_is_expanded () =
 
 let test_expected_type_reaches_macro () =
   let _ = eval_decl_module
-    "macro typed(_) : Expr(A) do Syntax.i64(42) end
+    "open (import \"std\")\nmacro typed(_) : Expr(A) do Syntax.i64(42) end
      pub x : I64 = typed(0)"
   in
   ()
 
 let test_expected_type_rejects_mismatch () =
   match eval_decl_module
-    "macro typed(_) : Expr(A) do Syntax.var(\"True\") end
+    "open (import \"std\")\nmacro typed(_) : Expr(A) do Syntax.var(\"True\") end
      pub x : I64 = typed(0)"
   with
   | _ -> Alcotest.fail "expected type mismatch"
@@ -1518,7 +1529,7 @@ let test_binder_typo_guard () =
     A return-type mismatch still surfaces as an elaboration error. *)
 let test_binder_type_mismatch () =
   match eval_decl_module
-    "macro mk(_) : Expr(I64) -> Syntax.i64(1)
+    "open (import \"std\")\nmacro mk(_) : Expr(I64) -> Syntax.i64(1)
      pub x : Bool = mk(0)"
   with
   | _ -> Alcotest.fail "expected binder type mismatch"
@@ -1528,7 +1539,7 @@ let test_binder_type_mismatch () =
     incompatible with the annotated use site. *)
 let test_binder_body_type_mismatch () =
   match eval_decl_module
-    "macro mk(_) : Expr(I64) -> Syntax.var(\"True\")
+    "open (import \"std\")\nmacro mk(_) : Expr(I64) -> Syntax.var(\"True\")
      pub x : I64 = mk(0)"
   with
   | _ -> Alcotest.fail "expected binder body type mismatch"
@@ -1547,7 +1558,7 @@ let driver_vs_pipeline source =
   let ctx = Elaborate.init_ctx () in
   let nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
-    let core, _ty = Elaborate.on_macro_body ctx expr in
+    let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply fn arg =
@@ -1573,7 +1584,7 @@ let test_driver_equiv_runtime () =
     structure from both pipelines. *)
 let test_driver_equiv_macro () =
   let source =
-    "macro mk(_) -> Syntax.i64(1)\n\
+    "open (import \"std\")\nmacro mk(_) -> Syntax.i64(1)\n\
      pub x : I64 = mk(0)\n"
   in
   let a, b = driver_vs_pipeline source in
@@ -1582,7 +1593,7 @@ let test_driver_equiv_macro () =
 
 (** Stage 3: [macro_exports] includes a locally defined default-kind macro. *)
 let test_driver_macro_exports_default () =
-  let output = run_driver "macro mk(_) -> Syntax.i64(1)\n" in
+  let output = run_driver "open (import \"std\")\nmacro mk(_) -> Syntax.i64(1)\n" in
   let names = List.map (fun (e : Macro_driver.macro_export) -> e.name) output.macro_exports in
   Alcotest.(check (list string)) "macro_exports contains mk"
     ["mk"] names;
@@ -1592,7 +1603,7 @@ let test_driver_macro_exports_default () =
 
 (** Stage 3: [macro_exports] includes a Decl-kind macro. *)
 let test_driver_macro_exports_decl () =
-  let output = run_driver "macro gen(_) : Decl do Nil end\n" in
+  let output = run_driver "open (import \"std\")\nmacro gen(_) : Decl do Nil end\n" in
   let names = List.map (fun (e : Macro_driver.macro_export) -> e.name) output.macro_exports in
   Alcotest.(check (list string)) "macro_exports contains gen" ["gen"] names;
   Alcotest.(check string) "macro export kind is Decl"
@@ -1627,7 +1638,7 @@ let compiled_macro_arity (v : Core.value) =
 (** Stage 4: [Expr(I64)] → constraint because [I64] is a known type in the
     prelude context. *)
 let test_driver_expr_i64_constraint () =
-  let kind = exported_kind "macro mk(_) : Expr(I64) -> Syntax.i64(1)\n" "mk" in
+  let kind = exported_kind "open (import \"std\")\nmacro mk(_) : Expr(I64) -> Syntax.i64(1)\n" "mk" in
   let expected = Syntax.MacroKind.(Expr (None, Some "I64")) in
   Alcotest.(check string) "Expr(I64) → constraint kind string"
     (Syntax.MacroKind.to_string expected) (Syntax.MacroKind.to_string kind);
@@ -1641,7 +1652,7 @@ let test_driver_expr_i64_constraint () =
     strips the parser-synthesized Lam, producing a 1-argument macro. *)
 let test_driver_constraint_no_binder_arity () =
   let source =
-    "macro mk(_) : Expr(I64) -> Syntax.i64(1)\n\
+    "open (import \"std\")\nmacro mk(_) : Expr(I64) -> Syntax.i64(1)\n\
      pub x : I64 = mk(0)\n"
   in
   (* Verify the surface is well-formed and contains the expected runtime binding *)
@@ -1665,19 +1676,19 @@ let test_driver_constraint_no_binder_arity () =
 
 (** Stage 4: [Expr(Intt)] → binder because [Intt] is not a known type. *)
 let test_driver_expr_intt_binder () =
-  let kind = exported_kind "macro mk(_) : Expr(Intt) -> Syntax.i64(1)\n" "mk" in
+  let kind = exported_kind "open (import \"std\")\nmacro mk(_) : Expr(Intt) -> Syntax.i64(1)\n" "mk" in
   Alcotest.(check string) "Expr(Intt) → binder kind"
     (Syntax.MacroKind.to_string Syntax.MacroKind.(Expr (Some "Intt", None)))
     (Syntax.MacroKind.to_string kind);
   Alcotest.(check bool) "Expr(Intt) has_type_binding" true
     (Syntax.MacroKind.has_type_binding kind);
-  let export = exported_macro "macro mk(_) : Expr(Intt) -> Syntax.i64(1)\n" "mk" in
+  let export = exported_macro "open (import \"std\")\nmacro mk(_) : Expr(Intt) -> Syntax.i64(1)\n" "mk" in
   Alcotest.(check int) "binder macro keeps implicit binder plus explicit arg" 2
     (compiled_macro_arity export.compiled)
 
 (** Stage 4: lowercase annotation remains unconstrained. *)
 let test_driver_expr_lowercase () =
-  let kind = exported_kind "macro mk(_) : Expr(foo) -> Syntax.i64(1)\n" "mk" in
+  let kind = exported_kind "open (import \"std\")\nmacro mk(_) : Expr(foo) -> Syntax.i64(1)\n" "mk" in
   Alcotest.(check string) "Expr(foo) → unconstrained Expr"
     "Expr" (Syntax.MacroKind.to_string kind);
   Alcotest.(check bool) "Expr(foo) no has_type_binding" false
@@ -1685,14 +1696,14 @@ let test_driver_expr_lowercase () =
 
 (** Stage 4: Expr(_) remains unconstrained. *)
 let test_driver_expr_wildcard () =
-  let kind = exported_kind "macro mk(_) : Expr(_) -> Syntax.i64(1)\n" "mk" in
+  let kind = exported_kind "open (import \"std\")\nmacro mk(_) : Expr(_) -> Syntax.i64(1)\n" "mk" in
   Alcotest.(check bool) "Expr(_) no has_type_binding" false
     (Syntax.MacroKind.has_type_binding kind)
 
 (** Stage 5: duplicate macro name — later definition's kind wins,
     proving kind+value are registered atomically. *)
 let test_driver_duplicate_macro_name () =
-  let kind = exported_kind "macro mk(_) : Expr(Intt) -> Syntax.i64(1)\n\
+  let kind = exported_kind "open (import \"std\")\nmacro mk(_) : Expr(Intt) -> Syntax.i64(1)\n\
                              macro mk(_) : Expr(I64) -> Syntax.i64(2)\n" "mk" in
   Alcotest.(check bool) "second macro kind is constraint (I64 wins)" false
     (Syntax.MacroKind.has_type_binding kind)
@@ -1701,7 +1712,7 @@ let test_driver_duplicate_macro_name () =
     through scoped per-binding semantic advancement. *)
 let test_driver_prior_user_type_is_constraint () =
   let source =
-    "type MyTag = I64\n\
+    "open (import \"std\")\ntype MyTag = I64\n\
      macro mk(_) : Expr(MyTag) -> Syntax.i64(1)\n" in
   let kind = exported_kind source "mk" in
   Alcotest.(check bool) "Expr(MyTag) is constraint" false
@@ -1712,7 +1723,7 @@ let test_driver_prior_user_type_is_constraint () =
 (** Stage 7: prior record type declaration constrains macro annotation. *)
 let test_driver_prior_record_type_is_constraint () =
   let source =
-    "type R = { a : I64 }\n\
+    "open (import \"std\")\ntype R = { a : I64 }\n\
      macro mk(_) : Expr(R) -> Syntax.i64(1)\n" in
   let kind = exported_kind source "mk" in
   Alcotest.(check bool) "Expr(R) is constraint" false
@@ -1724,7 +1735,7 @@ let test_driver_prior_record_type_is_constraint () =
     type constraints. [is_type_like_value] correctly excludes constructors
     like [None], [Some], [Cons], [Nil] that [open_stdlib] registers. *)
 let test_driver_constructor_not_type () =
-  let kind = exported_kind "macro mk(_) : Expr(None) -> Syntax.i64(1)\n" "mk" in
+  let kind = exported_kind "open (import \"std\")\nmacro mk(_) : Expr(None) -> Syntax.i64(1)\n" "mk" in
   Alcotest.(check bool) "None is not a type → binder" true
     (Syntax.MacroKind.has_type_binding kind)
 
@@ -1732,7 +1743,7 @@ let test_driver_constructor_not_type () =
     it stays binder because per-binding advancement hasn't seen it yet. *)
 let test_driver_forward_ref_stays_binder () =
   let source =
-    "macro mk(_) : Expr(MyTag) -> Syntax.i64(1)\n\
+    "open (import \"std\")\nmacro mk(_) : Expr(MyTag) -> Syntax.i64(1)\n\
      type MyTag = I64\n" in
   let kind = exported_kind source "mk" in
   Alcotest.(check bool) "forward ref Expr(MyTag) still binder" true
@@ -1805,7 +1816,7 @@ let exported_kind_with_modules modules source macro_name =
 (** Stage 8: a prior value alias of a builtin type constrains the
     annotation instead of creating an implicit binder. *)
 let test_driver_value_alias_builtin_constraint () =
-  let kind = exported_kind "MyInt = I64\nmacro mk(_) : Expr(MyInt) -> Syntax.i64(1)\n" "mk" in
+  let kind = exported_kind "open (import \"std\")\nMyInt = I64\nmacro mk(_) : Expr(MyInt) -> Syntax.i64(1)\n" "mk" in
   Alcotest.(check bool) "Expr(MyInt) is constraint" false
     (Syntax.MacroKind.has_type_binding kind);
   Alcotest.(check (option string)) "Expr(MyInt) constraint_name"
@@ -1817,7 +1828,7 @@ let test_driver_qualified_import_type_constraint () =
   let kind =
     exported_kind_with_modules
       [ ("types_mod", "pub type T = I64") ]
-      "M = import \"types_mod\"\nmacro mk(_) : Expr(M.T) -> Syntax.i64(1)\n"
+      "open (import \"std\")\nM = import \"types_mod\"\nmacro mk(_) : Expr(M.T) -> Syntax.i64(1)\n"
       "mk"
   in
   Alcotest.(check bool) "Expr(M.T) is constraint" false
@@ -1828,7 +1839,7 @@ let test_driver_qualified_import_type_constraint () =
 (** Stage 8: an unresolved qualified annotation stays unconstrained —
     a dotted name can never become an implicit binder. *)
 let test_driver_qualified_unresolved_unconstrained () =
-  let source = "macro mk(_) : Expr(No.Such) -> Syntax.i64(1)\n" in
+  let source = "open (import \"std\")\nmacro mk(_) : Expr(No.Such) -> Syntax.i64(1)\n" in
   let kind = exported_kind source "mk" in
   Alcotest.(check bool) "Expr(No.Such) no has_type_binding" false
     (Syntax.MacroKind.has_type_binding kind);
@@ -1844,7 +1855,7 @@ let test_driver_qualified_unresolved_unconstrained () =
     the old [Core_loader.visit_macros] parser heuristic. *)
 let test_visit_macros_imported_annotation_uses_module_context () =
   with_modules
-    [ ("macros_mod", "type Tag = I64\npub macro mk(_) : Expr(Tag) -> Syntax.i64(1)") ]
+    [ ("macros_mod", "open (import \"std\")\ntype Tag = I64\npub macro mk(_) : Expr(Tag) -> Syntax.i64(1)") ]
     (fun loader ->
       let ctx = Expand_ctx.create () in
       Macro_driver.visit_macros loader ctx "macros_mod";
@@ -1859,7 +1870,7 @@ let test_visit_macros_imported_annotation_uses_module_context () =
 (** Stage 8: only public macros are registered by import loading. *)
 let test_visit_macros_private_not_registered () =
   with_modules
-    [ ("macros_mod", "macro hidden(_) -> Syntax.i64(1)\npub macro shown(_) -> Syntax.i64(2)") ]
+    [ ("macros_mod", "open (import \"std\")\nmacro hidden(_) -> Syntax.i64(1)\npub macro shown(_) -> Syntax.i64(2)") ]
     (fun loader ->
       let ctx = Expand_ctx.create () in
       Macro_driver.visit_macros loader ctx "macros_mod";
@@ -2659,7 +2670,8 @@ let test_7i_generated_syntax_usable_later_same_module () =
 let test_7i_generated_pub_operator_across_imports () =
   match
     eval_with_imported_macros
-      [ ("gen", "syntax export_operator do
+      [ ("gen", "open (import \"std\");
+                  syntax export_operator do
                   | export_operator ->
                       multi
                         pub infix (~) 15 Left (stx) -> Syntax.i64(9)
@@ -2677,7 +2689,7 @@ let test_7i_generated_pub_operator_across_imports () =
 let test_7i_generated_pub_macro_across_imports () =
   match
     eval_with_imported_macros
-      [ ("gen", "syntax export_macro do
+      [ ("gen", "open (import \"std\")\nsyntax export_macro do
                   | export_macro ->
                       multi
                         pub macro answer(_) -> Syntax.i64(42)
@@ -2754,13 +2766,13 @@ let test_7i_generated_syntax_cycle () =
 let test_7i_generated_macro_cycle () =
   match
     eval_with_imported_macros
-      [ ("mac_a", "syntax gen_ma do
+      [ ("mac_a", "open (import \"std\")\nsyntax gen_ma do
                    | gen_ma -> multi
                        pub macro ma(_) -> do B = import \"mac_b\"; Syntax.i64(1) end
                      end
                    end;
                    gen_ma");
-        ("mac_b", "syntax gen_mb do
+        ("mac_b", "open (import \"std\")\nsyntax gen_mb do
                    | gen_mb -> multi
                        pub macro mb(_) -> do A = import \"mac_a\"; Syntax.i64(2) end
                      end
@@ -3336,6 +3348,7 @@ let () =
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
           Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
           Alcotest.test_case "macro does not capture its argument" `Quick test_macro_does_not_capture_argument;
+          Alcotest.test_case "macro body sees nothing ambient" `Quick test_macro_body_sees_nothing_ambient;
           Alcotest.test_case "quote splices holes" `Quick test_quote_splices_holes;
           Alcotest.test_case "template literals resolve at definition" `Quick test_template_literals_resolve_at_definition;
           Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;

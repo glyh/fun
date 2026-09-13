@@ -95,14 +95,21 @@ let in_macro_definition (ctx : t) f =
   ctx.macro_definition_floor <- Some ctx.scope_counter;
   Fun.protect ~finally:(fun () -> ctx.macro_definition_floor <- saved) f
 
-(* A macro body is elaborated with the prelude open (macro-bodies-implicitly-
-   open-the-prelude, M3's distance); expansion mirrors that open, or a body's
-   [Syntax.i64] would have no open to be chosen from. The scope to add to the
-   body, registered under the prelude's unit label. *)
-let implicit_prelude_open (ctx : t) : Scope_set.t =
-  let scope = fresh_scope ctx in
-  ctx.opens <- (scope, Compiler_names.Module_name.unit_open_label Compiler_names.Module_name.std_import_path) :: ctx.opens;
-  Scope_set.singleton scope
+(* The units opened around a definition whose binder carries [scope],
+   outermost first (M3). A macro body is compiled during expansion, before its
+   surroundings are elaborated. Of its definition site, only these opens exist
+   yet - an import can be loaded, a local cannot be evaluated - so they are
+   what its body is elaborated inside. *)
+let enclosing_unit_opens (ctx : t) (scope : Scope_set.t) : string list =
+  ctx.opens
+  |> List.filter (fun (s, label) ->
+         Scope_set.subset (Scope_set.singleton s) scope
+         && String.starts_with ~prefix:(Compiler_names.Module_name.unit_open_label "") label)
+  |> List.sort (fun (a, _) (b, _) -> compare a b)
+  |> List.map (fun (_, label) ->
+         let prefix = String.length (Compiler_names.Module_name.unit_open_label "") in
+         String.sub label prefix (String.length label - prefix))
+  |> List.fold_left (fun acc p -> if List.mem p acc then acc else acc @ [ p ]) []
 
 (* Enter an open of [m]: a fresh scope for its region, and its label. *)
 let enter_open (ctx : t) (m : Syntax.t) : Scope_set.t * string =

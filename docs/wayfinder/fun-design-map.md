@@ -361,6 +361,7 @@ every defect below is an invariant with no name in the source.
   implementation resolves them by spelling at elaboration. The model: quoted
   syntax resolves at the definition site; a context-less id is unbound.
 - [Macro bodies implicitly open the prelude](tickets/macro-bodies-implicitly-open-the-prelude.md)
+  (closed — a body is elaborated inside the unit opens around its definition)
   — `Macro_driver` elaborates every macro body prelude-opened; the model
   elaborates it in its definition site's scope, nothing ambient.
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)

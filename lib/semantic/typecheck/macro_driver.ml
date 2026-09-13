@@ -36,21 +36,15 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
     | _ -> invalid_arg "Macro_driver.run: expected Syntax.Module"
   in
   (* Initialise elaboration context (built-in types, stdlib). *)
-  let elab_ctx0 = Elaborate.init_ctx () in
-  (* Open stdlib so the per-binding advancement context matches module
-     elaboration semantics (stdlib types are available during resolution).
-     [init_ctx] defines stdlib as a module but does not open it. *)
-  let elab_ctx0 = Elaborate.open_stdlib elab_ctx0 in
-  let elab_ctx = ref elab_ctx0 in
+  (* The unit's own context as it advances binding by binding: nothing is open
+     in it but what the unit opens itself (M3). *)
+  let elab_ctx = ref (Elaborate.init_ctx ()) in
   let syntax_nominals = Elaborate.syntax_nominals !elab_ctx in
   (* Build expand context with the same callbacks used by [eval_decl_module]. *)
   let expand_ctx = Expand_ctx.create () in
   Expand_ctx.set_syntax_nominals expand_ctx syntax_nominals;
   Expand_ctx.set_expansion_position expand_ctx Syntax.MacroKind.Decl;
-  (* Use [Elab_driver.infer] directly instead of [Elaborate.on_expr] because
-     [!elab_ctx] already has stdlib opened. [on_expr] would open stdlib again,
-     causing a double-open with wrong de Bruijn indices for macro body
-     compilation. *)
+  (* A macro body is compiled in the unit's context as of its definition. *)
   expand_ctx.Expand_ctx.elaborate
     <- Some (fun expr ->
          let core, _ty = Elab_driver.infer !elab_ctx expr in

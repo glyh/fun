@@ -3,8 +3,10 @@ title: Macro bodies implicitly open the prelude
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Done. `on_macro_body` and `open_stdlib` are deleted, and `Macro_driver` advances a unit's context with nothing open but what the unit opens itself. A body is compiled during expansion, before its surroundings are elaborated, so the only part of its definition site that exists yet is the unit opens around it: an import can be loaded, a local cannot be evaluated. Expansion wraps the lowered body in those opens (`Expand.in_definition_site_opens`), and the expander's mirror of the old implicit open is gone. The cost fell where the ticket predicted: 48 fixture units gained `open (import "std")`. Regression test: `test_macro_body_sees_nothing_ambient`.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

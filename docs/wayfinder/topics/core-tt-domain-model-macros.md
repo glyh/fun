@@ -82,7 +82,9 @@ implementations.
 
 ### M3 — a macro elaborates in its definition site's scope, nothing ambient
 
-**Status: decided, not implemented.** The body is elaborated against the
+**Status: enforced (2026-09-14).** Of the definition site, a body compiled
+during expansion can see only the unit opens around it: an import loads, a
+local has no value yet. The body is elaborated inside exactly those opens. The body is elaborated against the
 context as of its definition — the same ordered interleaving every other
 binding obeys. Today `Macro_driver` elaborates every macro body with the
 prelude ambiently opened. Distance:
@@ -229,7 +231,7 @@ generated name can never equal a written one's resolution.
 | round trip is the identity | enforced |
 | total reflection | enforced; pattern constructor heads carry no scope |
 | one hygiene contract | three contracts, one tested (pass two's table) |
-| definition-site scope, nothing ambient | prelude ambiently opened |
+| definition-site scope, nothing ambient | enforced |
 | provisional name, loud self-call error | enforced |
 | one evaluation budget counting macro applications | separate nesting fuel, 256, `failwith`; breadth unguarded |
 | type-aware output expanded in place | never expanded; failed unwrap silently mints a meta |

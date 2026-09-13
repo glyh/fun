@@ -58,7 +58,7 @@ let test_decl_macro_fuel_exhausts () =
   expect_fuel_failure (fun () -> ignore (Expand.expand_struct_bindings ctx [ call ]))
 
 let test_driver_provisional_filled_and_cleared () =
-  let output = Macro_driver.run (Enforest.parse_module "macro mk(_) -> Syntax.i64(1)\n") in
+  let output = Macro_driver.run (Enforest.parse_module ~load_syntax:Elab_prelude.std_load_syntax "open (import \"std\")\nmacro mk(_) -> Syntax.i64(1)\n") in
   Alcotest.(check bool) "macro exported" true
     (List.exists (fun (e : Macro_driver.macro_export) -> String.equal e.name "mk") output.macro_exports);
   Alcotest.(check bool) "no pending marker remains" false

@@ -386,6 +386,15 @@ let expand_path (ctx : Expand_ctx.t) (p : Syntax.path) : Syntax.path =
   | Some info -> { p with head = { p.head with name = info.resolved_name } }
   | None -> p
 
+(* A macro body, lowered, inside the unit opens around its definition (M3):
+   its scope, and nothing ambient. *)
+let in_definition_site_opens (ctx : Expand_ctx.t) (name : Syntax.id) (body : Surface.t) : Surface.t =
+  List.fold_right
+    (fun path body ->
+      Surface.Open (Surface.Import path, body, Compiler_names.Module_name.unit_open_label path))
+    (Expand_ctx.enclosing_unit_opens ctx name.scope)
+    body
+
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
@@ -553,10 +562,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | MacroDef { name; value; body; kind; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
-      (* The prelude open wraps the definition, so quoted syntax keeps it. *)
-      let prelude = Expand_ctx.implicit_prelude_open ctx in
-      let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx (add_scope prelude value)) in
-      let lowered = Lower_surface.lower_expr value in
+      let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
+      let lowered = in_definition_site_opens ctx name (Lower_surface.lower_expr value) in
       let macro_fn = elab lowered in
       let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
       (* Promote the macro into the scope-aware binding table with a fresh
@@ -859,11 +866,10 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
           if Expand_ctx.is_provisional_macro ctx binding_name then
             Expand_ctx.restore_macro_snapshot ctx ~name:binding_name macro_snapshot)
         (fun () ->
-          let prelude = Expand_ctx.implicit_prelude_open ctx in
-          let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx (add_scope prelude value)) in
+          let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
           (* Strip parser-synthesized Lam when semantic resolution says constraint *)
           let value = if strip_lam then strip_leading_lam value else value in
-          let lowered = Lower_surface.lower_expr value in
+          let lowered = in_definition_site_opens ctx name (Lower_surface.lower_expr value) in
           let macro_fn = elab lowered in
           Expand_ctx.fill_provisional_macro ctx ~name:binding_name ~value:macro_fn;
           ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]]))

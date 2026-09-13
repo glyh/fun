@@ -39,26 +39,6 @@ let init_ctx () : Ctx.t =
      elaborates against this rather than against the import site. *)
   { ctx with base = Some ctx }
 
-(* Return [ctx] extended with the prelude's public fields in scope — the
-   ctx-builder counterpart of [on_macro_body], which brings the prelude into
-   scope for a *single* expression by wrapping it in the [Open (import "std", …)]
-   construct. Both bottom out in the same [open_module_value] on [std]; this form
-   exists for the one caller ([Macro_driver]) that needs a *persistent*
-   prelude-opened context, reused across every macro-body compilation and the
-   per-binding advancement hook (which elaborates module bindings via
-   [elab_module_binding] directly, not through an expression that could carry an
-   [Open]). Because that context is opened once here, [Macro_driver] elaborates
-   macro bodies with [Elab_driver.infer] rather than [on_macro_body] — the latter
-   would open [std] a second time and shift the de Bruijn indices.
-
-   This supersedes the parent operator-demotion ticket's "delete implicit
-   open_stdlib" line: the *user-code* implicit open is gone (see [on_expr]); this
-   surviving use is a deliberate, non-user-facing macro-compilation mechanism. *)
-let open_stdlib ctx =
-  let ix, ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
-  let value = Ctx.eval ctx (Var ix) in
-  open_module_value ~label:(Compiler_names.Module_name.unit_open_label Compiler_names.Module_name.std_import_path) ctx ty value
-
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
   Elab_stdlib.resolve ctx path
 
@@ -77,13 +57,3 @@ let on_expr_effects ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value * El
   let core, ty = Elab_driver.infer ctx expr in
   (core, ty, Elab_driver.collect_effects ctx expr)
 
-(* Elaborate a macro transformer body. Unlike user expressions (governed by the
-   strict phase rule), transformer bodies are compiler-facing — they use the
-   [Syntax] API and the prelude operators — so they always elaborate with [std]
-   open, via the same [open (import "std")] construct. *)
-let on_macro_body ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value =
-  on_expr ?loader ctx
-    (Surface.Open
-       ( Surface.Import Compiler_names.Module_name.std_import_path,
-         expr,
-         Compiler_names.Module_name.unit_open_label Compiler_names.Module_name.std_import_path ))

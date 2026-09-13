@@ -57,8 +57,7 @@ looks a name up by spelling among the locals. A context-less id reaches only
 the base context. The rest of the tier is still to go: path heads (`M.x`,
 pattern heads), trait names and effect names are still located by spelling in
 the elaborator. They go with delete-surface-ir, when the elaborator reads ids.
-Macro bodies still get the prelude open implicitly; expansion mirrors that open
-until M3 lands.
+Macro bodies no longer open the prelude implicitly (M3, closed).
 
 ## Decided (2026-09-14)
 
