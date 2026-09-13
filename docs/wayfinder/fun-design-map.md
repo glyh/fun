@@ -336,5 +336,14 @@ every defect below is an invariant with no name in the source.
   evaluate at all. **Blocked on** refs in effect rows.
 - [Refs belong in effect rows](tickets/refs-in-effect-rows.md) — reopens the
   references pass: purity must be visible in types for generativity to be.
+- [A bare arrow is pure](tickets/bare-arrow-is-pure.md) — `A -> B` is pure;
+  `A -> B can _` / `A ~> B` infers the row. Reverses effects Phase 6's default.
+- [The checker evaluates under a budget](tickets/checker-evaluation-budget.md)
+  — Zig's model: no termination check, a call/iteration budget, extern or
+  effectful calls in evaluated positions are errors. Today `loop(0)` in a type
+  hangs the checker.
+- [Handlers tunnel callback effects](tickets/handlers-tunnel-callback-effects.md)
+  — lexical handling: a callback's effects pass handlers in code polymorphic
+  over its row. Today a library's internal handler swallows the user's raise.
 - [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
   — mechanical collapse of the duplicate IR. **Blocked on** the first ticket.

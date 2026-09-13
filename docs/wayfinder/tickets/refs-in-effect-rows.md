@@ -30,20 +30,25 @@ invisible too, and:
 - **Higher-order code cannot be both sound and useful.**
 
   ```fun
-  merge_twice = fn(mk : Unit -> SetSig) ->
+  merge_twice = fn(mk : Unit -> SetSig can {}) ->
     do a = mk(()); b = mk(()); a.union(a.empty, b.empty) end
   ```
 
   Without purity in `mk`'s type the checker must either reject this for every
   caller, or accept `merge_twice(SymbolTable)` and let symbols cross tables.
-  With `can Ref` visible, a pure `mk` is applicative and `SymbolTable` is a
-  type error at the call.
+  With `can Ref` visible, a pure `mk` (`can {}` — a bare arrow is
+  effect-polymorphic) is applicative and `SymbolTable` is a type error at the
+  call.
 
 ## Cost
 
 - Allocation shows in types: `counter : Unit -> Ref(I64) can Ref`.
-- Internal-only refs still leak `can Ref` to callers unless discharged by a
-  local-refs handler (`runST`-style), which needs a brand so refs cannot escape.
+- Internal-only refs still leak `can Ref` to callers unless discharged. Koka
+  shows the discharge need not be written: `ref` has effects `alloc<h>`,
+  `read<h>`, `write<h>` over a heap variable `h`, and the effect is dropped
+  whenever `h` cannot escape — its `fib3` allocates refs yet has type
+  `(n : int) -> int`, total. That is `runST` done by generalisation
+  ([Koka book §3.2.5](https://koka-lang.github.io/koka/doc/book.html)).
 - Generic helpers need effect polymorphism — required by effects anyway.
 
 `compile_time_safe` may survive as the elaborator's implementation of "do not

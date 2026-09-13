@@ -6,7 +6,7 @@ term becomes a value through normalisation by evaluation.
 
 This glossary covers the **elaborate ↔ evaluate boundary** — the vocabulary a
 port must reproduce — and, in the phases section, the reader, enforestation
-and expansion phases before it. Effects are not described here yet.
+and expansion phases before it. The effects section is being filled in.
 
 The phases before elaboration follow the macro-system design: Honu's
 enforestation, Flatt's sets of scopes, and an ordered interleaving of expansion
@@ -324,3 +324,48 @@ An operation the compiler supplies rather than the prelude: a name, a type, a
 reducer, and a failure behaviour. The fourth part is what division by zero
 needed and what `panic` does not fit.
 _Avoid_: builtin, intrinsic, native
+
+### Effects
+
+**Effect family**:
+A declared set of operations, possibly parameterised (`effect State(S) = sig …
+end`). A nominal: its identity follows the same rule, so `State(I64)` is one
+effect wherever it is written.
+_Avoid_: effect type, effect interface, ability
+
+**Effect row**:
+The set of effects a function may perform when called, written after `can`.
+Closed (`can {IO, State(I64)}`), open with a tail variable (`can {IO | r}`), or
+inferred (`can _`). An arrow with no row is pure: its row is `{}`.
+_Avoid_: effect set, effect list, ability (Frank's word)
+
+**Pure**:
+Having the empty effect row. What an unannotated arrow means, what lets the
+checker evaluate a call while type checking — within the evaluation budget —
+and what makes a nominal declared in the call applicative.
+_Avoid_: total (pure code may diverge), side-effect free
+
+**Evaluation budget**:
+How many function calls and loop iterations the checker may spend evaluating a
+closed term while type checking. Exceeding it is a compile error, raisable per
+evaluation. Termination is never checked; divergence is not an effect.
+_Avoid_: fuel (that is the macro-expansion depth guard), termination check,
+reduction depth
+
+**Handler**:
+A `match` with effect branches, handling the effects its scrutinee performs
+directly — not effects that tunnel through it from a function passed in, which
+belong to that function's row and reach the handler that row names.
+_Avoid_: catch, try, effect handler block
+
+**Accidental handling**:
+A handler catching an effect it could not see in any type — an effect raised by
+a callback whose row the handling code is polymorphic over. Ruled out: such
+effects tunnel.
+_Avoid_: effect capture, handler leak
+
+**Continuation**:
+The rest of a handled computation, up to its handler, passed to an effect
+branch and continued with `resume`. One-shot: resumed at most once. Never
+captured across an extern frame.
+_Avoid_: call/cc (that is undelimited), multi-shot continuation, callback

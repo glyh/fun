@@ -64,8 +64,9 @@ st2.name(st1.intern("x"))              -- must be rejected
 7. A purity flip (one added `ref`) must change the maker's type, or clients
    break far away. Hence [refs-in-effect-rows](refs-in-effect-rows.md).
 
-Effect-polymorphic makers (`mk : Unit -> S can E`) are treated as possibly
-generative: conservative, sound, exact for concrete effects.
+Effect-polymorphic makers (`mk : Unit -> S can {| r}`, which is also what a bare
+`Unit -> S` means) are treated as possibly generative: conservative, sound,
+exact for concrete effects.
 
 Pure code that wants a unique type per call uses a brand (rank-2 quantification,
 as Haskell's `runST` or Rust's `generativity`/GhostCell), not a generative

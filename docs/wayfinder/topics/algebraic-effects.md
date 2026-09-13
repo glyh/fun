@@ -131,6 +131,8 @@ Implemented work:
 Notes:
 
 - Regular `A -> B` no longer means pure; it infers a row tail. Use `A -> B can {}` when purity is required.
+  **Superseded:** [bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md) — `A -> B` is pure again;
+  `A -> B can _` or `A ~> B` infers the row.
 - Explicit `can IO` and `can {IO, State(I64)}` remain closed rows.
 - Open rows can name a concrete prefix plus tail or be tail-only.
 - The current implementation is still prototype-level and intentionally avoids full lacks-constraint machinery.
@@ -144,8 +146,13 @@ Notes:
 - Effect branch arguments use normal pattern syntax.
 - Handler continuations use `resume arg`.
 - Handlers are deep for branch bodies and resumed continuations.
+- **Superseded in part:** handling is lexical (tunneling), not dynamic — see
+  [handlers-tunnel-callback-effects](../tickets/handlers-tunnel-callback-effects.md).
 - `resume` is lexically available inside nested lambdas in an effect branch.
-- Continuations are one-shot.
+- Continuations are one-shot. Confirmed in the domain-model pass: multi-shot
+  is out (it conflicts with refs and C frames); an unhandled effect may not be
+  captured across an extern frame. Backtracking and probabilistic search are
+  written as data, not by resuming twice.
 - Handler branch identity includes the full parameterized effect instance and operation name.
 - Omitted effect annotations infer/thread row tails by default; `can {}` is the explicit pure row.
 - Closed and open rows coexist: `can IO`, `can {IO, State(I64)}`, `can {IO | r}`, and `can {| r}`.
