@@ -60,9 +60,17 @@ let parse_can_effect_row callbacks terms =
       let eff, rest = callbacks.parse_expr_prec 40 rest in
       ({ Syntax.effects = [ eff ]; tail = None }, rest)
 
-let attach_effects (lhs : Syntax.t) eff =
+let attach_effects (lhs : Syntax.t) (eff : Syntax.effect_row) =
   match lhs.kind with
-  | Syntax.Arrow (expl, name, dom, None, cod) -> { lhs with kind = Syntax.Arrow (expl, name, dom, Some eff, cod) }
+  | Syntax.Arrow (expl, name, dom, None, cod) ->
+      (* The arrow's span covers its row: a binder's scope reaches only the
+         region its form spans, and a row naming the binder sits inside it. *)
+      let span =
+        match (eff.tail, List.rev eff.effects) with
+        | Some last, _ | None, last :: _ -> span_between lhs.span last.Syntax.span
+        | None, [] -> lhs.span
+      in
+      { Syntax.kind = Syntax.Arrow (expl, name, dom, Some eff, cod); span }
   | Syntax.Arrow _ -> error "duplicate effect annotation"
   | _ -> error "can annotation requires an arrow"
 
