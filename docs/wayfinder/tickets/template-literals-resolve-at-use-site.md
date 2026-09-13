@@ -3,8 +3,10 @@ title: Template literals resolve at the use site
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Fixed at the root, which was not where the ticket placed it. (1) A local binder reused its spelling as its resolved name whenever the binder table had not seen that name, so a local `False` and the prelude's `False` (which reaches the elaborator by spelling) were the same string; resolved names are now always fresh. (2) Path heads (pattern heads, effect ops, trait paths) are ids, so renaming no longer breaks them. (3) A binder's scope now reaches every id in its body, except ids a parse-time template instance introduced, which get it only when the template was defined inside the binder's region; that is the static equivalent of Racket's expand-then-scope order. (4) The infix template path was a third copy of instantiation without an intro scope; it now uses the shared one. The repros as written (`… && 99`) are now type errors, which is correct: `&&`'s `False` is a Bool. Well-typed versions are in `test_template_literals_resolve_at_definition`. M9 (templates desugar to macros) stays open as a structural change; this ticket no longer depends on it.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

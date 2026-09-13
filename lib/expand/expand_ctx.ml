@@ -96,13 +96,15 @@ let prune_to_definition_site (ctx : t) (scope : Scope_set.t) =
   | Some floor -> Scope_set.filter (fun s -> s < floor) scope
   | None -> scope
 
+(* A local binder's resolved name is always fresh, so it is unique among every
+   name the elaborator can see - not only among binders this table knows. Names
+   that reach the elaborator through [open], the prelude's included, are not in
+   the table; reusing a first binder's spelling made a local [False] and the
+   prelude's [False] the same string (template-literals-resolve-at-use-site). *)
 let fresh_resolved_name (ctx : t) name =
-  if Binding.has_name ctx.binding_table name then begin
-    let i = ctx.name_counter in
-    ctx.name_counter <- i + 1;
-    Printf.sprintf "%s__%d" name i
-  end else
-    name
+  let i = ctx.name_counter in
+  ctx.name_counter <- i + 1;
+  Printf.sprintf "%s__%d" name i
 
 let extend (ctx : t) ~name ~resolved_name =
   let scope = fresh_scope_set ctx in

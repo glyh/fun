@@ -743,9 +743,10 @@ and parse_postfix_infix env min_prec lhs terms =
                             } ))
                         holes [ rhs; lhs ]
                     in
-                    let parsed, _ = parse_expr_prec env 0 branch.replacement in
-                    Enforest_template.substitute_template_captures captures
-                      parsed
+                    Enforest_template.instantiate_template_replacement
+                      (template_callbacks env (fun _ ->
+                           error "declaration templates are not available in expression context"))
+                      captures branch.replacement
                 | Binding.MacroOp ->
                     let arg =
                       syntax_operator_arg ~span ~use_span:term.span op

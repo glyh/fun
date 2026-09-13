@@ -8,8 +8,8 @@ open Surface
 let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
 let unwrap_std (e : Surface.t) : Surface.t =
   match e with Open (Import "std", body) -> body | other -> other
-let parse source = unwrap_std (Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
-let parse_module source = Parse_expand.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
+let parse source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
+let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
 
 let string_contains text needle =
   let needle_len = String.length needle in
@@ -31,7 +31,7 @@ let parse_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax)
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  unwrap_std (Parse_expand.parse_expr ?load_macros ~open_prelude:true ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
+  unwrap_std (Parse_written.parse_expr ?load_macros ~open_prelude:true ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
 let parse_module_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax) source =
   let ctx = Elaborate.init_ctx () in
@@ -44,7 +44,7 @@ let parse_module_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  Parse_expand.parse_module ?load_macros ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
+  Parse_written.parse_module ?load_macros ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let with_modules modules f =
   let dir = Filename.temp_dir "fun_syntax_test" "" in
@@ -92,7 +92,7 @@ let strict_phase_rule_operators_need_std () =
      arithmetic operators are unknown, so [1 + 2] does not parse as an operator
      application (it fails on the dangling [+]). Contrast [operator_precedence],
      which parses the same shape after opening the prelude. *)
-  match Parse_expand.parse_expr "1 + 2" with
+  match Parse_written.parse_expr "1 + 2" with
   | exception _ -> ()
   | Ap (Ap (Var "+", _, _), _, _) ->
       Alcotest.fail "expected + to be unknown without opening std"

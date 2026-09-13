@@ -351,6 +351,7 @@ every defect below is an invariant with no name in the source.
   silently (`?` ids, garbage→`False`, skipped bindings). The general defect
   that the capture ticket is the soundness slice of.
 - [Template literals resolve at the use site](tickets/template-literals-resolve-at-use-site.md)
+  (closed — resolved names always fresh, path heads are ids, one template instantiation)
   — a use-site `False = 42` silently turns the prelude's own `&&` into a
   constant-42 machine; replacement ids are re-enforested at the use site and
   the declarer's scope never reaches them. Found by the pass-2 model.

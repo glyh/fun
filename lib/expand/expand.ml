@@ -18,11 +18,20 @@ let span_contains (outer : Source_span.t) (inner : Source_span.t) =
   || (same_span_file outer inner && outer.start_byte <= inner.start_byte
      && inner.end_byte <= outer.end_byte)
 
-let span_allowed within span =
-  match within with None -> true | Some outer -> span_contains outer span
-
+(* Which ids in a binder's body receive the binder's scope. In the model, all
+   of them - the body as it exists when the binder is expanded - and macro
+   output made later receives none. Templates break that order: they
+   instantiate during enforestation, so their output already sits in the body.
+   An id a template instance introduced carries that instance's intro scope,
+   and its span is its token in the template's replacement, so "inside the
+   binder's region" is exactly "the template was defined inside the binder's
+   body" - when the replacement's tokens would have received the scope. Every
+   other id - written at the use site, spliced through a hole, or produced by
+   a procedural macro during expansion - is in the body, and receives it. *)
 let add_id_scope_if within (scope : Scope_set.t) (id : Syntax.id) : Syntax.id =
-  if span_allowed within id.span then add_id_scope scope id else id
+  match within with
+  | Some region when Scope_set.has_template_intro id.scope && not (span_contains region id.span) -> id
+  | _ -> add_id_scope scope id
 
 let add_id_scopes scopes id =
   List.fold_left (fun id scope -> add_id_scope scope id) id scopes
@@ -78,13 +87,13 @@ and go_kind (on_id : Syntax.id -> Syntax.id) (k : kind) : kind =
   | Import _ -> k
   | Open (m, body) -> Open (go m, go body)
   | RecordTypeDef { name; params; fields; body } ->
-    RecordTypeDef { name = on_id name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
+    RecordTypeDef { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | TypeDef { name; params; ctors; body } ->
-    TypeDef { name = on_id name; params; ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) ctors; body = go body }
+    TypeDef { name = on_id name; params = List.map on_id params; ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) ctors; body = go body }
   | EffectDef { name; params; ops; body } ->
-    EffectDef { name = on_id name; params; ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; body = go body }
+    EffectDef { name = on_id name; params = List.map on_id params; ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; body = go body }
   | TraitDef { name; params; fields; body } ->
-    TraitDef { name = on_id name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
+    TraitDef { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | ImplDef { name; trait; args; fields; body } ->
     ImplDef { name; trait = map_path on_id trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | Perform { op; arg } ->
@@ -114,18 +123,18 @@ and go_struct_binding (on_id : Syntax.id -> Syntax.id) (binding : Syntax.struct_
                     body = map_ids on_id body; public }
   | TypeBinding { members; public } ->
     TypeBinding { members = List.map (fun (m : type_decl) ->
-                    { m with name = on_id m.name;
-                             ctors = List.map (fun (n, ps) -> (n, List.map (map_ids on_id) ps)) m.ctors }) members;
+                    { name = on_id m.name; params = List.map on_id m.params;
+                      ctors = List.map (fun (n, ps) -> (on_id n, List.map (map_ids on_id) ps)) m.ctors }) members;
                   public }
   | RecordTypeBinding { name; params; fields; public } ->
     RecordTypeBinding { name = on_id name;
-                        params; fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
+                        params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
   | EffectBinding { name; params; ops; public } ->
     EffectBinding { name = on_id name;
-                    params; ops = List.map (fun op -> { op with input = map_ids on_id op.input; output = map_ids on_id op.output }) ops; public }
+                    params = List.map on_id params; ops = List.map (fun op -> { op with input = map_ids on_id op.input; output = map_ids on_id op.output }) ops; public }
   | TraitBinding { name; params; fields; public } ->
     TraitBinding { name = on_id name;
-                   params; fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
+                   params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
   | ImplBinding { name; trait; args; fields; public } ->
     ImplBinding { name; trait = map_path on_id trait; args = List.map (map_ids on_id) args;
                   fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
@@ -134,7 +143,7 @@ and go_struct_binding (on_id : Syntax.id -> Syntax.id) (binding : Syntax.struct_
   | MacroCallBinding { f; args } ->
     MacroCallBinding { f = map_ids on_id f; args = List.map (map_ids on_id) args }
   | PatternSynBinding { name; params; rhs; public } ->
-    PatternSynBinding { name = on_id name; params; rhs; public }
+    PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat on_id rhs; public }
   | OpenBinding m -> OpenBinding (map_ids on_id m)
 
 and go_match_branch on_id = function
@@ -584,7 +593,11 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       in
       match by_unit with
       | Some _ as e -> e
-      | None -> Expand_ctx.lookup_macro_entry ctx operator.name
+      | None -> (
+          (* Declared here: the operator's id resolves like any macro head. *)
+          match macro_head_key ctx operator with
+          | Some (_, (Some _ as e), _) -> e
+          | _ -> Expand_ctx.lookup_macro_entry ctx operator.name)
     in
     begin match operator_entry with
     | Some macro_entry ->

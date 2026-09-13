@@ -11,7 +11,7 @@ let parse source =
     let mc = Core.MetaContext.create () in
     Nbe.apply mc fn arg
   in
-  unwrap_std (Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
+  unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
 let identity_macro_shape () =
   match parse "do macro id(stx) -> stx; id(42) end" with

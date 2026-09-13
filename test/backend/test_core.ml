@@ -1421,6 +1421,20 @@ let test_macro_does_not_capture_argument () =
       "do x = 1; macro m(e) : Expr(A) do do _ = A; Syntax.ap(Syntax.lam(\"x\", e), Syntax.i64(2)) end end; y : I64 = m(x); y end";
       "do x = 1; syntax li do | li $body -> do x = 2; $body end end; y : I64 = li x; y end" ]
 
+(* A template's literal ids mean the declarer's names: a caller's [False] or
+   [True] does not reach inside the prelude's [&&] / [||]. The caller's own
+   binding is untouched. *)
+let test_template_literals_resolve_at_definition () =
+  List.iter
+    (fun (src, expected) ->
+      match eval_with_macros src with
+      | VCon { name; _ } -> Alcotest.(check string) src expected name
+      | v -> Alcotest.fail (src ^ ": " ^ Debug.pp_value_short (MetaContext.create ()) v))
+    [ ("do False = 42; (1 > 2) && (2 > 1) end", "False");
+      ("do True = 7; (2 > 1) || (1 > 2) end", "True") ];
+  check_i64_macro "the caller's own binding is untouched" 42L
+    "do False = 42; _ = (1 > 2) && (2 > 1); False end" ()
+
 let test_quote_splices_holes () =
   check_i64_macro "quote splices an expression hole" 42L "do macro m(e) -> quote($e + 1); m(41) end" ();
   check_i64_macro "quoted syntax parses where written" 1L
@@ -2140,9 +2154,17 @@ let test_7g_adt_matching_hygiene_roundtrip () =
   check_i64_macro "7G: ADT matching preserves binding hygiene" 42L
     "do x = 1; macro passthrough(stx) -> match stx do | Syntax.Lam(_, _) -> stx | _ -> stx end; (passthrough(fn(x) -> x))(42) end" ()
 
+(* Rebuilding a lambda around its destructured body binds the body only through
+   the lambda's own parameter. A binder the macro builds from a string is the
+   macro's, and does not capture the caller's [x] (M2). *)
 let test_7g_adt_matching_hygiene_introduced_body () =
-  check_i64_macro "7G: ADT destructured body not captured by outer scope" 80L
-    "do macro double(stx) -> match stx do | Syntax.Lam(_, body) -> Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ -> Syntax.i64(0) end; (double(fn(x) -> x))(40) end" ()
+  check_i64_macro "7G: rebuilt lambda binds its body through its own parameter" 80L
+    "do macro double(stx) -> match stx do | Syntax.Lam(p, body) -> Syntax.RawLam(None, p, Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ -> Syntax.i64(0) end; (double(fn(x) -> x))(40) end" ();
+  match eval_with_macros
+    "do macro double(stx) -> match stx do | Syntax.Lam(_, body) -> Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ -> Syntax.i64(0) end; (double(fn(x) -> x))(40) end"
+  with
+  | _ -> Alcotest.fail "a string-built binder must not capture the caller's x"
+  | exception _ -> ()
 
 let test_7g_adt_matching_flip_args () =
   check_i64_macro "7G: computed multi-kind dispatch not possible with templates" 1L
@@ -3315,6 +3337,7 @@ let () =
           Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
           Alcotest.test_case "macro does not capture its argument" `Quick test_macro_does_not_capture_argument;
           Alcotest.test_case "quote splices holes" `Quick test_quote_splices_holes;
+          Alcotest.test_case "template literals resolve at definition" `Quick test_template_literals_resolve_at_definition;
           Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;
           Alcotest.test_case "reflection round trip is the identity" `Quick test_round_trip_is_identity;
           Alcotest.test_case "unit-level type chain" `Quick test_unit_level_type_chain;
