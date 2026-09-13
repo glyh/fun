@@ -51,9 +51,11 @@ form/pattern/template helpers), scope sets as carried by `Syntax.t`, expansion
 (`Lower_surface`, `Surface_to_syntax`).
 
 Not this pass: the hygiene *resolution rule* and macro evaluation semantics
-(third pass), effects and handlers (fourth), and the IR-collapse merge decision
-— this pass supplies that investigation's vocabulary and stays read-only about
-merging.
+(third pass — [domain-model-macro-hygiene](domain-model-macro-hygiene.md)),
+effects and handlers (fourth pass —
+[done](../topics/core-tt-domain-model-effects.md)), and the IR-collapse merge
+decision — this pass supplies that investigation's vocabulary and stays
+read-only about merging.
 
 ## Deliverables
 

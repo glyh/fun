@@ -274,6 +274,13 @@ every defect below is an invariant with no name in the source.
   — second pass of the port's specification: the reader, the enforester, and the
   seam where the expander hands the elaborator its output — the same class of
   unnamed invariants pass one found a phase earlier.
+- [Domain model — macro evaluation and hygiene](tickets/domain-model-macro-hygiene.md)
+  — third pass of the port's specification: the hygiene contract as one
+  invariant over the three application paths, the syntax↔value round trip
+  (scope sets erased at both ends today), the macro evaluation model (fuel as
+  an application-nesting guard, provisional recursion, definition-site scope),
+  and what replaces the string fall-through. Raw material: pass two's
+  three-paths table.
 
 ### Language and macro work
 
