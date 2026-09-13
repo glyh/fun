@@ -18,6 +18,9 @@ type t = {
      for it: quoted syntax is pruned of every scope from here on (see
      [in_macro_definition]). *)
   mutable macro_definition_floor : int option;
+  (* Every open expansion has entered: the scope it adds to its region, and its
+     label. An id carrying the scope is inside that open. *)
+  mutable opens : (int * string) list;
   mutable name_counter : int;
   mutable macro_table : (string, macro_entry) Hashtbl.t;
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
@@ -53,6 +56,7 @@ let create ?loader () =
   { binding_table = Binding.create ();
     scope_counter = 0;
     macro_definition_floor = None;
+    opens = [];
     name_counter = 0;
     macro_table = Hashtbl.create 8;
     macro_kind_table = Hashtbl.create 8;
@@ -90,6 +94,49 @@ let in_macro_definition (ctx : t) f =
   let saved = ctx.macro_definition_floor in
   ctx.macro_definition_floor <- Some ctx.scope_counter;
   Fun.protect ~finally:(fun () -> ctx.macro_definition_floor <- saved) f
+
+(* A macro body is elaborated with the prelude open (macro-bodies-implicitly-
+   open-the-prelude, M3's distance); expansion mirrors that open, or a body's
+   [Syntax.i64] would have no open to be chosen from. The scope to add to the
+   body, registered under the prelude's unit label. *)
+let implicit_prelude_open (ctx : t) : Scope_set.t =
+  let scope = fresh_scope ctx in
+  ctx.opens <- (scope, Compiler_names.Module_name.unit_open_label Compiler_names.Module_name.std_import_path) :: ctx.opens;
+  Scope_set.singleton scope
+
+(* Enter an open of [m]: a fresh scope for its region, and its label. *)
+let enter_open (ctx : t) (m : Syntax.t) : Scope_set.t * string =
+  let scope = fresh_scope ctx in
+  let label =
+    match m.kind with
+    | Syntax.Import path -> Compiler_names.Module_name.unit_open_label path
+    | _ -> "open:" ^ string_of_int scope
+  in
+  ctx.opens <- (scope, label) :: ctx.opens;
+  (Scope_set.singleton scope, label)
+
+(* The opens that may supply [id], innermost first (M: open choice). An open
+   counts when [id] is inside it and [binder], if any, is not - a binder inside
+   the open shadows it. An id no binder took, introduced by a template imported
+   from a unit, may also mean that unit's names. *)
+let open_candidates (ctx : t) (id : Syntax.id) (binder : Binding.binding_info option) : string list =
+  let inside s scope = Scope_set.subset (Scope_set.singleton s) scope in
+  let region =
+    ctx.opens
+    |> List.filter (fun (s, _) ->
+           inside s id.scope && match binder with Some b -> not (inside s b.Binding.scope) | None -> true)
+    |> List.sort (fun (a, _) (b, _) -> compare b a)
+    |> List.map snd
+  in
+  let units =
+    match binder with
+    | Some _ -> []
+    | None ->
+        List.filter_map
+          (fun s -> Option.map Compiler_names.Module_name.unit_open_label (Hashtbl.find_opt Syntax_template.intro_scope_units s))
+          id.scope
+  in
+  List.fold_left (fun acc l -> if List.mem l acc then acc else acc @ [ l ]) [] (region @ units)
 
 let prune_to_definition_site (ctx : t) (scope : Scope_set.t) =
   match ctx.macro_definition_floor with
@@ -146,6 +193,7 @@ let copy (ctx : t) : t =
   { binding_table = Binding.copy ctx.binding_table;
     scope_counter = ctx.scope_counter;
     macro_definition_floor = ctx.macro_definition_floor;
+    opens = ctx.opens;
     name_counter = ctx.name_counter;
     macro_table = Hashtbl.copy ctx.macro_table;
     macro_kind_table = Hashtbl.copy ctx.macro_kind_table;

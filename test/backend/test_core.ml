@@ -1317,8 +1317,8 @@ let test_type_default_bool () =
        macro default(_) : Expr(A) do
          match A do
          | RExpr(I64) -> Syntax.i64(0)
-         | RExpr(Bool) -> Syntax.var(\"False\")
-         | _ -> do _ = A; Syntax.var(\"False\") end
+         | RExpr(Bool) -> quote(False)
+         | _ -> do _ = A; quote(False) end
          end
        end
        do x : Bool = default(0); x end
@@ -2085,7 +2085,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "one constructor per expression form" 34 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 35 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true

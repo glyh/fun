@@ -195,6 +195,20 @@ operation: it is constructing an `Id` with another id's `scope`. An `Id` built
 from a name alone has an empty scope set and is unbound. Today the field is a
 dummy `I64 0` (M1's scope row).
 
+### M12 — no name is found by its spelling alone
+
+**Status: enforced for bare-name expressions (2026-09-14); paths, traits and
+effects pending delete-surface-ir.** Decided with the user: which members an
+open supplies may be known only from its type, so expansion does not enumerate
+them. A bare name inside an open's region that no binder takes, or that only a
+binder outside the open takes, resolves to an **open choice**. The choice holds
+the candidate opens, innermost first, then that binder. Elaboration picks the
+first open that has the member. Opens are labelled (`unit:p` for an open of an
+import, `open:n` otherwise), and the elaborator records each open's members
+under its label. A template imported from a unit adds that unit's open as a
+candidate for ids it introduced. Resolved names are always fresh, so a
+generated name can never equal a written one's resolution.
+
 ## What the modelling found beyond the invariants
 
 - **`Expand_ctx.phase` is dead.** `type phase = Runtime | CompileTime`,

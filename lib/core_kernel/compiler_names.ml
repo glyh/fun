@@ -22,6 +22,11 @@ module Module_name = struct
   (* Reserved import path: [import "std"] resolves to the builtin prelude
      module rather than reading a [std.fun] file from disk. *)
   let std_import_path = "std"
+
+  (* The label of an open of [import path] (M: open choice). The same in every
+     context, so a context that opens a unit itself - the macro-body context
+     opening [std] - answers choices naming it. *)
+  let unit_open_label path = "unit:" ^ path
 end
 
 module Syntax_name = struct

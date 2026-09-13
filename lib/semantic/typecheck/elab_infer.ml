@@ -191,7 +191,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
       let bind = PatternSynBind (name, kind, syn_val) in
       let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, syn_val) ] in
       (ctx', [bind], [ModuleField (name, kind, VU)])
-  | Surface.OpenBinding mod_expr ->
+  | Surface.OpenBinding (mod_expr, label) ->
       (* Module-level [open]: the opened module's public fields are in scope for
          the bindings that *follow* (the caller folds this ctx forward), and the
          open exports nothing itself. [OpenBind] carries the same scope
@@ -200,7 +200,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Surface.struct_bin
       let mod_value = Ctx.eval ctx mod_core in
       (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
        | VModule _, VModule _ ->
-           (open_module_value ctx mod_ty mod_value, [OpenBind mod_core], [])
+           (open_module_value ~label ctx mod_ty mod_value, [OpenBind mod_core], [])
        | _ -> raise (ElabError NotAModule))
   | Surface.LetBinding { name; value; public; recursive } ->
       let rec_ty = Ctx.raw_meta ctx in
@@ -443,8 +443,9 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       let b_core, b_ty = ops.infer ctx' b in
       check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
       (Pi { explicitness = expl_of_surface expl; domain = a_core; effects; codomain = b_core }, VU)
-  | FieldAccess (Var trait_name, name) when NameMap.mem trait_name ctx.Ctx.traits ->
-      resolve_trait_method ctx (lookup_trait ctx trait_name) name
+  | FieldAccess (head, name)
+    when (match Surface.written_name head with Some t -> NameMap.mem t ctx.Ctx.traits | None -> false) ->
+      resolve_trait_method ctx (lookup_trait ctx (Option.get (Surface.written_name head))) name
   | FieldAccess (e, name) ->
       let e_core, e_ty = ops.infer ctx e in
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
@@ -653,12 +654,12 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
                (bind :: acc_binds,
                 StructField (name, kind, VU) :: acc_entries)
               rest
-        | Surface.OpenBinding mod_expr :: rest ->
+        | Surface.OpenBinding (mod_expr, label) :: rest ->
             let mod_core, mod_ty = ops.infer ctx mod_expr in
             let mod_value = Ctx.eval ctx mod_core in
             (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
              | VModule _, VModule _ ->
-                 go (open_module_value ctx mod_ty mod_value)
+                 go (open_module_value ~label ctx mod_ty mod_value)
                    (OpenBind mod_core :: acc_binds, acc_entries) rest
              | _ -> raise (ElabError NotAModule))
         | Surface.LetBinding { name; value; public; recursive; _ } :: rest ->
@@ -770,12 +771,15 @@ let infer ops (ctx : Ctx.t) (expr : Surface.t) : term * value =
       in
       (Struct { con_fields = result_con_fields; bindings = core_bindings; partial = false },
        VStruct { entries = type_entries; partial = false })
-  | Open (mod_expr, body) ->
+  | OpenChoice { name; opens; fallback } ->
+      let ix, ty = Ctx.lookup_choice ctx ~name ~opens ~fallback in
+      (Var ix, ty)
+  | Open (mod_expr, body, label) ->
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
       (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
       | VModule _, VModule _ ->
-          let body_core, body_ty = ops.infer (open_module_value ctx mod_ty mod_value) body in
+          let body_core, body_ty = ops.infer (open_module_value ~label ctx mod_ty mod_value) body in
           (Open (mod_core, body_core), body_ty)
       | _ -> raise (ElabError NotAModule))
   | RecordTypeDef { name; params; fields; body } ->

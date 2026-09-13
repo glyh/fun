@@ -165,7 +165,9 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Struct { con_fields; bindings } -> e "RawStruct" [ w_fields ns con_fields; w_list ns (w_decl ns) bindings ]
   | Module { bindings } -> e "RawModule" [ w_list ns (w_decl ns) bindings ]
   | Import path -> e "RawImport" [ w_string path ]
-  | Open (m, body) -> e "RawOpen" [ x m; x body ]
+  | Open (m, body, label) -> e "RawOpen" [ x m; x body; w_string label ]
+  | OpenChoice { name; opens; fallback } ->
+      e "RawOpenChoice" [ w_id ns name; w_list ns w_string opens; w_option ns w_string fallback ]
   | RecordTypeDef { name; params; fields; body } ->
       e "RawRecordTypeDef" [ w_id ns name; ids params; w_fields ns fields; x body ]
   | TypeDef { name; params; ctors; body } ->
@@ -256,7 +258,7 @@ and w_decl ns (b : Syntax.struct_binding) =
   | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_expr ns) args ]
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
-  | OpenBinding m -> d "DeclOpen" [ w_expr ns m ]
+  | OpenBinding (m, label) -> d "DeclOpen" [ w_expr ns m; w_string label ]
 
 (* ---- reading values back ---- *)
 
@@ -409,7 +411,13 @@ let rec u_expr ns (v : value) : Syntax.t option =
           mk (Struct { con_fields; bindings })
       | "RawModule", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Module { bindings })
       | "RawImport", [ path ] -> let* path = u_string path in mk (Import path)
-      | "RawOpen", [ m; body ] -> let* m = x m in let* body = x body in mk (Open (m, body))
+      | "RawOpen", [ m; body; label ] ->
+          let* m = x m in let* body = x body in let* label = u_string label in mk (Open (m, body, label))
+      | "RawOpenChoice", [ name; opens; fallback ] ->
+          let* name = u_id ns name in
+          let* opens = u_list ns u_string opens in
+          let* fallback = u_option ns u_string fallback in
+          mk (OpenChoice { name; opens; fallback })
       | "RawRecordTypeDef", [ name; params; fields; body ] ->
           let* name = u_id ns name in
           let* params = ids params in
@@ -643,7 +651,7 @@ and u_decl ns v : Syntax.struct_binding option =
           let* rhs = u_pat ns rhs in
           let* public = u_bool ns public in
           Some (Syntax.PatternSynBinding { name; params; rhs; public })
-      | "DeclOpen", [ m ] -> let* m = u_expr ns m in Some (Syntax.OpenBinding m)
+      | "DeclOpen", [ m; label ] -> let* m = u_expr ns m in let* label = u_string label in Some (Syntax.OpenBinding (m, label))
       | _ -> None)
 
 (* ---- the interface the expander and elaborator use ---- *)

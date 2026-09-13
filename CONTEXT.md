@@ -259,8 +259,20 @@ _Avoid_: declaration, member, definition
 **Open**:
 A binding that brings a module's public members into scope as bare names, in
 order, so they shadow earlier names and later bindings shadow them. Delivers
-macros and syntactic roles the same way it delivers values.
+macros and syntactic roles the same way it delivers values. Which members a
+module has may be known only from its type, so expansion does not enumerate
+them: a bare name inside an open's region that resolves to no binder, or only
+to one outside the open, resolves to an **open choice** - the opens between it
+and its binder, innermost first, then the binder. Elaboration takes the first
+open that has the member. Scope sets decide which opens are candidates; no
+name is ever found by its spelling alone.
 _Avoid_: import (that reaches a unit), include, using
+
+**Open choice**:
+What expansion resolves a bare name to when an open might supply it: the
+ordered candidate opens, and the binder to fall back to, if any. Settled
+during elaboration, when the opened modules' types are known.
+_Avoid_: dynamic scope, fallback lookup, spelling tier
 
 **Binding width**:
 How many entries a single binding adds to the context. Known from the binding for

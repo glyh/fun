@@ -53,7 +53,8 @@ and lower_expr (stx : Syntax.t) : Surface.t =
   | Syntax.Module { bindings } ->
     Surface.Module { bindings = List.map lower_struct_binding bindings }
   | Syntax.Import s -> Surface.Import s
-  | Syntax.Open (m, body) -> Surface.Open (lower_expr m, lower_expr body)
+  | Syntax.Open (m, body, label) -> Surface.Open (lower_expr m, lower_expr body, label)
+  | Syntax.OpenChoice { name; opens; fallback } -> Surface.OpenChoice { name = name.name; opens; fallback }
   | Syntax.RecordTypeDef { name; params; fields; body } ->
     Surface.RecordTypeDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.TypeDef { name; params; ctors; body } ->
@@ -119,7 +120,7 @@ and lower_struct_binding = function
     Surface.PatternSynBinding { name = lower_id name;
                                 params = List.map lower_id params;
                                 rhs = lower_pat rhs; public }
-  | Syntax.OpenBinding m -> Surface.OpenBinding (lower_expr m)
+  | Syntax.OpenBinding (m, label) -> Surface.OpenBinding (lower_expr m, label)
 
 and lower_match_branch = function
   | Syntax.ValueBranch (p, body) -> Surface.ValueBranch (lower_pat p, lower_expr body)

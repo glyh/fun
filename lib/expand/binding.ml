@@ -122,7 +122,15 @@ let make_operator ?(syntax_class = Syntax_class.Expr)
 (* Stamp exports with the unit they were loaded from, at the import site - the
    only place that knows the written path. *)
 let from_unit path (ops : operator_info list) =
-  List.map (fun op -> { op with unit = Some path }) ops
+  List.map
+    (fun op ->
+      let expansion =
+        match op.expansion with
+        | Template t -> Template { t with Syntax_template.unit = Some path }
+        | e -> e
+      in
+      { op with unit = Some path; expansion })
+    ops
 
 let template_infix ?(declaration_span = Source_span.synthetic) symbol template precedence associativity =
   make_operator ~declaration_span ~symbol ~fixity:Infix ~precedence ~associativity

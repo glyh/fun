@@ -12,8 +12,16 @@ let written_name name =
       String.sub name 0 (i - 1)
   | _ -> name
 
+(* An open choice is shown as the name written: these tests are about shape,
+   and which open supplies a name is resolution. *)
 let lower_written stx =
-  Lower_surface.lower_expr (Expand.map_ids (fun id -> { id with Syntax.name = written_name id.Syntax.name }) stx)
+  let unchoose (form : Syntax.t) =
+    match form.kind with
+    | Syntax.OpenChoice { name; _ } -> { form with kind = Syntax.Var name }
+    | _ -> form
+  in
+  Lower_surface.lower_expr
+    (Expand.map_forms (fun id -> { id with Syntax.name = written_name id.Syntax.name }) unchoose stx)
 
 let expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~expansion_position stx =
   let ctx = Expand_ctx.create () in

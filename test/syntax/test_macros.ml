@@ -1,5 +1,5 @@
 let unwrap_std (e : Surface.t) : Surface.t =
-  match e with Surface.Open (Surface.Import "std", body) -> body | other -> other
+  match e with Surface.Open (Surface.Import "std", body, _) -> body | other -> other
 let parse source =
   let ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals ctx in

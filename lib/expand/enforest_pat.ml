@@ -111,8 +111,11 @@ let parse_pat_terms terms =
       split_record_fields (drop_separators items)
       |> List.map (fun part ->
              match drop_separators part with
-             | [ { datum = Token { kind = Ident name; _ }; _ } ] ->
-                 (name, None)
+             | [ { datum = Token { kind = Ident "_"; _ }; _ } ] -> ("_", None)
+             (* [{x}] is sugar for [{x = x}]: the field label also writes a
+                binder, and a binder is an id. *)
+             | [ { datum = Token { kind = Ident name; _ }; span } ] ->
+                 (name, Some (Syntax.PatBind (id ~span name)))
              | { datum = Token { kind = Ident name; _ }; _ } :: eq :: pat_terms
                when token_kind Equals eq ->
                  (name, Some (parse_pat_all pat_terms))

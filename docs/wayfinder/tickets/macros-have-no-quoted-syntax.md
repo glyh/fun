@@ -49,11 +49,16 @@ elaborates to its reflection value, with each hole checked against the type
 its position gives it, and evaluation fills the holes. A procedural macro no
 longer needs string-built ids for names it means.
 
-**Still open: removing the second resolution tier.** Names that arrive through
-`open`, the prelude included, are never binders in the expander's table; the
-elaborator resolves them by spelling. A context-less id therefore still
-reaches the prelude, and so does a quoted one whose scopes find no binder. That
-tier can only go once `open` binds the names it brings in, during expansion.
+**The second resolution tier is gone for bare-name expressions (2026-09-14).**
+Expansion resolves every bare name to its binder's resolved name or to an
+**open choice**: the candidate opens, chosen by scope set, and the binder they
+shadow. The elaborator settles a choice against the opens' members, and never
+looks a name up by spelling among the locals. A context-less id reaches only
+the base context. The rest of the tier is still to go: path heads (`M.x`,
+pattern heads), trait names and effect names are still located by spelling in
+the elaborator. They go with delete-surface-ir, when the elaborator reads ids.
+Macro bodies still get the prelude open implicitly; expansion mirrors that open
+until M3 lands.
 
 ## Decided (2026-09-14)
 

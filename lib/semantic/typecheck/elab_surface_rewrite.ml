@@ -93,7 +93,7 @@ let rewrite_record_self_refs record_name params expr =
                 | Surface.MacroCallBinding { f; args } ->
                     Surface.MacroCallBinding { f = go bound f; args = List.map (go bound) args }
                 | Surface.PatternSynBinding binding -> Surface.PatternSynBinding binding
-                | Surface.OpenBinding m -> Surface.OpenBinding (go bound m)
+                | Surface.OpenBinding (m, label) -> Surface.OpenBinding (go bound m, label)
             in
             Surface.Module { bindings = List.map binding bindings }
         | Surface.Struct { con_fields; bindings } ->
@@ -141,7 +141,7 @@ let rewrite_record_self_refs record_name params expr =
                 | Surface.MacroCallBinding { f; args } ->
                     Surface.MacroCallBinding { f = go bound f; args = List.map (go bound) args }
                 | Surface.PatternSynBinding binding -> Surface.PatternSynBinding binding
-                | Surface.OpenBinding m -> Surface.OpenBinding (go bound m)
+                | Surface.OpenBinding (m, label) -> Surface.OpenBinding (go bound m, label)
             in
             Surface.Struct
               { con_fields = List.map (fun (name, ty) -> (name, go bound ty)) con_fields;
@@ -152,7 +152,8 @@ let rewrite_record_self_refs record_name params expr =
         | Surface.RefNew e -> Surface.RefNew (go bound e)
         | Surface.RefGet e -> Surface.RefGet (go bound e)
         | Surface.RefSet (r, e) -> Surface.RefSet (go bound r, go bound e)
-        | Surface.Open (m, body) -> Surface.Open (go bound m, go bound body)
+        | Surface.Open (m, body, label) -> Surface.Open (go bound m, go bound body, label)
+        | Surface.OpenChoice _ -> expr
         | Surface.RecordTypeDef { name; params; fields; body } ->
             Surface.RecordTypeDef
               { name; params;
@@ -196,10 +197,11 @@ let rewrite_record_self_refs record_name params expr =
   in
   go [] expr
 
-let rec surface_trait_bound_names = function
-  | Surface.Var name -> Some [ name ]
-  | Surface.Ap (Surface.Ap (Surface.Var "+", Explicitness.Explicit, lhs), Explicitness.Explicit, rhs) -> (
+let rec surface_trait_bound_names expr =
+  match expr with
+  | Surface.Ap (Surface.Ap (plus, Explicitness.Explicit, lhs), Explicitness.Explicit, rhs)
+    when Surface.written_name plus = Some "+" -> (
       match surface_trait_bound_names lhs, surface_trait_bound_names rhs with
       | Some lhs, Some rhs -> Some (lhs @ rhs)
       | _ -> None)
-  | _ -> None
+  | _ -> Option.map (fun name -> [ name ]) (Surface.written_name expr)

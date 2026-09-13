@@ -45,7 +45,7 @@ and struct_binding =
   | MacroBinding of { name : string; value : t; public : bool; kind : Syntax.MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
-  | OpenBinding of t
+  | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level. Brings the module's
           public fields into scope for the *subsequent* bindings only (statement
           order), and contributes no field of its own. In a [Struct] it scopes
@@ -73,7 +73,8 @@ and t =
     }
   | Module of { bindings : struct_binding list }
   | Import of string
-  | Open of t * t
+  | Open of t * t * string
+  | OpenChoice of { name : string; opens : string list; fallback : string option }
   | RecordTypeDef of {
       name : string;
       params : string list;
@@ -145,3 +146,11 @@ and pat =
   | PatType of Atom_ty.t
   | PatWild                       (* _ *)
   | PatBind of string             (* variable binding *)
+
+(* The name a bare-name form was written with, whether expansion resolved it to
+   a binder or left it an open choice. For the lookups still keyed by spelling:
+   traits, and the trait-bound sugar [A : Eq + Show]. *)
+let written_name = function
+  | Var n -> Some n
+  | OpenChoice { name; _ } -> Some name
+  | _ -> None

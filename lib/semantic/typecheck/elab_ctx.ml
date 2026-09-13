@@ -16,6 +16,9 @@ module Ctx = struct
     metas : MetaContext.t;
     bds : bd list;
     name_table : name_entry NameMap.t;
+    (* Each open entered, by label, with the members it brought in. An open
+       choice looks its name up here, never in [name_table]. *)
+    opened : (string * name_entry NameMap.t) list;
     traits : trait_info NameMap.t;
     trait_evidence : trait_evidence list;
     self_entry : name_entry option;
@@ -63,6 +66,7 @@ and macro_runtime = {
       metas;
       bds = [];
       name_table = NameMap.empty;
+      opened = [];
       traits = NameMap.empty;
       trait_evidence = [];
       self_entry = None;
@@ -129,6 +133,24 @@ and macro_runtime = {
     match NameMap.find_opt name ctx.name_table with
     | Some { level; ty } -> (Nbe.lvl_to_ix ctx.lvl level, ty)
     | None -> raise (ElabError (UnboundVariable name))
+
+  (* An open choice (M: open choice): the first candidate open that has
+     [name], else the binder it shadows, else the base context. Nothing here
+     finds a name by spelling among the locals. *)
+  let lookup_choice (ctx : t) ~(name : string) ~(opens : string list) ~(fallback : string option) : ix * value =
+    let entry =
+      List.find_map
+        (fun label -> Option.bind (List.assoc_opt label ctx.opened) (NameMap.find_opt name))
+        opens
+    in
+    match entry, fallback with
+    | Some { level; ty }, _ -> (Nbe.lvl_to_ix ctx.lvl level, ty)
+    | None, Some resolved -> lookup ctx resolved
+    | None, None -> (
+        let base_names = match ctx.base with Some base -> base.name_table | None -> ctx.name_table in
+        match NameMap.find_opt name base_names with
+        | Some { level; ty } -> (Nbe.lvl_to_ix ctx.lvl level, ty)
+        | None -> raise (ElabError (UnboundVariable name)))
 
   let lookup_self (ctx : t) : ix * value =
     match ctx.self_entry with

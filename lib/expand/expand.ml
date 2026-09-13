@@ -47,12 +47,13 @@ let map_param (on_id : Syntax.id -> Syntax.id) (f : Syntax.t -> Syntax.t) (param
     trait_bounds = List.map (map_path on_id) param.trait_bounds;
     explicitness = param.explicitness }
 
-(** Apply [on_id] to every identifier - occurrence and binder - in a form. *)
-let rec map_ids (on_id : Syntax.id -> Syntax.id) (stx : t) : t =
-  { stx with kind = go_kind on_id stx.kind }
+(** Apply [on_id] to every identifier - occurrence and binder - in a form, and
+    [on_form] to every form, bottom-up. *)
+let rec map_forms (on_id : Syntax.id -> Syntax.id) (on_form : t -> t) (stx : t) : t =
+  on_form { stx with kind = go_kind on_id on_form stx.kind }
 
-and go_kind (on_id : Syntax.id -> Syntax.id) (k : kind) : kind =
-  let go = map_ids on_id in
+and go_kind (on_id : Syntax.id -> Syntax.id) on_form (k : kind) : kind =
+  let go = map_forms on_id on_form in
   match k with
   | Var id -> Var (on_id id)
   | Atom _ -> k
@@ -81,11 +82,12 @@ and go_kind (on_id : Syntax.id -> Syntax.id) (k : kind) : kind =
     RecordConstruct { typ = go typ; fields = List.map (fun (n, e) -> (n, go e)) fields }
   | Struct { con_fields; bindings } ->
     Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields;
-             bindings = List.map (go_struct_binding on_id) bindings }
+             bindings = List.map (go_struct_binding on_id on_form) bindings }
   | Module { bindings } ->
-    Module { bindings = List.map (go_struct_binding on_id) bindings }
+    Module { bindings = List.map (go_struct_binding on_id on_form) bindings }
   | Import _ -> k
-  | Open (m, body) -> Open (go m, go body)
+  | Open (m, body, label) -> Open (go m, go body, label)
+  | OpenChoice c -> OpenChoice { c with name = on_id c.name }
   | RecordTypeDef { name; params; fields; body } ->
     RecordTypeDef { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | TypeDef { name; params; ctors; body } ->
@@ -103,7 +105,7 @@ and go_kind (on_id : Syntax.id -> Syntax.id) (k : kind) : kind =
   | RefGet e -> RefGet (go e)
   | RefSet (l, r) -> RefSet (go l, go r)
   | Match (scrut, brs) ->
-    Match (go scrut, List.map (go_match_branch on_id) brs)
+    Match (go scrut, List.map (go_match_branch on_id on_form) brs)
   | MacroDef { name; value; body; kind } ->
     MacroDef { name = on_id name; value = go value; body = go body; kind }
   | MacroCall (f, args) ->
@@ -111,45 +113,45 @@ and go_kind (on_id : Syntax.id -> Syntax.id) (k : kind) : kind =
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
     SyntaxOperatorUse { operator = on_id operator; fixity; operands = List.map go operands; declaration_span; use_span; unit }
 
-and go_struct_binding (on_id : Syntax.id -> Syntax.id) (binding : Syntax.struct_binding) : Syntax.struct_binding =
+and go_struct_binding (on_id : Syntax.id -> Syntax.id) on_form (binding : Syntax.struct_binding) : Syntax.struct_binding =
   match binding with
   | LetBinding { name; value; public; recursive } ->
     LetBinding { name = on_id name;
-                 value = map_ids on_id value; public; recursive }
+                 value = map_forms on_id on_form value; public; recursive }
   | MethodBinding { name; params; body; public } ->
     let new_name = on_id name in
-    let new_params = List.map (map_param on_id (map_ids on_id)) params in
+    let new_params = List.map (map_param on_id (map_forms on_id on_form)) params in
     MethodBinding { name = new_name; params = new_params;
-                    body = map_ids on_id body; public }
+                    body = map_forms on_id on_form body; public }
   | TypeBinding { members; public } ->
     TypeBinding { members = List.map (fun (m : type_decl) ->
                     { name = on_id m.name; params = List.map on_id m.params;
-                      ctors = List.map (fun (n, ps) -> (on_id n, List.map (map_ids on_id) ps)) m.ctors }) members;
+                      ctors = List.map (fun (n, ps) -> (on_id n, List.map (map_forms on_id on_form) ps)) m.ctors }) members;
                   public }
   | RecordTypeBinding { name; params; fields; public } ->
     RecordTypeBinding { name = on_id name;
-                        params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
+                        params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_forms on_id on_form e)) fields; public }
   | EffectBinding { name; params; ops; public } ->
     EffectBinding { name = on_id name;
-                    params = List.map on_id params; ops = List.map (fun op -> { op with input = map_ids on_id op.input; output = map_ids on_id op.output }) ops; public }
+                    params = List.map on_id params; ops = List.map (fun op -> { op with input = map_forms on_id on_form op.input; output = map_forms on_id on_form op.output }) ops; public }
   | TraitBinding { name; params; fields; public } ->
     TraitBinding { name = on_id name;
-                   params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
+                   params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_forms on_id on_form e)) fields; public }
   | ImplBinding { name; trait; args; fields; public } ->
-    ImplBinding { name; trait = map_path on_id trait; args = List.map (map_ids on_id) args;
-                  fields = List.map (fun (n, e) -> (n, map_ids on_id e)) fields; public }
+    ImplBinding { name; trait = map_path on_id trait; args = List.map (map_forms on_id on_form) args;
+                  fields = List.map (fun (n, e) -> (n, map_forms on_id on_form e)) fields; public }
   | MacroBinding { name; value; public; kind } ->
-    MacroBinding { name = on_id name; value = map_ids on_id value; public; kind }
+    MacroBinding { name = on_id name; value = map_forms on_id on_form value; public; kind }
   | MacroCallBinding { f; args } ->
-    MacroCallBinding { f = map_ids on_id f; args = List.map (map_ids on_id) args }
+    MacroCallBinding { f = map_forms on_id on_form f; args = List.map (map_forms on_id on_form) args }
   | PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat on_id rhs; public }
-  | OpenBinding m -> OpenBinding (map_ids on_id m)
+  | OpenBinding (m, label) -> OpenBinding (map_forms on_id on_form m, label)
 
-and go_match_branch on_id = function
-  | ValueBranch (p, body) -> ValueBranch (go_pat on_id p, map_ids on_id body)
+and go_match_branch on_id on_form = function
+  | ValueBranch (p, body) -> ValueBranch (go_pat on_id p, map_forms on_id on_form body)
   | EffectBranch { op; arg_pat; body } ->
-    EffectBranch { op = map_path on_id op; arg_pat = go_pat on_id arg_pat; body = map_ids on_id body }
+    EffectBranch { op = map_path on_id op; arg_pat = go_pat on_id arg_pat; body = map_forms on_id on_form body }
 
 and go_pat on_id k = match k with
   | PatCon (path, ps) -> PatCon (map_path on_id path, List.map (go_pat on_id) ps)
@@ -165,6 +167,8 @@ and go_pat on_id k = match k with
   | PatType _ -> k
   | PatWild -> k
   | PatBind id -> PatBind (on_id id)
+
+let map_ids on_id stx = map_forms on_id Fun.id stx
 
 (** Add a scope mark to every identifier's scope set, only within [within]'s
     source region when given. *)
@@ -195,7 +199,7 @@ let application (ctx : Expand_ctx.t) : application =
   in
   { receive = (fun stx -> add_scope intro (add_scope use_site stx));
     emit = map_ids flip;
-    emit_binding = go_struct_binding flip }
+    emit_binding = go_struct_binding flip Fun.id }
 
 let add_scopes_within region scopes stx =
   List.fold_left (fun acc scope -> add_scope_within region scope acc) stx scopes
@@ -213,12 +217,12 @@ let add_pat_scopes (scopes : Scope_set.t list) pat =
 
 let add_struct_binding_scopes scopes binding =
   List.fold_left
-    (fun binding scope -> go_struct_binding (add_id_scope scope) binding)
+    (fun binding scope -> go_struct_binding (add_id_scope scope) Fun.id binding)
     binding scopes
 
 let add_struct_binding_scopes_within region scopes binding =
   List.fold_left
-    (fun binding scope -> go_struct_binding (add_id_scope_if (Some region) scope) binding)
+    (fun binding scope -> go_struct_binding (add_id_scope_if (Some region) scope) Fun.id binding)
     binding scopes
 
 let syntax_operator_context (arg : Syntax.t) =
@@ -385,10 +389,14 @@ let expand_path (ctx : Expand_ctx.t) (p : Syntax.path) : Syntax.path =
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
-    begin match Expand_ctx.resolve ctx id with
-    | Some info -> { stx with kind = Var { id with name = info.resolved_name } }
-    | None -> stx
+    let binder = Expand_ctx.resolve ctx id in
+    begin match binder, Expand_ctx.open_candidates ctx id binder with
+    | Some info, [] -> { stx with kind = Var { id with name = info.resolved_name } }
+    | _, opens ->
+      { stx with kind = OpenChoice { name = id; opens;
+                                     fallback = Option.map (fun i -> i.Binding.resolved_name) binder } }
     end
+  | OpenChoice _ -> stx
   | Atom _ | Self | SelfType | Stx _ -> stx
   | Quote { template; holes } ->
     (* The template is data: nothing in it is resolved or renamed here. *)
@@ -481,13 +489,14 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
                                bindings = expand_struct_bindings ctx bindings } }
   | Module { bindings } ->
     { stx with kind = Module { bindings = expand_struct_bindings ctx bindings } }
-  | Open (m, body) ->
+  | Open (m, body, _) ->
     (* Expand the module expression first: an [open (import "m")] is what loads
        that unit's macros, and they have to be there before the open can bind
        them for the body. *)
     let m' = expand ctx m in
-    let scopes = open_unit_macro_scopes ctx m in
-    { stx with kind = Open (m', expand ctx (add_scopes_within stx.span scopes body)) }
+    let open_scope, label = Expand_ctx.enter_open ctx m in
+    let scopes = open_scope :: open_unit_macro_scopes ctx m in
+    { stx with kind = Open (m', expand ctx (add_scopes_within stx.span scopes body), label) }
   | RecordTypeDef { name; params; fields; body } ->
     let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
     let name = add_id_scope scope name in
@@ -544,7 +553,9 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | MacroDef { name; value; body; kind; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
-      let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
+      (* The prelude open wraps the definition, so quoted syntax keeps it. *)
+      let prelude = Expand_ctx.implicit_prelude_open ctx in
+      let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx (add_scope prelude value)) in
       let lowered = Lower_surface.lower_expr value in
       let macro_fn = elab lowered in
       let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
@@ -669,7 +680,7 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
   if Syntax.MacroKind.has_type_binding macro_kind then
     (* Defer to elaborator: wrap args in Stx to survive lowering *)
     let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
-    { stx with kind = MacroCall (head, List.map (fun a -> wrap_stx (expand ctx a)) macro_args) }
+    { stx with kind = MacroCall (head, List.map wrap_stx macro_args) }
   else begin match ctx.Expand_ctx.eval_and_apply with
     | Some apply_fn ->
       Expand_ctx.with_macro_fuel ctx ~name:key (fun () ->
@@ -815,11 +826,12 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [[]])
   | PatternSynBinding { name; params; rhs; public } ->
      ([PatternSynBinding { name; params; rhs; public }], [[]])
-  | OpenBinding m ->
-    (* An open binds no name of its own; the names it brings into scope are
-       resolved by the elaborator, not the expander. *)
+  | OpenBinding (m, _) ->
+    (* An open binds no name of its own. Its scope marks the later bindings as
+       inside it, so a name there can resolve to an open choice. *)
     let m' = expand ctx m in
-    ([OpenBinding m'], [ open_unit_macro_scopes ctx m ])
+    let open_scope, label = Expand_ctx.enter_open ctx m in
+    ([OpenBinding (m', label)], [ open_scope :: open_unit_macro_scopes ctx m ])
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
@@ -847,7 +859,8 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
           if Expand_ctx.is_provisional_macro ctx binding_name then
             Expand_ctx.restore_macro_snapshot ctx ~name:binding_name macro_snapshot)
         (fun () ->
-          let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
+          let prelude = Expand_ctx.implicit_prelude_open ctx in
+          let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx (add_scope prelude value)) in
           (* Strip parser-synthesized Lam when semantic resolution says constraint *)
           let value = if strip_lam then strip_leading_lam value else value in
           let lowered = Lower_surface.lower_expr value in

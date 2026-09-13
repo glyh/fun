@@ -7,7 +7,7 @@ open Surface
    so the structural assertions match the bare parse as before. *)
 let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
 let unwrap_std (e : Surface.t) : Surface.t =
-  match e with Open (Import "std", body) -> body | other -> other
+  match e with Open (Import "std", body, _) -> body | other -> other
 let parse source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
 let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
 
@@ -238,7 +238,7 @@ let module_newline_separators () =
   | Module
       {
         bindings =
-          [ OpenBinding _;
+          [ OpenBinding (_, _);
             LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _};
             LetBinding
               {
@@ -263,17 +263,17 @@ let import_shape () =
 
 let open_in_do_block () =
   match parse "do open M; x end" with
-  | Open (Var "M", Var "x") -> ()
+  | Open (Var "M", Var "x", _) -> ()
   | _ -> Alcotest.fail "expected open statement in do block"
 
 let module_level_open_shape () =
   match parse_module "open M\npub x = 1" with
-  | Module { bindings = [ OpenBinding (Var "M"); LetBinding { name = "x"; _ } ] } -> ()
+  | Module { bindings = [ OpenBinding (Var "M", _); LetBinding { name = "x"; _ } ] } -> ()
   | _ -> Alcotest.fail "expected module-level open binding"
 
 let module_level_open_import_shape () =
   match parse_module "open (import \"std\")\npub x = 1" with
-  | Module { bindings = [ OpenBinding (Import "std"); LetBinding { name = "x"; _ } ] } -> ()
+  | Module { bindings = [ OpenBinding (Import "std", _); LetBinding { name = "x"; _ } ] } -> ()
   | _ -> Alcotest.fail "expected module-level open of import"
 
 let struct_level_open_shape () =
@@ -282,7 +282,7 @@ let struct_level_open_shape () =
       { bindings =
           [ LetBinding
               { name = "S";
-                value = Struct { bindings = [ OpenBinding (Var "M"); LetBinding { name = "y"; _ } ]; _ };
+                value = Struct { bindings = [ OpenBinding (Var "M", _); LetBinding { name = "y"; _ } ]; _ };
                 _ } ] } -> ()
   | _ -> Alcotest.fail "expected struct-level open binding"
 
@@ -307,7 +307,7 @@ let module_open_scopes_later_statements_only () =
    | exception Enforest_util.Error _ -> ()
    | _ -> Alcotest.fail "expected operator before the open to be unavailable");
   match parse_module "open (import \"std\")\npub a = 1 + 1" with
-  | Module { bindings = [ OpenBinding _; LetBinding { name = "a"; _ } ] } -> ()
+  | Module { bindings = [ OpenBinding (_, _); LetBinding { name = "a"; _ } ] } -> ()
   | _ -> Alcotest.fail "expected operator after the open to enforest"
 
 let module_pub_value_decl () =
@@ -444,7 +444,7 @@ let match_record_pattern_shorthand () =
       [ ValueBranch
           ( PatRecord
               { typ_path = []; typ = "Point";
-                fields = [ ("x", None); ("y", None) ]; partial = false },
+                fields = [ ("x", Some (PatBind "x")); ("y", Some (PatBind "y")) ]; partial = false },
             Var "x" ) ]) -> ()
   | _ -> Alcotest.fail "expected record pattern shorthand in match"
 

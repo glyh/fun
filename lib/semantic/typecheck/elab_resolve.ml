@@ -245,13 +245,16 @@ let add_opened_impl ctx impl_ty impl_value =
         Ctx.add_trait_evidence ctx evidence
     | None -> ctx
 
-let open_module_value ctx module_ty module_value =
+let open_module_value ~label ctx module_ty module_value =
   match (Nbe.force ctx.Ctx.metas module_ty, Nbe.force ctx.Ctx.metas module_value) with
   | VModule { entries = type_entries; partial = _ }, VModule { entries = value_entries; partial = _ } ->
+      let members = ref NameMap.empty in
+      let ctx =
       List.fold_left2
         (fun c type_entry value_entry ->
           match type_entry, value_entry with
           | ModuleField (fname, Public, field_ty), ModuleField (vname, Public, value) when String.equal fname vname ->
+              members := NameMap.add fname { level = c.Ctx.lvl; ty = field_ty } !members;
               add_opened_field c fname field_ty value
           | ModuleImpl (_, Public, impl_ty, _), ModuleImpl (_, Public, _, impl_value) ->
               add_opened_impl c impl_ty impl_value
@@ -259,6 +262,8 @@ let open_module_value ctx module_ty module_value =
           | ModuleImpl (_, Private, _, _), ModuleImpl (_, Private, _, _) -> c
           | _ -> c)
         ctx type_entries value_entries
+      in
+      { ctx with Ctx.opened = (label, !members) :: ctx.Ctx.opened }
   | _ -> ctx
 
 let resolve_trait_method ctx trait_info method_name =

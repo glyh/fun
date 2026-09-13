@@ -84,10 +84,10 @@ and struct_binding =
   | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
-  | OpenBinding of t
+  | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level — the binding-list
           counterpart of the expression-level [Open]. Scopes over the subsequent
-          bindings only. *)
+          bindings only. The string is the open's label (see [Open]). *)
 
 and t = {
   kind : kind;
@@ -115,7 +115,15 @@ and kind =
     }
   | Module of { bindings : struct_binding list }
   | Import of string
-  | Open of t * t
+  | Open of t * t * string
+      (** [open m; body]. The string labels this open, so an open choice can
+          name it: [""] until expansion assigns one - ["unit:p"] for an open of
+          [import "p"], ["open:n"] otherwise. *)
+  | OpenChoice of { name : id; opens : string list; fallback : string option }
+      (** Produced only by expansion: a bare name some open may supply. [opens]
+          are the candidate opens' labels, innermost first; [fallback] is the
+          resolved name of the binder they shadow, if any. With no opens and no
+          binder it names only the base context. *)
   | RecordTypeDef of {
       name : id;
       params : id list;

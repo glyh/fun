@@ -57,7 +57,7 @@ let init_ctx () : Ctx.t =
 let open_stdlib ctx =
   let ix, ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
   let value = Ctx.eval ctx (Var ix) in
-  open_module_value ctx ty value
+  open_module_value ~label:(Compiler_names.Module_name.unit_open_label Compiler_names.Module_name.std_import_path) ctx ty value
 
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
   Elab_stdlib.resolve ctx path
@@ -83,4 +83,7 @@ let on_expr_effects ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value * El
    open, via the same [open (import "std")] construct. *)
 let on_macro_body ?loader (ctx : Ctx.t) (expr : Surface.t) : term * value =
   on_expr ?loader ctx
-    (Surface.Open (Surface.Import Compiler_names.Module_name.std_import_path, expr))
+    (Surface.Open
+       ( Surface.Import Compiler_names.Module_name.std_import_path,
+         expr,
+         Compiler_names.Module_name.unit_open_label Compiler_names.Module_name.std_import_path ))

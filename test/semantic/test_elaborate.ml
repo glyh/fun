@@ -1535,11 +1535,27 @@ let type_chains =
       (rejected "do type A = MkA(B) and B = MkB(A); 0 end");
   ]
 
+(* Open choices: a bare name an open may supply resolves to the first open that
+   has it, else the binder it shadows - never to a local found by spelling. *)
+let open_choices =
+  [
+    Alcotest.test_case "a generated name is not writable" `Quick (rejected "do x = 1; x__0 end");
+    Alcotest.test_case "an open's member is not shadowed by a generated name" `Quick
+      (eval_i64 "do M = module pub x__1 = 5 end; open M; x = 1; x__1 end" 5L);
+    Alcotest.test_case "an open shadows an earlier binder" `Quick
+      (eval_i64 "do M = module pub y = 5 end; y = 1; open M; y end" 5L);
+    Alcotest.test_case "a later binder shadows an open" `Quick
+      (eval_i64 "do M = module pub y = 5 end; open M; y = 1; y end" 1L);
+    Alcotest.test_case "an open without the member falls back to the binder" `Quick
+      (eval_i64 "do M = module pub z = 5 end; y = 1; open M; y end" 1L);
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
       ("constants", constants);
       ("type_chains", type_chains);
+      ("open_choices", open_choices);
       ("let_bindings", let_bindings);
       ("conditionals", conditionals);
       ("lambdas", lambdas);

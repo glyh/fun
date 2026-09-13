@@ -743,7 +743,7 @@ and parse_postfix_infix env min_prec lhs terms =
                             } ))
                         holes [ rhs; lhs ]
                     in
-                    Enforest_template.instantiate_template_replacement
+                    Enforest_template.instantiate_template_replacement ?unit:template.unit
                       (template_callbacks env (fun _ ->
                            error "declaration templates are not available in expression context"))
                       captures branch.replacement
@@ -1136,6 +1136,7 @@ and parse_operator_template_decl env sym sym_span prec assoc value_terms =
       branches = [ { pattern; replacement = body; span } ];
       declaration_span = sym_span;
       inherited_captures = [];
+      unit = None;
     }
   in
   let op = Binding.template_infix ~declaration_span:sym_span sym template prec assoc in
@@ -1176,6 +1177,7 @@ and parse_syntax_template_decl env head_term head do_span body_rest =
       branches;
       declaration_span = head_term.span;
       inherited_captures;
+      unit = None;
     }
   in
   let op = Binding.template_prefix ~declaration_span:head_term.span head template 50 in
@@ -1423,7 +1425,7 @@ and parse_do_body_terms env span body_terms =
                         | None -> (
                             match parse_open_statement env stmt with
                             | Some name ->
-                                fun acc -> stx ~span (Syntax.Open (name, acc))
+                                fun acc -> stx ~span (Syntax.Open (name, acc, ""))
                             | None -> (
                                 match parse_import_statement env stmt with
                                 | Some value ->
@@ -1578,7 +1580,7 @@ and parse_value_binding env public stmt =
 and parse_open_binding env public stmt =
   match parse_open_statement env stmt with
   | Some _ when public -> error "open is not a public item"
-  | Some mod_expr -> Some (Syntax.OpenBinding mod_expr)
+  | Some mod_expr -> Some (Syntax.OpenBinding (mod_expr, ""))
   | None -> None
 
 and parse_module_binding env stmt =
@@ -1802,7 +1804,7 @@ let parse_expr ?file ?load_syntax ?(open_prelude = false) source =
   if open_prelude then harvest_prelude env;
   try
     let body = Raw_syntax.read ?file source |> parse_terms env in
-    if open_prelude then stx (Syntax.Open (std_import_stx (), body)) else body
+    if open_prelude then stx (Syntax.Open (std_import_stx (), body, "")) else body
   with Raw_syntax.Error msg -> error msg
 
 let parse_type ?file source =

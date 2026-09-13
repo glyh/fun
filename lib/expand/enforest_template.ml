@@ -326,9 +326,10 @@ and rewrite_nested_syntax_body bound body_terms =
          | None -> branch_terms)
   |> join_branches
 
-let fresh_intro_scope () =
+let fresh_intro_scope ?unit () =
   let scope = !intro_scope_counter in
   decr intro_scope_counter;
+  Option.iter (Hashtbl.replace Syntax_template.intro_scope_units scope) unit;
   Scope_set.singleton scope
 
 let rec substitute_template_captures captures (stx : Syntax.t) =
@@ -360,7 +361,8 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.Struct { con_fields; bindings } ->
       { stx with kind = Syntax.Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields; bindings = List.map (map_template_struct_binding captures go) bindings } }
   | Syntax.Module { bindings } -> { stx with kind = Syntax.Module { bindings = List.map (map_template_struct_binding captures go) bindings } }
-  | Syntax.Open (m, body) -> { stx with kind = Syntax.Open (go m, go body) }
+  | Syntax.Open (m, body, label) -> { stx with kind = Syntax.Open (go m, go body, label) }
+  | Syntax.OpenChoice _ -> stx
   | Syntax.RecordTypeDef { name; params; fields; body } ->
       { stx with kind = Syntax.RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body } }
   | Syntax.TypeDef { name; params; ctors; body } ->
@@ -412,7 +414,7 @@ and map_template_struct_binding captures go = function
       Syntax.MacroBinding { name = map_binder_id captures name; value = go value; public; kind = None }
   | Syntax.MacroCallBinding { f; args } -> Syntax.MacroCallBinding { f = go f; args = List.map go args }
   | Syntax.PatternSynBinding binding -> Syntax.PatternSynBinding binding
-  | Syntax.OpenBinding m -> Syntax.OpenBinding (go m)
+  | Syntax.OpenBinding (m, label) -> Syntax.OpenBinding (go m, label)
 
 and map_template_match_branch captures go = function
   | Syntax.ValueBranch (pat, body) -> Syntax.ValueBranch (map_template_pat captures pat, go body)
@@ -434,14 +436,14 @@ let is_multi_block replacement =
   | { datum = Token { kind = Ident "multi"; _ }; _ } :: _ -> true
   | _ -> false
 
-let instantiate_template_replacement callbacks captures replacement =
+let instantiate_template_replacement ?unit callbacks captures replacement =
   (match drop_separators replacement with
   | _ when is_multi_block replacement ->
       error "multi ... end is only valid in declaration syntax templates"
   | _ -> ());
   let rewritten = rewrite_template_holes replacement in
   let parsed = callbacks.parse_expr_with_captures captures rewritten in
-  let introduced = Expand.add_scope (fresh_intro_scope ()) parsed in
+  let introduced = Expand.add_scope (fresh_intro_scope ?unit ()) parsed in
   substitute_template_captures captures introduced
 
 let captured_decl_terms captures name =
@@ -523,10 +525,10 @@ let declaration_replacement_statements replacement =
       split_statements body
   | terms -> [ terms ]
 
-let instantiate_decl_template_replacement callbacks captures replacement =
+let instantiate_decl_template_replacement ?unit callbacks captures replacement =
   let rewritten = rewrite_decl_template_holes captures replacement in
   let statements = declaration_replacement_statements rewritten in
-  let intro_scope = fresh_intro_scope () in
+  let intro_scope = fresh_intro_scope ?unit () in
   statements
   |> List.concat_map (fun stmt ->
          try callbacks.parse_decl_with_captures captures stmt with
@@ -544,7 +546,7 @@ let expand callbacks _use_span (template : Syntax_template.t) terms =
         match match_template_parts callbacks [] branch.Syntax_template.pattern terms with
         | Some (captures, remaining) ->
             let captures = captures @ template.inherited_captures in
-            let expanded = instantiate_template_replacement callbacks captures branch.replacement in
+            let expanded = instantiate_template_replacement ?unit:template.unit callbacks captures branch.replacement in
             (expanded, remaining)
         | None -> try_branches rest)
   in
@@ -557,7 +559,7 @@ let expand_decl callbacks _use_span (template : Syntax_template.t) terms =
         match match_template_parts callbacks [] branch.Syntax_template.pattern terms with
         | Some (captures, remaining) ->
             let captures = captures @ template.inherited_captures in
-            let expanded = instantiate_decl_template_replacement callbacks captures branch.replacement in
+            let expanded = instantiate_decl_template_replacement ?unit:template.unit callbacks captures branch.replacement in
             (expanded, remaining)
         | None -> try_branches rest)
   in

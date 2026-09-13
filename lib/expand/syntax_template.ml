@@ -26,4 +26,11 @@ type t = {
   branches : branch list;
   declaration_span : Source_span.t;
   inherited_captures : (string * captured) list;
+  (* The compilation unit the template was imported from, if it was: ids its
+     replacement introduces mean that unit's names. *)
+  unit : string option;
 }
+
+(* The unit whose template an instance's intro scope belongs to. Intro scopes
+   are minted from one global counter, so the key is unique. *)
+let intro_scope_units : (int, string) Hashtbl.t = Hashtbl.create 64

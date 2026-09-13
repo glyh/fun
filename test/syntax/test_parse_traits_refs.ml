@@ -1,4 +1,4 @@
-let unwrap_std (e : Surface.t) : Surface.t = match e with Surface.Open (Surface.Import "std", body) -> body | other -> other
+let unwrap_std (e : Surface.t) : Surface.t = match e with Surface.Open (Surface.Import "std", body, _) -> body | other -> other
 let parse_expr source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
 let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
 open Surface
@@ -10,14 +10,14 @@ let trait_decl_shape () =
 
 let impl_decl_shape () =
   match parse_module "open (import \"std\")\nimpl Eq(I64) = module fn eq(x, y) -> x == y end" with
-  | Module { bindings = [ OpenBinding _; ImplBinding { name = None; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; public = false } ] } -> ()
+  | Module { bindings = [ OpenBinding (_, _); ImplBinding { name = None; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; public = false } ] } -> ()
   | _ -> Alcotest.fail "expected impl declaration"
 
 (* [impl NAME : Trait(Args) = …] names the impl; the name is optional and the
    unnamed form above is unchanged. See docs/wayfinder/topics/impl-visibility.md. *)
 let named_impl_decl_shape () =
   match parse_module "open (import \"std\")\nimpl eq_i64 : Eq(I64) = module fn eq(x, y) -> x == y end" with
-  | Module { bindings = [ OpenBinding _; ImplBinding { name = Some "eq_i64"; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; _ } ] } -> ()
+  | Module { bindings = [ OpenBinding (_, _); ImplBinding { name = Some "eq_i64"; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; _ } ] } -> ()
   | _ -> Alcotest.fail "expected named impl declaration"
 
 let single_trait_bound_shape () =
