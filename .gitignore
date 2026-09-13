@@ -41,3 +41,4 @@ _opam/
 !.opencode/skills/
 .codebase-memory/
 .slim/deepwork/
+.pi/

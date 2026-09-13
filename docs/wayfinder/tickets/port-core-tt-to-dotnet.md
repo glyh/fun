@@ -7,6 +7,7 @@ status: open
 assignee:
 blocked_by:
   - domain-model-core-tt.md
+  - domain-model-surface-enforestation.md
   - imported-module-elaboration-context.md
   - env-width-contract-is-unnamed.md
   - unify-primitive-declaration.md

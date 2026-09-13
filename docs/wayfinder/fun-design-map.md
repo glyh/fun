@@ -196,15 +196,10 @@ as the frontier reaches them.
   (deriving/fallback, protocol-style ops, UFCS, FFI/native bindings) should be
   library-level macros / type-case rather than new compiler machinery. UFCS and FFI
   are desirable but should not drive the prototype agenda now.
-- **Too many IR layers — can one be removed?** — the pipeline carries several
-  intermediate representations: `Raw_syntax` → `Syntax.t` (enforest) → `Surface.t`
-  (lower) → `Core.term` (elaborate) → `value` (NbE). This is more layers than may be
-  needed. Suspected prime candidate: `Syntax.t` and `Surface.t` appear close to
-  **isomorphic** — `lower_surface.ml` / `surface_to_syntax.ml` are near 1:1
-  structural maps with no desugaring — so one of them might be collapsible. Needs
-  its own investigation (what each layer actually buys: hygiene/scope-set carriage,
-  macro reflection boundaries, the two desugaring seams at enforest and elaborate)
-  before any merge decision. Do **not** pre-slice into tickets yet.
+- ~~**Too many IR layers — can one be removed?**~~ — researched in
+  [Syntax.t vs Surface.t](tickets/syntax-vs-surface-ir-layer.md). `Surface.t` is
+  `Syntax.t` with information thrown away, so it can be deleted (ticket below).
+  The other layers (`Raw_syntax`, `Core.term`, values) were not examined.
 - ~~**Primitive ↔ symbolic-name wiring is stringly-typed and fragile**~~ — promoted
   out of fog to [one declaration per primitive](tickets/unify-primitive-declaration.md);
   it blocks the port.
@@ -248,6 +243,10 @@ every defect below is an invariant with no name in the source.
   which should wait until that check actually fires.
 - [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
   — settle the rule before the struct elaborator is written a second time.
+- [Domain model — surface and enforestation](tickets/domain-model-surface-enforestation.md)
+  — second pass of the port's specification: the reader, the enforester, and the
+  seam where the expander hands the elaborator its output — the same class of
+  unnamed invariants pass one found a phase earlier.
 
 ### Language and macro work
 
@@ -280,3 +279,13 @@ every defect below is an invariant with no name in the source.
   — when to replace generated compiler symbols with structural forms.
 - [Scope enforester improvements](tickets/scope-enforester-improvements.md)
   — which enforester improvements to do pre-rewrite.
+
+### IR layers (from [Syntax.t vs Surface.t](tickets/syntax-vs-surface-ir-layer.md))
+
+- [Type-aware macro output is not expanded](tickets/type-aware-macro-output-is-not-expanded.md)
+  — `: Expr(A)` macro output skips `expand`, so a nested macro call inside it is
+  unbound. Small fix; **do first**.
+- [Procedural macros capture use-site variables](tickets/procedural-macros-capture-use-site-variables.md)
+  — ids built with `Syntax.*` escape hygiene; templates do not. Needs diagnosis.
+- [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
+  — mechanical collapse of the duplicate IR. **Blocked on** the first ticket.
