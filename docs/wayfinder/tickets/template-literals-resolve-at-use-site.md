@@ -58,7 +58,15 @@ the declarer's bindings are nowhere in it — so resolution either misses
 `False`/`True` usually come from) or hits a use-site binding first, whichever
 the scope arithmetic picks. Both outcomes were observed.
 
-## Direction
+## Decided (2026-09-14)
+
+[M9](../topics/core-tt-domain-model-macros.md): a template is sugar for a
+macro whose body is the replacement as quoted syntax, parsed at the
+definition. That resolves literals at the declaration by construction; the
+options below are superseded. Lands with
+[macros-have-no-quoted-syntax](macros-have-no-quoted-syntax.md).
+
+## Direction (superseded)
 
 Literal ids in a replacement should resolve in the **declaration context**, the
 way they would if the template's body had been written where it was declared.

@@ -55,7 +55,7 @@ _Avoid_: resolution (only a part of it), desugaring
 A binder whose meaning is a function from syntax objects to a syntax object,
 run during expansion when its name heads a form. Its body is elaborated in the
 scope of its definition site, and nothing is ambient there.
-_Avoid_: procedural macro (redundant — a template is not a macro), transformer,
+_Avoid_: procedural macro (redundant — a template is sugar for one), transformer,
 syntax extension
 
 **Macro annotation**:
@@ -117,21 +117,40 @@ need to avoid ambiguous references.
 _Avoid_: intro scope, call-site scope
 
 **Template**:
-A pattern→replacement rewrite declared by `syntax` or `pub infix`. Holes splice
-the caller's syntax objects; ids written literally in the replacement resolve
-where the template was *defined*.
-_Avoid_: syntax macro, pattern macro, macro (that is the function kind)
+A pattern→replacement rewrite declared by `syntax` or `pub infix` — sugar for a
+macro. The template keeps one job of its own, the parse: its patterns and
+fixity decide which tokens a use consumes and what each hole captures. The
+rest *is* a macro: its arguments are the captures, and its body is the
+replacement as quoted syntax, so ids written in it resolve where the template
+was *defined*. One contract, because one path.
+_Avoid_: syntax macro, pattern macro, syntax-rules
 
 **Quoted syntax**:
-Syntax written literally inside a macro body. Its ids carry the scopes of where
-the macro was defined, so they resolve there — the hygienic way a macro refers
-to a name.
-_Avoid_: template (that is a whole rewrite), literal, quasiquote
+Syntax written literally inside a macro body, as `quote(…)`. Its ids carry the
+scopes of where the macro was defined, so they resolve there — the hygienic way
+a macro refers to a name. It is parsed where it is written, so its shape is
+fixed there too — no caller's operator or syntax form can reach inside it. It
+may contain holes, `$e`, each splicing a syntax object the macro computed, which
+keeps its own scopes; a hole's kind is fixed by its position in the parse, and
+splicing a value of another kind is an error. A template's replacement is
+quoted syntax.
+_Avoid_: template (that is a whole rewrite plus a parse), literal, gensym
+
+**Hole**:
+A named place in a template's pattern or in quoted syntax. In a pattern it
+captures a syntax object; in quoted syntax it splices one. Its kind is a
+reflection type — `Expr`, `Pattern`, `Decl` or `Id` — and nothing else: the
+kinds a template captures are the parameter types of the macro it is sugar
+for. Whether an `Id` binds or refers is decided by where it is spliced, not by
+its kind.
+_Avoid_: capture kind, binder hole, ident hole, metavariable
 
 **Borrowed context**:
-Building an id from a name and another syntax object whose scope set it takes —
-the one deliberate way to break hygiene. An id built from a name with no context
-has an empty scope set, and is unbound unless a binder with no scopes exists.
+Building an id whose scope set is copied from another syntax object — the one
+deliberate way to break hygiene. Not a separate operation: an id is a value like
+any other, and borrowing is constructing one with another id's scope set. An id
+built from a name alone has an empty scope set, and is unbound unless a binder
+with no scopes exists.
 _Avoid_: fall-through, dynamic resolution, unhygienic name
 
 ### The elaboration context
@@ -291,6 +310,13 @@ The site that introduces a name — a lambda parameter, a `let`, a type, a
 module member. What a name occurrence resolves to during expansion.
 _Avoid_: binding (that is a module member), declaration, definition site
 
+**Scope set** (as a value):
+What an id carries in reflection. Opaque: a macro can move one from syntax it
+received or quoted into an id it builds, but can neither construct nor inspect
+one — so every scope set a macro holds came from the definition site or the
+use site, and hygiene is a guarantee rather than a convention.
+_Avoid_: scope list, scope id, context
+
 **Scope** (hygiene):
 An opaque token minted for each binder during expansion. A name occurrence
 carries a *set* of them, and resolution picks the binder whose set is the
@@ -311,8 +337,8 @@ declaration is. A property of the site, not of the macro.
 _Avoid_: context kind, context, macro context
 
 **Macro kind**:
-The kind of form a macro returns — such as `Expr` or `Decl` — fixed by its
-return type. A use is well-formed only where the expansion position matches;
+The kind of form a macro returns — a reflection type, such as `Expr` or
+`Decl`, the same types a hole can have — fixed by its return type. A use is well-formed only where the expansion position matches;
 the macro never learns its position, so one name means one kind.
 _Avoid_: problem (a position the macro branches on at run time), macro type,
 return kind

@@ -41,6 +41,16 @@ Vocabulary is in [`CONTEXT.md`](../../../CONTEXT.md): **Quoted syntax** and
 Deleting the tier breaks every existing macro that writes a prelude name by
 string; they must move to quoted syntax or borrowed context in the same change.
 
+## Decided (2026-09-14)
+
+See [M9–M11](../topics/core-tt-domain-model-macros.md). Spelling is
+`quote(…)` with `$e` holes; it is parsed at the definition; hole kinds are the
+reflection types; `Id.scope` is an opaque `Scopes`; borrowed context is
+building an `Id` with another id's `scope` — no separate API. Templates
+desugar to macros whose body is the replacement quoted, so this ticket and
+[template-literals-resolve-at-use-site](template-literals-resolve-at-use-site.md)
+are one change.
+
 ## Related
 
 - [procedural-macros-capture-use-site-variables](procedural-macros-capture-use-site-variables.md)

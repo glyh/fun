@@ -147,6 +147,47 @@ macro runs. The model keeps the check but not its delivery: today a mismatch
 `failwith`s. Under M5's decision it is an error value, like every other
 expansion failure.
 
+### M9 — a template is sugar for a macro
+
+**Status: decided (2026-09-14), not implemented.** Racket's `syntax-rules` is
+a `syntax-case` macro; `fun`'s template is likewise a macro. The template keeps
+one job, the **parse**: its patterns and fixity decide which tokens a use
+consumes and what each hole captures. Everything after is a macro whose
+parameters are the captures and whose body is the replacement as **quoted
+syntax**. M2's one contract then holds because there is one path, not because
+three implementations agree. Today a replacement is `Raw_syntax.t list`,
+re-enforested at every use site (`Enforest_template.expand`) — the mechanism
+behind [template-literals-resolve-at-use-site](../tickets/template-literals-resolve-at-use-site.md).
+
+### M10 — quoted syntax is parsed where it is written
+
+**Status: decided (2026-09-14), not implemented.** A macro builds syntax by
+writing it: `quote(one($e))`. Strings build no hygienic syntax — gensym and
+spelling-resolution (Common Lisp, Clojure) are rejected. Quoted ids carry the
+definition site's scopes. The quote is **parsed at the definition**, so its
+shape is fixed there as well as its names: no caller's operator or syntax form
+reaches inside it. The cost, accepted: a template can no longer rely on
+syntax its user declares (`$x ** 2` where only the caller declared `**` is an
+error at the definition, not a silent dependency).
+
+A **hole**, `$e`, splices a syntax object that keeps its own scopes. Its kind
+is fixed by its position in the parse and checked at the splice. Hole kinds,
+template capture kinds and macro kinds are one set — the reflection types
+`Expr`, `Pattern`, `Decl`, `Id`. `binder` and `ident` collapse into `Id`:
+binding or referring is the splice position, not the kind. Pattern position
+gains a kind it lacks today.
+
+### M11 — scope sets are opaque values; borrowing is construction
+
+**Status: decided (2026-09-14), not implemented.** `Id.scope` carries the
+real scope set as an opaque `Scopes` value — no constructors, no inspection.
+A macro holds one only by quoting (definition site) or receiving syntax (use
+site), so it cannot forge a scope set matching an unrelated binder, and its
+behaviour never depends on scope counter values. **Borrowed context** is not an
+operation: it is constructing an `Id` with another id's `scope`. An `Id` built
+from a name alone has an empty scope set and is unbound. Today the field is a
+dummy `I64 0` (M1's scope row).
+
 ## What the modelling found beyond the invariants
 
 - **`Expand_ctx.phase` is dead.** `type phase = Runtime | CompileTime`,
@@ -173,6 +214,9 @@ expansion failure.
 | type-aware output expanded in place | never expanded; failed unwrap silently mints a meta |
 | template heads scope-keyed | string-keyed operator table, newest-wins |
 | kind mismatch is an error value | `failwith` |
+| template = parse + macro | separate path; replacement re-parsed at use site |
+| quoted syntax, parsed at definition, typed holes | ids from strings only; hole kinds `expr/binder/ident/decl` |
+| opaque `Scopes`; borrowing is construction | dummy `I64 0` |
 
 ## What the port's types should be named after
 
