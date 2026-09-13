@@ -12,11 +12,24 @@ blocked_by:
 
 ## Decision
 
+Mutation is **three heap effects** — `Alloc(h)`, `Read(h)`, `Write(h)` — each
+parameterised by the heap it acts on, Koka's shape. References are branded by
+their heap: surface `Ref(A)` abbreviates `Ref(h, A)`. Decided in the effects
+domain-model pass
+([core-tt-domain-model-effects](../topics/core-tt-domain-model-effects.md));
+vocabulary: **Heap**, **Reference**, **Mutation effect**, **Discharge** in the
+root [`CONTEXT.md`](../../../CONTEXT.md).
+
 Allocating, reading or writing a ref is a run-time effect that appears in the
-effect row (`can Ref`). Reopens the first-pass choice in
+effect row. Reopens the first-pass choice in
 [references](../topics/references.md) — "no user-visible effect-row tracking
 for refs" — which guards elaboration with the syntactic `compile_time_safe`
 check instead.
+
+The three-way split was chosen over a merged `Mut(h)` so read-only code earns
+the weaker row (`peek : Ref(A) -> A can Read(h)`); a heap parameter over a
+constant effect so discharge can be automatic. There is no `Ref` effect: `Ref`
+is the type, and effect families are bare names in the same namespace.
 
 ## Why
 
@@ -36,19 +49,22 @@ invisible too, and:
 
   Without purity in `mk`'s type the checker must either reject this for every
   caller, or accept `merge_twice(SymbolTable)` and let symbols cross tables.
-  With `can Ref` visible, a pure `mk` (`can {}` — a bare arrow is
-  effect-polymorphic) is applicative and `SymbolTable` is a type error at the
-  call.
+  With the heap effects visible, a pure `mk` (`can {}`, or a bare arrow) is
+  applicative and `SymbolTable` is a type error at the call.
 
 ## Cost
 
-- Allocation shows in types: `counter : Unit -> Ref(I64) can Ref`.
-- Internal-only refs still leak `can Ref` to callers unless discharged. Koka
-  shows the discharge need not be written: `ref` has effects `alloc<h>`,
-  `read<h>`, `write<h>` over a heap variable `h`, and the effect is dropped
-  whenever `h` cannot escape — its `fib3` allocates refs yet has type
-  `(n : int) -> int`, total. That is `runST` done by generalisation
-  ([Koka book §3.2.5](https://koka-lang.github.io/koka/doc/book.html)).
+- Allocation shows in types: `counter : Unit -> Ref(I64) can Alloc(h)` — until
+  discharged; `ref : A -> Ref(A) can Alloc(h)`, `deref : Ref(A) -> A can
+  Read(h)`, `r <- e : Unit can Write(h)`.
+- Internal-only refs discharge at generalisation — a heap that does not occur
+  in the definition's type has its effects dropped
+  ([Koka book §3.2.5](https://koka-lang.github.io/koka/doc/book.html)); `make =
+  fn(u) -> do t = ref(0); bump(t); get(t) end` infers `Unit -> I64`, pure. An
+  escaping reference carries its heap into the result type and blocks
+  discharge — that is the runST condition, met by inference.
+- Type-level machinery: heap variables in rows and in `Ref`'s arity (hidden in
+  surface syntax), plus the escape check at generalisation.
 - Generic helpers need effect polymorphism — required by effects anyway.
 
 `compile_time_safe` may survive as the elaborator's implementation of "do not

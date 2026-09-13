@@ -105,6 +105,12 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   rows, `perform`/handlers/`resume`, deep handlers; **complete**.
 - [References](topics/references.md) — `Ref(A)`, `ref`/`deref`/`<-`, cell-capturing
   closures; **complete**.
+- [Domain model — effects](topics/core-tt-domain-model-effects.md) — fourth pass
+  of the port's specification: the vocabulary and E-invariants behind the five
+  effect tickets (bare arrow pure, checker budget, lexical handling + handler
+  scope, three heap effects with discharge, applicative-by-purity), each marked
+  enforced or decided-not-implemented. Vocabulary in the root
+  [`CONTEXT.md`](../../CONTEXT.md).
 
 ### Macro system
 - [Design type-aware macro interleaving handshake](tickets/design-type-aware-macro-interleaving.md)
@@ -330,12 +336,21 @@ every defect below is an invariant with no name in the source.
   elaborates it in its definition site's scope, nothing ambient.
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
   — `macro m[A](x) : Expr(A)`; names in an annotation only refer.
+- [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
+  — mechanical collapse of the duplicate IR. **Blocked on** the first ticket.
+
+### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
+
+Decided by the effects domain-model pass; unimplemented, each ticket is the
+distance from an E-invariant in the topic doc.
+
+- [Refs belong in effect rows](tickets/refs-in-effect-rows.md) — mutation is
+  the three heap effects `Alloc(h)`/`Read(h)`/`Write(h)` over branded
+  `Ref(h, A)`; discharge at generalisation. Today refs are invisible in types.
 - [Nominal identity is applicative by purity](tickets/nominal-identity-applicative-by-purity.md)
   — same declaration + convertible free variables = same type; generative only
   under a run-time effect. Today a nominal declared under a binder does not
   evaluate at all. **Blocked on** refs in effect rows.
-- [Refs belong in effect rows](tickets/refs-in-effect-rows.md) — reopens the
-  references pass: purity must be visible in types for generativity to be.
 - [A bare arrow is pure](tickets/bare-arrow-is-pure.md) — `A -> B` is pure;
   `A -> B can _` / `A ~> B` infers the row. Reverses effects Phase 6's default.
 - [The checker evaluates under a budget](tickets/checker-evaluation-budget.md)
@@ -344,6 +359,5 @@ every defect below is an invariant with no name in the source.
   hangs the checker.
 - [Handlers tunnel callback effects](tickets/handlers-tunnel-callback-effects.md)
   — lexical handling: a callback's effects pass handlers in code polymorphic
-  over its row. Today a library's internal handler swallows the user's raise.
-- [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
-  — mechanical collapse of the duplicate IR. **Blocked on** the first ticket.
+  over its row, and an effectful closure may not escape its handler's scope.
+  Today a library's internal handler swallows the user's raise.

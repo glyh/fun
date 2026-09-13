@@ -6,7 +6,10 @@ term becomes a value through normalisation by evaluation.
 
 This glossary covers the **elaborate ↔ evaluate boundary** — the vocabulary a
 port must reproduce — and, in the phases section, the reader, enforestation
-and expansion phases before it. The effects section is being filled in.
+and expansion phases before it. The effects section follows the decided model —
+where the current implementation departs from it (bare arrows, dynamic
+handling, untracked mutation), the implementation is the defect, not the
+glossary.
 
 The phases before elaboration follow the macro-system design: Honu's
 enforestation, Flatt's sets of scopes, and an ordered interleaving of expansion
@@ -339,6 +342,37 @@ Closed (`can {IO, State(I64)}`), open with a tail variable (`can {IO | r}`), or
 inferred (`can _`). An arrow with no row is pure: its row is `{}`.
 _Avoid_: effect set, effect list, ability (Frank's word)
 
+**Heap**:
+A region of the mutable store, named by a type-level variable — the `h` in
+`Read(h)`. Every reference lives on one, and each mutation effect is
+parameterised by the heap it acts on. A definition's locally allocated refs get
+a fresh one, which is what lets discharge tell an internal ref from an escaping
+one.
+_Avoid_: store (that is all mutable state, not one region), region (region
+inference's word — lifetimes, not effects), world
+
+**Reference**:
+A mutable cell. `Ref(A)` abbreviates `Ref(h, A)`: every reference is branded by
+its heap, and the brand is what discharge checks — a reference escaping its
+definition carries its heap into the result type, and the effect survives; one
+that stays inside lets the heap be generalised away.
+_Avoid_: pointer, box, mutable variable
+
+**Mutation effect**:
+One of the three heap effects — `Alloc(h)`, `Read(h)`, `Write(h)` — naming what
+is done to a heap, not merely that something was: read-only code earns the
+weaker row. There is no merged `Mut`, and `Ref` is not an effect — it is the
+type.
+_Avoid_: Mut(h) (considered and rejected — the split), can Ref (that name is the
+type's), heap effect (that is all three), side effect
+
+**Discharge**:
+Dropping a definition's heap effects for a heap that cannot escape — one that
+does not occur in the definition's type — at generalisation, so internal-only
+refs leave a pure signature. runST's soundness condition, met by inference
+instead of a wrapper.
+_Avoid_: mask (Koka's written `mask` is a different thing), purify, erase
+
 **Pure**:
 Having the empty effect row. What an unannotated arrow means, what lets the
 checker evaluate a call while type checking — within the evaluation budget —
@@ -358,6 +392,13 @@ directly — not effects that tunnel through it from a function passed in, which
 belong to that function's row and reach the handler that row names. Deep: it
 stays installed for the resumed continuation.
 _Avoid_: catch, try, effect handler block
+
+**Residual row**:
+The row that survives a handler: the effects its branches name are removed;
+everything else — an open tail included — passes through unchanged. An
+unhandled effect is one that flows on with the residual until some handler
+names it.
+_Avoid_: leftover effects, remaining effects
 
 **Handler scope**:
 The region where a handler's effects may be performed. A stored continuation may

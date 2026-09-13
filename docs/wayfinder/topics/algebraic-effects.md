@@ -152,6 +152,11 @@ Notes:
   painful.
 - **Superseded in part:** handling is lexical (tunneling), not dynamic — see
   [handlers-tunnel-callback-effects](../tickets/handlers-tunnel-callback-effects.md).
+- Mutation appears as the three heap effects `Alloc(h)`, `Read(h)`, `Write(h)`
+  over a heap parameter; references are branded `Ref(h, A)` under surface
+  `Ref(A)`, and a non-escaping heap's effects discharge at generalisation — see
+  [refs-in-effect-rows](../tickets/refs-in-effect-rows.md); decided in the
+  [domain-model effects pass](core-tt-domain-model-effects.md).
 - `resume` is lexically available inside nested lambdas in an effect branch.
 - Continuations are one-shot. Confirmed in the domain-model pass: multi-shot
   is out (it conflicts with refs and C frames); an unhandled effect may not be
