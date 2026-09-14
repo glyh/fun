@@ -1499,11 +1499,6 @@ let parse_block_decl_form env terms =
       | _ -> None)
   | _ -> None
 
-(* The first item of a definition context, and the items after it. *)
-let parse_items_head env terms =
-  let stmt, rest = take_statement terms in
-  (parse_module_statement env stmt, rest)
-
 let std_import_stx () = stx (Syntax.Import Compiler_names.Module_name.std_import_path)
 
 (* A source read as an expression: one body, read as expansion reaches it.

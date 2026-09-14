@@ -7,8 +7,10 @@ let param_name (param : Syntax.param) : string = id_name param.name
 let add_id_scope (scope : Scope_set.t) (id : Syntax.id) : Syntax.id =
   { name = id.name; span = id.span; scope = Scope_set.union id.scope scope }
 
-let add_id_scopes scopes id =
-  List.fold_left (fun id scope -> add_id_scope scope id) id scopes
+(* Scope sets union associatively, so several scopes are added in one pass. *)
+let union_scopes scopes = List.fold_left Scope_set.union Scope_set.empty scopes
+
+let add_id_scopes scopes id = add_id_scope (union_scopes scopes) id
 
 let bind_id scope resolved_name (id : Syntax.id) : Syntax.id =
   { name = resolved_name; span = id.span; scope = Scope_set.union id.scope scope }
@@ -337,17 +339,15 @@ let add_param_scope (scope : Scope_set.t) (param : Syntax.param) : Syntax.param 
   { param with name = add_id_scope scope param.name; type_ = Option.map (add_scope scope) param.type_ }
 
 let add_scopes (scopes : Scope_set.t list) (stx : Syntax.t) : Syntax.t =
-  List.fold_left (fun acc scope -> add_scope scope acc) stx scopes
+  if scopes = [] then stx else add_scope (union_scopes scopes) stx
 
 let add_pat_scope (scope : Scope_set.t) pat = map_pat_ids (add_id_scope scope) pat
 
 let add_pat_scopes (scopes : Scope_set.t list) pat =
-  List.fold_left (fun acc scope -> add_pat_scope scope acc) pat scopes
+  if scopes = [] then pat else add_pat_scope (union_scopes scopes) pat
 
 let add_struct_binding_scopes scopes binding =
-  List.fold_left
-    (fun binding scope -> map_binding_ids (add_id_scope scope) binding)
-    binding scopes
+  if scopes = [] then binding else map_binding_ids (add_id_scope (union_scopes scopes)) binding
 
 (* The syntax operator an application came from, for its errors to name. *)
 let syntax_operator_site (arg : Syntax.t) : Expand_error.site option =
@@ -885,9 +885,12 @@ and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) ?(in_struc
   let rec go active_scopes acc all_scopes = function
     | [] -> (List.rev acc, all_scopes)
     | Items terms :: rest -> (
-      (* The next item, read with the roles bound so far (M9). *)
-      let terms = List.fold_left (fun ts scope -> map_terms (mapper (add_id_scope scope)) ts) terms active_scopes in
-      let head, after = Enforest.parse_items_head (Enforest_util.lazy_env ctx.Expand_ctx.binding_table) terms in
+      (* The next item, read with the roles bound so far (M9). An item's extent
+         is structural (a top-level separator), so only that item takes the
+         active scopes; the rest takes them when it is reached. *)
+      let stmt, after = Enforest_util.take_statement terms in
+      let stmt = map_terms (mapper (add_id_scope (union_scopes active_scopes))) stmt in
+      let head = Enforest.parse_module_statement (Enforest_util.lazy_env ctx.Expand_ctx.binding_table) stmt in
       let after = if Enforest_util.drop_separators after = [] then [] else [ Items after ] in
       go active_scopes acc all_scopes (head @ after @ rest))
     | binding :: rest ->
@@ -911,7 +914,7 @@ and expand_method_params_body ctx params body =
     | [] ->
       (List.rev acc, expand ctx (add_scopes param_scopes body))
     | param :: rest ->
-      let param = List.fold_left (fun param scope -> add_param_scope scope param) param active_scopes in
+      let param = if active_scopes = [] then param else add_param_scope (union_scopes active_scopes) param in
       let pname = param_name param in
       let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:param.name.span ~name:pname ~base_scope:param.name.scope () in
       let param = { param with name = bind_id scope resolved_name param.name; type_ = Option.map (expand ctx) param.type_ } in

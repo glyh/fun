@@ -15,80 +15,129 @@ let rec term_mentions_var target = function
         (fun (under, sub) -> match under with Some n -> term_mentions_var (target + n) sub | None -> true)
         (subterms term)
 
-let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value) (v : value) : value =
-  match Nbe.force mc v with
-  | VRigid { lvl; spine } when lvl = target ->
-      List.fold_left (Nbe.apply mc) replacement spine
-  | VPi { explicitness; domain; effects; codomain } ->
-      let domain = subst_value_var mc target replacement domain in
-      let effects = subst_effect_row_closure_var mc target replacement effects in
-      VPi { explicitness; domain; effects; codomain = subst_closure_var mc target replacement codomain }
-  | VProd elems -> VProd (List.map (subst_value_var mc target replacement) elems)
-  | VProdTy elems -> VProdTy (List.map (subst_value_var mc target replacement) elems)
-  | VEffectRow row ->
-      VEffectRow
-        { effect_values = List.map (subst_value_var mc target replacement) row.effect_values;
-          tail_value = Option.map (subst_value_var mc target replacement) row.tail_value }
-  | VModule { entries; partial } ->
-      let entries =
-        List.map
-          (function
-            | ModuleField (name, kind, value) -> ModuleField (name, kind, subst_value_var mc target replacement value)
-            | ModuleImpl (name, kind, ty, value) ->
-                ModuleImpl (name, kind, subst_value_var mc target replacement ty, subst_value_var mc target replacement value))
-          entries
-      in
-      VModule { entries; partial }
-  | VStruct { entries; partial } ->
-      let entries =
-        List.map
-          (function
-            | StructField (name, kind, value) -> StructField (name, kind, subst_value_var mc target replacement value)
-            | StructImpl (name, kind, ty, value) ->
-                StructImpl (name, kind, subst_value_var mc target replacement ty, subst_value_var mc target replacement value))
-          entries
-      in
-      VStruct { entries; partial }
-  | VRecord { typ; fields } ->
-      VRecord { typ = subst_value_var mc target replacement typ; fields = List.map (fun (name, value) -> (name, subst_value_var mc target replacement value)) fields }
-  | VNominal n -> VNominal { n with params = List.map (subst_value_var mc target replacement) n.params }
-  | VEffect e -> VEffect { e with params = List.map (subst_value_var mc target replacement) e.params }
-  | VTrait _ as v -> v
-  | VTraitDict d ->
-      VTraitDict
-        { d with
-          args = List.map (subst_value_var mc target replacement) d.args;
-          fields = List.map (fun (name, value) -> (name, subst_value_var mc target replacement value)) d.fields }
-  | VSelfType args -> VSelfType (List.map (subst_value_var mc target replacement) args)
-  | VRefTy a -> VRefTy (subst_value_var mc target replacement a)
-  | VRef _ as v -> v
-  | VCon c -> VCon { c with spine = List.map (subst_value_var mc target replacement) c.spine; nominal = subst_value_var mc target replacement c.nominal }
-  | VNeutral { ty; neutral } ->
-      VNeutral { ty = subst_value_var mc target replacement ty; neutral = subst_neutral_var mc target replacement neutral }
-  | VFlex { id; spine } -> VFlex { id; spine = List.map (subst_value_var mc target replacement) spine }
-  | VRigid { lvl; spine } -> VRigid { lvl; spine = List.map (subst_value_var mc target replacement) spine }
-  | VLam _ | VFix _ | VCont _ | VStx _ | VPatternSyn _ as v -> v
-  | VU | VEffectRowTy | VAtom _ | VAtomTy _ as v -> v
+(* Substituting a context variable walks every value in the context, and those
+   values share structure heavily: every closure's environment is a suffix of
+   the context's, and one module value sits in many environments. So a
+   substitution returns its input itself when nothing in it changes, and
+   remembers, by physical identity, the values and environment tails it has
+   already done. *)
+module Phys (T : sig type t end) = Hashtbl.Make (struct
+  type t = T.t
+  let equal = ( == )
+  let hash = Hashtbl.hash
+end)
 
-and subst_closure_var mc target replacement clo =
-  { clo with env = List.map (subst_value_var mc target replacement) clo.env }
+module Value_memo = Phys (struct type t = value end)
+module Env_memo = Phys (struct type t = value list end)
 
-and subst_effect_row_closure_var mc target replacement row =
-  { row with env = List.map (subst_value_var mc target replacement) row.env }
+let rec map_shared f = function
+  | [] as l -> l
+  | x :: xs as l ->
+      let x' = f x and xs' = map_shared f xs in
+      if x' == x && xs' == xs then l else x' :: xs'
 
-and subst_neutral_var mc target replacement neutral =
-  let frames =
-    List.map
-      (function
-        | FApp value -> FApp (subst_value_var mc target replacement value)
-        | FProj _ as frame -> frame
-        | FDot _ as frame -> frame
-        | FRefGet as frame -> frame
-        | FRefSet value -> FRefSet (subst_value_var mc target replacement value)
-        | FMatch branches -> FMatch (List.map (fun (pat, clo) -> (pat, subst_closure_var mc target replacement clo)) branches))
-      neutral.frames
+(* One substitution of [replacement] for the rigid variable [target], shared
+   by every value it is applied to. *)
+let value_substituter (mc : MetaContext.t) (target : lvl) (replacement : value) : value -> value =
+  let values = Value_memo.create 256 and envs = Env_memo.create 256 in
+  let rec sub v =
+    match Value_memo.find_opt values v with
+    | Some v' -> v'
+    | None ->
+        let v' = sub_uncached v in
+        Value_memo.replace values v v';
+        v'
+  and env = function
+    | [] as l -> l
+    | x :: xs as l -> (
+        match Env_memo.find_opt envs l with
+        | Some l' -> l'
+        | None ->
+            let x' = sub x and xs' = env xs in
+            let l' = if x' == x && xs' == xs then l else x' :: xs' in
+            Env_memo.replace envs l l';
+            l')
+  and subs l = map_shared sub l
+  and fields fs = map_shared (fun ((name, value) as f) -> let value' = sub value in if value' == value then f else (name, value')) fs
+  and closure (clo : closure) = let e = env clo.env in if e == clo.env then clo else { clo with env = e }
+  and row_closure (row : effect_row_closure) = let e = env row.env in if e == row.env then row else { row with env = e }
+  and neutral (n : neutral) =
+    let frames =
+      map_shared
+        (function
+          | FApp value as f -> let value' = sub value in if value' == value then f else FApp value'
+          | (FProj _ | FDot _ | FRefGet) as frame -> frame
+          | FRefSet value as f -> let value' = sub value in if value' == value then f else FRefSet value'
+          | FMatch branches as f ->
+              let branches' = map_shared (fun ((pat, clo) as b) -> let clo' = closure clo in if clo' == clo then b else (pat, clo')) branches in
+              if branches' == branches then f else FMatch branches')
+        n.frames
+    in
+    if frames == n.frames then n else { n with frames }
+  and sub_uncached v =
+    match Nbe.force mc v with
+    | VRigid { lvl; spine } when lvl = target -> List.fold_left (Nbe.apply mc) replacement spine
+    | VPi ({ domain; effects; codomain; _ } as pi) as v ->
+        let domain' = sub domain and effects' = row_closure effects and codomain' = closure codomain in
+        if domain' == domain && effects' == effects && codomain' == codomain then v
+        else VPi { pi with domain = domain'; effects = effects'; codomain = codomain' }
+    | VProd elems as v -> let elems' = subs elems in if elems' == elems then v else VProd elems'
+    | VProdTy elems as v -> let elems' = subs elems in if elems' == elems then v else VProdTy elems'
+    | VEffectRow row as v ->
+        let effect_values = subs row.effect_values in
+        let tail_value =
+          match row.tail_value with
+          | Some t -> let t' = sub t in if t' == t then row.tail_value else Some t'
+          | None -> None
+        in
+        if effect_values == row.effect_values && tail_value == row.tail_value then v
+        else VEffectRow { effect_values; tail_value }
+    | VModule { entries; partial } as v ->
+        let entries' =
+          map_shared
+            (function
+              | ModuleField (name, kind, value) as e -> let value' = sub value in if value' == value then e else ModuleField (name, kind, value')
+              | ModuleImpl (name, kind, ty, value) as e ->
+                  let ty' = sub ty and value' = sub value in
+                  if ty' == ty && value' == value then e else ModuleImpl (name, kind, ty', value'))
+            entries
+        in
+        if entries' == entries then v else VModule { entries = entries'; partial }
+    | VStruct { entries; partial } as v ->
+        let entries' =
+          map_shared
+            (function
+              | StructField (name, kind, value) as e -> let value' = sub value in if value' == value then e else StructField (name, kind, value')
+              | StructImpl (name, kind, ty, value) as e ->
+                  let ty' = sub ty and value' = sub value in
+                  if ty' == ty && value' == value then e else StructImpl (name, kind, ty', value'))
+            entries
+        in
+        if entries' == entries then v else VStruct { entries = entries'; partial }
+    | VRecord { typ; fields = fs } as v ->
+        let typ' = sub typ and fs' = fields fs in
+        if typ' == typ && fs' == fs then v else VRecord { typ = typ'; fields = fs' }
+    | VNominal n as v -> let params = subs n.params in if params == n.params then v else VNominal { n with params }
+    | VEffect e as v -> let params = subs e.params in if params == e.params then v else VEffect { e with params }
+    | VTraitDict d as v ->
+        let args = subs d.args and fs = fields d.fields in
+        if args == d.args && fs == d.fields then v else VTraitDict { d with args; fields = fs }
+    | VSelfType args as v -> let args' = subs args in if args' == args then v else VSelfType args'
+    | VRefTy a as v -> let a' = sub a in if a' == a then v else VRefTy a'
+    | VCon c as v ->
+        let spine = subs c.spine and nominal = sub c.nominal in
+        if spine == c.spine && nominal == c.nominal then v else VCon { c with spine; nominal }
+    | VNeutral { ty; neutral = n } as v ->
+        let ty' = sub ty and n' = neutral n in
+        if ty' == ty && n' == n then v else VNeutral { ty = ty'; neutral = n' }
+    | VFlex { id; spine } as v -> let spine' = subs spine in if spine' == spine then v else VFlex { id; spine = spine' }
+    | VRigid { lvl; spine } as v -> let spine' = subs spine in if spine' == spine then v else VRigid { lvl; spine = spine' }
+    | (VTrait _ | VRef _ | VLam _ | VFix _ | VCont _ | VStx _ | VPatternSyn _) as v -> v
+    | (VU | VEffectRowTy | VAtom _ | VAtomTy _) as v -> v
   in
-  { neutral with frames }
+  sub
+
+let subst_value_var mc target replacement v = value_substituter mc target replacement v
 
 let rec branch_type_refinement = function
   | Syntax.PatType atom_ty -> Some (VAtomTy atom_ty)
@@ -102,7 +151,7 @@ let refinement_target_of_scrutinee ctx scrut_core =
   | _ -> None
 
 let refine_context_type_var ctx target replacement =
-  let substitute = subst_value_var ctx.Ctx.metas target replacement in
+  let substitute = value_substituter ctx.Ctx.metas target replacement in
   {
     ctx with
     Ctx.name_table = NameMap.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.name_table;

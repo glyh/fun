@@ -9,6 +9,20 @@ Last updated: after the brace surface syntax, 2026-09-14.
 
 ## Completed
 
+### Performance after M9 (2026-09-14)
+- M9 run 2 slowed the suites up to ~125x (`test_macro_driver_stage7`
+  0.13s → 16s). Two causes, both fixed without semantic change:
+  - **Cubic item loop.** A definition context re-applied every active scope to
+    *all* its remaining unread items before each item. An item's extent is
+    structural (`take_statement`), so only the item being read takes the
+    scopes; several scopes are added as one union, not one traversal each.
+  - **Context refinement copied the whole context.** `refine_context_type_var`
+    (type-case branches) was ~90% of `init_ctx` before M9 too, and grew with
+    the larger prelude. The substitution now preserves sharing and memoises
+    values and environment tails by physical identity.
+- Side by side with `0262a02`: stage7 0.07/0.05s, syntax 0.30/0.34s,
+  elaborate 7.5/8.3s, core 6.9/7.5s.
+
 ### Regression coverage
 - Imports, module files, records, record patterns, methods, `self`/`Self`, qualified
   patterns/constructors, algebraic effects (`perform`, handlers, `resume`) all have
