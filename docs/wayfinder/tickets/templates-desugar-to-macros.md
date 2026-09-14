@@ -206,3 +206,23 @@ holes for templates nested in quotes.
    expansion minted from a written one. Proposal: one global counter; an id
    whose name was minted is left alone on re-expansion (a binder is not renamed,
    an occurrence not re-resolved), and a labelled open keeps its label.
+
+## Run 1's questions answered (2026-09-14)
+
+1. **A quote is parsed completely at its definition** (M10 holds): holes are
+   typed there, and a quoted block cannot use syntax a macro call earlier in the
+   same quoted block generates (`quote({ make_inc inc; inc 5 })` is an error at
+   the definition; a `syntax` declaration written directly in the quote works).
+   User-written bodies stay raw until expansion reaches them.
+2. **The expander fills a template's quote directly** — no elaborator. The use
+   still goes through `Expand.application`; invariant, tested: filling equals
+   evaluating the quote.
+3. **Syntax exports come from expanding the unit** (the `visit_macros` driver
+   run); the enforester pre-scan is deleted.
+4. **`SyntaxBinding` carries its rules as data** — token patterns with holes and
+   each rule's quote — reflected both ways.
+5. **Resolved names come from one global counter and cannot be written.** A
+   minted name is left alone on re-expansion (idempotence) and an open keeps its
+   label. A resolved name contains a character no identifier token can contain
+   (today `y__0` is a legal identifier), so no written name can ever equal one —
+   by construction, not by the freshness of the counter.
