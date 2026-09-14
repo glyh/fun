@@ -12,7 +12,6 @@
     imported module's own advancing context), replacing the old
     [Core_loader.visit_macros] path. *)
 
-open Core
 
 type macro_export = {
   name : string;
@@ -50,9 +49,7 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
          let core, _ty = Elab_driver.infer !elab_ctx expr in
          Elaborate.Ctx.eval !elab_ctx core);
   expand_ctx.Expand_ctx.eval_and_apply
-    <- Some (fun fn arg ->
-         let mc = MetaContext.create () in
-         Nbe.apply mc fn arg);
+    <- Some Nbe.apply_macro;
   (* Stage 5 / Stage 7: inject semantic macro kind resolver callback.
      The callback reads the current (!elab_ctx) so that prior bindings
      advanced by the [after_binding] hook are visible for resolution. *)

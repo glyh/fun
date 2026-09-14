@@ -102,7 +102,10 @@ is exactly what the budget must guard. Vocabulary: **Provisional macro**.
 
 ### M5 — expansion is guarded by the evaluation budget, not a separate fuel
 
-**Status: decided, not implemented.** One compile-time budget counts semantic
+**Status: enforced (2026-09-14).** A macro application spends one call and
+opens a request; its body runs with fresh metas under that request's budget,
+and its output's expansion (and, for a type-aware call, elaboration) spends
+from it too. The decision as taken: One compile-time budget counts semantic
 steps everywhere the checker evaluates — and a macro application is one of
 them: it is a call. This pass decided the unification (over keeping the
 classic Racket/Klister depth guard), for the same reason the effects pass
@@ -147,7 +150,7 @@ newest-wins).
 
 ### M8 — kind checking is positional, and its error is an error
 
-**Status: enforced by construction; error is an exception.** A macro's kind
+**Status: enforced; its error is an `Expand_error` value (2026-09-14).** A macro's kind
 (`Expr`, `Decl`, …) is fixed by its annotation; a use is well-formed only
 where the site's expansion position matches, and the check happens before the
 macro runs. The model keeps the check but not its delivery: today a mismatch
@@ -235,10 +238,10 @@ generated name can never equal a written one's resolution.
 | one hygiene contract | three contracts, one tested (pass two's table) |
 | definition-site scope, nothing ambient | enforced |
 | provisional name, loud self-call error | enforced |
-| one evaluation budget counting macro applications | separate nesting fuel, 256, `failwith`; breadth unguarded |
+| one evaluation budget counting macro applications | enforced (2026-09-14) |
 | type-aware output expanded in place | never expanded; failed unwrap silently mints a meta |
 | template heads scope-keyed | string-keyed operator table, newest-wins |
-| kind mismatch is an error value | `failwith` |
+| kind mismatch is an error value | enforced (2026-09-14) |
 | template = parse + macro | separate path; replacement re-parsed at use site |
 | quoted syntax, parsed at definition, typed holes | ids from strings only; hole kinds `expr/binder/ident/decl` |
 | opaque `Scopes`; borrowing is construction | dummy `I64 0` |

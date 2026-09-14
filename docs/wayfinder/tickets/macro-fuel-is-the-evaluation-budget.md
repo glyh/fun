@@ -3,8 +3,10 @@ title: Macro fuel is the evaluation budget; expansion failures are error values
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Done. `Expand_ctx`'s depth fuel is deleted; a macro application is `Eval_budget.macro_application` — one call plus a request that the body (fresh metas, shared budget, `Nbe.apply_macro`) and the output's expansion spend from, and for a type-aware call its output's elaboration too. The expander's `eval_and_apply` is handed the budget. Application-site `failwith`s are `Expand_error.Error { error; site }` values (kind mismatch, non-syntax, non-declarations, self-expansion during definition, missing callback), and the catch-all that re-wrapped a macro body's exceptions as strings is deleted. Breadth blowup at bounded depth is now a budget error (stage-7 test).
+closed_date: 2026-09-14
 blocked_by:
 ---
 

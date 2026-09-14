@@ -526,7 +526,10 @@ module MetaContext = struct
      one checking session that every evaluator call is handed. *)
   type t = { entries : entry Dynarray.t; budget : Eval_budget.t }
 
-  let create () : t = { entries = Dynarray.create (); budget = Eval_budget.create () }
+  (* [budget] is shared, not copied: a macro application evaluates its body
+     with fresh metas (it solves nothing its caller needs) under the budget of
+     the expansion it belongs to. *)
+  let create ?(budget = Eval_budget.create ()) () : t = { entries = Dynarray.create (); budget }
 
   let fresh (mc : t) : meta_id =
     let id = Dynarray.length mc.entries in

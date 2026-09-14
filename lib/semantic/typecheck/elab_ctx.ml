@@ -26,8 +26,8 @@ module Ctx = struct
     loader : Core_loader.t option;
     macro_table : (string, Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) Hashtbl.t;
     (* The capabilities the elaborator needs from the expander to run a
-       type-aware macro, and nothing more: how to apply a macro value, the
-       expansion-depth budget to apply it under, and how to expand its output. It never consults the
+       type-aware macro, and nothing more: how to apply a macro value, how to
+       run an application as a call under the evaluation budget, and how to expand its output. It never consults the
        expander's binding table, so it is handed these rather than a context.
        See docs/wayfinder/tickets/expander-handle-is-a-capability-not-a-context.md. *)
     mutable macro_runtime : macro_runtime option;
@@ -41,7 +41,7 @@ module Ctx = struct
 
 and macro_runtime = {
   run_macro : value -> value -> value;
-  with_fuel : 'a. name:string -> (unit -> 'a) -> 'a;
+  macro_application : 'a. name:string -> (unit -> 'a) -> 'a;
   expand : Syntax.t -> Syntax.t;
   application : unit -> Expand.application;
 }
@@ -50,9 +50,9 @@ and macro_runtime = {
      expander cannot run a macro at all. *)
   let macro_runtime_of_expander (ectx : Expand_ctx.t) : macro_runtime option =
     Option.map
-      (fun run_macro ->
-        { run_macro;
-          with_fuel = (fun ~name f -> Expand_ctx.with_macro_fuel ectx ~name f);
+      (fun eval_and_apply ->
+        { run_macro = eval_and_apply ectx.Expand_ctx.budget;
+          macro_application = (fun ~name f -> Expand_ctx.macro_application ectx ~name f);
           expand = Expand.expand ectx;
           application = (fun () -> Expand.application ectx) })
       ectx.Expand_ctx.eval_and_apply

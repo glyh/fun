@@ -14,10 +14,7 @@ let run source =
     let core, _ty = Elaborate.on_expr ~loader macro_ctx expr in
     Elaborate.Ctx.eval macro_ctx core
   in
-  let eval_and_apply fn arg =
-    let mc = Core.MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
+  let eval_and_apply = Nbe.apply_macro in
   let expr, expand_ctx =
     Parse_expand.parse_expr_with_ctx
       ~elaborate

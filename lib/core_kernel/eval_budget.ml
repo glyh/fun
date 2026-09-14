@@ -37,6 +37,14 @@ let spend budget ~call =
       if budget.remaining <= 0 then raise (Exceeded { limit; call = call () });
       budget.remaining <- budget.remaining - 1
 
+(* A macro application is a call (M5): it spends one unit, and its body and the
+   expansion of its output spend from the same request. So a nest of
+   applications is bounded as a whole, breadth included. *)
+let macro_application budget ~call f =
+  request budget (fun () ->
+      spend budget ~call:(fun () -> call);
+      f ())
+
 let () =
   Printexc.register_printer (function
     | Exceeded { limit; call } ->

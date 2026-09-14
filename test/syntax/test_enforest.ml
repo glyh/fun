@@ -27,10 +27,7 @@ let parse_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax)
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
-  let eval_and_apply fn arg =
-    let mc = Core.MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
+  let eval_and_apply = Nbe.apply_macro in
   unwrap_std (Parse_written.parse_expr ?load_macros ~open_prelude:true ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
 let parse_module_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax) source =
@@ -40,10 +37,7 @@ let parse_module_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
-  let eval_and_apply fn arg =
-    let mc = Core.MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
+  let eval_and_apply = Nbe.apply_macro in
   Parse_written.parse_module ?load_macros ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source
 
 let with_modules modules f =

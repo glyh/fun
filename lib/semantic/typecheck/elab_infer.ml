@@ -507,16 +507,14 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                 ~elaborate:(fun imported expand_ctx ->
                     (* Only the unit's context takes the unit's expander. The
                        importer keeps its own: elaboration reads [eval_and_apply]
-                       and the macro fuel out of [expand_ctx], and after an import
+                       and the evaluation budget out of [expand_ctx], and after an import
                        both would otherwise come from the last imported unit.
                        See docs/wayfinder/tickets/base-context-shared-state.md. *)
                     let unit_ctx = Ctx.unit_base ctx in
                     unit_ctx.macro_runtime <- Ctx.macro_runtime_of_expander expand_ctx;
                     let core, ty = ops.infer unit_ctx imported in
                     (core, Ctx.eval unit_ctx core, ty))
-                ~eval_and_apply:(fun fn arg ->
-                    let mc = MetaContext.create () in
-                    Nbe.apply mc fn arg)
+                ~eval_and_apply:Nbe.apply_macro
                 ~syntax_nominals:(Elab_stdlib.syntax_nominals ctx)
               in
           (Imported value, ty)
@@ -965,7 +963,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                            | Some (constraint_val, _) -> Ctx.unify ctx ty constraint_val
                            | None -> raise (ElabError (UnboundVariable constraint_name)))
                       | None -> ());
-                     ops.infer ctx (run_type_aware_macro runtime ~name macro_fn macro_nominals ty args)
+                     run_type_aware_macro runtime ~name macro_fn macro_nominals ty args (ops.infer ctx)
                  | None -> failwith "macro runtime required")
             | None -> failwith "macro-only syntax should not reach elaboration")
        | None -> failwith "macro-only syntax should not reach elaboration")

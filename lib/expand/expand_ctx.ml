@@ -9,8 +9,6 @@ type macro_snapshot = {
   provisional : bool;
 }
 
-let default_macro_fuel_limit = 256
-
 type t = {
   binding_table : Binding.t;
   mutable scope_counter : int;
@@ -28,11 +26,13 @@ type t = {
   mutable expansion_position : Syntax.MacroKind.t;
   mutable resolve_macro_kind : (Syntax.MacroAnnotation.t -> Syntax.MacroKind.t * Syntax.param option) option;
   mutable elaborate : (Syntax.t -> Core.value) option;
-  mutable eval_and_apply : (Core.value -> Core.value -> Core.value) option;
+  (* Applies a macro value to an argument, spending from the budget it is handed. *)
+  mutable eval_and_apply : (Eval_budget.t -> Core.value -> Core.value -> Core.value) option;
   mutable load_macros : (t -> string -> unit) option;
   mutable syntax_nominals : Macro_eval.syntax_nominals option;
-  mutable macro_fuel_limit : int;
-  mutable macro_fuel : int ref;
+  (* The evaluation budget macro applications count against (M5). Shared, not
+     copied, by [copy]. *)
+  budget : Eval_budget.t;
   (* Macros are MEMBERS of a compilation unit, not names a bare [import]
      injects. [unit_macros] records, per unit path, the macro names that unit
      exports; each is registered in [macro_table] under [unit_macro_key], a key
@@ -67,8 +67,7 @@ let create ?loader () =
     eval_and_apply = None;
     load_macros = None;
     syntax_nominals = None;
-    macro_fuel_limit = default_macro_fuel_limit;
-    macro_fuel = ref default_macro_fuel_limit;
+    budget = Eval_budget.create ();
     unit_macros = Hashtbl.create 4;
     module_units = Hashtbl.create 4;
     unit_members = Hashtbl.create 4;
@@ -211,8 +210,7 @@ let copy (ctx : t) : t =
     eval_and_apply = ctx.eval_and_apply;
     load_macros = ctx.load_macros;
     syntax_nominals = ctx.syntax_nominals;
-    macro_fuel_limit = ctx.macro_fuel_limit;
-    macro_fuel = ctx.macro_fuel;
+    budget = ctx.budget;
     unit_macros = Hashtbl.copy ctx.unit_macros;
     module_units = Hashtbl.copy ctx.module_units;
     unit_members = Hashtbl.copy ctx.unit_members;
@@ -321,18 +319,10 @@ let fill_provisional_macro ctx ~name ~value =
   Hashtbl.remove ctx.provisional_macros name;
   register_macro ctx ~name ~value
 
-let reserve_macro_fuel ctx ~name =
-  if !(ctx.macro_fuel) <= 0 then
-    failwith (Printf.sprintf "macro expansion exceeded fuel limit (%d) when expanding '%s'"
-                ctx.macro_fuel_limit name);
-  ctx.macro_fuel := !(ctx.macro_fuel) - 1
-
-let release_macro_fuel ctx =
-  ctx.macro_fuel := !(ctx.macro_fuel) + 1
-
-let with_macro_fuel ctx ~name f =
-  reserve_macro_fuel ctx ~name;
-  Fun.protect ~finally:(fun () -> release_macro_fuel ctx) f
+(* Run one macro application, and the expansion of its output, as a call under
+   the evaluation budget. *)
+let macro_application ctx ~name f =
+  Eval_budget.macro_application ctx.budget ~call:(Printf.sprintf "macro '%s'" name) f
 
 let set_expansion_position (ctx : t) kind =
   ctx.expansion_position <- kind

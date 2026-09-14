@@ -7,10 +7,7 @@ let parse source =
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
-  let eval_and_apply fn arg =
-    let mc = Core.MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
+  let eval_and_apply = Nbe.apply_macro in
   unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
 let identity_macro_shape () =

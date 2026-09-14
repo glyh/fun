@@ -225,26 +225,19 @@ let add_struct_binding_scopes_within region scopes binding =
     (fun binding scope -> go_struct_binding (add_id_scope_if (Some region) scope) Fun.id binding)
     binding scopes
 
-let syntax_operator_context (arg : Syntax.t) =
+(* The syntax operator an application came from, for its errors to name. *)
+let syntax_operator_site (arg : Syntax.t) : Expand_error.site option =
   match arg.kind with
   | SyntaxOperatorUse { operator; declaration_span; use_span; _ } ->
-      Some
-        (Printf.sprintf "syntax operator %S used at %s, declared at %s" operator.name
-           (Format.asprintf "%a" Source_span.pp use_span)
-           (Format.asprintf "%a" Source_span.pp declaration_span))
+      Some { operator = operator.name; use_span; declaration_span }
   | _ -> None
 
-let syntax_operator_failure arg msg =
-  match syntax_operator_context arg with
-  | Some ctx -> ctx ^ ": " ^ msg
-  | None -> msg
-
-let with_syntax_operator_context arg f =
-  match syntax_operator_context arg with
-  | None -> f ()
-  | Some _ -> (
-      try f () with
-      | exn -> failwith (syntax_operator_failure arg (Printexc.to_string exn)))
+(* M8: a macro's kind must match the expansion position it is used in; the
+   check runs before the macro does. *)
+let check_macro_kind ~key ~macro_kind ~ctx_kind =
+  let base = function Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
+  if base macro_kind <> base ctx_kind then
+    Expand_error.raise_at (KindMismatch { macro = key; kind = macro_kind; position = ctx_kind })
 
 let expand_id_params (ctx : Expand_ctx.t) scopes params =
   let rec go active_scopes param_scopes acc = function
@@ -476,7 +469,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       begin match macro_head_key ctx id with
       | Some (key, Some macro_entry, _) -> expand_macro_head ~key ~macro_entry ~head_id:id
       | Some (_, None, true) ->
-        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
+        Expand_error.raise_at (ExpandedDuringDefinition { macro = id.name })
       | Some (_, None, false) | None -> default ()
       end
     | _, _ -> default ()
@@ -582,7 +575,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       Expand_ctx.register_macro_kind ctx ~name:resolved_name ~kind:resolved_kind;
       expand ctx (add_scope_within stx.span scope body)
     | None ->
-      failwith "macro definition requires an elaboration callback in expand context"
+      Expand_error.raise_at (MissingCallback { callback = "elaborate" })
     end
   | MacroCall (f, args) ->
     (* [MacroCall] nodes are now compiler-derived (there is no surface [@]
@@ -596,7 +589,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
         let head_stx = { f with kind = Var { id with name = key } } in
         run_macro_call ctx stx ~key ~macro_entry ~head:head_stx args
       | Some (_, None, true) ->
-        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" id.name)
+        Expand_error.raise_at (ExpandedDuringDefinition { macro = id.name })
       | Some (_, None, false) | None ->
         { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
       end
@@ -627,7 +620,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
       begin match ctx.Expand_ctx.eval_and_apply with
       | Some apply_fn ->
-        Expand_ctx.with_macro_fuel ctx ~name:operator.name (fun () ->
+        let apply_fn = apply_fn ctx.Expand_ctx.budget in
+        Expand_ctx.macro_application ctx ~name:operator.name (fun () ->
           let app = application ctx in
           let operands = List.map app.receive operands in
           let result = match operands with
@@ -656,13 +650,14 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           in
           begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
           | Some expanded -> expand ctx (app.emit expanded)
-          | None -> failwith (syntax_operator_failure { stx with kind = SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } }
-                                ("operator macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
+          | None ->
+              Expand_error.raise_at ~site:{ operator = operator.name; use_span; declaration_span }
+                (NotSyntax { macro = operator.name; got = Macro_eval.value_tag result })
           end)
-      | None -> failwith "operator macro call requires an apply callback"
+      | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
       end
     | _ when Expand_ctx.is_provisional_macro ctx operator.name ->
-      failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" operator.name)
+      Expand_error.raise_at (ExpandedDuringDefinition { macro = operator.name })
     | _ ->
       { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span; unit } }
     end
@@ -683,34 +678,28 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     | None -> Syntax.MacroKind.default
   in
   let ctx_kind = Expand_ctx.get_expansion_position ctx in
-  let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
-  let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
-  if macro_base <> ctx_base then
-    failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
-                key (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
+  check_macro_kind ~key ~macro_kind ~ctx_kind;
   if Syntax.MacroKind.has_type_binding macro_kind then
     (* Defer to the elaborator: args travel as syntax objects, marked [Stx]. *)
     let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
     { stx with kind = MacroCall (head, List.map wrap_stx macro_args) }
   else begin match ctx.Expand_ctx.eval_and_apply with
     | Some apply_fn ->
-      Expand_ctx.with_macro_fuel ctx ~name:key (fun () ->
-        let ctx_arg = match macro_args with a :: _ -> a | [] -> stx in
+      let apply_fn = apply_fn ctx.Expand_ctx.budget in
+      Expand_ctx.macro_application ctx ~name:key (fun () ->
+        let site = Option.bind (List.nth_opt macro_args 0) syntax_operator_site in
         let app = application ctx in
         let result =
-          with_syntax_operator_context ctx_arg (fun () ->
-              List.fold_left (fun fn arg ->
-                  let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals (app.receive arg) in
-                  apply_fn fn arg_stx)
-                macro_fn macro_args)
+          List.fold_left (fun fn arg ->
+              let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals (app.receive arg) in
+              apply_fn fn arg_stx)
+            macro_fn macro_args
         in
         begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
         | Some expanded -> expand ctx (app.emit expanded)
-        | None ->
-            failwith (syntax_operator_failure ctx_arg
-              ("macro did not return a syntax value, got " ^ Macro_eval.value_tag result))
+        | None -> Expand_error.raise_at ?site (NotSyntax { macro = key; got = Macro_eval.value_tag result })
         end)
-    | None -> failwith "macro call requires an apply callback in expand context"
+    | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
   end
 
 and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) (ctx : Expand_ctx.t) bindings =
@@ -897,12 +886,9 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
           let macro_kind = match Expand_ctx.lookup_macro_kind ctx key with
             | Some k -> k | None -> Syntax.MacroKind.default in
           let ctx_kind = Expand_ctx.get_expansion_position ctx in
-        let macro_base = match macro_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
-        let ctx_base = match ctx_kind with Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | _ as k -> k in
-        if macro_base <> ctx_base then
-            failwith (Printf.sprintf "macro '%s' has kind %s but was used in %s context"
-                        key (Syntax.MacroKind.to_string macro_kind) (Syntax.MacroKind.to_string ctx_kind));
-           Expand_ctx.with_macro_fuel ctx ~name:key (fun () ->
+          check_macro_kind ~key ~macro_kind ~ctx_kind;
+          let apply_fn = apply_fn ctx.Expand_ctx.budget in
+           Expand_ctx.macro_application ctx ~name:key (fun () ->
              let app = application ctx in
              let fn = List.fold_left (fun fn arg ->
                 let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals (app.receive arg) in
@@ -923,11 +909,11 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
                     annotations are resolved, macros are compiled/registered,
                     and sibling-generated scopes thread in source order. *)
                  expand_struct_bindings_with_scopes ctx (List.map app.emit_binding bindings)
-             | None -> failwith (Printf.sprintf "decl macro '%s' did not return declarations" key)))
-        | None -> failwith "macro call requires an apply callback in expand context"
+             | None -> Expand_error.raise_at (NotDeclarations { macro = key })))
+        | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
         end
       | Some (key, None, true) ->
-        failwith (Printf.sprintf "macro '%s' cannot be expanded during its own definition" key)
+        Expand_error.raise_at (ExpandedDuringDefinition { macro = key })
       | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
       end
     | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])

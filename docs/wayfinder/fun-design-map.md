@@ -272,8 +272,8 @@ every defect below is an invariant with no name in the source.
   by the slot list, so both width checks and the drift error are gone. An impl's
   contribution is separated from the evidence that rides along with it.
 - [The elaborator's expander handle is named as a context](tickets/expander-handle-is-a-capability-not-a-context.md)
-  (closed) — it holds a `macro_runtime`, how to run a macro and the fuel to run it
-  under, instead of a borrowed expander. One adapter is where the two libraries
+  (closed) — it holds a `macro_runtime`, how to run a macro and how to run it as a
+  call under the evaluation budget, instead of a borrowed expander. One adapter is where the two libraries
   meet.
 - [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
   (closed) — a binding's contribution is now one ordered slot list in
@@ -371,7 +371,7 @@ every defect below is an invariant with no name in the source.
 
 ### Macro model distances still open (from the 2026-09-14 implementation run)
 
-The macro model's M1–M3, M6, M10–M12 and most of M2 are now enforced.
+The macro model's M1–M3, M5, M6, M8, M10–M12 and most of M2 are now enforced.
 What remains, in the recommended order:
 
 - [Path heads, traits and effects resolve without spelling](tickets/names-resolve-without-spelling.md)
@@ -381,7 +381,9 @@ What remains, in the recommended order:
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
   (listed above).
 - [Macro fuel is the evaluation budget](tickets/macro-fuel-is-the-evaluation-budget.md)
-  — M5 + M8. Unblocked: the checker evaluation budget below landed.
+  (closed) — M5 + M8: a macro application is a call under the one budget, its
+  body and output spending from the same request; expansion failures are
+  `Expand_error` values.
 - [Template and operator heads resolve by scope set](tickets/template-heads-resolve-by-scope-set.md)
   — M7. Needs scopes at parse time (Honu's lazy enforestation); grill first.
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.

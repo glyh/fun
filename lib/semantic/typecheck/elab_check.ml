@@ -146,7 +146,8 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
             | None -> ());
            (match ctx.macro_runtime with
             | Some runtime ->
-                ops.check ctx (run_type_aware_macro runtime ~name:macro_name macro_fn macro_nominals expected args) expected
+                run_type_aware_macro runtime ~name:macro_name macro_fn macro_nominals expected args
+                  (fun output -> ops.check ctx output expected)
             | None -> fallback ())
        | _ -> fallback ())
   | _ ->

@@ -58,17 +58,18 @@ let resolve_dotted_value_opt ctx dotted =
 
 (** Run a type-aware macro call whose result type [ty] is already unified with
     the annotation's constraint: apply the macro to [ty] and its syntax
-    arguments under the runtime's fuel, then expand the output in place like
-    every macro's output (M6). A result that is not syntax is an error naming
-    the macro, never a hole. *)
-let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nominals ty args =
+    arguments, expand the output in place like every macro's output (M6), and
+    hand it to [elaborate]. All of it is one call under the evaluation budget
+    (M5), so type-aware calls in the output spend from the same request. A
+    result that is not syntax is an error naming the macro, never a hole. *)
+let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nominals ty args elaborate =
   let wrapped_ty =
     match macro_nominals with
     | Some nominals ->
         VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ty]; nominal = nominals.Macro_eval.r_ }
     | None -> ty
   in
-  runtime.Ctx.with_fuel ~name (fun () ->
+  runtime.Ctx.macro_application ~name (fun () ->
     let app = runtime.application () in
     let fn = runtime.run_macro macro_fn wrapped_ty in
     let fn = List.fold_left (fun fn arg ->
@@ -77,7 +78,7 @@ let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nomi
           runtime.run_macro fn (Macro_eval.wrap_stx ~nominals:macro_nominals (app.Expand.receive stx_arg))
       | _ -> fn) fn args in
     match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
-    | Some expanded -> (runtime.expand (app.emit expanded))
+    | Some expanded -> elaborate (runtime.expand (app.emit expanded))
     | None -> raise (ElabError (MacroDidNotReturnSyntax name)))
 
 (* A trait is located through the entry its path resolves to, by the identity

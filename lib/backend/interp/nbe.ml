@@ -1070,3 +1070,8 @@ let eval_effect_row_closure mc row binder = request mc (fun () -> eval_effect_ro
 let force mc v = match v with VFlex _ -> request mc (fun () -> force mc v) | _ -> v
 let quote mc depth value = request mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
 let conv mc depth lhs rhs = request mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)
+
+(* How a macro is applied (the expander's [eval_and_apply]): with fresh metas,
+   since an application solves nothing its caller needs, under the budget of the
+   expansion it belongs to, so its body spends from that one request (M5). *)
+let apply_macro budget f a = apply (MetaContext.create ~budget ()) f a

@@ -843,10 +843,7 @@ let eval_with_macros ?(expansion_position = Syntax.MacroKind.(Expr (None, None))
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
-  let eval_and_apply fn arg =
-    let mc = MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
+  let eval_and_apply = Nbe.apply_macro in
   let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~expansion_position source in
   Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
@@ -866,10 +863,7 @@ let eval_decl_module source =
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
-  let eval_and_apply fn arg =
-    let mc = MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
+  let eval_and_apply = Nbe.apply_macro in
   let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source in
   (* Register macros from expander in elaborator context *)
   Hashtbl.iter (fun name entry ->
@@ -889,10 +883,7 @@ let eval_with_imported_macros modules source =
         let core, _ty = Elaborate.on_expr ~loader macro_ctx expr in
         Elaborate.Ctx.eval macro_ctx core
       in
-      let eval_and_apply fn arg =
-        let mc = MetaContext.create () in
-        Nbe.apply mc fn arg
-      in
+      let eval_and_apply = Nbe.apply_macro in
       let expr =
         Parse_expand.parse_expr
           ~elaborate
@@ -1224,9 +1215,7 @@ let test_macro_decl_in_expr_context () =
          check(0)
        end"
   with
-  | exception (Failure msg) ->
-      Alcotest.(check bool) "Decl macro in Expr context rejected"
-        true (string_contains msg "has kind Decl but was used in Expr context")
+  | exception Expand_error.Error { error = KindMismatch { kind = Decl; position = Expr _; _ }; _ } -> ()
   | v ->
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "expected failure, got: %s" (Debug.pp_value_short mc v))
@@ -1246,9 +1235,7 @@ let test_decl_kind_registered_persists () =
        m(0)
      end"
   with
-  | exception (Failure msg) ->
-      Alcotest.(check bool) "Decl kind survives elaboration, rejects Expr call"
-        true (string_contains msg "has kind Decl but was used in Expr context")
+  | exception Expand_error.Error { error = KindMismatch { kind = Decl; position = Expr _; _ }; _ } -> ()
    | _ -> Alcotest.fail "expected Decl-rejection failure"
 
 let test_decl_macro_generates_binding () =
@@ -1561,10 +1548,7 @@ let driver_vs_pipeline source =
     let core, _ty = Elaborate.on_expr ctx expr in
     Elaborate.Ctx.eval ctx core
   in
-  let eval_and_apply fn arg =
-    let mc = MetaContext.create () in
-    Nbe.apply mc fn arg
-  in
+  let eval_and_apply = Nbe.apply_macro in
   let pipeline_surface, _expand_ctx =
     Parse_expand.parse_module_with_ctx
       ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source
@@ -1776,7 +1760,7 @@ let test_generated_type_before_macro_stays_binder () =
   in
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
-  ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
+  ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
   (* Simulate a resolver that checks an advancing context — but generated
      bindings are expanded without the after_binding hook, so resolution
      happens before any advancement of GenTag. *)
@@ -1901,7 +1885,7 @@ let test_generated_macro_binding_reentered () =
   in
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
-  ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
+  ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
   ctx.Expand_ctx.resolve_macro_kind <- Some (fun _ann ->
     (Syntax.MacroKind.Expr (None, Some "I64"), None));
   Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
@@ -1943,7 +1927,7 @@ let test_generated_multi_binding_scope_threading () =
   in
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
-  ctx.Expand_ctx.eval_and_apply <- Some (fun fn _ -> fn);
+  ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
   ctx.Expand_ctx.resolve_macro_kind <- Some (fun _ann ->
     (Syntax.MacroKind.Expr (None, None), None));
   Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
@@ -2034,7 +2018,8 @@ let test_operator_macro_error_reports_spans () =
           1 ~ 2
         end"
   with
-  | exception Failure msg ->
+  | exception (Expand_error.Error { error = NotSyntax _; site = Some _ } as e) ->
+      let msg = Printexc.to_string e in
       Alcotest.(check bool) "mentions syntax operator" true (string_contains msg "syntax operator");
       Alcotest.(check bool) "mentions use span" true (string_contains msg "used at");
       Alcotest.(check bool) "mentions declaration span" true (string_contains msg "declared at")

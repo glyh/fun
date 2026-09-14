@@ -48,10 +48,22 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   running out is `ElabError EvaluationBudgetExceeded`, not a hang.
 - A fixpoint unfolds at check time only on a closed argument; a call mentioning
   an unknown variable stays stuck (`HFix` neutral) and costs nothing.
-- Running a program (`Ctx.run`, the REPL) is unbudgeted. Macro applications do
-  not spend from the budget yet
-  ([macro-fuel-is-the-evaluation-budget](wayfinder/tickets/macro-fuel-is-the-evaluation-budget.md)).
+- Running a program (`Ctx.run`, the REPL) is unbudgeted.
   See [checker-evaluation-budget](wayfinder/tickets/checker-evaluation-budget.md).
+- **Macro applications are calls under the same budget** (M5). The depth fuel
+  (256, reserve/release) is deleted. A macro application spends one call and
+  opens a request that its body evaluation (fresh metas, shared budget,
+  `Nbe.apply_macro`) and the expansion of its output spend from, so a nest of
+  applications is bounded as a whole: breadth blowup at bounded depth is an
+  `Eval_budget.Exceeded` naming the macro. A type-aware call's request also
+  covers elaborating its output.
+- **Expansion failures are error values** (M8): kind mismatch, non-syntax
+  result, non-declaration result, self-expansion during definition and a
+  missing callback are `Expand_error.Error { error; site }`, with the syntax
+  operator's use and declaration spans as the site. No `failwith` remains in
+  `expand.ml`, and the catch-all that re-wrapped a macro body's exceptions as
+  strings is gone
+  ([macro-fuel-is-the-evaluation-budget](wayfinder/tickets/macro-fuel-is-the-evaluation-budget.md)).
 
 ### Macro model enforcement and one IR (2026-09-14)
 - **One IR.** `Surface.t` and lowering are deleted; the elaborator reads expanded
@@ -104,7 +116,7 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   semantic advancement (top-level source-order prior user type/record
   declarations now constrain later macro annotations), recursive-macro
   safety infrastructure (top-level provisional macro registration/rollback plus
-  depth-style macro expansion fuel shared across copied contexts),
+  macro expansion guarded by the evaluation budget, shared across copied contexts),
   driver-based import loading (`Macro_driver.visit_macros` compiles imported
   public macros through a full driver run, so their annotations resolve in
   the imported module's own context), and retirement of the old

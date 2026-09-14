@@ -34,8 +34,8 @@ semantic advancement makes top-level source-order prior declarations
 names remain binders and lowercase/wildcard are unconstrained. Qualified
 annotations (`: Expr(M.T)`) resolve against imported module types. The
 recursive-macro safety slice is implemented: top-level macro definitions use
-provisional registration with rollback, and macro expansion has a depth-style
-fuel guard shared across copied expand contexts. Stage 8 replaced the old
+provisional registration with rollback, and macro applications are calls under
+the checker's evaluation budget, shared across copied expand contexts. Stage 8 replaced the old
 `Core_loader.visit_macros` import path with `Macro_driver.visit_macros`, which
 compiles an imported module's public macros through a full driver run so
 their annotations resolve in the imported module's own advancing context;
@@ -72,7 +72,7 @@ double-elaboration/nominal freshness drift.
   expander/elaborator interleaving that fixed the Stage 10 annotation-name disambiguation
   limitation. Stages 1–9 are implemented, including semantic kind resolution,
   generated declaration re-entry, per-binding semantic advancement, provisional
-  macro registration/rollback, depth-style macro fuel, and driver-based import
+  macro registration/rollback, the evaluation budget, and driver-based import
   loading. Describes the long-term queue-driver compiler shape.
 
 - **[STAGE_7_ENFORESTATION_PLAN.md](STAGE_7_ENFORESTATION_PLAN.md)** — Concrete implementation
