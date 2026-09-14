@@ -115,3 +115,32 @@ building two pieces whose first consumer is this ticket:
 - **Name-position holes** already work for declaration templates
   (`syntax $n { | $n $x => … }`, `infix ($op) …`); the macro form needs `Id`
   parameters to carry them.
+
+## Unparsed bodies grilled (2026-09-14)
+
+The expander-driven loop needs bodies to stay unparsed until expansion reaches
+them. How that looks to a macro:
+
+1. **A `Block` reflects as a token tree** a macro can read and build — tokens
+   and groups, identifier tokens carrying their `Id` with scopes, so the round
+   trip stays the identity and hygiene survives:
+   ```fun
+   macro sql(q : Block) : Expr { match (tokens(q)) { | Tok(IdentTok("SELECT")) :: rest => … } }
+   ```
+2. **A `Block` hole is a `{…}` in the quoted source**, placeable in any slot
+   that takes a brace group, and parsed as that slot expects (statements, module
+   items, struct fields):
+   ```fun
+   syntax namespace { | namespace $(n : Id) $(b : Block) => pub $n = module $b };
+   syntax lam { | lam ($(x : Id)) $(b : Block) => fn($x) $b };
+   ```
+3. **Every `{…}` body inside parsed syntax stays a raw `Block`** until expansion
+   reaches it — including bodies nested in an `Expr` argument:
+   `twice(run(fn(_) { make_inc inc; inc 5 }))` hands `twice` a `Lam` whose body
+   is a `Block`. Outside-in, as Racket and Honu.
+4. **`expand_block(b)` expands a block form by form** (Racket's
+   `local-expand`) and returns the expanded forms; a macro sees expanded code
+   only when it asks. It spends from the running application's budget request.
+5. **Expanded forms may be placed back into output; expansion is idempotent.**
+   Re-expanding expanded syntax changes nothing — no second rename of resolved
+   binders, no duplicate scopes. The invariant gets its own test.

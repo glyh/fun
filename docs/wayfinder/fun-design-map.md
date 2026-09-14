@@ -400,7 +400,7 @@ What remains, in the recommended order:
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
   **Grilled 2026-09-14:** `quote { … }` for declarations, `$name` resolves to its
   nearest binder (no quote levels), kinds spelled `$(x : Decl|Id|Pattern|Block)`,
-  templates take `: Decl` and `multi` is deleted. Unblocked (M7 landed); now also
+  templates take `: Decl` and `multi` is deleted. Unparsed bodies grilled: `Block` is a readable token tree placeable in any `{…}` slot, bodies stay raw until expansion reaches them, `expand_block` is local-expand, expansion is idempotent. Unblocked (M7 landed); now also
   carries M7's expander-driven loop and unparsed block captures. Retires the
   template region rule in `add_id_scope_if`.
 
