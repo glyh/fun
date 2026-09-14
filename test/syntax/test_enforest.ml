@@ -686,6 +686,7 @@ let brace_syntax_suite =
     Alcotest.test_case "trailing ; discards" `Quick trailing_semicolon_discards;
     Alcotest.test_case "no trailing ; keeps value" `Quick no_trailing_semicolon_keeps_value;
     Alcotest.test_case "newline is whitespace" `Quick newline_is_whitespace;
+    Alcotest.test_case "empty block rejected" `Quick (rejected_with "empty block" parse "{ }");
   ]
 
 let suites =

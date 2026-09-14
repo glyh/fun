@@ -141,6 +141,13 @@ let conditionals =
       (elab_fail "if (True) { 1 } else { False }");
     Alcotest.test_case "nested if" `Quick
       (check_type "if (True) { if (False) { 1 } else { 2 } } else { 3 }" (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "if branches are blocks" `Quick
+      (check_type "if (True) { y = 1; y + 1 } else { 3 }" (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "if branches require braces" `Quick
+      (fun () ->
+        match elab "if (True) 1 else 2" with
+        | exception Enforest_util.Error msg when String.starts_with ~prefix:"no matching branch for syntax if" msg -> ()
+        | _ -> Alcotest.fail "expected unbraced if branches to be rejected");
   ]
 
 let lambdas =

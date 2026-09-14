@@ -12,6 +12,7 @@ let intro_scope_counter = ref (-1)
 
 let parse_template_hole_kind = function
   | "expr" -> Syntax_template.Expr
+  | "block" -> Syntax_template.Block
   | "binder" -> Syntax_template.Binder
   | "ident" -> Syntax_template.Ident
   | "decl" -> Syntax_template.Decl
@@ -160,6 +161,15 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
                   kind;
                   decl_terms = None;
                 }
+              in
+              match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest
+          | _ -> None)
+      | Syntax_template.Block -> (
+          (* Exactly one brace group, captured as the block expression it is. *)
+          match drop_separators input with
+          | ({ datum = Group (Raw_syntax.Brace, _, _); _ } as group) :: input_rest ->
+              let captured =
+                { Syntax_template.syntax = callbacks.parse_expr [ group ]; kind; decl_terms = None }
               in
               match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest
           | _ -> None)
@@ -340,7 +350,7 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
       (match captured.Syntax_template.kind with
       | Syntax_template.Binder -> error ("binder hole used in expression position: " ^ name)
       | Syntax_template.Decl -> error ("declaration hole used in expression position: " ^ name)
-      | Syntax_template.Expr | Syntax_template.Ident -> captured.Syntax_template.syntax)
+      | Syntax_template.Expr | Syntax_template.Block | Syntax_template.Ident -> captured.Syntax_template.syntax)
   | Syntax.Atom _ | Syntax.Var _ | Syntax.Self | Syntax.SelfType | Syntax.Import _ -> stx
   | Syntax.Ap (f, e, a) -> { stx with kind = Syntax.Ap (go f, e, go a) }
   | Syntax.Lam (p, body) ->

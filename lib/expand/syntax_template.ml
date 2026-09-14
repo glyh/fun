@@ -1,4 +1,4 @@
-type hole_kind = Expr | Binder | Ident | Decl
+type hole_kind = Expr | Block | Binder | Ident | Decl
 
 type pattern_part =
   | Literal of Raw_syntax.t

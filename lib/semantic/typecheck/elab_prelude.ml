@@ -68,7 +68,7 @@ let syntax_primitive_names = []
 let stdlib_source =
   {|
 pub type Bool = False | True;
-pub syntax if { | if ($c) $t else $e => match ($c) { True => $t | False => $e } };
+pub syntax if { | if ($c) $(t: block) else $(e: block) => match ($c) { True => $t | False => $e } };
 pub infix (&&) 4 Left ($a, $b) { match ($a) { True => $b | False => False } };
 pub infix (||) 3 Left ($a, $b) { match ($a) { True => True | False => $b } };
 pub i64_to_bool = fn(n) { match (n) { 0 => False | _ => True } };
