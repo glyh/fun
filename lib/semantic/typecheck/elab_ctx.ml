@@ -44,6 +44,8 @@ and macro_runtime = {
   macro_application : 'a. name:string -> (unit -> 'a) -> 'a;
   expand : Syntax.t -> Syntax.t;
   application : unit -> Expand.application;
+  (* The names of the syntactic roles visible in an open's region (M7). *)
+  roles_in_open : string -> string list;
 }
 
   (* The expander, narrowed to the capabilities above. [None] when the
@@ -54,7 +56,8 @@ and macro_runtime = {
         { run_macro = eval_and_apply ectx.Expand_ctx.budget;
           macro_application = (fun ~name f -> Expand_ctx.macro_application ectx ~name f);
           expand = Expand.expand ectx;
-          application = (fun () -> Expand.application ectx) })
+          application = (fun () -> Expand.application ectx);
+          roles_in_open = Expand_ctx.roles_in_open ectx })
       ectx.Expand_ctx.eval_and_apply
 
   let empty () : t =

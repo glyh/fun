@@ -2659,6 +2659,24 @@ let test_m7_new_binder_under_attached_fixity () =
   role_conflict "a new binder of a name whose value has a fixity"
     "{ twice = fn(x) { x * 2 }; prefix (twice) 30; { twice = 5; 1 } }" ()
 
+let open_supplies_role label source () =
+  match eval_with_macros source with
+  | exception Elab_error.ElabError (OpenSuppliesRole "answer") -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: unexpected exception %s" label (Printexc.to_string e))
+  | _ -> Alcotest.fail (label ^ ": expected the open to be rejected")
+
+let test_m7_open_under_syntax () =
+  open_supplies_role "an open supplying a member named like a visible syntax form"
+    "{ M = module { pub answer = 7 }; syntax answer { | answer => 42 }; open M; 1 }" ()
+
+let test_m7_syntax_inside_open_region () =
+  open_supplies_role "a syntax form declared where an open supplies its name"
+    "{ M = module { pub answer = 7 }; open M; syntax answer { | answer => 42 }; 1 }" ()
+
+let test_m7_open_without_conflict () =
+  check_i64_macro "an open supplying other names" 7L
+    "{ M = module { pub x = 7 }; syntax answer { | answer => 42 }; open M; x }" ()
+
 let test_m7_template_written_syntax_invisible () =
   match
     eval_with_imported_macros
@@ -3351,5 +3369,8 @@ let () =
           Alcotest.test_case "hygienic macro binder is apart" `Quick test_m7_hygienic_macro_binder_is_apart;
           Alcotest.test_case "fixity attaches to value" `Quick test_m7_fixity_attaches_to_value;
           Alcotest.test_case "new binder under attached fixity" `Quick test_m7_new_binder_under_attached_fixity;
+          Alcotest.test_case "open under syntax" `Quick test_m7_open_under_syntax;
+          Alcotest.test_case "syntax inside open region" `Quick test_m7_syntax_inside_open_region;
+          Alcotest.test_case "open without conflict" `Quick test_m7_open_without_conflict;
         ] );
     ]

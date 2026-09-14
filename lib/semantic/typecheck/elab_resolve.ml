@@ -253,6 +253,12 @@ let open_module_value ~label ctx module_ty module_value =
           | _ -> c)
         ctx type_entries value_entries
       in
+      (match ctx.Ctx.macro_runtime with
+       | Some runtime -> (
+           match List.find_opt (fun name -> NameMap.mem name !members) (runtime.roles_in_open label) with
+           | Some name -> raise (ElabError (OpenSuppliesRole name))
+           | None -> ())
+       | None -> ());
       { ctx with Ctx.opened = (label, !members) :: ctx.Ctx.opened }
   | _ -> ctx
 

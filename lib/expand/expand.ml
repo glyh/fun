@@ -485,7 +485,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
        that unit's macros, and they have to be there before the open can bind
        them for the body. *)
     let m' = expand ctx m in
-    let open_scope, label = Expand_ctx.enter_open ctx m in
+    let open_scope, label = Expand_ctx.enter_open ctx ~occurrence:(member_scope m) m in
     let scopes = open_scope :: open_unit_macro_scopes ctx m in
     { stx with kind = Open (m', expand ctx (add_scopes_within stx.span scopes body), label) }
   | RecordTypeDef { name; params; fields; body } ->
@@ -821,7 +821,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     (* An open binds no name of its own. Its scope marks the later bindings as
        inside it, so a name there can resolve to an open choice. *)
     let m' = expand ctx m in
-    let open_scope, label = Expand_ctx.enter_open ctx m in
+    let open_scope, label = Expand_ctx.enter_open ctx ~occurrence:(member_scope m) m in
     ([OpenBinding (m', label)], [ open_scope :: open_unit_macro_scopes ctx m ])
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with

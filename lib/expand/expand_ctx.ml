@@ -51,6 +51,10 @@ type t = {
   (* Every intro scope a macro application minted here (template instances
      record theirs in [Syntax_template.template_intro_scopes]). *)
   intro_scopes : (int, unit) Hashtbl.t;
+  (* Per open label, the names of the roles visible in that open's region -
+     where it is written, or declared inside it. What an open supplies is known
+     only to the elaborator, which rejects a member of one of these names (M7). *)
+  open_roles : (string, string list) Hashtbl.t;
   loader : unit option;
 }
 
@@ -74,6 +78,7 @@ let create ?loader () =
     unit_members = Hashtbl.create 4;
     own_unit_members = [];
     intro_scopes = Hashtbl.create 16;
+    open_roles = Hashtbl.create 8;
     loader }
 
 let set_syntax_nominals ctx nominals = ctx.syntax_nominals <- Some nominals
@@ -112,14 +117,31 @@ let enclosing_unit_opens (ctx : t) (scope : Scope_set.t) : string list =
          String.sub label prefix (String.length label - prefix))
   |> List.fold_left (fun acc p -> if List.mem p acc then acc else acc @ [ p ]) []
 
-(* Enter an open of [m]: a fresh scope for its region, and its label. *)
-let enter_open (ctx : t) (m : Syntax.t) : Scope_set.t * string =
+let note_open_role (ctx : t) label name =
+  let names = Option.value ~default:[] (Hashtbl.find_opt ctx.open_roles label) in
+  if not (List.mem name names) then Hashtbl.replace ctx.open_roles label (name :: names)
+
+let roles_in_open (ctx : t) label = Option.value ~default:[] (Hashtbl.find_opt ctx.open_roles label)
+
+(* Enter an open of [m], written with scope set [occurrence]: a fresh scope for
+   its region, and its label. The roles visible where it is written are noted
+   against it - except an imported unit's own, opened with it. *)
+let enter_open (ctx : t) ?(occurrence = Scope_set.empty) (m : Syntax.t) : Scope_set.t * string =
   let scope = fresh_scope ctx in
   let label =
     match m.kind with
     | Syntax.Import path -> Compiler_names.Module_name.unit_open_label path
     | _ -> "open:" ^ string_of_int scope
   in
+  Hashtbl.iter
+    (fun name infos ->
+      if List.exists
+           (fun (info : Binding.binding_info) ->
+             info.kind <> Binding.Value && Scope_set.subset info.scope occurrence
+             && not (String.equal info.resolved_name label))
+           infos
+      then note_open_role ctx label name)
+    ctx.binding_table;
   ctx.opens <- (scope, label) :: ctx.opens;
   (Scope_set.singleton scope, label)
 
@@ -185,6 +207,8 @@ let check_role_mixing (ctx : t) ~name ~occurrence ~kind ~attaches ~span =
 
 let bind (ctx : t) ?(attaches = false) ?(span = Source_span.synthetic) ~name ~base_scope ~kind ~resolved_name scope =
   check_role_mixing ctx ~name ~occurrence:base_scope ~kind ~attaches ~span;
+  if kind <> Binding.Value then
+    List.iter (fun (o, label) -> if Scope_set.contains base_scope o then note_open_role ctx label name) ctx.opens;
   Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name
 
 let extend_at (ctx : t) ?span ~name ~base_scope ~resolved_name () =
@@ -199,11 +223,14 @@ let extend_role (ctx : t) ~attaches ~(name : Syntax.id) =
     ~resolved_name:name.name scope;
   scope
 
-(* Roles an [import] harvested into the enforester: visible to the whole unit. *)
-let add_imported_roles (ctx : t) (names : string list) =
+(* Roles an [import] harvested into the enforester, with the unit each came
+   from: visible to the whole unit. *)
+let add_imported_roles (ctx : t) (roles : (string * string option) list) =
   List.iter
-    (fun name -> Binding.extend ctx.binding_table ~name ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:name)
-    names
+    (fun (name, unit) ->
+      let resolved_name = match unit with Some path -> Compiler_names.Module_name.unit_open_label path | None -> name in
+      Binding.extend ctx.binding_table ~name ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name)
+    roles
 
 (** Like [extend_at] but tags the binding with an explicit [kind], so a
     procedural-macro definition can register itself as a [Macro] binding in the
@@ -245,6 +272,7 @@ let copy (ctx : t) : t =
     unit_members = Hashtbl.copy ctx.unit_members;
     own_unit_members = ctx.own_unit_members;
     intro_scopes = Hashtbl.copy ctx.intro_scopes;
+    open_roles = Hashtbl.copy ctx.open_roles;
     loader = ctx.loader }
 
 let register_macro_with_nominals ctx ~syntax_nominals ~name ~value =

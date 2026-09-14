@@ -4,7 +4,7 @@ let recording_imported_roles load_syntax =
   let names = ref [] in
   let record load path =
     let exports = load path in
-    names := List.map (fun (op : Binding.operator_info) -> op.symbol) exports @ !names;
+    names := List.map (fun (op : Binding.operator_info) -> (op.symbol, Some path)) exports @ !names;
     exports
   in
   (Option.map record load_syntax, fun () -> !names)

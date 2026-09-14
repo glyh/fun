@@ -29,6 +29,9 @@ type elab_error =
   | MacroDidNotReturnSyntax of string
   | QuoteHoleKindConflict of string
   | EvaluationBudgetExceeded of { limit : int; call : string }
+  | OpenSuppliesRole of string
+      (** M7: an open supplies a member named like a syntax form, operator or
+          macro visible in its region. *)
 
 exception ElabError of elab_error
 
@@ -64,6 +67,7 @@ let string_of_elab_error = function
   | QuoteHoleKindConflict n -> "QuoteHoleKindConflict \"" ^ n ^ "\""
   | EvaluationBudgetExceeded { limit; call } ->
       Printf.sprintf "EvaluationBudgetExceeded %d \"%s\"" limit call
+  | OpenSuppliesRole n -> "OpenSuppliesRole \"" ^ n ^ "\""
 
 let () =
   Printexc.register_printer (function
