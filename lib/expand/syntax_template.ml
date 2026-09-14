@@ -35,6 +35,15 @@ type t = {
    are minted from one global counter, so the key is unique. *)
 let intro_scope_units : (int, string) Hashtbl.t = Hashtbl.create 64
 
+(* Scopes the enforester mints - template intro scopes and the scopes of
+   definition contexts - count down from -1, apart from the expander's. *)
+let scope_counter = ref (-1)
+
+let fresh_scope () =
+  let scope = !scope_counter in
+  decr scope_counter;
+  scope
+
 (* Every intro scope a template instance minted. Template intro scopes share
    the enforester's scope numbering with the scopes of definition contexts, so
    whether a scope is one is recorded, not read off its number. *)

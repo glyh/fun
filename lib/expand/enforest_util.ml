@@ -198,7 +198,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 let is_expr_start env term =
   match term.datum with
   | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
-  | Token { kind = Operator s; _ } -> Option.is_some (Binding.find_operator env.operators ~fixity:Binding.Prefix ~syntax_class:env.syntax_class s)
+  | Token { kind = Operator s; scope; _ } -> Option.is_some (Binding.find_operator env.operators ~fixity:Binding.Prefix ~syntax_class:env.syntax_class ~scope s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false
 
@@ -345,8 +345,10 @@ let ensure_no_rest what rest =
   | _ -> error (what ^ " has trailing terms")
 
 let with_operator_scope env f =
-  (* [operators] is a mutable Hashtbl; copy it so operator definitions inside the
-     nested scope do not leak to the outer env (outer ones stay visible). *)
+  (* A declared role stays inside its context by scope set; the copy is what
+     keeps a role an [import] harvests - scope-less, since an imported
+     template's replacement must see it too - inside the context that imported
+     it. *)
   f { env with operators = Binding.copy env.operators; template_captures = env.template_captures }
 
 let syntax_name term = token_text term
@@ -383,6 +385,31 @@ let rec load_imports_in_terms env = function
 
 and split_statements terms =
   split_by_top_level (fun term -> is_separator term || token_kind Comma term) terms
+
+(* A definition context's statements, read in order: [f ~last stmt] reads one.
+   The context's inside-edge scope is on all of them, and a statement that
+   declared a role adds its own scope to the statements after it, so the role
+   is visible after it and within it, and neither before it nor outside the
+   context (M7).
+   ponytail: re-scopes the remaining statements after each declaring one
+   (quadratic in a context's declarations); keep pending scopes lazily if a
+   long unit gets slow. *)
+let map_context_statements f body_terms =
+  let rec go acc = function
+    | [] -> List.rev acc
+    | stmt :: rest ->
+        let generation = !Binding.role_generation in
+        let result = f ~last:(rest = []) stmt in
+        let rest =
+          if !Binding.role_generation = generation then rest
+          else
+            let s = Scope_set.singleton (Syntax_template.fresh_scope ()) in
+            List.map (Raw_syntax.add_scope s) rest
+        in
+        go (result :: acc) rest
+  in
+  let edge = Scope_set.singleton (Syntax_template.fresh_scope ()) in
+  go [] (split_statements (Raw_syntax.add_scope edge body_terms))
 
 let desc_token term =
   match term.Raw_syntax.datum with

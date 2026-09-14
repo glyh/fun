@@ -500,7 +500,7 @@ and parse_primary env terms =
       | Token { kind = Ident name; _ } -> (
           match
             Binding.find_operator env.operators ~fixity:Binding.Prefix
-              ~syntax_class:env.syntax_class name
+              ~syntax_class:env.syntax_class ~scope:(token_scope term) name
           with
           | Some { Binding.expansion = Binding.Template template; _ }
             ->
@@ -530,7 +530,7 @@ and parse_primary env terms =
       | Token { kind = Operator name; _ } -> (
           match
             Binding.find_operator env.operators ~fixity:Binding.Prefix
-              ~syntax_class:env.syntax_class name
+              ~syntax_class:env.syntax_class ~scope:(token_scope term) name
           with
           | Some { Binding.expansion = Binding.Template template; _ }
             ->
@@ -678,7 +678,7 @@ and parse_postfix_infix env min_prec lhs terms =
       | Some symbol -> (
           match
             Binding.find_operator env.operators ~fixity:Binding.Infix
-              ~syntax_class:env.syntax_class symbol
+              ~syntax_class:env.syntax_class ~scope:(token_scope term) symbol
           with
           | Some op when op.precedence >= min_prec ->
               let next_min =
@@ -1075,7 +1075,7 @@ and parse_operator_template_decl env (sym_id : Syntax.id) prec assoc value_terms
     }
   in
   let op = Binding.template_infix ~declaration_span:sym_span sym template prec assoc in
-  Binding.add_operator env.operators op;
+  Binding.add_operator ~scope:sym_id.scope env.operators op;
   Some
     (TemplateSyntaxDecl
        { syntax_name = sym_id; syntax_export = op })
@@ -1115,7 +1115,7 @@ and parse_syntax_template_decl env head_term head body_terms rest =
     }
   in
   let op = Binding.template_prefix ~declaration_span:head_term.span head template 50 in
-  Binding.add_operator env.operators op;
+  Binding.add_operator ~scope:(token_scope head_term) env.operators op;
   TemplateSyntaxDecl
     { syntax_name = id_of head_term head; syntax_export = op }
 
@@ -1153,11 +1153,11 @@ and expand_decl_syntax_template env parse_decl use_span
 
 and parse_decl_template_use env parse_decl stmt =
   match drop_separators stmt with
-  | ({ datum = Token { kind = Ident head; _ }; span; _ } as _head_term) :: _
+  | ({ datum = Token { kind = Ident head; _ }; span; _ } as head_term) :: _
     -> (
       match
         Binding.find_operator env.operators ~fixity:Binding.Prefix
-          ~syntax_class:env.syntax_class head
+          ~syntax_class:env.syntax_class ~scope:(token_scope head_term) head
       with
       | Some { Binding.expansion = Binding.Template template; _ } ->
           let bindings, rest =
@@ -1209,7 +1209,7 @@ and parse_operator_decl env stmt =
                ~fixity:Binding.Prefix ~precedence:prec ~associativity:Binding.Left
                ~expansion:Binding.BuiltinApply ()
            in
-           Binding.add_operator env.operators op;
+           Binding.add_operator ~scope:name_id.scope env.operators op;
            Some (TemplateSyntaxDecl { syntax_name = name_id; syntax_export = op })
        | _ -> error "prefix operator with a body is not supported")
   | Some (`Infix (name_id, prec, assoc, assoc_span, value_terms))
@@ -1226,7 +1226,7 @@ and parse_operator_decl env stmt =
           ~fixity:Binding.Infix ~precedence:prec ~associativity:assoc
           ~expansion:Binding.BuiltinApply ()
       in
-      Binding.add_operator env.operators op;
+      Binding.add_operator ~scope:name_id.scope env.operators op;
       Some (TemplateSyntaxDecl { syntax_name = name_id; syntax_export = op })
   | Some (`Infix (name_id, prec, assoc, assoc_span, value_terms)) ->
       let name = (name_id : Syntax.id).name and name_span = name_id.span in
@@ -1251,7 +1251,7 @@ and parse_operator_decl env stmt =
         let value, rest = parse_operator_value env assoc_span value_terms in
         ensure_no_rest "infix declaration" rest;
         let op = Binding.macro_infix ~declaration_span:name_span name prec assoc in
-        Binding.add_operator env.operators op;
+        Binding.add_operator ~scope:name_id.scope env.operators op;
         Some
           (MacroSyntaxDecl
              {
@@ -1328,16 +1328,25 @@ and parse_do_body_terms env span body_terms =
       (* A trailing [;] discards the block's value: every item is a statement
          and the block is [()]. *)
       let discards = match List.rev body_terms with last :: _ -> is_separator last | [] -> false in
-      match List.rev (split_statements body_terms) with
-      | [] -> error "empty block"
-      | final_stmt :: rev_statements ->
-          let statements, final_stmt =
-            if discards then (List.rev (final_stmt :: rev_statements), None)
-            else (List.rev rev_statements, Some final_stmt)
-          in
-          let wrappers =
-            List.map
-              (fun stmt ->
+      let items =
+        map_context_statements
+          (fun ~last stmt ->
+            if last && not discards then Either.Right (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
+            else Either.Left (do_statement env span stmt))
+          body_terms
+      in
+      let rev_wrappers, body =
+        match List.rev items with
+        | [] -> error "empty block"
+        | Either.Right body :: rev -> (rev, body)
+        | rev -> (rev, unit ~span ())
+      in
+      List.fold_left
+        (fun acc item -> match item with Either.Left wrap -> wrap acc | Either.Right _ -> acc)
+        body rev_wrappers)
+
+(* One statement of a block, as the wrapper that scopes it over the rest. *)
+and do_statement env span stmt =
                 match parse_operator_decl_in_do env stmt with
                 | Some
                     (MacroSyntaxDecl
@@ -1391,15 +1400,7 @@ and parse_do_body_terms env span body_terms =
                                 | None ->
                                     fun acc ->
                                       scoped_binding_to_expr env span stmt acc))
-                        )))
-              statements
-          in
-          let body =
-            match final_stmt with
-            | Some stmt -> parse_all (fun ts -> parse_expr_prec env 0 ts) stmt
-            | None -> unit ~span ()
-          in
-          List.fold_right (fun wrap acc -> wrap acc) wrappers body)
+                        ))
 
 and parse_public_prefix stmt =
   match drop_separators stmt with
@@ -1558,8 +1559,8 @@ and parse_module_statement env stmt =
 
 and parse_module_bindings env body_terms =
   with_operator_scope env (fun env ->
-      split_statements body_terms
-      |> List.concat_map (parse_module_statement env))
+      map_context_statements (fun ~last:_ stmt -> parse_module_statement env stmt) body_terms
+      |> List.concat)
 
 and collect_public_syntax_statement env stmt =
   let parse_decl terms =
@@ -1585,8 +1586,7 @@ and collect_public_syntax_statement env stmt =
 
 and collect_public_syntax_exports env body_terms =
   with_operator_scope env (fun env ->
-      split_statements body_terms
-      |> List.iter (collect_public_syntax_statement env))
+      ignore (map_context_statements (fun ~last:_ stmt -> collect_public_syntax_statement env stmt) body_terms))
 
 and parse_struct_field env stmt =
   match drop_separators stmt with
@@ -1656,16 +1656,13 @@ and parse_struct_statement env stmt =
           | None -> []))
 
 and parse_struct_items env body_terms =
-  split_statements body_terms
-  |> List.fold_left
-       (fun (fields, bindings) stmt ->
-         match parse_struct_field env stmt with
-         | Some field -> (fields @ [ field ], bindings)
-         | None -> (
-             match parse_struct_statement env stmt with
-             | [] -> (fields, bindings)
-             | new_bindings -> (fields, bindings @ new_bindings)))
-       ([], [])
+  map_context_statements
+    (fun ~last:_ stmt ->
+      match parse_struct_field env stmt with
+      | Some field -> ([ field ], [])
+      | None -> ([], parse_struct_statement env stmt))
+    body_terms
+  |> List.fold_left (fun (fields, bindings) (f, b) -> (fields @ f, bindings @ b)) ([], [])
 
 let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms
 

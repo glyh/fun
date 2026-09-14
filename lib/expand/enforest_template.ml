@@ -8,7 +8,6 @@ type callbacks = {
     (string * Syntax_template.captured) list -> Raw_syntax.t list -> Syntax.struct_binding list;
 }
 
-let intro_scope_counter = ref (-1)
 
 let parse_template_hole_kind = function
   | "expr" -> Syntax_template.Expr
@@ -375,8 +374,7 @@ and rewrite_nested_syntax_body bound body_terms =
   |> join_branches
 
 let fresh_intro_scope ?unit () =
-  let scope = !intro_scope_counter in
-  decr intro_scope_counter;
+  let scope = Syntax_template.fresh_scope () in
   Hashtbl.replace Syntax_template.template_intro_scopes scope ();
   Option.iter (Hashtbl.replace Syntax_template.intro_scope_units scope) unit;
   Scope_set.singleton scope

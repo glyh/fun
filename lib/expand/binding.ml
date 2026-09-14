@@ -88,29 +88,37 @@ let resolve (tbl : t) (id : Syntax.id) : binding_info option =
 
 (* --- Operators as bindings ---------------------------------------------- *)
 
-(* Operator resolution is string-keyed and newest-wins, NOT scope-based like
-   [resolve]: during enforestation there are no scope sets yet (they are added
-   only in the expand phase), so [resolve]'s [more_specific] fold would return
-   the OLDEST candidate on equal/empty scopes — wrong for shadowing. [extend]
-   prepends, so [List.find_map] over the stacked infos returns the most recently
-   added operator; builtins seeded first sit at the tail and act as fallback.
-   (Hygienic, scope-set-keyed operator resolution is deferred to the interleaving
-   driver, which is the only phase with scopes to key against.) *)
-let find_operator (tbl : t) ~fixity ~syntax_class name : operator_info option =
-  match Hashtbl.find_opt tbl name with
-  | None -> None
-  | Some infos ->
-      List.find_map
-        (fun info ->
-          match info.operator with
-          | Some op when op.fixity = fixity && op.syntax_class = syntax_class -> Some op
-          | _ -> None)
-        infos
-
-let add_operator (tbl : t) (op : operator_info) =
-  let info =
-    { scope = Scope_set.empty; resolved_name = op.symbol; kind = Value; operator = Some op }
+(* A syntactic role is resolved like any binder (M7): among the roles of that
+   name, fixity and class whose scope set is a subset of the occurrence's, the
+   one with the largest wins, and two incomparable ones are ambiguous. Roles
+   with equal scope sets - two imports of one operator, or two declarations in
+   one statement - resolve to the one added last; [add_operator] prepends, so
+   that is the first candidate. *)
+let find_operator (tbl : t) ~fixity ~syntax_class ~(scope : Scope_set.t) name : operator_info option =
+  let candidates =
+    Option.value ~default:[] (Hashtbl.find_opt tbl name)
+    |> List.filter (fun info ->
+           Scope_set.subset info.scope scope
+           && match info.operator with
+              | Some op -> op.fixity = fixity && op.syntax_class = syntax_class
+              | None -> false)
   in
+  let best a b =
+    if Scope_set.subset b.scope a.scope then a
+    else if Scope_set.subset a.scope b.scope then b
+    else incompatible_best name a b
+  in
+  match candidates with
+  | [] -> None
+  | first :: rest -> (List.fold_left best first rest).operator
+
+(* Incremented whenever a role is added: the enforester mints a statement's
+   scope only when the statement declared one. *)
+let role_generation = ref 0
+
+let add_operator ?(scope = Scope_set.empty) (tbl : t) (op : operator_info) =
+  incr role_generation;
+  let info = { scope; resolved_name = op.symbol; kind = Value; operator = Some op } in
   let existing = try Hashtbl.find tbl op.symbol with Not_found -> [] in
   Hashtbl.replace tbl op.symbol (info :: existing)
 

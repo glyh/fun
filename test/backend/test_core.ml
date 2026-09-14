@@ -1510,7 +1510,11 @@ let driver_vs_pipeline source =
       ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source
   in
   let driver_output = run_driver source in
-  (pipeline_surface, driver_output.expanded)
+  (* Each parse mints its own enforestation scopes (negative, from one global
+     counter), so compare with those erased; the expander's scopes restart per
+     context and must agree. *)
+  let erase = Expand.map_ids (fun (id : Syntax.id) -> { id with scope = List.filter (fun s -> s >= 0) id.scope }) in
+  (erase pipeline_surface, erase driver_output.expanded)
 
 (** Stage 3: structural equivalence — a module with only runtime bindings
     produces the same binding structure from both pipelines. *)
@@ -2582,6 +2586,41 @@ let test_7i_generated_syntax_hygiene_introduced_binder () =
        M.result
      }" ()
 
+(* M7: syntactic roles resolve by scope set. *)
+let test_m7_syntax_shadows_syntax_in_block () =
+  check_i64_macro "syntax shadows syntax in a nested block" 21L
+    "{ syntax t { | t => 1 }; x = { syntax t { | t => 2 }; t }; x * 10 + t }" ()
+
+let test_m7_replacement_reads_roles_at_definition () =
+  check_i64_macro "a replacement reads roles as of its definition" (-7L)
+    "{ infix (~) 5 Left ($a, $b) { $a - $b }; syntax t { | t => 1 ~ 2 };
+       infix (~) 5 Left ($a, $b) { $a + $b }; t * 10 + (1 ~ 2) }" ()
+
+let test_m7_template_syntax_visible_in_its_output () =
+  check_i64_macro "a template's syntax form is visible in its own output" 42L
+    "{ syntax mk { | mk => { syntax inc { | inc $x => $x + 1 }; inc 41 } }; mk }" ()
+
+let test_m7_generated_syntax_usable_by_next_form () =
+  check_import_i64 "generated syntax named at the use site is usable by the next form"
+    [ ("gen", "open (import \"std\");
+               syntax make { | make $(n: ident) => multi { syntax $n { | $n $x => $x * 2 } } };
+               make double;
+               pub r = double 21") ]
+    42L "{ M = import \"gen\"; M.r }" ()
+
+let test_m7_template_written_syntax_invisible () =
+  match
+    eval_with_imported_macros
+      [ ("gen", "open (import \"std\");
+                 syntax make { | make => multi { syntax inc { | inc $x => $x + 1 } } };
+                 make;
+                 pub r = inc 5") ]
+      "{ M = import \"gen\"; M.r }"
+  with
+  | VAtom (I64 6L) -> Alcotest.fail "a syntax form the template named itself must be invisible to user code"
+  | _ -> Alcotest.fail "expected the use of an invisible syntax form to be rejected"
+  | exception (Enforest.Error _ | Enforest.Unsupported _ | Elab_error.ElabError _) -> ()
+
 let () =
   Alcotest.run "core"
     [
@@ -3242,5 +3281,13 @@ let () =
           Alcotest.test_case "7I: generated syntax cycle" `Quick test_7i_generated_syntax_cycle;
           Alcotest.test_case "7I: generated macro cycle" `Quick test_7i_generated_macro_cycle;
           Alcotest.test_case "7I: generated syntax hygiene introduced binder" `Quick test_7i_generated_syntax_hygiene_introduced_binder;
+        ] );
+      ( "m7 roles",
+        [
+          Alcotest.test_case "syntax shadows syntax in a nested block" `Quick test_m7_syntax_shadows_syntax_in_block;
+          Alcotest.test_case "replacement reads roles at its definition" `Quick test_m7_replacement_reads_roles_at_definition;
+          Alcotest.test_case "template syntax visible in its output" `Quick test_m7_template_syntax_visible_in_its_output;
+          Alcotest.test_case "generated syntax usable by next form" `Quick test_m7_generated_syntax_usable_by_next_form;
+          Alcotest.test_case "template-written syntax invisible to user" `Quick test_m7_template_written_syntax_invisible;
         ] );
     ]
