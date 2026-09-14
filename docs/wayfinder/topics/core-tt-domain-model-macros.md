@@ -192,7 +192,12 @@ is fixed by its position in the parse and checked at the splice. Hole kinds,
 template capture kinds and macro kinds are one set — the reflection types
 `Expr`, `Pattern`, `Decl`, `Id`. `binder` and `ident` collapse into `Id`:
 binding or referring is the splice position, not the kind. Pattern position
-gains a kind it lacks today.
+gains a kind it lacks today. `Block` joins the set (2026-09-14, M7): a captured `{…}` group
+stays unparsed until the output places it. Kinds are spelled as types —
+`$(x : Decl)`, a bare `$x` being `Expr` — so a template capture is literally the
+macro parameter it desugars to. `quote { … }` quotes declarations; nested holes
+resolve to their nearest binder, with no quote levels
+([ticket](../tickets/templates-desugar-to-macros.md)).
 
 ### M11 — scope sets are opaque values; borrowing is construction
 

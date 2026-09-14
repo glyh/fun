@@ -7,6 +7,8 @@ status: open
 assignee:
 blocked_by:
   - template-heads-resolve-by-scope-set.md
+  - surface-syntax-braces.md
+decided: 2026-09-14 (blockers 2 and 3 grilled)
 ---
 
 # Templates desugar to macros
@@ -72,3 +74,31 @@ things stop it from being done cleanly:
 Doing only expression and infix templates would leave three instantiation
 paths instead of two, and the region rule could not go while declaration
 templates still instantiate at parse time.
+
+## Blockers 2 and 3 grilled (2026-09-14)
+
+Blocker 1 is M7's arrangement (grilled, see its ticket). Written in the
+[brace syntax](surface-syntax-braces.md):
+
+1. **Declaration quotes.** `quote(…)` quotes one expression; `quote { … }`
+   quotes a declaration list with the item grammar of `module { … }`. A hole in
+   item position has kind `Decl`. A block is an expression: `quote({ y = 1; y })`.
+2. **Nested holes resolve lexically.** `$name` refers to the nearest binder of
+   `name` — a template rule's capture, else a macro parameter. Filling an outer
+   quote leaves holes bound inside it untouched:
+   ```fun
+   macro make_adder(base : Expr) : Decl {
+     quote { syntax add_base { | add_base $x => $x + $base }; }
+   }
+   ```
+   No quote levels (`$$`); shadowing is resolved by renaming.
+3. **Hole kinds are spelled as types** (following M10's one kind set):
+   `$(d : Decl)`, `$(name : Id)`, `$(p : Pattern)`, `$(b : Block)`; a bare
+   `$v` is `Expr`. `Block` joins the set (M7: a captured `{…}` stays unparsed
+   until the output places it). A capture `$(x : T)` is the macro parameter
+   `(x : T)` it desugars to; macro parameters take the same annotations.
+4. **Templates carry the macro's kind annotation; `multi` is deleted.**
+   ```fun
+   syntax make_inc : Decl { | make_inc => { syntax inc { | inc $x => $x + 1 }; } }
+   ```
+   desugars one-to-one to `macro make_inc() : Decl { quote { … } }`.
