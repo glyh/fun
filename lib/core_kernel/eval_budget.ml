@@ -13,19 +13,21 @@ exception Exceeded of { limit : int; call : string }
    raises: an overrun, and any other evaluation failure. Each builds that
    application's own error, carrying its site, so an error names where it
    happened at the point it is raised and nothing re-catches it. *)
-type application = {
+type 'value application = {
   exceeded : limit:int -> call:string -> exn;
   failed : string -> exn;
+  (* [expand_block]: expand a reflected block where the application runs (M9). *)
+  expand : 'value -> 'value;
 }
 
 (* [limit = None] while running a program. [application = None] outside any
    macro application: an overrun is the checker's [Exceeded], and a failure is
    the evaluator's own error. *)
-type t = {
+type 'value t = {
   mutable limit : int option;
   mutable remaining : int;
   mutable depth : int;
-  mutable application : application option;
+  mutable application : 'value application option;
 }
 
 (* No surface syntax raises it yet; the ticket leaves that open. *)

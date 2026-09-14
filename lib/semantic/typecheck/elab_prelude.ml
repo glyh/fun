@@ -33,13 +33,15 @@ let prims =
     ("le_i64", i64_predicate);
     ("ge_i64", i64_predicate);
     ("no_scopes", VAtomTy Atom_ty.TUnit ^-> AtomTy Atom_ty.TScopes);
+    (* [expand_block[Syntax.Expr]]: typed in the prelude's [Syntax] module. *)
+    ("expand_block", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = Var 0 ^->> Var 1 } });
   ]
   |> NameMap.of_list
 
 (* Primitives that carry a type but deliberately have no entry in
    [Nbe_prim.prim_table]. [panic] is special-cased inside [Nbe.try_prim_reduce]
    because it needs the frame list and raises rather than returning an atom. *)
-let prims_without_reducer = [ "panic" ]
+let prims_without_reducer = [ "panic"; "expand_block" ]
 
 (* The one desync that is silent, and so the only one worth a check.
    A name in [prims] but missing from [Nbe_prim.prim_table] type-checks fine and
@@ -231,6 +233,8 @@ pub Syntax = module {
   pub char = fn(c) { atom_val(CharAtom(c)) };
   pub unit = fn(_) { atom_val(UnitAtom) };
   pub seq = fn(a, b) { RawLet(None, new_id("_"), None, a, b, False) };
+  pub tokens = fn(b : Expr) { match (b) { | RawBlock(_, ts) => ts | _ => panic[List(TokenTree)]("tokens: not a block") } };
+  pub expand_block = fn(b : Expr) { expand_block[Expr](b) };
   pub id_name = fn(stx) { match (stx) { | RawVar(_, id) => id.name | _ => panic[String]("expected identifier") } };
   pub id_eq = fn(a, b) { match (a) { | RawVar(_, ida) => match (b) { | RawVar(_, idb) => i64_to_bool(eq_string(ida.name, idb.name)) | _ => panic[Bool]("expected identifier") } | _ => panic[Bool]("expected identifier") } }
 

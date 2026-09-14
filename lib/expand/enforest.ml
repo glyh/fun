@@ -513,7 +513,7 @@ and parse_primary env terms =
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
       | Token { kind = Ident "quote"; _ }
         when (match drop_separators rest with { datum = Group ((Raw_syntax.Paren | Raw_syntax.Brace), _, _); _ } :: _ -> true | _ -> false) ->
-          Enforest_forms.parse_quote (form_callbacks (eager_env env)) term.span rest
+          Enforest_forms.parse_quote (fun holes -> form_callbacks (eager_env ~holes env)) term.span rest
       | Token { kind = Ident name | Operator name; _ } -> (
           match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
           | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } ->
@@ -1482,6 +1482,22 @@ let parse_block_head env span terms =
       match drop_separators rest with
       | [] -> do_statement env span stmt (unit ~span ())
       | more -> do_statement env span stmt (stx ~span:(syntax_span more) (Syntax.Block more)))
+
+(* A block statement that uses a [: Decl] syntax form: its declarations bind for
+   the rest of the block, which expansion reads after filling them. The block's
+   last item is its value, an expression position. *)
+let parse_block_decl_form env terms =
+  let stmt, rest = take_statement terms in
+  if rest = [] then None else
+  match drop_separators stmt with
+  | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: _ -> (
+      match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
+      | Some { meaning = Syntax.Rules { rules_kind = Syntax.MacroAnnotation.Decl; _ }; _ } -> (
+          match parse_decl_template_use env stmt with
+          | Some (Syntax.InstantiateBinding inst) -> Some (inst, rest)
+          | _ -> None)
+      | _ -> None)
+  | _ -> None
 
 (* The first item of a definition context, and the items after it. *)
 let parse_items_head env terms =

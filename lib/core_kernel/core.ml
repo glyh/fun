@@ -620,7 +620,7 @@ module MetaContext = struct
   type entry = Solved of value | Unsolved
   (* The metas and the evaluation budget travel together: both are the state of
      one checking session that every evaluator call is handed. *)
-  type t = { entries : entry Dynarray.t; budget : Eval_budget.t }
+  type t = { entries : entry Dynarray.t; budget : value Eval_budget.t }
 
   (* [budget] is shared, not copied: a macro application evaluates its body
      with fresh metas (it solves nothing its caller needs) under the budget of

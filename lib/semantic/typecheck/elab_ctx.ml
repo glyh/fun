@@ -54,7 +54,7 @@ and macro_runtime = {
     Option.map
       (fun eval_and_apply ->
         { run_macro = eval_and_apply ectx.Expand_ctx.budget;
-          macro_application = (fun ~name f -> Expand_ctx.macro_application ectx ~name f);
+          macro_application = (fun ~name f -> Expand_ctx.macro_application ectx ~name ~expand:(Expand.expand ectx) f);
           expand = Expand.expand ectx;
           application = (fun () -> Expand.application ectx);
           roles_in_open = Expand_ctx.roles_in_open ectx })

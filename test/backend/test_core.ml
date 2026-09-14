@@ -2713,6 +2713,100 @@ let test_m7_template_written_syntax_invisible () =
   | _ -> Alcotest.fail "expected the use of an invisible syntax form to be rejected"
   | exception (Enforest.Error _ | Enforest.Unsupported _ | Elab_error.ElabError _) -> ()
 
+
+(* M9: syntax forms are macros filled at expansion; bodies stay unread until
+   expansion reaches them; blocks reflect as token trees. *)
+
+let test_m9_block_tokens_inspected () =
+  check_i64_macro "a macro reads a block's tokens" 1L
+    "{
+       macro sql(q) {
+         match (Syntax.tokens(q)) {
+         | Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
+             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) }
+         | _ => Syntax.i64(2)
+         }
+       };
+       sql({ SELECT name FROM users WHERE age > 18 })
+     }" ()
+
+let test_m9_block_hole_in_module_slot () =
+  check_import_i64 "a Block hole fills a module body"
+    [ ("ns", "open (import \"std\");
+              syntax namespace : Decl { | namespace $(n : Id) $(b : Block) => { pub $n = module $b } };
+              namespace Geometry { pub pi = 3; pub tau = 6 };
+              pub answer = Geometry.tau") ]
+    6L "{ M = import \"ns\"; M.answer }" ()
+
+let test_m9_body_read_after_earlier_statement () =
+  check_i64_macro "a body inside a macro argument reads generated syntax" 12L
+    "{
+       syntax make_inc : Decl { | make_inc $(n : Id) => { syntax $n { | $n $x => $x + 1 } } };
+       macro twice(e) { quote($e + $e) };
+       run = fn(f) { f(()) };
+       twice(run(fn(_) { make_inc inc; inc 5 }))
+     }" ()
+
+let test_m9_decl_form_as_block_statement () =
+  check_i64_macro "a Decl form binds for the rest of a block" 7L
+    "{
+       syntax seven : Decl { | seven $(n : Id) => { $n = 7 } };
+       seven x;
+       x
+     }" ()
+
+let test_m9_expand_block_placed_back () =
+  check_i64_macro "expanded forms placed back into output" 8L
+    "{
+       syntax double { | double $x => $x + $x };
+       macro pre(b) { Syntax.expand_block(b) };
+       pre({ z = 4; double z })
+     }" ()
+
+let test_m9_quote_nested_rule_holes () =
+  check_i64_macro "a quote's inner rule binds its own holes, the macro's fill the rest" 21L
+    "{
+       M = module {
+         macro make_adder(base) : Decl {
+           quote { syntax add_base { | add_base $x => $x + $base }; pub result = add_base 1 + add_base 10; }
+         };
+         make_adder(5)
+       };
+       M.result
+     }" ()
+
+(* Names and shape only: a binder expanded again gets a fresh scope, which
+   resolution of an already-resolved name never consults. *)
+let erase_scopes stx = Expand.map_ids (fun id -> { id with Syntax.scope = Scope_set.empty }) stx
+
+let test_m9_expansion_idempotent () =
+  let source = "{ syntax double { | double $x => $x + $x }; f = fn(y) { z = double y; match (z) { w => w } }; f(3) }" in
+  let once, ctx = Parse_expand.parse_expr_with_ctx ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
+  let twice = Expand.expand ctx once in
+  Alcotest.(check bool) "expanding expanded syntax renames nothing" true (erase_scopes once = erase_scopes twice)
+
+(* An expression's expansion inside the prelude open, with scopes and source
+   positions erased: the two sources differ in length. *)
+let expanded_body source =
+  let ctx = Elaborate.init_ctx () in
+  let elaborate expr = let core, _ = Elaborate.on_expr ctx expr in Elaborate.Ctx.eval ctx core in
+  let expr, _ =
+    Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply:Nbe.apply_macro
+      ~syntax_nominals:(Elaborate.syntax_nominals ctx) ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+  in
+  let erase stx =
+    Expand.map_forms
+      (fun id -> { id with Syntax.scope = Scope_set.empty; span = Source_span.synthetic })
+      (fun form -> { form with Syntax.span = Source_span.synthetic })
+      stx
+  in
+  match expr.kind with Syntax.Open (_, body, _) -> erase body | _ -> erase expr
+
+let test_m9_filling_equals_quote () =
+  Alcotest.(check bool) "a syntax form fills what its macro's quote evaluates to" true
+    (expanded_body "{ syntax plus1 { | plus1 $x => $x + 1 }; plus1 41 }"
+     = expanded_body "{ macro plus1(x) { quote($x + 1) }; plus1(41) }")
+
 let () =
   Alcotest.run "core"
     [
@@ -3397,5 +3491,16 @@ let () =
           Alcotest.test_case "open under syntax" `Quick test_m7_open_under_syntax;
           Alcotest.test_case "syntax inside open region" `Quick test_m7_syntax_inside_open_region;
           Alcotest.test_case "open without conflict" `Quick test_m7_open_without_conflict;
+        ] );
+      ( "m9 forms",
+        [
+          Alcotest.test_case "a macro reads a block's tokens" `Quick test_m9_block_tokens_inspected;
+          Alcotest.test_case "a Block hole fills a module body" `Quick test_m9_block_hole_in_module_slot;
+          Alcotest.test_case "a body in a macro argument reads generated syntax" `Quick test_m9_body_read_after_earlier_statement;
+          Alcotest.test_case "a Decl form as a block statement" `Quick test_m9_decl_form_as_block_statement;
+          Alcotest.test_case "expand_block output placed back" `Quick test_m9_expand_block_placed_back;
+          Alcotest.test_case "expansion is idempotent" `Quick test_m9_expansion_idempotent;
+          Alcotest.test_case "filling equals the quote" `Quick test_m9_filling_equals_quote;
+          Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
         ] );
     ]

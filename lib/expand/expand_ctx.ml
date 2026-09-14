@@ -24,12 +24,12 @@ type t = {
   mutable provisional_macros : (string, unit) Hashtbl.t;
   mutable elaborate : (Syntax.t -> Core.value) option;
   (* Applies a macro value to an argument, spending from the budget it is handed. *)
-  mutable eval_and_apply : (Eval_budget.t -> Core.value -> Core.value -> Core.value) option;
+  mutable eval_and_apply : (Core.value Eval_budget.t -> Core.value -> Core.value -> Core.value) option;
   mutable load_macros : (t -> string -> unit) option;
   mutable syntax_nominals : Macro_eval.syntax_nominals option;
   (* The evaluation budget macro applications count against (M5). Shared, not
      copied, by [copy]. *)
-  budget : Eval_budget.t;
+  budget : Core.value Eval_budget.t;
   (* Macros are MEMBERS of a compilation unit, not names a bare [import]
      injects. [unit_macros] records, per unit path, the macro names that unit
      exports; each is registered in [macro_table] under [unit_macro_key], a key
@@ -192,10 +192,17 @@ let resolved_name_counter = ref 0
    contain (it begins a comment), so no written name can ever equal one - by
    construction, not by the counter's freshness. The counter is global, so a name
    minted by one expander is never re-minted by another. *)
+let is_resolved_name name = String.contains name '#'
+
+(* A name already resolved is final: expanding expanded syntax again leaves it
+   alone, which is what makes expansion idempotent (M9). *)
 let fresh_resolved_name name =
-  let i = !resolved_name_counter in
-  incr resolved_name_counter;
-  Printf.sprintf "%s#%d" name i
+  if is_resolved_name name then name
+  else begin
+    let i = !resolved_name_counter in
+    incr resolved_name_counter;
+    Printf.sprintf "%s#%d" name i
+  end
 
 let is_intro_scope (ctx : t) s = Hashtbl.mem ctx.intro_scopes s
 
@@ -387,11 +394,18 @@ let fill_provisional_macro ctx ~name ~value =
 (* Run one macro application, and the expansion of its output, as a call under
    the evaluation budget. An overrun or evaluation failure inside it is this
    application's error, at [site] when it came from a syntax operator. *)
-let macro_application ?site ctx ~name f =
+let macro_application ?site ctx ~name ~expand f =
   let error e = Expand_error.Error { error = e; site } in
+  let expand v =
+    let nominals = ctx.syntax_nominals in
+    match Macro_eval.unwrap_stx ?nominals v with
+    | Some stx -> Macro_eval.wrap_stx ~nominals (expand stx)
+    | None -> raise (error (NotSyntax { macro = "expand_block"; got = Macro_eval.value_tag v }))
+  in
   let application = Eval_budget.{
     exceeded = (fun ~limit ~call -> error (BudgetExceeded { macro = name; limit; call }));
-    failed = (fun message -> error (EvalFailed { macro = name; message })) } in
+    failed = (fun message -> error (EvalFailed { macro = name; message }));
+    expand } in
   Eval_budget.macro_application ctx.budget ~call:(Printf.sprintf "macro '%s'" name) ~application f
 
 let resolve (ctx : t) (id : Syntax.id) : Binding.binding_info option =

@@ -480,6 +480,7 @@ let member_scope (m : t) : Scope_set.t =
 (* Where an occurrence resolves (M12): its binder's resolved name, or an open
    choice when some open may supply it or no binder takes it. *)
 let resolve_occurrence (ctx : Expand_ctx.t) (id : Syntax.id) : (string, Syntax.open_choice) Either.t =
+  if Expand_ctx.is_resolved_name id.name then Left id.name else
   let binder = Expand_ctx.resolve ctx id in
   match binder, Expand_ctx.open_candidates ctx id binder with
   | Some info, [] -> Left info.resolved_name
@@ -500,6 +501,21 @@ let in_definition_site_opens (ctx : Expand_ctx.t) (name : Syntax.id) (body : Syn
       { body with kind = Open (synth (Import path), body, Compiler_names.Module_name.unit_open_label path) })
     (Expand_ctx.enclosing_unit_opens ctx name.scope)
     body
+
+(* A declaration in a block, as the form that scopes it over the rest. *)
+let decl_over (binding : struct_binding) (body : t) : t =
+  let over kind = { kind; span = body.span } in
+  match binding with
+  | LetBinding { name; value; recursive; public = false } -> over (Let { name; type_ = None; value; body; recursive })
+  | SyntaxBinding { name; role; public = false } -> over (SyntaxDef { name; role; body })
+  | MacroBinding { name; value; kind; public = false } -> over (MacroDef { name; value; body; kind })
+  | TypeBinding { members = [ { name; params; ctors } ]; public = false } -> over (TypeDef { name; params; ctors; body })
+  | RecordTypeBinding { name; params; fields; public = false } -> over (RecordTypeDef { name; params; fields; body })
+  | EffectBinding { name; params; ops; public = false } -> over (EffectDef { name; params; ops; body })
+  | TraitBinding { name; params; fields; public = false } -> over (TraitDef { name; params; fields; body })
+  | ImplBinding { name; trait; args; fields; public = false } -> over (ImplDef { name; trait; args; fields; body })
+  | OpenBinding (m, label) -> over (Open (m, body, label))
+  | _ -> Enforest_util.error "a declaration syntax form in a block writes only private lets, types, effects, traits, impls, opens, macros and syntax"
 
 (* The roles unit [path] exports, when an [import] of it is expanded: visible to
    the whole unit importing it. An imported rule's replacement was parsed in
@@ -542,10 +558,24 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     import_roles ctx path;
     Option.iter (fun f -> f ctx path) ctx.Expand_ctx.load_macros;
     stx
-  | Block terms ->
+  | Block terms -> (
     (* Read the body's first statement with the roles bound here, scoped over
        the rest, which stays unread until expansion reaches it (M9). *)
-    expand ctx (Enforest.parse_block_head (Enforest_util.lazy_env ctx.Expand_ctx.binding_table) stx.span terms)
+    let env = Enforest_util.lazy_env ctx.Expand_ctx.binding_table in
+    match Enforest.parse_block_decl_form env terms with
+    | Some (inst, rest) ->
+      let body =
+        match Enforest_util.drop_separators rest with
+        | [] -> { stx with kind = Atom Atom.Unit }
+        | more -> { stx with kind = Block more }
+      in
+      expand ctx
+        (instantiate ctx inst (fun app captures -> function
+           | ReplaceDecls ds ->
+             let filled = splice_decl_holes captures (List.map (go_struct_binding (fill captures)) ds) in
+             List.fold_right decl_over (List.map app.emit_binding filled) body
+           | ReplaceExpr _ -> Expand_error.raise_at (NotDeclarations { macro = inst.form.name })))
+    | None -> expand ctx (Enforest.parse_block_head env stx.span terms))
   | Instantiate inst ->
     instantiate ctx inst (fun app captures -> function
       | ReplaceExpr e -> expand ctx (app.emit (map_forms_with (fill captures) e))
@@ -762,7 +792,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       | Some apply_fn ->
         let apply_fn = apply_fn ctx.Expand_ctx.budget in
         let site : Expand_error.site = { operator = operator.name; use_span; declaration_span } in
-        Expand_ctx.macro_application ~site ctx ~name:operator.name (fun () ->
+        Expand_ctx.macro_application ~site ctx ~name:operator.name ~expand:(expand ctx) (fun () ->
           let app = application ctx in
           let operands = List.map app.receive operands in
           let result = match operands with
@@ -806,7 +836,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
    replacement with what the use captured, under the one budget. *)
 and instantiate : 'a. Expand_ctx.t -> instantiation -> (application -> (string * capture) list -> rule_replacement -> 'a) -> 'a =
   fun ctx inst k ->
-  Expand_ctx.macro_application ctx ~name:inst.form.name (fun () ->
+  Expand_ctx.macro_application ctx ~name:inst.form.name ~expand:(expand ctx) (fun () ->
     let app = application ?unit:inst.from_unit ctx in
     k app (List.map (fun (n, c) -> (n, app.receive_capture c)) inst.captures) inst.rule.replacement)
 
@@ -836,7 +866,7 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     | Some apply_fn ->
       let apply_fn = apply_fn ctx.Expand_ctx.budget in
       let site = Option.bind (List.nth_opt macro_args 0) syntax_operator_site in
-      Expand_ctx.macro_application ?site ctx ~name:key (fun () ->
+      Expand_ctx.macro_application ?site ctx ~name:key ~expand:(expand ctx) (fun () ->
         let app = application ctx in
         let result =
           List.fold_left (fun fn arg ->
@@ -1045,7 +1075,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
             | Some k -> k | None -> Syntax.MacroKind.default in
           check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Decl;
           let apply_fn = apply_fn ctx.Expand_ctx.budget in
-           Expand_ctx.macro_application ctx ~name:key (fun () ->
+           Expand_ctx.macro_application ctx ~name:key ~expand:(expand ctx) (fun () ->
              let app = application ctx in
              let fn = List.fold_left (fun fn arg ->
                 let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals (app.receive arg) in

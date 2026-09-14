@@ -89,20 +89,29 @@ let parse_ref callbacks start_span terms =
    as quoted syntax by [callbacks]. Each [$x] becomes an id spelled ["$x"]
    where it stands, so the form parses as written, and a reference [x] in the
    hole list, so the macro's own variable is resolved like any other. *)
-let parse_quote callbacks start_span terms =
-  let holes = ref [] in
-  let on_hole name term =
-    let hole = "$" ^ name in
-    if not (List.mem_assoc hole !holes) then holes := (hole, var_of term name) :: !holes
+let parse_quote (callbacks : string list -> callbacks) start_span terms =
+  (* The quote's holes: those no rule inside it binds (M9: a hole resolves to
+     its nearest binder), each a reference to the macro's variable. *)
+  let quoted items =
+    let written = ref [] in
+    let on_hole name term = if not (List.mem_assoc name !written) then written := (name, term) :: !written in
+    let items = Enforest_template.rewrite_holes ~on_hole items in
+    let free = Enforest_template.replacement_holes items in
+    let holes =
+      List.rev !written
+      |> List.filter (fun (name, _) -> List.mem name free)
+      |> List.map (fun (name, term) -> ("$" ^ name, var_of term name))
+    in
+    (items, holes, callbacks free)
   in
-  let rewrite = Enforest_template.rewrite_holes ~on_hole in
   match drop_separators terms with
   | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
-      let template = parse_group_arg callbacks (rewrite items) in
-      (stx ~span:(span_between start_span span) (Syntax.Quote { template; holes = List.rev !holes }), rest)
+      let items, holes, callbacks = quoted items in
+      let template = parse_group_arg callbacks items in
+      (stx ~span:(span_between start_span span) (Syntax.Quote { template; holes }), rest)
   | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest ->
-      let items = callbacks.parse_items (rewrite items) in
-      (stx ~span:(span_between start_span span) (Syntax.QuoteDecls { items; holes = List.rev !holes }), rest)
+      let items, holes, callbacks = quoted items in
+      (stx ~span:(span_between start_span span) (Syntax.QuoteDecls { items = callbacks.parse_items items; holes }), rest)
   | _ -> error "quote is written quote(expression) or quote { declarations }"
 
 let parse_deref callbacks start_span terms =

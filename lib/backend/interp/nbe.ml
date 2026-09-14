@@ -446,6 +446,11 @@ and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : v
         | _ -> "panic"
       in
       fail mc msg
+  (* [expand_block(b)]: the running macro application expands [b] (M9). *)
+  | HPrim "expand_block" when List.length frames >= 2 -> (
+      match (mc.budget.application, List.nth frames 1) with
+      | Some app, FApp block -> Some (app.expand block)
+      | _ -> fail mc "expand_block runs only inside a macro application")
   | HPrim name -> (
       let atoms =
         List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames
