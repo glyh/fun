@@ -415,6 +415,8 @@ What remains, in the recommended order:
   operator's site; evaluator errors (`panic`, …) in a body still carry no site.
 - [An evaluation error inside a macro body carries no site](tickets/macro-body-eval-errors-lack-site.md)
   — `panic`/missing field in a macro body reports without the operator span.
+- [Each core-term traversal counts binders on its own](tickets/core-traversals-count-binders-separately.md)
+  — `closure_slots` and `shift_term` disagree on match branches and definitions; one definition in `Core`.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
   — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 
