@@ -126,7 +126,8 @@ was *defined*. One contract, because one path.
 _Avoid_: syntax macro, pattern macro, syntax-rules
 
 **Quoted syntax**:
-Syntax written literally inside a macro body, as `quote(…)`. Its ids carry the
+Syntax written literally inside a macro body, as `quote(…)` for an
+expression or `quote { … }` for declarations. Its ids carry the
 scopes of where the macro was defined, so they resolve there — the hygienic way
 a macro refers to a name. It is parsed where it is written, so its shape is
 fixed there too — no caller's operator or syntax form can reach inside it. It
@@ -139,10 +140,10 @@ _Avoid_: template (that is a whole rewrite plus a parse), literal, gensym
 **Hole**:
 A named place in a template's pattern or in quoted syntax. In a pattern it
 captures a syntax object; in quoted syntax it splices one. Its kind is a
-reflection type — `Expr`, `Pattern`, `Decl` or `Id` — and nothing else: the
-kinds a template captures are the parameter types of the macro it is sugar
-for. Whether an `Id` binds or refers is decided by where it is spliced, not by
-its kind.
+reflection type — `Expr`, `Pattern`, `Decl`, `Id` or `Block` — and nothing
+else, written as the type: `$(x : Id)`, a bare `$x` being `Expr`. The kinds a
+template captures are the parameter types of the macro it is sugar for. Whether
+an `Id` binds or refers is decided by where it is spliced, not by its kind.
 _Avoid_: capture kind, binder hole, ident hole, metavariable
 
 **Borrowed context**:

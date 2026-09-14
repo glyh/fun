@@ -398,7 +398,10 @@ What remains, in the recommended order:
   `struct { x: I64 }` record types, `->` only for function types, newlines are
   whitespace, trailing `;` discards.
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
-  **Grilled 2026-09-14:** `quote { … }` for declarations, `$name` resolves to its
+  **Run 1 (2026-09-14):** kinds as types, `quote { … }`, `: Decl` templates and
+  `multi`'s removal landed; stopped on five questions in the ticket (bodies inside
+  quotes vs typed holes, template macros and the elaborator, where syntax exports
+  come from, syntax declarations as data, idempotence). **Grilled 2026-09-14:** `quote { … }` for declarations, `$name` resolves to its
   nearest binder (no quote levels), kinds spelled `$(x : Decl|Id|Pattern|Block)`,
   templates take `: Decl` and `multi` is deleted. Unparsed bodies grilled: `Block` is a readable token tree placeable in any `{…}` slot, bodies stay raw until expansion reaches them, `expand_block` is local-expand, expansion is idempotent. Unblocked (M7 landed); now also
   carries M7's expander-driven loop and unparsed block captures. Retires the

@@ -61,6 +61,19 @@ Last updated: after the brace surface syntax, 2026-09-14.
 - Prelude and every test source migrated mechanically
   ([surface-syntax-braces](wayfinder/tickets/surface-syntax-braces.md)).
 
+### Macro model M9, run 1 (2026-09-14)
+- Hole kinds are reflection types: `$(x : Expr | Block | Id | Decl | Pattern)`,
+  a bare `$v` is `Expr`; `binder`/`ident` are gone (`Id` binds or refers by
+  position). A `Pattern` capture splices a use-site pattern.
+- `syntax head : Decl { | pat => { items } }`; a syntax form is used only in its
+  kind's position. `multi` is deleted.
+- `quote { items }` quotes declarations; a lone `$d` item is a `Decl` hole.
+- The expansion position is the site's: a `Decl` macro works inside an
+  expression-level `module { … }`.
+- Templates still instantiate during enforestation; templates as macros, the
+  expander-driven loop, `Block` token trees and `expand_block` wait on the
+  questions in [templates-desugar-to-macros](wayfinder/tickets/templates-desugar-to-macros.md).
+
 ### Checker evaluation budget (2026-09-14)
 - Every evaluation the checker asks for spends from one call budget
   (`Eval_budget`, 1,000,000 calls per request, no surface syntax to raise it);

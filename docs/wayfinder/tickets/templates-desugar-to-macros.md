@@ -144,3 +144,65 @@ them. How that looks to a macro:
 5. **Expanded forms may be placed back into output; expansion is idempotent.**
    Re-expanding expanded syntax changes nothing — no second rename of resolved
    binders, no duplicate scopes. The invariant gets its own test.
+
+## Implementation run 1 (2026-09-14): landed, then stopped on open questions
+
+**Landed** (`de0a1fd`, suite green):
+
+- Hole kinds are reflection types, written `$(x : Expr | Block | Id | Decl |
+  Pattern)`; a bare `$v` is `Expr`. `binder`/`ident` collapse into `Id`, which
+  binds or refers by position; a lowercase kind is an error naming the new
+  spelling. A `Pattern` capture splices a use-site pattern and its binders.
+- `syntax head : Decl { | pat => { items } }`: a syntax form carries the macro
+  kind annotation and is used only in its kind's position (an error names the
+  mismatch); a `Decl` form's replacement is a brace group of items. `multi` is
+  deleted, with an error naming the new form.
+- `quote { items }` quotes declarations with the module item grammar
+  (`Syntax.QuoteDecls`, reflected `RawQuoteDecls`, typed `Syntax.Decls`); a lone
+  `$d` item is a `Decl` hole (`Syntax.HoleBinding`, reflected `DeclHole`).
+- The expansion position is the site's, not expander state: an application form
+  is an expression, an item-position call is a `MacroCallBinding`. (A `Decl`
+  macro now works inside an expression-level `module { … }`.)
+- A pattern name is a constructor only when it starts with an uppercase letter;
+  a quote hole `$p` in pattern position was a constructor before.
+
+**Not started:** templates as macros, the expander-driven loop, `Block` token
+trees, `expand_block`, idempotence, macro parameter kinds (`(x : Id)`), lexical
+holes for templates nested in quotes.
+
+**Open questions (need a decision before the loop and templates-as-macros):**
+
+1. *Bodies inside a quote.* Unparsed bodies (decision 3) and typed holes (M10)
+   conflict inside quoted syntax. If a quote's bodies stay raw until expansion,
+   a hole inside one has no position at the definition, so its kind cannot be
+   checked there (`quote({ y = $e; y })`: is `$e` an `Expr`?). If a quote is
+   parsed completely at its definition, holes stay typed, but a quoted block
+   cannot use syntax that an earlier form of the same block generates by a macro
+   call (`{ make_inc inc; inc 5 }` inside a quote or a template replacement).
+   Directly written `syntax` declarations inside a quote still work either way.
+   Recommendation: parse quotes completely at the definition (M10 as written).
+2. *Does a template's macro need the elaborator?* Its body is only a quote. The
+   expander can fill it directly (same result, no evaluator), or it can be
+   compiled and run like any macro. The second makes every expansion need an
+   elaborator: the prelude defines `if`/`&&`/`||` before its own `Syntax` module
+   and is expanded with none, and so are `Parse_expand.parse_expr` callers
+   (every elaborator test helper, the syntax shape tests). Recommendation: the
+   expander fills a template's quote; it is still one application path
+   (`Expand.application`).
+3. *Where syntax exports come from.* Once a template instance runs during
+   expansion, a unit's generated `pub syntax` exists only after expanding the
+   unit, but the importer's enforester asks for exports mid-parse
+   (`load_syntax_exports`, today an enforester pre-scan that instantiates
+   templates). Recommendation: exports come from expanding the unit (the driver
+   run `visit_macros` already does), cached; the pre-scan is deleted.
+4. *A syntax declaration as data.* `SyntaxBinding` carries only a name; the
+   rules live in the enforester's table. A quoted or macro-written `syntax`
+   must carry its rules: token-level patterns with holes, and each rule's
+   replacement quote, reflected (e.g. `DeclSyntax(Id, Bool, List(Rule))`,
+   `Rule = MkRule(List(PatternPart), Expr)`). Needed for `make_adder` as a
+   macro and for decision 6's generated syntax.
+5. *Idempotence mechanism.* Resolved names are fresh per expander
+   (`Expand_ctx.name_counter`), so an expander cannot tell a name another
+   expansion minted from a written one. Proposal: one global counter; an id
+   whose name was minted is left alone on re-expansion (a binder is not renamed,
+   an occurrence not re-resolved), and a labelled open keeps its label.
