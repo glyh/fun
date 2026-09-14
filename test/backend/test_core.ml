@@ -1987,12 +1987,12 @@ let test_7i_generated_syntax_later_wins_shadow () =
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");\n\
                  syntax build_inc {\n\
-                 | build_inc =>\n\
+                 | build_inc $(n: ident) =>\n\
                      multi {\n\
-                       syntax inc { | inc $x => $x + 1 }\n\
+                       syntax $n { | $n $x => $x + 1 }\n\
                      }\n\
                  };\n\
-                 build_inc;\n\
+                 build_inc inc;\n\
                  syntax inc { | inc $x => $x + 100 };\n\
                  pub result = inc 1") ]
       "{ M = import \"gen\"; M.result }"
@@ -2425,12 +2425,12 @@ let test_7i_generated_pub_syntax_across_imports () =
   match
     eval_with_imported_macros
       [ ("gen", "syntax export_syntax {
-                  | export_syntax =>
+                  | export_syntax $(n: ident) =>
                       multi {
-                        pub syntax inc { | inc $x => $x + 1 }
+                        pub syntax $n { | $n $x => $x + 1 }
                       }
                   };
-                  export_syntax") ]
+                  export_syntax inc") ]
       "{ M = import \"gen\"; inc 41 }"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "7I generated pub syntax across imports" 42L n
@@ -2443,12 +2443,12 @@ let test_7i_generated_syntax_usable_later_same_module () =
   check_import_i64 "7I generated syntax usable later" 
     [ ("gen", "open (import \"std\");
                syntax make_inc {
-               | make_inc =>
+               | make_inc $(n: ident) =>
                    multi {
-                     syntax inc { | inc $x => $x + 1 }
+                     syntax $n { | $n $x => $x + 1 }
                    }
                };
-               make_inc;
+               make_inc inc;
                pub result = inc 5") ]
     6L "{ M = import \"gen\"; M.result }" ()
 
@@ -2457,12 +2457,12 @@ let test_7i_generated_pub_operator_across_imports () =
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");
                   syntax export_operator {
-                  | export_operator =>
+                  | export_operator $(op: ident) =>
                       multi {
-                        pub infix (~) 15 Left (stx) { Syntax.i64(9) }
+                        pub infix ($op) 15 Left (stx) { Syntax.i64(9) }
                       }
                   };
-                  export_operator") ]
+                  export_operator ~") ]
       "{ M = import \"gen\"; 1 ~ 2 }"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "7I generated pub operator across imports" 9L n
@@ -2531,17 +2531,17 @@ let test_7i_generated_syntax_cycle () =
   match
     eval_with_imported_macros
       [ ("cycle_a", "syntax gen_aop {
-                     | gen_aop => multi {
-                         pub syntax aop { | aop $x => { import \"cycle_b\"; $x } }
+                     | gen_aop $(n: ident) => multi {
+                         pub syntax $n { | $n $x => { import \"cycle_b\"; $x } }
                        }
                      };
-                     gen_aop");
+                     gen_aop aop");
         ("cycle_b", "syntax gen_bop {
-                     | gen_bop => multi {
-                         pub syntax bop { | bop $x => { import \"cycle_a\"; $x } }
+                     | gen_bop $(n: ident) => multi {
+                         pub syntax $n { | $n $x => { import \"cycle_a\"; $x } }
                        }
                      };
-                     gen_bop")
+                     gen_bop bop")
       ] "{ A = import \"cycle_a\"; aop 0 }"
   with
   | exception Core_loader.CircularSyntaxVisit "cycle_a" -> ()

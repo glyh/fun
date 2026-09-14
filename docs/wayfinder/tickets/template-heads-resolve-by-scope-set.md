@@ -47,6 +47,21 @@ other binder of its name** (see below).
    of the same name wins ("7I generated syntax later-wins" keeps passing).
 5. **A captured `{…}` block is captured unparsed** (`$b:block`) and enforested
    only where the output places it — embedded DSLs can take raw tokens.
+6. **Generated syntax is hygienic, exactly like values** (decided 2026-09-14,
+   during implementation). A `syntax` / `infix` / `prefix` declaration a
+   template or macro writes names its role with an id carrying the
+   application's intro scope, so user code cannot see it. To generate callable
+   syntax the name comes from the use site — a captured id, which may name a
+   generated declaration and head its rules:
+   ```fun
+   syntax make_inc { | make_inc $(n: ident) => multi { syntax $n { | $n $x => $x + 1 } } };
+   make_inc inc;
+   pub result = inc 5          # 6
+   ```
+   or a macro building an `Id` with a received id's scopes (M11). **Grill Q1's
+   example 3 was wrong as stated:** it showed `make_inc; inc 5` working with a
+   name written inside the template, which decision 3's hygiene note (and M2)
+   rule out.
 
 ## Rejected
 

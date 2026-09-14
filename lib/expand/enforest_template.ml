@@ -78,6 +78,37 @@ let is_syntax_keyword = function
   | { datum = Token { kind = Ident name; _ }; _ } -> String.equal name "syntax"
   | _ -> false
 
+(* A hole written where a name is expected - a generated syntax declaration's
+   head, an operator declaration's symbol, or the head of a generated rule -
+   refers to an enclosing capture: those positions are literals, so it cannot
+   bind a hole of the inner template. *)
+let hole_reference terms =
+  match drop_separators terms with
+  | { datum = Token { kind = Operator "$"; _ }; _ } :: { datum = Token { kind = Ident name; _ }; _ } :: rest ->
+      Some (name, rest)
+  | { datum = Token { kind = Operator "$"; _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest -> (
+      match drop_separators items with
+      | [ { datum = Token { kind = Ident name; _ }; _ }; colon; _ ] when token_kind Colon colon -> Some (name, rest)
+      | _ -> None)
+  | _ -> None
+
+(* After [syntax]: the head's hole name, if a hole names it, its body, and what
+   follows. *)
+let syntax_decl_parts = function
+  | { datum = Token _; _ } :: { datum = Group (Raw_syntax.Brace, body, span); _ } :: rest -> Some (None, body, span, rest)
+  | terms -> (
+      match hole_reference terms with
+      | Some (name, { datum = Group (Raw_syntax.Brace, body, span); _ } :: rest) -> Some (Some name, body, span, rest)
+      | _ -> None)
+
+(* [infix ($op) …] / [prefix ($op) …]: the hole naming the symbol. *)
+let operator_symbol_hole = function
+  | { datum = Token { kind = Ident ("infix" | "prefix"); _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: _ -> (
+      match hole_reference items with
+      | Some (name, after) when drop_separators after = [] -> Some name
+      | _ -> None)
+  | _ -> None
+
 let rec replacement_holes ?(bound = []) terms =
   let rec go acc = function
     | [] -> acc
@@ -89,8 +120,9 @@ let rec replacement_holes ?(bound = []) terms =
         | Some _ -> assert false
         | None -> (
             match terms with
-            | syntax_kw :: _head :: { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest
-              when is_syntax_keyword syntax_kw ->
+            | syntax_kw :: head_rest when is_syntax_keyword syntax_kw && Option.is_some (syntax_decl_parts head_rest) ->
+                let head_hole, body_terms, _, rest = Option.get (syntax_decl_parts head_rest) in
+                let acc = match head_hole with Some name when not (List.mem name bound) -> name :: acc | _ -> acc in
                 go (nested_replacement_holes bound acc body_terms) rest
             | { datum = Group (_, items, _); _ } :: rest ->
                 go (replacement_holes ~bound items @ acc) rest
@@ -105,6 +137,11 @@ and nested_replacement_holes bound acc body_terms =
        (fun acc branch_terms ->
          match split_at_fat_arrow branch_terms with
          | Some (pattern_terms, _, replacement) ->
+             let acc, pattern_terms =
+               match hole_reference pattern_terms with
+               | Some (name, rest) -> ((if List.mem name bound then acc else name :: acc), rest)
+               | None -> (acc, pattern_terms)
+             in
              let inner_bound = collect_pattern_holes (parse_template_pattern_parts pattern_terms) in
              replacement_holes ~bound:(inner_bound @ bound) replacement @ acc
          | None -> acc)
@@ -154,12 +191,14 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
       match kind with
       | Syntax_template.Binder | Syntax_template.Ident -> (
           match drop_separators input with
-          | ({ datum = Token { kind = Ident _; _ }; span; _ } as term) :: input_rest ->
+          | ({ datum = Token { kind = Ident _ | Operator _; _ }; span; _ } as term) :: input_rest ->
+              (* The token itself is kept: a declaration replacement may name a
+                 generated syntax form or operator with it (M7 decision 6). *)
               let captured =
                 {
                   Syntax_template.syntax = var ~span (Option.get (raw_token_spelling term));
                   kind;
-                  decl_terms = None;
+                  decl_terms = Some [ term ];
                 }
               in
               match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest
@@ -462,6 +501,13 @@ let captured_decl_terms captures name =
   | Syntax_template.Decl, None -> error ("declaration hole has no captured declaration terms: " ^ name)
   | _ -> error ("non-declaration hole used as declaration: " ^ name)
 
+(* The written name an identifier capture carries, for a hole in name position. *)
+let captured_name_token captures bound name =
+  if List.mem name bound then error ("a hole naming a generated declaration must be a capture: " ^ name);
+  match lookup_capture captures name "declaration name" with
+  | { Syntax_template.kind = Syntax_template.Binder | Syntax_template.Ident; decl_terms = Some [ term ]; _ } -> term
+  | _ -> error ("a hole naming a generated declaration must capture an identifier: " ^ name)
+
 let rec rewrite_decl_template_holes ?(bound = []) captures terms =
   let rec go acc = function
     | [] -> List.rev acc
@@ -495,10 +541,20 @@ let rec rewrite_decl_template_holes ?(bound = []) captures terms =
                   let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
                   go (term :: acc) rest)
         | _ -> error "expected template hole annotation $(name: kind)")
-    | syntax_kw :: head :: { datum = Group (Raw_syntax.Brace, body_terms, span); _ } :: rest
-      when is_syntax_keyword syntax_kw ->
+    | syntax_kw :: head_rest when is_syntax_keyword syntax_kw && Option.is_some (syntax_decl_parts head_rest) ->
+        let head_hole, body_terms, span, rest = Option.get (syntax_decl_parts head_rest) in
+        let head =
+          match head_hole with
+          | Some name -> captured_name_token captures bound name
+          | None -> List.hd head_rest
+        in
         let body = { datum = Group (Raw_syntax.Brace, rewrite_decl_nested_syntax_body captures bound body_terms, span); span } in
         go (body :: head :: syntax_kw :: acc) rest
+    | kw ::(({ datum = Group (Raw_syntax.Paren, _, span); _ } :: _) as after)
+      when Option.is_some (operator_symbol_hole (kw :: after)) ->
+        let name = Option.get (operator_symbol_hole (kw :: after)) in
+        let group = { datum = Group (Raw_syntax.Paren, [ captured_name_token captures bound name ], span); span } in
+        go (group :: kw :: acc) (List.tl after)
     | { datum = Group (delimiter, items, span); _ } :: rest ->
         go ({ datum = Group (delimiter, rewrite_decl_template_holes ~bound captures items, span); span } :: acc) rest
     | term :: rest -> go (term :: acc) rest
@@ -519,6 +575,11 @@ and rewrite_decl_nested_syntax_body captures bound body_terms =
   |> List.map (fun branch_terms ->
          match split_at_fat_arrow branch_terms with
          | Some (pattern_terms, arrow, replacement) ->
+             let pattern_terms =
+               match hole_reference pattern_terms with
+               | Some (name, rest) -> captured_name_token captures bound name :: rest
+               | None -> pattern_terms
+             in
              let inner_bound = collect_pattern_holes (parse_template_pattern_parts pattern_terms) in
              pattern_terms @ (arrow :: rewrite_decl_template_holes ~bound:(inner_bound @ bound) captures replacement)
          | None -> branch_terms)

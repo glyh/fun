@@ -144,8 +144,11 @@ string-keyed and newest-wins.** Revision: a role never mixes with another binder
 of its name (an error at the binder, by scope set), rather than being taken away;
 the expander drives the enforester form by form; bodies become brace groups
 ([ticket](../tickets/template-heads-resolve-by-scope-set.md),
-[surface syntax](../tickets/surface-syntax-braces.md)). The paragraph below is
-the original decision.
+[surface syntax](../tickets/surface-syntax-braces.md)). Syntax a template or
+macro generates is hygienic like any binder it writes: a role named by an
+intro-scoped id is invisible to user code, so generated callable syntax takes
+its name from the use site (decision 6). The paragraph below is the original
+decision.
 Templates and operators are binders; their fixity and precedence are the
 binder's **syntactic role**, resolved by scope set like every other meaning a
 name carries. That pass one named this seam (I4c) and deferred it is recorded;
