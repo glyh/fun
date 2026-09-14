@@ -187,6 +187,7 @@ let rec w_expr ns (stx : Syntax.t) : value =
         [ x template; w_list ns (fun (n, h) -> con ns.quote_hole "MkQuoteHole" [ w_string n; x h ]) holes ]
   | MacroDef { name; value; body; kind } ->
       e "RawMacroDef" [ w_id ns name; x value; x body; w_option ns (w_macro_ann ns) kind ]
+  | SyntaxDef { name; attaches; body } -> e "RawSyntaxDef" [ w_id ns name; w_bool ns attaches; x body ]
   | MacroCall (f, args) -> e "RawMacroCall" [ x f; w_list ns x args ]
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
       e "RawOperatorUse"
@@ -256,6 +257,7 @@ and w_decl ns (b : Syntax.struct_binding) =
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
   | OpenBinding (m, label) -> d "DeclOpen" [ w_expr ns m; w_string label ]
+  | SyntaxBinding { name; attaches } -> d "DeclSyntax" [ w_id ns name; w_bool ns attaches ]
 
 (* ---- reading values back ---- *)
 
@@ -471,6 +473,11 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* body = x body in
           let* kind = u_option ns (u_macro_ann ns) kind in
           mk (MacroDef { name; value; body; kind })
+      | "RawSyntaxDef", [ name; attaches; body ] ->
+          let* name = u_id ns name in
+          let* attaches = u_bool ns attaches in
+          let* body = x body in
+          mk (SyntaxDef { name; attaches; body })
       | "RawMacroCall", [ f; args ] -> let* f = x f in let* args = u_list ns x args in mk (MacroCall (f, args))
       | "RawOperatorUse", [ operator; fixity; operands; declaration_span; use_span; unit ] ->
           let* operator = u_id ns operator in
@@ -646,6 +653,10 @@ and u_decl ns v : Syntax.struct_binding option =
           let* public = u_bool ns public in
           Some (Syntax.PatternSynBinding { name; params; rhs; public })
       | "DeclOpen", [ m; label ] -> let* m = u_expr ns m in let* label = u_string label in Some (Syntax.OpenBinding (m, label))
+      | "DeclSyntax", [ name; attaches ] ->
+          let* name = u_id ns name in
+          let* attaches = u_bool ns attaches in
+          Some (Syntax.SyntaxBinding { name; attaches })
       | _ -> None)
 
 (* ---- the interface the expander and elaborator use ---- *)

@@ -1355,7 +1355,8 @@ and do_statement env span stmt =
                       stx ~span
                         (Syntax.MacroDef
                            { name; value; body = acc; kind = None })
-                | Some (TemplateSyntaxDecl _) -> fun acc -> acc
+                | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
+                    fun acc -> stx ~span (Syntax.SyntaxDef { name; attaches = attaches syntax_export; body = acc })
                 | None -> (
                     match parse_macro_binding env false stmt with
                     | Some
@@ -1407,11 +1408,15 @@ and parse_public_prefix stmt =
   | { datum = Token { kind = KwPub; _ }; _ } :: rest -> (true, rest)
   | rest -> (false, rest)
 
+(* A fixity-only declaration attaches to the value of its name. *)
+and attaches (op : Binding.operator_info) = op.expansion = Binding.BuiltinApply
+
 and parse_syntax_binding env public stmt =
   match parse_operator_decl env stmt with
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
       Some (Syntax.MacroBinding { name; value; public; kind = None })
-  | Some (TemplateSyntaxDecl _) -> None
+  | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
+      Some (Syntax.SyntaxBinding { name; attaches = attaches syntax_export })
   | None -> None
 
 and parse_macro_binding env public stmt =
@@ -1513,10 +1518,10 @@ and parse_open_binding env public stmt =
 and parse_module_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
-  | Some (TemplateSyntaxDecl { syntax_export; _ }) ->
+  | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
       if public then
         env.exports_collector := syntax_export :: !(env.exports_collector);
-      None
+      Some (Syntax.SyntaxBinding { name; attaches = attaches syntax_export })
   | Some
       (MacroSyntaxDecl
          { syntax_name = name; syntax_value = value; syntax_export; _ }) ->
@@ -1602,9 +1607,9 @@ and parse_struct_field env stmt =
 and parse_struct_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
-  | Some (TemplateSyntaxDecl _) ->
+  | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
       if public then error "pub syntax is not supported inside structs"
-      else None
+      else Some (Syntax.SyntaxBinding { name; attaches = attaches syntax_export })
   | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
       if public then error "pub operator is not supported inside structs"
       else Some (Syntax.MacroBinding { name; value; public; kind = None })

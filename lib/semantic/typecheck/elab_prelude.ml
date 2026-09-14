@@ -147,6 +147,7 @@ pub Syntax = module {
     | RawStx(Option(Span), Expr)
     | RawQuote(Option(Span), Expr, List(QuoteHole))
     | RawMacroDef(Option(Span), Id, Expr, Expr, Option(MacroAnn))
+    | RawSyntaxDef(Option(Span), Id, Bool, Expr)
     | RawMacroCall(Option(Span), Expr, List(Expr))
     | RawOperatorUse(Option(Span), Id, Fixity, List(Expr), Option(Span), Option(Span), Option(String))
   and Field = MkField(String, Expr)
@@ -179,7 +180,8 @@ pub Syntax = module {
     | DeclMacro(Id, Expr, Bool, Option(MacroAnn))
     | DeclMacroCall(Expr, List(Expr))
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
-    | DeclOpen(Expr, String);
+    | DeclOpen(Expr, String)
+    | DeclSyntax(Id, Bool);
   pub pattern Var(name) = RawVar(_, name);
   pub pattern Ap(f, a) = RawAp(_, f, _, a);
   pub pattern Lam(name, body) = RawLam(_, name, body);

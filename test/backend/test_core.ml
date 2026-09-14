@@ -1885,7 +1885,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "one constructor per expression form" 35 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 36 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true
@@ -2608,6 +2608,57 @@ let test_m7_generated_syntax_usable_by_next_form () =
                pub r = double 21") ]
     42L "{ M = import \"gen\"; M.r }" ()
 
+(* M7 decision 3: a role never mixes with another binder of its name. *)
+let role_conflict label source () =
+  match eval_with_macros source with
+  | exception Expand_error.Error { error = RoleConflict _; _ } -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: unexpected exception %s" label (Printexc.to_string e))
+  | _ -> Alcotest.fail (label ^ ": expected a role conflict")
+
+let test_m7_value_binder_under_syntax () =
+  role_conflict "a value binder under a syntax form of its name"
+    "{ syntax answer { | answer => 42 }; { answer = 7; 1 } }" ()
+
+let test_m7_syntax_after_value_binder () =
+  role_conflict "a syntax form declared where a value of its name is visible"
+    "{ answer = 7; syntax answer { | answer => 42 }; 1 }" ()
+
+let test_m7_fn_param_under_syntax () =
+  role_conflict "a parameter named like a syntax form"
+    "{ syntax answer { | answer => 42 }; f = fn(answer) { 1 }; 0 }" ()
+
+let test_m7_match_binder_under_syntax () =
+  role_conflict "a pattern binder named like a syntax form"
+    "{ syntax answer { | answer => 42 }; match (5) { | answer => 1 } }" ()
+
+let test_m7_syntax_inside_param_region () =
+  role_conflict "a syntax form declared inside a parameter's region"
+    "{ f = fn(answer) { syntax answer { | answer => 42 }; 1 }; 0 }" ()
+
+let test_m7_value_under_macro () =
+  role_conflict "a value binder named like a macro"
+    "{ macro m(_) { quote(1) }; m = 5; 1 }" ()
+
+let test_m7_value_under_imported_operator () =
+  role_conflict "a value binder named like an imported prefix operator"
+    "{ not = 5; 1 }" ()
+
+let test_m7_sibling_regions_do_not_conflict () =
+  check_i64_macro "a parameter and a later syntax form of its name in a sibling region" 42L
+    "{ f = fn(answer) { answer }; { syntax answer { | answer => 42 }; answer } }" ()
+
+let test_m7_hygienic_macro_binder_is_apart () =
+  check_i64_macro "a macro's own binder named like a syntax form" 1L
+    "{ syntax answer { | answer => 42 }; macro m(_) { quote({ answer = 7; 1 }) }; m(0) }" ()
+
+let test_m7_fixity_attaches_to_value () =
+  check_i64_macro "a fixity declaration attaches to the value of its name" 42L
+    "{ twice = fn(x) { x * 2 }; prefix (twice) 30; twice 21 }" ()
+
+let test_m7_new_binder_under_attached_fixity () =
+  role_conflict "a new binder of a name whose value has a fixity"
+    "{ twice = fn(x) { x * 2 }; prefix (twice) 30; { twice = 5; 1 } }" ()
+
 let test_m7_template_written_syntax_invisible () =
   match
     eval_with_imported_macros
@@ -3289,5 +3340,16 @@ let () =
           Alcotest.test_case "template syntax visible in its output" `Quick test_m7_template_syntax_visible_in_its_output;
           Alcotest.test_case "generated syntax usable by next form" `Quick test_m7_generated_syntax_usable_by_next_form;
           Alcotest.test_case "template-written syntax invisible to user" `Quick test_m7_template_written_syntax_invisible;
+          Alcotest.test_case "value binder under syntax" `Quick test_m7_value_binder_under_syntax;
+          Alcotest.test_case "syntax after value binder" `Quick test_m7_syntax_after_value_binder;
+          Alcotest.test_case "fn param under syntax" `Quick test_m7_fn_param_under_syntax;
+          Alcotest.test_case "match binder under syntax" `Quick test_m7_match_binder_under_syntax;
+          Alcotest.test_case "syntax inside param region" `Quick test_m7_syntax_inside_param_region;
+          Alcotest.test_case "value under macro" `Quick test_m7_value_under_macro;
+          Alcotest.test_case "value under imported operator" `Quick test_m7_value_under_imported_operator;
+          Alcotest.test_case "sibling regions do not conflict" `Quick test_m7_sibling_regions_do_not_conflict;
+          Alcotest.test_case "hygienic macro binder is apart" `Quick test_m7_hygienic_macro_binder_is_apart;
+          Alcotest.test_case "fixity attaches to value" `Quick test_m7_fixity_attaches_to_value;
+          Alcotest.test_case "new binder under attached fixity" `Quick test_m7_new_binder_under_attached_fixity;
         ] );
     ]

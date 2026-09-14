@@ -85,6 +85,12 @@ and struct_binding =
       (** [open <module-expr>] at module/struct top level — the binding-list
           counterpart of the expression-level [Open]. Scopes over the subsequent
           bindings only. The string is the open's label (see [Open]). *)
+  | SyntaxBinding of { name : id; attaches : bool }
+      (** A syntax template or fixity declaration, as the binder it is: the
+          enforester has already read its role; expansion registers the binder,
+          so a value binder of the same name visible with it is an error (M7).
+          [attaches]: a fixity-only declaration, which attaches to the value of
+          its name visible where it is declared instead of binding a new one. *)
 
 and t = {
   kind : kind;
@@ -164,6 +170,8 @@ and kind =
           stands in [template] as an id spelled ["$x"] - [$] cannot begin a
           source identifier - and in [holes] as the ordinary reference [x]. *)
   | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option }
+  | SyntaxDef of { name : id; attaches : bool; body : t }
+      (** A [SyntaxBinding] scoped over the rest of a block. *)
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : id;

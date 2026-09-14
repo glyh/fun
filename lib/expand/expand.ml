@@ -108,6 +108,7 @@ and go_kind (on_id : Syntax.id -> Syntax.id) on_form (k : kind) : kind =
     Match (go scrut, List.map (go_match_branch on_id on_form) brs)
   | MacroDef { name; value; body; kind } ->
     MacroDef { name = on_id name; value = go value; body = go body; kind }
+  | SyntaxDef { name; attaches; body } -> SyntaxDef { name = on_id name; attaches; body = go body }
   | MacroCall (f, args) ->
     MacroCall (go f, List.map go args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
@@ -147,6 +148,7 @@ and go_struct_binding (on_id : Syntax.id -> Syntax.id) on_form (binding : Syntax
   | PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat on_id rhs; public }
   | OpenBinding (m, label) -> OpenBinding (map_forms on_id on_form m, label)
+  | SyntaxBinding { name; attaches } -> SyntaxBinding { name = on_id name; attaches }
 
 and go_match_branch on_id on_form = function
   | ValueBranch (p, body) -> ValueBranch (go_pat on_id p, map_forms on_id on_form body)
@@ -197,6 +199,7 @@ let application (ctx : Expand_ctx.t) : application =
     in
     { id with scope }
   in
+  List.iter (fun s -> Hashtbl.replace ctx.Expand_ctx.intro_scopes s ()) intro;
   { receive = (fun stx -> add_scope intro (add_scope use_site stx));
     emit = map_ids flip;
     emit_binding = go_struct_binding flip Fun.id }
@@ -244,7 +247,7 @@ let expand_id_params (ctx : Expand_ctx.t) scopes params =
     | param :: rest ->
       let param = add_id_scopes active_scopes param in
       let scope, resolved_name =
-        Expand_ctx.extend_at_fresh ctx ~name:param.name ~base_scope:param.scope
+        Expand_ctx.extend_at_fresh ctx ~span:param.span ~name:param.name ~base_scope:param.scope ()
       in
       go (active_scopes @ [ scope ]) (scope :: param_scopes)
         (bind_id scope resolved_name param :: acc) rest
@@ -282,7 +285,7 @@ let macro_arity (v : Core.value) : int =
 let macro_head_key (ctx : Expand_ctx.t) (id : Syntax.id) :
     (string * Expand_ctx.macro_entry option * bool) option =
   match Expand_ctx.resolve ctx id with
-  | Some { Binding.kind = Binding.Value; _ } -> None
+  | Some { Binding.kind = Binding.Value | Binding.Role; _ } -> None
   | Some { Binding.kind = Binding.Macro; resolved_name; _ } ->
       Some
         ( resolved_name,
@@ -344,7 +347,7 @@ let open_unit_macro_scopes (ctx : Expand_ctx.t) (m : t) : Scope_set.t list =
         (fun name ->
           Expand_ctx.extend_at_kinded ctx ~name ~base_scope:Scope_set.empty
             ~kind:Binding.Macro
-            ~resolved_name:(Expand_ctx.unit_macro_key ~path ~name))
+            ~resolved_name:(Expand_ctx.unit_macro_key ~path ~name) ())
         (Expand_ctx.unit_macro_names ctx path)
 
 (* The scope set to hang a dotted macro call's synthesised head on: the one the
@@ -396,13 +399,13 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     stx
   | Lam (param, body) ->
     let pname = param_name param in
-    let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~name:pname ~base_scope:param.name.scope in
+    let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:param.name.span ~name:pname ~base_scope:param.name.scope () in
     let body = expand ctx (add_scope_within stx.span scope body) in
     let param = { param with name = bind_id scope resolved_name param.name; type_ = Option.map (expand ctx) param.type_ } in
     { stx with kind = Lam (param, body) }
   | Let { name; type_; value; body; recursive } ->
     let binding_name = id_name name in
-    let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~name:binding_name ~base_scope:name.scope in
+    let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:binding_name ~base_scope:name.scope () in
     let value = if recursive then expand ctx (add_scope_within stx.span scope value) else expand ctx value in
     (* [M = import "m"] makes [M] a handle on the unit, so [M.answer(0)] can
        find its macros. Checked after expansion, since the import may itself be
@@ -461,7 +464,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | ProdTy xs -> { stx with kind = ProdTy (List.map (expand ctx) xs) }
   | Arrow (expl, Some name, dom, eff, cod) ->
     let dom = expand ctx dom in
-    let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~name:name.name ~base_scope:name.scope in
+    let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:name.name ~base_scope:name.scope () in
     let name = bind_id scope resolved_name name in
     let expand_scoped e = expand ctx (add_scope_within stx.span scope e) in
     let eff = Option.map (fun e -> { effects = List.map expand_scoped e.effects; tail = Option.map expand_scoped e.tail }) eff in
@@ -486,12 +489,12 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let scopes = open_scope :: open_unit_macro_scopes ctx m in
     { stx with kind = Open (m', expand ctx (add_scopes_within stx.span scopes body), label) }
   | RecordTypeDef { name; params; fields; body } ->
-    let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
     { stx with kind = RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes_within e.span param_scopes e))) fields; body = expand ctx (add_scope_within stx.span scope body) } }
   | TypeDef { name; params; ctors; body } ->
-    let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
     let ctors, ctor_scopes =
@@ -508,19 +511,19 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
              let ctor_scope =
                Expand_ctx.extend_at ctx ~name:cname.name
                  ~base_scope:(Scope_set.union scope cname.scope)
-                 ~resolved_name:cname.name
+                 ~resolved_name:cname.name ~span:cname.span ()
              in
              ((add_id_scope ctor_scope cname, payload), ctor_scope))
            ctors)
     in
     { stx with kind = TypeDef { name; params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes_within p.span (scope :: param_scopes) p)) ps)) ctors; body = expand ctx (add_scopes_within stx.span (scope :: ctor_scopes) body) } }
   | EffectDef { name; params; ops; body } ->
-    let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
     { stx with kind = EffectDef { name; params; ops = List.map (fun op -> { op with input = expand ctx (add_scopes_within op.input.span param_scopes op.input); output = expand ctx (add_scopes_within op.output.span param_scopes op.output) }) ops; body = expand ctx (add_scope_within stx.span scope body) } }
   | TraitDef { name; params; fields; body } ->
-    let scope = Expand_ctx.extend_at ctx ~name:name.name ~base_scope:name.scope ~resolved_name:name.name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
     { stx with kind = TraitDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes_within e.span param_scopes e))) fields; body = expand ctx (add_scope_within stx.span scope body) } }
@@ -538,6 +541,9 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind =
         Match (expand ctx scrut,
                List.map (expand_match_branch ctx) brs) }
+  | SyntaxDef { name; attaches; body } ->
+    let scope = Expand_ctx.extend_role ctx ~attaches ~name in
+    expand ctx (add_scope_within stx.span scope body)
   | MacroDef { name; value; body; kind; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
@@ -551,7 +557,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
          macro (or a value) named [name] cleanly shadows an outer one, and the
          macro's call sites resolve to it through normal binding resolution. *)
       let scope, resolved_name =
-        Expand_ctx.extend_at_fresh_kinded ctx ~name:name.name ~base_scope:name.scope ~kind:Binding.Macro () in
+        Expand_ctx.extend_at_fresh_kinded ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~kind:Binding.Macro () in
       Expand_ctx.register_macro ctx ~name:resolved_name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:resolved_name ~kind:resolved_kind;
       expand ctx (add_scope_within stx.span scope body)
@@ -709,7 +715,7 @@ and expand_method_params_body ctx params body =
     | param :: rest ->
       let param = List.fold_left (fun param scope -> add_param_scope scope param) param active_scopes in
       let pname = param_name param in
-      let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~name:pname ~base_scope:param.name.scope in
+      let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:param.name.span ~name:pname ~base_scope:param.name.scope () in
       let param = { param with name = bind_id scope resolved_name param.name; type_ = Option.map (expand ctx) param.type_ } in
       go (active_scopes @ [ scope ]) (param_scopes @ [ scope ]) (param :: acc) rest
   in
@@ -719,7 +725,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   match binding with
   | LetBinding { name; value; public; recursive } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name () in
     let value =
       let prev = Expand_ctx.get_expansion_position ctx in
       Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Expr;
@@ -737,7 +743,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     ([LetBinding { name = add_id_scope scope name; value; public; recursive }], [[ scope ]])
   | MethodBinding { name; params; body; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name () in
     let params, body = expand_method_params_body ctx params body in
     ([MethodBinding { name = add_id_scope scope name; params; body; public }], [[ scope ]])
   | TypeBinding { members; public } ->
@@ -746,7 +752,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     let member_scopes =
       List.map
         (fun (m : type_decl) ->
-          Expand_ctx.extend_at ctx ~name:(id_name m.name) ~base_scope:m.name.scope ~resolved_name:(id_name m.name))
+          Expand_ctx.extend_at ctx ~span:m.name.span ~name:(id_name m.name) ~base_scope:m.name.scope ~resolved_name:(id_name m.name) ())
         members
     in
     let members, ctor_scopes =
@@ -768,7 +774,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
                       let ctor_scope =
                         Expand_ctx.extend_at ctx ~name:cname.name
                           ~base_scope:(Scope_set.union scope cname.scope)
-                          ~resolved_name:cname.name
+                          ~resolved_name:cname.name ~span:cname.span ()
                       in
                       ((add_id_scope ctor_scope cname, payload), ctor_scope))
                     m.ctors)
@@ -782,21 +788,21 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     ([TypeBinding { members; public }], [member_scopes @ List.concat ctor_scopes])
   | RecordTypeBinding { name; params; fields; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name () in
     let params, param_scopes = expand_id_params ctx [] params in
     ([RecordTypeBinding { name = add_id_scope scope name;
                           params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
      [[ scope ]])
   | EffectBinding { name; params; ops; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name () in
     let params, param_scopes = expand_id_params ctx [] params in
     ([EffectBinding { name = add_id_scope scope name;
                       params; ops = List.map (fun op -> { op with input = expand ctx (add_scopes param_scopes op.input); output = expand ctx (add_scopes param_scopes op.output) }) ops; public }],
      [[ scope ]])
   | TraitBinding { name; params; fields; public } ->
     let binding_name = id_name name in
-    let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
+    let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name () in
     let params, param_scopes = expand_id_params ctx [] params in
     ([TraitBinding { name = add_id_scope scope name;
                      params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
@@ -807,6 +813,10 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [[]])
   | PatternSynBinding { name; params; rhs; public } ->
      ([PatternSynBinding { name; params; rhs; public }], [[]])
+  | SyntaxBinding { name; attaches } ->
+    (* The enforester read the role; what remains is the binder, whose scope
+       the later bindings carry like any other. *)
+    ([], [ [ Expand_ctx.extend_role ctx ~attaches ~name ] ])
   | OpenBinding (m, _) ->
     (* An open binds no name of its own. Its scope marks the later bindings as
        inside it, so a name there can resolve to an open choice. *)
@@ -822,7 +832,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
          expansion/elaboration so the macro's own name is known during its
          definition (for future re-expansion-recursion support). The
          provisional marker prevents premature callable lookup. *)
-      let scope = Expand_ctx.extend_at_kinded ctx ~name:binding_name ~base_scope:name.scope ~kind:Binding.Macro ~resolved_name:binding_name in
+      let scope = Expand_ctx.extend_at_kinded ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~kind:Binding.Macro ~resolved_name:binding_name () in
       let macro_snapshot = Expand_ctx.snapshot_macro ctx binding_name in
       Expand_ctx.register_provisional_macro ctx ~name:binding_name ();
       Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
@@ -914,7 +924,7 @@ and expand_pat_binders ctx pat =
   collect [] pat
   |> List.rev
   |> List.map (fun (id : Syntax.id) ->
-      let scope, _resolved_name = Expand_ctx.extend_at_fresh ctx ~name:id.name ~base_scope:id.scope in
+      let scope, _resolved_name = Expand_ctx.extend_at_fresh ctx ~span:id.span ~name:id.name ~base_scope:id.scope () in
       scope)
 
 and expand_pat ctx k = match k with

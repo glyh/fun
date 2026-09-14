@@ -48,6 +48,9 @@ type t = {
      expanding, harvested when its expansion finishes. *)
   mutable unit_members : (string, (string * string) list) Hashtbl.t;
   mutable own_unit_members : (string * string) list;
+  (* Every intro scope a macro application minted here (template instances
+     record theirs in [Syntax_template.template_intro_scopes]). *)
+  intro_scopes : (int, unit) Hashtbl.t;
   loader : unit option;
 }
 
@@ -70,6 +73,7 @@ let create ?loader () =
     module_units = Hashtbl.create 4;
     unit_members = Hashtbl.create 4;
     own_unit_members = [];
+    intro_scopes = Hashtbl.create 16;
     loader }
 
 let set_syntax_nominals ctx nominals = ctx.syntax_nominals <- Some nominals
@@ -157,41 +161,69 @@ let fresh_resolved_name (ctx : t) name =
   ctx.name_counter <- i + 1;
   Printf.sprintf "%s__%d" name i
 
-let extend (ctx : t) ~name ~resolved_name =
+let is_intro_scope (ctx : t) s =
+  Hashtbl.mem ctx.intro_scopes s || Hashtbl.mem Syntax_template.template_intro_scopes s
+
+(* M7: a syntactic role - a syntax form, operator or macro - never mixes with
+   another binder of its name where both are visible. A new binder written
+   with scope set [occurrence] conflicts with an existing binder of the other
+   sort whose scope set is a subset of it, unless the scopes the new binder has
+   beyond it include an intro scope: an application wrote the binder, and
+   hygiene keeps the two apart. A fixity-only declaration [attaches] to the
+   value visible where it is written. Checked in the funnel every binder goes
+   through, so every binder kind - and its order against the role - is covered. *)
+let check_role_mixing (ctx : t) ~name ~occurrence ~kind ~attaches ~span =
+  let is_role (k : Binding.binding_kind) = k <> Binding.Value in
+  let conflicts (info : Binding.binding_info) =
+    is_role info.kind <> is_role kind
+    && Scope_set.subset info.scope occurrence
+    && not (List.exists (is_intro_scope ctx) (Scope_set.diff occurrence info.scope))
+    && not (attaches && info.kind = Binding.Value)
+  in
+  if List.exists conflicts (Option.value ~default:[] (Hashtbl.find_opt ctx.binding_table name)) then
+    Expand_error.raise_at (RoleConflict { name; span })
+
+let bind (ctx : t) ?(attaches = false) ?(span = Source_span.synthetic) ~name ~base_scope ~kind ~resolved_name scope =
+  check_role_mixing ctx ~name ~occurrence:base_scope ~kind ~attaches ~span;
+  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name
+
+let extend_at (ctx : t) ?span ~name ~base_scope ~resolved_name () =
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope ~kind:Binding.Value ~resolved_name;
+  bind ctx ?span ~name ~base_scope ~kind:Binding.Value ~resolved_name scope;
   scope
 
-let extend_fresh (ctx : t) ~name =
-  let resolved_name = fresh_resolved_name ctx name in
+(* A syntax template or fixity declaration, as a binder (see [Syntax.SyntaxBinding]). *)
+let extend_role (ctx : t) ~attaches ~(name : Syntax.id) =
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope ~kind:Binding.Value ~resolved_name;
-  (scope, resolved_name)
-
-let extend_at (ctx : t) ~name ~base_scope ~resolved_name =
-  let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind:Binding.Value ~resolved_name;
+  bind ctx ~attaches ~span:name.span ~name:name.name ~base_scope:name.scope ~kind:Binding.Role
+    ~resolved_name:name.name scope;
   scope
+
+(* Roles an [import] harvested into the enforester: visible to the whole unit. *)
+let add_imported_roles (ctx : t) (names : string list) =
+  List.iter
+    (fun name -> Binding.extend ctx.binding_table ~name ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:name)
+    names
 
 (** Like [extend_at] but tags the binding with an explicit [kind], so a
     procedural-macro definition can register itself as a [Macro] binding in the
     scope-aware table (name resolution then dispatches expand-vs-call by kind). *)
-let extend_at_kinded (ctx : t) ~name ~base_scope ~kind ~resolved_name =
+let extend_at_kinded (ctx : t) ?span ~name ~base_scope ~kind ~resolved_name () =
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name;
+  bind ctx ?span ~name ~base_scope ~kind ~resolved_name scope;
   scope
 
 (** Like [extend_at] but allocates a fresh [resolved_name] (uniquified when
     the written name is already bound) and tags an explicit [kind], so nested
     definitions shadow lexically. Used for expression-level macro definitions. *)
-let extend_at_fresh_kinded (ctx : t) ~name ~base_scope ?(kind = Binding.Value) () =
+let extend_at_fresh_kinded (ctx : t) ?span ~name ~base_scope ?(kind = Binding.Value) () =
   let resolved_name = fresh_resolved_name ctx name in
   let scope = fresh_scope_set ctx in
-  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name;
+  bind ctx ?span ~name ~base_scope ~kind ~resolved_name scope;
   (scope, resolved_name)
 
-let extend_at_fresh (ctx : t) ~name ~base_scope =
-  extend_at_fresh_kinded ctx ~name ~base_scope ()
+let extend_at_fresh (ctx : t) ?span ~name ~base_scope () =
+  extend_at_fresh_kinded ctx ?span ~name ~base_scope ()
 
 let copy (ctx : t) : t =
   { binding_table = Binding.copy ctx.binding_table;
@@ -212,6 +244,7 @@ let copy (ctx : t) : t =
     module_units = Hashtbl.copy ctx.module_units;
     unit_members = Hashtbl.copy ctx.unit_members;
     own_unit_members = ctx.own_unit_members;
+    intro_scopes = Hashtbl.copy ctx.intro_scopes;
     loader = ctx.loader }
 
 let register_macro_with_nominals ctx ~syntax_nominals ~name ~value =

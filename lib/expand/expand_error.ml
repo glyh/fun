@@ -12,6 +12,9 @@ type t =
   | MissingCallback of { callback : string }
   | BudgetExceeded of { macro : string; limit : int; call : string }
   | EvalFailed of { macro : string; message : string }
+  | RoleConflict of { name : string; span : Source_span.t }
+      (** M7: a binder of [name] where a syntax form, operator or macro of that
+          name is visible, or the reverse. *)
 
 (* A syntax operator's use and declaration, when the application came from one. *)
 type site = { operator : string; use_span : Source_span.t; declaration_span : Source_span.t }
@@ -30,6 +33,9 @@ let message = function
       Printf.sprintf "expanding macro '%s' exceeded the evaluation budget of %d calls, calling %s \
                       (the budget cannot yet be raised from source)" macro limit call
   | EvalFailed { macro; message } -> Printf.sprintf "expanding macro '%s' failed: %s" macro message
+  | RoleConflict { name; span } ->
+      Printf.sprintf "'%s' at %s is bound both as a syntax form, operator or macro and as another binder \
+                      where both are visible" name (Format.asprintf "%a" Source_span.pp span)
 
 let site_prefix { operator; use_span; declaration_span } =
   Printf.sprintf "syntax operator %S used at %s, declared at %s: " operator

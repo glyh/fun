@@ -184,7 +184,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
     : Ctx.t * Core.struct_binding_term list * Core.module_entry list =
   match b with
   | Syntax.MethodBinding _ -> failwith "module binding cannot be method"
-  | Syntax.MacroBinding _ -> (ctx, [], [])
+  | Syntax.MacroBinding _ | Syntax.SyntaxBinding _ -> (ctx, [], [])
   | Syntax.MacroCallBinding _ -> (ctx, [], [])
   | Syntax.PatternSynBinding { name = { name; _ }; params; rhs; public } ->
       let params = Syntax.names params in
@@ -619,7 +619,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       in
       let rec go ctx (acc_binds, acc_entries) = function
         | [] -> (ctx, List.rev acc_binds, List.rev acc_entries)
-        | Syntax.MacroBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
+        | (Syntax.MacroBinding _ | Syntax.SyntaxBinding _) :: rest -> go ctx (acc_binds, acc_entries) rest
         | Syntax.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Syntax.PatternSynBinding { name = { name; _ }; params; rhs; public } :: rest ->
             let params = Syntax.names params in
@@ -961,7 +961,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                  | None -> failwith "macro runtime required")
             | None -> failwith "macro-only syntax should not reach elaboration")
        | None -> failwith "macro-only syntax should not reach elaboration")
-  | MacroDef _ | SyntaxOperatorUse _ ->
+  | MacroDef _ | SyntaxDef _ | SyntaxOperatorUse _ ->
       failwith "macro-only syntax should not reach elaboration"
   | Stx _ -> failwith "stx-only syntax should not reach elaboration"
   | Quote { template; holes } ->

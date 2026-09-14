@@ -51,6 +51,7 @@ and struct_binding =
   | MacroBinding of { name : string; value : t; public : bool; kind : Syntax.MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
+  | SyntaxBinding of { name : string; attaches : bool }
   | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level. Brings the module's
           public fields into scope for the *subsequent* bindings only (statement
@@ -122,6 +123,7 @@ and t =
   | Quote of { template : Syntax.t; holes : (string * t) list } (* opaque syntax wrapper — survives lowering intact *)
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
   | MacroDef of { name : string; value : t; body : t; kind : Syntax.MacroAnnotation.t option }
+  | SyntaxDef of { name : string; attaches : bool; body : t }
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
       operator : string;
@@ -247,6 +249,7 @@ and lower_expr (stx : Syntax.t) : t =
        the resolved kind is carried by the macro registry/table, not this
        syntax node. *)
     MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body; kind = None }
+  | Syntax.SyntaxDef { name; attaches; body } -> SyntaxDef { name = lower_id name; attaches; body = lower_expr body }
   | Syntax.MacroCall (f, a) -> MacroCall (lower_expr f, List.map lower_expr a)
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit = _ } ->
     let fixity = match fixity with Syntax.PrefixOp -> PrefixOp | Syntax.InfixOp -> InfixOp in
@@ -286,6 +289,7 @@ and lower_struct_binding = function
                                 params = List.map lower_id params;
                                 rhs = lower_pat rhs; public }
   | Syntax.OpenBinding (m, label) -> OpenBinding (lower_expr m, label)
+  | Syntax.SyntaxBinding { name; attaches } -> SyntaxBinding { name = lower_id name; attaches }
 
 and lower_match_branch = function
   | Syntax.ValueBranch (p, body) -> ValueBranch (lower_pat p, lower_expr body)

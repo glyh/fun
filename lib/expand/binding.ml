@@ -1,7 +1,8 @@
-(** Whether a resolved binding names a value or a (procedural) macro.
-    Under the unified namespace, name resolution returns exactly one
-    binding and its [kind] decides expand-vs-call at an application head. *)
-type binding_kind = Value | Macro
+(** Whether a binding names a value, a (procedural) macro, or a syntax form or
+    fixity the enforester reads ([Role]). Name resolution returns values and
+    macros; a [Role] binder exists so a value binder of its name can be found
+    to conflict with it (M7). *)
+type binding_kind = Value | Macro | Role
 
 (* Operator fixity/precedence carried as an optional attribute on a binding.
    An operator is a binding that also carries [operator_info]; [kind]
@@ -80,7 +81,7 @@ let resolve (tbl : t) (id : Syntax.id) : binding_info option =
   match candidates with
   | [] -> None
   | _ ->
-    let matches = List.filter (fun info -> Scope_set.subset info.scope id.scope) candidates in
+    let matches = List.filter (fun info -> info.kind <> Role && Scope_set.subset info.scope id.scope) candidates in
     match matches with
     | [] -> None
     | _ ->

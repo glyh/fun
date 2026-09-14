@@ -434,6 +434,7 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
          kind is carried by the macro registry/table. Macro-generating macros
          with annotated generated macro definitions remain a Stage 2+ limitation. *)
       { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body; kind } }
+  | Syntax.SyntaxDef { name; attaches; body } -> { stx with kind = Syntax.SyntaxDef { name; attaches; body = go body } }
   | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, List.map go a) }
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
       { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span; unit } }
@@ -462,6 +463,7 @@ and map_template_struct_binding captures go = function
   | Syntax.MacroCallBinding { f; args } -> Syntax.MacroCallBinding { f = go f; args = List.map go args }
   | Syntax.PatternSynBinding binding -> Syntax.PatternSynBinding binding
   | Syntax.OpenBinding (m, label) -> Syntax.OpenBinding (go m, label)
+  | Syntax.SyntaxBinding _ as binding -> binding
 
 and map_template_match_branch captures go = function
   | Syntax.ValueBranch (pat, body) -> Syntax.ValueBranch (map_template_pat captures pat, go body)
