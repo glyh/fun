@@ -411,7 +411,8 @@ What remains, in the recommended order:
 - [A quoted constructor value is re-found by spelling](tickets/quoted-constructor-values-by-spelling.md)
   — `VCon` quotes to `Con name`; the `NomRef` fix's sibling.
 - [Expansion errors reach the user raw](tickets/expansion-errors-reach-the-user-raw.md)
-  — expander budget overruns escape untranslated; macro-body errors lost the operator span.
+  (closed) — an overrun inside an application is its `Expand_error` with the
+  operator's site; evaluator errors (`panic`, …) in a body still carry no site.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
   — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 

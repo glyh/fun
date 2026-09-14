@@ -8,9 +8,13 @@ let id name = Syntax.fresh_id name
    them under a tiny limit so exhaustion is cheap to reach. *)
 let with_limit ctx limit f = Eval_budget.start ~limit:(Some limit) ctx.Expand_ctx.budget f
 
+(* An overrun inside an application is that application's error (ticket
+   expansion-errors-reach-the-user-raw): it names the macro, not a raw budget
+   exception. *)
 let expect_budget_exceeded ~call f =
   match f () with
-  | exception Eval_budget.Exceeded { call = c; _ } -> Alcotest.(check string) "names the call" call c
+  | exception Expand_error.Error { error = BudgetExceeded { call = c; _ }; _ } ->
+      Alcotest.(check string) "names the call" call c
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected an evaluation budget error"
 
@@ -95,7 +99,8 @@ let test_macro_body_spends_from_the_expansion () =
   Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default;
   ignore (with_limit ctx 2 (fun () -> Expand.expand ctx (expr_call "mk")));
   match with_limit ctx 1 (fun () -> Expand.expand ctx (expr_call "mk")) with
-  | exception Eval_budget.Exceeded { call; _ } ->
+  | exception Expand_error.Error { error = BudgetExceeded { macro; call; _ }; _ } ->
+      Alcotest.(check string) "names the application" "mk" macro;
       Alcotest.(check bool) "names the body, not the application" false (String.equal call "macro 'mk'")
   | _ -> Alcotest.fail "expected an evaluation budget error"
 

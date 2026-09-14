@@ -7,15 +7,26 @@
    checked, so a divergent evaluation is a budget error, not a hang.
    See docs/wayfinder/tickets/checker-evaluation-budget.md. *)
 
-(* [limit = None] while running a program. *)
-type t = { mutable limit : int option; mutable remaining : int; mutable depth : int }
+exception Exceeded of { limit : int; call : string }
+
+(* [limit = None] while running a program. [exceeded] is the error an overrun
+   raises: the checker's [Exceeded], or, inside a macro application, that
+   application's error, which carries its site - so the error names where it
+   happened at the point it is raised, and nothing re-catches it. *)
+type t = {
+  mutable limit : int option;
+  mutable remaining : int;
+  mutable depth : int;
+  mutable exceeded : limit:int -> call:string -> exn;
+}
 
 (* No surface syntax raises it yet; the ticket leaves that open. *)
 let default_limit = 1_000_000
 
-exception Exceeded of { limit : int; call : string }
+let checker_exceeded ~limit ~call = Exceeded { limit; call }
 
-let create () = { limit = Some default_limit; remaining = default_limit; depth = 0 }
+let create () =
+  { limit = Some default_limit; remaining = default_limit; depth = 0; exceeded = checker_exceeded }
 
 let start ~limit budget f =
   if budget.depth = 0 then begin
@@ -34,16 +45,20 @@ let spend budget ~call =
   match budget.limit with
   | None -> ()
   | Some limit ->
-      if budget.remaining <= 0 then raise (Exceeded { limit; call = call () });
+      if budget.remaining <= 0 then raise (budget.exceeded ~limit ~call:(call ()));
       budget.remaining <- budget.remaining - 1
 
 (* A macro application is a call (M5): it spends one unit, and its body and the
    expansion of its output spend from the same request. So a nest of
-   applications is bounded as a whole, breadth included. *)
-let macro_application budget ~call f =
+   applications is bounded as a whole, breadth included. An overrun while it
+   runs raises [exceeded], the innermost application's error. *)
+let macro_application budget ~call ~exceeded f =
   request budget (fun () ->
-      spend budget ~call:(fun () -> call);
-      f ())
+      let outer = budget.exceeded in
+      budget.exceeded <- exceeded;
+      Fun.protect ~finally:(fun () -> budget.exceeded <- outer) (fun () ->
+          spend budget ~call:(fun () -> call);
+          f ()))
 
 let () =
   Printexc.register_printer (function

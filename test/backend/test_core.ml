@@ -1790,6 +1790,29 @@ let test_operator_macro_error_reports_spans () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected syntax operator macro expansion failure"
 
+(* An expansion-time budget overrun reaches the user as the application's
+   error, naming the macro, not as a raw budget exception. *)
+let diverging_body = "do rec loop : I64 -> I64 = fn(n) -> loop(n); loop(0) end"
+
+let test_macro_body_budget_overrun_names_the_macro () =
+  match eval_with_macros ("do macro spin(_) -> " ^ diverging_body ^ "; spin(0) end") with
+  | exception Expand_error.Error { error = BudgetExceeded { macro; _ }; _ } ->
+      Alcotest.(check bool) "names the macro" true (string_contains macro "spin")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected an expansion budget error"
+
+(* An error inside a syntax operator's body carries the operator's site. *)
+let test_operator_body_error_reports_use_span () =
+  match
+    eval_with_macros
+      ("do\n  infix (~) 15 Left (stx) -> " ^ diverging_body ^ "\n  1 ~ 2\nend")
+  with
+  | exception (Expand_error.Error { error = BudgetExceeded _; site = Some { use_span; _ } } as e) ->
+      Alcotest.(check bool) "use span is a source span" false (use_span = Source_span.synthetic);
+      Alcotest.(check bool) "message mentions the use" true (string_contains (Printexc.to_string e) "used at")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected an expansion budget error at the operator"
+
 let test_syntax_module_expression_kind () =
   check_i64_macro "Syntax.kind expression object" 1L
     "do macro answer(stx) -> match stx do | Syntax.Var(_) -> Syntax.i64(1) | _ -> Syntax.i64(0) end; x = 10; answer(x) end" ()
@@ -3128,6 +3151,8 @@ let () =
           Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
           Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
+          Alcotest.test_case "macro body budget overrun names the macro" `Quick test_macro_body_budget_overrun_names_the_macro;
+          Alcotest.test_case "operator body error reports use span" `Quick test_operator_body_error_reports_use_span;
           Alcotest.test_case "Syntax module: expression kind" `Quick test_syntax_module_expression_kind;
           Alcotest.test_case "Syntax module: literal inspectors" `Quick test_syntax_module_literal_inspectors;
           Alcotest.test_case "Syntax module: literal inspector error" `Quick test_syntax_module_literal_inspector_error;

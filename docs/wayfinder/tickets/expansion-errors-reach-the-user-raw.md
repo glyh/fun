@@ -3,8 +3,10 @@ title: Expansion budget errors reach the user raw, and body errors lost the oper
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: A macro application installs its own error on the evaluation budget (Eval_budget.t.exceeded, restored when it returns), so an overrun inside it raises Expand_error BudgetExceeded naming the innermost macro, with the syntax operator's site when there is one - raised with its site, not re-caught. The driver's direct elaboration (macro-body compilation and per-binding advancement) now reports through Elab_entry.reporting_budget, the checker's existing translation point. Left - evaluator errors (EvalError from panic, field-not-found, division by zero) raised inside a macro body still carry no application site; attaching it as data needs the raise sites in Nbe to read the budget's current application.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

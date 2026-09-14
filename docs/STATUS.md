@@ -55,7 +55,12 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   opens a request that its body evaluation (fresh metas, shared budget,
   `Nbe.apply_macro`) and the expansion of its output spend from, so a nest of
   applications is bounded as a whole: breadth blowup at bounded depth is an
-  `Eval_budget.Exceeded` naming the macro. A type-aware call's request also
+  `Expand_error` `BudgetExceeded` naming the innermost macro and, for a syntax
+  operator, its site - the application installs its error on the budget, so
+  the overrun is raised with its site and nothing re-catches it. The driver's
+  own elaboration requests report overruns through `Elab_entry.reporting_budget`
+  like every other checker request
+  ([expansion-errors-reach-the-user-raw](wayfinder/tickets/expansion-errors-reach-the-user-raw.md)). A type-aware call's request also
   covers elaborating its output.
 - **Expansion failures are error values** (M8): kind mismatch, non-syntax
   result, non-declaration result, self-expansion during definition and a

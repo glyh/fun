@@ -41,8 +41,9 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
   (* A macro body is compiled in the unit's context as of its definition. *)
   expand_ctx.Expand_ctx.elaborate
     <- Some (fun expr ->
-         let core, _ty = Elab_driver.infer !elab_ctx expr in
-         Elaborate.Ctx.eval !elab_ctx core);
+         Elab_entry.reporting_budget (fun () ->
+             let core, _ty = Elab_driver.infer !elab_ctx expr in
+             Elaborate.Ctx.eval !elab_ctx core));
   expand_ctx.Expand_ctx.eval_and_apply
     <- Some Nbe.apply_macro;
   (* Stage 8: driver-based import loading. Imported macros are compiled
@@ -68,7 +69,9 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
       match b with
       | Syntax.MacroBinding _ | Syntax.MacroCallBinding _ -> ()
       | _ ->
-          let ctx', _, _ = Elab_infer.elab_module_binding Elab_driver.ops !elab_ctx b in
+          let ctx', _, _ =
+            Elab_entry.reporting_budget (fun () -> Elab_infer.elab_module_binding Elab_driver.ops !elab_ctx b)
+          in
           elab_ctx := ctx')
       expanded
   in

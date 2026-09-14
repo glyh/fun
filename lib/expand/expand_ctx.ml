@@ -317,9 +317,11 @@ let fill_provisional_macro ctx ~name ~value =
   register_macro ctx ~name ~value
 
 (* Run one macro application, and the expansion of its output, as a call under
-   the evaluation budget. *)
-let macro_application ctx ~name f =
-  Eval_budget.macro_application ctx.budget ~call:(Printf.sprintf "macro '%s'" name) f
+   the evaluation budget. An overrun inside it is this application's error, at
+   [site] when it came from a syntax operator. *)
+let macro_application ?site ctx ~name f =
+  let exceeded ~limit ~call = Expand_error.Error { error = BudgetExceeded { macro = name; limit; call }; site } in
+  Eval_budget.macro_application ctx.budget ~call:(Printf.sprintf "macro '%s'" name) ~exceeded f
 
 let set_expansion_position (ctx : t) kind =
   ctx.expansion_position <- kind

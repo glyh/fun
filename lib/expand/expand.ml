@@ -602,7 +602,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       begin match ctx.Expand_ctx.eval_and_apply with
       | Some apply_fn ->
         let apply_fn = apply_fn ctx.Expand_ctx.budget in
-        Expand_ctx.macro_application ctx ~name:operator.name (fun () ->
+        let site : Expand_error.site = { operator = operator.name; use_span; declaration_span } in
+        Expand_ctx.macro_application ~site ctx ~name:operator.name (fun () ->
           let app = application ctx in
           let operands = List.map app.receive operands in
           let result = match operands with
@@ -632,8 +633,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
           | Some expanded -> expand ctx (app.emit expanded)
           | None ->
-              Expand_error.raise_at ~site:{ operator = operator.name; use_span; declaration_span }
-                (NotSyntax { macro = operator.name; got = Macro_eval.value_tag result })
+              Expand_error.raise_at ~site (NotSyntax { macro = operator.name; got = Macro_eval.value_tag result })
           end)
       | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
       end
@@ -667,8 +667,8 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
   else begin match ctx.Expand_ctx.eval_and_apply with
     | Some apply_fn ->
       let apply_fn = apply_fn ctx.Expand_ctx.budget in
-      Expand_ctx.macro_application ctx ~name:key (fun () ->
-        let site = Option.bind (List.nth_opt macro_args 0) syntax_operator_site in
+      let site = Option.bind (List.nth_opt macro_args 0) syntax_operator_site in
+      Expand_ctx.macro_application ?site ctx ~name:key (fun () ->
         let app = application ctx in
         let result =
           List.fold_left (fun fn arg ->
