@@ -67,10 +67,9 @@ total reflection these are not two bugs but one distance: the ADTs do not yet
 
 ### M2 — one hygiene contract governs every application
 
-**Status: enforced for macros (2026-09-14); templates pending M9.** Every
-macro application (untyped, type-aware, decl and operator) goes through
-`Expand.application`, which is the contract below. Templates still mint their
-own intro scope at enforestation, until they desugar to macros. Every macro or template
+**Status: enforced (2026-09-14).** Every macro application (untyped,
+type-aware, decl, operator, and a syntax form's use) goes through
+`Expand.application`, which is the contract below. Every macro or template
 application mints an intro scope and a use-site scope; ids written in the
 application resolve where the macro was *defined*; splices keep their
 occurrence scopes; output is expanded in place. Pass two measured the three
@@ -171,7 +170,10 @@ expansion failure.
 
 ### M9 — a template is sugar for a macro
 
-**Status: decided (2026-09-14), not implemented.** Racket's `syntax-rules` is
+**Status: implemented (2026-09-14) except procedural macro parameter kinds
+([ticket](../tickets/templates-desugar-to-macros.md#run-2-2026-09-14-implemented)).**
+A use is `Instantiate`, filled through `Expand.application`; the expander
+drives the enforester form by form. Racket's `syntax-rules` is
 a `syntax-case` macro; `fun`'s template is likewise a macro. The template keeps
 one job, the **parse**: its patterns and fixity decide which tokens a use
 consumes and what each hole captures. Everything after is a macro whose
@@ -183,7 +185,8 @@ behind [template-literals-resolve-at-use-site](../tickets/template-literals-reso
 
 ### M10 — quoted syntax is parsed where it is written
 
-**Status: implemented for macros (2026-09-14); templates pending M9.**
+**Status: implemented (2026-09-14), templates included: a rule's replacement is
+quoted syntax.**
 `Quote_holes` finds and fills the holes on the reflection value. A macro builds syntax by
 writing it: `quote(one($e))`. Strings build no hygienic syntax — gensym and
 spelling-resolution (Common Lisp, Clojure) are rejected. Quoted ids carry the

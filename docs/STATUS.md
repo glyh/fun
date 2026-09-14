@@ -61,6 +61,23 @@ Last updated: after the brace surface syntax, 2026-09-14.
 - Prelude and every test source migrated mechanically
   ([surface-syntax-braces](wayfinder/tickets/surface-syntax-braces.md)).
 
+### Macro model M9, run 2 (2026-09-14)
+- A syntax form is a macro: its rules are reflected data on its role, and a use
+  is filled through `Expand.application` (`Instantiate`). The region rule and
+  token-level re-enforestation are gone.
+- The expander drives the enforester: `{ … }` bodies and unit/module items stay
+  unread (`Block`, `Items`) until expansion reaches them, so syntax a form
+  generates is usable by the next form. Quoted syntax is read where written.
+- A unit's syntax exports come from expanding it.
+- `Syntax.tokens(b)` reads a block's token tree; `Syntax.expand_block(b)` expands
+  one inside a macro; expansion is idempotent. Resolved names are `x#n`.
+- A `: Decl` form works as a block statement; binders a macro returns into a
+  definition context lose the use-site scope.
+- Not yet: procedural macro parameter kinds (`(n : Id)`).
+- Test changes: units that define forms open `std` themselves (a replacement is
+  read at its definition); import cycles are reported by the syntax load that
+  reaches them first; the circular-syntax tests use real import cycles.
+
 ### Macro model M9, run 1 (2026-09-14)
 - Hole kinds are reflection types: `$(x : Expr | Block | Id | Decl | Pattern)`,
   a bare `$v` is `Expr`; `binder`/`ident` are gone (`Id` binds or refers by
@@ -70,9 +87,7 @@ Last updated: after the brace surface syntax, 2026-09-14.
 - `quote { items }` quotes declarations; a lone `$d` item is a `Decl` hole.
 - The expansion position is the site's: a `Decl` macro works inside an
   expression-level `module { … }`.
-- Templates still instantiate during enforestation; templates as macros, the
-  expander-driven loop, `Block` token trees and `expand_block` wait on the
-  questions in [templates-desugar-to-macros](wayfinder/tickets/templates-desugar-to-macros.md).
+- (Run 2 below lands templates as macros, the loop, `Block` and `expand_block`.)
 
 ### Checker evaluation budget (2026-09-14)
 - Every evaluation the checker asks for spends from one call budget

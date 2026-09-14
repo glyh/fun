@@ -80,10 +80,11 @@ When adding a field to `Syntax.struct_binding` variants (e.g. `kind` to `MacroBi
 you MUST update EVERY constructor of that variant across the codebase:
 
 - `macro_eval.ml` — reflection must carry the field both ways (the round trip is the identity)
-- `expand.ml` `add_scope` functions — check each `struct_binding` case
-  (look for `kind = None` hardcodes — there were 3 of them)
-- `enforest_template.ml` — template helpers reconstruct bindings
-- `expand.ml` `map_forms` — the one traversal every scope, intro and rename goes through
+- `expand.ml` `go_kind` / `go_struct_binding` — the one traversal (`mapper`) every
+  scope, intro, rename and syntax-form fill goes through; `map_binders` for the
+  names a declaration binds
+- `enforest_template.ml` — a syntax form's rules (patterns, matching into
+  `Syntax.capture`)
 
 **Pattern**: `git grep` for the variant name (e.g. `MacroBinding {`) and check
 every match site preserves the new field or explicitly drops it.

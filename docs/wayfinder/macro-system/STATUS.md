@@ -47,6 +47,16 @@ groups, semantic `resolved_type_ref` constraint identity, and
 resolved-export cache fingerprinting. The final full queue driver must avoid
 double-elaboration/nominal freshness drift.
 
+## Macro model M9 (2026-09-14)
+
+Syntax forms (templates) are macros: rules are reflected data on a syntactic
+role, and a use is filled through `Expand.application` under the evaluation
+budget. The expander drives enforestation form by form (`Block`/`Items` stay
+unread until reached); a unit's syntax exports come from expanding it; blocks
+reflect as token trees; `expand_block` and idempotent expansion landed. Not yet:
+procedural macro parameter kinds. See
+[templates-desugar-to-macros](../tickets/templates-desugar-to-macros.md).
+
 ## Stages 11–12: Not specified
 
 | Stage | Description | Status |

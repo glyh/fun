@@ -226,3 +226,58 @@ holes for templates nested in quotes.
    label. A resolved name contains a character no identifier token can contain
    (today `y__0` is a legal identifier), so no written name can ever equal one —
    by construction, not by the freshness of the counter.
+
+## Run 2 (2026-09-14): implemented
+
+Commits `82406d0` (resolved names), `45245cc` (templates as macros, the
+expander-driven loop), `6c59f6c` (`expand_block`, idempotence, lexical quote
+holes). Suite green, 920 tests.
+
+- **Resolved names are unwritable:** minted as `name#n` from one global counter
+  (`#` begins a comment, so no token spells one). A resolved name is final.
+- **Rules are data:** a syntax form's role (`Syntax.role`) carries its rules -
+  token patterns with typed holes and a replacement parsed where the rule is
+  written - reflected both ways (`Role`, `Rule`, `RulePart`, `Replacement`,
+  `Capture`, `TokenTree` in the prelude). Expansion registers roles like any
+  binder; the enforester reads the expander's binder table.
+- **One instantiation path:** a use is `Instantiate` / `InstantiateBinding`
+  (the rule and its captures), filled by `Expand.fill` through
+  `Expand.application` under the budget. Token-level re-enforestation, inherited
+  captures and the `add_id_scope_if` region rule are deleted.
+- **The expander drives the enforester:** a `{ … }` body is `Block` tokens and a
+  unit's or module's items are `Items` tokens, read one form at a time with the
+  roles bound so far. Quoted syntax (quotes, rule replacements) is read
+  completely where it is written, with a private copy of the roles; a `Block`
+  hole captured there is read too.
+- **Exports from expansion:** a unit's syntax exports are its public roles after
+  expanding it (`Parse_expand.syntax_exports`); the pre-scan is deleted.
+- **`Block`:** reflects as a token tree (`Syntax.tokens(b)`), placeable in any
+  brace slot (`module $b`, `fn(x) $b`, an expression).
+- **`expand_block(b)`:** a primitive the running macro application answers.
+  Expanded forms may be placed back: expansion is idempotent (a resolved name is
+  never re-minted or re-resolved).
+- **Holes are lexical:** a rule declared inside a replacement or a quote binds
+  its own holes; filling leaves them alone, and a quote's holes exclude them.
+
+### Implementation decisions this run made (not in the decisions above)
+
+- Declarations a macro or syntax form returns into a definition context lose the
+  application's use-site scope on their binders (Flatt 2016, use-site scopes),
+  so a name the caller passed binds where the caller can see it.
+- A block statement using a `: Decl` form binds its declarations for the rest of
+  the block (the `twice(run(fn(_) { make_inc inc; inc 5 }))` example needs it).
+  A block's last item stays an expression position.
+- A struct's items are read together (with a private copy of the roles, so a
+  syntax form declared in a struct is usable by its later items); their bodies
+  wait for expansion like any other.
+
+### Left
+
+- **Macro parameter kinds** (`macro m(n : Id, b : Block)`): a procedural macro's
+  arguments still arrive as `Expr`. An `Id` or `Pattern` parameter needs the
+  enforester to know the macro's parameter kinds while reading a call, and the
+  loader's macro caches to carry them. Related: an `$n` hole in a *token*
+  position inside `quote { … }` (a generated rule's head) is not filled by
+  `Quote_holes`, so a procedural macro cannot yet name generated syntax from the
+  use site; syntax forms can (`syntax $n { | $n … }`).
+- Imported roles are still visible unit-wide (M7 known gap 3).

@@ -28,6 +28,13 @@ forms and resolves no names. Keywords are a fixed, reserved set of token kinds
 one uniform token shape.
 _Avoid_: lexer (it also groups), parser (nothing is parsed yet)
 
+**Block**:
+A `{ … }` body not read yet: its tokens, each with its scope set, read one form
+at a time as expansion reaches them, so a form sees the syntax the forms before
+it generated. A macro receives it as a token tree it can read (`tokens`) or place
+in any slot a `{ … }` goes; `expand_block` expands one where the macro runs.
+_Avoid_: thunk, lazy expression, raw group
+
 **Group**:
 A delimiter-bounded sequence of terms — the one structural notion the reader
 produces. What a group becomes is decided later, by enforestation.
@@ -118,7 +125,8 @@ _Avoid_: intro scope, call-site scope
 
 **Template**:
 A pattern→replacement rewrite declared by `syntax` or `pub infix` — sugar for a
-macro. The template keeps one job of its own, the parse: its patterns and
+macro. Its rules are data on its syntactic role; a use is filled through the same
+application as any macro. The template keeps one job of its own, the parse: its patterns and
 fixity decide which tokens a use consumes and what each hole captures. The
 rest *is* a macro: its arguments are the captures, and its body is the
 replacement as quoted syntax, so ids written in it resolve where the template
@@ -357,6 +365,12 @@ The kind of form a macro returns — a reflection type, such as `Expr` or
 the macro never learns its position, so one name means one kind.
 _Avoid_: problem (a position the macro branches on at run time), macro type,
 return kind
+
+**Idempotent expansion**:
+Expanding already-expanded syntax changes nothing: a resolved name (`x#n`,
+unwritable in source) is final, never re-minted or re-resolved. What lets a macro
+place `expand_block`'s forms back into its output.
+_Avoid_: re-expansion safety
 
 **Syntactic role**:
 Whether a binder is an operator, or a syntax form, and with what fixity. Part of

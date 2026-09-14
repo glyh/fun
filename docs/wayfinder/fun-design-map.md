@@ -398,6 +398,11 @@ What remains, in the recommended order:
   `struct { x: I64 }` record types, `->` only for function types, newlines are
   whitespace, trailing `;` discards.
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
+  **Run 2 (2026-09-14): implemented** — rules as reflected data, one
+  instantiation path through `Expand.application`, bodies and items read form by
+  form as expansion reaches them, exports from expansion, `Block` token trees,
+  `expand_block`, idempotent expansion, unwritable resolved names (`x#n`). Left:
+  procedural macro parameter kinds (`(n : Id)`).
   **Run 1 (2026-09-14):** kinds as types, `quote { … }`, `: Decl` templates and
   `multi`'s removal landed; stopped on five questions in the ticket (bodies inside
   quotes vs typed holes, template macros and the elaborator, where syntax exports
