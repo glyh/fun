@@ -9,12 +9,15 @@ type callbacks = {
 }
 
 
+(* A hole's kind is written as its reflection type: [$(x : Id)]. *)
 let parse_template_hole_kind = function
-  | "expr" -> Syntax_template.Expr
-  | "block" -> Syntax_template.Block
-  | "binder" -> Syntax_template.Binder
-  | "ident" -> Syntax_template.Ident
-  | "decl" -> Syntax_template.Decl
+  | "Expr" -> Syntax_template.Expr
+  | "Block" -> Syntax_template.Block
+  | "Id" -> Syntax_template.Id
+  | "Decl" -> Syntax_template.Decl
+  | "Pattern" -> Syntax_template.Pattern
+  | "expr" | "block" | "binder" | "ident" | "decl" as kind ->
+      error ("hole kinds are written as types (Expr, Block, Id, Decl, Pattern), not " ^ kind)
   | kind -> error ("unknown syntax template hole kind: " ^ kind)
 
 let raw_token_spelling term =
@@ -91,14 +94,27 @@ let hole_reference terms =
       | _ -> None)
   | _ -> None
 
-(* After [syntax]: the head's hole name, if a hole names it, its body, and what
-   follows. *)
-let syntax_decl_parts = function
-  | { datum = Token _; _ } :: { datum = Group (Raw_syntax.Brace, body, span); _ } :: rest -> Some (None, body, span, rest)
+(* [: Decl] between a syntax form's head and its rules: the kind, and the
+   annotation's tokens with what follows them. *)
+let syntax_kind = function
+  | colon :: ({ datum = Token { kind = Ident "Decl"; _ }; _ } as decl) :: rest when token_kind Colon colon ->
+      (Syntax.MacroAnnotation.Decl, [ colon; decl ], rest)
+  | rest -> (Syntax.MacroAnnotation.Expr, [], rest)
+
+(* After [syntax]: the head's hole name, if a hole names it, its kind
+   annotation's tokens, its body, and what follows. *)
+let syntax_decl_parts terms =
+  let body head_hole after =
+    match syntax_kind after with
+    | _, kind_terms, { datum = Group (Raw_syntax.Brace, body, span); _ } :: rest -> Some (head_hole, kind_terms, body, span, rest)
+    | _ -> None
+  in
+  match terms with
+  | { datum = Token _; _ } :: after when Option.is_some (body None after) -> body None after
   | terms -> (
       match hole_reference terms with
-      | Some (name, { datum = Group (Raw_syntax.Brace, body, span); _ } :: rest) -> Some (Some name, body, span, rest)
-      | _ -> None)
+      | Some (name, after) -> body (Some name) after
+      | None -> None)
 
 (* [infix ($op) …] / [prefix ($op) …]: the hole naming the symbol. *)
 let operator_symbol_hole = function
@@ -120,7 +136,7 @@ let rec replacement_holes ?(bound = []) terms =
         | None -> (
             match terms with
             | syntax_kw :: head_rest when is_syntax_keyword syntax_kw && Option.is_some (syntax_decl_parts head_rest) ->
-                let head_hole, body_terms, _, rest = Option.get (syntax_decl_parts head_rest) in
+                let head_hole, _, body_terms, _, rest = Option.get (syntax_decl_parts head_rest) in
                 let acc = match head_hole with Some name when not (List.mem name bound) -> name :: acc | _ -> acc in
                 go (nested_replacement_holes bound acc body_terms) rest
             | { datum = Group (_, items, _); _ } :: rest ->
@@ -161,6 +177,10 @@ let parse_branches ?(available = []) head body_terms =
               if not (template_pattern_starts_with head pattern) then
                  error ("syntax branch pattern must start with declared head: " ^ head);
               let captured = collect_pattern_holes pattern in
+              (match drop_separators replacement with
+               | { datum = Token { kind = Ident "multi"; _ }; _ } :: { datum = Group (Raw_syntax.Brace, _, _); _ } :: _ ->
+                   error "multi { … } was removed; declare the syntax form : Decl and write its replacement { … }"
+               | _ -> ());
               validate_template_replacement available captured replacement;
               { Syntax_template.pattern; replacement; span = syntax_span branch_terms }
          | None -> error "syntax declaration rule requires => between pattern and replacement")
@@ -188,7 +208,7 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
       | _ -> None)
   | Syntax_template.Hole { name; kind; _ } :: rest -> (
       match kind with
-      | Syntax_template.Binder | Syntax_template.Ident -> (
+      | Syntax_template.Id -> (
           match drop_separators input with
           | ({ datum = Token { kind = Ident _ | Operator _; _ }; _ } as term) :: input_rest ->
               (* The token itself is kept: a declaration replacement may name a
@@ -198,6 +218,7 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
                   Syntax_template.syntax = var_of term (Option.get (raw_token_spelling term));
                   kind;
                   decl_terms = Some [ term ];
+                  pat = None;
                 }
               in
               match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest
@@ -207,21 +228,25 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
           match drop_separators input with
           | ({ datum = Group (Raw_syntax.Brace, _, _); _ } as group) :: input_rest ->
               let captured =
-                { Syntax_template.syntax = callbacks.parse_expr [ group ]; kind; decl_terms = None }
+                { Syntax_template.syntax = callbacks.parse_expr [ group ]; kind; decl_terms = None; pat = None }
               in
               match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest
           | _ -> None)
-      | Syntax_template.Expr ->
+      | Syntax_template.Expr | Syntax_template.Pattern ->
+          let capture prefix =
+            match kind with
+            | Syntax_template.Pattern ->
+                let pat = Enforest_pat.parse_pat_terms prefix in
+                { Syntax_template.syntax = stx ~span:(syntax_span prefix) (Syntax.Atom Atom.Unit); kind; decl_terms = None; pat = Some pat }
+            | _ -> { Syntax_template.syntax = callbacks.parse_expr prefix; kind; decl_terms = None; pat = None }
+          in
           let rec try_prefix prefix = function
             | [] -> None
             | term :: input_rest ->
                 let prefix = prefix @ [ term ] in
                 let candidate =
                   try
-                    let expr = callbacks.parse_expr prefix in
-                    let captured =
-                      { Syntax_template.syntax = expr; kind = Syntax_template.Expr; decl_terms = None }
-                    in
+                    let captured = capture prefix in
                     match match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest with
                     | Some result -> Some result
                     | None -> None
@@ -240,6 +265,7 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
                   Syntax_template.syntax = stx ~span:(syntax_span input) (Syntax.Module { bindings = [] });
                   kind = Syntax_template.Decl;
                   decl_terms = Some input;
+                  pat = None;
                 }
               in
               Some ((name, captured) :: captures, [])
@@ -254,6 +280,7 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
                       Syntax_template.syntax = stx ~span:(syntax_span prefix) (Syntax.Module { bindings = [] });
                       kind = Syntax_template.Decl;
                       decl_terms = Some prefix;
+                      pat = None;
                     }
                   in
                   match_template_parts ~whole callbacks ((name, captured) :: captures) rest []
@@ -268,6 +295,7 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
                         Syntax_template.syntax = stx ~span:(syntax_span prefix') (Syntax.Module { bindings = [] });
                         kind = Syntax_template.Decl;
                         decl_terms = Some prefix';
+                        pat = None;
                       }
                     in
                     match match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest with
@@ -294,29 +322,18 @@ let lookup_capture captures name position =
   | Some captured -> captured
   | None -> error ("unbound syntax template hole in " ^ position ^ ": " ^ name)
 
-let captured_id captures name position =
-  let captured = lookup_capture captures name position in
-  match (position, captured.Syntax_template.kind, captured.syntax.kind) with
-  | "binder", Syntax_template.Binder, Syntax.Var id -> id
-  | "binder", Syntax_template.Expr, Syntax.Var _ ->
-      error ("expression hole used in binder position: " ^ name)
-  | "binder", Syntax_template.Ident, Syntax.Var _ ->
-      error ("identifier hole used in binder position: " ^ name)
-  | "reference", Syntax_template.Ident, Syntax.Var id -> id
-  | "reference", Syntax_template.Binder, Syntax.Var _ ->
-      error ("binder hole used in reference position: " ^ name)
-  | "reference", Syntax_template.Expr, Syntax.Var _ ->
-      error ("expression hole used in reference position: " ^ name)
-  | _, _, _ -> error ("syntax template hole is not an identifier: " ^ name)
+(* An [Id] hole names a binder or refers; which is the splice position, not
+   the kind (M10). *)
+let captured_id captures name =
+  let captured = lookup_capture captures name "binder" in
+  match (captured.Syntax_template.kind, captured.syntax.kind) with
+  | Syntax_template.Id, Syntax.Var id -> id
+  | Syntax_template.Expr, Syntax.Var _ -> error ("expression hole used in binder position: " ^ name)
+  | _, _ -> error ("syntax template hole is not an identifier: " ^ name)
 
 let map_binder_id captures (id : Syntax.id) =
   match placeholder_id_name id.Syntax.name with
-  | Some name -> captured_id captures name "binder"
-  | None -> id
-
-let map_reference_id captures (id : Syntax.id) =
-  match placeholder_id_name id.Syntax.name with
-  | Some name -> captured_id captures name "reference"
+  | Some name -> captured_id captures name
   | None -> id
 
 let map_param captures (p : Syntax.param) =
@@ -343,10 +360,14 @@ let rec rewrite_template_holes ?(bound = []) terms =
                   let term = { datum = Token { tok with kind = Ident (placeholder_name name); span }; span } in
                   go (term :: acc) rest
             | _ -> error "expected template hole annotation $(name: kind)")
-        | syntax_kw :: head :: { datum = Group (Raw_syntax.Brace, body_terms, span); _ } :: rest
-          when is_syntax_keyword syntax_kw ->
-            let body = { datum = Group (Raw_syntax.Brace, rewrite_nested_syntax_body bound body_terms, span); span } in
-            go (body :: head :: syntax_kw :: acc) rest
+        | syntax_kw :: head :: after
+          when is_syntax_keyword syntax_kw
+               && (match syntax_kind after with _, _, { datum = Group (Raw_syntax.Brace, _, _); _ } :: _ -> true | _ -> false) -> (
+            match syntax_kind after with
+            | _, kind_terms, { datum = Group (Raw_syntax.Brace, body_terms, span); _ } :: rest ->
+                let body = { datum = Group (Raw_syntax.Brace, rewrite_nested_syntax_body bound body_terms, span); span } in
+                go (body :: List.rev_append kind_terms (head :: syntax_kw :: acc)) rest
+            | _ -> assert false)
         | { datum = Group (delimiter, items, span); _ } :: rest ->
             go ({ datum = Group (delimiter, rewrite_template_holes ~bound items, span); span } :: acc) rest
         | term :: rest -> go (term :: acc) rest
@@ -386,9 +407,9 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
       let name = Option.get (placeholder_id_name id.name) in
       let captured = lookup_capture captures name "replacement" in
       (match captured.Syntax_template.kind with
-      | Syntax_template.Binder -> error ("binder hole used in expression position: " ^ name)
+      | Syntax_template.Pattern -> error ("pattern hole used in expression position: " ^ name)
       | Syntax_template.Decl -> error ("declaration hole used in expression position: " ^ name)
-      | Syntax_template.Expr | Syntax_template.Block | Syntax_template.Ident -> captured.Syntax_template.syntax)
+      | Syntax_template.Expr | Syntax_template.Block | Syntax_template.Id -> captured.Syntax_template.syntax)
   | Syntax.Atom _ | Syntax.Var _ | Syntax.Self | Syntax.SelfType | Syntax.Import _ -> stx
   | Syntax.Ap (f, e, a) -> { stx with kind = Syntax.Ap (go f, e, go a) }
   | Syntax.Lam (p, body) ->
@@ -429,6 +450,8 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.Stx s -> { stx with kind = Syntax.Stx (go s) }
   | Syntax.Quote { template; holes } ->
       { stx with kind = Syntax.Quote { template = go template; holes = List.map (fun (n, h) -> (n, go h)) holes } }
+  | Syntax.QuoteDecls { items; holes } ->
+      { stx with kind = Syntax.QuoteDecls { items = List.map (map_template_struct_binding captures go) items; holes = List.map (fun (n, h) -> (n, go h)) holes } }
   | Syntax.MacroDef { name; value; body; kind } ->
       (* Deliberately drop annotation after macro registration: the resolved
          kind is carried by the macro registry/table. Macro-generating macros
@@ -463,7 +486,7 @@ and map_template_struct_binding captures go = function
   | Syntax.MacroCallBinding { f; args } -> Syntax.MacroCallBinding { f = go f; args = List.map go args }
   | Syntax.PatternSynBinding binding -> Syntax.PatternSynBinding binding
   | Syntax.OpenBinding (m, label) -> Syntax.OpenBinding (go m, label)
-  | Syntax.SyntaxBinding _ as binding -> binding
+  | (Syntax.SyntaxBinding _ | Syntax.HoleBinding _) as binding -> binding
 
 and map_template_match_branch captures go = function
   | Syntax.ValueBranch (pat, body) -> Syntax.ValueBranch (map_template_pat captures pat, go body)
@@ -477,19 +500,16 @@ and map_template_pat captures = function
       Syntax.PatStructType { fields = List.map (fun (field, pat) -> (field, map_template_pat captures pat)) fields; partial }
   | Syntax.PatOr (lhs, rhs) -> Syntax.PatOr (map_template_pat captures lhs, map_template_pat captures rhs)
   | Syntax.PatProd pats -> Syntax.PatProd (List.map (map_template_pat captures) pats)
-  | Syntax.PatBind id -> Syntax.PatBind (map_binder_id captures id)
+  | Syntax.PatBind id -> (
+      match placeholder_id_name id.Syntax.name with
+      | Some name -> (
+          match lookup_capture captures name "pattern" with
+          | { Syntax_template.kind = Syntax_template.Pattern; pat = Some pat; _ } -> pat
+          | _ -> Syntax.PatBind (map_binder_id captures id))
+      | None -> Syntax.PatBind id)
   | (Syntax.PatAtom _ | Syntax.PatType _ | Syntax.PatWild) as pat -> pat
 
-let is_multi_block replacement =
-  match drop_separators replacement with
-  | { datum = Token { kind = Ident "multi"; _ }; _ } :: _ -> true
-  | _ -> false
-
 let instantiate_template_replacement ?unit callbacks captures replacement =
-  (match drop_separators replacement with
-  | _ when is_multi_block replacement ->
-      error "multi { … } is only valid in declaration syntax templates"
-  | _ -> ());
   (* The instance's intro scope goes on the replacement's tokens before they
      are read, so a role the replacement declares is named by an intro-scoped
      id; captures are substituted afterwards and keep their own scopes. *)
@@ -508,7 +528,7 @@ let captured_decl_terms captures name =
 let captured_name_token captures bound name =
   if List.mem name bound then error ("a hole naming a generated declaration must be a capture: " ^ name);
   match lookup_capture captures name "declaration name" with
-  | { Syntax_template.kind = Syntax_template.Binder | Syntax_template.Ident; decl_terms = Some [ term ]; _ } -> term
+  | { Syntax_template.kind = Syntax_template.Id; decl_terms = Some [ term ]; _ } -> term
   | _ -> error ("a hole naming a generated declaration must capture an identifier: " ^ name)
 
 let rec rewrite_decl_template_holes ?(bound = []) captures terms =
@@ -539,14 +559,14 @@ let rec rewrite_decl_template_holes ?(bound = []) captures terms =
                   go (term :: acc) rest)
         | _ -> error "expected template hole annotation $(name: kind)")
     | syntax_kw :: head_rest when is_syntax_keyword syntax_kw && Option.is_some (syntax_decl_parts head_rest) ->
-        let head_hole, body_terms, span, rest = Option.get (syntax_decl_parts head_rest) in
+        let head_hole, kind_terms, body_terms, span, rest = Option.get (syntax_decl_parts head_rest) in
         let head =
           match head_hole with
           | Some name -> captured_name_token captures bound name
           | None -> List.hd head_rest
         in
         let body = { datum = Group (Raw_syntax.Brace, rewrite_decl_nested_syntax_body captures bound body_terms, span); span } in
-        go (body :: head :: syntax_kw :: acc) rest
+        go (body :: List.rev_append kind_terms (head :: syntax_kw :: acc)) rest
     | kw ::(({ datum = Group (Raw_syntax.Paren, _, span); _ } :: _) as after)
       when Option.is_some (operator_symbol_hole (kw :: after)) ->
         let name = Option.get (operator_symbol_hole (kw :: after)) in
@@ -582,12 +602,13 @@ and rewrite_decl_nested_syntax_body captures bound body_terms =
          | None -> branch_terms)
   |> join_branches
 
+(* A [: Decl] syntax form's replacement is a brace group of declarations. *)
 let declaration_replacement_statements replacement =
   match drop_separators replacement with
-  | { datum = Token { kind = Ident "multi"; _ }; _ } :: { datum = Group (Raw_syntax.Brace, body, _); _ } :: rest ->
-      ensure_no_rest "multi declaration template" rest;
+  | { datum = Group (Raw_syntax.Brace, body, _); _ } :: rest ->
+      ensure_no_rest "declaration syntax form replacement" rest;
       split_statements body
-  | terms -> [ terms ]
+  | _ -> error "a Decl syntax form's replacement is written { declarations }"
 
 let instantiate_decl_template_replacement ?unit callbacks captures replacement =
   (* Intro scope before splicing, so spliced captures keep their own scopes. *)
@@ -601,7 +622,15 @@ let instantiate_decl_template_replacement ?unit callbacks captures replacement =
          | Error msg -> error ("declaration template replacement: " ^ msg))
   |> List.map (map_template_struct_binding captures (substitute_template_captures captures))
 
+(* M8: a syntax form is used only where its kind's position is. *)
+let check_kind (template : Syntax_template.t) (position : Syntax.MacroAnnotation.t) =
+  if template.annotation <> position then
+    let name = function Syntax.MacroAnnotation.Expr -> "Expr" | Decl -> "Decl" in
+    error (Printf.sprintf "syntax form '%s' has kind %s but was used in %s context" template.head
+             (name template.annotation) (name position))
+
 let expand callbacks _use_span (template : Syntax_template.t) terms =
+  check_kind template Syntax.MacroAnnotation.Expr;
   let rec try_branches = function
     | [] -> error ("no matching branch for syntax " ^ template.head)
     | branch :: rest -> (
@@ -615,6 +644,7 @@ let expand callbacks _use_span (template : Syntax_template.t) terms =
   try_branches template.branches
 
 let expand_decl callbacks _use_span (template : Syntax_template.t) terms =
+  check_kind template Syntax.MacroAnnotation.Decl;
   let rec try_branches = function
     | [] -> error ("no matching branch for syntax " ^ template.head)
     | branch :: rest -> (

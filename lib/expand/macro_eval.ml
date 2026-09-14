@@ -182,9 +182,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | RefSet (l, r) -> e "RawRefSet" [ x l; x r ]
   | Match (scrut, branches) -> e "RawMatch" [ x scrut; w_list ns (w_branch ns) branches ]
   | Stx inner -> e "RawStx" [ x inner ]
-  | Quote { template; holes } ->
-      e "RawQuote"
-        [ x template; w_list ns (fun (n, h) -> con ns.quote_hole "MkQuoteHole" [ w_string n; x h ]) holes ]
+  | Quote { template; holes } -> e "RawQuote" [ x template; w_quote_holes ns holes ]
+  | QuoteDecls { items; holes } -> e "RawQuoteDecls" [ w_list ns (w_decl ns) items; w_quote_holes ns holes ]
   | MacroDef { name; value; body; kind } ->
       e "RawMacroDef" [ w_id ns name; x value; x body; w_option ns (w_macro_ann ns) kind ]
   | SyntaxDef { name; attaches; body } -> e "RawSyntaxDef" [ w_id ns name; w_bool ns attaches; x body ]
@@ -193,6 +192,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
       e "RawOperatorUse"
         [ w_id ns operator; w_fixity ns fixity; w_list ns x operands; w_span ns declaration_span;
           w_span ns use_span; w_option ns w_string unit ]
+
+and w_quote_holes ns holes = w_list ns (fun (n, h) -> con ns.quote_hole "MkQuoteHole" [ w_string n; w_expr ns h ]) holes
 
 and w_fields ns fields = w_list ns (fun (n, v) -> con ns.field "MkField" [ w_string n; w_expr ns v ]) fields
 
@@ -257,6 +258,7 @@ and w_decl ns (b : Syntax.struct_binding) =
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
   | OpenBinding (m, label) -> d "DeclOpen" [ w_expr ns m; w_string label ]
+  | HoleBinding id -> d "DeclHole" [ w_id ns id ]
   | SyntaxBinding { name; attaches } -> d "DeclSyntax" [ w_id ns name; w_bool ns attaches ]
 
 (* ---- reading values back ---- *)
@@ -458,15 +460,12 @@ let rec u_expr ns (v : value) : Syntax.t option =
       | "RawStx", [ inner ] -> let* inner = x inner in mk (Stx inner)
       | "RawQuote", [ template; holes ] ->
           let* template = x template in
-          let* holes =
-            u_list ns
-              (fun h ->
-                match payload ns.quote_hole h with
-                | Some ("MkQuoteHole", [ n; e ]) -> let* n = u_string n in let* e = x e in Some (n, e)
-                | _ -> None)
-              holes
-          in
+          let* holes = u_quote_holes ns holes in
           mk (Quote { template; holes })
+      | "RawQuoteDecls", [ items; holes ] ->
+          let* items = u_list ns (u_decl ns) items in
+          let* holes = u_quote_holes ns holes in
+          mk (QuoteDecls { items; holes })
       | "RawMacroDef", [ name; value; body; kind ] ->
           let* name = u_id ns name in
           let* value = x value in
@@ -488,6 +487,14 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* unit = u_option ns u_string unit in
           mk (SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit })
       | _ -> None)
+
+and u_quote_holes ns v =
+  u_list ns
+    (fun h ->
+      match payload ns.quote_hole h with
+      | Some ("MkQuoteHole", [ n; e ]) -> let* n = u_string n in let* e = u_expr ns e in Some (n, e)
+      | _ -> None)
+    v
 
 and u_fields ns v =
   u_list ns
@@ -653,6 +660,7 @@ and u_decl ns v : Syntax.struct_binding option =
           let* public = u_bool ns public in
           Some (Syntax.PatternSynBinding { name; params; rhs; public })
       | "DeclOpen", [ m; label ] -> let* m = u_expr ns m in let* label = u_string label in Some (Syntax.OpenBinding (m, label))
+      | "DeclHole", [ id ] -> let* id = u_id ns id in Some (Syntax.HoleBinding id)
       | "DeclSyntax", [ name; attaches ] ->
           let* name = u_id ns name in
           let* attaches = u_bool ns attaches in

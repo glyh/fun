@@ -2,12 +2,13 @@
 
    A hole [$x] is an id spelled ["$x"] ([$] cannot begin a source identifier).
    Where it sits decides its kind (M10): as the id of an expression variable it
-   stands for an [Expr], as the id of a pattern variable for a [Pattern], and
-   anywhere else - a binder, a field's id - for an [Id]. *)
+   stands for an [Expr], as the id of a pattern variable for a [Pattern], as a
+   quoted item for a [Decl], and anywhere else - a binder, a field's id - for
+   an [Id]. *)
 
 open Core
 
-type kind = Expr | Pattern | Id
+type kind = Expr | Pattern | Decl | Id
 
 let hole_name (v : value) =
   match v with
@@ -21,6 +22,8 @@ let rec map_holes (on_hole : kind -> string -> value -> value) (v : value) : val
   match v with
   | VCon { name = ("RawVar" | "RawPatBind") as c; spine = [ _; id ]; _ } when Option.is_some (hole_name id) ->
       on_hole (if String.equal c "RawVar" then Expr else Pattern) (Option.get (hole_name id)) v
+  | VCon { name = "DeclHole"; spine = [ id ]; _ } when Option.is_some (hole_name id) ->
+      on_hole Decl (Option.get (hole_name id)) v
   | VCon c -> VCon { c with spine = List.map (map_holes on_hole) c.spine }
   | VRecord r -> (
       match hole_name v with

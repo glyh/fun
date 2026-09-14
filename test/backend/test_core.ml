@@ -834,7 +834,7 @@ let check_div_by_zero label source () =
   | exception e -> Alcotest.fail (label ^ ": unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail (label ^ ": expected a division-by-zero error")
 
-let eval_with_macros ?(expansion_position = Syntax.MacroKind.Expr) source =
+let eval_with_macros source =
   let ctx = Elaborate.init_ctx () in
   let nominals =
     Elaborate.syntax_nominals ctx
@@ -844,7 +844,7 @@ let eval_with_macros ?(expansion_position = Syntax.MacroKind.Expr) source =
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply = Nbe.apply_macro in
-  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~expansion_position source in
+  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
   Hashtbl.iter (fun name entry ->
     let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
       | Some k -> k | None -> Syntax.MacroKind.default in
@@ -1443,6 +1443,14 @@ let test_quote_splices_holes () =
   | _ -> Alcotest.fail "a hole in both binder and expression position must be rejected"
   | exception _ -> ()
 
+(* M10: [quote { … }] quotes declarations; a lone [$d] item is a Decl hole. *)
+let test_quote_declarations () =
+  check_i64_macro "quote { } splices an expression hole into a declaration" 42L
+    "{ macro define(v) : Decl { quote { pub answer = $v; } }; M = module { define(21 + 21) }; M.answer }" ();
+  check_i64_macro "quote { } splices a declaration hole" 6L
+    "{ macro wrap(v) : Decl { d = Syntax.decl_let(Syntax.new_id(\"answer\"), v, True); quote { $d; pub other = 1; } };
+       M = module { wrap(5) }; M.answer + M.other }" ()
+
 let test_type_aware_output_is_expanded () =
   check_i64_macro "type-aware output expands nested macro" 1L
     "{
@@ -1662,7 +1670,6 @@ let test_generated_macro_binding_reentered () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
-  Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_macro ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
@@ -1700,7 +1707,6 @@ let test_generated_multi_binding_scope_threading () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
-  Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_x; generated_y ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
@@ -1885,7 +1891,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "one constructor per expression form" 36 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 37 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true
@@ -1990,9 +1996,9 @@ let test_7i_generated_syntax_later_wins_shadow () =
   match
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");\n\
-                 syntax build_inc {\n\
-                 | build_inc $(n: ident) =>\n\
-                     multi {\n\
+                 syntax build_inc : Decl {\n\
+                 | build_inc $(n : Id) =>\n\
+                     {\n\
                        syntax $n { | $n $x => $x + 1 }\n\
                      }\n\
                  };\n\
@@ -2310,7 +2316,7 @@ let test_syntax_template_binder_hole () =
   check_i64_macro "binder hole can introduce use-site name" 3L
     "{
        syntax bind {
-       | bind $(name: binder) $value in $body => { $name = $value; $body }
+       | bind $(name : Id) $value in $body => { $name = $value; $body }
        };
        bind x 3 in x
      }" ()
@@ -2319,8 +2325,17 @@ let test_syntax_template_ident_hole () =
   check_i64_macro "identifier hole can reference use-site name" 4L
     "{
        x = 4;
-       syntax use { | use $(name: ident) => $name };
+       syntax use { | use $(name : Id) => $name };
        use x
+     }" ()
+
+let test_syntax_template_pattern_hole () =
+  check_i64_macro "pattern hole splices a use-site pattern and its binders" 4L
+    "{
+       syntax unwrap_or {
+       | unwrap_or $v $(p : Pattern) $body $d => match ($v) { | $p => $body | _ => $d }
+       };
+       unwrap_or (Some(4)) (Some(x)) x 0
      }" ()
 
 let test_syntax_template_unused_capture () =
@@ -2343,7 +2358,7 @@ let test_decl_template_module_captures_pub_value () =
   check_i64_macro "decl template captures public module value" 42L
     "{
        M = module {
-         syntax keep { | keep $(d: decl) => $d };
+         syntax keep : Decl { | keep $(d : Decl) => { $d } };
          keep pub answer = 42
        };
        M.answer
@@ -2353,7 +2368,7 @@ let test_decl_template_module_preserves_typed_value () =
   check_i64_macro "decl template preserves typed value" 42L
     "{
        M = module {
-         syntax keep { | keep $(d: decl) => $d };
+         syntax keep : Decl { | keep $(d : Decl) => { $d } };
          keep pub answer : I64 = 42
        };
        M.answer
@@ -2364,7 +2379,7 @@ let test_decl_template_struct_captures_pub_value () =
     "{
        Box = struct {
          value: I64;
-         syntax keep { | keep $(d: decl) => $d };
+         syntax keep : Decl { | keep $(d : Decl) => { $d } };
          keep pub answer = 42
        };
        Box.answer
@@ -2375,8 +2390,8 @@ let test_decl_template_multi_generates_siblings () =
     eval_with_imported_macros
       [ ( "decls",
           "open (import \"std\");
-           syntax pair {
-           | pair => multi {
+           syntax pair : Decl {
+           | pair => {
                base = 40;
                pub answer = base + 2
              }
@@ -2395,25 +2410,25 @@ let test_decl_template_multi_rejected_in_expr () =
   match
     eval_with_imported_macros
       [ ( "bad_syntax",
-          "pub syntax bad {
-           | bad => multi {
+          "pub syntax bad : Decl {
+           | bad => {
                x = 1
              }
            }" ) ]
       "{ M = import \"bad_syntax\"; bad }"
   with
   | exception Enforest.Error msg ->
-      Alcotest.(check bool) "mentions declaration context" true
-        (string_contains msg "declaration syntax templates")
+      Alcotest.(check bool) "names the kind mismatch" true
+        (string_contains msg "has kind Decl but was used in Expr context")
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected multi expression-template rejection"
+  | _ -> Alcotest.fail "expected a Decl syntax form in expression position to be rejected"
 
 let test_decl_template_struct_field_deferred () =
   match
     eval_with_macros
       "{
          Box = struct {
-           syntax field { | field => value: I64 };
+           syntax field : Decl { | field => { value: I64 } };
            field
          };
          0
@@ -2428,9 +2443,9 @@ let test_decl_template_struct_field_deferred () =
 let test_7i_generated_pub_syntax_across_imports () =
   match
     eval_with_imported_macros
-      [ ("gen", "syntax export_syntax {
-                  | export_syntax $(n: ident) =>
-                      multi {
+      [ ("gen", "syntax export_syntax : Decl {
+                  | export_syntax $(n : Id) =>
+                      {
                         pub syntax $n { | $n $x => $x + 1 }
                       }
                   };
@@ -2446,9 +2461,9 @@ let test_7i_generated_pub_syntax_across_imports () =
 let test_7i_generated_syntax_usable_later_same_module () =
   check_import_i64 "7I generated syntax usable later" 
     [ ("gen", "open (import \"std\");
-               syntax make_inc {
-               | make_inc $(n: ident) =>
-                   multi {
+               syntax make_inc : Decl {
+               | make_inc $(n : Id) =>
+                   {
                      syntax $n { | $n $x => $x + 1 }
                    }
                };
@@ -2460,9 +2475,9 @@ let test_7i_generated_pub_operator_across_imports () =
   match
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");
-                  syntax export_operator {
-                  | export_operator $(op: ident) =>
-                      multi {
+                  syntax export_operator : Decl {
+                  | export_operator $(op : Id) =>
+                      {
                         pub infix ($op) 15 Left (stx) { Syntax.i64(9) }
                       }
                   };
@@ -2478,9 +2493,9 @@ let test_7i_generated_pub_operator_across_imports () =
 let test_7i_generated_pub_macro_across_imports () =
   match
     eval_with_imported_macros
-      [ ("gen", "open (import \"std\");\nsyntax export_macro {
+      [ ("gen", "open (import \"std\");\nsyntax export_macro : Decl {
                   | export_macro =>
-                      multi {
+                      {
                         pub macro answer(_) { Syntax.i64(42) }
                       }
                   };
@@ -2497,9 +2512,9 @@ let test_7i_generated_pub_operator_rejected_in_struct () =
   match
     eval_with_macros
       "struct {
-           syntax export_operator {
+           syntax export_operator : Decl {
            | export_operator =>
-               multi {
+               {
                  pub infix (~) 15 Left (stx) { Syntax.i64(9) }
                }
            };
@@ -2516,9 +2531,9 @@ let test_7i_generated_pub_macro_rejected_in_struct () =
   match
     eval_with_macros
       "struct {
-           syntax export_macro {
+           syntax export_macro : Decl {
            | export_macro =>
-               multi {
+               {
                  pub macro answer(_) { Syntax.i64(42) }
                }
            };
@@ -2534,14 +2549,14 @@ let test_7i_generated_pub_macro_rejected_in_struct () =
 let test_7i_generated_syntax_cycle () =
   match
     eval_with_imported_macros
-      [ ("cycle_a", "syntax gen_aop {
-                     | gen_aop $(n: ident) => multi {
+      [ ("cycle_a", "syntax gen_aop : Decl {
+                     | gen_aop $(n : Id) => {
                          pub syntax $n { | $n $x => { import \"cycle_b\"; $x } }
                        }
                      };
                      gen_aop aop");
-        ("cycle_b", "syntax gen_bop {
-                     | gen_bop $(n: ident) => multi {
+        ("cycle_b", "syntax gen_bop : Decl {
+                     | gen_bop $(n : Id) => {
                          pub syntax $n { | $n $x => { import \"cycle_a\"; $x } }
                        }
                      };
@@ -2555,14 +2570,14 @@ let test_7i_generated_syntax_cycle () =
 let test_7i_generated_macro_cycle () =
   match
     eval_with_imported_macros
-      [ ("mac_a", "open (import \"std\");\nsyntax gen_ma {
-                   | gen_ma => multi {
+      [ ("mac_a", "open (import \"std\");\nsyntax gen_ma : Decl {
+                   | gen_ma => {
                        pub macro ma(_) { { B = import \"mac_b\"; Syntax.i64(1) } }
                      }
                    };
                    gen_ma");
-        ("mac_b", "open (import \"std\");\nsyntax gen_mb {
-                   | gen_mb => multi {
+        ("mac_b", "open (import \"std\");\nsyntax gen_mb : Decl {
+                   | gen_mb => {
                        pub macro mb(_) { { A = import \"mac_a\"; Syntax.i64(2) } }
                      }
                    };
@@ -2603,7 +2618,7 @@ let test_m7_template_syntax_visible_in_its_output () =
 let test_m7_generated_syntax_usable_by_next_form () =
   check_import_i64 "generated syntax named at the use site is usable by the next form"
     [ ("gen", "open (import \"std\");
-               syntax make { | make $(n: ident) => multi { syntax $n { | $n $x => $x * 2 } } };
+               syntax make : Decl { | make $(n : Id) => { syntax $n { | $n $x => $x * 2 } } };
                make double;
                pub r = double 21") ]
     42L "{ M = import \"gen\"; M.r }" ()
@@ -2681,7 +2696,7 @@ let test_m7_template_written_syntax_invisible () =
   match
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");
-                 syntax make { | make => multi { syntax inc { | inc $x => $x + 1 } } };
+                 syntax make : Decl { | make => { syntax inc { | inc $x => $x + 1 } } };
                  make;
                  pub r = inc 5") ]
       "{ M = import \"gen\"; M.r }"
@@ -3243,6 +3258,7 @@ let () =
           Alcotest.test_case "macro does not capture its argument" `Quick test_macro_does_not_capture_argument;
           Alcotest.test_case "macro body sees nothing ambient" `Quick test_macro_body_sees_nothing_ambient;
           Alcotest.test_case "quote splices holes" `Quick test_quote_splices_holes;
+          Alcotest.test_case "quote declarations" `Quick test_quote_declarations;
           Alcotest.test_case "template literals resolve at definition" `Quick test_template_literals_resolve_at_definition;
           Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;
           Alcotest.test_case "reflection round trip is the identity" `Quick test_round_trip_is_identity;
@@ -3333,6 +3349,7 @@ let () =
           Alcotest.test_case "syntax template: no holes" `Quick test_syntax_template_no_holes;
           Alcotest.test_case "syntax template: binder hole" `Quick test_syntax_template_binder_hole;
           Alcotest.test_case "syntax template: identifier hole" `Quick test_syntax_template_ident_hole;
+          Alcotest.test_case "syntax template: pattern hole" `Quick test_syntax_template_pattern_hole;
           Alcotest.test_case "syntax template: unused capture" `Quick test_syntax_template_unused_capture;
           Alcotest.test_case "syntax template: reuse duplicates evaluation" `Quick test_syntax_template_reuse_duplicates_evaluation;
           Alcotest.test_case "decl template: module captures pub value" `Quick test_decl_template_module_captures_pub_value;

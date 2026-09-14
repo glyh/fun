@@ -1,4 +1,5 @@
-type hole_kind = Expr | Block | Binder | Ident | Decl
+(* What a hole captures: the reflection types (M10). A bare [$x] is [Expr]. *)
+type hole_kind = Expr | Block | Id | Decl | Pattern
 
 type pattern_part =
   | Literal of Raw_syntax.t
@@ -19,10 +20,13 @@ type captured = {
   syntax : Syntax.t;
   kind : hole_kind;
   decl_terms : Raw_syntax.t list option;
+  pat : Syntax.pat option;
 }
 
 type t = {
   head : string;
+  (* [syntax head : Decl { … }] makes declarations; otherwise an expression (M8). *)
+  annotation : Syntax.MacroAnnotation.t;
   branches : branch list;
   declaration_span : Source_span.t;
   inherited_captures : (string * captured) list;

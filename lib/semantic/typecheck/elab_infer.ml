@@ -186,6 +186,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
   | Syntax.MethodBinding _ -> failwith "module binding cannot be method"
   | Syntax.MacroBinding _ | Syntax.SyntaxBinding _ -> (ctx, [], [])
   | Syntax.MacroCallBinding _ -> (ctx, [], [])
+  | Syntax.HoleBinding _ -> failwith "a declaration hole should not reach elaboration"
   | Syntax.PatternSynBinding { name = { name; _ }; params; rhs; public } ->
       let params = Syntax.names params in
       let scrutinee_ty =
@@ -291,6 +292,26 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let ctx', results = elab_type_group ops ctx ~members ~public in
       (ctx', List.rev_map fst results,
        List.rev_map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) (List.concat_map snd results))
+
+(* Quoted syntax is its reflection value, built with the scopes it was written
+   with. Each hole is checked against the reflection type its position gives it
+   (M10); one hole in two kinds of position is an error, not a coercion. *)
+let infer_quote ops (ctx : Ctx.t) template_value holes =
+  let ns = Elab_stdlib.syntax_nominals ctx in
+  let occurrences = Quote_holes.occurrences template_value in
+  let hole_core (name, hole) =
+    let kinds = List.filter_map (fun (n, k) -> if String.equal n name then Some k else None) occurrences in
+    let expected =
+      match List.sort_uniq compare kinds with
+      | [ Quote_holes.Expr ] -> ns.Macro_eval.expr
+      | [ Quote_holes.Pattern ] -> ns.pat
+      | [ Quote_holes.Decl ] -> ns.decl
+      | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Id" ]
+      | _ -> raise (ElabError (QuoteHoleKindConflict name))
+    in
+    (name, ops.check ctx hole expected)
+  in
+  Quote { template = template_value; holes = List.map hole_core holes }
 
 let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   match expr.kind with
@@ -620,6 +641,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let rec go ctx (acc_binds, acc_entries) = function
         | [] -> (ctx, List.rev acc_binds, List.rev acc_entries)
         | (Syntax.MacroBinding _ | Syntax.SyntaxBinding _) :: rest -> go ctx (acc_binds, acc_entries) rest
+        | Syntax.HoleBinding _ :: _ -> failwith "a declaration hole should not reach elaboration"
         | Syntax.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
         | Syntax.PatternSynBinding { name = { name; _ }; params; rhs; public } :: rest ->
             let params = Syntax.names params in
@@ -965,22 +987,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       failwith "macro-only syntax should not reach elaboration"
   | Stx _ -> failwith "stx-only syntax should not reach elaboration"
   | Quote { template; holes } ->
-      (* Quoted syntax is its reflection value, built here with the scopes it
-         was written with. Each hole is checked against the reflection type
-         its position gives it (M10); one hole in two kinds of position is an
-         error, not a coercion. *)
       let ns = Elab_stdlib.syntax_nominals ctx in
-      let template_value = Macro_eval.wrap_stx ~nominals:(Some ns) template in
-      let occurrences = Quote_holes.occurrences template_value in
-      let hole_core (name, hole) =
-        let kinds = List.filter_map (fun (n, k) -> if String.equal n name then Some k else None) occurrences in
-        let expected =
-          match List.sort_uniq compare kinds with
-          | [ Quote_holes.Expr ] -> ns.Macro_eval.expr
-          | [ Quote_holes.Pattern ] -> ns.pat
-          | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Id" ]
-          | _ -> raise (ElabError (QuoteHoleKindConflict name))
-        in
-        (name, ops.check ctx hole expected)
-      in
-      (Quote { template = template_value; holes = List.map hole_core holes }, ns.expr)
+      (infer_quote ops ctx (Macro_eval.wrap_stx ~nominals:(Some ns) template) holes, ns.expr)
+  | QuoteDecls { items; holes } ->
+      let ns = Elab_stdlib.syntax_nominals ctx in
+      ( infer_quote ops ctx (Macro_eval.wrap_stx_decl ~nominals:(Some ns) items) holes,
+        Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Decls" ] )

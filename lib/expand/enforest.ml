@@ -385,6 +385,7 @@ and form_callbacks env =
       (fun ts -> parse_all (fun ts -> parse_expr_prec env 0 ts) ts);
     parse_do_body_terms = parse_do_body_terms env;
     parse_pat_terms;
+    parse_items = parse_module_bindings env;
     is_expr_start = is_expr_start env;
   }
 
@@ -495,7 +496,7 @@ and parse_primary env terms =
       | Token { kind = KwSig; _ } -> parse_sig_expr env term.span rest
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
       | Token { kind = Ident "quote"; _ }
-        when (match drop_separators rest with { datum = Group (Raw_syntax.Paren, _, _); _ } :: _ -> true | _ -> false) ->
+        when (match drop_separators rest with { datum = Group ((Raw_syntax.Paren | Raw_syntax.Brace), _, _); _ } :: _ -> true | _ -> false) ->
           Enforest_forms.parse_quote (form_callbacks env) term.span rest
       | Token { kind = Ident name; _ } -> (
           match
@@ -705,6 +706,7 @@ and parse_postfix_infix env min_prec lhs terms =
                               Syntax_template.syntax = operand;
                               kind = Syntax_template.Expr;
                               decl_terms = None;
+                              pat = None;
                             } ))
                         holes [ rhs; lhs ]
                     in
@@ -1068,6 +1070,7 @@ and parse_operator_template_decl env (sym_id : Syntax.id) prec assoc value_terms
   let template =
     {
       Syntax_template.head = sym;
+      annotation = Syntax.MacroAnnotation.Expr;
       branches = [ { pattern; replacement = body; span } ];
       declaration_span = sym_span;
       inherited_captures = [];
@@ -1086,7 +1089,7 @@ and parse_operator_assoc assoc_str =
   | "Right" -> Binding.Right
   | _ -> error "operator infix associativity must be Left or Right"
 
-and parse_syntax_template_decl env head_term head body_terms rest =
+and parse_syntax_template_decl env head_term head kind body_terms rest =
   ensure_no_rest "syntax declaration" rest;
   (* Sole surviving use of [load_imports_in_terms]: eagerly harvest every
      [import "…"] referenced anywhere in the template body *before* the branches
@@ -1108,6 +1111,7 @@ and parse_syntax_template_decl env head_term head body_terms rest =
   let template =
     {
       Syntax_template.head;
+      annotation = kind;
       branches;
       declaration_span = head_term.span;
       inherited_captures;
@@ -1262,16 +1266,20 @@ and parse_operator_decl env stmt =
       end
   | None -> (
       match drop_separators stmt with
-      | { datum = Token { kind = Ident s; _ }; _ }
-        :: head_term :: { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest
-        when String.equal s "syntax" ->
+      | { datum = Token { kind = Ident s; _ }; _ } :: head_term :: after
+        when String.equal s "syntax"
+             && (match Enforest_template.syntax_kind after with
+                 | _, _, { datum = Group (Raw_syntax.Brace, _, _); _ } :: _ -> true
+                 | _ -> false) -> (
           let head =
             match head_term.datum with
             | Token { kind = Ident name; _ } -> name
             | _ -> error "syntax declaration head must be an identifier"
           in
-          Some
-            (parse_syntax_template_decl env head_term head body_terms rest)
+          match Enforest_template.syntax_kind after with
+          | kind, _, { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest ->
+              Some (parse_syntax_template_decl env head_term head kind body_terms rest)
+          | _ -> assert false)
       | { datum = Token { kind = Ident s; _ }; _ } :: _
         when String.equal s "syntax" ->
           unsupported "unsupported syntax declaration shape"
@@ -1555,6 +1563,12 @@ and parse_module_binding env stmt =
 
 and parse_module_statement env stmt =
   let parse_decl terms = parse_module_statement env terms in
+  match drop_separators stmt with
+  (* A lone [$d] is a declaration hole: only [quote]'s rewriting spells an id
+     with [$]. *)
+  | [ ({ datum = Token { kind = Ident name; _ }; _ } as term) ] when String.length name > 1 && name.[0] = '$' ->
+      [ Syntax.HoleBinding (id_of term name) ]
+  | _ ->
   match parse_decl_template_use env parse_decl stmt with
   | Some bindings -> bindings
   | None -> (

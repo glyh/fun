@@ -68,7 +68,7 @@ let syntax_primitive_names = []
 let stdlib_source =
   {|
 pub type Bool = False | True;
-pub syntax if { | if ($c) $(t: block) else $(e: block) => match ($c) { True => $t | False => $e } };
+pub syntax if { | if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t | False => $e } };
 pub infix (&&) 4 Left ($a, $b) { match ($a) { True => $b | False => False } };
 pub infix (||) 3 Left ($a, $b) { match ($a) { True => True | False => $b } };
 pub i64_to_bool = fn(n) { match (n) { 0 => False | _ => True } };
@@ -146,6 +146,7 @@ pub Syntax = module {
     | RawMatch(Option(Span), Expr, List(Branch))
     | RawStx(Option(Span), Expr)
     | RawQuote(Option(Span), Expr, List(QuoteHole))
+    | RawQuoteDecls(Option(Span), List(Decl), List(QuoteHole))
     | RawMacroDef(Option(Span), Id, Expr, Expr, Option(MacroAnn))
     | RawSyntaxDef(Option(Span), Id, Bool, Expr)
     | RawMacroCall(Option(Span), Expr, List(Expr))
@@ -181,6 +182,7 @@ pub Syntax = module {
     | DeclMacroCall(Expr, List(Expr))
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
     | DeclOpen(Expr, String)
+    | DeclHole(Id)
     | DeclSyntax(Id, Bool);
   pub pattern Var(name) = RawVar(_, name);
   pub pattern Ap(f, a) = RawAp(_, f, _, a);

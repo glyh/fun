@@ -53,7 +53,6 @@ let test_budget_shared_across_copy () =
 let test_decl_macro_exhausts_budget () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ _ _ -> VStx (StxDecls []));
-  Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Decl;
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VAtom Unit);
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in

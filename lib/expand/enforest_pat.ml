@@ -20,7 +20,7 @@ let parse_pat_terms terms =
               | "Char" -> Syntax.PatType Atom_ty.TChar
               | "String" -> Syntax.PatType Atom_ty.TString
               | "Absurd" -> Syntax.PatType Atom_ty.TAbsurd
-              | _ when name <> "" && Char.uppercase_ascii name.[0] = name.[0] ->
+              | _ when name <> "" && name.[0] >= 'A' && name.[0] <= 'Z' ->
                   Syntax.PatCon (Syntax.path_of_id (id_of term name), [])
               | _ -> Syntax.PatBind (id_of term name)
             in

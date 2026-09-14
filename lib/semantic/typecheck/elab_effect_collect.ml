@@ -16,7 +16,7 @@ let rec compile_time_safe (expr : Syntax.t) : bool =
   match expr.kind with
   | Syntax.RefNew _ | Syntax.RefGet _ | Syntax.RefSet _ -> false
   | Syntax.Atom _ | Syntax.Var _ | Syntax.Self | Syntax.SelfType | Syntax.Stx _ | Syntax.Import _ -> true
-  | Syntax.Quote { holes; _ } -> List.for_all (fun (_, h) -> compile_time_safe h) holes
+  | Syntax.Quote { holes; _ } | Syntax.QuoteDecls { holes; _ } -> List.for_all (fun (_, h) -> compile_time_safe h) holes
   | Syntax.Ap (f, _, a) -> compile_time_safe f && compile_time_safe a
   | Syntax.Lam (_, body) -> compile_time_safe body
   | Syntax.Let { type_; value; body; _ } ->
@@ -67,7 +67,7 @@ and compile_time_safe_struct_binding = function
   | Syntax.TraitBinding { fields; _ } -> List.for_all (fun (_, ty) -> compile_time_safe ty) fields
   | Syntax.ImplBinding { args; fields; _ } ->
       List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields
-  | Syntax.MacroBinding _ | Syntax.SyntaxBinding _ -> true
+  | Syntax.MacroBinding _ | Syntax.SyntaxBinding _ | Syntax.HoleBinding _ -> true
   | Syntax.MacroCallBinding _ -> true
   | Syntax.PatternSynBinding _ -> true
   | Syntax.OpenBinding (m, _) -> compile_time_safe m
@@ -261,5 +261,5 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
       in
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
   | Atom _ | Var _ | OpenChoice _ | Self | SelfType | Stx _ | Import _ -> empty_expr_effects
-  | Quote { holes; _ } -> union_many_expr_effects ctx (List.map (fun (_, h) -> ops.collect_effects ctx h) holes)
+  | Quote { holes; _ } | QuoteDecls { holes; _ } -> union_many_expr_effects ctx (List.map (fun (_, h) -> ops.collect_effects ctx h) holes)
   | MacroDef _ | SyntaxDef _ | MacroCall _ | SyntaxOperatorUse _ -> failwith "macro-only syntax should not reach elaboration"

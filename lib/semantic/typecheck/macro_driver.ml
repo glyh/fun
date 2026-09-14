@@ -37,7 +37,6 @@ let rec run ?loader ?(imported_roles = []) (stx : Syntax.t) : driver_output =
   (* Build expand context with the same callbacks used by [eval_decl_module]. *)
   let expand_ctx = Expand_ctx.create () in
   Expand_ctx.set_syntax_nominals expand_ctx syntax_nominals;
-  Expand_ctx.set_expansion_position expand_ctx Syntax.MacroKind.Decl;
   Expand_ctx.add_imported_roles expand_ctx imported_roles;
   (* A macro body is compiled in the unit's context as of its definition. *)
   expand_ctx.Expand_ctx.elaborate

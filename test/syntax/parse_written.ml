@@ -23,20 +23,18 @@ let lower_written stx =
   Shape.lower_expr
     (Expand.map_forms (fun id -> { id with Syntax.name = written_name id.Syntax.name }) unchoose stx)
 
-let expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~expansion_position stx =
+let expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals stx =
   let ctx = Expand_ctx.create () in
   Option.iter (fun f -> ctx.elaborate <- Some f) elaborate;
   Option.iter (fun f -> ctx.eval_and_apply <- Some f) eval_and_apply;
   Option.iter (fun f -> ctx.load_macros <- Some f) load_macros;
   Option.iter (Expand_ctx.set_syntax_nominals ctx) syntax_nominals;
-  Expand_ctx.set_expansion_position ctx expansion_position;
   lower_written (Expand.expand ctx stx)
 
 let parse_expr ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?open_prelude ?syntax_nominals source =
   Enforest.parse_expr ?load_syntax ?open_prelude source
   |> expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals
-       ~expansion_position:Syntax.MacroKind.Expr
 
 let parse_module ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals source =
   Enforest.parse_module ?load_syntax source
-  |> expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~expansion_position:Syntax.MacroKind.Decl
+  |> expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals

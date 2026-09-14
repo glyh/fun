@@ -85,6 +85,9 @@ and struct_binding =
       (** [open <module-expr>] at module/struct top level — the binding-list
           counterpart of the expression-level [Open]. Scopes over the subsequent
           bindings only. The string is the open's label (see [Open]). *)
+  | HoleBinding of id
+      (** A declaration hole [$d] in quoted items ([quote { … }], M10): a
+          declaration, filled when the quote is evaluated. *)
   | SyntaxBinding of { name : id; attaches : bool }
       (** A syntax template or fixity declaration, as the binder it is: the
           enforester has already read its role; expansion registers the binder,
@@ -169,6 +172,8 @@ and kind =
       (** [quote(…)]: syntax written literally in a macro body. Each hole [$x]
           stands in [template] as an id spelled ["$x"] - [$] cannot begin a
           source identifier - and in [holes] as the ordinary reference [x]. *)
+  | QuoteDecls of { items : struct_binding list; holes : (string * t) list }
+      (** [quote { … }]: declarations written literally, holes as in [Quote]. *)
   | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option }
   | SyntaxDef of { name : id; attaches : bool; body : t }
       (** A [SyntaxBinding] scoped over the rest of a block. *)

@@ -52,6 +52,7 @@ and struct_binding =
   | MacroCallBinding of { f : t; args : t list }
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
   | SyntaxBinding of { name : string; attaches : bool }
+  | HoleBinding of string
   | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level. Brings the module's
           public fields into scope for the *subsequent* bindings only (statement
@@ -121,6 +122,7 @@ and t =
   | RefSet of t * t
   | StxExpr of Syntax.t
   | Quote of { template : Syntax.t; holes : (string * t) list } (* opaque syntax wrapper — survives lowering intact *)
+  | QuoteDecls of { items : Syntax.struct_binding list; holes : (string * t) list }
   | Match of t * match_branch list  (* match scrutinee | pat -> body ... end *)
   | MacroDef of { name : string; value : t; body : t; kind : Syntax.MacroAnnotation.t option }
   | SyntaxDef of { name : string; attaches : bool; body : t }
@@ -190,6 +192,8 @@ and lower_expr (stx : Syntax.t) : t =
   | Syntax.Stx s -> StxExpr s
   | Syntax.Quote { template; holes } ->
     Quote { template; holes = List.map (fun (n, h) -> (n, lower_expr h)) holes }
+  | Syntax.QuoteDecls { items; holes } ->
+    QuoteDecls { items; holes = List.map (fun (n, h) -> (n, lower_expr h)) holes }
   | Syntax.Atom a -> Atom a
   | Syntax.Var id -> Var (lower_id id)
   | Syntax.Self -> Self
@@ -290,6 +294,7 @@ and lower_struct_binding = function
                                 rhs = lower_pat rhs; public }
   | Syntax.OpenBinding (m, label) -> OpenBinding (lower_expr m, label)
   | Syntax.SyntaxBinding { name; attaches } -> SyntaxBinding { name = lower_id name; attaches }
+  | Syntax.HoleBinding id -> HoleBinding (lower_id id)
 
 and lower_match_branch = function
   | Syntax.ValueBranch (p, body) -> ValueBranch (lower_pat p, lower_expr body)

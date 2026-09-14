@@ -587,29 +587,30 @@ let syntax_unbound_replacement_hole_rejected () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unbound replacement hole to be rejected"
 
-let syntax_binder_hole_expression_position_rejected () =
-  match
-    parse_with_macros
-      "{
-         syntax bad { | bad $(name: binder) => $name };
-         bad x
-       }"
-  with
-  | exception Enforest.Error msg when string_contains msg "binder hole used in expression position" -> ()
+(* A hole's kind is its reflection type (M10); [Id] names a binder or refers,
+   the splice position decides which. *)
+let syntax_id_hole_binds_and_refers () =
+  match parse_with_macros "{ syntax twice_bound { | twice_bound $(name : Id) => { $name = 1; $name } }; twice_bound x }" with
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected binder hole in expression position to be rejected"
+  | _ -> ()
 
-let syntax_ident_hole_binder_position_rejected () =
-  match
-    parse_with_macros
-      "{
-         syntax bad { | bad $(name: ident) => { $name = 1; $name } };
-         bad x
-       }"
-  with
-  | exception Enforest.Error msg when string_contains msg "identifier hole used in binder position" -> ()
+let syntax_old_hole_kind_spelling_rejected () =
+  match parse_with_macros "{ syntax bad { | bad $(name: ident) => $name }; bad x }" with
+  | exception Enforest.Error msg when string_contains msg "written as types" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected identifier hole in binder position to be rejected"
+  | _ -> Alcotest.fail "expected a lowercase hole kind to be rejected"
+
+let syntax_pattern_hole_expression_position_rejected () =
+  match parse_with_macros "{ syntax bad { | bad $(p : Pattern) => $p }; bad x }" with
+  | exception Enforest.Error msg when string_contains msg "pattern hole used in expression position" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected a pattern hole in expression position to be rejected"
+
+let syntax_multi_rejected () =
+  match parse_module "syntax bad : Decl { | bad => multi { x = 1 } }" with
+  | exception Enforest.Error msg when string_contains msg "multi { … } was removed" -> ()
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected multi to be rejected"
 
 let syntax_postfix_rejected_in_module () =
   match parse_module "operator postfix foo(stx) -> stx" with
@@ -759,8 +760,10 @@ let suites =
         Alcotest.test_case "duplicate public syntax exports rejected" `Quick duplicate_public_syntax_exports_rejected;
         Alcotest.test_case "syntax branch head mismatch rejected" `Quick syntax_branch_head_mismatch_rejected;
         Alcotest.test_case "syntax unbound replacement hole rejected" `Quick syntax_unbound_replacement_hole_rejected;
-        Alcotest.test_case "syntax binder hole expression position rejected" `Quick syntax_binder_hole_expression_position_rejected;
-        Alcotest.test_case "syntax ident hole binder position rejected" `Quick syntax_ident_hole_binder_position_rejected;
+        Alcotest.test_case "syntax Id hole binds and refers" `Quick syntax_id_hole_binds_and_refers;
+        Alcotest.test_case "syntax old hole kind spelling rejected" `Quick syntax_old_hole_kind_spelling_rejected;
+        Alcotest.test_case "syntax pattern hole expression position rejected" `Quick syntax_pattern_hole_expression_position_rejected;
+        Alcotest.test_case "syntax multi rejected" `Quick syntax_multi_rejected;
         Alcotest.test_case "syntax postfix rejected in module" `Quick syntax_postfix_rejected_in_module;
         Alcotest.test_case "syntax postfix rejected in do block" `Quick syntax_postfix_rejected_in_do_block;
         Alcotest.test_case "old syntax declaration rejected" `Quick old_syntax_declaration_rejected;

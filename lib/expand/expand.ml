@@ -59,6 +59,8 @@ and go_kind (on_id : Syntax.id -> Syntax.id) on_form (k : kind) : kind =
   | Atom _ -> k
   | Stx s -> Stx (go s)
   | Quote { template; holes } -> Quote { template = go template; holes = List.map (fun (n, h) -> (n, go h)) holes }
+  | QuoteDecls { items; holes } ->
+    QuoteDecls { items = List.map (go_struct_binding on_id on_form) items; holes = List.map (fun (n, h) -> (n, go h)) holes }
   | Self -> k
   | SelfType -> k
   | Ap (f, e, a) -> Ap (go f, e, go a)
@@ -149,6 +151,7 @@ and go_struct_binding (on_id : Syntax.id -> Syntax.id) on_form (binding : Syntax
     PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat on_id rhs; public }
   | OpenBinding (m, label) -> OpenBinding (map_forms on_id on_form m, label)
   | SyntaxBinding { name; attaches } -> SyntaxBinding { name = on_id name; attaches }
+  | HoleBinding id -> HoleBinding (on_id id)
 
 and go_match_branch on_id on_form = function
   | ValueBranch (p, body) -> ValueBranch (go_pat on_id p, map_forms on_id on_form body)
@@ -394,6 +397,10 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let prune (id : Syntax.id) = { id with scope = Expand_ctx.prune_to_definition_site ctx id.scope } in
     { stx with kind = Quote { template = map_ids prune template;
                               holes = List.map (fun (n, h) -> (n, expand ctx h)) holes } }
+  | QuoteDecls { items; holes } ->
+    let prune (id : Syntax.id) = { id with scope = Expand_ctx.prune_to_definition_site ctx id.scope } in
+    { stx with kind = QuoteDecls { items = List.map (go_struct_binding prune Fun.id) items;
+                                   holes = List.map (fun (n, h) -> (n, expand ctx h)) holes } }
   | Import path ->
     Option.iter (fun f -> f ctx path) ctx.Expand_ctx.load_macros;
     stx
@@ -664,8 +671,9 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     | Some k -> k
     | None -> Syntax.MacroKind.default
   in
-  let ctx_kind = Expand_ctx.get_expansion_position ctx in
-  check_macro_kind ~key ~macro_kind ~ctx_kind;
+  (* An application form is an expression: a call in item position is a
+     [MacroCallBinding]. *)
+  check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Expr;
   if Syntax.MacroKind.has_type_binding macro_kind then
     (* Defer to the elaborator: args travel as syntax objects, marked [Stx]. *)
     let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
@@ -726,13 +734,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   | LetBinding { name; value; public; recursive } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name () in
-    let value =
-      let prev = Expand_ctx.get_expansion_position ctx in
-      Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Expr;
-      let v = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
-      Expand_ctx.set_expansion_position ctx prev;
-      v
-    in
+    let value = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
     (* Same handle as the expression-level [Let]: [I = import "inner"] inside a
        module makes [I.answer(0)] expand. *)
     (match value.kind with
@@ -813,6 +815,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
      [[]])
   | PatternSynBinding { name; params; rhs; public } ->
      ([PatternSynBinding { name; params; rhs; public }], [[]])
+  | HoleBinding id -> Expand_error.raise_at (UnfilledHole { hole = id.name })
   | SyntaxBinding { name; attaches } ->
     (* The enforester read the role; what remains is the binder, whose scope
        the later bindings carry like any other. *)
@@ -865,8 +868,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
         | Some apply_fn ->
           let macro_kind = match Expand_ctx.lookup_macro_kind ctx key with
             | Some k -> k | None -> Syntax.MacroKind.default in
-          let ctx_kind = Expand_ctx.get_expansion_position ctx in
-          check_macro_kind ~key ~macro_kind ~ctx_kind;
+          check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Decl;
           let apply_fn = apply_fn ctx.Expand_ctx.budget in
            Expand_ctx.macro_application ctx ~name:key (fun () ->
              let app = application ctx in
