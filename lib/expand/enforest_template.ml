@@ -191,12 +191,12 @@ and match_template_parts ?(whole = false) callbacks captures pattern input =
       match kind with
       | Syntax_template.Binder | Syntax_template.Ident -> (
           match drop_separators input with
-          | ({ datum = Token { kind = Ident _ | Operator _; _ }; span; _ } as term) :: input_rest ->
+          | ({ datum = Token { kind = Ident _ | Operator _; _ }; _ } as term) :: input_rest ->
               (* The token itself is kept: a declaration replacement may name a
                  generated syntax form or operator with it (M7 decision 6). *)
               let captured =
                 {
-                  Syntax_template.syntax = var ~span (Option.get (raw_token_spelling term));
+                  Syntax_template.syntax = var_of term (Option.get (raw_token_spelling term));
                   kind;
                   decl_terms = Some [ term ];
                 }
@@ -329,19 +329,19 @@ let rec rewrite_template_holes ?(bound = []) terms =
     | terms -> (
         match terms with
         | ({ datum = Token { kind = Operator "$"; _ }; _ } as dollar)
-          :: ({ datum = Token { kind = Ident name; _ }; span } as ident) :: rest ->
+          :: ({ datum = Token ({ kind = Ident name; _ } as tok); span } as ident) :: rest ->
             if List.mem name bound then go (ident :: dollar :: acc) rest
             else
-              let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+              let term = { datum = Token { tok with kind = Ident (placeholder_name name) }; span } in
               go (term :: acc) rest
         | ({ datum = Token { kind = Operator "$"; _ }; _ } as dollar)
           :: ({ datum = Group (Raw_syntax.Paren, items, span); _ } as group) :: rest -> (
             match drop_separators items with
-            | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident _kind; _ }; _ } ]
+            | [ { datum = Token ({ kind = Ident name; _ } as tok); _ }; colon; { datum = Token { kind = Ident _kind; _ }; _ } ]
               when token_kind Colon colon ->
                 if List.mem name bound then go (group :: dollar :: acc) rest
                 else
-                  let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+                  let term = { datum = Token { tok with kind = Ident (placeholder_name name); span }; span } in
                   go (term :: acc) rest
             | _ -> error "expected template hole annotation $(name: kind)")
         | syntax_kw :: head :: { datum = Group (Raw_syntax.Brace, body_terms, span); _ } :: rest
@@ -358,7 +358,7 @@ let rec rewrite_template_holes ?(bound = []) terms =
 and rewrite_nested_syntax_body bound body_terms =
   let branch_separator () =
     let span = Source_span.synthetic in
-    { datum = Token { kind = Bar; span }; span }
+    Raw_syntax.syntax_token Bar span
   in
   let rec join_branches = function
     | [] -> []
@@ -377,6 +377,7 @@ and rewrite_nested_syntax_body bound body_terms =
 let fresh_intro_scope ?unit () =
   let scope = !intro_scope_counter in
   decr intro_scope_counter;
+  Hashtbl.replace Syntax_template.template_intro_scopes scope ();
   Option.iter (Hashtbl.replace Syntax_template.intro_scope_units scope) unit;
   Scope_set.singleton scope
 
@@ -489,10 +490,12 @@ let instantiate_template_replacement ?unit callbacks captures replacement =
   | _ when is_multi_block replacement ->
       error "multi { … } is only valid in declaration syntax templates"
   | _ -> ());
-  let rewritten = rewrite_template_holes replacement in
-  let parsed = callbacks.parse_expr_with_captures captures rewritten in
-  let introduced = Expand.add_scope (fresh_intro_scope ?unit ()) parsed in
-  substitute_template_captures captures introduced
+  (* The instance's intro scope goes on the replacement's tokens before they
+     are read, so a role the replacement declares is named by an intro-scoped
+     id; captures are substituted afterwards and keep their own scopes. *)
+  let introduced = Raw_syntax.add_scope (fresh_intro_scope ?unit ()) replacement in
+  let parsed = callbacks.parse_expr_with_captures captures (rewrite_template_holes introduced) in
+  substitute_template_captures captures parsed
 
 let captured_decl_terms captures name =
   let captured = lookup_capture captures name "declaration replacement" in
@@ -511,34 +514,28 @@ let captured_name_token captures bound name =
 let rec rewrite_decl_template_holes ?(bound = []) captures terms =
   let rec go acc = function
     | [] -> List.rev acc
-    | { datum = Token { kind = Operator "$"; _ }; _ }
-      :: { datum = Token { kind = Ident name; _ }; span } :: rest -> (
-        if List.mem name bound then
-          let dollar = { datum = Token { kind = Operator "$"; span }; span } in
-          let ident = { datum = Token { kind = Ident name; span }; span } in
-          go (ident :: dollar :: acc) rest
+    | ({ datum = Token { kind = Operator "$"; _ }; _ } as dollar)
+      :: ({ datum = Token ({ kind = Ident name; _ } as tok); span } as ident) :: rest -> (
+        if List.mem name bound then go (ident :: dollar :: acc) rest
         else
           match List.assoc_opt name captures with
           | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
               go (List.rev_append (captured_decl_terms captures name) acc) rest
           | _ ->
-              let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+              let term = { datum = Token { tok with kind = Ident (placeholder_name name) }; span } in
               go (term :: acc) rest)
-    | { datum = Token { kind = Operator "$"; _ }; _ }
-      :: { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest -> (
+    | ({ datum = Token { kind = Operator "$"; _ }; _ } as dollar)
+      :: ({ datum = Group (Raw_syntax.Paren, items, span); _ } as group) :: rest -> (
         match drop_separators items with
-        | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident _kind; _ }; _ } ]
+        | [ { datum = Token ({ kind = Ident name; _ } as tok); _ }; colon; { datum = Token { kind = Ident _kind; _ }; _ } ]
           when token_kind Colon colon -> (
-            if List.mem name bound then
-              let dollar = { datum = Token { kind = Operator "$"; span }; span } in
-              let group = { datum = Group (Raw_syntax.Paren, items, span); span } in
-              go (group :: dollar :: acc) rest
+            if List.mem name bound then go (group :: dollar :: acc) rest
             else
               match List.assoc_opt name captures with
               | Some { Syntax_template.kind = Syntax_template.Decl; _ } ->
                   go (List.rev_append (captured_decl_terms captures name) acc) rest
               | _ ->
-                  let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
+                  let term = { datum = Token { tok with kind = Ident (placeholder_name name); span }; span } in
                   go (term :: acc) rest)
         | _ -> error "expected template hole annotation $(name: kind)")
     | syntax_kw :: head_rest when is_syntax_keyword syntax_kw && Option.is_some (syntax_decl_parts head_rest) ->
@@ -564,7 +561,7 @@ let rec rewrite_decl_template_holes ?(bound = []) captures terms =
 and rewrite_decl_nested_syntax_body captures bound body_terms =
   let branch_separator () =
     let span = Source_span.synthetic in
-    { datum = Token { kind = Bar; span }; span }
+    Raw_syntax.syntax_token Bar span
   in
   let rec join_branches = function
     | [] -> []
@@ -593,18 +590,16 @@ let declaration_replacement_statements replacement =
   | terms -> [ terms ]
 
 let instantiate_decl_template_replacement ?unit callbacks captures replacement =
-  let rewritten = rewrite_decl_template_holes captures replacement in
+  (* Intro scope before splicing, so spliced captures keep their own scopes. *)
+  let introduced = Raw_syntax.add_scope (fresh_intro_scope ?unit ()) replacement in
+  let rewritten = rewrite_decl_template_holes captures introduced in
   let statements = declaration_replacement_statements rewritten in
-  let intro_scope = fresh_intro_scope ?unit () in
   statements
   |> List.concat_map (fun stmt ->
          try callbacks.parse_decl_with_captures captures stmt with
          | Unsupported msg -> unsupported ("declaration template replacement: " ^ msg)
          | Error msg -> error ("declaration template replacement: " ^ msg))
-  |> List.map (fun binding ->
-         binding
-         |> Expand.add_struct_binding_scopes [ intro_scope ]
-         |> map_template_struct_binding captures (substitute_template_captures captures))
+  |> List.map (map_template_struct_binding captures (substitute_template_captures captures))
 
 let expand callbacks _use_span (template : Syntax_template.t) terms =
   let rec try_branches = function

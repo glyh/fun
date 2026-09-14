@@ -55,9 +55,14 @@ type token_kind =
   | Eof
 [@@deriving show]
 
+(* [scope] is the token's scope set: the reader gives every token the empty
+   set; enforestation adds the scopes of the definition contexts, template
+   instances and binders around it before the token is read as a form, so a
+   syntactic role is resolved against the token's scopes (M7). *)
 type token = {
   kind : token_kind;
   span : Source_span.t;
+  scope : Scope_set.t; [@opaque]
 }
 [@@deriving show]
 
@@ -74,9 +79,18 @@ and t = {
 
 exception Error of string
 
-let token kind span = { kind; span }
+let token ?(scope = Scope_set.empty) kind span = { kind; span; scope }
 
-let syntax_token kind span = { datum = Token (token kind span); span }
+let syntax_token ?scope kind span = { datum = Token (token ?scope kind span); span }
+
+(* Add [s] to the scope set of every token in [terms], inside groups too. *)
+let rec add_scope (s : Scope_set.t) (terms : t list) : t list =
+  List.map
+    (fun term ->
+      match term.datum with
+      | Token tok -> { term with datum = Token { tok with scope = Scope_set.union tok.scope s } }
+      | Group (d, items, span) -> { term with datum = Group (d, add_scope s items, span) })
+    terms
 
 let group delimiter items span = { datum = Group (delimiter, items, span); span }
 
@@ -294,7 +308,7 @@ let read ?file source =
         read_sequence close (item :: acc) rest
     | ({ kind = (RParen | RBracket | RBrace); _ } as tok) :: _ ->
         raise (Error ("unexpected closing delimiter: " ^ token_name tok.kind))
-    | tok :: rest -> read_sequence close (syntax_token tok.kind tok.span :: acc) rest
+    | tok :: rest -> read_sequence close ({ datum = Token tok; span = tok.span } :: acc) rest
   and read_group opener rest =
     let delimiter, close =
       match opener.kind with
@@ -315,7 +329,7 @@ let read ?file source =
     | ({ kind = LParen | LBracket | LBrace; _ } as opener) :: rest -> read_group opener rest
     | ({ kind = (RParen | RBracket | RBrace); _ } as tok) :: _ ->
         raise (Error ("unexpected closing delimiter: " ^ token_name tok.kind))
-    | tok :: rest -> (syntax_token tok.kind tok.span, rest)
+    | tok :: rest -> ({ datum = Token tok; span = tok.span }, rest)
   in
   let items, _rest, _ = read_sequence None [] (raw_tokens_with_spans ?file source) in
   items

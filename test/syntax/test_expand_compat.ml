@@ -10,10 +10,10 @@ let check_compat source () =
 
 let token_spans () =
   match Raw_syntax.raw_tokens_with_spans "{ x = 42; x }" with
-  | [ { kind = Raw_syntax.LBrace; span = brace_span };
-      { kind = Raw_syntax.Ident "x"; span = x_span };
+  | [ { kind = Raw_syntax.LBrace; span = brace_span; _ };
+      { kind = Raw_syntax.Ident "x"; span = x_span; _ };
       { kind = Raw_syntax.Equals; _ };
-      { kind = Raw_syntax.Int 42L; span = int_span };
+      { kind = Raw_syntax.Int 42L; span = int_span; _ };
       { kind = Raw_syntax.Semi; _ };
       { kind = Raw_syntax.Ident "x"; _ };
       { kind = Raw_syntax.RBrace; _ };

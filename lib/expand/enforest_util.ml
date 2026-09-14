@@ -73,11 +73,20 @@ let stx ?(span = Source_span.synthetic) kind = { Syntax.kind; span }
 let atom ?span atom = stx ?span (Syntax.Atom atom)
 let var ?span name = stx ?span (Syntax.Var (id ?span name))
 
-let syntax_operator_arg ~span ~use_span (op : Binding.operator_info) operands =
+(* An id written by a token carries the token's scope set. *)
+let token_scope (term : Raw_syntax.t) =
+  match term.datum with Raw_syntax.Token tok -> tok.scope | Raw_syntax.Group _ -> Scope_set.empty
+
+let id_of (term : Raw_syntax.t) name = Syntax.fresh_id ~span:term.span ~scope:(token_scope term) name
+
+let var_of (term : Raw_syntax.t) name = stx ~span:term.span (Syntax.Var (id_of term name))
+
+let syntax_operator_arg ~span ~(use : Raw_syntax.t) (op : Binding.operator_info) operands =
   let fixity = match op.fixity with Binding.Prefix -> Syntax.PrefixOp | Binding.Infix -> Syntax.InfixOp in
+  let use_span = use.span in
   stx ~span
     (Syntax.SyntaxOperatorUse
-       { operator = id ~span:use_span op.symbol;
+       { operator = id_of use op.symbol;
          fixity;
          operands;
          declaration_span = op.declaration_span;
@@ -218,30 +227,29 @@ let split_last_expr terms =
 (* [M.N.x]: the head is a bare name, carried as an id; the rest are labels. *)
 let path_from_terms terms : Syntax.path * Raw_syntax.t list =
   match drop_separators terms with
-  | { datum = Token { kind = Ident head; _ }; span } :: rest ->
+  | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: rest ->
       let rec members acc = function
         | dot :: { datum = Token { kind = Ident name; _ }; _ } :: rest when token_kind Dot dot ->
             members (name :: acc) rest
         | rest -> (List.rev acc, rest)
       in
       let members, rest = members [] rest in
-      ({ Syntax.head = id ~span head; members; head_choice = None }, rest)
+      ({ Syntax.head = id_of head_term head; members; head_choice = None }, rest)
   | _ -> error "expected dotted identifier"
 
 let binding_name_term = function
-  | { datum = Token { kind = Ident name; _ }; span } -> Some (id ~span name)
-  | { datum = Group (Raw_syntax.Paren, [ { datum = Token { kind = Operator name; _ }; span } ], _); _ } ->
-      Some (id ~span name)
-  | { datum = Group (Raw_syntax.Paren, [ { datum = Token { kind = Ident name; _ }; span } ], _); _ } ->
-      Some (id ~span name)
+  | ({ datum = Token { kind = Ident name; _ }; _ } as term) -> Some (id_of term name)
+  | { datum = Group (Raw_syntax.Paren, [ ({ datum = Token { kind = Operator name | Ident name; _ }; _ } as term) ], _); _ } ->
+      Some (id_of term name)
   | _ -> None
 
 let unit ?span () = atom ?span Atom.Unit
 
 let unit_type ?span () = var ?span "Unit"
 
-let param ?span ?type_ explicitness name =
-  { Syntax.name = id ?span name; type_; trait_bounds = []; explicitness }
+let param_id ?type_ explicitness name = { Syntax.name; type_; trait_bounds = []; explicitness }
+
+let param ?span ?type_ explicitness name = param_id ?type_ explicitness (id ?span name)
 
 let split_commas terms =
   let rec go current acc = function

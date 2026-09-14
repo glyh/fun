@@ -5,9 +5,6 @@ let is_empty = function [] -> true | _ -> false
 
 let filter = List.filter
 
-(* Templates instantiate during enforestation and mint their intro scopes from
-   a separate, negative counter (see [Enforest_template.fresh_intro_scope]). *)
-let has_template_intro s = List.exists (fun x -> x < 0) s
 
 let union a b =
   let rec go a b =

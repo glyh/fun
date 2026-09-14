@@ -51,6 +51,6 @@ let parse_decl_type_params what name_span param_terms =
         split_commas items
         |> List.map (fun item ->
                match drop_separators item with
-               | [ { datum = Token { kind = Ident p; _ }; span } ] -> id ~span p
+               | [ ({ datum = Token { kind = Ident p; _ }; _ } as term) ] -> id_of term p
                | _ -> error (what ^ " parameter list expects identifiers"))
   | _ -> error (what ^ " parameters must be written as (A, B)")

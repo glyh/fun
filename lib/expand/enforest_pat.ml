@@ -21,8 +21,8 @@ let parse_pat_terms terms =
               | "String" -> Syntax.PatType Atom_ty.TString
               | "Absurd" -> Syntax.PatType Atom_ty.TAbsurd
               | _ when name <> "" && Char.uppercase_ascii name.[0] = name.[0] ->
-                  Syntax.PatCon (Syntax.path_of_id (id ~span:term.span name), [])
-              | _ -> Syntax.PatBind (id ~span:term.span name)
+                  Syntax.PatCon (Syntax.path_of_id (id_of term name), [])
+              | _ -> Syntax.PatBind (id_of term name)
             in
             (pat, rest)
         | Group (Raw_syntax.Paren, items, _) -> (
@@ -116,8 +116,8 @@ let parse_pat_terms terms =
              | [ { datum = Token { kind = Ident "_"; _ }; _ } ] -> ("_", None)
              (* [{x}] is sugar for [{x = x}]: the field label also writes a
                 binder, and a binder is an id. *)
-             | [ { datum = Token { kind = Ident name; _ }; span } ] ->
-                 (name, Some (Syntax.PatBind (id ~span name)))
+             | [ ({ datum = Token { kind = Ident name; _ }; _ } as term) ] ->
+                 (name, Some (Syntax.PatBind (id_of term name)))
              | { datum = Token { kind = Ident name; _ }; _ } :: eq :: pat_terms
                when token_kind Equals eq ->
                  (name, Some (parse_pat_all pat_terms))

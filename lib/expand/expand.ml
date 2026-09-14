@@ -30,7 +30,7 @@ let span_contains (outer : Source_span.t) (inner : Source_span.t) =
    a procedural macro during expansion - is in the body, and receives it. *)
 let add_id_scope_if within (scope : Scope_set.t) (id : Syntax.id) : Syntax.id =
   match within with
-  | Some region when Scope_set.has_template_intro id.scope && not (span_contains region id.span) -> id
+  | Some region when Syntax_template.has_template_intro id.scope && not (span_contains region id.span) -> id
   | _ -> add_id_scope scope id
 
 let add_id_scopes scopes id =

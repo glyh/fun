@@ -34,3 +34,10 @@ type t = {
 (* The unit whose template an instance's intro scope belongs to. Intro scopes
    are minted from one global counter, so the key is unique. *)
 let intro_scope_units : (int, string) Hashtbl.t = Hashtbl.create 64
+
+(* Every intro scope a template instance minted. Template intro scopes share
+   the enforester's scope numbering with the scopes of definition contexts, so
+   whether a scope is one is recorded, not read off its number. *)
+let template_intro_scopes : (int, unit) Hashtbl.t = Hashtbl.create 64
+
+let has_template_intro (s : Scope_set.t) = List.exists (Hashtbl.mem template_intro_scopes) s

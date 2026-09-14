@@ -74,8 +74,8 @@ let punct kind = {
 
 let ident = {
   run = (fun _env -> function
-    | { datum = Token { kind = Ident n; _ }; span = span } :: rest ->
-        Some (({ Syntax.name = n; span; scope = Scope_set.empty }, span), rest)
+    | ({ datum = Token { kind = Ident n; _ }; span = span } as term) :: rest ->
+        Some ((Enforest_util.id_of term n, span), rest)
     | _ -> None);
   name = "ident"
 }
@@ -115,8 +115,8 @@ let recover spec = {
 
 let str_ident = {
   run = (fun _env -> function
-    | { datum = Token { kind = Ident n; _ }; span } :: rest ->
-        Some ((n, span), rest)
+    | ({ datum = Token { kind = Ident n; _ }; _ } as term) :: rest ->
+        Some ((n, term), rest)
     | _ -> None);
   name = "ident"
 }

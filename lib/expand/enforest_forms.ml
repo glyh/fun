@@ -92,10 +92,10 @@ let parse_quote callbacks start_span terms =
   | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->
       let holes = ref [] in
       let rec rewrite = function
-        | { datum = Token { kind = Operator "$"; _ }; _ } :: { datum = Token { kind = Ident name; _ }; span } :: rest ->
+        | { datum = Token { kind = Operator "$"; _ }; _ } :: ({ datum = Token ({ kind = Ident name; _ } as tok); span } as term) :: rest ->
             let hole = "$" ^ name in
-            if not (List.mem_assoc hole !holes) then holes := (hole, var ~span name) :: !holes;
-            { datum = Token { kind = Ident hole; span }; span } :: rewrite rest
+            if not (List.mem_assoc hole !holes) then holes := (hole, var_of term name) :: !holes;
+            { datum = Token { tok with kind = Ident hole }; span } :: rewrite rest
         | { datum = Group (delimiter, items, span); _ } :: rest ->
             { datum = Group (delimiter, rewrite items, span); span } :: rewrite rest
         | term :: rest -> term :: rewrite rest
