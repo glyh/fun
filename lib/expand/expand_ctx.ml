@@ -19,7 +19,6 @@ type t = {
   (* Every open expansion has entered: the scope it adds to its region, and its
      label. An id carrying the scope is inside that open. *)
   mutable opens : (int * string) list;
-  mutable name_counter : int;
   mutable macro_table : (string, macro_entry) Hashtbl.t;
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
   mutable provisional_macros : (string, unit) Hashtbl.t;
@@ -62,7 +61,6 @@ let create ?loader () =
     scope_counter = 0;
     macro_definition_floor = None;
     opens = [];
-    name_counter = 0;
     macro_table = Hashtbl.create 8;
     macro_kind_table = Hashtbl.create 8;
     provisional_macros = Hashtbl.create 4;
@@ -176,10 +174,16 @@ let prune_to_definition_site (ctx : t) (scope : Scope_set.t) =
    that reach the elaborator through [open], the prelude's included, are not in
    the table; reusing a first binder's spelling made a local [False] and the
    prelude's [False] the same string (template-literals-resolve-at-use-site). *)
-let fresh_resolved_name (ctx : t) name =
-  let i = ctx.name_counter in
-  ctx.name_counter <- i + 1;
-  Printf.sprintf "%s__%d" name i
+let resolved_name_counter = ref 0
+
+(* A resolved name is written with [#], which no identifier or operator token can
+   contain (it begins a comment), so no written name can ever equal one - by
+   construction, not by the counter's freshness. The counter is global, so a name
+   minted by one expander is never re-minted by another. *)
+let fresh_resolved_name name =
+  let i = !resolved_name_counter in
+  incr resolved_name_counter;
+  Printf.sprintf "%s#%d" name i
 
 let is_intro_scope (ctx : t) s =
   Hashtbl.mem ctx.intro_scopes s || Hashtbl.mem Syntax_template.template_intro_scopes s
@@ -242,7 +246,7 @@ let extend_at_kinded (ctx : t) ?span ~name ~base_scope ~kind ~resolved_name () =
     the written name is already bound) and tags an explicit [kind], so nested
     definitions shadow lexically. Used for expression-level macro definitions. *)
 let extend_at_fresh_kinded (ctx : t) ?span ~name ~base_scope ?(kind = Binding.Value) () =
-  let resolved_name = fresh_resolved_name ctx name in
+  let resolved_name = fresh_resolved_name name in
   let scope = fresh_scope_set ctx in
   bind ctx ?span ~name ~base_scope ~kind ~resolved_name scope;
   (scope, resolved_name)
@@ -255,7 +259,6 @@ let copy (ctx : t) : t =
     scope_counter = ctx.scope_counter;
     macro_definition_floor = ctx.macro_definition_floor;
     opens = ctx.opens;
-    name_counter = ctx.name_counter;
     macro_table = Hashtbl.copy ctx.macro_table;
     macro_kind_table = Hashtbl.copy ctx.macro_kind_table;
     provisional_macros = Hashtbl.copy ctx.provisional_macros;

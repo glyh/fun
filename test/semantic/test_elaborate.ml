@@ -1547,6 +1547,8 @@ let type_chains =
 let open_choices =
   [
     Alcotest.test_case "a generated name is not writable" `Quick (rejected "{ x = 1; x__0 }");
+    Alcotest.test_case "a name spelled like an old generated name is just a name" `Quick
+      (eval_i64 "{ x = 1; x__0 = 7; x__0 }" 7L);
     Alcotest.test_case "an open's member is not shadowed by a generated name" `Quick
       (eval_i64 "{ M = module { pub x__1 = 5 }; open M; x = 1; x__1 }" 5L);
     Alcotest.test_case "an open shadows an earlier binder" `Quick

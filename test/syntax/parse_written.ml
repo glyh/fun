@@ -1,16 +1,12 @@
 (* The syntax tests assert the shape of expanded programs by the names written
    in their source. Expansion renames every local binder to a fresh resolved
-   name ([x] becomes [x__0]), which those assertions are not about, so this is
+   name ([x] becomes [x#0]), which those assertions are not about, so this is
    [Parse_expand] with resolved names mapped back to written ones before
    lowering. Resolution itself is tested in test_scope_sets and the backend
    suites. *)
 
 let written_name name =
-  match String.rindex_opt name '_' with
-  | Some i when i >= 1 && name.[i - 1] = '_' && i + 1 < String.length name
-                && String.for_all (fun c -> c >= '0' && c <= '9') (String.sub name (i + 1) (String.length name - i - 1)) ->
-      String.sub name 0 (i - 1)
-  | _ -> name
+  match String.index_opt name '#' with Some i -> String.sub name 0 i | None -> name
 
 (* An open choice is shown as the name written: these tests are about shape,
    and which open supplies a name is resolution. *)
