@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after the brace surface syntax, 2026-09-14.
+Last updated: after M7, M9 run 2 and the M9 performance fix, 2026-09-14.
 
 ---
 

@@ -244,6 +244,60 @@ as the frontier reaches them.
 
 ## Open questions
 
+### Handover (2026-09-14, end of the M7/M9 run)
+
+State: `main` builds and `dune test` is green (920 tests; the four test binaries
+run in ~0.05 / 0.34 / 8.3 / 7.5 s). This run landed the checker evaluation
+budget, path heads without spelling, macro fuel into the budget, explicit macro
+type binders, NomRef/Con by id, binder counts in `Core.map_subterms`, the brace
+surface syntax, M7 (roles by scope set, no mixing) and most of M9 (templates as
+macros, expander-driven reading, `Block` token trees, `expand_block`,
+idempotent expansion, unwritable resolved names `x#n`) — see `docs/STATUS.md`.
+
+**Recommended next, in order:**
+
+1. **Finish M9** ([ticket](tickets/templates-desugar-to-macros.md), "Left"):
+   procedural macro parameter kinds `(n : Id)`, and token-position holes in
+   `quote { … }`. Fresh code; the ticket names the mechanism (enforester needs
+   parameter kinds while reading a call; loader macro caches carry them).
+2. **Small defects**: [capture extents by exceptions](tickets/capture-extents-chosen-by-exceptions.md),
+   [role visibility gaps](tickets/role-visibility-gaps-after-m7.md),
+   [term_mentions_var ignores inserted metas](tickets/term-mentions-var-ignores-inserted-metas.md),
+   [budget error names no source call](tickets/budget-error-names-no-source-call.md)
+   (pairs with attaching spans to elaborator errors, see Fog).
+3. **Effects** (decided, unimplemented): [a bare arrow is pure](tickets/bare-arrow-is-pure.md),
+   [refs in effect rows](tickets/refs-in-effect-rows.md) (then
+   [nominal identity by purity](tickets/nominal-identity-applicative-by-purity.md)),
+   [handlers tunnel callback effects](tickets/handlers-tunnel-callback-effects.md).
+   `bare-arrow-is-pure` flips every arrow's default — expect wide test churn.
+
+**Needs the user (grilling), do not implement without it:**
+[recursive definitions stuck on open arguments](tickets/recursive-definitions-stuck-on-open-arguments.md),
+[pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md),
+[what a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md),
+and the older grilling tickets below (struct open, recursive records, `Self`).
+
+**Research, no decision needed yet:**
+[deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
+(OCaml 5 stack scanning; an evaluator design question for the port),
+[type-case refinement walks the whole context](tickets/type-case-refinement-walks-whole-context.md).
+
+**Working notes for the next agent:**
+- Parallel agents in git worktrees worked well for independent tickets; run
+  dune there with `dune build --root .` (the parent `dune-project` otherwise
+  captures the build). Worktrees may be created from a stale commit — reset to
+  `main` first.
+- Use the camlkit MCP tools (locate / uses / type_at) for OCaml navigation.
+- Surface syntax changed wholesale: bodies are `{ … }`, arms use `=>`, `;` is
+  explicit and a trailing `;` discards. Docs under `macro-system/` and closed
+  tickets still show the old `do … end` / `->` syntax; trust the code, `CLAUDE.md`
+  and `docs/STATUS.md`.
+- Compare performance side by side against a baseline build — the machine may be
+  loaded; the M9 regression (125x) was only visible that way.
+- When an implementation hits an undecided semantic question, stop and grill
+  the user with concrete code examples; several decisions this run were revised
+  mid-implementation (generated syntax is hygienic, quotes parse at definition).
+
 The current frontier — open tickets under [`tickets/`](tickets/), in intended
 order.
 
@@ -445,35 +499,21 @@ What remains, in the recommended order:
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
   — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 
-### Found by the M7 implementation (2026-09-14)
+### Found by the M7 and M9 implementations (2026-09-14)
 
-Known gaps recorded in the closed
-[M7 ticket](tickets/template-heads-resolve-by-scope-set.md) ("Known gaps"):
-
-- **Import opens check only unit-wide roles** — `open (import "x")` has no
-  written scope set, so roles the unit declared before it are not checked.
-- **Driver-run opens are unchecked** — the macro driver installs the macro
-  runtime after a unit's bindings elaborate, so `roles_in_open` never runs for
-  them.
-- **Block-local imported roles have no scope set** — they stay in the block by
-  the enforester copying its table (`with_operator_scope`), not by scope.
-
-### Found by M9 run 2 (2026-09-14)
-
-Recorded in the [M9 ticket](tickets/templates-desugar-to-macros.md), which stays
-open for the first two:
-
-- **Procedural macro parameter kinds** — `macro m(n : Id)` arguments still
-  arrive as `Expr`; the enforester must know a macro's parameter kinds while
-  reading a call, and the loader's macro caches must carry them.
-- **Token-position holes in `quote { … }`** — a `$n` heading a generated rule
-  is not filled, so a procedural macro cannot name generated syntax from the
-  use site (syntax forms can).
-- **Capture extents are chosen by exceptions** — `try_prefixes` picks a
-  capture's extent by catching parse errors, carried over from the old matcher;
-  exceptions as control flow per `CLAUDE.md`.
-- **Struct items are read at once**, with a private copy of the roles, not form
-  by form (their bodies still wait for expansion).
+- [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
+  — import opens check only unit-wide roles; driver-run opens are unchecked;
+  imported roles have no scope set.
+- [Capture extents are chosen by catching parse errors](tickets/capture-extents-chosen-by-exceptions.md)
+  — `try_prefixes`: exceptions as control flow, quadratic re-parsing.
+- [Type-case refinement walks the whole context per branch](tickets/type-case-refinement-walks-whole-context.md)
+  — the remaining elaboration hotspot after the M9 performance fix.
+- Still in the open [M9 ticket](tickets/templates-desugar-to-macros.md) ("Left"):
+  procedural macro parameter kinds (`macro m(n : Id)` arguments arrive as
+  `Expr`) and token-position holes in `quote { … }` (a `$n` heading a generated
+  rule is not filled).
+- Struct items are read together with a private copy of the roles, not form by
+  form (M9 run 2 choice; their bodies still wait for expansion).
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
