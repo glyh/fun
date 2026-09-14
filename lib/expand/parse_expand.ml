@@ -9,7 +9,7 @@ let expand_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ?expa
   (expanded, ctx)
 
 let parse_expr_with_ctx ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?open_prelude ?syntax_nominals ?expansion_position source =
-  let expansion_position = match expansion_position with Some k -> k | None -> Syntax.MacroKind.(Expr (None, None)) in
+  let expansion_position = match expansion_position with Some k -> k | None -> Syntax.MacroKind.Expr in
   Enforest.parse_expr ?load_syntax ?open_prelude source |> expand_syntax ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~expansion_position
 
 let parse_expr ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?open_prelude ?syntax_nominals ?expansion_position source =

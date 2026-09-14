@@ -364,7 +364,8 @@ every defect below is an invariant with no name in the source.
   — `Macro_driver` elaborates every macro body prelude-opened; the model
   elaborates it in its definition site's scope, nothing ambient.
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
-  — `macro m[A](x) : Expr(A)`; names in an annotation only refer.
+  (closed) — `macro m[A](x) : Expr(A)`; names in an annotation only refer, and an
+  unbound one is an error at the definition.
 - [Delete Surface.t; elaborate expanded Syntax.t](tickets/delete-surface-ir.md)
   (closed) — one IR: the elaborator reads expanded `Syntax.t`, so spans and ids
   reach it.
@@ -379,7 +380,7 @@ What remains, in the recommended order:
   nominals are located through the entry a head resolves to, and the
   name-keyed trait table and environment scans are gone.
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
-  (listed above).
+  (closed, listed above).
 - [Macro fuel is the evaluation budget](tickets/macro-fuel-is-the-evaluation-budget.md)
   (closed) — M5 + M8: a macro application is a call under the one budget, its
   body and output spending from the same request; expansion failures are

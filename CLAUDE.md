@@ -37,7 +37,7 @@ source → Raw_syntax → Enforest Syntax.t → Expand → expanded Syntax.t →
 - `lib/core_kernel/` — `Atom`, `Core`, `Debug`, `Syntax`, `Compiler_names` (centralized compiler-known names), `Scope_set`
 - `lib/syntax/` — `Raw_syntax` reader
 - `lib/expand/` — `Enforest` (+ `enforest_forms`/`_pat`/`_template`/`_decl_helpers`), `Expand`, `Parse_expand`, `Macro_eval`, `Expand_ctx`
-- `lib/semantic/typecheck/` — `Elaborate` split across many `elab_*` modules (`elab_infer`, `elab_check`, `elab_patterns`, `elab_prelude`, `elab_driver`, …), `Unify`, `Macro_driver` (type-aware macro interleaving), `Macro_resolver`
+- `lib/semantic/typecheck/` — `Elaborate` split across many `elab_*` modules (`elab_infer`, `elab_check`, `elab_patterns`, `elab_prelude`, `elab_driver`, …), `Unify`, `Macro_driver` (type-aware macro interleaving)
 - `lib/semantic/match/` — `Core_match_compile`, `Core_decision_tree`
 - `lib/backend/interp/` — `Nbe`
 - `lib/loader/` — `Core_loader`

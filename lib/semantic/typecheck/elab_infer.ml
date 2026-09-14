@@ -953,16 +953,10 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       (match macro_name with
        | Some name ->
            (match Hashtbl.find_opt ctx.macro_table name with
-             | Some (macro_fn, macro_kind, macro_nominals) ->
+             | Some (macro_fn, _, macro_nominals) ->
                 (match ctx.macro_runtime with
                  | Some runtime ->
                      let ty = Ctx.raw_meta ctx in
-                     (match Syntax.MacroKind.type_constraint_name macro_kind with
-                      | Some constraint_name ->
-                          (match resolve_dotted_value_opt ctx constraint_name with
-                           | Some (constraint_val, _) -> Ctx.unify ctx ty constraint_val
-                           | None -> raise (ElabError (UnboundVariable constraint_name)))
-                      | None -> ());
                      run_type_aware_macro runtime ~name macro_fn macro_nominals ty args (ops.infer ctx)
                  | None -> failwith "macro runtime required")
             | None -> failwith "macro-only syntax should not reach elaboration")

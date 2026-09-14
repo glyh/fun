@@ -50,7 +50,6 @@ type syntax_nominals = {
   pat_field : value;
   atom_ty : value;
   fixity : value;
-  ann_arg : value;
   macro_ann : value;
   quote_hole : value;
 }
@@ -132,14 +131,8 @@ let w_path ns (p : Syntax.path) =
   record [ ("head", w_id ns p.head); ("members", w_list ns w_string p.members);
            ("head_choice", w_option ns w_choice p.head_choice) ]
 
-let w_ann_arg ns = function
-  | Syntax.MacroAnnotation.Wildcard -> con ns.ann_arg "AnnWildcard" []
-  | Named n -> con ns.ann_arg "AnnNamed" [ w_string n ]
-  | Qualified (path, last) -> con ns.ann_arg "AnnQualified" [ w_list ns w_string path; w_string last ]
-
 let w_macro_ann ns = function
-  | Syntax.MacroAnnotation.Expr arg -> con ns.macro_ann "AnnExpr" [ w_option ns (w_ann_arg ns) arg ]
-  | LegacyExprBinder n -> con ns.macro_ann "AnnLegacyBinder" [ w_string n ]
+  | Syntax.MacroAnnotation.Expr -> con ns.macro_ann "AnnExpr" []
   | Decl -> con ns.macro_ann "AnnDecl" []
 
 let w_fixity ns = function
@@ -356,18 +349,9 @@ let u_path ns v : Syntax.path option =
   let* head_choice = let* c = u_field "head_choice" v in u_option ns u_choice c in
   Some { Syntax.head; members; head_choice }
 
-let u_ann_arg ns v : Syntax.MacroAnnotation.arg option =
-  match payload ns.ann_arg v with
-  | Some ("AnnWildcard", []) -> Some Wildcard
-  | Some ("AnnNamed", [ n ]) -> let* n = u_string n in Some (Syntax.MacroAnnotation.Named n)
-  | Some ("AnnQualified", [ p; l ]) ->
-      let* p = u_list ns u_string p in let* l = u_string l in Some (Syntax.MacroAnnotation.Qualified (p, l))
-  | _ -> None
-
 let u_macro_ann ns v : Syntax.MacroAnnotation.t option =
   match payload ns.macro_ann v with
-  | Some ("AnnExpr", [ a ]) -> let* a = u_option ns (u_ann_arg ns) a in Some (Syntax.MacroAnnotation.Expr a)
-  | Some ("AnnLegacyBinder", [ n ]) -> let* n = u_string n in Some (Syntax.MacroAnnotation.LegacyExprBinder n)
+  | Some ("AnnExpr", []) -> Some Syntax.MacroAnnotation.Expr
   | Some ("AnnDecl", []) -> Some Syntax.MacroAnnotation.Decl
   | _ -> None
 

@@ -87,15 +87,21 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   to - by trait identity, or by applying a type former - not by a name-keyed
   table or an environment scan. `impl M.Trait(..)` and `[A : M.Trait]` now work
   ([names-resolve-without-spelling](wayfinder/tickets/names-resolve-without-spelling.md)).
-  Still by spelling: macro annotation constraint names (plain strings, no
-  scopes) and a constructor label matched inside a scrutinee's known nominal.
+  Still by spelling: a constructor label matched inside a scrutinee's known nominal.
+- **Macro type binders are explicit.** `macro m[A](x) : Expr(A)` binds `A` (a
+  reflected type, `Syntax.R`, unless annotated); a macro binds at most one, and
+  binding one is what makes it type-aware, so arity is syntactic. Every name in
+  `: Expr(T)` only refers: the enforester makes `T` a reference in the body, so an
+  unbound or misspelt name is an error at the definition. The uppercase rule, the
+  `Macro_resolver` pass, the parse-time adapter and `: A` binders are deleted
+  ([macro-type-binders-should-be-explicit](wayfinder/tickets/macro-type-binders-should-be-explicit.md)).
   `Elab_infer` no longer special-cases `EffectRow` or `stx_` names
   ([elaborator-matches-names-by-spelling](wayfinder/tickets/elaborator-matches-names-by-spelling.md)).
 - **Macro bodies** elaborate inside the unit opens around their definition,
   nothing ambient (M3). Units that write macros open the prelude themselves.
 - **Types.** `type A = … and B = …` chains are mutually recursive nominals. Nested
   patterns through recursive positions work (they read constructors by nominal id).
-- Still open from the macro model: explicit `[A]` binders, M5/M8 (one budget,
+- Still open from the macro model: M5/M8 (one budget,
   error values), M7 (scope-keyed template heads), M9 (templates desugar to
   macros). See the design map's "Macro model distances still open".
 

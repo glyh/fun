@@ -235,8 +235,7 @@ let syntax_operator_site (arg : Syntax.t) : Expand_error.site option =
 (* M8: a macro's kind must match the expansion position it is used in; the
    check runs before the macro does. *)
 let check_macro_kind ~key ~macro_kind ~ctx_kind =
-  let base = function Syntax.MacroKind.Expr _ -> Syntax.MacroKind.Expr (None, None) | k -> k in
-  if base macro_kind <> base ctx_kind then
+  if Syntax.MacroKind.(position macro_kind <> position ctx_kind) then
     Expand_error.raise_at (KindMismatch { macro = key; kind = macro_kind; position = ctx_kind })
 
 let expand_id_params (ctx : Expand_ctx.t) scopes params =
@@ -255,24 +254,6 @@ let expand_id_params (ctx : Expand_ctx.t) scopes params =
 (** The main expander: walks the syntax tree, allocates fresh scopes for
     each binder, adds those scopes to identifier occurrences in the binder's
     body. This implements hygienic lexical scoping. *)
-
-(** Did the parser synthesize an implicit binder param for this annotation?
-    True for [LegacyExprBinder] and for uppercase non-wildcard [Expr(Named)]. *)
-let parser_synthesized_binder (ann : Syntax.MacroAnnotation.t option) : bool =
-  match ann with
-  | Some (Syntax.MacroAnnotation.LegacyExprBinder _) -> true
-  | Some (Syntax.MacroAnnotation.Expr (Some (Named n))) ->
-      let is_upper c = c >= 'A' && c <= 'Z' in
-      n <> "_" && String.length n > 0 && is_upper n.[0]
-  | _ -> false
-
-(** Strip the leading [Lam] from a macro value. This undoes the parser's
-    synthesized implicit binder when the semantic resolver determines the
-    annotation is a type constraint rather than a binder. *)
-let strip_leading_lam (value : Syntax.t) : Syntax.t =
-  match value.kind with
-  | Syntax.Lam (_, inner) -> inner
-  | _ -> value
 
 (** Flatten a curried application spine into its head and the argument list
     in application order (leftmost-written argument first). *)
@@ -562,7 +543,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | Some elab ->
       let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
       let macro_fn = elab (in_definition_site_opens ctx name value) in
-      let resolved_kind = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
+      let resolved_kind = Syntax.macro_kind kind value in
       (* Promote the macro into the scope-aware binding table with a fresh
          hygienic [resolved_name] and a [Macro] kind, then key its compiled
          entry by that [resolved_name]. This replaces the old macro_table
@@ -741,7 +722,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
     let scope = Expand_ctx.extend_at ctx ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name in
     let value =
       let prev = Expand_ctx.get_expansion_position ctx in
-      Expand_ctx.set_expansion_position ctx Syntax.MacroKind.(Expr (None, None));
+      Expand_ctx.set_expansion_position ctx Syntax.MacroKind.Expr;
       let v = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
       Expand_ctx.set_expansion_position ctx prev;
       v
@@ -835,16 +816,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
-      (* Stage 5: resolve kind via driver callback if set, else adapter fallback *)
-      let (resolved_kind, strip_lam) =
-        match ctx.Expand_ctx.resolve_macro_kind, kind with
-        | Some resolve, Some ann ->
-            let (semantic_kind, semantic_param) = resolve ann in
-            (semantic_kind, parser_synthesized_binder (Some ann) && Option.is_none semantic_param)
-        | _ ->
-            let k = match kind with Some ann -> Syntax.MacroAnnotationAdapter.resolve_kind_only ann | None -> Syntax.MacroKind.default in
-            (k, false)
-      in
+      let resolved_kind = Syntax.macro_kind kind value in
       let binding_name = id_name name in
       (* Stage 7: introduce name scope and register provisional macro BEFORE
          expansion/elaboration so the macro's own name is known during its
@@ -860,8 +832,6 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
             Expand_ctx.restore_macro_snapshot ctx ~name:binding_name macro_snapshot)
         (fun () ->
           let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
-          (* Strip parser-synthesized Lam when semantic resolution says constraint *)
-          let value = if strip_lam then strip_leading_lam value else value in
           let macro_fn = elab (in_definition_site_opens ctx name value) in
           Expand_ctx.fill_provisional_macro ctx ~name:binding_name ~value:macro_fn;
           ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]]))

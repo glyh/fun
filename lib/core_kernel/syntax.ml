@@ -1,30 +1,23 @@
+(** What a macro expands to, decided syntactically from its definition: [Decl]
+    for [: Decl]; [TypedExpr] when it binds a type parameter [macro m[A](..)],
+    so its call is deferred to the elaborator, which hands it the expected type;
+    [Expr] otherwise. *)
 module MacroKind = struct
-  type t = Expr of string option * string option | Decl
-  let default = Expr (None, None)
-  let to_string = function Expr _ -> "Expr" | Decl -> "Decl"
-  let of_string = function "Decl" -> Some Decl | "Expr" -> Some (Expr (None, None)) | _ -> None
-  let has_type_binding = function Expr (Some _, _) -> true | _ -> false
-  let type_binding_name = function Expr (Some n, _) -> Some n | _ -> None
-  let type_constraint_name = function Expr (_, Some n) -> Some n | _ -> None
+  type t = Expr | TypedExpr | Decl
+  let default = Expr
+  let to_string = function Expr | TypedExpr -> "Expr" | Decl -> "Decl"
+  let has_type_binding = function TypedExpr -> true | Expr | Decl -> false
+  (* The position a macro of this kind may be used in. *)
+  let position = function Expr | TypedExpr -> Expr | Decl -> Decl
 end
 
-(** Unresolved macro annotation as parsed from source syntax.
-    Records what was written, not semantic meaning. *)
+(** A macro's annotation as written: [: Decl] or [: Expr(T)]. The names in [T]
+    only refer; the enforester makes them a reference in the macro's body, so
+    they resolve by scope like any other. *)
 module MacroAnnotation = struct
-  type arg = Wildcard | Named of string | Qualified of string list * string
-  type t = Expr of arg option | LegacyExprBinder of string | Decl
-  let default = Expr None
-  let to_string = function Expr _ | LegacyExprBinder _ -> "Expr" | Decl -> "Decl"
-  let of_string = function "Decl" -> Some Decl | "Expr" -> Some (Expr None) | _ -> None
-  let arg_name = function
-    | Wildcard -> "_"
-    | Named s -> s
-    | Qualified (path, last) -> String.concat "." (path @ [ last ])
-  let is_decl = function Decl -> true | Expr _ | LegacyExprBinder _ -> false
-  let is_expr = function Expr _ | LegacyExprBinder _ -> true | Decl -> false
+  type t = Expr | Decl
+  let default = Expr
 end
-
-
 
 type id = {
   name : string;
@@ -222,56 +215,14 @@ let path_of_segments ?span = function
 
 let path_last (p : path) = snd (path_split p)
 
-(** STAGE 2: Uniform binder-only resolution. All leading-uppercase names
-    produce [Expr(Some name, None)] + synthesized implicit param. No
-    type-constraint path exists yet — that is deferred to Stage 4 (semantic
-    driver with type-namespace resolution).
-
-    Contract:
-    - [_] (Wildcard) → unconstrained Expr, no binder
-    - Leading-uppercase name → binder with synthesized implicit param
-    - Lowercase/non-binder name → unconstrained Expr, no binder
-    - [LegacyExprBinder] → unchanged (pre-Stage-1 compat)
-    - [Decl] → unchanged *)
-module MacroAnnotationAdapter = struct
-  let r_type () =
-    let syntax_var =
-      { kind = Var { name = Compiler_names.Module_name.syntax; span = Source_span.synthetic; scope = Scope_set.empty };
-        span = Source_span.synthetic }
-    in
-    { kind = FieldAccess (syntax_var, Compiler_names.Syntax_name.r);
-      span = Source_span.synthetic }
-
-  let synthesize_binder_param name =
-    let tp = { name; span = Source_span.synthetic; scope = Scope_set.empty } in
-    let type_ty = r_type () in
-    Some { name = tp; explicitness = Explicitness.Implicit; type_ = Some type_ty; trait_bounds = [] }
-
-  let resolve (ann : MacroAnnotation.t) : MacroKind.t * param option =
-    let is_upper c = c >= 'A' && c <= 'Z' in
-    let is_binder_name n = String.length n > 0 && is_upper n.[0] in
-    match ann with
-    | MacroAnnotation.Decl -> (MacroKind.Decl, None)
-    | MacroAnnotation.LegacyExprBinder name ->
-        (MacroKind.(Expr (Some name, None)), synthesize_binder_param name)
-    | MacroAnnotation.Expr (Some (MacroAnnotation.Qualified _ as arg)) ->
-        (* Qualified names cannot bind; without a semantic context assume
-           a constraint and let the driver resolver refine it. *)
-        (MacroKind.(Expr (None, Some (MacroAnnotation.arg_name arg))), None)
-    | MacroAnnotation.Expr (Some arg) -> (
-        let name = MacroAnnotation.arg_name arg in
-        if String.equal name "_" then
-          (MacroKind.(Expr (None, None)), None)
-        else if is_binder_name name then
-          (MacroKind.(Expr (Some name, None)), synthesize_binder_param name)
-        else
-          (MacroKind.(Expr (None, None)), None))
-    | MacroAnnotation.Expr None ->
-        (MacroKind.Expr (None, None), None)
-
-  let resolve_kind_only ann = fst (resolve ann)
-  let resolve_param ann = snd (resolve ann)
-end
+(** The kind of a macro with annotation [ann] and value [value] (its parameter
+    lambdas): arity is syntactic, so a leading implicit parameter is its type
+    binder. *)
+let macro_kind (ann : MacroAnnotation.t option) (value : t) : MacroKind.t =
+  match ann, value.kind with
+  | Some MacroAnnotation.Decl, _ -> MacroKind.Decl
+  | _, Lam ({ explicitness = Explicitness.Implicit; _ }, _) -> MacroKind.TypedExpr
+  | _ -> MacroKind.Expr
 
 (* A form the compiler writes itself, with no source position. *)
 let synth kind = { kind; span = Source_span.synthetic }

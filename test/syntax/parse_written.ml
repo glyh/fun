@@ -35,7 +35,7 @@ let expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals ~expan
 let parse_expr ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?open_prelude ?syntax_nominals source =
   Enforest.parse_expr ?load_syntax ?open_prelude source
   |> expand_lower ?elaborate ?eval_and_apply ?load_macros ?syntax_nominals
-       ~expansion_position:Syntax.MacroKind.(Expr (None, None))
+       ~expansion_position:Syntax.MacroKind.Expr
 
 let parse_module ?elaborate ?eval_and_apply ?load_macros ?load_syntax ?syntax_nominals source =
   Enforest.parse_module ?load_syntax source

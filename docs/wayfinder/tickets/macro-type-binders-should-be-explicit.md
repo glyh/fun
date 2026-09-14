@@ -3,8 +3,10 @@ title: Macro type binders should be explicit
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Done. A macro binds its type parameter in `[…]` (at most one; unannotated it ranges over `Syntax.R`), and binding one is what makes it type-aware — `Syntax.macro_kind` reads the kind off the annotation and the value's leading implicit lambda, so arity is syntactic. `: Expr(T)` parses `T` as an expression and the enforester makes it a reference in the macro's body (`_ = T`), so it resolves by scope with the parameters in view and an unbound name is an error at the definition; `: Expr(_)` and `: Decl` are the other annotations, and anything else is a parse error. Deleted - `Macro_resolver`, `MacroAnnotationAdapter`, `LegacyExprBinder`, the lambda-stripping, the binder/constraint name slots of `MacroKind`, `Expand_ctx.resolve_macro_kind`, `resolve_dotted_value_opt` and the prelude's `AnnArg`. Left - a constraint is checked for resolution, not used at the call: the use-site unification against it was already unreachable (a constraint never made a macro type-aware), and `macro m[A](x) : Expr(I64)` does not pre-solve the expected type to `I64`.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

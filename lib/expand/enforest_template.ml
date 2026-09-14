@@ -382,11 +382,11 @@ let rec substitute_template_captures captures (stx : Syntax.t) =
   | Syntax.Stx s -> { stx with kind = Syntax.Stx (go s) }
   | Syntax.Quote { template; holes } ->
       { stx with kind = Syntax.Quote { template = go template; holes = List.map (fun (n, h) -> (n, go h)) holes } }
-  | Syntax.MacroDef { name; value; body; _ } ->
+  | Syntax.MacroDef { name; value; body; kind } ->
       (* Deliberately drop annotation after macro registration: the resolved
          kind is carried by the macro registry/table. Macro-generating macros
          with annotated generated macro definitions remain a Stage 2+ limitation. *)
-      { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body; kind = None } }
+      { stx with kind = Syntax.MacroDef { name = map_binder_id captures name; value = go value; body = go body; kind } }
   | Syntax.MacroCall (f, a) -> { stx with kind = Syntax.MacroCall (go f, List.map go a) }
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
       { stx with kind = Syntax.SyntaxOperatorUse { operator; fixity; operands = List.map go operands; declaration_span; use_span; unit } }

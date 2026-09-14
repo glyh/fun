@@ -274,61 +274,43 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
     | _ -> error "fn requires at least one parameter list"
   in
   let params = implicit_params @ explicit_params in
-  let kind, type_binding_param, rest =
-    if kind_annotation then
+  (* A macro's annotation: [: Decl], or [: Expr(T)] whose [T] only refers - to
+     the macro's type binder or to a type in scope - and becomes a reference in
+     the body, so a name that resolves to nothing is an error at the definition. *)
+  let kind, reference, rest =
+    if not kind_annotation then (None, None, rest)
+    else
       match drop_separators rest with
-      | { datum = Token { kind = Colon; _ }; span = _colon_span }
-        :: { datum = Token { kind = Ident k; _ }; span = _k_span }
-        :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
-          let rest = drop_separators rest in
-          if String.equal k "Expr" then begin
-            match drop_separators items with
-            | [ { datum = Token { kind = Ident u; _ }; _ } ] when String.equal u "_" ->
-                let ann = Some Syntax.MacroAnnotation.(Expr (Some Wildcard)) in
-                let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
-                (ann, param, rest)
-            | [ { datum = Token { kind = Ident inner; _ }; _ } ] ->
-                let ann = Some Syntax.MacroAnnotation.(Expr (Some (Named inner))) in
-                let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
-                (ann, param, rest)
-            | inner_items -> (
-                (* Qualified name: Ident (. Ident)+ *)
-                let rec qualified acc = function
-                  | [ { datum = Raw_syntax.Token { kind = Ident last; _ }; _ } ] ->
-                      Some (List.rev acc, last)
-                  | { datum = Raw_syntax.Token { kind = Ident seg; _ }; _ } :: dot :: more
-                    when token_kind Dot dot ->
-                      qualified (seg :: acc) more
-                  | _ -> None
-                in
-                match qualified [] inner_items with
-                | Some (path, last) when path <> [] ->
-                    let ann = Some Syntax.MacroAnnotation.(Expr (Some (Qualified (path, last)))) in
-                    let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
-                    (ann, param, rest)
-                | _ -> error "unsupported type pattern in macro annotation")
-          end else begin
-            let ann = Some (Syntax.MacroAnnotation.LegacyExprBinder k) in
-            let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
-            (ann, param, rest)
-          end
       | { datum = Token { kind = Colon; _ }; _ }
-        :: { datum = Token { kind = Ident k; _ }; span = _k_span }
-        :: rest ->
-          let rest = drop_separators rest in
-          if String.equal k "Expr" then
-            error ": Expr requires a type pattern, e.g. : Expr(_) or : Expr(A)"
-          else
-            (match Syntax.MacroAnnotation.of_string k with
-             | Some ann -> (Some ann, None, rest)
-             | None ->
-                 let ann = Some Syntax.MacroAnnotation.(Expr (Some (Named k))) in
-                 let _, param = Syntax.MacroAnnotationAdapter.resolve (Option.get ann) in
-                 (ann, param, rest))
-      | _ -> (None, None, rest)
-    else (None, None, rest)
+        :: { datum = Token { kind = Ident "Expr"; _ }; _ }
+        :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest -> (
+          match drop_separators items with
+          | [ { datum = Token { kind = Ident "_"; _ }; _ } ] -> (Some Syntax.MacroAnnotation.Expr, None, rest)
+          | items ->
+              let t, t_rest = parse_expr_prec env 0 items in
+              ensure_no_rest "macro annotation" t_rest;
+              (Some Syntax.MacroAnnotation.Expr, Some t, rest))
+      | { datum = Token { kind = Colon; _ }; _ } :: { datum = Token { kind = Ident "Decl"; _ }; _ } :: rest ->
+          (Some Syntax.MacroAnnotation.Decl, None, rest)
+      | { datum = Token { kind = Colon; _ }; _ } :: _ ->
+          error "a macro annotation is : Expr(T), : Expr(_) or : Decl"
+      | rest -> (None, None, rest)
   in
-  let params = match type_binding_param with Some p -> p :: params | None -> params in
+  (* A macro binds at most one type parameter, the expected type of its call,
+     which ranges over reflected types unless annotated. *)
+  let params =
+    if not kind_annotation then params
+    else
+      match implicit_params, kind with
+      | [], _ -> params
+      | _, Some Syntax.MacroAnnotation.Decl -> error "a Decl macro binds no type parameter"
+      | [ p ], _ ->
+          let r_type =
+            stx (Syntax.FieldAccess (stx (Syntax.Var (id Compiler_names.Module_name.syntax)), Compiler_names.Syntax_name.r))
+          in
+          { p with type_ = Some (Option.value p.type_ ~default:r_type) } :: explicit_params
+      | _ -> error "a macro binds at most one type parameter"
+  in
   let body, rest, span =
     match drop_separators rest with
     | arrow :: body_terms when token_kind ThinArrow arrow ->
@@ -340,6 +322,13 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           rest,
           span_between start_span span )
     | _ -> error "expected -> or do after fn parameters"
+  in
+  let body =
+    match reference with
+    | None -> body
+    | Some t ->
+        stx ~span:t.span
+          (Syntax.Let { name = id ~span:t.span "_"; type_ = None; value = t; body; recursive = false })
   in
   (params, kind, body, rest, span)
 

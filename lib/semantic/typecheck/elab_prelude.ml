@@ -112,8 +112,7 @@ pub module Syntax do
   pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom | ScopesAtom(Scopes)
   pub type AtomTy = TyI64 | TyUnit | TyChar | TyString | TyScopes | TyAbsurd
   pub type Fixity = PrefixFixity | InfixFixity
-  pub type AnnArg = AnnWildcard | AnnNamed(String) | AnnQualified(List(String), String)
-  pub type MacroAnn = AnnExpr(Option(AnnArg)) | AnnLegacyBinder(String) | AnnDecl
+  pub type MacroAnn = AnnExpr | AnnDecl
   pub type Expr =
     | RawVar(Option(Span), Id)
     | RawAtom(Option(Span), AtomVal)

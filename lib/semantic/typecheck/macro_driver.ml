@@ -1,16 +1,11 @@
 (** Stages 3–8: semantic driver for macro interleaving.
 
     Runs the expander over a module's top-level bindings and collects
-    compiled macro exports. Stage 4 adds semantic kind pre-resolution
-    and Lam-stripping for constraint annotations. Stage 5 replaces the
-    global lock table with an injected [resolve_macro_kind] callback on
-    [Expand_ctx.t]. Stage 7 adds scoped per-binding semantic advancement
-    so that top-level source-order prior type/record declarations affect
-    later macro annotation resolution. Stage 8 adds driver-based import
-    loading: [visit_macros] compiles an imported module's public macros
-    through a full driver run (with semantic kind resolution against the
-    imported module's own advancing context), replacing the old
-    [Core_loader.visit_macros] path. *)
+    compiled macro exports. Each source binding is elaborated as soon as it
+    is expanded, so a later macro body is compiled against the unit as of its
+    definition. [visit_macros] compiles an imported module's public macros
+    through a full driver run of that module. A macro's kind is syntactic
+    ([Syntax.macro_kind]); nothing here decides it. *)
 
 
 type macro_export = {
@@ -50,15 +45,10 @@ let rec run ?loader (stx : Syntax.t) : driver_output =
          Elaborate.Ctx.eval !elab_ctx core);
   expand_ctx.Expand_ctx.eval_and_apply
     <- Some Nbe.apply_macro;
-  (* Stage 5 / Stage 7: inject semantic macro kind resolver callback.
-     The callback reads the current (!elab_ctx) so that prior bindings
-     advanced by the [after_binding] hook are visible for resolution. *)
-  expand_ctx.Expand_ctx.resolve_macro_kind <- Some (fun ann ->
-    Macro_resolver.resolve_kind !elab_ctx ann);
   (* Stage 8: driver-based import loading. Imported macros are compiled
      through [visit_macros] (a nested driver run); the elaboration context
      carries the loader so imports elaborated by the [after_binding] hook
-     extend the semantic namespace for later annotation resolution. *)
+     extend the context later macro bodies are compiled in. *)
   (match loader with
    | Some loader ->
        expand_ctx.Expand_ctx.load_macros <- Some (visit_macros loader);

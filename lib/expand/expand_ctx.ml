@@ -24,7 +24,6 @@ type t = {
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
   mutable provisional_macros : (string, unit) Hashtbl.t;
   mutable expansion_position : Syntax.MacroKind.t;
-  mutable resolve_macro_kind : (Syntax.MacroAnnotation.t -> Syntax.MacroKind.t * Syntax.param option) option;
   mutable elaborate : (Syntax.t -> Core.value) option;
   (* Applies a macro value to an argument, spending from the budget it is handed. *)
   mutable eval_and_apply : (Eval_budget.t -> Core.value -> Core.value -> Core.value) option;
@@ -61,8 +60,7 @@ let create ?loader () =
     macro_table = Hashtbl.create 8;
     macro_kind_table = Hashtbl.create 8;
     provisional_macros = Hashtbl.create 4;
-    expansion_position = Syntax.MacroKind.(Expr (None, None));
-    resolve_macro_kind = None;
+    expansion_position = Syntax.MacroKind.Expr;
     elaborate = None;
     eval_and_apply = None;
     load_macros = None;
@@ -205,7 +203,6 @@ let copy (ctx : t) : t =
     macro_kind_table = Hashtbl.copy ctx.macro_kind_table;
     provisional_macros = Hashtbl.copy ctx.provisional_macros;
     expansion_position = ctx.expansion_position;
-    resolve_macro_kind = ctx.resolve_macro_kind;
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
     load_macros = ctx.load_macros;

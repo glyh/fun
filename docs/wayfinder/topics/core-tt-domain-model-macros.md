@@ -203,9 +203,9 @@ dummy `I64 0` (M1's scope row).
 ### M12 — no name is found by its spelling alone
 
 **Status: enforced (2026-09-14) for bare names and path heads; traits and
-nominals are located through the entry a head resolves to. Macro annotation
-constraint names, being strings, remain by spelling until explicit macro type
-binders.** Decided with the user: which members an
+nominals are located through the entry a head resolves to; a macro
+annotation's names are references in the macro's body, resolved by scope at
+the definition (explicit macro type binders).** Decided with the user: which members an
 open supplies may be known only from its type, so expansion does not enumerate
 them. A bare name inside an open's region that no binder takes, or that only a
 binder outside the open takes, resolves to an **open choice**. The choice holds

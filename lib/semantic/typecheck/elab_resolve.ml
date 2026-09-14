@@ -49,13 +49,6 @@ let resolve_path_value ctx p =
 let resolve_path_value_opt ctx p =
   Result.to_option (Result.map (fun (_, value, ty) -> (value, ty)) (resolve_path_result ctx p))
 
-(** Resolve a possibly-dotted name ("M.T") by splitting on '.' into a
-    module path and final segment. Used for macro constraint names, which
-    may carry a qualified annotation. A written string carries no scopes, so
-    this is the one lookup still by spelling. *)
-let resolve_dotted_value_opt ctx dotted =
-  resolve_path_value_opt ctx (Syntax.path_of_segments (String.split_on_char '.' dotted))
-
 (** Run a type-aware macro call whose result type [ty] is already unified with
     the annotation's constraint: apply the macro to [ty] and its syntax
     arguments, expand the output in place like every macro's output (M6), and
