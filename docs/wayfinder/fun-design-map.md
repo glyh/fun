@@ -413,6 +413,8 @@ What remains, in the recommended order:
 - [Expansion errors reach the user raw](tickets/expansion-errors-reach-the-user-raw.md)
   (closed) — an overrun inside an application is its `Expand_error` with the
   operator's site; evaluator errors (`panic`, …) in a body still carry no site.
+- [An evaluation error inside a macro body carries no site](tickets/macro-body-eval-errors-lack-site.md)
+  — `panic`/missing field in a macro body reports without the operator span.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
   — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 
