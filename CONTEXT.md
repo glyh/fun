@@ -357,9 +357,11 @@ return kind
 
 **Syntactic role**:
 Whether a binder is an operator, or a syntax form, and with what fixity. Part of
-what the binder means, resolved by scope set like any other — so a later binder
-of that name shadows the role too, prelude syntax such as `if` and `not`
-included. Keywords have no binder and so no role:
+what the binder means, resolved by scope set like any other. A role never mixes
+with another binder of its name where both are visible — binding `not` as a
+value under the prelude's `not` is an error at the binder — though a fixity
+declaration attaches to a value of the same name rather than binding a new one,
+and a role may shadow another role. Keywords have no binder and so no role:
 they are reserved, not shadowable.
 _Avoid_: fixity, precedence (those are parts of it), operator kind
 
