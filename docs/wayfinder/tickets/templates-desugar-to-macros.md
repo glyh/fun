@@ -6,7 +6,6 @@ labels:
 status: open
 assignee:
 blocked_by:
-  - template-heads-resolve-by-scope-set.md
 decided: 2026-09-14 (blockers 2 and 3 grilled)
 ---
 
@@ -101,3 +100,18 @@ Blocker 1 is M7's arrangement (grilled, see its ticket). Written in the
    syntax make_inc : Decl { | make_inc => { syntax inc { | inc $x => $x + 1 }; } }
    ```
    desugars one-to-one to `macro make_inc() : Decl { quote { … } }`.
+
+## Carried from M7 (2026-09-14)
+
+[M7](template-heads-resolve-by-scope-set.md) landed its semantics without
+building two pieces whose first consumer is this ticket:
+
+- **The expander-driven loop** (M7 decision 1): once a template is a macro, its
+  output can declare syntax, so each form of a definition context must be
+  expanded before the next is enforested. Today the enforester reads a whole
+  context, minting the scopes roles need itself.
+- **Unparsed block captures** (M7 decision 5): `$(b: block)` parses the group
+  when it is captured; a macro parameter of kind `Block` needs raw tokens.
+- **Name-position holes** already work for declaration templates
+  (`syntax $n { | $n $x => … }`, `infix ($op) …`); the macro form needs `Id`
+  parameters to carry them.

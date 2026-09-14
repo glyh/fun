@@ -140,9 +140,22 @@ Last updated: after the brace surface syntax, 2026-09-14.
   nothing ambient (M3). Units that write macros open the prelude themselves.
 - **Types.** `type A = … and B = …` chains are mutually recursive nominals. Nested
   patterns through recursive positions work (they read constructors by nominal id).
-- Still open from the macro model: M5/M8 (one budget,
-  error values), M7 (scope-keyed template heads), M9 (templates desugar to
-  macros). See the design map's "Macro model distances still open".
+- **Syntactic roles (M7).** Raw tokens carry scope sets and every id takes its
+  token's. A syntax form or operator resolves by scope set (largest subset,
+  ambiguity loud); units, modules, structs and blocks scope their tokens, so
+  syntax shadows syntax lexically and a template's replacement sees roles as of
+  its definition. Template intro scopes go on replacement tokens: syntax a
+  template names itself is invisible to user code, and a hole may name a
+  generated declaration (`syntax $n { | $n $x => … }`, `infix ($op) …`). A role
+  never mixes with another binder of its name: syntax declarations survive as
+  `SyntaxBinding` / `SyntaxDef`, imported roles are seeded into the expander,
+  and the binder funnel raises `RoleConflict` in either order (application-written
+  binders and a fixity attached to its value excepted); an open supplying a
+  visible role's name is `OpenSuppliesRole`
+  ([template-heads-resolve-by-scope-set](wayfinder/tickets/template-heads-resolve-by-scope-set.md)).
+  Enforestation still precedes expansion; the expander-driven loop rides on M9.
+- Still open from the macro model: M9 (templates desugar to macros). See the
+  design map's "Macro model distances still open".
 
 ### Macro system — Stages 0–10
 - Stages 0 through 10 are complete: substrate, hygiene, expansion, phase-aware imports,

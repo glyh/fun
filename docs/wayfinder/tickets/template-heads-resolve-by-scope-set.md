@@ -3,9 +3,11 @@ title: Template and operator heads resolve by scope set
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 decided: 2026-09-14 (grilled)
-assignee:
+assignee: glyh
+resolution: Decisions 2, 3, 4 and 6 enforced; decision 1 enforced for what a syntactic role can see, with the expander-driven loop itself carried into M9; decision 5 carried into M9. Raw tokens carry scope sets and ids take them; a role is a binder resolved by scope set (largest subset, ambiguity loud); definition contexts scope their tokens (inside edge, plus a scope per role-declaring statement over the statements after it); template intro scopes go on replacement tokens, so generated syntax is hygienic (decision 6, with name-position holes for use-site names). Roles are binders in the expander's table too - syntax declarations survive as SyntaxBinding / SyntaxDef, imported roles are seeded - and the one binder funnel reports RoleConflict in either order, exempting application-written binders and fixity attached to its value; an open supplying a role's name is OpenSuppliesRole at elaboration. Suite green, 907 tests.
+closed_date: 2026-09-14
 blocked_by:
 ---
 
@@ -62,6 +64,72 @@ other binder of its name** (see below).
    example 3 was wrong as stated:** it showed `make_inc; inc 5` working with a
    name written inside the template, which decision 3's hygiene note (and M2)
    rule out.
+
+## Resolution (2026-09-14)
+
+**Enforced.**
+
+- **Roles resolve by scope set.** A raw token carries a scope set; every id
+  enforestation writes takes its token's. A role (`syntax`, `infix`, `prefix`,
+  a macro operator) is recorded with its name token's scope set, and
+  `Binding.find_operator` takes the largest subset of the occurrence's scopes;
+  incomparable candidates are an ambiguity error. Equal scope sets (two imports
+  of one operator) take the one added last.
+- **Definition contexts scope their tokens** (units, modules, structs, blocks —
+  `Enforest_util.map_context_statements`): an inside-edge scope on the whole
+  context, and a statement that declared a role adds its own scope to the
+  statements after it. So a role is visible after its declaration and inside
+  it (recursion), not before it, not outside its context — **syntax shadows
+  syntax** lexically (decision 4) — and a template's replacement, read at each
+  instance, sees roles as of its definition (M10 for roles).
+- **Generated syntax is hygienic** (decision 6). A template instance adds its
+  intro scope to the replacement's tokens before they are read; captures keep
+  their own. A hole may name a generated syntax declaration, head its rules,
+  or name an operator symbol (`syntax $n { | $n $x => … }`, `infix ($op) …`),
+  and identifier captures keep their token (operators included).
+- **No mixing** (decision 3). Syntax and fixity declarations survive enforestation
+  as binders — `Syntax.SyntaxBinding` in binding lists, `Syntax.SyntaxDef` in
+  blocks, reflected both ways as `DeclSyntax` / `RawSyntaxDef` — and the roles
+  an import harvests are seeded into the expander (`Parse_expand.recording_imported_roles`),
+  so every role is a binder in the one expander table (`Binding.Role`, or
+  `Macro`). `Expand_ctx.bind`, the funnel every binder goes through, raises
+  `Expand_error.RoleConflict` when a binder of the other sort is visible with
+  the new one — in either order, for every binder kind — unless the scopes the
+  new binder has beyond it include an intro scope (an application wrote it). A
+  fixity-only declaration attaches to the value visible where it is written;
+  any other binder of that name is new.
+- **Opens.** The expander notes, per open label, the roles visible where the
+  open is written and those declared in its region (an imported unit's own
+  roles excepted from its own open); the elaborator, once it knows the open's
+  members, raises `OpenSuppliesRole` (through the macro runtime's
+  `roles_in_open`).
+
+**Carried into [M9](templates-desugar-to-macros.md).**
+
+- **Decision 1's loop.** Enforestation still runs before expansion. What a
+  syntactic role can see is already right: under no mixing, a value binder's
+  scope never changes which role an occurrence has, so the scopes that matter
+  to roles — definition contexts, template instances, imports — are the ones
+  the enforester now puts on tokens. The loop that expands each form before
+  the next is read has its first consumer in M9: a template as a macro whose
+  output declares syntax.
+- **Decision 5.** `$(b: block)` matches one brace group and parses it at the
+  capture; capturing it unparsed needs a reflection of raw tokens for macro
+  parameters, which is M9's.
+- **The region rule** in `Expand.add_id_scope_if` stays: template output is
+  still parsed before the expander adds value binders' scopes to the tree.
+
+**Known gaps.**
+
+- An `open` of a non-name module expression (`open (import "x")`) has no
+  written scope set to test visibility against, so only unit-wide (imported)
+  roles are noted against it, not roles the unit itself declared before it.
+- An open's check runs where the elaborator has the macro runtime; the macro
+  driver installs it only after a unit's bindings are elaborated, so opens a
+  unit elaborates during its own driver run are not checked.
+- Roles imported inside a block stay in that block by copying the enforester's
+  table (`with_operator_scope`), since an imported role has no scope set of its
+  own - an imported template's replacement must see it.
 
 ## Rejected
 

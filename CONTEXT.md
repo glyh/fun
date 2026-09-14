@@ -338,7 +338,9 @@ _Avoid_: context, binding scope, lexical scope
 
 **Binder table**:
 Every binder expansion has seen, each with its written name, scope set, resolved
-name and compile-time meaning — a macro, a syntactic role, or neither. What
+name and compile-time meaning — a macro, a syntactic role, or neither. A syntax
+form or fixity declaration is a binder in it too, so a value binder that would
+mix with it is found there. What
 resolution consults. Not a context: it has no order and no width.
 _Avoid_: binding table (binding is a module member), expander state, expand
 context, symbol table

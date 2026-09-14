@@ -386,10 +386,13 @@ What remains, in the recommended order:
   body and output spending from the same request; expansion failures are
   `Expand_error` values.
 - [Template and operator heads resolve by scope set](tickets/template-heads-resolve-by-scope-set.md)
-  — M7. **Grilled 2026-09-14:** the expander drives the enforester form by form;
-  a syntactic role never mixes with another binder of its name (error at the
-  binder, by scope set); syntax shadows syntax; captured blocks stay unparsed.
-  Lands with or after surface-syntax-braces.
+  (closed & **implemented**) — M7: raw tokens carry scope sets, a role resolves
+  by scope set (largest subset), definition contexts scope their tokens, and
+  generated syntax is hygienic (a use-site name via a name-position hole). A
+  role never mixes with another binder of its name — `RoleConflict` in either
+  order, `OpenSuppliesRole` at an open — exempting application-written binders
+  and fixity attached to its value. The expander-driven loop and unparsed block
+  captures ride on M9; the region rule stays until then.
 - [Surface syntax — brace bodies, `=>` arms, explicit semicolons](tickets/surface-syntax-braces.md)
   (closed & **implemented**) — decided with M7: `fn(x) { … }`, `if (c) { … }`, `match (v) { | p => e }`,
   `struct { x: I64 }` record types, `->` only for function types, newlines are
@@ -397,7 +400,9 @@ What remains, in the recommended order:
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
   **Grilled 2026-09-14:** `quote { … }` for declarations, `$name` resolves to its
   nearest binder (no quote levels), kinds spelled `$(x : Decl|Id|Pattern|Block)`,
-  templates take `: Decl` and `multi` is deleted. Blocked on M7 (implementation only). Structural only now; retires the template region rule in `add_id_scope_if`.
+  templates take `: Decl` and `multi` is deleted. Unblocked (M7 landed); now also
+  carries M7's expander-driven loop and unparsed block captures. Retires the
+  template region rule in `add_id_scope_if`.
 
 ### Found by the budget and path-heads run (2026-09-14)
 

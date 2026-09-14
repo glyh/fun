@@ -139,8 +139,11 @@ closed).
 
 ### M7 — template heads resolve by scope set
 
-**Status: decided, revised by grilling (2026-09-14), not implemented — heads are
-string-keyed and newest-wins.** Revision: a role never mixes with another binder
+**Status: enforced (2026-09-14) — roles resolve by scope set, never mix with
+another binder of their name, and generated syntax is hygienic; the
+expander-driven loop and unparsed block captures ride on M9
+([resolution](../tickets/template-heads-resolve-by-scope-set.md#resolution-2026-09-14)).**
+Revision by grilling: a role never mixes with another binder
 of its name (an error at the binder, by scope set), rather than being taken away;
 the expander drives the enforester form by form; bodies become brace groups
 ([ticket](../tickets/template-heads-resolve-by-scope-set.md),
