@@ -437,6 +437,19 @@ What remains, in the recommended order:
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
   — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 
+### Found by the M7 implementation (2026-09-14)
+
+Known gaps recorded in the closed
+[M7 ticket](tickets/template-heads-resolve-by-scope-set.md) ("Known gaps"):
+
+- **Import opens check only unit-wide roles** — `open (import "x")` has no
+  written scope set, so roles the unit declared before it are not checked.
+- **Driver-run opens are unchecked** — the macro driver installs the macro
+  runtime after a unit's bindings elaborate, so `roles_in_open` never runs for
+  them.
+- **Block-local imported roles have no scope set** — they stay in the block by
+  the enforester copying its table (`with_operator_scope`), not by scope.
+
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
 Decided by the effects domain-model pass; unimplemented, each ticket is the
