@@ -387,6 +387,22 @@ What remains, in the recommended order:
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
   Structural only now; retires the template region rule in `add_id_scope_if`.
 
+### Found by the budget and path-heads run (2026-09-14)
+
+- [Recursive definitions stuck on open arguments](tickets/recursive-definitions-stuck-on-open-arguments.md)
+  — `double(n)` no longer converts with `n + n`; is that the intended reading of
+  "only closed terms evaluate"? Grill.
+- [Pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md)
+  — any function reducing to a nominal works as a pattern-head type. Grill.
+- [Elaborator matches `EffectRow` and `stx_` by spelling](tickets/elaborator-matches-names-by-spelling.md)
+  — the last M12 sites in `Elab_infer`'s `Var` case.
+- [The closed-term rule does not look inside closures](tickets/stuck-rule-ignores-closure-environments.md)
+  — the `ponytail:` in `Nbe.closed`.
+- [A budget error names a core term](tickets/budget-error-names-no-source-call.md)
+  — no call name, no demanding conversion; pairs with error spans.
+- [Deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
+  — measure against `ba0edd5` first.
+
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
 Decided by the effects domain-model pass; unimplemented, each ticket is the
