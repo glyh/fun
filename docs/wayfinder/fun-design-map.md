@@ -408,6 +408,8 @@ What remains, in the recommended order:
 - [A qualified constructor nested in a pattern argument is unknown](tickets/nested-qualified-constructor-pattern.md)
   (closed) — root cause was `NomRef` finding a nominal by spelling; it now
   carries the nominal id.
+- [A quoted constructor value is re-found by spelling](tickets/quoted-constructor-values-by-spelling.md)
+  — `VCon` quotes to `Con name`; the `NomRef` fix's sibling.
 - [Expansion errors reach the user raw](tickets/expansion-errors-reach-the-user-raw.md)
   — expander budget overruns escape untranslated; macro-body errors lost the operator span.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
