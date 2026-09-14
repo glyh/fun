@@ -6,6 +6,7 @@ let make_cont = Nbe_support.make_cont
 let bind_result = Nbe_support.bind_result
 let visible_kind = Nbe_support.visible_kind
 let dot_value = Nbe_support.dot_value
+let fail = Nbe_support.fail
 let result_value = Nbe_support.result_value
 let atom_ty_of_atom = Nbe_prim.atom_ty_of_atom
 let prim_table = Nbe_prim.prim_table
@@ -141,12 +142,12 @@ and eval_bindings :
         match eval mc env def with
         | VModule { entries; partial = _ } ->
             go (push_opened_values env entries) acc rest
-        | _ -> raise (EvalError "open of non-module"))
+        | _ -> fail mc "open of non-module")
     | b :: rest ->
         let slots =
           match Core.binding_slots b with
           | Some slots -> slots
-          | None -> raise (EvalError "binding with no slot list")
+          | None -> fail mc "binding with no slot list"
         in
         let env, values =
           List.fold_left
@@ -239,7 +240,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                              frames = neutral.frames @ [ FRefGet ];
                            };
                        })
-              | _ -> raise (EvalError "deref of non-ref"))
+              | _ -> fail mc "deref of non-ref")
           | VFlex { id; spine = sp } ->
               let frames = List.map (fun v -> FApp v) sp in
               Done
@@ -258,7 +259,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                      neutral =
                        { head = HVar lvl; frames = frames @ [ FRefGet ] };
                    })
-          | _ -> raise (EvalError "deref of non-ref"))
+          | _ -> fail mc "deref of non-ref")
   | RefSet (r, e) ->
       bind_result (eval_result mc env r) (fun ref_value ->
           bind_result (eval_result mc env e) (fun value ->
@@ -301,7 +302,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                              frames = frames @ [ FRefSet value ];
                            };
                        })
-              | _ -> raise (EvalError "assignment to non-ref")))
+              | _ -> fail mc "assignment to non-ref"))
   | Prod elems ->
       sequence_values mc env elems (fun values -> Done (VProd values))
   | ProdTy elems ->
@@ -361,16 +362,16 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                     ty = VU;
                     neutral = { head = HVar lvl; frames = frames @ [ FProj i ] };
                   }
-            | _ -> raise (EvalError "projection of non-product")))
+            | _ -> fail mc "projection of non-product"))
   | Dot (e, name) ->
       bind_result (eval_result mc env e) (fun value ->
-          Done (dot_value value name))
+          Done (dot_value mc value name))
   | Open (s, body) ->
       bind_result (eval_result mc env s) (fun vs ->
           match vs with
           | VModule { entries; partial = _ } ->
               eval_result mc (push_opened_values env entries) body
-          | _ -> raise (EvalError "open of non-module"))
+          | _ -> fail mc "open of non-module")
   | Fix body -> Done (VFix { body = { env; body } })
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in
@@ -381,7 +382,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       | VEffect _ as eff ->
           sequence_values mc env params (fun param_vals ->
               Done (List.fold_left (fun acc v -> apply mc acc v) eff param_vals))
-      | _ -> raise (EvalError ("EffectRef is not VEffect: " ^ name)))
+      | _ -> fail mc ("EffectRef is not VEffect: " ^ name))
   | TraitRef { trait_id; trait_name } -> Done (VTrait { trait_id; trait_name })
   | TraitDictTy { trait_id; trait_name; args; fields } ->
       sequence_values mc env args (fun arg_vals ->
@@ -415,8 +416,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                          nominal = VNominal { n with params = nom_spine_vals };
                        })
               | _ ->
-                  raise
-                    (EvalError "Ctor nominal is not VNominal")))
+                  fail mc "Ctor nominal is not VNominal"))
   | Prim name ->
       Done (VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } })
   | Meta id -> Done (eval_meta mc id)
@@ -491,9 +491,9 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
               match force mc eff with
               | VEffect _ as eff ->
                   Effect { eff; op; arg; k = (fun v -> Done v) }
-              | _ -> raise (EvalError "perform target is not an effect")))
+              | _ -> fail mc "perform target is not an effect"))
 
-and try_prim_reduce (head : head) (frames : frame list) : value option =
+and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : value option =
   match head with
   | HPrim "panic" when List.length frames >= 2 ->
       let msg =
@@ -501,14 +501,18 @@ and try_prim_reduce (head : head) (frames : frame list) : value option =
         | FApp (VAtom (String s)) -> s
         | _ -> "panic"
       in
-      raise (EvalError msg)
+      fail mc msg
   | HPrim name -> (
       let atoms =
         List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames
       in
       if List.length atoms = List.length frames then
         match Hashtbl.find_opt prim_table name with
-        | Some f -> Option.map (fun a -> VAtom a) (f atoms)
+        | Some f -> (
+            match f atoms with
+            | Nbe_prim.Prim.Reduced a -> Some (VAtom a)
+            | Stuck -> None
+            | Failed message -> fail mc message)
         | None -> None
       else None)
   | _ -> None
@@ -538,14 +542,14 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
       end
   | VCont c ->
       let cont = c in
-      if cont.used then raise (EvalError "continuation already used");
+      if cont.used then fail mc "continuation already used";
       cont.used <- true;
       cont.resume va
   | VNeutral { ty; neutral = neu } ->
       let cod = apply_ty mc ty va in
       let frames = neu.frames @ [ FApp va ] in
       Done
-        (match try_prim_reduce neu.head frames with
+        (match try_prim_reduce mc neu.head frames with
         | Some v -> v
         | None -> VNeutral { ty = cod; neutral = { head = neu.head; frames } })
   | VFlex { id; spine = sp } -> Done (VFlex { id; spine = sp @ [ va ] })
@@ -554,7 +558,7 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VEffect e -> Done (VEffect { e with params = e.params @ [ va ] })
   | VTraitDict d -> Done (VTraitDict { d with args = d.args @ [ va ] })
   | VCon c -> Done (VCon { c with spine = c.spine @ [ va ] })
-  | _ -> raise (EvalError "applying non-function")
+  | _ -> fail mc "applying non-function"
 
 (* Whether a value mentions no unknown variable. A closure mentions what the
    slots its body reads hold; one whose reads evaluation alone reveals is not
@@ -624,7 +628,7 @@ and normalize_effect_row_value (mc : MetaContext.t) (row : effect_row_value) : e
   | tail_value -> { row with tail_value }
 
 (* Extract the head and existing frames from a stuck value *)
-and stuck_head_frames (v : value) : head * frame list =
+and stuck_head_frames (mc : MetaContext.t) (v : value) : head * frame list =
   match v with
   | VNeutral { neutral = neu; _ } -> (neu.head, neu.frames)
   | VFlex { id; spine = sp } ->
@@ -633,7 +637,7 @@ and stuck_head_frames (v : value) : head * frame list =
   | VRigid { lvl = l; spine = sp } ->
       let frames = List.map (fun v -> FApp v) sp in
       (HVar l, frames)
-  | _ -> raise (EvalError "if condition is not a boolean or stuck term")
+  | _ -> fail mc "if condition is not a boolean or stuck term"
 
 and eval_meta (mc : MetaContext.t) (id : meta_id) : value =
   match MetaContext.lookup mc id with
@@ -652,7 +656,7 @@ and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
         match bd with
         | Bound -> go (apply mc v val_) env_rest bds_rest
         | Defined -> go v env_rest bds_rest)
-    | _ -> raise (EvalError "bd mask length mismatch")
+    | _ -> fail mc "bd mask length mismatch"
   in
   go base (List.rev env) (List.rev bds)
 
@@ -918,7 +922,7 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
         in
         eval_decision_tree_result mc env scrutinee branches dt
     | _ ->
-        let head, base_frames = stuck_head_frames scrutinee in
+        let head, base_frames = stuck_head_frames mc scrutinee in
         Done
           (VNeutral
              {
@@ -943,7 +947,7 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
   if List.exists (fun (pat, _) -> core_pat_contains_struct_type pat) branches
   then
     match branches with
-    | [] -> raise (EvalError "non-exhaustive match at runtime")
+    | [] -> fail mc "non-exhaustive match at runtime"
     | _ -> eval_match_direct mc env scrutinee branches
   else
     match scrutinee with
@@ -1009,7 +1013,7 @@ and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
         in
         eval_decision_tree mc env scrutinee branches dt
     | _ ->
-        let head, base_frames = stuck_head_frames scrutinee in
+        let head, base_frames = stuck_head_frames mc scrutinee in
         VNeutral
           {
             ty = VU;
@@ -1034,7 +1038,7 @@ and eval_match_direct (mc : MetaContext.t) (env : env) (scrutinee : value)
 and eval_match_direct_result (mc : MetaContext.t) (env : env)
     (scrutinee : value) (branches : (core_pat * term) list) : result =
   match branches with
-  | [] -> raise (EvalError "non-exhaustive match at runtime")
+  | [] -> fail mc "non-exhaustive match at runtime"
   | (pat, body) :: rest -> (
       match match_core_pat mc pat scrutinee with
       | Some bindings -> eval_result mc (List.rev_append bindings env) body
@@ -1048,7 +1052,7 @@ and nominal_constructors (mc : MetaContext.t) (nom : value) :
       List.map
         (fun (name, payloads) -> (name, ntp, List.length payloads))
         (Core.nominal_constructors id constructors)
-  | _ -> raise (EvalError "match scrutinee type is not a nominal")
+  | _ -> fail mc "match scrutinee type is not a nominal"
 
 and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
     (branches : (core_pat * term) list) (dt : Core_decision_tree.t) : value =
@@ -1077,11 +1081,11 @@ and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
           | None -> (
               match default with
               | Some d -> eval_decision_tree_result mc env root branches d
-              | None -> raise (EvalError "non-exhaustive match at runtime")))
+              | None -> fail mc "non-exhaustive match at runtime"))
       | _ -> (
           match default with
           | Some d -> eval_decision_tree_result mc env root branches d
-          | None -> raise (EvalError "match on non-constructor value")))
+          | None -> fail mc "match on non-constructor value"))
   | Switch { cases; default; occurrence } -> (
       let v = resolve_occurrence mc root occurrence |> force mc in
       (match v with
@@ -1103,7 +1107,7 @@ and resolve_occurrence (mc : MetaContext.t) (root : value)
     (occ : Core_decision_tree.occurrence) : value =
   match resolve_occurrence_opt mc root occ with
   | Some v -> v
-  | None -> raise (EvalError "resolve_occurrence: invalid occurrence")
+  | None -> fail mc "resolve_occurrence: invalid occurrence"
 
 and resolve_occurrence_opt (mc : MetaContext.t) (root : value)
     (occ : Core_decision_tree.occurrence) : value option =

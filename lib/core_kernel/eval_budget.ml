@@ -9,24 +9,29 @@
 
 exception Exceeded of { limit : int; call : string }
 
-(* [limit = None] while running a program. [exceeded] is the error an overrun
-   raises: the checker's [Exceeded], or, inside a macro application, that
-   application's error, which carries its site - so the error names where it
-   happened at the point it is raised, and nothing re-catches it. *)
+(* The innermost macro application running under the budget, as the errors it
+   raises: an overrun, and any other evaluation failure. Each builds that
+   application's own error, carrying its site, so an error names where it
+   happened at the point it is raised and nothing re-catches it. *)
+type application = {
+  exceeded : limit:int -> call:string -> exn;
+  failed : string -> exn;
+}
+
+(* [limit = None] while running a program. [application = None] outside any
+   macro application: an overrun is the checker's [Exceeded], and a failure is
+   the evaluator's own error. *)
 type t = {
   mutable limit : int option;
   mutable remaining : int;
   mutable depth : int;
-  mutable exceeded : limit:int -> call:string -> exn;
+  mutable application : application option;
 }
 
 (* No surface syntax raises it yet; the ticket leaves that open. *)
 let default_limit = 1_000_000
 
-let checker_exceeded ~limit ~call = Exceeded { limit; call }
-
-let create () =
-  { limit = Some default_limit; remaining = default_limit; depth = 0; exceeded = checker_exceeded }
+let create () = { limit = Some default_limit; remaining = default_limit; depth = 0; application = None }
 
 let start ~limit budget f =
   if budget.depth = 0 then begin
@@ -45,18 +50,21 @@ let spend budget ~call =
   match budget.limit with
   | None -> ()
   | Some limit ->
-      if budget.remaining <= 0 then raise (budget.exceeded ~limit ~call:(call ()));
+      if budget.remaining <= 0 then raise
+          (match budget.application with
+           | Some app -> app.exceeded ~limit ~call:(call ())
+           | None -> Exceeded { limit; call = call () });
       budget.remaining <- budget.remaining - 1
 
 (* A macro application is a call (M5): it spends one unit, and its body and the
    expansion of its output spend from the same request. So a nest of
    applications is bounded as a whole, breadth included. An overrun while it
-   runs raises [exceeded], the innermost application's error. *)
-let macro_application budget ~call ~exceeded f =
+   runs, or any evaluation failure, is [application]'s error. *)
+let macro_application budget ~call ~application f =
   request budget (fun () ->
-      let outer = budget.exceeded in
-      budget.exceeded <- exceeded;
-      Fun.protect ~finally:(fun () -> budget.exceeded <- outer) (fun () ->
+      let outer = budget.application in
+      budget.application <- Some application;
+      Fun.protect ~finally:(fun () -> budget.application <- outer) (fun () ->
           spend budget ~call:(fun () -> call);
           f ()))
 

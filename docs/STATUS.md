@@ -71,6 +71,12 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   `expand.ml`, and the catch-all that re-wrapped a macro body's exceptions as
   strings is gone
   ([macro-fuel-is-the-evaluation-budget](wayfinder/tickets/macro-fuel-is-the-evaluation-budget.md)).
+  Any evaluation failure inside a macro application (`panic`, division by zero,
+  a runtime match failure) is `Expand_error.EvalFailed` with the application's
+  site: the evaluator fails through one helper, `Nbe_support.fail`, which raises
+  the error of the macro application running under the budget, or `EvalError`
+  outside one. Primitive reducers return a failure instead of raising
+  ([macro-body-eval-errors-lack-site](wayfinder/tickets/macro-body-eval-errors-lack-site.md)).
 
 ### Macro model enforcement and one IR (2026-09-14)
 - **One IR.** `Surface.t` and lowering are deleted; the elaborator reads expanded

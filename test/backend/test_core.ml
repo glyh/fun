@@ -925,8 +925,10 @@ let test_macro_hygiene_user_no_capture_macro () =
 
 let test_macro_panic_has_message () =
   match eval_with_macros "do macro bad(_) -> panic[I64](\"boom\"); bad(0) end" with
-  | exception EvalError msg ->
-      Alcotest.(check bool) "panic message contains 'boom'" true (String.contains msg 'b')
+  | exception Expand_error.Error { error = EvalFailed { macro; message }; _ } ->
+      Alcotest.(check string) "panic message" "boom" message;
+      Alcotest.(check bool) "names the macro" true (string_contains macro "bad")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected panic"
 
 let test_imported_macro_expands () =
@@ -1812,6 +1814,17 @@ let test_operator_body_error_reports_use_span () =
       Alcotest.(check bool) "message mentions the use" true (string_contains (Printexc.to_string e) "used at")
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected an expansion budget error at the operator"
+
+(* Any evaluation failure inside a syntax operator's body - not only an overrun -
+   is the application's error, carrying the operator's site. *)
+let operator_body_failure_reports_use_span body expected () =
+  match eval_with_macros ("do\n  infix (~) 15 Left (stx) -> " ^ body ^ "\n  1 ~ 2\nend") with
+  | exception (Expand_error.Error { error = EvalFailed { message; _ }; site = Some { use_span; _ } } as e) ->
+      Alcotest.(check string) "message" expected message;
+      Alcotest.(check bool) "use span is a source span" false (use_span = Source_span.synthetic);
+      Alcotest.(check bool) "message mentions the use" true (string_contains (Printexc.to_string e) "used at")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected an evaluation failure at the operator"
 
 let test_syntax_module_expression_kind () =
   check_i64_macro "Syntax.kind expression object" 1L
@@ -3153,6 +3166,12 @@ let () =
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
           Alcotest.test_case "macro body budget overrun names the macro" `Quick test_macro_body_budget_overrun_names_the_macro;
           Alcotest.test_case "operator body error reports use span" `Quick test_operator_body_error_reports_use_span;
+          Alcotest.test_case "operator body panic reports use span" `Quick
+            (operator_body_failure_reports_use_span "panic[Syntax.Expr](\"boom\")" "boom");
+          Alcotest.test_case "operator body division by zero reports use span" `Quick
+            (* The divisor waits on [stx], so the checker cannot evaluate it at
+               the definition: the division happens in the application. *)
+            (operator_body_failure_reports_use_span "do _ = 1 / (match stx do _ -> 0 end); stx end" "division by zero");
           Alcotest.test_case "Syntax module: expression kind" `Quick test_syntax_module_expression_kind;
           Alcotest.test_case "Syntax module: literal inspectors" `Quick test_syntax_module_literal_inspectors;
           Alcotest.test_case "Syntax module: literal inspector error" `Quick test_syntax_module_literal_inspector_error;

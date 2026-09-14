@@ -32,7 +32,7 @@ let resolve_path_result ctx (p : Syntax.path) : (term * value * value, string) S
               | _ -> []
             in
             match find_field_last (fun (n, _, _) -> String.equal n segment) members with
-            | Some (_, _, field_ty) -> go (Dot (core, segment)) (Nbe.dot_value value segment) field_ty rest
+            | Some (_, _, field_ty) -> go (Dot (core, segment)) (Nbe.dot_value ctx.Ctx.metas value segment) field_ty rest
             | None -> Error segment)
       in
       go (Var ix) (Ctx.eval ctx (Var ix)) ty p.members

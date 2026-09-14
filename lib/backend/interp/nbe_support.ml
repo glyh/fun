@@ -1,10 +1,14 @@
 open Core
 
-let make_cont resume = VCont { used = false; resume }
+(* The one way the evaluator fails: with the error of the request it serves -
+   inside a macro application, that application's error carrying its site;
+   otherwise [EvalError]. *)
+let fail (mc : MetaContext.t) message =
+  match mc.budget.application with
+  | Some app -> raise (app.failed message)
+  | None -> raise (Nbe_error.EvalError message)
 
-let get_cont = function
-  | VCont c -> c
-  | _ -> raise (Nbe_error.EvalError "expected VCont")
+let make_cont resume = VCont { used = false; resume }
 
 let rec bind_result result f =
   match result with
@@ -15,7 +19,7 @@ let visible_kind = function
   | Private | PrivateMethod -> false
   | Field | Public | Method -> true
 
-let dot_value (value : value) (name : string) : value =
+let dot_value (mc : MetaContext.t) (value : value) (name : string) : value =
   match value with
   | VModule { entries; partial = _ } -> (
       let fields = module_entry_fields entries in
@@ -33,7 +37,7 @@ let dot_value (value : value) (name : string) : value =
       | None -> (
           match module_impl_value_opt entries name with
           | Some (k, v) when visible_kind k -> v
-          | _ -> raise (Nbe_error.EvalError "field not found")))
+          | _ -> fail mc "field not found"))
   | VStruct { entries; _ } -> (
       let fields = struct_entry_fields entries in
       match
@@ -42,11 +46,11 @@ let dot_value (value : value) (name : string) : value =
           fields
       with
       | Some (_, _, v) -> v
-      | None -> raise (Nbe_error.EvalError "field not found"))
+      | None -> fail mc "field not found")
   | VRecord { fields; _ } -> (
       match List.find_opt (fun (n, _) -> String.equal n name) fields with
       | Some (_, v) -> v
-      | None -> raise (Nbe_error.EvalError "field not found"))
+      | None -> fail mc "field not found")
   | VNeutral { neutral; _ } ->
       VNeutral
         { ty = VU;
@@ -61,20 +65,19 @@ let dot_value (value : value) (name : string) : value =
       VNeutral
         { ty = VU;
           neutral = { head = HVar lvl; frames = frames @ [ FDot name ] } }
-  | _ -> raise (Nbe_error.EvalError "field access on non-struct")
+  | _ -> fail mc "field access on non-struct"
 
-let unhandled_effect_error eff op =
+let unhandled_effect_error mc eff op =
   match eff with
   | VEffect e ->
-      raise
-        (Nbe_error.EvalError
-           ("unhandled effect " ^ e.name ^ "." ^ op
-          ^ "; handlers are not implemented"))
-  | _ -> raise (Nbe_error.EvalError "perform target is not an effect")
+      fail mc
+        ("unhandled effect " ^ e.name ^ "." ^ op
+       ^ "; handlers are not implemented")
+  | _ -> fail mc "perform target is not an effect"
 
-let result_value _mc = function
+let result_value mc = function
   | Done v -> v
-  | Effect { eff; op; _ } -> unhandled_effect_error eff op
+  | Effect { eff; op; _ } -> unhandled_effect_error mc eff op
 
 let env_value_label (v : value) =
   match v with
