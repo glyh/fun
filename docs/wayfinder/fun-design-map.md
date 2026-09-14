@@ -409,6 +409,8 @@ What remains, in the recommended order:
   — `M.MkA(M.MkE(n))` fails with `UnknownConstructor`.
 - [Expansion errors reach the user raw](tickets/expansion-errors-reach-the-user-raw.md)
   — expander budget overruns escape untranslated; macro-body errors lost the operator span.
+- [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
+  — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
