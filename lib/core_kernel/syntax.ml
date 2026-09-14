@@ -43,8 +43,12 @@ and effect_op = { name : string; input : t; output : t }
 
 (** A dotted name, [M.N.x]: its head is a bare name - an id, resolved by scope
     set and renamed like any other occurrence - and the rest are member labels,
-    resolved by their container. A single name is a path with no members. *)
-and path = { head : id; members : string list }
+    resolved by their container. A single name is a path with no members.
+    [head_choice] is the head's open choice (see [OpenChoice]), set only by
+    expansion; [None] means the head is a binder's resolved name, or unexpanded. *)
+and path = { head : id; members : string list; head_choice : open_choice option }
+
+and open_choice = { opens : string list; fallback : string option }
 
 and type_decl = { name : id; params : id list; ctors : (id * t list) list }
 
@@ -203,7 +207,7 @@ and pat =
 let fresh_id ?(span = Source_span.synthetic) ?(scope = Scope_set.empty) name =
   { name; span; scope }
 
-let path_of_id head = { head; members = [] }
+let path_of_id head = { head; members = []; head_choice = None }
 
 (* [(M.N, x)] for [M.N.x]: the prefix and the last segment, as the string lists
    everything after lowering speaks. *)
@@ -213,7 +217,7 @@ let path_split (p : path) : string list * string =
   | [] -> assert false
 
 let path_of_segments ?span = function
-  | head :: members -> { head = fresh_id ?span head; members }
+  | head :: members -> { head = fresh_id ?span head; members; head_choice = None }
   | [] -> invalid_arg "path_of_segments: empty path"
 
 let path_last (p : path) = snd (path_split p)
@@ -275,10 +279,19 @@ let synth kind = { kind; span = Source_span.synthetic }
 let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
 
 (* The name a bare-name form was written with, whether expansion resolved it to
-   a binder or left it an open choice. For the lookups still keyed by spelling:
-   traits, and the trait-bound sugar [A : Eq + Show]. *)
+   a binder or left it an open choice. Only for sugar matched as written - the
+   [+] of a trait bound [A : Eq + Show] - never for a lookup. *)
 let written_name (stx : t) =
   match stx.kind with
   | Var id -> Some id.name
   | OpenChoice { name; _ } -> Some name.name
+  | _ -> None
+
+(* A form that names an entry - [x], an open choice, [M.x] - as a path, so it
+   resolves like any other path head (M12). *)
+let rec path_of_form (stx : t) : path option =
+  match stx.kind with
+  | Var id -> Some (path_of_id id)
+  | OpenChoice { name; opens; fallback } -> Some { head = name; members = []; head_choice = Some { opens; fallback } }
+  | FieldAccess (e, member) -> Option.map (fun p -> { p with members = p.members @ [ member ] }) (path_of_form e)
   | _ -> None

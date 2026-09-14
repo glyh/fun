@@ -102,8 +102,9 @@ the `(result, rest)` tuple.
 
 ## Elaborator: constructor resolution phases
 
-The elaborator resolves constructors via `find_nominal_template_opt(ctx, path, name)`.
-This scans nominals in the elaboration context. When adding a new ADT inside a
+The elaborator resolves pattern heads via `find_nominal_for_pattern_head_opt(ctx, path)`:
+the path's head resolves like a bare name (binder or open choice), and the nominal is
+read off the entry it lands on (never by scanning or by spelling). When adding a new ADT inside a
 module, its constructors become visible only AFTER the ADT binding is processed.
 
 - **Pattern synonyms** for ADT constructors work only if the ADT was elaborated

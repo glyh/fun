@@ -3,8 +3,10 @@ title: Path heads, traits and effects resolve without spelling
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Done. `Syntax.path` carries `head_choice` (reflected both ways); expansion resolves a path head exactly as a bare name (`Expand.resolve_occurrence`), and the elaborator locates it through `Ctx.lookup_head_opt` before following members. Traits are read off the entry a path or form resolves to (`VTrait` id → registry); `Ctx.traits` is deleted, and `impl M.Trait`, `[A : M.Trait]`, `M.Trait.method` now work. Nominal pattern heads are read off the resolved entry (a parametric type's former is applied to fresh metas); both environment scans are deleted. Left by spelling, on purpose: macro annotation constraint names (plain strings with no scopes — they go with explicit macro type binders), a constructor label matched inside a scrutinee's already-known nominal (a member label, like a field), and the `+` of the trait-bound sugar (matched as written, never looked up).
+closed_date: 2026-09-14
 blocked_by:
 ---
 

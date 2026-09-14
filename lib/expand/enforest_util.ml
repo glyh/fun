@@ -225,7 +225,7 @@ let path_from_terms terms : Syntax.path * Raw_syntax.t list =
         | rest -> (List.rev acc, rest)
       in
       let members, rest = members [] rest in
-      ({ Syntax.head = id ~span head; members }, rest)
+      ({ Syntax.head = id ~span head; members; head_choice = None }, rest)
   | _ -> error "expected dotted identifier"
 
 let binding_name_term = function

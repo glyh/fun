@@ -371,12 +371,13 @@ every defect below is an invariant with no name in the source.
 
 ### Macro model distances still open (from the 2026-09-14 implementation run)
 
-The macro model's M1–M3, M6, M10–M11 and most of M2 and M12 are now enforced.
+The macro model's M1–M3, M6, M10–M12 and most of M2 are now enforced.
 What remains, in the recommended order:
 
 - [Path heads, traits and effects resolve without spelling](tickets/names-resolve-without-spelling.md)
-  — finish M12: path heads get open choices too, and traits and nominals are
-  located through the entry a head resolved to. **Do next.**
+  (closed) — path heads carry an open choice like bare names; traits and
+  nominals are located through the entry a head resolves to, and the
+  name-keyed trait table and environment scans are gone.
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
   (listed above).
 - [Macro fuel is the evaluation budget](tickets/macro-fuel-is-the-evaluation-budget.md)

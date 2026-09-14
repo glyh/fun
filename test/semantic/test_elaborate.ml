@@ -1577,6 +1577,31 @@ let evaluation_budget =
         | _ -> Alcotest.fail "expected an I64");
   ]
 
+(* Path heads resolve like bare names (M12): an open shadows an earlier binder
+   of the head's name, and traits and nominals are located through the entry
+   the head resolves to. *)
+let path_heads =
+  let shadowed_m = "N = module pub M = module pub type T = C | D; pub type R = {y: I64}; pub effect E = sig tell : I64 -> I64 end end end" in
+  let outer_m = "M = module pub type T = A | B; pub type R = {x: I64}; pub effect E = sig ask : I64 -> I64 end end" in
+  let under_open body = "do " ^ outer_m ^ "; " ^ shadowed_m ^ "; open N; " ^ body ^ " end" in
+  [
+    Alcotest.test_case "a qualified pattern head" `Quick
+      (eval_i64 (under_open "match M.C do M.C -> 1 | _ -> 2 end") 1L);
+    Alcotest.test_case "a record pattern's type" `Quick
+      (eval_i64 (under_open "match M.R{y = 7} do M.R {y} -> y end") 7L);
+    Alcotest.test_case "perform and an effect branch" `Quick
+      (eval_i64 (under_open "match perform M.E.tell(1) do x -> x | effect M.E.tell n -> n + 41 end") 42L);
+    Alcotest.test_case "a type-name pattern head" `Quick
+      (eval_i64 "do M = module pub type T = B end; f = fn(T : Type, X : Type) -> do open M; match X do T -> 1 | _ -> 0 end end; f(I64, M.T) end" 1L);
+    Alcotest.test_case "a qualified trait: impl, bound and method" `Quick
+      (eval_i64
+         "do M = module pub trait Same(A) = sig same : A -> A -> I64 end end; \
+          impl M.Same(I64) = module same = fn(x, y) -> 7 end; \
+          f : [A : M.Same] -> A -> I64 = fn[A : Type](x) -> M.Same.same(x, x); f(1) end" 7L);
+    Alcotest.test_case "a trait is not found by its name alone" `Quick
+      (rejected "do M = module pub trait Same(A) = sig same : A -> A -> I64 end end; impl Same(I64) = module same = fn(x, y) -> 7 end; 0 end");
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
@@ -1584,6 +1609,7 @@ let () =
       ("constants", constants);
       ("type_chains", type_chains);
       ("open_choices", open_choices);
+      ("path_heads", path_heads);
       ("let_bindings", let_bindings);
       ("conditionals", conditionals);
       ("lambdas", lambdas);

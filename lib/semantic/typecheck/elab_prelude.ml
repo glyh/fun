@@ -107,7 +107,8 @@ pub module Syntax do
 
   pub type Id = {name: String; span: Option(Span); scope: Scopes}
 
-  pub type Path = {head: Id; members: List(String)}
+  pub type PathChoice = {opens: List(String); fallback: Option(String)}
+  pub type Path = {head: Id; members: List(String); head_choice: Option(PathChoice)}
   pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom | ScopesAtom(Scopes)
   pub type AtomTy = TyI64 | TyUnit | TyChar | TyString | TyScopes | TyAbsurd
   pub type Fixity = PrefixFixity | InfixFixity
@@ -188,7 +189,7 @@ pub module Syntax do
   pub TypeExpr : Type = Type
   pub pat_wild = RawPatWild(None)
   pub pat_var = fn(id) -> RawPatBind(None, id)
-  pub pat_con = fn(name, args) -> RawPatCon(None, Path{head = name; members = Nil}, args)
+  pub pat_con = fn(name, args) -> RawPatCon(None, Path{head = name; members = Nil; head_choice = None}, args)
   pub pat_atom = fn(val) -> RawPatAtom(None, val)
   pub pat_prod = fn(pats) -> RawPatProd(None, pats)
   pub pat_or = fn(l, r) -> RawPatOr(None, l, r)

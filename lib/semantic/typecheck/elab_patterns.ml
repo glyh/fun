@@ -153,8 +153,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
           (CPatProd (List.rev core_subs), List.rev binders)
       | _ -> raise (ElabError TupleLengthMismatch))
   | PatRecord { typ = typ_p; fields; partial } ->
-      let typ_path, typ = Syntax.path_split typ_p in
-      let _record_value, record_ty = resolve_path_value ctx typ_path typ in
+      let _record_value, record_ty = resolve_path_value ctx typ_p in
       Ctx.unify ctx scrutinee_ty record_ty;
       (match Nbe.force ctx.metas record_ty with
       | VStruct { entries = struct_entries; _ } ->
@@ -200,11 +199,10 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
       in
       (CPatStructType { fields = List.rev core_fields; partial }, List.rev binders)
   | PatCon (con_path, sub_pats) -> (
-      let path, name = Syntax.path_split con_path in
-      match Nbe.force ctx.metas scrutinee_ty with
+      let name = Syntax.path_last con_path in      match Nbe.force ctx.metas scrutinee_ty with
       | VU -> (
         let resolve =
-            match find_nominal_for_pattern_head_opt ctx path name with
+            match find_nominal_for_pattern_head_opt ctx con_path with
             | Some (VNominal n) ->
                 let ctor_params =
                   match List.find_opt (fun (cname, _) -> String.equal cname name) (nominal_constructors n.id n.constructors) with
@@ -229,10 +227,10 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
               (CPatNominalHead { id; name = nm; num_params = ctor_params;
                                  param_pats = List.rev core_param_pats },
                List.rev binders)
-          | None when path = [] && sub_pats = [] && starts_lowercase name ->
+          | None when con_path.members = [] && sub_pats = [] && starts_lowercase name ->
               (CPatBind, [ (name, VU) ])
           | None ->
-              (match resolve_path_value_opt ctx path name with
+              (match resolve_path_value_opt ctx con_path with
                | Some (syn_val, _) ->
                    (match Nbe.force ctx.metas syn_val with
                      | VPatternSyn { rhs; params; scrutinee_ty = syn_ty; _ } ->
@@ -244,10 +242,10 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                     | _ -> raise (ElabError (UnknownConstructor name)))
                | None -> raise (ElabError (UnknownConstructor name))))
       | _ ->
-          (match path with
+          (match con_path.members with
            | [] -> None
            | _ ->
-               let ctor_value, _ = resolve_path_value ctx path name in
+               let ctor_value, _ = resolve_path_value ctx con_path in
                match Nbe.force ctx.metas ctor_value with
                 | VPatternSyn { name = _; params; rhs; scrutinee_ty = syn_ty } ->
                     if List.length sub_pats <> List.length params then
@@ -261,10 +259,10 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
           | Some result -> result
           | None ->
           let resolved_nominal =
-            match path with
+            match con_path.members with
             | [] -> None
             | _ ->
-                let ctor_value, _ = resolve_path_value ctx path name in
+                let ctor_value, _ = resolve_path_value ctx con_path in
                 match Nbe.force ctx.metas ctor_value with
                 | VCon { nominal; _ } -> Some nominal
                 | VLam _ | VPi _ -> None
@@ -288,8 +286,6 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                       ([], []) sub_pats payloads
                   in
                   (CPatCon (name, num_type_params, List.rev core_subs), List.rev binders)
-              | None when path = [] && not (unqualified_constructor_in_scope ctx name scrutinee_ty) ->
-                  raise (ElabError (UnknownConstructor name))
               | None -> raise (ElabError (UnknownConstructor name)))
           | _ -> raise (ElabError NotANominalType)))
 

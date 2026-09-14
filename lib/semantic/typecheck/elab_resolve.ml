@@ -15,77 +15,46 @@ let trait_dict_ty ?trait_id trait_name args fields =
 let trait_key trait_name args =
   trait_name ^ " " ^ String.concat " " (List.map (fun _ -> "_") args)
 
-
-let resolve_path_core_value ctx path name =
-  match path with
-  | [] ->
-      let ix, ty = Ctx.lookup ctx name in
-      let core = Var ix in
-      (core, Ctx.eval ctx core, ty)
-  | first :: rest ->
-      let ix, ty = Ctx.lookup ctx first in
-      let rec go current_core current_value current_ty = function
-        | [] -> (current_core, current_value, current_ty)
+(* Follow a path (M12): its head's entry, located through the head's open
+   choice or resolved name, then each member through the module or struct type
+   it lands on. [Error] carries the segment that was not found. *)
+let resolve_path_result ctx (p : Syntax.path) : (term * value * value, string) Stdlib.result =
+  match Ctx.lookup_head_opt ctx p with
+  | None -> Error p.head.name
+  | Some (ix, ty) ->
+      let rec go core value ty = function
+        | [] -> Ok (core, value, ty)
         | segment :: rest -> (
-            match Nbe.force ctx.Ctx.metas current_ty with
-            | VModule { entries; partial = _ } -> (
-                match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_module_fields entries) with
-                | Some (_, _, field_ty) ->
-                    let next_core = Dot (current_core, segment) in
-                    let next_value = Nbe.dot_value current_value segment in
-                    go next_core next_value field_ty rest
-                | None -> raise (ElabError (UnboundVariable segment)))
-            | VStruct { entries; _ } -> (
-                match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_struct_members (struct_entry_fields entries)) with
-                | Some (_, _, field_ty) ->
-                    let next_core = Dot (current_core, segment) in
-                    let next_value = Nbe.dot_value current_value segment in
-                    go next_core next_value field_ty rest
-                | None -> raise (ElabError (UnboundVariable segment)))
-            | _ -> raise (ElabError (UnboundVariable segment)))
+            let members =
+              match Nbe.force ctx.Ctx.metas ty with
+              | VModule { entries; partial = _ } -> visible_module_fields entries
+              | VStruct { entries; _ } -> visible_struct_members (struct_entry_fields entries)
+              | _ -> []
+            in
+            match find_field_last (fun (n, _, _) -> String.equal n segment) members with
+            | Some (_, _, field_ty) -> go (Dot (core, segment)) (Nbe.dot_value value segment) field_ty rest
+            | None -> Error segment)
       in
-      go (Var ix) (Ctx.eval ctx (Var ix)) ty (rest @ [ name ])
+      go (Var ix) (Ctx.eval ctx (Var ix)) ty p.members
 
-let resolve_path_value ctx path name =
-  let _, value, ty = resolve_path_core_value ctx path name in
+let resolve_path_core_value ctx p =
+  match resolve_path_result ctx p with
+  | Ok found -> found
+  | Error segment -> raise (ElabError (UnboundVariable segment))
+
+let resolve_path_value ctx p =
+  let _, value, ty = resolve_path_core_value ctx p in
   (value, ty)
 
-let resolve_path_value_opt ctx path name =
-  match path with
-  | [] -> (
-      match NameMap.find_opt name ctx.Ctx.name_table with
-      | Some { level; ty } ->
-          let core = Var (Nbe.lvl_to_ix ctx.Ctx.lvl level) in
-          Some (Ctx.eval ctx core, ty)
-      | None -> None)
-  | first :: rest -> (
-      match NameMap.find_opt first ctx.Ctx.name_table with
-      | None -> None
-      | Some { level; ty } ->
-          let core = Var (Nbe.lvl_to_ix ctx.Ctx.lvl level) in
-          let rec go current_value current_ty = function
-            | [] -> Some (current_value, current_ty)
-            | segment :: rest -> (
-                match Nbe.force ctx.Ctx.metas current_ty with
-                | VModule { entries; partial = _ } -> (
-                    match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_module_fields entries) with
-                    | Some (_, _, field_ty) -> go (Nbe.dot_value current_value segment) field_ty rest
-                    | None -> None)
-                | VStruct { entries; _ } -> (
-                    match find_field_last (fun (n, _, _) -> String.equal n segment) (visible_struct_members (struct_entry_fields entries)) with
-                    | Some (_, _, field_ty) -> go (Nbe.dot_value current_value segment) field_ty rest
-                    | None -> None)
-                | _ -> None)
-          in
-          go (Ctx.eval ctx core) ty (rest @ [ name ]))
+let resolve_path_value_opt ctx p =
+  Result.to_option (Result.map (fun (_, value, ty) -> (value, ty)) (resolve_path_result ctx p))
 
 (** Resolve a possibly-dotted name ("M.T") by splitting on '.' into a
     module path and final segment. Used for macro constraint names, which
-    may carry a qualified annotation. *)
+    may carry a qualified annotation. A written string carries no scopes, so
+    this is the one lookup still by spelling. *)
 let resolve_dotted_value_opt ctx dotted =
-  match List.rev (String.split_on_char '.' dotted) with
-  | [] -> None
-  | name :: rev_path -> resolve_path_value_opt ctx (List.rev rev_path) name
+  resolve_path_value_opt ctx (Syntax.path_of_segments (String.split_on_char '.' dotted))
 
 (** Run a type-aware macro call whose result type [ty] is already unified with
     the annotation's constraint: apply the macro to [ty] and its syntax
@@ -111,18 +80,53 @@ let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nomi
     | Some expanded -> (runtime.expand (app.emit expanded))
     | None -> raise (ElabError (MacroDidNotReturnSyntax name)))
 
-let lookup_trait ctx name =
-  match NameMap.find_opt name ctx.Ctx.traits with
-  | Some info -> info
-  | None -> raise (ElabError (UnknownTrait name))
+(* A trait is located through the entry its path resolves to, by the identity
+   that entry's value carries - never by the name it was written with. *)
+let trait_of_path_opt ctx (p : Syntax.path) =
+  Option.bind (resolve_path_value_opt ctx p) (fun (value, _) ->
+      match Nbe.force ctx.Ctx.metas value with
+      | VTrait { trait_id; _ } -> Hashtbl.find_opt trait_registry trait_id
+      | _ -> None)
 
-let lookup_trait_by_id ctx _trait_name trait_id =
-  NameMap.fold (fun _ info acc -> if info.trait_id = trait_id then Some info else acc) ctx.Ctx.traits None
+let lookup_trait ctx (p : Syntax.path) =
+  match trait_of_path_opt ctx p with
+  | Some info -> info
+  | None -> raise (ElabError (UnknownTrait (Syntax.path_last p)))
+
+(* A form naming a trait - [Eq], [M.Eq] - as the trait it names, if it does. *)
+let trait_of_form_opt ctx (form : Syntax.t) = Option.bind (Syntax.path_of_form form) (trait_of_path_opt ctx)
+
+(* The traits of a bound sugar [A : Eq + Show], when every summand names one. *)
+let trait_bounds_opt ctx (expr : Syntax.t) =
+  List.fold_right
+    (fun form acc -> Option.bind acc (fun infos -> Option.map (fun i -> i :: infos) (trait_of_form_opt ctx form)))
+    (Elab_syntax_util.trait_bound_forms expr) (Some [])
 
 let eval_trait_fields ctx trait_info args =
   List.map
     (fun (field, clo) -> (field, Nbe.eval ctx.Ctx.metas (List.rev args @ clo.env) clo.body))
     trait_info.trait_fields
+
+(* [[A : Eq + Show] -> …]: bind [A], then one dictionary per bound as evidence
+   for [A]. The context under the dictionaries, and each dictionary's type. *)
+let bind_trait_bound_dicts ctx name trait_infos =
+  let arg = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
+  List.fold_left
+    (fun (c, layers) trait_info ->
+      let dict_ty =
+        trait_dict_ty ~trait_id:trait_info.trait_id trait_info.trait_name [ arg ] (eval_trait_fields ctx trait_info [ arg ])
+      in
+      let dict_core = Ctx.quote c dict_ty in
+      let c', entry = Ctx.bind_anonymous c dict_ty in
+      let evidence =
+        { evidence_trait_id = trait_info.trait_id;
+          evidence_trait_name = trait_info.trait_name;
+          evidence_args = [ arg ];
+          evidence_level = entry.level;
+          evidence_ty = dict_ty }
+      in
+      (Ctx.add_trait_evidence c' evidence, layers @ [ dict_core ]))
+    (Ctx.bind ctx name VU, []) trait_infos
 
 let struct_trait_evidence ctx trait_info args =
   match List.map (Nbe.force ctx.Ctx.metas) args with
@@ -169,7 +173,7 @@ let resolve_trait_evidence ctx trait_info args =
 let resolve_trait_dict_ty ctx = function
   | VTraitDict { trait_id; trait_name; args; fields } ->
       let trait_info =
-        match lookup_trait_by_id ctx trait_name trait_id with
+        match Hashtbl.find_opt trait_registry trait_id with
         | Some info -> info
         | None ->
             { trait_id;
@@ -200,14 +204,6 @@ let duplicate_impl_evidence ctx trait_info args impl_value =
 
 let add_opened_field ctx fname field_ty value =
   let ctx = Ctx.define ctx fname field_ty value in
-  let ctx =
-    match Nbe.force ctx.Ctx.metas value with
-    | VTrait { trait_id; _ } -> (
-        match Hashtbl.find_opt trait_registry trait_id with
-        | Some trait_info -> Ctx.add_trait ctx trait_info
-        | None -> ctx)
-    | _ -> ctx
-  in
   match resolve_trait_dict_ty ctx field_ty with
   | Some (trait_info, args, _) when not (duplicate_impl_evidence ctx trait_info args value) ->
       let level = ctx.Ctx.lvl - 1 in
@@ -277,39 +273,18 @@ let resolve_trait_method ctx trait_info method_name =
           | None -> raise (ElabError (UnknownTraitMethod method_name)))
       | _ -> raise (ElabError (UnknownTraitMethod method_name)))
 
-let find_nominal_for_constructor ctx name =
-  List.find_map (fun entry ->
-    match entry with
-    | VNominal n ->
-        if List.exists (fun (cname, _) -> String.equal cname name) (nominal_constructors n.id n.constructors) then
-          Some (VNominal n)
-        else None
-    | _ -> None)
-    ctx.Ctx.env
-
-let find_nominal_template_opt ctx path name =
-  let scan_env () =
-    List.find_map
-      (function
-        | VNominal n when String.equal n.name name -> Some (VNominal n)
-        | _ -> None)
-      ctx.Ctx.env
+(* The nominal type a path names, located through the entry it resolves to. A
+   parametric type's entry is its type former, applied here to fresh metas. *)
+let find_nominal_template_opt ctx (p : Syntax.path) =
+  let rec former value ty =
+    match Nbe.force ctx.Ctx.metas ty, Nbe.force ctx.Ctx.metas value with
+    | _, (VNominal _ as nominal) -> Some nominal
+    | VPi { codomain; _ }, (VLam _ as f) ->
+        let arg = Ctx.raw_meta ctx in
+        former (Nbe.apply ctx.Ctx.metas f arg) (Nbe.closure_apply ctx.Ctx.metas codomain arg)
+    | _ -> None
   in
-  match path with
-  | [] -> (
-      match resolve_path_value_opt ctx [] name with
-      | Some (value, _) -> (
-          match Nbe.force ctx.Ctx.metas value with
-          | VNominal _ as nominal -> Some nominal
-          | _ -> scan_env ())
-      | None -> scan_env ())
-  | _ -> (
-      match resolve_path_value_opt ctx path name with
-      | Some (value, _) -> (
-          match Nbe.force ctx.Ctx.metas value with
-          | VNominal _ as nominal -> Some nominal
-          | _ -> None)
-      | None -> None)
+  Option.bind (resolve_path_value_opt ctx p) (fun (value, ty) -> former value ty)
 
 let nominal_from_constructor_type_opt ctx ctor_ty =
   let rec follow ty =
@@ -325,8 +300,8 @@ let nominal_from_constructor_type_opt ctx ctor_ty =
   in
   follow ctor_ty
 
-let nominal_for_constructor_path_opt ctx path name =
-  match resolve_path_value_opt ctx path name with
+let nominal_for_constructor_path_opt ctx (p : Syntax.path) =
+  match resolve_path_value_opt ctx p with
   | Some (value, ty) -> (
       match Nbe.force ctx.Ctx.metas value with
       | VCon { nominal; _ } -> Some nominal
@@ -334,36 +309,13 @@ let nominal_for_constructor_path_opt ctx path name =
       | _ -> None)
   | None -> None
 
-(* Resolution order for a pattern head: the name is looked up as a *type* name
-   first ([find_nominal_template_opt], which only ever matches [n.name]), then as
-   a *constructor* name. A qualified head has no constructor fallback beyond its
-   own path - it must resolve through its module. *)
-let find_nominal_for_pattern_head_opt ctx path name =
-  match find_nominal_template_opt ctx path name with
+(* Resolution order for a pattern head: the path is taken as naming a *type*
+   first ([find_nominal_template_opt]), then as naming a *constructor*. Both go
+   through the entry the path resolves to. *)
+let find_nominal_for_pattern_head_opt ctx (p : Syntax.path) =
+  match find_nominal_template_opt ctx p with
   | Some nominal -> Some nominal
-  | None -> (
-      match nominal_for_constructor_path_opt ctx path name with
-      | Some nominal -> Some nominal
-      | None when path = [] -> find_nominal_for_constructor ctx name
-      | None -> None)
-
-let unqualified_constructor_in_scope ctx name nominal =
-  let same_nominal_id ctor_nominal =
-    match (Nbe.force ctx.Ctx.metas ctor_nominal, Nbe.force ctx.Ctx.metas nominal) with
-    | VNominal ctor_n, VNominal n -> ctor_n.id = n.id
-    | _ -> false
-  in
-  match resolve_path_value_opt ctx [] name with
-  | Some (value, ty) -> (
-      match Nbe.force ctx.Ctx.metas value with
-      | VCon { name = ctor_name; nominal = ctor_nominal; _ } ->
-          String.equal ctor_name name && same_nominal_id ctor_nominal
-      | VLam _ | VFix _ -> (
-          match nominal_from_constructor_type_opt ctx ty with
-          | Some ctor_nominal -> same_nominal_id ctor_nominal
-          | None -> false)
-      | _ -> false)
-  | None -> false
+  | None -> nominal_for_constructor_path_opt ctx p
 
 let rec insert_explicit_effect_metas ctx core ty =
   match Nbe.force ctx.Ctx.metas ty with
@@ -375,12 +327,14 @@ let rec insert_explicit_effect_metas ctx core ty =
         (Nbe.closure_apply ctx.Ctx.metas codomain arg_value)
   | _ -> (core, ty)
 
-let resolve_perform_operation ctx ~effect_path ~op =
-  match List.rev effect_path with
+(* [E.op]: the effect is the path without its last member, the operation that
+   member's label. *)
+let resolve_perform_operation ctx (op_path : Syntax.path) =
+  match List.rev op_path.members with
   | [] -> raise (ElabError EffectOperationPathExpected)
-  | effect_name :: rev_path ->
-      let path = List.rev rev_path in
-      let effect_core, _effect_value, effect_ty = resolve_path_core_value ctx path effect_name in
+  | op :: rev_members ->
+      let effect_path = { op_path with members = List.rev rev_members } in
+      let effect_core, _effect_value, effect_ty = resolve_path_core_value ctx effect_path in
       let effect_core, _effect_ty = insert_explicit_effect_metas ctx effect_core effect_ty in
       let effect_value = Ctx.eval ctx effect_core in
       match Nbe.force ctx.Ctx.metas effect_value with

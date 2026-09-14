@@ -29,11 +29,10 @@ let rewrite_record_self_refs record_name params (expr : Syntax.t) : Syntax.t =
   ignore (Expand.map_forms Fun.id (fun form -> if is_record form then invalid () else form) rewritten);
   rewritten
 
-let rec trait_bound_names (expr : Syntax.t) =
+(* The summands of the trait-bound sugar [Eq + Show]. The [+] is sugar, matched
+   as written; each summand is a form the caller resolves. *)
+let rec trait_bound_forms (expr : Syntax.t) =
   match expr.kind with
   | Syntax.Ap ({ kind = Syntax.Ap (plus, Explicitness.Explicit, lhs); _ }, Explicitness.Explicit, rhs)
-    when Syntax.written_name plus = Some "+" -> (
-      match trait_bound_names lhs, trait_bound_names rhs with
-      | Some lhs, Some rhs -> Some (lhs @ rhs)
-      | _ -> None)
-  | _ -> Option.map (fun name -> [ name ]) (Syntax.written_name expr)
+    when Syntax.written_name plus = Some "+" -> trait_bound_forms lhs @ trait_bound_forms rhs
+  | _ -> [ expr ]

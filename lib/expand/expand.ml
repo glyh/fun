@@ -379,12 +379,20 @@ let open_unit_macro_scopes (ctx : Expand_ctx.t) (m : t) : Scope_set.t list =
 let member_scope (m : t) : Scope_set.t =
   match m.kind with Var id -> id.scope | _ -> Scope_set.empty
 
-(* A path's head is an occurrence like any other: resolved by scope set and
-   renamed to its binder's resolved name. Its members are labels, left alone. *)
+(* Where an occurrence resolves (M12): its binder's resolved name, or an open
+   choice when some open may supply it or no binder takes it. *)
+let resolve_occurrence (ctx : Expand_ctx.t) (id : Syntax.id) : (string, Syntax.open_choice) Either.t =
+  let binder = Expand_ctx.resolve ctx id in
+  match binder, Expand_ctx.open_candidates ctx id binder with
+  | Some info, [] -> Left info.resolved_name
+  | _, opens -> Right { opens; fallback = Option.map (fun i -> i.Binding.resolved_name) binder }
+
+(* A path's head is an occurrence like any other, resolved the way a bare name
+   is. Its members are labels, left alone. *)
 let expand_path (ctx : Expand_ctx.t) (p : Syntax.path) : Syntax.path =
-  match Expand_ctx.resolve ctx p.head with
-  | Some info -> { p with head = { p.head with name = info.resolved_name } }
-  | None -> p
+  match resolve_occurrence ctx p.head with
+  | Left name -> { p with head = { p.head with name } }
+  | Right choice -> { p with head_choice = Some choice }
 
 (* An expanded macro body inside the unit opens around its definition (M3):
    its scope, and nothing ambient. *)
@@ -398,12 +406,9 @@ let in_definition_site_opens (ctx : Expand_ctx.t) (name : Syntax.id) (body : Syn
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
-    let binder = Expand_ctx.resolve ctx id in
-    begin match binder, Expand_ctx.open_candidates ctx id binder with
-    | Some info, [] -> { stx with kind = Var { id with name = info.resolved_name } }
-    | _, opens ->
-      { stx with kind = OpenChoice { name = id; opens;
-                                     fallback = Option.map (fun i -> i.Binding.resolved_name) binder } }
+    begin match resolve_occurrence ctx id with
+    | Left name -> { stx with kind = Var { id with name } }
+    | Right { opens; fallback } -> { stx with kind = OpenChoice { name = id; opens; fallback } }
     end
   | OpenChoice _ -> stx
   | Atom _ | Self | SelfType | Stx _ -> stx

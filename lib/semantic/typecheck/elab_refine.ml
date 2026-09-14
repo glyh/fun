@@ -282,8 +282,7 @@ let close_recursive_payload_term nominal_name num_params =
 
 let rec refinement_for_nominal_head ctx = function
   | Syntax.PatCon (con_path, _) -> (
-      let path, name = Syntax.path_split con_path in
-      match find_nominal_for_pattern_head_opt ctx path name with
+      match find_nominal_for_pattern_head_opt ctx con_path with
       | Some (VNominal n) -> Some (VNominal { n with params = List.init n.num_params (fun _ -> Ctx.raw_meta ctx) })
       | Some _ | None -> None)
   | Syntax.PatOr (lhs, rhs) -> (

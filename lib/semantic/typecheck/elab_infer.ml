@@ -191,8 +191,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let scrutinee_ty =
         match rhs with
         | Syntax.PatCon (con_path, _) ->
-            let path, ctor_name = Syntax.path_split con_path in
-            (match Elab_resolve.find_nominal_for_pattern_head_opt ctx path ctor_name with
+            (match Elab_resolve.find_nominal_for_pattern_head_opt ctx con_path with
              | Some nominal -> nominal
              | None -> VU)
         | _ -> VU
@@ -242,11 +241,11 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let bind =
         LetBind (name, kind, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name })
       in
-      let ctx' = Ctx.add_trait (extend_from_slots ctx bind [ `Entry (name, VU, trait_ty) ]) trait_info in
+      let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, trait_ty) ] in
       (ctx', [bind], [ModuleField (name, kind, VU)])
-  | Syntax.ImplBinding { name; trait = { members = []; head = { name = trait_name; _ } }; args; fields; public } ->
+  | Syntax.ImplBinding { name; trait; args; fields; public } ->
       let name = Option.map (fun (i : Syntax.id) -> i.name) name in
-      let c = elaborate_impl_contribution ops ctx trait_name args fields in
+      let c = elaborate_impl_contribution ops ctx trait args fields in
       let kind = if public then Public else Private in
       let bind = ImplBind (name, kind, c.impl_core, c.impl_dict_ty) in
       let level = ctx.Ctx.lvl in
@@ -255,8 +254,6 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       in
       let ctx', _evidence = install_impl_evidence ?impl_name:name ctx' c ~level in
       (ctx', [bind], [ModuleImpl (name, kind, c.impl_dict_ty, c.impl_value)])
-  | Syntax.ImplBinding { trait; _ } ->
-      raise (ElabError (UnknownTrait (Syntax.path_last trait)))
   | Syntax.RecordTypeBinding { name = { name; _ }; params; fields; public } ->
       let params = Syntax.names params in
       check_duplicate_names (List.map fst fields);
@@ -322,8 +319,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | SelfType ->
       (Ctx.quote ctx (Ctx.lookup_self_type ctx), VU)
   | Perform { op = op_path; arg } ->
-      let effect_path, op = Syntax.path_split op_path in
-      let effect_core, _effect_value, input_ty, output_ty = resolve_perform_operation ctx ~effect_path ~op in
+      let op = Syntax.path_last op_path in
+      let effect_core, _effect_value, input_ty, output_ty = resolve_perform_operation ctx op_path in
       let arg_core = ops.check ctx arg input_ty in
       (Perform { eff = effect_core; op; arg = arg_core }, Nbe.force ctx.metas output_ty)
   | Resume arg -> infer_resume ops ctx arg
@@ -402,27 +399,10 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       in
       (ProdTy core_elems, VU)
   | Arrow (Explicitness.Implicit, Some { name; _ }, a, effects, b) -> (
-      match trait_bound_names a with
-      | Some trait_names when List.for_all (fun trait_name -> NameMap.mem trait_name ctx.Ctx.traits) trait_names ->
+      match trait_bounds_opt ctx a with
+      | Some trait_infos ->
           let type_ctx = Ctx.bind ctx name VU in
-          let arg = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
-          let dict_ctx, dict_layers =
-            List.fold_left
-              (fun (c, layers) trait_name ->
-                let trait_info = lookup_trait ctx trait_name in
-                let dict_ty = trait_dict_ty ~trait_id:trait_info.trait_id trait_name [ arg ] (eval_trait_fields ctx trait_info [ arg ]) in
-                let dict_core = Ctx.quote c dict_ty in
-                let c', entry = Ctx.bind_anonymous c dict_ty in
-                let evidence =
-                  { evidence_trait_id = trait_info.trait_id;
-                    evidence_trait_name = trait_name;
-                    evidence_args = [ arg ];
-                    evidence_level = entry.level;
-                    evidence_ty = dict_ty }
-                in
-                (Ctx.add_trait_evidence c' evidence, layers @ [ dict_core ]))
-              (type_ctx, []) trait_names
-          in
+          let dict_ctx, dict_layers = bind_trait_bound_dicts ctx name trait_infos in
           Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects type_ctx (ops.collect_effects type_ctx eff)) row.effects; Option.iter (fun tail -> require_empty_effects type_ctx (ops.collect_effects type_ctx tail)) row.tail) effects;
           let effects = Elab_type_expr.elaborate_effect_row ops type_ctx effects in
           require_empty_effects dict_ctx (ops.collect_effects dict_ctx b);
@@ -461,8 +441,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
       (Pi { explicitness = expl_of_syntax expl; domain = a_core; effects; codomain = b_core }, VU)
   | FieldAccess (head, name)
-    when (match Syntax.written_name head with Some t -> NameMap.mem t ctx.Ctx.traits | None -> false) ->
-      resolve_trait_method ctx (lookup_trait ctx (Option.get (Syntax.written_name head))) name
+    when Option.is_some (trait_of_form_opt ctx head) ->
+      resolve_trait_method ctx (Option.get (trait_of_form_opt ctx head)) name
   | FieldAccess (e, name) ->
       let e_core, e_ty = ops.infer ctx e in
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
@@ -658,8 +638,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let scrutinee_ty =
               match rhs with
               | Syntax.PatCon (con_path, _) ->
-                  let path, ctor_name = Syntax.path_split con_path in
-                  (match Elab_resolve.find_nominal_for_pattern_head_opt ctx path ctor_name with
+                  (match Elab_resolve.find_nominal_for_pattern_head_opt ctx con_path with
                    | Some nominal -> nominal
                    | None -> VU)
               | _ -> VU
@@ -723,9 +702,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               rest
         | Syntax.TraitBinding _ :: _ ->
             raise (ElabError ApplyingNonFunction)
-        | Syntax.ImplBinding { name; trait = { members = []; head = { name = trait_name; _ } }; args; fields; public } :: rest ->
+        | Syntax.ImplBinding { name; trait; args; fields; public } :: rest ->
             let name = Option.map (fun (i : Syntax.id) -> i.name) name in
-            let c = elaborate_impl_contribution ops ctx trait_name args fields in
+            let c = elaborate_impl_contribution ops ctx trait args fields in
             let kind = if public then Public else Private in
             let bind = ImplBind (name, kind, c.impl_core, c.impl_dict_ty) in
             let level = ctx.Ctx.lvl in
@@ -737,8 +716,6 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               (bind :: acc_binds,
                StructImpl (name, kind, c.impl_dict_ty, c.impl_value) :: acc_entries)
               rest
-        | Syntax.ImplBinding { trait; _ } :: _ ->
-            raise (ElabError (UnknownTrait (Syntax.path_last trait)))
         | Syntax.RecordTypeBinding { name = { name; _ }; params; fields; public } :: rest ->
             let params = Syntax.names params in
             check_duplicate_names (List.map fst fields);
@@ -793,9 +770,10 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       in
       (Struct { con_fields = result_con_fields; bindings = core_bindings; partial = false },
        VStruct { entries = type_entries; partial = false })
-  | OpenChoice { name = { name; _ }; opens; fallback } ->
-      let ix, ty = Ctx.lookup_choice ctx ~name ~opens ~fallback in
-      (Var ix, ty)
+  | OpenChoice { name = { name; _ }; opens; fallback } -> (
+      match Ctx.lookup_choice_opt ctx name { opens; fallback } with
+      | Some (ix, ty) -> (Var ix, ty)
+      | None -> raise (ElabError (UnboundVariable name)))
   | Open (mod_expr, body, label) ->
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
@@ -952,17 +930,15 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | TraitDef { name = { name; _ }; params; fields; body } ->
       let params = Syntax.names params in
       let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
-      let body_ctx = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
+      let body_ctx = Ctx.define ctx name VU trait_ty in
       let body_core, body_ty = ops.infer body_ctx body in
       (Let (U, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name }, body_core), body_ty)
-  | ImplDef { name; trait = { members = []; head = { name = trait_name; _ } }; args; fields; body } ->
+  | ImplDef { name; trait; args; fields; body } ->
       let name = Option.map (fun (i : Syntax.id) -> i.name) name in
       let body_ctx, _impl_effects, _evidence, impl_ty, impl_core =
-        elaborate_impl ?impl_name:name ops ctx trait_name args fields in
+        elaborate_impl ?impl_name:name ops ctx trait args fields in
       let body_core, body_ty = ops.infer body_ctx body in
       (Let (Ctx.quote ctx impl_ty, impl_core, body_core), body_ty)
-  | ImplDef { trait; _ } ->
-      raise (ElabError (UnknownTrait (Syntax.path_last trait)))
   | Match (scrutinee, branches) ->
       let scrut_core, scrut_ty = ops.infer ctx scrutinee in
       let value_branches = value_branches_of branches in

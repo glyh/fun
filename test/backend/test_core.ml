@@ -1394,7 +1394,7 @@ open M|}
     (fun (label, stx) ->
       Alcotest.(check bool) label true (Macro_eval.unwrap_stx ?nominals:n (Macro_eval.wrap_stx ~nominals:n stx) = Some stx))
     [ ("program", program); ("expanded program", expanded) ];
-  let pat = Syntax.PatCon ({ Syntax.head = id "M"; members = [ "C" ] }, [ Syntax.PatBind (id "y"); Syntax.PatWild ]) in
+  let pat = Syntax.PatCon ({ Syntax.head = id "M"; members = [ "C" ]; head_choice = None }, [ Syntax.PatBind (id "y"); Syntax.PatWild ]) in
   Alcotest.(check bool) "pattern" true
     (Macro_eval.unwrap_stx_pat ?nominals:n (Macro_eval.wrap_stx_pat ~nominals:n pat) = Some pat)
 

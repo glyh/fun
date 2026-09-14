@@ -47,7 +47,7 @@ let parse_pat_terms terms =
         let lhs =
           match lhs with
           | Syntax.PatCon (path, []) -> Syntax.PatCon ({ path with members = path.members @ [ field_name ] }, [])
-          | Syntax.PatBind name -> Syntax.PatCon ({ Syntax.head = name; members = [ field_name ] }, [])
+          | Syntax.PatBind name -> Syntax.PatCon ({ Syntax.head = name; members = [ field_name ]; head_choice = None }, [])
           | _ -> error "only constructor patterns can be qualified"
         in
         parse_pat_postfix lhs rest

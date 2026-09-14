@@ -71,7 +71,7 @@ let core_value_branches branches =
     branches
 
 type surface_effect_branch = {
-  effect_path : string list;
+  op_path : Syntax.path;
   op : string;
   arg_pat : Syntax.pat;
   body : Syntax.t;
@@ -81,8 +81,8 @@ let effect_branches_of branches =
   List.filter_map (function
     | Syntax.ValueBranch _ -> None
     | Syntax.EffectBranch { op = op_path; arg_pat; body } ->
-        let effect_path, op = Syntax.path_split op_path in
-        Some { effect_path; op; arg_pat; body })
+        let op = Syntax.path_last op_path in
+        Some { op_path; op; arg_pat; body })
     branches
 
 let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
@@ -92,13 +92,12 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
   | _ ->
       let rec find_pat = function
         | Syntax.PatCon (con_path, _) -> (
-            let path, name = Syntax.path_split con_path in
             (* Type name first, constructor second - see
                [find_nominal_for_pattern_head_opt]. A type-name hit means the
                pattern head is a type, so the scrutinee is [Type] itself. *)
-            match find_nominal_template_opt ctx path name with
+            match find_nominal_template_opt ctx con_path with
             | Some _ -> Some VU
-            | None -> find_nominal_for_pattern_head_opt ctx path name)
+            | None -> find_nominal_for_pattern_head_opt ctx con_path)
         | Syntax.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
         | Syntax.PatType _ -> Some VU
         | Syntax.PatProd ps ->
@@ -114,8 +113,7 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
                       | None -> Ctx.raw_meta ctx)
                     ps))
         | Syntax.PatRecord { typ = typ_p; _ } ->
-            let typ_path, typ = Syntax.path_split typ_p in
-            let record_value, ty = resolve_path_value ctx typ_path typ in
+            let record_value, ty = resolve_path_value ctx typ_p in
             (match Nbe.force ctx.Ctx.metas ty with
             | VU -> Some record_value
             | VStruct _ as record_ty -> Some record_ty
@@ -166,7 +164,7 @@ let check_match_exhaustive ctx scrut_ty pats =
 
 let resolve_effect_branch_operation ctx scrutinee_effects branch =
   let effect_core, effect_value, input_ty, output_ty =
-    resolve_perform_operation ctx ~effect_path:branch.effect_path ~op:branch.op
+    resolve_perform_operation ctx branch.op_path
   in
   let adopt_matched_effect matched =
     (matched.core, matched.value, Nbe.force ctx.Ctx.metas input_ty, Nbe.force ctx.Ctx.metas output_ty)

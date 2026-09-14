@@ -19,7 +19,6 @@ module Ctx = struct
     (* Each open entered, by label, with the members it brought in. An open
        choice looks its name up here, never in [name_table]. *)
     opened : (string * name_entry NameMap.t) list;
-    traits : trait_info NameMap.t;
     trait_evidence : trait_evidence list;
     self_entry : name_entry option;
     self_type : value option;
@@ -67,7 +66,6 @@ and macro_runtime = {
       bds = [];
       name_table = NameMap.empty;
       opened = [];
-      traits = NameMap.empty;
       trait_evidence = [];
       self_entry = None;
       self_type = None;
@@ -129,28 +127,38 @@ and macro_runtime = {
     ({ ctx with env = v :: ctx.env; lvl = ctx.lvl + 1; bds = Defined :: ctx.bds },
      { level = ctx.lvl; ty })
 
+  let entry_ix (ctx : t) ({ level; ty } : name_entry) : ix * value = (Nbe.lvl_to_ix ctx.lvl level, ty)
+
+  let lookup_opt (ctx : t) (name : string) : (ix * value) option =
+    Option.map (entry_ix ctx) (NameMap.find_opt name ctx.name_table)
+
   let lookup (ctx : t) (name : string) : ix * value =
-    match NameMap.find_opt name ctx.name_table with
-    | Some { level; ty } -> (Nbe.lvl_to_ix ctx.lvl level, ty)
+    match lookup_opt ctx name with
+    | Some found -> found
     | None -> raise (ElabError (UnboundVariable name))
 
   (* An open choice (M: open choice): the first candidate open that has
      [name], else the binder it shadows, else the base context. Nothing here
      finds a name by spelling among the locals. *)
-  let lookup_choice (ctx : t) ~(name : string) ~(opens : string list) ~(fallback : string option) : ix * value =
+  let lookup_choice_opt (ctx : t) (name : string) ({ opens; fallback } : Syntax.open_choice) : (ix * value) option =
     let entry =
       List.find_map
         (fun label -> Option.bind (List.assoc_opt label ctx.opened) (NameMap.find_opt name))
         opens
     in
     match entry, fallback with
-    | Some { level; ty }, _ -> (Nbe.lvl_to_ix ctx.lvl level, ty)
-    | None, Some resolved -> lookup ctx resolved
-    | None, None -> (
+    | Some entry, _ -> Some (entry_ix ctx entry)
+    | None, Some resolved -> lookup_opt ctx resolved
+    | None, None ->
         let base_names = match ctx.base with Some base -> base.name_table | None -> ctx.name_table in
-        match NameMap.find_opt name base_names with
-        | Some { level; ty } -> (Nbe.lvl_to_ix ctx.lvl level, ty)
-        | None -> raise (ElabError (UnboundVariable name)))
+        Option.map (entry_ix ctx) (NameMap.find_opt name base_names)
+
+  (* The entry a path's head names (M12): through its open choice when
+     expansion left one, else by the name expansion resolved it to. *)
+  let lookup_head_opt (ctx : t) (p : Syntax.path) : (ix * value) option =
+    match p.head_choice with
+    | Some choice -> lookup_choice_opt ctx p.head.name choice
+    | None -> lookup_opt ctx p.head.name
 
   let lookup_self (ctx : t) : ix * value =
     match ctx.self_entry with
@@ -171,8 +179,6 @@ and macro_runtime = {
 
   let with_loader (ctx : t) (loader : Core_loader.t) : t = { ctx with loader = Some loader }
 
-  let add_trait (ctx : t) (trait_info : trait_info) : t =
-    { ctx with traits = NameMap.add trait_info.trait_name trait_info ctx.traits }
 
   let add_trait_evidence (ctx : t) (evidence : trait_evidence) : t =
     { ctx with trait_evidence = evidence :: ctx.trait_evidence }

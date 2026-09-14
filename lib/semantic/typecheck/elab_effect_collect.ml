@@ -1,11 +1,9 @@
 open Core
 include Elab_error
-open Elab_common
 open Elab_effects
 
 module Ctx = Elab_ctx.Ctx
 
-open Elab_syntax_util
 open Elab_resolve
 open Elab_refine
 open Elab_patterns
@@ -77,8 +75,7 @@ and compile_time_safe_struct_binding = function
 let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
   match expr.kind with
   | Syntax.Perform { op = op_path; arg } ->
-      let effect_path, op = Syntax.path_split op_path in
-      let effect_core, effect_value, input_ty, _output_ty = resolve_perform_operation ctx ~effect_path ~op in
+      let effect_core, effect_value, input_ty, _output_ty = resolve_perform_operation ctx op_path in
       let _arg_core = ops.check ctx arg input_ty in
       union_expr_effects ctx (ops.collect_effects ctx arg) (singleton_expr_effect effect_core effect_value)
   | Syntax.Resume arg -> ops.collect_effects ctx arg
@@ -156,26 +153,9 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
       ops.collect_effects ctx inner
   | Syntax.Prod elems | Syntax.ProdTy elems -> union_many_expr_effects ctx (List.map (ops.collect_effects ctx) elems)
   | Syntax.Arrow (Explicitness.Implicit, Some { name; _ }, a, row, b) -> (
-      match trait_bound_names a with
-      | Some trait_names when List.for_all (fun trait_name -> NameMap.mem trait_name ctx.Ctx.traits) trait_names ->
-          let type_ctx = Ctx.bind ctx name VU in
-          let arg = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
-          let dict_ctx =
-            List.fold_left
-              (fun c trait_name ->
-                let trait_info = lookup_trait ctx trait_name in
-                let dict_ty = trait_dict_ty ~trait_id:trait_info.trait_id trait_name [ arg ] (eval_trait_fields ctx trait_info [ arg ]) in
-                let c', entry = Ctx.bind_anonymous c dict_ty in
-                let evidence =
-                  { evidence_trait_id = trait_info.trait_id;
-                    evidence_trait_name = trait_name;
-                    evidence_args = [ arg ];
-                    evidence_level = entry.level;
-                    evidence_ty = dict_ty }
-                in
-                Ctx.add_trait_evidence c' evidence)
-              type_ctx trait_names
-          in
+      match trait_bounds_opt ctx a with
+      | Some trait_infos ->
+          let dict_ctx, _dict_layers = bind_trait_bound_dicts ctx name trait_infos in
           Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects dict_ctx (ops.collect_effects dict_ctx eff)) row.effects; Option.iter (fun tail -> require_empty_effects dict_ctx (ops.collect_effects dict_ctx tail)) row.tail) row;
           require_empty_effects dict_ctx (ops.collect_effects dict_ctx b)
       | _ ->
@@ -236,16 +216,14 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
       union_many_expr_effects ctx (op_effects @ [ ops.collect_effects (Ctx.define ctx name eff_ty eff) body ])
   | Syntax.TraitDef { name = { name; _ }; params; fields; body } ->
       let params = Syntax.names params in
-      let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
-      let body_ctx = Ctx.add_trait (Ctx.define ctx name VU trait_ty) trait_info in
+      let _trait_info, trait_ty = elaborate_trait ops ctx name params fields in
+      let body_ctx = Ctx.define ctx name VU trait_ty in
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects body_ctx body ])
-  | Syntax.ImplDef { name; trait = { members = []; head = { name = trait_name; _ } }; args; fields; body } ->
+  | Syntax.ImplDef { name; trait; args; fields; body } ->
       let impl_name = Option.map (fun (i : Syntax.id) -> i.name) name in
       let ctx', impl_effects, _evidence, _impl_ty, _impl_core =
-        elaborate_impl ?impl_name ops ctx trait_name args fields in
+        elaborate_impl ?impl_name ops ctx trait args fields in
       union_many_expr_effects ctx (impl_effects @ [ ops.collect_effects ctx' body ])
-  | Syntax.ImplDef { trait; _ } ->
-      raise (ElabError (UnknownTrait (Syntax.path_last trait)))
   | Syntax.Match (scrutinee, branches) ->
       let value_branches = value_branches_of branches in
       let effect_branches = effect_branches_of branches in

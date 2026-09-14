@@ -126,7 +126,11 @@ let atom_ty_names =
 let w_atom_ty ns t = con ns.atom_ty (List.assoc t atom_ty_names) []
 
 let w_path ns (p : Syntax.path) =
-  record [ ("head", w_id ns p.head); ("members", w_list ns w_string p.members) ]
+  let w_choice (c : Syntax.open_choice) =
+    record [ ("opens", w_list ns w_string c.opens); ("fallback", w_option ns w_string c.fallback) ]
+  in
+  record [ ("head", w_id ns p.head); ("members", w_list ns w_string p.members);
+           ("head_choice", w_option ns w_choice p.head_choice) ]
 
 let w_ann_arg ns = function
   | Syntax.MacroAnnotation.Wildcard -> con ns.ann_arg "AnnWildcard" []
@@ -344,7 +348,13 @@ let u_atom_ty ns v =
 let u_path ns v : Syntax.path option =
   let* head = let* h = u_field "head" v in u_id ns h in
   let* members = let* m = u_field "members" v in u_list ns u_string m in
-  Some { Syntax.head; members }
+  let u_choice c : Syntax.open_choice option =
+    let* opens = let* o = u_field "opens" c in u_list ns u_string o in
+    let* fallback = let* f = u_field "fallback" c in u_option ns u_string f in
+    Some { Syntax.opens; fallback }
+  in
+  let* head_choice = let* c = u_field "head_choice" v in u_option ns u_choice c in
+  Some { Syntax.head; members; head_choice }
 
 let u_ann_arg ns v : Syntax.MacroAnnotation.arg option =
   match payload ns.ann_arg v with

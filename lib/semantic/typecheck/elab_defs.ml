@@ -50,8 +50,9 @@ type impl_contribution = {
   impl_args : value list;
 }
 
-let elaborate_impl_contribution ops ctx trait_name args fields =
-  let trait_info = lookup_trait ctx trait_name in
+let elaborate_impl_contribution ops ctx trait_path args fields =
+  let trait_info = lookup_trait ctx trait_path in
+  let trait_name = trait_info.trait_name in
   let arg_cores =
     List.map
       (fun arg ->
@@ -117,8 +118,8 @@ let install_impl_evidence ?impl_name ctx (c : impl_contribution) ~level =
 
 (* An impl in expression position, where there is no binding term and so no slot
    list: contribute, take the entry, install. *)
-let elaborate_impl ?impl_name ops ctx trait_name args fields =
-  let c = elaborate_impl_contribution ops ctx trait_name args fields in
+let elaborate_impl ?impl_name ops ctx trait_path args fields =
+  let c = elaborate_impl_contribution ops ctx trait_path args fields in
   let ctx', entry = Ctx.define_anonymous ctx c.impl_dict_ty c.impl_value in
   let ctx', evidence = install_impl_evidence ?impl_name ctx' c ~level:entry.level in
   (ctx', c.impl_effects, evidence, c.impl_dict_ty, c.impl_core)

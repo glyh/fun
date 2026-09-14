@@ -41,7 +41,7 @@ let synthesize_binder_param (name : string) : Syntax.param option =
     harmless: you wouldn't normally constrain a macro by an effect
     type. *)
 let is_known_path_type (ctx : Elab_ctx.Ctx.t) (path : string list) (name : string) : bool =
-  match Elab_resolve.resolve_path_value_opt ctx path name with
+  match Elab_resolve.resolve_path_value_opt ctx (Syntax.path_of_segments (path @ [ name ])) with
   | Some (v, _ty) ->
       Elab_validate.is_type_like_value ctx v
   | None -> false

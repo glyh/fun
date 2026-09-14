@@ -69,8 +69,14 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   (`x__0`). A path's head is an id. A bare name resolves to a binder or to an
   **open choice** (the candidate opens by scope set, then the shadowed binder),
   settled by the elaborator against each open's members; no bare name is found
-  by spelling among locals. Path heads, traits and effects are still located by
-  spelling ([names-resolve-without-spelling](wayfinder/tickets/names-resolve-without-spelling.md)).
+  by spelling among locals. A path's head (qualified pattern heads, record-pattern
+  types, `perform E.op`, effect branches, `impl M.Trait`) resolves the same way,
+  and traits and nominal types are located through the entry the head resolves
+  to - by trait identity, or by applying a type former - not by a name-keyed
+  table or an environment scan. `impl M.Trait(..)` and `[A : M.Trait]` now work
+  ([names-resolve-without-spelling](wayfinder/tickets/names-resolve-without-spelling.md)).
+  Still by spelling: macro annotation constraint names (plain strings, no
+  scopes) and a constructor label matched inside a scrutinee's known nominal.
 - **Macro bodies** elaborate inside the unit opens around their definition,
   nothing ambient (M3). Units that write macros open the prelude themselves.
 - **Types.** `type A = … and B = …` chains are mutually recursive nominals. Nested
