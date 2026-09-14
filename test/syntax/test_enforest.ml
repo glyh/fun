@@ -148,7 +148,7 @@ let implicit_call () =
   | _ -> Alcotest.fail "expected bracket call to lower to implicit application"
 
 let do_block_bindings () =
-  match parse "do\n  x = 1\n  y = x + 1\n  y\nend" with
+  match parse "{\n  x = 1;\n  y = x + 1;\n  y\n}" with
   | Let
       {
         name = "x";
@@ -172,22 +172,22 @@ let old_let_syntax_rejected () =
   | _ -> Alcotest.fail "expected old let/in syntax to be rejected"
 
 let malformed_do_rejected () =
-  match parse "do x = end" with
+  match parse "{ x = }" with
   | exception _ -> ()
   | _ -> Alcotest.fail "expected malformed do block to be rejected"
 
 let fn_arrow_body () =
-  match parse "fn(x : I64) -> x" with
+  match parse "fn(x : I64) { x }" with
   | Lam ({ name = "x"; type_ = Some (Var "I64"); explicitness = Explicit; _ }, Var "x") -> ()
   | _ -> Alcotest.fail "expected fn arrow body to lower to lambda"
 
 let fn_block_body () =
-  match parse "fn(x : I64) do x end" with
+  match parse "fn(x : I64) { x }" with
   | Lam ({ name = "x"; type_ = Some (Var "I64"); explicitness = Explicit; _ }, Var "x") -> ()
   | _ -> Alcotest.fail "expected fn block body to lower to lambda"
 
 let fn_implicit_then_explicit_params () =
-  match parse "fn[A : Type](x : A) -> x" with
+  match parse "fn[A : Type](x : A) { x }" with
   | Lam
       ( { name = "A"; type_ = Some (Var "Type"); explicitness = Implicit; _ },
         Lam ({ name = "x"; type_ = Some (Var "A"); explicitness = Explicit; _ }, Var "x") ) ->
@@ -195,32 +195,32 @@ let fn_implicit_then_explicit_params () =
   | _ -> Alcotest.fail "expected implicit fn params before explicit params"
 
 let fn_unit_param () =
-  match parse "fn() -> 1" with
+  match parse "fn() { 1 }" with
   | Lam ({ name = "_"; type_ = Some (Var "Unit"); explicitness = Explicit; _ }, Atom (Atom.I64 1L)) -> ()
   | _ -> Alcotest.fail "expected fn () to lower to Unit parameter"
 
 let fn_rejects_late_implicit_params () =
-  match parse "fn(x : I64)[A : Type] -> x" with
+  match parse "fn(x : I64)[A : Type] { x }" with
   | exception _ -> ()
   | _ -> Alcotest.fail "expected implicit params after explicit params to be rejected"
 
 let if_do_else_end () =
-  match parse "if True do 1 else 2 end" with
+  match parse "if (True) { 1 } else { 2 }" with
   | Match
       ( Var "True",
         [ ValueBranch (PatCon ([], "True", []), Atom (Atom.I64 1L));
           ValueBranch (PatCon ([], "False", []), Atom (Atom.I64 2L)) ] ) ->
       ()
-  | _ -> Alcotest.fail "expected if do else end shape"
+  | _ -> Alcotest.fail "expected if { else } shape"
 
 let match_do_end () =
-  match parse "match True do True -> 1 | False -> 0 end" with
+  match parse "match (True) { True => 1 | False => 0 }" with
   | Match
       ( Var "True",
         [ ValueBranch (PatCon ([], "True", []), Atom (Atom.I64 1L));
           ValueBranch (PatCon ([], "False", []), Atom (Atom.I64 0L)) ] ) ->
       ()
-  | _ -> Alcotest.fail "expected match do end branches"
+  | _ -> Alcotest.fail "expected match { } branches"
 
 let ref_call_deref () =
   match parse "deref(ref(1))" with
@@ -228,7 +228,7 @@ let ref_call_deref () =
   | _ -> Alcotest.fail "expected deref(ref(expr)) shape"
 
 let module_newline_separators () =
-  match parse_module "open (import \"std\")\npub x = 1\npub y = x + 1" with
+  match parse_module "open (import \"std\");\npub x = 1;\npub y = x + 1" with
   | Module
       {
         bindings =
@@ -256,22 +256,22 @@ let import_shape () =
   | _ -> Alcotest.fail "expected import string shape"
 
 let open_in_do_block () =
-  match parse "do open M; x end" with
+  match parse "{ open M; x }" with
   | Open (Var "M", Var "x", _) -> ()
   | _ -> Alcotest.fail "expected open statement in do block"
 
 let module_level_open_shape () =
-  match parse_module "open M\npub x = 1" with
+  match parse_module "open M;\npub x = 1" with
   | Module { bindings = [ OpenBinding (Var "M", _); LetBinding { name = "x"; _ } ] } -> ()
   | _ -> Alcotest.fail "expected module-level open binding"
 
 let module_level_open_import_shape () =
-  match parse_module "open (import \"std\")\npub x = 1" with
+  match parse_module "open (import \"std\");\npub x = 1" with
   | Module { bindings = [ OpenBinding (Import "std", _); LetBinding { name = "x"; _ } ] } -> ()
   | _ -> Alcotest.fail "expected module-level open of import"
 
 let struct_level_open_shape () =
-  match parse_module "S = struct open M; pub y = 1 end" with
+  match parse_module "S = struct { open M; pub y = 1 }" with
   | Module
       { bindings =
           [ LetBinding
@@ -296,11 +296,11 @@ let module_without_open_has_no_prelude_operators () =
 let module_open_scopes_later_statements_only () =
   (* The harvest happens where the open is written, so a use *before* it does
      not see the operator while a use after it does. *)
-  (match parse_module "pub a = 1 + 1\nopen (import \"std\")" with
+  (match parse_module "pub a = 1 + 1;\nopen (import \"std\")" with
    | exception Enforest_util.Unsupported _ -> ()
    | exception Enforest_util.Error _ -> ()
    | _ -> Alcotest.fail "expected operator before the open to be unavailable");
-  match parse_module "open (import \"std\")\npub a = 1 + 1" with
+  match parse_module "open (import \"std\");\npub a = 1 + 1" with
   | Module { bindings = [ OpenBinding (_, _); LetBinding { name = "a"; _ } ] } -> ()
   | _ -> Alcotest.fail "expected operator after the open to enforest"
 
@@ -326,11 +326,11 @@ let module_typed_value_decl () =
   | _ -> Alcotest.fail "expected typed module value to lower to annotated binding"
 
 let do_typed_and_recursive_decls () =
-  match parse "do
-  x : I64 = 1
-  rec fn id(n : I64) -> n
+  match parse "{
+  x : I64 = 1;
+  rec fn id(n : I64) { n };
   id(x)
-end" with
+}" with
   | Let
       {
         name = "x";
@@ -343,14 +343,14 @@ end" with
   | _ -> Alcotest.fail "expected typed and recursive declarations in do block"
 
 let module_fn_sugar () =
-  match parse_module "pub fn id(x : I64) -> x" with
+  match parse_module "pub fn id(x : I64) { x }" with
   | Module { bindings = [ LetBinding { name = "id"; value = Lam ({ name = "x"; type_ = Some (Var "I64"); _ }, Var "x"); public = true; _ } ] } -> ()
   | _ -> Alcotest.fail "expected module fn sugar to lower to lambda binding"
 
 let named_module_decl () =
-  match parse_module "pub module M do
+  match parse_module "pub M = module {
   pub x = 1
-end" with
+}" with
   | Module
       {
         bindings =
@@ -366,15 +366,15 @@ end" with
   | _ -> Alcotest.fail "expected named module declaration"
 
 let struct_expr () =
-  match parse "struct
-  x : I64
+  match parse "struct {
+  x : I64;
   pub y = 2
-end" with
+}" with
   | Struct { con_fields = [ ("x", Var "I64") ]; bindings = [ LetBinding { name = "y"; value = Atom (Atom.I64 2L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected redesigned struct expression"
 
 let struct_method_syntax () =
-  match parse "struct value: I64; pub method get() -> self.value end" with
+  match parse "struct { value: I64; pub method get() { self.value } }" with
   | Struct
       {
         con_fields = [ ("value", Var "I64") ];
@@ -384,7 +384,7 @@ let struct_method_syntax () =
   | _ -> Alcotest.fail "expected method keyword with parenthesized empty params"
 
 let struct_fn_sugar_is_value_binding () =
-  match parse "struct pub fn id(x : I64) -> x end" with
+  match parse "struct { pub fn id(x : I64) { x } }" with
   | Struct
       {
         con_fields = [];
@@ -399,24 +399,24 @@ let module_old_let_syntax_rejected () =
   | _ -> Alcotest.fail "expected old module let syntax to be rejected"
 
 let module_macro_not_runtime_field () =
-  match parse_module "macro id(stx : Stx) -> stx
+  match parse_module "macro id(stx : Stx) { stx };
 pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected macro declaration to be dropped from runtime module bindings"
 
 let fn_with_type_application () =
-  match parse "fn(x : Option(I64)) -> x" with
+  match parse "fn(x : Option(I64)) { x }" with
   | Lam ({ name = "x"; type_ = Some (Ap (Var "Option", Explicit, Var "I64")); _ }, Var "x") -> ()
   | _ -> Alcotest.fail "expected Option(I64) type application in fn param"
 
 let fn_with_arrow_type () =
-  match parse "fn(f : I64 -> Bool) -> f(1)" with
+  match parse "fn(f : I64 -> Bool) { f(1) }" with
   | Lam ({ name = "f"; type_ = Some (Arrow (Explicit, None, Var "I64", None, Var "Bool")); _ },
          Ap (Var "f", Explicit, Atom (Atom.I64 1L))) -> ()
   | _ -> Alcotest.fail "expected arrow type in fn param"
 
 let fn_with_product_type () =
-  match parse "fn(f : I64 * Bool -> Bool) -> f(1, True)" with
+  match parse "fn(f : I64 * Bool -> Bool) { f(1, True) }" with
   | Lam
       ( { name = "f";
           type_ = Some (Arrow (Explicit, None, ProdTy [Var "I64"; Var "Bool"], None, Var "Bool"));
@@ -426,14 +426,14 @@ let fn_with_product_type () =
   | _ -> Alcotest.fail "expected product type in fn param"
 
 let match_constructor_payload () =
-  match parse "match x do Some(y) -> y | None -> 0 end" with
+  match parse "match (x) { Some(y) => y | None => 0 }" with
   | Match (Var "x",
       [ ValueBranch (PatCon ([], "Some", [PatBind "y"]), Var "y");
         ValueBranch (PatCon ([], "None", []), Atom (Atom.I64 0L)) ]) -> ()
   | _ -> Alcotest.fail "expected constructor payload in match branch"
 
 let match_record_pattern_shorthand () =
-  match parse "match p do Point{x; y} -> x end" with
+  match parse "match (p) { Point{x; y} => x }" with
   | Match (Var "p",
       [ ValueBranch
           ( PatRecord
@@ -443,7 +443,7 @@ let match_record_pattern_shorthand () =
   | _ -> Alcotest.fail "expected record pattern shorthand in match"
 
 let match_record_pattern_renamed_partial () =
-  match parse "match p do Point{x = n; _} -> n end" with
+  match parse "match (p) { Point{x = n; _} => n }" with
   | Match (Var "p",
       [ ValueBranch
           ( PatRecord
@@ -453,33 +453,33 @@ let match_record_pattern_renamed_partial () =
   | _ -> Alcotest.fail "expected record pattern renamed field with partial"
 
 let operator_prefix_in_do_block () =
-  match parse_with_macros "do
-  x = 1
-  syntax twice do | twice $x -> $x end
+  match parse_with_macros "{
+  x = 1;
+  syntax twice { | twice $x => $x };
   twice x
-end" with
+}" with
   | Let { name = "x"; value = Atom (Atom.I64 1L); body = Var "x"; _ } -> ()
   | _ -> Alcotest.fail "expected operator prefix to be usable in do block after binding"
 
 let operator_prefix_simple_do () =
-  match parse_with_macros "do
-  syntax twice do | twice $x -> 1 end
+  match parse_with_macros "{
+  syntax twice { | twice $x => 1 };
   twice 1
-end" with
+}" with
   | Atom (Atom.I64 1L) -> ()
   | _ -> Alcotest.fail "expected bare operator prefix in do block"
 
 let operator_infix_in_do_block () =
-  match parse_with_macros "do
-  infix (~) 15 Left (stx) -> Syntax.i64(9)
+  match parse_with_macros "{
+  infix (~) 15 Left (stx) { Syntax.i64(9) };
   1 + 2 ~ 3
-end" with
+}" with
   | Ap (Ap (Var "+", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.I64 9L)) -> ()
   | _ -> Alcotest.fail "expected operator infix with correct precedence grouping"
 
 let operator_prefix_in_module () =
-  match parse_module_with_macros "syntax twice do | twice $x -> 1 end
-pub test = do twice 1 end" with
+  match parse_module_with_macros "syntax twice { | twice $x => 1 };
+pub test = { twice 1 }" with
   | Module
       { bindings =
           [ LetBinding
@@ -491,52 +491,52 @@ pub test = do twice 1 end" with
   | _ -> Alcotest.fail "expected operator prefix declaration and usage in module"
 
 let operator_rhs_can_use_earlier_macro () =
-  match parse_with_macros "do
-  macro one_body(_) -> Syntax.i64(1)
-  syntax choose do | choose $x -> one_body(0) end
+  match parse_with_macros "{
+  macro one_body(_) { Syntax.i64(1) };
+  syntax choose { | choose $x => one_body(0) };
   choose 0
-end" with
+}" with
   | Atom (Atom.I64 1L) -> ()
   | _ -> Alcotest.fail "expected operator RHS to expand through the macro path"
 
 
 
 let operator_declaration_is_sequential () =
-  match parse_with_macros "do before = late 0; syntax late do | late $x -> 1 end; late 0 end" with
+  match parse_with_macros "{ before = late 0; syntax late { | late $x => 1 }; late 0 }" with
   | exception Enforest.Unsupported _ -> ()
   | exception Enforest.Error _ -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected operator declaration to affect only later statements"
 
 let duplicate_operator_later_wins () =
-  match parse_with_macros "do
-  syntax choose do | choose $x -> 1 end
-  first = choose 0
-  syntax choose do | choose $x -> 2 end
+  match parse_with_macros "{
+  syntax choose { | choose $x => 1 };
+  first = choose 0;
+  syntax choose { | choose $x => 2 };
   choose 0
-end" with
+}" with
   | Let { name = "first"; value = Atom (Atom.I64 1L); body = Atom (Atom.I64 2L); _ } -> ()
   | _ -> Alcotest.fail "expected later operator declaration to shadow earlier declaration"
 
 let syntax_extension_cross_module () =
   with_modules
-    [ ("syntax_ops", "pub syntax inc do | inc $x -> 2 end\npub x = 1") ]
+    [ ("syntax_ops", "pub syntax inc { | inc $x => 2 };\npub x = 1") ]
     (fun loader ->
       match
         parse_with_macros
           ~load_macros:(Macro_driver.visit_macros loader)
           ~load_syntax:(Core_loader.load_syntax_exports loader)
-          "do
-  Ops = import \"syntax_ops\"
+          "{
+  Ops = import \"syntax_ops\";
   inc 2
-end"
+}"
       with
       | Let { name = "Ops"; value = Import "syntax_ops"; body = Atom (Atom.I64 2L); _ } -> ()
       | _ -> Alcotest.fail "expected syntax extension from parsed module to be available")
 
 let syntax_import_does_not_leak_between_parses () =
   with_modules
-    [ ("syntax_ops", "pub syntax inc do | inc $x -> 1 end") ]
+    [ ("syntax_ops", "pub syntax inc { | inc $x => 1 }") ]
     (fun loader ->
       let _ =
         parse_with_macros
@@ -548,19 +548,19 @@ let syntax_import_does_not_leak_between_parses () =
       | _ -> Alcotest.fail "expected imported syntax extension to stay local to its parse")
 
 let syntax_extension_not_runtime_field () =
-  match parse_module "syntax hidden do | hidden $x -> $x end
+  match parse_module "syntax hidden { | hidden $x => $x };
 pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
 
 let pub_syntax_rejected_in_struct () =
-  match parse "struct pub syntax hidden do | hidden $x -> $x end end" with
+  match parse "struct { pub syntax hidden { | hidden $x => $x } }" with
   | exception Enforest.Error msg when string_contains msg "pub syntax is not supported inside structs" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected pub syntax in a struct expression to be rejected"
 
 let syntax_exports_include_operator_metadata () =
-  match Enforest.parse_public_syntax_exports "pub infix (~) 15 Right (stx) -> stx" with
+  match Enforest.parse_public_syntax_exports "pub infix (~) 15 Right (stx) { stx }" with
   | [ { symbol = "~"; fixity = Binding.Infix; precedence = 15; associativity = Binding.Right;
         syntax_class = Syntax_class.Expr; expansion = Binding.MacroOp; _ } ] ->
       ()
@@ -568,21 +568,21 @@ let syntax_exports_include_operator_metadata () =
 
 let duplicate_public_syntax_exports_rejected () =
   match
-    Enforest.parse_public_syntax_exports "pub syntax dup do | dup $x -> $x end
-pub syntax dup do | dup $x -> $x end"
+    Enforest.parse_public_syntax_exports "pub syntax dup { | dup $x => $x };
+pub syntax dup { | dup $x => $x }"
   with
   | exception Enforest.Error msg when string_contains msg "ambiguous syntax extension candidates" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected duplicate public syntax exports to be rejected"
 
 let syntax_branch_head_mismatch_rejected () =
-  match parse_module "syntax good do | bad $x -> $x end" with
+  match parse_module "syntax good { | bad $x => $x }" with
   | exception Enforest.Error msg when string_contains msg "must start with declared head" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected mismatched syntax branch head to be rejected"
 
 let syntax_unbound_replacement_hole_rejected () =
-  match parse_module "syntax good do | good $x -> $y end" with
+  match parse_module "syntax good { | good $x => $y }" with
   | exception Enforest.Error msg when string_contains msg "unbound syntax template hole" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unbound replacement hole to be rejected"
@@ -590,10 +590,10 @@ let syntax_unbound_replacement_hole_rejected () =
 let syntax_binder_hole_expression_position_rejected () =
   match
     parse_with_macros
-      "do
-         syntax bad do | bad $(name: binder) -> $name end
+      "{
+         syntax bad { | bad $(name: binder) => $name };
          bad x
-       end"
+       }"
   with
   | exception Enforest.Error msg when string_contains msg "binder hole used in expression position" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
@@ -602,10 +602,10 @@ let syntax_binder_hole_expression_position_rejected () =
 let syntax_ident_hole_binder_position_rejected () =
   match
     parse_with_macros
-      "do
-         syntax bad do | bad $(name: ident) -> do $name = 1; $name end end
+      "{
+         syntax bad { | bad $(name: ident) => { $name = 1; $name } };
          bad x
-       end"
+       }"
   with
   | exception Enforest.Error msg when string_contains msg "identifier hole used in binder position" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
@@ -620,8 +620,8 @@ let syntax_postfix_rejected_in_module () =
    | _ -> Alcotest.fail "expected unsupported module syntax declaration"
 
 let syntax_postfix_rejected_in_do_block () =
-  match parse "do operator postfix foo(stx) -> stx; 0 end" with
-  | exception (Enforest.Error _) -> ()
+  match parse "{ operator postfix foo(stx) -> stx; 0 }" with
+  | exception (Enforest.Error _ | Enforest.Unsupported _) -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unsupported do-block syntax declaration"
 
@@ -634,15 +634,15 @@ let old_syntax_declaration_rejected () =
   | _ -> Alcotest.fail "expected old syntax declaration spelling to be rejected"
 
 let operator_infix_bad_assoc_rejected () =
-  match parse_module "infix (~) 15 middle (stx) -> stx" with
+  match parse_module "infix (~) 15 middle (stx) { stx }" with
   | exception Enforest.Error "operator infix associativity must be Left or Right" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected invalid operator infix associativity to be rejected"
 
 let syntax_extension_circular_visit () =
   with_modules
-    [ ("a", "pub syntax aop do | aop $x -> do import \"b\"; $x end end");
-      ("b", "pub syntax bop do | bop $x -> do import \"a\"; $x end end") ]
+    [ ("a", "pub syntax aop { | aop $x => { import \"b\"; $x } }");
+      ("b", "pub syntax bop { | bop $x => { import \"a\"; $x } }") ]
     (fun loader ->
       match
         parse_with_macros
@@ -653,8 +653,44 @@ let syntax_extension_circular_visit () =
       | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
       | _ -> Alcotest.fail "expected circular syntax visit")
 
+(* Brace surface syntax: removed forms fail naming the new one; [=>] is
+   reserved; a trailing [;] discards a block's value. *)
+let rejected_with needle parse_fn source () =
+  match parse_fn source with
+  | exception (Enforest.Error msg | Enforest.Unsupported msg) ->
+      if not (string_contains msg needle) then Alcotest.fail ("unexpected message: " ^ msg)
+  | _ -> Alcotest.fail ("expected rejection: " ^ source)
+
+let trailing_semicolon_discards () =
+  match parse "{ x = 1; x + 1; }" with
+  | Let { body = Let { name = "_"; body = Atom Atom.Unit; _ }; _ } -> ()
+  | _ -> Alcotest.fail "expected the block's value to be discarded"
+
+let no_trailing_semicolon_keeps_value () =
+  match parse "{ x = 1; x + 1 }" with
+  | Let { body = Ap _; _ } -> ()
+  | _ -> Alcotest.fail "expected the block's value to be its last expression"
+
+let newline_is_whitespace () =
+  match parse "{ x = 1;\n  x\n  + 1 }" with
+  | Let { body = Ap _; _ } -> ()
+  | _ -> Alcotest.fail "expected a newline not to end the expression"
+
+let brace_syntax_suite =
+  [ Alcotest.test_case "-> body rejected" `Quick (rejected_with "-> body was removed" parse "fn(x) -> x");
+    Alcotest.test_case "do block rejected" `Quick (rejected_with "blocks were removed" parse "do 1 end");
+    Alcotest.test_case "match without parens rejected" `Quick (rejected_with "match (scrutinee)" parse "match x { | _ => 1 }");
+    Alcotest.test_case "match arm needs =>" `Quick (rejected_with "=>" parse "match (x) { | _ -> 1 }");
+    Alcotest.test_case "=> is reserved" `Quick (rejected_with "reserved" parse_module "infix (=>) 3 Left");
+    Alcotest.test_case "record type needs struct" `Quick (rejected_with "struct {" parse_module "type P = {x: I64}");
+    Alcotest.test_case "trailing ; discards" `Quick trailing_semicolon_discards;
+    Alcotest.test_case "no trailing ; keeps value" `Quick no_trailing_semicolon_keeps_value;
+    Alcotest.test_case "newline is whitespace" `Quick newline_is_whitespace;
+  ]
+
 let suites =
-  [ ( "enforest",
+  [ ( "brace syntax", brace_syntax_suite );
+    ( "enforest",
       [ Alcotest.test_case "raw grouping" `Quick raw_grouping;
         Alcotest.test_case "comments" `Quick line_and_block_comments;
         Alcotest.test_case "datum comment" `Quick datum_comment;
@@ -676,8 +712,8 @@ let suites =
         Alcotest.test_case "fn implicit then explicit params" `Quick fn_implicit_then_explicit_params;
         Alcotest.test_case "fn unit param" `Quick fn_unit_param;
         Alcotest.test_case "fn rejects late implicit params" `Quick fn_rejects_late_implicit_params;
-        Alcotest.test_case "if do else end" `Quick if_do_else_end;
-        Alcotest.test_case "match do end" `Quick match_do_end;
+        Alcotest.test_case "if { else }" `Quick if_do_else_end;
+        Alcotest.test_case "match { }" `Quick match_do_end;
         Alcotest.test_case "ref call deref" `Quick ref_call_deref;
         Alcotest.test_case "module newline separators" `Quick module_newline_separators;
         Alcotest.test_case "resume unit call" `Quick resume_unit_call;

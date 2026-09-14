@@ -14,16 +14,15 @@ let parse_group_arg callbacks items =
   | [] -> unit ()
   | _ -> callbacks.parse_expr_terms items
 
+(* [match (scrutinee) { | pattern => result | effect E.op x => result }]. *)
 let parse_match callbacks start_span terms =
-  match split_at_token KwDo terms with
-  | None -> error "match requires do/end syntax"
-  | Some (scrut_terms, do_kw, rest) ->
-      let scrut = callbacks.parse_expr_terms scrut_terms in
-      let body_terms, rest, span = collect_until_end do_kw.span rest in
+  match drop_separators terms with
+  | ({ datum = Group (Raw_syntax.Paren, _, _); _ } as scrut) :: { datum = Group (Raw_syntax.Brace, arms, span); _ } :: rest ->
+      let scrut = callbacks.parse_expr_terms [ scrut ] in
       let branches =
-        split_match_branches body_terms
+        split_match_branches arms
         |> List.map (fun branch_terms ->
-               match split_at_arrow branch_terms with
+               match split_at_fat_arrow branch_terms with
                | Some ({ datum = Token { kind = KwEffect; _ }; _ } :: effect_terms, _, body_terms) ->
                    let op, arg_terms = path_from_terms effect_terms in
                    let arg_pat = callbacks.parse_pat_terms arg_terms in
@@ -33,10 +32,11 @@ let parse_match callbacks start_span terms =
                    let pat = callbacks.parse_pat_terms pat_terms in
                    let body = callbacks.parse_expr_terms body_terms in
                    Syntax.ValueBranch (pat, body)
-               | None -> error "match branch requires ->")
+               | None -> error "match arm requires => between pattern and result")
       in
-      if branches = [] then error "match requires at least one branch";
+      if branches = [] then error "match requires at least one arm";
       (stx ~span:(span_between start_span span) (Syntax.Match (scrut, branches)), rest)
+  | _ -> error "match is written match (scrutinee) { | pattern => result }"
 
 let parse_effect_row_terms callbacks terms =
   match drop_separators terms with

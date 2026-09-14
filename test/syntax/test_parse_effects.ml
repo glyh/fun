@@ -4,19 +4,19 @@ let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.s
 open Shape
 
 let effect_expr_shape () =
-  match parse_expr "do effect State(S) = sig get : Unit -> S; put : S -> Unit end; State(I64) end" with
+  match parse_expr "{ effect State(S) = sig { get : Unit -> S; put : S -> Unit }; State(I64) }" with
   | EffectDef { name = "State"; params = [ "S" ]; ops; body = Ap (Var "State", Explicit, Var "I64") } ->
       Alcotest.(check int) "operation count" 2 (List.length ops);
       Alcotest.(check string) "first operation" "get" (List.hd ops).name
   | _ -> Alcotest.fail "expected effect declaration"
 
 let effect_zero_param_shape () =
-  match parse_expr "do effect Exc = sig raise : I64 -> I64 end; Exc end" with
+  match parse_expr "{ effect Exc = sig { raise : I64 -> I64 }; Exc }" with
   | EffectDef { name = "Exc"; params = []; ops = [ { name = "raise"; _ } ]; body = Var "Exc" } -> ()
   | _ -> Alcotest.fail "expected zero-parameter effect declaration"
 
 let effect_struct_shape () =
-  match parse_expr "module pub effect State(S) = sig get : Unit -> S end end" with
+  match parse_expr "module { pub effect State(S) = sig { get : Unit -> S } }" with
   | Module { bindings = [ EffectBinding { name = "State"; params = [ "S" ]; public = true; ops = [ { name = "get"; _ } ] } ] } -> ()
   | _ -> Alcotest.fail "expected public effect binding"
 
@@ -94,7 +94,7 @@ let perform_qualified_shape () =
   | _ -> Alcotest.fail "expected qualified perform"
 
 let effect_branch_shape () =
-  match parse_expr "match perform Exc.raise(1) do x -> x | effect Exc.raise n -> n end" with
+  match parse_expr "match (perform Exc.raise(1)) { x => x | effect Exc.raise n => n }" with
   | Match
       ( Perform { effect_path = [ "Exc" ]; op = "raise"; _ },
         [ ValueBranch (PatBind "x", Var "x");
@@ -103,17 +103,17 @@ let effect_branch_shape () =
   | _ -> Alcotest.fail "expected effect branch"
 
 let qualified_effect_branch_shape () =
-  match parse_expr "match perform M.Exc.raise(1) do x -> x | effect M.Exc.raise n -> n end" with
+  match parse_expr "match (perform M.Exc.raise(1)) { x => x | effect M.Exc.raise n => n }" with
   | Match (_, [ _; EffectBranch { effect_path = [ "M"; "Exc" ]; op = "raise"; _ } ]) -> ()
   | _ -> Alcotest.fail "expected qualified effect branch"
 
 let resume_arg_shape () =
-  match parse_expr "match perform Exc.raise(1) do x -> x | effect Exc.raise n -> resume(n + 1) end" with
+  match parse_expr "match (perform Exc.raise(1)) { x => x | effect Exc.raise n => resume(n + 1) }" with
   | Match (_, [ _; EffectBranch { body = Resume (Ap (Ap (Var "+", Explicit, Var "n"), Explicit, Atom (Atom.I64 1L))); _ } ]) -> ()
   | _ -> Alcotest.fail "expected resume with argument"
 
 let tuple_effect_branch_shape () =
-  match parse_expr "match perform Console.log((1, 2)) do x -> x | effect Console.log (level, msg) -> level end" with
+  match parse_expr "match (perform Console.log((1, 2))) { x => x | effect Console.log (level, msg) => level }" with
   | Match (_, [ _; EffectBranch { arg_pat = PatProd [ PatBind "level"; PatBind "msg" ]; _ } ]) -> ()
   | _ -> Alcotest.fail "expected tuple effect branch pattern"
 

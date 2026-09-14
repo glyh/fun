@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after the checker evaluation budget, 2026-09-14.
+Last updated: after the brace surface syntax, 2026-09-14.
 
 ---
 
@@ -41,6 +41,25 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   `open (import "std")` itself. Prelude *values* still reach a module through the
   importer's elaboration context; see
   [imported module elaboration context](wayfinder/tickets/imported-module-elaboration-context.md).
+
+### Brace surface syntax (2026-09-14)
+- Bodies are brace groups: `fn(x) { … }`, `method m() { … }`, `macro m(x) : K { … }`,
+  `infix (op) p Assoc ($a, $b) { … }`, blocks `{ … }`, `module { … }`,
+  `sig { … }`, `struct { … }`, `multi { … }`, `syntax head { | rule => replacement }`.
+- `if (c) { t } else { e }` (a prelude template, `if ($c) $t else $e`) and
+  `match (v) { | pattern => result | effect E.op x => result }`.
+- `->` is only the function-type arrow; `=>` separates a pattern from its result
+  and is reserved (`infix (=>)` is an error).
+- Record types are `type P = struct { x: I64 }`; construction, record patterns and
+  `can {…}` rows are unchanged. `module M do … end` is gone (`M = module { … }`).
+- Newlines are whitespace; `;` separates. A trailing `;` before `}` discards the
+  block's value, and a block statement may be a bare expression (`_ = e`).
+- Old `-> body` / `do … end` / `match x do` forms fail with an error naming the
+  new form. The reader's keyword-pair grouping helpers are deleted; arms split
+  by "a pattern holds no bare `=>`, a result holds no bare `|`".
+- A template hole ending a group now extends its capture to the whole group.
+- Prelude and every test source migrated mechanically
+  ([surface-syntax-braces](wayfinder/tickets/surface-syntax-braces.md)).
 
 ### Checker evaluation budget (2026-09-14)
 - Every evaluation the checker asks for spends from one call budget

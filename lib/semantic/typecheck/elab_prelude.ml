@@ -68,23 +68,23 @@ let syntax_primitive_names = []
 let stdlib_source =
   {|
 pub type Bool = False | True;
-pub syntax if do | if $c do $t else $e end -> match $c do True -> $t | False -> $e end end;
-pub infix (&&) 4 Left ($a, $b) -> match $a do True -> $b | False -> False end;
-pub infix (||) 3 Left ($a, $b) -> match $a do True -> True | False -> $b end;
-pub i64_to_bool = fn(n) -> match n do 0 -> False | _ -> True end;
-pub not = fn(b) -> match b do True -> False | False -> True end;
-pub (<) = fn(x, y) -> i64_to_bool(lt_i64(x, y));
-pub (>) = fn(x, y) -> i64_to_bool(gt_i64(x, y));
-pub (<=) = fn(x, y) -> i64_to_bool(le_i64(x, y));
-pub (>=) = fn(x, y) -> i64_to_bool(ge_i64(x, y));
-pub trait Eq(A) = sig eq : A -> A -> Bool end;
-pub impl Eq(I64) = module fn eq(x, y) -> i64_to_bool(eq_i64(x, y)) end;
-pub impl Eq(Bool) = module fn eq(x, y) -> match x do True -> y | False -> not(y) end end;
-pub impl Eq(Char) = module fn eq(x, y) -> i64_to_bool(eq_char(x, y)) end;
-pub impl Eq(Unit) = module fn eq(x, y) -> i64_to_bool(eq_unit(x, y)) end;
-pub impl Eq(String) = module fn eq(x, y) -> i64_to_bool(eq_string(x, y)) end;
-pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> Eq.eq(lhs, rhs);
-pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) -> not((==)[A](lhs, rhs));
+pub syntax if { | if ($c) $t else $e => match ($c) { True => $t | False => $e } };
+pub infix (&&) 4 Left ($a, $b) { match ($a) { True => $b | False => False } };
+pub infix (||) 3 Left ($a, $b) { match ($a) { True => True | False => $b } };
+pub i64_to_bool = fn(n) { match (n) { 0 => False | _ => True } };
+pub not = fn(b) { match (b) { True => False | False => True } };
+pub (<) = fn(x, y) { i64_to_bool(lt_i64(x, y)) };
+pub (>) = fn(x, y) { i64_to_bool(gt_i64(x, y)) };
+pub (<=) = fn(x, y) { i64_to_bool(le_i64(x, y)) };
+pub (>=) = fn(x, y) { i64_to_bool(ge_i64(x, y)) };
+pub trait Eq(A) = sig { eq : A -> A -> Bool };
+pub impl Eq(I64) = module { fn eq(x, y) { i64_to_bool(eq_i64(x, y)) } };
+pub impl Eq(Bool) = module { fn eq(x, y) { match (x) { True => y | False => not(y) } } };
+pub impl Eq(Char) = module { fn eq(x, y) { i64_to_bool(eq_char(x, y)) } };
+pub impl Eq(Unit) = module { fn eq(x, y) { i64_to_bool(eq_unit(x, y)) } };
+pub impl Eq(String) = module { fn eq(x, y) { i64_to_bool(eq_string(x, y)) } };
+pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) { Eq.eq(lhs, rhs) };
+pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) { not((==)[A](lhs, rhs)) };
 pub infix (==) 5 Left;
 pub infix (!=) 5 Left;
 pub infix (<) 5 Left;
@@ -99,20 +99,20 @@ pub infix (%) 20 Left;
 pub prefix (not) 30;
 pub type Option(A) = Some(A) | None;
 pub type List(A) = Nil | Cons(A, List(A));
-pub module Syntax do
-  pub type Explicitness = Explicit | Implicit
-  pub type Assoc = Left | Right
+pub Syntax = module {
+  pub type Explicitness = Explicit | Implicit;
+  pub type Assoc = Left | Right;
 
-  pub type Span = {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)}
+  pub type Span = struct {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)};
 
-  pub type Id = {name: String; span: Option(Span); scope: Scopes}
+  pub type Id = struct {name: String; span: Option(Span); scope: Scopes};
 
-  pub type PathChoice = {opens: List(String); fallback: Option(String)}
-  pub type Path = {head: Id; members: List(String); head_choice: Option(PathChoice)}
-  pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom | ScopesAtom(Scopes)
-  pub type AtomTy = TyI64 | TyUnit | TyChar | TyString | TyScopes | TyAbsurd
-  pub type Fixity = PrefixFixity | InfixFixity
-  pub type MacroAnn = AnnExpr | AnnDecl
+  pub type PathChoice = struct {opens: List(String); fallback: Option(String)};
+  pub type Path = struct {head: Id; members: List(String); head_choice: Option(PathChoice)};
+  pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom | ScopesAtom(Scopes);
+  pub type AtomTy = TyI64 | TyUnit | TyChar | TyString | TyScopes | TyAbsurd;
+  pub type Fixity = PrefixFixity | InfixFixity;
+  pub type MacroAnn = AnnExpr | AnnDecl;
   pub type Expr =
     | RawVar(Option(Span), Id)
     | RawAtom(Option(Span), AtomVal)
@@ -179,43 +179,43 @@ pub module Syntax do
     | DeclMacro(Id, Expr, Bool, Option(MacroAnn))
     | DeclMacroCall(Expr, List(Expr))
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
-    | DeclOpen(Expr, String)
-  pub pattern Var(name) = RawVar(_, name)
-  pub pattern Ap(f, a) = RawAp(_, f, _, a)
-  pub pattern Lam(name, body) = RawLam(_, name, body)
-  pub pattern Let(name, val, body) = RawLet(_, name, _, val, body, _)
-  pub pattern Atom(val) = RawAtom(_, val)
-  pub TypeExpr : Type = Type
-  pub pat_wild = RawPatWild(None)
-  pub pat_var = fn(id) -> RawPatBind(None, id)
-  pub pat_con = fn(name, args) -> RawPatCon(None, Path{head = name; members = Nil; head_choice = None}, args)
-  pub pat_atom = fn(val) -> RawPatAtom(None, val)
-  pub pat_prod = fn(pats) -> RawPatProd(None, pats)
-  pub pat_or = fn(l, r) -> RawPatOr(None, l, r)
-  pub pattern PatWild = RawPatWild(_)
-  pub pattern PatBind(name) = RawPatBind(_, name)
-  pub pattern PatCon(path, args) = RawPatCon(_, path, args)
-  pub pattern PatAtom(val) = RawPatAtom(_, val)
-  pub pattern PatProd(pats) = RawPatProd(_, pats)
-  pub pattern PatOr(l, r) = RawPatOr(_, l, r)
-  pub Decls = List(Decl)
-  pub decl_let = fn(name, val, is_pub) -> DeclLet(name, val, is_pub, False)
-  pub type R = RExpr(Type) | RDecls | RPat
-  pub new_id = fn(name) -> Id{name = name; span = None; scope = no_scopes(())}
-  pub atom_val = fn(val) -> RawAtom(None, val)
-  pub var = fn(name) -> RawVar(None, new_id(name))
-  pub ap = fn(f, a) -> RawAp(None, f, Explicit, a)
-  pub lam = fn(name, body) -> RawLam(None, MkParam(new_id(name), None, Nil, Explicit), body)
-  pub let_in = fn(name, val, body) -> RawLet(None, new_id(name), None, val, body, False)
-  pub i64 = fn(n) -> atom_val(I64Atom(n))
-  pub string = fn(s) -> atom_val(StringAtom(s))
-  pub char = fn(c) -> atom_val(CharAtom(c))
-  pub unit = fn(_) -> atom_val(UnitAtom)
-  pub seq = fn(a, b) -> RawLet(None, new_id("_"), None, a, b, False)
-  pub id_name = fn(stx) -> match stx do | RawVar(_, id) -> id.name | _ -> panic[String]("expected identifier") end
-  pub id_eq = fn(a, b) -> match a do | RawVar(_, ida) -> match b do | RawVar(_, idb) -> i64_to_bool(eq_string(ida.name, idb.name)) | _ -> panic[Bool]("expected identifier") end | _ -> panic[Bool]("expected identifier") end
+    | DeclOpen(Expr, String);
+  pub pattern Var(name) = RawVar(_, name);
+  pub pattern Ap(f, a) = RawAp(_, f, _, a);
+  pub pattern Lam(name, body) = RawLam(_, name, body);
+  pub pattern Let(name, val, body) = RawLet(_, name, _, val, body, _);
+  pub pattern Atom(val) = RawAtom(_, val);
+  pub TypeExpr : Type = Type;
+  pub pat_wild = RawPatWild(None);
+  pub pat_var = fn(id) { RawPatBind(None, id) };
+  pub pat_con = fn(name, args) { RawPatCon(None, Path{head = name; members = Nil; head_choice = None}, args) };
+  pub pat_atom = fn(val) { RawPatAtom(None, val) };
+  pub pat_prod = fn(pats) { RawPatProd(None, pats) };
+  pub pat_or = fn(l, r) { RawPatOr(None, l, r) };
+  pub pattern PatWild = RawPatWild(_);
+  pub pattern PatBind(name) = RawPatBind(_, name);
+  pub pattern PatCon(path, args) = RawPatCon(_, path, args);
+  pub pattern PatAtom(val) = RawPatAtom(_, val);
+  pub pattern PatProd(pats) = RawPatProd(_, pats);
+  pub pattern PatOr(l, r) = RawPatOr(_, l, r);
+  pub Decls = List(Decl);
+  pub decl_let = fn(name, val, is_pub) { DeclLet(name, val, is_pub, False) };
+  pub type R = RExpr(Type) | RDecls | RPat;
+  pub new_id = fn(name) { Id{name = name; span = None; scope = no_scopes(())} };
+  pub atom_val = fn(val) { RawAtom(None, val) };
+  pub var = fn(name) { RawVar(None, new_id(name)) };
+  pub ap = fn(f, a) { RawAp(None, f, Explicit, a) };
+  pub lam = fn(name, body) { RawLam(None, MkParam(new_id(name), None, Nil, Explicit), body) };
+  pub let_in = fn(name, val, body) { RawLet(None, new_id(name), None, val, body, False) };
+  pub i64 = fn(n) { atom_val(I64Atom(n)) };
+  pub string = fn(s) { atom_val(StringAtom(s)) };
+  pub char = fn(c) { atom_val(CharAtom(c)) };
+  pub unit = fn(_) { atom_val(UnitAtom) };
+  pub seq = fn(a, b) { RawLet(None, new_id("_"), None, a, b, False) };
+  pub id_name = fn(stx) { match (stx) { | RawVar(_, id) => id.name | _ => panic[String]("expected identifier") } };
+  pub id_eq = fn(a, b) { match (a) { | RawVar(_, ida) => match (b) { | RawVar(_, idb) => i64_to_bool(eq_string(ida.name, idb.name)) | _ => panic[Bool]("expected identifier") } | _ => panic[Bool]("expected identifier") } }
 
-end
+}
 |}
 
 (* The stdlib's public syntax exports (templates like [if]; the arithmetic and

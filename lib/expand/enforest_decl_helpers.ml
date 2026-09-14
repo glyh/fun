@@ -4,15 +4,11 @@ open Enforest_util
 let parse_module_type_fields parse_type_terms what terms =
   let module_syntax, body_terms =
     match drop_separators terms with
-    | { datum = Token { kind = KwSig; _ }; span } :: rest ->
-        let body_terms, rest, _span = collect_until_end span rest in
-        ensure_no_rest what rest;
+    | [ { datum = Token { kind = KwSig; _ }; _ }; { datum = Group (Raw_syntax.Brace, body_terms, _); _ } ] ->
         (false, body_terms)
-    | { datum = Token { kind = KwModule; _ }; span } :: rest ->
-        let body_terms, rest, _span = collect_until_end span rest in
-        ensure_no_rest what rest;
+    | [ { datum = Token { kind = KwModule; _ }; _ }; { datum = Group (Raw_syntax.Brace, body_terms, _); _ } ] ->
         (true, body_terms)
-    | _ -> error (what ^ " requires a module ... end or sig ... end block")
+    | _ -> error (what ^ " requires a module { … } or sig { … } block")
   in
   split_statements body_terms
   |> List.map (fun stmt ->

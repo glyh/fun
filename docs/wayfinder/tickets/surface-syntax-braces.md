@@ -3,7 +3,9 @@ title: Surface syntax — brace bodies, `=>` arms, explicit semicolons
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-14
+resolution: Implemented. Bodies are brace groups, `=>` separates patterns from results, `->` is only the function-type arrow, newlines are whitespace and a trailing `;` discards a block's value (block statements may be bare expressions). Removed forms fail naming the new form; the keyword-pair grouping helpers are deleted. The prelude and every test source were migrated by a throwaway rewriter over the old token structure; all tests keep their expected values.
 decided: 2026-09-14 (grilled with M7)
 assignee:
 blocked_by:

@@ -4,19 +4,19 @@ let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.s
 open Shape
 
 let trait_decl_shape () =
-  match parse_module "trait Eq(A) = sig eq : A -> A -> Bool end" with
+  match parse_module "trait Eq(A) = sig { eq : A -> A -> Bool }" with
   | Module { bindings = [ TraitBinding { name = "Eq"; params = [ "A" ]; fields = [ ("eq", Arrow (Explicit, None, Var "A", None, Arrow (Explicit, None, Var "A", None, Var "Bool"))) ]; public = false } ] } -> ()
   | _ -> Alcotest.fail "expected trait declaration"
 
 let impl_decl_shape () =
-  match parse_module "open (import \"std\")\nimpl Eq(I64) = module fn eq(x, y) -> x == y end" with
+  match parse_module "open (import \"std\");\nimpl Eq(I64) = module { fn eq(x, y) { x == y } }" with
   | Module { bindings = [ OpenBinding (_, _); ImplBinding { name = None; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; fields = [ ("eq", Lam ({ name = "x"; _ }, Lam ({ name = "y"; _ }, _))) ]; public = false } ] } -> ()
   | _ -> Alcotest.fail "expected impl declaration"
 
 (* [impl NAME : Trait(Args) = …] names the impl; the name is optional and the
    unnamed form above is unchanged. See docs/wayfinder/topics/impl-visibility.md. *)
 let named_impl_decl_shape () =
-  match parse_module "open (import \"std\")\nimpl eq_i64 : Eq(I64) = module fn eq(x, y) -> x == y end" with
+  match parse_module "open (import \"std\");\nimpl eq_i64 : Eq(I64) = module { fn eq(x, y) { x == y } }" with
   | Module { bindings = [ OpenBinding (_, _); ImplBinding { name = Some "eq_i64"; trait_path = []; trait_name = "Eq"; args = [ Var "I64" ]; _ } ] } -> ()
   | _ -> Alcotest.fail "expected named impl declaration"
 

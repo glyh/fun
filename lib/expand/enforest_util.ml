@@ -188,7 +188,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 
 let is_expr_start env term =
   match term.datum with
-  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwDo | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
+  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
   | Token { kind = Operator s; _ } -> Option.is_some (Binding.find_operator env.operators ~fixity:Binding.Prefix ~syntax_class:env.syntax_class s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false
@@ -288,33 +288,24 @@ let rec split_at_pred pred acc = function
 
 let split_at_token kind terms = split_at_pred (token_kind kind) [] terms
 
-let split_at_arrow terms = split_at_token ThinArrow terms
-
-let starts_named_do_block terms =
-  match drop_separators terms with
-  | { datum = Token { kind = Ident _; _ }; _ } :: do_kw :: _ when token_kind KwDo do_kw -> true
-  | _ -> false
-
-let is_multi_block_start term =
+(* [=>] separates a pattern from its result: match arms, effect branches and
+   template rules. It lexes as an ordinary operator token but is reserved. *)
+let is_fat_arrow term =
   match term.datum with
-  | Token { kind = Ident "multi"; _ } -> true
+  | Token { kind = Operator "=>"; _ } -> true
   | _ -> false
 
+let split_at_fat_arrow terms = split_at_pred is_fat_arrow [] terms
+
+(* Bodies are reader groups, so every split below is flat: nothing nested can
+   hold a separator at this level. *)
 let split_by_top_level is_separator terms =
-  let rec go depth current acc = function
+  let rec go current acc = function
     | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when depth = 0 && is_separator term -> go depth [] (List.rev current :: acc) rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term -> go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwModule term ->
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwStruct term ->
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwEnd term && depth > 0 -> go (depth - 1) (term :: current) acc rest
-    | term :: rest -> go depth (term :: current) acc rest
+    | term :: rest when is_separator term -> go [] (List.rev current :: acc) rest
+    | term :: rest -> go (term :: current) acc rest
   in
-  go 0 [] [] terms |> List.filter (fun part -> drop_separators part <> [])
+  go [] [] terms |> List.filter (fun part -> drop_separators part <> [])
 
 let split_by_top_level_bar terms = split_by_top_level (token_kind Bar) terms
 
@@ -323,57 +314,22 @@ let split_by_top_level_bar terms = split_by_top_level (token_kind Bar) terms
 let split_type_chain terms =
   split_by_top_level (fun term -> match term.datum with Token { kind = Ident "and"; _ } -> true | _ -> false) terms
 
+(* Arms are split by the rule "a pattern holds no bare [=>], a result holds no
+   bare [|]": a [|] ends an arm only once its [=>] has been seen. *)
 let split_match_branches terms =
-  let rec go depth seen_arrow current acc = function
+  let rec go seen_arrow current acc = function
     | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when depth = 0 && token_kind Bar term && drop_separators current = [] ->
-        go depth false current acc rest
-    | term :: rest when depth = 0 && token_kind Bar term && seen_arrow ->
-        go depth false [] (List.rev current :: acc) rest
-    | term :: rest when depth = 0 && token_kind ThinArrow term ->
-        go depth true (term :: current) acc rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term || is_multi_block_start term ->
-        go (depth + 1) seen_arrow (term :: current) acc rest
-    | term :: rest when token_kind KwModule term ->
-        if starts_named_do_block rest then go depth seen_arrow (term :: current) acc rest
-        else go (depth + 1) seen_arrow (term :: current) acc rest
-    | term :: rest when token_kind KwStruct term ->
-        if starts_named_do_block rest then go depth seen_arrow (term :: current) acc rest
-        else go (depth + 1) seen_arrow (term :: current) acc rest
-    | term :: rest when token_kind KwEnd term && depth > 0 ->
-        go (depth - 1) seen_arrow (term :: current) acc rest
-    | term :: rest -> go depth seen_arrow (term :: current) acc rest
+    | term :: rest when token_kind Bar term && drop_separators current = [] -> go false current acc rest
+    | term :: rest when token_kind Bar term && seen_arrow -> go false [] (List.rev current :: acc) rest
+    | term :: rest -> go (seen_arrow || is_fat_arrow term) (term :: current) acc rest
   in
-  go 0 false [] [] terms |> List.filter (fun part -> drop_separators part <> [])
+  go false [] [] terms |> List.filter (fun part -> drop_separators part <> [])
 
-let collect_until_end start_span terms =
-  let rec go depth acc = function
-    | [] -> error "unterminated block"
-    | term :: rest
-      when token_kind KwDo term || token_kind KwSig term || is_multi_block_start term
-           || ((token_kind KwStruct term || token_kind KwModule term) && not (starts_named_do_block rest)) ->
-        go (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then (List.rev acc, rest, span_between start_span term.span)
-        else go (depth - 1) (term :: acc) rest
-    | term :: rest -> go depth (term :: acc) rest
-  in
-  go 0 [] terms
-
-let collect_match_until_end start_span terms =
-  let rec go depth acc = function
-    | [] -> error "unterminated match block"
-    | term :: rest
-      when token_kind KwDo term || token_kind KwStruct term || token_kind KwModule term
-           || token_kind KwSig term || token_kind KwMatch term || token_kind KwTrait term
-           || token_kind KwImpl term ->
-        go (depth + 1) (term :: acc) rest
-    | term :: rest when token_kind KwEnd term ->
-        if depth = 0 then (List.rev acc, rest, span_between start_span term.span)
-        else go (depth - 1) (term :: acc) rest
-    | term :: rest -> go depth (term :: acc) rest
-  in
-  go 0 [] terms
+(* [module { … }], [sig { … }], [struct { … }]: the items of a brace group. *)
+let brace_body what terms =
+  match drop_separators terms with
+  | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest -> (items, rest, span)
+  | _ -> error (what ^ " is written " ^ what ^ " { … }")
 
 let ensure_no_rest what rest =
   match drop_separators rest with
@@ -418,57 +374,7 @@ let rec load_imports_in_terms env = function
 
 
 and split_statements terms =
-  let is_statement_separator depth term =
-    depth = 0 && (is_separator term || token_kind Comma term)
-  in
-  let rec go depth current acc = function
-    | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when is_statement_separator depth term -> go depth [] (List.rev current :: acc) rest
-    | term :: rest when token_kind KwDo term || token_kind KwSig term || is_multi_block_start term ->
-        go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwModule term ->
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else go (depth + 1) (term :: current) acc rest
-    | term :: rest when token_kind KwStruct term -> (
-        if starts_named_do_block rest then go depth (term :: current) acc rest
-        else
-          match drop_separators rest with
-          | next :: _ when token_kind KwDo next -> go depth (term :: current) acc rest
-          | _ -> go (depth + 1) (term :: current) acc rest)
-    | term :: rest when token_kind KwEnd term && depth > 0 -> go (depth - 1) (term :: current) acc rest
-    | term :: rest -> go depth (term :: current) acc rest
-  in
-  let stmts = go 0 [] [] terms in
-  let stmts = List.filter (fun stmt -> not (List.for_all is_separator stmt || stmt = [])) stmts in
-  let rec merge_cont (acc : Raw_syntax.t list list) (stmts : Raw_syntax.t list list) =
-    match stmts with
-    | [] -> List.rev acc
-    | [ last ] -> List.rev (last :: acc)
-    | a :: b :: rest ->
-        let a_ends_bar = match List.rev a with
-          | (term : Raw_syntax.t) :: _ when token_kind Bar term -> true
-          | _ -> false
-        in
-        let b_starts_bar = match drop_separators b with
-          | (term : Raw_syntax.t) :: _ when token_kind Bar term -> true
-          | _ -> false
-        in
-        (* A line starting with [and] continues a [type] chain. *)
-        let is_type_statement stmt =
-          match drop_separators stmt with
-          | (term : Raw_syntax.t) :: _ when token_kind KwType term -> true
-          | pub :: (term : Raw_syntax.t) :: _ when token_kind KwPub pub && token_kind KwType term -> true
-          | _ -> false
-        in
-        let b_continues_chain = match drop_separators b with
-          | { datum = Token { kind = Ident "and"; _ }; _ } :: _ -> is_type_statement a
-          | _ -> false
-        in
-        if a_ends_bar || b_starts_bar || b_continues_chain then
-          merge_cont acc ((a @ b) :: rest)
-        else
-          merge_cont (a :: acc) (b :: rest) in
-  merge_cont [] stmts
+  split_by_top_level (fun term -> is_separator term || token_kind Comma term) terms
 
 let desc_token term =
   match term.Raw_syntax.datum with
@@ -482,21 +388,7 @@ let rec push_and_recover env span kind rest =
   push_error env span kind;
   skip_to_statement_boundary rest
 
-and skip_to_statement_boundary tokens =
-  let rec skip depth = function
-    | [] -> []
-    | t :: rest when is_separator t && depth = 0 -> rest
-    | t :: rest when token_kind KwDo t || token_kind KwSig t || is_multi_block_start t ->
-        skip (depth + 1) rest
-    | t :: rest when token_kind KwModule t ->
-        if starts_named_do_block rest then skip depth rest
-        else skip (depth + 1) rest
-    | t :: rest when token_kind KwStruct t ->
-        (match drop_separators rest with
-        | next :: _ when token_kind KwDo next -> skip depth rest
-        | _ -> skip (depth + 1) rest)
-    | t :: rest when token_kind KwEnd t && depth > 0 ->
-        skip (depth - 1) rest
-    | _ :: rest -> skip depth rest
-  in
-  skip 0 tokens
+and skip_to_statement_boundary = function
+  | [] -> []
+  | t :: rest when is_separator t -> rest
+  | _ :: rest -> skip_to_statement_boundary rest

@@ -130,14 +130,14 @@ let span_between (a : Source_span.t) (b : Source_span.t) =
 
 let rec raw_token buf =
   match%sedlex buf with
-  | Plus (' ' | '\t' | '\r') -> raw_token buf
-  | '\\', '\n' -> raw_token buf
-  | '\n' -> Semi
+  | Plus (' ' | '\t' | '\r' | '\n') -> raw_token buf
   | "#|" ->
       skip_block_comment 1 buf;
       raw_token buf
   | "#_" -> DatumComment
-  | "#" -> skip_line_comment buf
+  | "#" ->
+      skip_line_comment buf;
+      raw_token buf
   | "->" -> ThinArrow
   | "(" -> LParen
   | ")" -> RParen
@@ -195,8 +195,7 @@ and read_string buf acc =
 
 and skip_line_comment buf =
   match%sedlex buf with
-  | '\n' -> Semi
-  | eof -> Eof
+  | '\n' | eof -> ()
   | any -> skip_line_comment buf
   | _ -> raise (Error ("unexpected comment token: " ^ Sedlexing.Utf8.lexeme buf))
 

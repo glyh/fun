@@ -88,9 +88,8 @@ let rec replacement_holes ?(bound = []) terms =
         | Some _ -> assert false
         | None -> (
             match terms with
-            | syntax_kw :: _head :: do_kw :: body_rest
-              when is_syntax_keyword syntax_kw && token_kind KwDo do_kw ->
-                let body_terms, rest, _ = collect_until_end do_kw.span body_rest in
+            | syntax_kw :: _head :: { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest
+              when is_syntax_keyword syntax_kw ->
                 go (nested_replacement_holes bound acc body_terms) rest
             | { datum = Group (_, items, _); _ } :: rest ->
                 go (replacement_holes ~bound items @ acc) rest
@@ -103,7 +102,7 @@ and nested_replacement_holes bound acc body_terms =
   split_match_branches body_terms
   |> List.fold_left
        (fun acc branch_terms ->
-         match split_at_arrow branch_terms with
+         match split_at_fat_arrow branch_terms with
          | Some (pattern_terms, _, replacement) ->
              let inner_bound = collect_pattern_holes (parse_template_pattern_parts pattern_terms) in
              replacement_holes ~bound:(inner_bound @ bound) replacement @ acc
@@ -119,7 +118,7 @@ let validate_template_replacement available captured replacement =
 let parse_branches ?(available = []) head body_terms =
   split_match_branches body_terms
   |> List.map (fun branch_terms ->
-         match split_at_arrow branch_terms with
+         match split_at_fat_arrow branch_terms with
          | Some (pattern_terms, _, replacement) ->
               let pattern = parse_template_pattern_parts pattern_terms in
               if not (template_pattern_starts_with head pattern) then
@@ -127,25 +126,27 @@ let parse_branches ?(available = []) head body_terms =
               let captured = collect_pattern_holes pattern in
               validate_template_replacement available captured replacement;
               { Syntax_template.pattern; replacement; span = syntax_span branch_terms }
-         | None -> error "syntax declaration branch requires ->")
+         | None -> error "syntax declaration rule requires => between pattern and replacement")
 
+(* A group's pattern must consume the whole group, so a hole ending it keeps
+   extending its capture rather than stopping at the shortest parse. *)
 let rec match_template_group callbacks captures pattern_items input_items =
-  match match_template_parts callbacks captures pattern_items input_items with
-  | Some (captures, rest) when drop_separators rest = [] -> Some captures
-  | _ -> None
+  match match_template_parts ~whole:true callbacks captures pattern_items input_items with
+  | Some (captures, _) -> Some captures
+  | None -> None
 
-and match_template_parts callbacks captures pattern input =
+and match_template_parts ?(whole = false) callbacks captures pattern input =
   match pattern with
-  | [] -> Some (captures, input)
+  | [] -> if whole && drop_separators input <> [] then None else Some (captures, input)
   | Syntax_template.Literal expected :: rest -> (
       match drop_separators input with
-      | actual :: input_rest when same_literal_token expected actual -> match_template_parts callbacks captures rest input_rest
+      | actual :: input_rest when same_literal_token expected actual -> match_template_parts ~whole callbacks captures rest input_rest
       | _ -> None)
   | Syntax_template.Group (delimiter, pattern_items, _) :: rest -> (
       match drop_separators input with
       | { datum = Group (actual_delimiter, input_items, _); _ } :: input_rest when actual_delimiter = delimiter -> (
           match match_template_group callbacks captures pattern_items input_items with
-          | Some captures -> match_template_parts callbacks captures rest input_rest
+          | Some captures -> match_template_parts ~whole callbacks captures rest input_rest
           | None -> None)
       | _ -> None)
   | Syntax_template.Hole { name; kind; _ } :: rest -> (
@@ -160,7 +161,7 @@ and match_template_parts callbacks captures pattern input =
                   decl_terms = None;
                 }
               in
-              match_template_parts callbacks ((name, captured) :: captures) rest input_rest
+              match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest
           | _ -> None)
       | Syntax_template.Expr ->
           let rec try_prefix prefix = function
@@ -173,7 +174,7 @@ and match_template_parts callbacks captures pattern input =
                     let captured =
                       { Syntax_template.syntax = expr; kind = Syntax_template.Expr; decl_terms = None }
                     in
-                    match match_template_parts callbacks ((name, captured) :: captures) rest input_rest with
+                    match match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest with
                     | Some result -> Some result
                     | None -> None
                   with Error _ | Unsupported _ -> None
@@ -207,7 +208,7 @@ and match_template_parts callbacks captures pattern input =
                       decl_terms = Some prefix;
                     }
                   in
-                  match_template_parts callbacks ((name, captured) :: captures) rest []
+                  match_template_parts ~whole callbacks ((name, captured) :: captures) rest []
             | term :: input_rest ->
                 let prefix = prefix @ [ term ] in
                 let prefix' = drop_separators prefix in
@@ -221,7 +222,7 @@ and match_template_parts callbacks captures pattern input =
                         decl_terms = Some prefix';
                       }
                     in
-                    match match_template_parts callbacks ((name, captured) :: captures) rest input_rest with
+                    match match_template_parts ~whole callbacks ((name, captured) :: captures) rest input_rest with
                     | Some result -> Some result
                     | None -> None
                 in
@@ -294,12 +295,10 @@ let rec rewrite_template_holes ?(bound = []) terms =
                   let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
                   go (term :: acc) rest
             | _ -> error "expected template hole annotation $(name: kind)")
-        | syntax_kw :: head :: do_kw :: body_rest
-          when is_syntax_keyword syntax_kw && token_kind KwDo do_kw ->
-            let body_terms, rest, body_span = collect_until_end do_kw.span body_rest in
-            let rewritten_body = rewrite_nested_syntax_body bound body_terms in
-            let end_term = { datum = Token { kind = KwEnd; span = body_span }; span = body_span } in
-            go (List.rev_append (syntax_kw :: head :: do_kw :: rewritten_body @ [ end_term ]) acc) rest
+        | syntax_kw :: head :: { datum = Group (Raw_syntax.Brace, body_terms, span); _ } :: rest
+          when is_syntax_keyword syntax_kw ->
+            let body = { datum = Group (Raw_syntax.Brace, rewrite_nested_syntax_body bound body_terms, span); span } in
+            go (body :: head :: syntax_kw :: acc) rest
         | { datum = Group (delimiter, items, span); _ } :: rest ->
             go ({ datum = Group (delimiter, rewrite_template_holes ~bound items, span); span } :: acc) rest
         | term :: rest -> go (term :: acc) rest
@@ -319,7 +318,7 @@ and rewrite_nested_syntax_body bound body_terms =
   in
   split_match_branches body_terms
   |> List.map (fun branch_terms ->
-         match split_at_arrow branch_terms with
+         match split_at_fat_arrow branch_terms with
          | Some (pattern_terms, arrow, replacement) ->
              let inner_bound = collect_pattern_holes (parse_template_pattern_parts pattern_terms) in
              pattern_terms @ (arrow :: rewrite_template_holes ~bound:(inner_bound @ bound) replacement)
@@ -439,7 +438,7 @@ let is_multi_block replacement =
 let instantiate_template_replacement ?unit callbacks captures replacement =
   (match drop_separators replacement with
   | _ when is_multi_block replacement ->
-      error "multi ... end is only valid in declaration syntax templates"
+      error "multi { … } is only valid in declaration syntax templates"
   | _ -> ());
   let rewritten = rewrite_template_holes replacement in
   let parsed = callbacks.parse_expr_with_captures captures rewritten in
@@ -486,12 +485,10 @@ let rec rewrite_decl_template_holes ?(bound = []) captures terms =
                   let term = { datum = Token { kind = Ident (placeholder_name name); span }; span } in
                   go (term :: acc) rest)
         | _ -> error "expected template hole annotation $(name: kind)")
-    | syntax_kw :: head :: do_kw :: body_rest
-      when is_syntax_keyword syntax_kw && token_kind KwDo do_kw ->
-        let body_terms, rest, body_span = collect_until_end do_kw.span body_rest in
-        let rewritten_body = rewrite_decl_nested_syntax_body captures bound body_terms in
-        let end_term = { datum = Token { kind = KwEnd; span = body_span }; span = body_span } in
-        go (List.rev_append (syntax_kw :: head :: do_kw :: rewritten_body @ [ end_term ]) acc) rest
+    | syntax_kw :: head :: { datum = Group (Raw_syntax.Brace, body_terms, span); _ } :: rest
+      when is_syntax_keyword syntax_kw ->
+        let body = { datum = Group (Raw_syntax.Brace, rewrite_decl_nested_syntax_body captures bound body_terms, span); span } in
+        go (body :: head :: syntax_kw :: acc) rest
     | { datum = Group (delimiter, items, span); _ } :: rest ->
         go ({ datum = Group (delimiter, rewrite_decl_template_holes ~bound captures items, span); span } :: acc) rest
     | term :: rest -> go (term :: acc) rest
@@ -510,7 +507,7 @@ and rewrite_decl_nested_syntax_body captures bound body_terms =
   in
   split_match_branches body_terms
   |> List.map (fun branch_terms ->
-         match split_at_arrow branch_terms with
+         match split_at_fat_arrow branch_terms with
          | Some (pattern_terms, arrow, replacement) ->
              let inner_bound = collect_pattern_holes (parse_template_pattern_parts pattern_terms) in
              pattern_terms @ (arrow :: rewrite_decl_template_holes ~bound:(inner_bound @ bound) captures replacement)
@@ -519,8 +516,7 @@ and rewrite_decl_nested_syntax_body captures bound body_terms =
 
 let declaration_replacement_statements replacement =
   match drop_separators replacement with
-  | { datum = Token { kind = Ident "multi"; _ }; span = multi_span } :: body_terms ->
-      let body, rest, _span = collect_until_end multi_span body_terms in
+  | { datum = Token { kind = Ident "multi"; _ }; _ } :: { datum = Group (Raw_syntax.Brace, body, _); _ } :: rest ->
       ensure_no_rest "multi declaration template" rest;
       split_statements body
   | terms -> [ terms ]

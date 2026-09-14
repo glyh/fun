@@ -7,7 +7,6 @@ status: open
 assignee:
 blocked_by:
   - template-heads-resolve-by-scope-set.md
-  - surface-syntax-braces.md
 decided: 2026-09-14 (blockers 2 and 3 grilled)
 ---
 

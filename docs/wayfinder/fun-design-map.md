@@ -391,13 +391,13 @@ What remains, in the recommended order:
   binder, by scope set); syntax shadows syntax; captured blocks stay unparsed.
   Lands with or after surface-syntax-braces.
 - [Surface syntax — brace bodies, `=>` arms, explicit semicolons](tickets/surface-syntax-braces.md)
-  — decided with M7: `fn(x) { … }`, `if (c) { … }`, `match (v) { | p => e }`,
+  (closed & **implemented**) — decided with M7: `fn(x) { … }`, `if (c) { … }`, `match (v) { | p => e }`,
   `struct { x: I64 }` record types, `->` only for function types, newlines are
   whitespace, trailing `;` discards.
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
   **Grilled 2026-09-14:** `quote { … }` for declarations, `$name` resolves to its
   nearest binder (no quote levels), kinds spelled `$(x : Decl|Id|Pattern|Block)`,
-  templates take `: Decl` and `multi` is deleted. Blocked on M7 and surface-syntax-braces (implementation only). Structural only now; retires the template region rule in `add_id_scope_if`.
+  templates take `: Decl` and `multi` is deleted. Blocked on M7 (implementation only). Structural only now; retires the template region rule in `add_id_scope_if`.
 
 ### Found by the budget and path-heads run (2026-09-14)
 

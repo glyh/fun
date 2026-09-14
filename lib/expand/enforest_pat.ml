@@ -31,10 +31,12 @@ let parse_pat_terms terms =
             | items -> (match split_commas items with
             | [ only ] -> (parse_pat_all only, rest)
             | parts -> (Syntax.PatProd (List.map parse_pat_all parts), rest)) )
-        | Token { kind = KwStruct; _ } ->
-            let body_terms, rest, _span = collect_until_end term.span rest in
-            let fields, partial = parse_pat_struct_type_fields body_terms in
-            (Syntax.PatStructType { fields; partial }, rest)
+        | Token { kind = KwStruct; _ } -> (
+            match rest with
+            | { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest ->
+                let fields, partial = parse_pat_struct_type_fields body_terms in
+                (Syntax.PatStructType { fields; partial }, rest)
+            | _ -> error "struct type pattern is written struct { field: pattern; _ }")
         | _ -> error "unsupported pattern in Phase 7B match")
   and parse_pat_postfix lhs terms =
     match drop_separators terms with
