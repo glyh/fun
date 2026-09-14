@@ -406,6 +406,8 @@ What remains, in the recommended order:
   — measure against `ba0edd5` first.
 - [A qualified constructor nested in a pattern argument is unknown](tickets/nested-qualified-constructor-pattern.md)
   — `M.MkA(M.MkE(n))` fails with `UnknownConstructor`.
+- [Expansion errors reach the user raw](tickets/expansion-errors-reach-the-user-raw.md)
+  — expander budget overruns escape untranslated; macro-body errors lost the operator span.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
