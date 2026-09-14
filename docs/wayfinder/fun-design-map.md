@@ -388,7 +388,7 @@ What remains, in the recommended order:
 - [Template and operator heads resolve by scope set](tickets/template-heads-resolve-by-scope-set.md)
   — M7. Needs scopes at parse time (Honu's lazy enforestation); grill first.
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
-  Structural only now; retires the template region rule in `add_id_scope_if`.
+  **Blocked on M7**: generated syntax must reach later parsing, quote needs a declaration position, nested templates need quote levels. Structural only now; retires the template region rule in `add_id_scope_if`.
 
 ### Found by the budget and path-heads run (2026-09-14)
 

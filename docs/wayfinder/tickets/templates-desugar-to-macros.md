@@ -6,6 +6,7 @@ labels:
 status: open
 assignee:
 blocked_by:
+  - template-heads-resolve-by-scope-set.md
 ---
 
 # Templates desugar to macros
@@ -39,3 +40,35 @@ instantiation path instead of two, with parse-at-definition for replacements.
   must be reconsidered under parse-at-definition.
 - Likely sequenced with, or after,
   [template-heads-resolve-by-scope-set](template-heads-resolve-by-scope-set.md).
+
+## Blocked on M7 (found 2026-09-14, attempted implementation)
+
+The desugaring's natural shape exists already: a template declaration becomes
+a `MacroSyntaxDecl` whose value is `fn(captures) -> quote(replacement)`, and a
+use becomes a `MacroCall` over a `SyntaxOperatorUse`, applied through
+`Expand.application` during expansion. That retires the region rule. Three
+things stop it from being done cleanly:
+
+1. **Generated syntax must reach later parsing.** Fixity lives only in the
+   enforester's string-keyed table (`Binding.add_operator`); the expander never
+   registers an operator. Today a template instance runs *during
+   enforestation*, so `make_inc; pub result = inc 5` and `pub syntax` emitted
+   through `multi` work (tests "7I generated syntax usable later", "7I
+   generated pub syntax across imports", "7I generated syntax later-wins").
+   Once instances run as macros during expansion, their generated
+   `syntax`/`infix` declarations arrive after the following statements were
+   parsed. Making the expander hand a syntactic role back to the parser is M7
+   (heads as binders, Honu lazy enforestation).
+2. **Quote has no declaration position.** `quote(…)` parses an expression and
+   its holes are `Expr`/`Pattern`/`Id`. Declaration templates, `$(x: decl)`
+   holes (spliced today as raw tokens) and `multi … end` need quoted
+   declarations and a `Decl` hole kind.
+3. **Nested templates capture outer holes** (`make_adder $base` defining
+   `add_base … $x + $base`). As macros this is a quote nested in a quote whose
+   inner template mentions an outer hole: quasiquote levels, undecided.
+   Macro parameters are also untyped `Expr` syntax, so a `binder`/`ident`
+   capture (M10's `Id`) has no typed parameter to arrive through.
+
+Doing only expression and infix templates would leave three instantiation
+paths instead of two, and the region rule could not go while declaration
+templates still instantiate at parse time.
