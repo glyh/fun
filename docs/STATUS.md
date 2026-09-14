@@ -77,6 +77,8 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   ([names-resolve-without-spelling](wayfinder/tickets/names-resolve-without-spelling.md)).
   Still by spelling: macro annotation constraint names (plain strings, no
   scopes) and a constructor label matched inside a scrutinee's known nominal.
+  `Elab_infer` no longer special-cases `EffectRow` or `stx_` names
+  ([elaborator-matches-names-by-spelling](wayfinder/tickets/elaborator-matches-names-by-spelling.md)).
 - **Macro bodies** elaborate inside the unit opens around their definition,
   nothing ambient (M3). Units that write macros open the prelude themselves.
 - **Types.** `type A = … and B = …` chains are mutually recursive nominals. Nested

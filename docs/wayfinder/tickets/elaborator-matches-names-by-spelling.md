@@ -3,8 +3,10 @@ title: The elaborator still matches `EffectRow` and `stx_` names by spelling
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Both spelling dispatches deleted from `Elab_infer.infer`. `EffectRow` was already an ordinary base-context binding (`Elab_entry`, value `VEffectRowTy`), so the hardcoded case only shadowed it — including inside the prelude, where the `Syntax` chain's `Option(EffectRow)` field of `RawArrow` meant the builtin row kind instead of the chain's own `EffectRow` ADT (a latent mistyping, now fixed). Instrumentation showed the `stx_` prefix rewrite never fired across the whole suite (no binder is spelled `stx_` since the primitives are hidden), so it was deleted rather than moved to the entry.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

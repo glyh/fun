@@ -395,7 +395,7 @@ What remains, in the recommended order:
 - [Pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md)
   — any function reducing to a nominal works as a pattern-head type. Grill.
 - [Elaborator matches `EffectRow` and `stx_` by spelling](tickets/elaborator-matches-names-by-spelling.md)
-  — the last M12 sites in `Elab_infer`'s `Var` case.
+  — (closed) both dispatches deleted; a type named `EffectRow` now means itself.
 - [The closed-term rule does not look inside closures](tickets/stuck-rule-ignores-closure-environments.md)
   — the `ponytail:` in `Nbe.closed`.
 - [A budget error names a core term](tickets/budget-error-names-no-source-call.md)

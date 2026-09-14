@@ -1548,6 +1548,8 @@ let open_choices =
       (eval_i64 "do M = module pub y = 5 end; open M; y = 1; y end" 1L);
     Alcotest.test_case "an open without the member falls back to the binder" `Quick
       (eval_i64 "do M = module pub z = 5 end; y = 1; open M; y end" 1L);
+    Alcotest.test_case "a type named EffectRow is an ordinary name" `Quick
+      (eval_i64 "do M = module pub type A = MkA(EffectRow) and EffectRow = MkE(I64) end; f = fn(a : M.A) -> 1; f(M.MkA(M.MkE(3))) end" 1L);
   ]
 
 (* The checker evaluates under a budget: a divergent evaluation it performs is

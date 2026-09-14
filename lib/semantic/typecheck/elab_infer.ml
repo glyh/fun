@@ -299,19 +299,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | Atom (Char c) -> (Atom (Char c), VAtomTy Atom_ty.TChar)
   | Atom (String s) -> (Atom (String s), VAtomTy Atom_ty.TString)
   | Atom (Scopes s) -> (Atom (Scopes s), VAtomTy Atom_ty.TScopes)
-  | Var { name = "EffectRow"; _ } -> (EffectRowTy, VU)
   | Var { name; _ } ->
       let ix, ty = Ctx.lookup ctx name in
       let core = Var ix in
-      let core =
-        let prefix = "stx_" in
-        if String.length name >= String.length prefix
-           && String.sub name 0 (String.length prefix) = prefix then
-          match Ctx.eval ctx core with
-          | VNeutral { neutral = { head = HPrim pname; _ }; _ } -> Prim pname
-          | _ -> core
-        else core
-      in
       (core, ty)
   | Self ->
       let ix, ty = Ctx.lookup_self ctx in
