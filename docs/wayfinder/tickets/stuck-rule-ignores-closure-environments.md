@@ -3,8 +3,10 @@ title: The closed-term rule does not look inside closures
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
+resolution: `Nbe.closed` now inspects a closure through the environment slots its body reads (`Nbe.closure_slots`, binder-aware across lambdas, lets, pattern branches, binding lists and nominal and effect definitions; an inserted meta reads every bound slot). A body that extends its environment by an amount only evaluation reveals (an `open`, an `OpenBind`) is conservatively not closed, so the call stays stuck. Lambda, fixpoint, pi codomain and effect-row closures and stuck `match` frames all go through it. Regression tests in the `evaluation_budget` group; the check costs nothing measurable (a 40k-step type-level recursion over a closure checks in the same 0.11 s as before the budget).
+closed_date: 2026-09-14
 blocked_by:
 ---
 

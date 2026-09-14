@@ -47,7 +47,9 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   (`Eval_budget`, 1,000,000 calls per request, no surface syntax to raise it);
   running out is `ElabError EvaluationBudgetExceeded`, not a hang.
 - A fixpoint unfolds at check time only on a closed argument; a call mentioning
-  an unknown variable stays stuck (`HFix` neutral) and costs nothing.
+  an unknown variable stays stuck (`HFix` neutral) and costs nothing. A closure
+  argument mentions what the environment slots its body reads hold
+  (`Nbe.closure_slots`); a body that opens a module is conservatively not closed.
 - Running a program (`Ctx.run`, the REPL) is unbudgeted.
   See [checker-evaluation-budget](wayfinder/tickets/checker-evaluation-budget.md).
 - **Macro applications are calls under the same budget** (M5). The depth fuel

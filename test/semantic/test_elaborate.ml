@@ -1565,6 +1565,10 @@ let evaluation_budget =
       (budget_exceeded "do rec loop : I64 -> Type = fn(n) -> loop(n); g = fn(y : loop(0)) -> 1; 2 end");
     Alcotest.test_case "a call mentioning an unknown variable costs nothing" `Quick
       (elab_ok "do rec loop : I64 -> Type = fn(n) -> loop(n); g = fn(n : I64, y : loop(n)) -> 1; 2 end");
+    Alcotest.test_case "a call passing a closure that captures an unknown variable costs nothing" `Quick
+      (elab_ok "do rec r : (I64 -> I64) -> Type = fn(f) -> r(f); g = fn(n : I64, y : r(fn(z) -> n)) -> 1; 2 end");
+    Alcotest.test_case "a call passing a closure that ignores the unknown variables still evaluates" `Quick
+      (budget_exceeded "do rec r : (I64 -> I64) -> Type = fn(f) -> r(f); g = fn(n : I64, y : r(fn(z) -> z)) -> 1; 2 end");
     Alcotest.test_case "a stuck call is convertible with itself" `Quick
       (elab_ok "do rec loop : I64 -> Type = fn(n) -> loop(n); g = fn(n : I64, y : loop(n)) -> (y : loop(n)); 2 end");
     Alcotest.test_case "a closed call still evaluates" `Quick

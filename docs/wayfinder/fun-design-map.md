@@ -400,11 +400,11 @@ What remains, in the recommended order:
 - [Elaborator matches `EffectRow` and `stx_` by spelling](tickets/elaborator-matches-names-by-spelling.md)
   — (closed) both dispatches deleted; a type named `EffectRow` now means itself.
 - [The closed-term rule does not look inside closures](tickets/stuck-rule-ignores-closure-environments.md)
-  — the `ponytail:` in `Nbe.closed`.
+  (closed) — a closure is closed when the slots its body reads are; an `open` in the body is conservatively not.
 - [A budget error names a core term](tickets/budget-error-names-no-source-call.md)
   — no call name, no demanding conversion; pairs with error spans.
 - [Deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
-  — measure against `ba0edd5` first.
+  — pre-existing and quadratic: OCaml 5 minor GCs rescan the whole native stack. Architectural (the evaluator recurses natively per object-language call).
 - [A qualified constructor nested in a pattern argument is unknown](tickets/nested-qualified-constructor-pattern.md)
   (closed) — root cause was `NomRef` finding a nominal by spelling; it now
   carries the nominal id.
