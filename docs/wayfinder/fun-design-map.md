@@ -458,6 +458,23 @@ Known gaps recorded in the closed
 - **Block-local imported roles have no scope set** — they stay in the block by
   the enforester copying its table (`with_operator_scope`), not by scope.
 
+### Found by M9 run 2 (2026-09-14)
+
+Recorded in the [M9 ticket](tickets/templates-desugar-to-macros.md), which stays
+open for the first two:
+
+- **Procedural macro parameter kinds** — `macro m(n : Id)` arguments still
+  arrive as `Expr`; the enforester must know a macro's parameter kinds while
+  reading a call, and the loader's macro caches must carry them.
+- **Token-position holes in `quote { … }`** — a `$n` heading a generated rule
+  is not filled, so a procedural macro cannot name generated syntax from the
+  use site (syntax forms can).
+- **Capture extents are chosen by exceptions** — `try_prefixes` picks a
+  capture's extent by catching parse errors, carried over from the old matcher;
+  exceptions as control flow per `CLAUDE.md`.
+- **Struct items are read at once**, with a private copy of the roles, not form
+  by form (their bodies still wait for expansion).
+
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
 Decided by the effects domain-model pass; unimplemented, each ticket is the
