@@ -6,7 +6,6 @@ labels:
 status: open
 assignee:
 blocked_by:
-  - checker-evaluation-budget.md
 ---
 
 # Macro fuel is the evaluation budget; expansion failures are error values

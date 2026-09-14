@@ -188,6 +188,8 @@ and macro_runtime = {
     VFlex { id = MetaContext.fresh ctx.metas; spine = [] }
 
   let eval (ctx : t) (t : term) : value = Nbe.eval ctx.metas ctx.env t
+  (* Running the checked program, not checking it: no evaluation budget. *)
+  let run (ctx : t) (t : term) : value = Nbe.run ctx.metas ctx.env t
   let quote (ctx : t) (v : value) : term = Nbe.quote ctx.metas ctx.lvl v
 
   let unify (ctx : t) (v1 : value) (v2 : value) : unit =

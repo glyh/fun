@@ -442,6 +442,8 @@ _Avoid_: total (pure code may diverge), side-effect free
 How many semantic steps the checker may spend evaluating while type checking —
 function calls, loop iterations, and macro applications, which are calls.
 Exceeding it is a compile error naming the call, raisable per evaluation.
+One evaluation is one request from the checker; a call mentioning an unknown
+variable does not evaluate and costs nothing. Running a program spends none.
 Termination is never checked; divergence is not an effect.
 _Avoid_: fuel (the retired depth guard's name), termination check,
 reduction depth

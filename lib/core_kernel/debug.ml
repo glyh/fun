@@ -138,7 +138,7 @@ let pp_meta_state (mc : MetaContext.t) (id : meta_id) : string =
   | Unsolved -> Printf.sprintf "?%d unsolved" id
 
 let dump_metas (mc : MetaContext.t) : unit =
-  let n = Dynarray.length mc in
+  let n = Dynarray.length mc.MetaContext.entries in
   Printf.eprintf "--- Meta state (%d metas) ---\n%!" n;
   for i = 0 to n - 1 do
     Printf.eprintf "  %s\n%!" (pp_meta_state mc i)

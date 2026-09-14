@@ -36,7 +36,7 @@ let run source =
     expand_ctx.Expand_ctx.macro_table;
   ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   let core, ty = Elaborate.on_expr ~loader ctx expr in
-  let value = Elaborate.Ctx.eval ctx core in
+  let value = Elaborate.Ctx.run ctx core in
   Printf.printf "%s: %s\n"
     (Debug.pp_value_short ctx.metas value)
     (Debug.pp_value_short ctx.metas ty);

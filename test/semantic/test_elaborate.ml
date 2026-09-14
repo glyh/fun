@@ -1550,9 +1550,37 @@ let open_choices =
       (eval_i64 "do M = module pub z = 5 end; y = 1; open M; y end" 1L);
   ]
 
+(* The checker evaluates under a budget: a divergent evaluation it performs is
+   an error, not a hang. *)
+let budget_exceeded source () =
+  match elab source with
+  | exception Elaborate.ElabError (Elaborate.EvaluationBudgetExceeded _) -> ()
+  | _ -> Alcotest.fail ("expected an evaluation budget error: " ^ source)
+
+let evaluation_budget =
+  [
+    Alcotest.test_case "a divergent type is a budget error" `Quick
+      (budget_exceeded "do rec loop : I64 -> Type = fn(n) -> loop(n); g = fn(y : loop(0)) -> 1; 2 end");
+    Alcotest.test_case "a call mentioning an unknown variable costs nothing" `Quick
+      (elab_ok "do rec loop : I64 -> Type = fn(n) -> loop(n); g = fn(n : I64, y : loop(n)) -> 1; 2 end");
+    Alcotest.test_case "a stuck call is convertible with itself" `Quick
+      (elab_ok "do rec loop : I64 -> Type = fn(n) -> loop(n); g = fn(n : I64, y : loop(n)) -> (y : loop(n)); 2 end");
+    Alcotest.test_case "a closed call still evaluates" `Quick
+      (elab_ok "do rec k : I64 -> Type = fn(n) -> if n == 0 do I64 else k(n - 1) end; g = fn(y : k(3)) -> y + 1; 2 end");
+    Alcotest.test_case "running a program is not budgeted" `Quick (fun () ->
+        (* 2^20 - 1 calls, past the default budget, at depth 19. *)
+        let source = "do rec t : I64 -> I64 = fn(n) -> if n == 0 do 1 else t(n - 1) + t(n - 1) end; t(19) end" in
+        let ctx = Elaborate.init_ctx () in
+        let core, _ = Elaborate.on_expr ctx (parse_expr source) in
+        match Elaborate.Ctx.run ctx core with
+        | VAtom (I64 n) -> Alcotest.(check int64) source 524288L n
+        | _ -> Alcotest.fail "expected an I64");
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
+      ("evaluation_budget", evaluation_budget);
       ("constants", constants);
       ("type_chains", type_chains);
       ("open_choices", open_choices);

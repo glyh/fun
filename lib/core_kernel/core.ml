@@ -382,7 +382,13 @@ and value =
           [VFlex] → solve via pattern unification. *)
 
 and neutral = { head : head; frames : frame list }
-and head = HVar of lvl | HMeta of meta_id | HPrim of string
+and head =
+  | HVar of lvl
+  | HMeta of meta_id
+  | HPrim of string
+  | HFix of closure
+      (** A fixpoint the checker would not unfold: its call mentions an unknown
+          variable, so evaluating it could diverge (see [Eval_budget]). *)
 and spine = value list
 
 and cont = { mutable used : bool; resume : value -> result }
@@ -516,29 +522,31 @@ let struct_entry_fields entries =
 
 module MetaContext = struct
   type entry = Solved of value | Unsolved
-  type t = entry Dynarray.t
+  (* The metas and the evaluation budget travel together: both are the state of
+     one checking session that every evaluator call is handed. *)
+  type t = { entries : entry Dynarray.t; budget : Eval_budget.t }
 
-  let create () : t = Dynarray.create ()
+  let create () : t = { entries = Dynarray.create (); budget = Eval_budget.create () }
 
   let fresh (mc : t) : meta_id =
-    let id = Dynarray.length mc in
-    Dynarray.add_last mc Unsolved;
+    let id = Dynarray.length mc.entries in
+    Dynarray.add_last mc.entries Unsolved;
     id
 
   let solve (mc : t) (id : meta_id) (v : value) =
-    Dynarray.set mc id (Solved v)
+    Dynarray.set mc.entries id (Solved v)
 
   let lookup (mc : t) (id : meta_id) : entry =
-    Dynarray.get mc id
+    Dynarray.get mc.entries id
 
   let snapshot (mc : t) : entry array =
-    Array.init (Dynarray.length mc) (Dynarray.get mc)
+    Array.init (Dynarray.length mc.entries) (Dynarray.get mc.entries)
 
   let restore (mc : t) (snapshot : entry array) : unit =
-    while Dynarray.length mc > Array.length snapshot do
-      ignore (Dynarray.pop_last mc)
+    while Dynarray.length mc.entries > Array.length snapshot do
+      ignore (Dynarray.pop_last mc.entries)
     done;
-    Array.iteri (Dynarray.set mc) snapshot
+    Array.iteri (Dynarray.set mc.entries) snapshot
 end
 
 (** Global counter for fresh nominal type identities.

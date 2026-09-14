@@ -445,11 +445,22 @@ and eval_effect_row_literal (mc : MetaContext.t) (env : env) (row : effect_row) 
 
 and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   match vf with
-  | VLam { body = clo; _ } -> eval_result mc (va :: clo.env) clo.body
+  | VLam { body = clo; _ } ->
+      spend_call mc clo;
+      eval_result mc (va :: clo.env) clo.body
   | VFix { body = clo; _ } ->
-      let self = VFix { body = clo } in
-      let unfolded = eval mc (self :: clo.env) clo.body in
-      apply_result mc unfolded va
+      (* Only fixpoints can diverge, so only they wait for a closed call.
+         Unfolding is charged too: a fixpoint that unfolds to another fixpoint
+         would otherwise loop without ever making a call. *)
+      if Eval_budget.checking mc.MetaContext.budget && not (closed mc va) then
+        Done (VNeutral { ty = VU; neutral = { head = HFix clo; frames = [ FApp va ] } })
+      else begin
+        spend_call mc clo;
+        let self = VFix { body = clo } in
+        match eval mc (self :: clo.env) clo.body with
+        | VLam { body = lam } -> eval_result mc (va :: lam.env) lam.body
+        | unfolded -> apply_result mc unfolded va
+      end
   | VCont c ->
       let cont = c in
       if cont.used then raise (EvalError "continuation already used");
@@ -469,6 +480,36 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VTraitDict d -> Done (VTraitDict { d with args = d.args @ [ va ] })
   | VCon c -> Done (VCon { c with spine = c.spine @ [ va ] })
   | _ -> raise (EvalError "applying non-function")
+
+(* Whether a value mentions no unknown variable. A closure's captured
+   environment is not inspected.
+   ponytail: a call passing a closure that captures a variable still unfolds;
+   inspect environments if that ever diverges where the ticket promises stuck. *)
+and closed (mc : MetaContext.t) (v : value) : bool =
+  let all = List.for_all (closed mc) in
+  match force mc v with
+  | VRigid _ | VFlex _ -> false
+  | VNeutral { neutral = { head = HVar _ | HMeta _; _ }; _ } -> false
+  | VNeutral { neutral = { head = HPrim _ | HFix _; frames }; _ } ->
+      List.for_all
+        (function FApp v | FRefSet v -> closed mc v | FProj _ | FDot _ | FRefGet | FMatch _ -> true)
+        frames
+  | VProd vs | VProdTy vs | VSelfType vs -> all vs
+  | VCon { spine; nominal; _ } -> all spine && closed mc nominal
+  | VRecord { typ; fields } -> closed mc typ && all (List.map snd fields)
+  | VNominal { params; _ } | VEffect { params; _ } -> all params
+  | VTraitDict { args; fields; _ } -> all args && all (List.map snd fields)
+  | VRefTy a -> closed mc a
+  | VPi { domain; _ } -> closed mc domain
+  | VEffectRow { effect_values; tail_value } -> all effect_values && Option.fold ~none:true ~some:(closed mc) tail_value
+  | VLam _ | VFix _ | VU | VPatternSyn _ | VEffectRowTy | VAtom _ | VAtomTy _ | VModule _ | VStruct _
+  | VTrait _ | VRef _ | VCont _ | VStx _ ->
+      true
+
+and spend_call (mc : MetaContext.t) (clo : closure) =
+  Eval_budget.spend mc.MetaContext.budget ~call:(fun () ->
+      let body = Debug.pp_term clo.body in
+      if String.length body <= 120 then body else String.sub body 0 120 ^ "…")
 
 and apply (mc : MetaContext.t) (vf : value) (va : value) : value =
   result_value mc (apply_result mc vf va)
@@ -1015,5 +1056,17 @@ let quote_ops : Nbe_quote.ops =
 
 let lvl_to_ix = Nbe_quote.lvl_to_ix
 let conv_pat = Nbe_quote.conv_pat
-let quote mc depth value = Nbe_quote.quote quote_ops mc depth value
-let conv mc depth lhs rhs = Nbe_quote.conv quote_ops mc depth lhs rhs
+
+(* The checker's entry points. Each call from outside the evaluator is one
+   evaluation under the budget (see [Eval_budget]); the evaluator's own
+   recursion above binds the unwrapped functions, so re-entry spends from the
+   same request. [run] is the one entry that runs a program, with no limit. *)
+let request mc f = Eval_budget.request mc.MetaContext.budget f
+let run mc env t = Eval_budget.run mc.MetaContext.budget (fun () -> eval mc env t)
+let eval mc env t = request mc (fun () -> eval mc env t)
+let apply mc f a = request mc (fun () -> apply mc f a)
+let closure_apply mc c v = request mc (fun () -> closure_apply mc c v)
+let eval_effect_row_closure mc row binder = request mc (fun () -> eval_effect_row_closure mc row binder)
+let force mc v = match v with VFlex _ -> request mc (fun () -> force mc v) | _ -> v
+let quote mc depth value = request mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
+let conv mc depth lhs rhs = request mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)

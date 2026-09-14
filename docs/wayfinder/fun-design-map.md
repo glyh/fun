@@ -380,7 +380,7 @@ What remains, in the recommended order:
 - [Macro type binders should be explicit](tickets/macro-type-binders-should-be-explicit.md)
   (listed above).
 - [Macro fuel is the evaluation budget](tickets/macro-fuel-is-the-evaluation-budget.md)
-  — M5 + M8. **Blocked on** the checker evaluation budget below.
+  — M5 + M8. Unblocked: the checker evaluation budget below landed.
 - [Template and operator heads resolve by scope set](tickets/template-heads-resolve-by-scope-set.md)
   — M7. Needs scopes at parse time (Honu's lazy enforestation); grill first.
 - [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
@@ -401,9 +401,10 @@ distance from an E-invariant in the topic doc.
 - [A bare arrow is pure](tickets/bare-arrow-is-pure.md) — `A -> B` is pure;
   `A -> B can _` / `A ~> B` infers the row. Reverses effects Phase 6's default.
 - [The checker evaluates under a budget](tickets/checker-evaluation-budget.md)
-  — Zig's model: no termination check, a call/iteration budget, extern or
-  effectful calls in evaluated positions are errors. Today `loop(0)` in a type
-  hangs the checker.
+  (closed & **implemented**) — each checker request to the evaluator spends
+  from one call budget, and exhaustion is an elaboration error; a fixpoint
+  applied to an open argument stays stuck (`HFix`). Running a program is
+  unbudgeted. `loop(0)` in a type is now a budget error, not a hang.
 - [Handlers tunnel callback effects](tickets/handlers-tunnel-callback-effects.md)
   — lexical handling: a callback's effects pass handlers in code polymorphic
   over its row, and an effectful closure may not escape its handler's scope.

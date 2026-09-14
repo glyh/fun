@@ -28,6 +28,7 @@ type elab_error =
   | MissingTraitImplementation of string
   | MacroDidNotReturnSyntax of string
   | QuoteHoleKindConflict of string
+  | EvaluationBudgetExceeded of { limit : int; call : string }
 
 exception ElabError of elab_error
 
@@ -61,6 +62,8 @@ let string_of_elab_error = function
   | MissingTraitImplementation n -> "MissingTraitImplementation \"" ^ n ^ "\""
   | MacroDidNotReturnSyntax n -> "MacroDidNotReturnSyntax \"" ^ n ^ "\""
   | QuoteHoleKindConflict n -> "QuoteHoleKindConflict \"" ^ n ^ "\""
+  | EvaluationBudgetExceeded { limit; call } ->
+      Printf.sprintf "EvaluationBudgetExceeded %d \"%s\"" limit call
 
 let () =
   Printexc.register_printer (function

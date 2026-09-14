@@ -3,8 +3,10 @@ title: The checker evaluates under a budget, not a termination check
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Implemented. `Eval_budget` (kernel) is carried by `MetaContext.t`; every checker call into the evaluator is one request, refilled at its start, and every function call (a lambda application or a fixpoint unfold) spends one. Exhaustion raises `Eval_budget.Exceeded`, reported by `Elaborate.on_expr` as `ElabError EvaluationBudgetExceeded`. A fixpoint unfolds at check time only for a closed argument; otherwise the call is a stuck neutral with head `HFix` (quoted, converted and unified by its closure). `Nbe.run` / `Ctx.run` runs a program with no limit and no closedness gate. The evidence case is now a budget error. Left open — the error names the callee's body, not a source name (core lambdas carry none), nor the conversion that demanded it; the budget is a constant (1,000,000) with no surface syntax to raise it; a closure argument that captures a variable does not count as open. The extern/effect clause needed no work: there are no externs, and an effect performed at check time already fails as an unhandled effect rather than sticking. Macro applications do not yet spend from the budget (macro-fuel-is-the-evaluation-budget); they can, since each application already runs through a `MetaContext.t`.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

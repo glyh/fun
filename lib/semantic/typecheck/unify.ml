@@ -222,6 +222,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             raise (UnifyError OccursCheck) (* same occurs check, via neutral *)
           else Meta id
       | HPrim name -> Prim name
+      | HFix clo -> go d (VFix { body = clo })
     in
     go_frames d head neu.frames
   and go_frames (d : lvl) (head : term) (frames : frame list) : term =
@@ -552,6 +553,7 @@ and unify_neutral (mc : MetaContext.t) (env : env) (depth : lvl) (n1 : neutral) 
   | HVar l1, HVar l2 when l1 = l2 -> ()
   | HMeta id1, HMeta id2 when id1 = id2 -> ()
   | HPrim n1, HPrim n2 when String.equal n1 n2 -> ()
+  | HFix c1, HFix c2 -> unify mc env depth (VFix { body = c1 }) (VFix { body = c2 })
   | _ ->
       raise (UnifyError NeutralHeadMismatch));
   unify_frames mc env depth n1.frames n2.frames

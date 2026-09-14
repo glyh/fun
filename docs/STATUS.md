@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after the macro-model implementation run (hygiene, open choices, delete Surface.t), 2026-09-14.
+Last updated: after the checker evaluation budget, 2026-09-14.
 
 ---
 
@@ -41,6 +41,17 @@ Last updated: after the macro-model implementation run (hygiene, open choices, d
   `open (import "std")` itself. Prelude *values* still reach a module through the
   importer's elaboration context; see
   [imported module elaboration context](wayfinder/tickets/imported-module-elaboration-context.md).
+
+### Checker evaluation budget (2026-09-14)
+- Every evaluation the checker asks for spends from one call budget
+  (`Eval_budget`, 1,000,000 calls per request, no surface syntax to raise it);
+  running out is `ElabError EvaluationBudgetExceeded`, not a hang.
+- A fixpoint unfolds at check time only on a closed argument; a call mentioning
+  an unknown variable stays stuck (`HFix` neutral) and costs nothing.
+- Running a program (`Ctx.run`, the REPL) is unbudgeted. Macro applications do
+  not spend from the budget yet
+  ([macro-fuel-is-the-evaluation-budget](wayfinder/tickets/macro-fuel-is-the-evaluation-budget.md)).
+  See [checker-evaluation-budget](wayfinder/tickets/checker-evaluation-budget.md).
 
 ### Macro model enforcement and one IR (2026-09-14)
 - **One IR.** `Surface.t` and lowering are deleted; the elaborator reads expanded
