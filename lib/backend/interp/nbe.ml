@@ -28,18 +28,6 @@ let push_opened_values env entries =
       | _ -> e)
     env entries
 
-(* How many environment entries a pattern binds (an or-pattern's sides bind
-   alike). *)
-let rec pat_binder_count = function
-  | CPatBind -> 1
-  | CPatWild | CPatAtom _ | CPatType _ -> 0
-  | CPatSyn { rhs; _ } -> pat_binder_count rhs
-  | CPatOr (lhs, _) -> pat_binder_count lhs
-  | CPatProd pats | CPatCon (_, _, pats) | CPatNominalHead { param_pats = pats; _ } ->
-      List.fold_left (fun n p -> n + pat_binder_count p) 0 pats
-  | CPatRecord { fields; _ } | CPatStructType { fields; _ } ->
-      List.fold_left (fun n (_, p) -> n + pat_binder_count p) 0 fields
-
 (* The slots of its environment a closure body reads, given the [binders] its
    application pushes first. [None] when the body extends its environment by
    an amount only evaluation reveals (an [open]). Over-approximates: a term
@@ -47,7 +35,6 @@ let rec pat_binder_count = function
 let closure_slots ~binders (body : term) : int list option =
   let slots = ref [] in
   let rec go d t =
-    let all = List.for_all (go d) in
     match t with
     | Var ix ->
         if ix >= d then slots := (ix - d) :: !slots;
@@ -56,53 +43,10 @@ let closure_slots ~binders (body : term) : int list option =
         (* The meta is applied to every bound entry of the environment. *)
         List.iteri (fun j bd -> if bd = Bound && j >= d then slots := (j - d) :: !slots) bds;
         true
-    | Lam b | Fix b -> go (d + 1) b
-    | Ap (f, _, a) -> go d f && go d a
-    | Let (ty, def, body) -> go d ty && go d def && go (d + 1) body
-    | Pi { domain; effects; codomain; _ } ->
-        go d domain && effect_row (d + 1) effects && go (d + 1) codomain
-    | EffectRowLit row -> effect_row d row
-    | Prod ts | ProdTy ts | SelfTypeRef ts | NomRef { params = ts; _ } | EffectRef (_, ts) -> all ts
-    | RefTy a | RefNew a | RefGet a | Proj (a, _) | Dot (a, _) -> go d a
-    | RefSet (a, b) | Perform { eff = a; arg = b; _ } -> go d a && go d b
-    | Quote { holes; _ } -> all (List.map snd holes)
-    | RecordConstruct { typ; fields } -> go d typ && all (List.map snd fields)
-    | TraitDictTy { args; fields; _ } -> all args && all (List.map snd fields)
-    | Ctor { spine; nominal_spine; _ } -> all spine && all nominal_spine
-    | Module { bindings } -> binding_list d bindings
-    | Struct { con_fields; bindings; _ } -> all (List.map snd con_fields) && binding_list d bindings
-    | Match (scrut, branches) ->
-        go d scrut
-        && List.for_all
-             (function
-               | ValueBranch (pat, body) -> go (d + pat_binder_count pat) body
-               | EffectBranch { arg_pat; body; _ } -> go (d + 1 + pat_binder_count arg_pat) body)
-             branches
-    | NominalDef { num_params; ctors; body; _ } ->
-        List.for_all (fun (_, payloads) -> List.for_all (go (d + num_params)) payloads) ctors
-        && go (d + num_params + 1 + (if num_params > 0 then 1 else 0) + List.length ctors) body
-    | EffectDef { num_params; ops; body; _ } ->
-        List.for_all (fun (_, input, output) -> go (d + num_params) input && go (d + num_params) output) ops
-        && go (d + 1) body
-    | Open _ -> false
-    | U | EffectRowTy | Atom _ | AtomTy _ | Prim _ | Meta _ | TraitRef _ | Stx _ | Imported _ -> true
-  and effect_row d (row : effect_row) =
-    List.for_all (go d) row.effects && Option.fold ~none:true ~some:(go d) row.tail
-  and binding_list d = function
-    | [] -> true
-    | OpenBind _ :: _ -> false
-    | b :: rest -> (
-        match Core.binding_slots b with
-        | None -> false
-        | Some bslots ->
-            let d, ok =
-              List.fold_left
-                (fun (d, ok) (sl : Core.slot) ->
-                  let ok = ok && match sl.Core.sl_source with Core.SlotDef t -> go d t | _ -> true in
-                  (d + 1, ok))
-                (d, true) bslots
-            in
-            ok && binding_list d rest)
+    | _ ->
+        List.for_all
+          (fun (under, sub) -> match under with Some n -> go (d + n) sub | None -> false)
+          (Core.subterms t)
   in
   if go binders body then Some !slots else None
 

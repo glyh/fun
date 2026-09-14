@@ -50,6 +50,13 @@ Last updated: after the checker evaluation budget, 2026-09-14.
   an unknown variable stays stuck (`HFix` neutral) and costs nothing. A closure
   argument mentions what the environment slots its body reads hold
   (`Nbe.closure_slots`); a body that opens a module is conservatively not closed.
+- **One binder count per core form.** `Core.map_subterms` states how many
+  environment entries each immediate subterm sits under (`None` where only
+  evaluation knows: an `open`'s body, bindings after an `OpenBind`); the
+  closed-term rule, `shift_term`, generalization's closedness check,
+  `term_mentions_var` and the recursive-payload closer all read it. This fixed
+  generalization under match branches and around `perform`
+  ([core-traversals-count-binders-separately](wayfinder/tickets/core-traversals-count-binders-separately.md)).
 - Running a program (`Ctx.run`, the REPL) is unbudgeted.
   See [checker-evaluation-budget](wayfinder/tickets/checker-evaluation-budget.md).
 - **Macro applications are calls under the same budget** (M5). The depth fuel

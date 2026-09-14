@@ -3,8 +3,10 @@ title: Each core-term traversal counts a form's binders on its own
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
-assignee:
+status: closed
+assignee: glyh
+resolution: Live. Instrumented, the only reached disagreement was Elab_generalize.closed_under — constant depth under match branches (a lambda matching with a binder was not generalized, a spurious type error) and a perform's subterms skipped (a lambda capturing an outer binding in a perform was generalized, shifting its indices onto the wrong entries: a runtime "perform target is not an effect"). Fixed by one definition, Core.map_subterms (each immediate subterm with the entries it sits under, None where only evaluation knows), read by Nbe.closure_slots, Elab_defs.shift_term, Elab_generalize.closed_under, Elab_refine.term_mentions_var and the payload closer. Binding lists are now tracked through Core.binding_slots, retiring binding_list_depth_is_tracked. Nbe.eval stays the ground truth it restates.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

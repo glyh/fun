@@ -13,69 +13,12 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
      shifting those captured de Bruijn indices under the inserted binders. *)
   let rec closed_under depth = function
     | Var ix -> ix < depth
-    | Lam body -> closed_under (depth + 1) body
-    | Ap (f, _, a) -> closed_under depth f && closed_under depth a
-    | Let (ty, def, body) -> closed_under depth ty && closed_under depth def && closed_under (depth + 1) body
-    | Pi { domain; effects; codomain; _ } ->
-        closed_under depth domain
-        && List.for_all (closed_under (depth + 1)) effects.effects
-        && Option.fold ~none:true ~some:(closed_under (depth + 1)) effects.tail
-        && closed_under (depth + 1) codomain
-    | Prod elems | ProdTy elems -> List.for_all (closed_under depth) elems
-    | EffectRowTy -> true
-    | EffectRowLit row ->
-        List.for_all (closed_under depth) row.effects
-        && Option.fold ~none:true ~some:(closed_under depth) row.tail
-    | RefTy a | RefNew a | RefGet a -> closed_under depth a
-    | RefSet (r, e) -> closed_under depth r && closed_under depth e
-    | Proj (e, _) | Dot (e, _) -> closed_under depth e
-    | RecordConstruct { typ; fields } -> closed_under depth typ && List.for_all (fun (_, value) -> closed_under depth value) fields
-    | Open (s, body) -> closed_under depth s && closed_under depth body
-    | Fix body -> closed_under (depth + 1) body
-    | NomRef { params; _ } | EffectRef (_, params) -> List.for_all (closed_under depth) params
-    | TraitDictTy { args; fields; _ } ->
-        List.for_all (closed_under depth) args && List.for_all (fun (_, value) -> closed_under depth value) fields
-    | SelfTypeRef args -> List.for_all (closed_under depth) args
-    | Ctor { spine; nominal_spine; _ } ->
-        List.for_all (closed_under depth) spine && List.for_all (closed_under depth) nominal_spine
-    | Match (scrut, branches) ->
-        closed_under depth scrut
-        && List.for_all
-             (function
-               | ValueBranch (_, body) -> closed_under depth body
-               | EffectBranch { body; _ } -> closed_under depth body)
-             branches
-    | NominalDef { ctors; body; _ } ->
-        List.for_all (fun (_, payloads) -> List.for_all (closed_under depth) payloads) ctors && closed_under depth body
-    | EffectDef { ops; body; _ } ->
-        List.for_all (fun (_, input, output) -> closed_under depth input && closed_under depth output) ops && closed_under depth body
-    (* Same constant-cutoff problem as [Elab_defs.shift_term], but this one is a
-       predicate, so it has a safe answer rather than needing to fail: a term
-       whose binder depths we cannot track is not KNOWN to be closed. Saying so
-       only declines the generalization below, which is always sound. *)
-    | Module { bindings } when not (Elab_defs.binding_list_depth_is_tracked bindings) ->
-        false
-    | Struct { bindings; _ } when not (Elab_defs.binding_list_depth_is_tracked bindings) ->
-        false
-    | Module { bindings } ->
+    | term ->
+        (* An unknown binder count cannot be KNOWN closed; declining the
+           generalization below is always sound. *)
         List.for_all
-          (function
-            | LetBind (_, _, value) -> closed_under depth value
-            | ImplBind (_, _, value, _) -> closed_under depth value
-            | OpenBind value -> closed_under depth value
-            | TypeBind _ | EffectBind _ | PatternSynBind _ -> true)
-          bindings
-    | Struct { con_fields; bindings; _ } ->
-        List.for_all (fun (_, ty) -> closed_under depth ty) con_fields
-        && List.for_all
-             (function
-               | LetBind (_, _, value) -> closed_under depth value
-               | ImplBind (_, _, value, _) -> closed_under depth value
-               | OpenBind value -> closed_under depth value
-               | TypeBind _ | EffectBind _ | PatternSynBind _ -> true)
-             bindings
-    | Quote { holes; _ } -> List.for_all (fun (_, h) -> closed_under depth h) holes
-    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | TraitRef _ | Perform _ | Stx _ | Imported _ -> true
+          (fun (under, sub) -> match under with Some n -> closed_under (depth + n) sub | None -> false)
+          (subterms term)
   in
   let has_bound = List.exists (fun bd -> bd = Bound) ctx.bds in
   let eligible = match val_core with

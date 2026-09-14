@@ -1626,9 +1626,25 @@ let path_heads =
       (eval_i64 "do type O(X) = N | S(X); h = fn(G : O(I64) -> Type, v : G(N)) -> do z = v; 1 end; h(fn(o : O(I64)) -> I64, 5) end" 1L);
   ]
 
+(* Every de Bruijn traversal reads a form's binder count from
+   [Core.map_subterms]. Generalization's closedness check used to hold the
+   depth constant under match branches (declining to generalize) and skip a
+   perform's subterms (generalizing a lambda that captures, shifting its
+   indices onto the wrong entries). *)
+let binder_counts =
+  [
+    Alcotest.test_case "a lambda matching with a binder generalizes" `Quick
+      (eval_i64 "do f = fn(x) -> match x do y -> x end; do _ = f(True); f(1) end end" 1L);
+    Alcotest.test_case "a lambda with a multi-binding module generalizes" `Quick
+      (eval_i64 "do f = fn(x) -> (module pub a = 1; pub b = x end).b; do _ = f(True); f(1) end end" 1L);
+    Alcotest.test_case "a perform capturing an outer binding is not generalized" `Quick
+      (eval_i64 "do k = 41; effect E = sig tell : I64 -> I64 end; g = fn(x) -> (fn(u) -> x)(perform E.tell(k)); match g(1) do v -> v | effect E.tell n -> n end end" 41L);
+  ]
+
 let () =
   Alcotest.run "elaborate"
     [
+      ("binder_counts", binder_counts);
       ("evaluation_budget", evaluation_budget);
       ("constants", constants);
       ("type_chains", type_chains);

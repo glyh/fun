@@ -483,6 +483,105 @@ let binding_list_slots bindings =
 let binding_list_width bindings =
   Option.map List.length (binding_list_slots bindings)
 
+(* How many environment entries a pattern binds (an or-pattern's sides bind
+   alike). *)
+let rec pat_binder_count = function
+  | CPatBind -> 1
+  | CPatWild | CPatAtom _ | CPatType _ -> 0
+  | CPatSyn { rhs; _ } -> pat_binder_count rhs
+  | CPatOr (lhs, _) -> pat_binder_count lhs
+  | CPatProd pats | CPatCon (_, _, pats) | CPatNominalHead { param_pats = pats; _ } ->
+      List.fold_left (fun n p -> n + pat_binder_count p) 0 pats
+  | CPatRecord { fields; _ } | CPatStructType { fields; _ } ->
+      List.fold_left (fun n (_, p) -> n + pat_binder_count p) 0 fields
+
+(** Rebuild a term with [f under sub] applied to each immediate subterm [sub],
+    where [under] is how many environment entries the evaluator has pushed
+    between the term and that subterm: [Some n], or [None] when the count is
+    known only by evaluating (an [open]'s body, bindings after an [OpenBind]).
+    This is the one statement of each form's binder count; [Nbe.eval] is what it
+    restates, and every de Bruijn traversal reads it instead of its own copy.
+    [Var] and the leaves are returned unchanged. *)
+let map_subterms (f : int option -> term -> term) (t : term) : term =
+  let at n = f (Some n) in
+  let row n (r : effect_row) = { effects = List.map (at n) r.effects; tail = Option.map (at n) r.tail } in
+  let bindings bs =
+    let step (under, acc) b =
+      let g = f under in
+      let b' =
+        match b with
+        | LetBind (name, kind, def) -> LetBind (name, kind, g def)
+        | ImplBind (name, kind, def, ty) -> ImplBind (name, kind, g def, ty)
+        | OpenBind def -> OpenBind (g def)
+        | TypeBind _ | EffectBind _ | PatternSynBind _ -> b
+      in
+      let width = Option.map List.length (binding_slots b) in
+      ((match (under, width) with Some u, Some w -> Some (u + w) | _ -> None), b' :: acc)
+    in
+    List.rev (snd (List.fold_left step (Some 0, []) bs))
+  in
+  match t with
+  | Var _ | Atom _ | AtomTy _ | U | EffectRowTy | Prim _ | Meta _ | InsertedMeta _ | TraitRef _ | Stx _
+  | Imported _ ->
+      t
+  | Lam body -> Lam (at 1 body)
+  | Fix body -> Fix (at 1 body)
+  | Ap (fn, expl, arg) -> Ap (at 0 fn, expl, at 0 arg)
+  | Let (ty, def, body) -> Let (at 0 ty, at 0 def, at 1 body)
+  | Pi { explicitness; domain; effects; codomain } ->
+      Pi { explicitness; domain = at 0 domain; effects = row 1 effects; codomain = at 1 codomain }
+  | EffectRowLit r -> EffectRowLit (row 0 r)
+  | Prod ts -> Prod (List.map (at 0) ts)
+  | ProdTy ts -> ProdTy (List.map (at 0) ts)
+  | SelfTypeRef ts -> SelfTypeRef (List.map (at 0) ts)
+  | NomRef n -> NomRef { n with params = List.map (at 0) n.params }
+  | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
+  | RefTy a -> RefTy (at 0 a)
+  | RefNew a -> RefNew (at 0 a)
+  | RefGet a -> RefGet (at 0 a)
+  | RefSet (r, v) -> RefSet (at 0 r, at 0 v)
+  | Proj (a, i) -> Proj (at 0 a, i)
+  | Dot (a, field) -> Dot (at 0 a, field)
+  | Perform p -> Perform { p with eff = at 0 p.eff; arg = at 0 p.arg }
+  | Quote q -> Quote { q with holes = List.map (fun (n, h) -> (n, at 0 h)) q.holes }
+  | RecordConstruct { typ; fields } ->
+      RecordConstruct { typ = at 0 typ; fields = List.map (fun (n, v) -> (n, at 0 v)) fields }
+  | TraitDictTy d ->
+      TraitDictTy { d with args = List.map (at 0) d.args; fields = List.map (fun (n, v) -> (n, at 0 v)) d.fields }
+  | Ctor c -> Ctor { c with spine = List.map (at 0) c.spine; nominal_spine = List.map (at 0) c.nominal_spine }
+  | Open (s, body) -> Open (at 0 s, f None body)
+  | Module { bindings = bs } -> Module { bindings = bindings bs }
+  | Struct s ->
+      Struct { s with con_fields = List.map (fun (n, ty) -> (n, at 0 ty)) s.con_fields; bindings = bindings s.bindings }
+  | Match (scrut, branches) ->
+      let branch = function
+        | ValueBranch (pat, body) -> ValueBranch (pat, at (pat_binder_count pat) body)
+        | EffectBranch e ->
+            (* the continuation, then the argument pattern's binders *)
+            EffectBranch { e with body = at (1 + pat_binder_count e.arg_pat) e.body }
+      in
+      Match (at 0 scrut, List.map branch branches)
+  | NominalDef d ->
+      (* parameters, the nominal, its type-name entry when parameterised, then
+         one entry per constructor *)
+      let body_under = d.num_params + 1 + (if d.num_params > 0 then 1 else 0) + List.length d.ctors in
+      NominalDef
+        { d with
+          ctors = List.map (fun (c, payloads) -> (c, List.map (at d.num_params) payloads)) d.ctors;
+          body = at body_under d.body }
+  | EffectDef d ->
+      EffectDef
+        { d with
+          ops = List.map (fun (op, input, output) -> (op, at d.num_params input, at d.num_params output)) d.ops;
+          body = at 1 d.body }
+
+(** The immediate subterms of a term, each with the entries it sits under (see
+    [map_subterms]). *)
+let subterms (t : term) : (int option * term) list =
+  let acc = ref [] in
+  ignore (map_subterms (fun under sub -> acc := (under, sub) :: !acc; sub) t);
+  List.rev !acc
+
 (* A named impl is also a member: [M.eq_C] denotes it. Anonymous impls are not
    reachable this way and stay available only through [open]. The type view of a
    module and its value view both carry (type, value) on an impl entry, so which

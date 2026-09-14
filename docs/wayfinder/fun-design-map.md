@@ -417,7 +417,7 @@ What remains, in the recommended order:
   (closed) — the evaluator fails through one helper that raises the running
   application's error, so a `panic` in a macro body carries the operator span.
 - [Each core-term traversal counts binders on its own](tickets/core-traversals-count-binders-separately.md)
-  — `closure_slots` and `shift_term` disagree on match branches and definitions; one definition in `Core`.
+  (closed) — live in generalization's closedness check; every traversal now reads `Core.map_subterms`.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
   — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 

@@ -162,96 +162,24 @@ let elaborate_eff_family ops (ctx : Ctx.t) (name : string) (params : string list
   in
   (effect_id, eff, eff_ty, elaborated_ops)
 
-(* A [Module]/[Struct] binding list is walked with the de Bruijn cutoff held
-   CONSTANT, but every binding extends the environment - one entry per
-   [LetBind]/[ImplBind]/[PatternSynBind], several per [TypeBind], and for
-   [OpenBind] a count that is not recoverable from the term at all (it is the
-   number of public fields of a module the traversal would have to evaluate).
-   So a [Var] in the k-th binding is shifted as though no earlier binding had
-   bound anything.
-
-   That is harmless only while a list holds at most one binding, since nothing
-   then follows the binding that widens the environment. Instrumenting all four
-   of these cases and running the whole suite produced no hits at all, so the
-   general case has never arisen. Rather than leave arithmetic that reads as if
-   it handled it, refuse it loudly - a wrong index here yields a silently wrong
-   value, not a type error.
-   See docs/wayfinder/tickets/core-traversals-ignore-binding-list-depth.md. *)
-let binding_list_depth_is_tracked bindings =
-  match bindings with [] | [ _ ] -> true | _ -> false
-
-let reject_untracked_binding_list where =
-  failwith
-    (where
-     ^ ": binding list with more than one binding, where each binding widens         the environment but this traversal holds the de Bruijn cutoff constant         (see core-traversals-ignore-binding-list-depth)")
+(* A term transformer cannot rewrite indices under a subterm whose binder count
+   only evaluation reveals ([Core.map_subterms] gives it [None]: an [open]'s
+   body, bindings after an [OpenBind]); a guessed count would yield a silently
+   wrong value rather than a type error, so refuse it loudly.
+   See docs/wayfinder/tickets/core-traversals-count-binders-separately.md. *)
+let reject_unknown_binder_count where =
+  failwith (where ^ ": subterm under a binder count known only by evaluation (an open)")
 
 let rec shift_term amount cutoff term =
-  let shift = shift_term amount in
   match term with
   | Var ix when ix >= cutoff -> Var (ix + amount)
-  | Var _ | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | TraitRef _ | Stx _ | Imported _ -> term
-  | Quote { template; holes } -> Quote { template; holes = List.map (fun (n, h) -> (n, shift cutoff h)) holes }
-  | Lam body -> Lam (shift (cutoff + 1) body)
-  | Ap (f, expl, a) -> Ap (shift cutoff f, expl, shift cutoff a)
-  | Let (ty, def, body) -> Let (shift cutoff ty, shift cutoff def, shift (cutoff + 1) body)
-  | Pi { explicitness; domain; effects; codomain } ->
-      Pi
-        { explicitness;
-          domain = shift cutoff domain;
-          effects = { effects = List.map (shift (cutoff + 1)) effects.effects; tail = Option.map (shift (cutoff + 1)) effects.tail };
-          codomain = shift (cutoff + 1) codomain }
-  | Prod elems -> Prod (List.map (shift cutoff) elems)
-  | ProdTy elems -> ProdTy (List.map (shift cutoff) elems)
-  | EffectRowTy -> EffectRowTy
-  | EffectRowLit row -> EffectRowLit { effects = List.map (shift cutoff) row.effects; tail = Option.map (shift cutoff) row.tail }
-  | RefTy a -> RefTy (shift cutoff a)
-  | RefNew a -> RefNew (shift cutoff a)
-  | RefGet a -> RefGet (shift cutoff a)
-  | RefSet (r, e) -> RefSet (shift cutoff r, shift cutoff e)
-  | Proj (e, i) -> Proj (shift cutoff e, i)
-  | Dot (e, field) -> Dot (shift cutoff e, field)
-  | RecordConstruct { typ; fields } ->
-      RecordConstruct { typ = shift cutoff typ; fields = List.map (fun (field, value) -> (field, shift cutoff value)) fields }
-  | Open (s, body) -> Open (shift cutoff s, shift cutoff body)
-  | Fix body -> Fix (shift (cutoff + 1) body)
-  | NomRef n -> NomRef { n with params = List.map (shift cutoff) n.params }
-  | EffectRef (name, params) -> EffectRef (name, List.map (shift cutoff) params)
-  | TraitDictTy { trait_id; trait_name; args; fields } ->
-      TraitDictTy { trait_id; trait_name; args = List.map (shift cutoff) args; fields = List.map (fun (name, value) -> (name, shift cutoff value)) fields }
-  | SelfTypeRef args -> SelfTypeRef (List.map (shift cutoff) args)
-  | Ctor { name; spine; nominal_name; nominal_spine; nominal_value = nv } ->
-      Ctor { name; spine = List.map (shift cutoff) spine; nominal_name; nominal_spine = List.map (shift cutoff) nominal_spine; nominal_value = nv }
-  | Match (scrut, branches) ->
-      let branch = function
-        | ValueBranch (pat, body) -> ValueBranch (pat, shift cutoff body)
-        | EffectBranch { eff; op; arg_pat; body } -> EffectBranch { eff; op; arg_pat; body = shift cutoff body }
-      in
-      Match (shift cutoff scrut, List.map branch branches)
-  | NominalDef { id; name; num_params; ctors; body } ->
-      NominalDef { id; name; num_params; ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (shift cutoff) payloads)) ctors; body = shift cutoff body }
-  | EffectDef { id; name; num_params; ops; body } ->
-      EffectDef { id; name; num_params; ops = List.map (fun (op, input, output) -> (op, shift cutoff input, shift cutoff output)) ops; body = shift cutoff body }
-  | Perform { eff; op; arg } -> Perform { eff = shift cutoff eff; op; arg = shift cutoff arg }
-  | Module { bindings } ->
-      if not (binding_list_depth_is_tracked bindings) then
-        reject_untracked_binding_list "shift_term";
-      let binding = function
-        | LetBind (field, kind, value) -> LetBind (field, kind, shift cutoff value)
-        | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, shift cutoff value, ty)
-        | OpenBind value -> OpenBind (shift cutoff value)
-        | TypeBind _ | EffectBind _ | PatternSynBind _ as binding -> binding
-      in
-      Module { bindings = List.map binding bindings }
-  | Struct { con_fields; bindings; partial } ->
-      if not (binding_list_depth_is_tracked bindings) then
-        reject_untracked_binding_list "shift_term";
-      let binding = function
-        | LetBind (field, kind, value) -> LetBind (field, kind, shift cutoff value)
-        | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, shift cutoff value, ty)
-        | OpenBind value -> OpenBind (shift cutoff value)
-        | TypeBind _ | EffectBind _ | PatternSynBind _ as binding -> binding
-      in
-      Struct { con_fields = List.map (fun (field, ty) -> (field, shift cutoff ty)) con_fields; bindings = List.map binding bindings; partial }
+  | _ ->
+      map_subterms
+        (fun under sub ->
+          match under with
+          | Some n -> shift_term amount (cutoff + n) sub
+          | None -> reject_unknown_binder_count "shift_term")
+        term
 
 (** Build a constructor's VLam chain + VPi type from type params and payloads.
     Payload closures have bodies whose de Bruijn indices 0..num_params-1

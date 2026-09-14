@@ -6,68 +6,14 @@ module Ctx = Elab_ctx.Ctx
 
 open Elab_resolve
 
-let term_mentions_var target term =
-  let rec go target = function
-    | Var ix -> ix = target
-    | Lam body | Fix body -> go (target + 1) body
-    | Ap (f, _, a) -> go target f || go target a
-    | Let (ty, def, body) -> go target ty || go target def || go (target + 1) body
-    | Pi { domain; effects; codomain; _ } ->
-        go target domain
-        || List.exists (go (target + 1)) effects.effects
-        || (match effects.tail with Some tail -> go (target + 1) tail | None -> false)
-        || go (target + 1) codomain
-    | Prod elems | ProdTy elems -> List.exists (go target) elems
-    | EffectRowTy -> false
-    | EffectRowLit row ->
-        List.exists (go target) row.effects
-        || Option.fold ~none:false ~some:(go target) row.tail
-    | RefTy a | RefNew a | RefGet a -> go target a
-    | RefSet (r, e) -> go target r || go target e
-    | Proj (e, _) | Dot (e, _) | Open (e, _) -> go target e
-    | Module { bindings } ->
-        List.exists
-          (function
-            | LetBind (_, _, value) -> go target value
-            | ImplBind (_, _, value, _) -> go target value
-            | OpenBind value -> go target value
-            | TypeBind _ | EffectBind _ | PatternSynBind _ -> false)
-          bindings
-    | Struct { con_fields; bindings; _ } ->
-        List.exists (fun (_, ty) -> go target ty) con_fields
-        || List.exists
-             (function
-               | LetBind (_, _, value) -> go target value
-               | ImplBind (_, _, value, _) -> go target value
-               | OpenBind value -> go target value
-               | TypeBind _ | EffectBind _ | PatternSynBind _ -> false)
-             bindings
-    | RecordConstruct { typ; fields } ->
-        go target typ || List.exists (fun (_, value) -> go target value) fields
-    | NomRef { params; _ } | EffectRef (_, params) -> List.exists (go target) params
-    | TraitRef _ -> false
-    | TraitDictTy { args; fields; _ } ->
-        List.exists (go target) args || List.exists (fun (_, value) -> go target value) fields
-    | SelfTypeRef args -> List.exists (go target) args
-    | Ctor { spine; nominal_spine; _ } ->
-        List.exists (go target) spine || List.exists (go target) nominal_spine
-    | Match (scrut, branches) ->
-        go target scrut
-        || List.exists
-             (function
-               | ValueBranch (_, body) -> go target body
-               | EffectBranch { body; _ } -> go target body)
-             branches
-    | NominalDef { ctors; body; _ } ->
-        List.exists (fun (_, payloads) -> List.exists (go target) payloads) ctors || go target body
-    | EffectDef { ops; body; _ } ->
-        List.exists (fun (_, input, output) -> go target input || go target output) ops || go target body
-    | Perform { eff; arg; _ } -> go target eff || go target arg
-    | Quote { holes; _ } -> List.exists (fun (_, h) -> go target h) holes
-    | Stx _ | Imported _ -> false
-    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ -> false
-  in
-  go target term
+(* Whether [term] may mention [Var target]; under a binder count only
+   evaluation reveals, it may. *)
+let rec term_mentions_var target = function
+  | Var ix -> ix = target
+  | term ->
+      List.exists
+        (fun (under, sub) -> match under with Some n -> term_mentions_var (target + n) sub | None -> true)
+        (subterms term)
 
 let rec subst_value_var (mc : MetaContext.t) (target : lvl) (replacement : value) (v : value) : value =
   match Nbe.force mc v with
@@ -191,89 +137,13 @@ let close_recursive_payload_group members =
             NomRef { id; name; params = List.init num_params (fun i -> Var (num_params - 1 - i)) }
         | Var ix when ix >= cutoff + width -> Var (ix - width)
         | Var ix -> Var ix
-        | Lam body -> Lam (go (cutoff + 1) body)
-        | Ap (f, expl, a) -> Ap (go cutoff f, expl, go cutoff a)
-        | Let (ty, def, body) -> Let (go cutoff ty, go cutoff def, go (cutoff + 1) body)
-        | Pi { explicitness; domain; effects; codomain } ->
-            Pi
-              { explicitness;
-                domain = go cutoff domain;
-                effects =
-                  { effects = List.map (go (cutoff + 1)) effects.effects;
-                    tail = Option.map (go (cutoff + 1)) effects.tail };
-                codomain = go (cutoff + 1) codomain }
-        | Prod elems -> Prod (List.map (go cutoff) elems)
-        | ProdTy elems -> ProdTy (List.map (go cutoff) elems)
-        | EffectRowTy -> EffectRowTy
-        | EffectRowLit row ->
-            EffectRowLit
-              { effects = List.map (go cutoff) row.effects;
-                tail = Option.map (go cutoff) row.tail }
-        | RefTy a -> RefTy (go cutoff a)
-        | RefNew e -> RefNew (go cutoff e)
-        | RefGet e -> RefGet (go cutoff e)
-        | RefSet (r, e) -> RefSet (go cutoff r, go cutoff e)
-        | Proj (e, i) -> Proj (go cutoff e, i)
-        | Dot (e, field) -> Dot (go cutoff e, field)
-        | Module { bindings } ->
-            if not (Elab_defs.binding_list_depth_is_tracked bindings) then
-              Elab_defs.reject_untracked_binding_list "close_recursive_payload_group";
-            let binding = function
-              | LetBind (field, kind, value) -> LetBind (field, kind, go cutoff value)
-              | TypeBind (field, kind, nominal, ctors) -> TypeBind (field, kind, nominal, ctors)
-              | EffectBind (field, kind, eff) -> EffectBind (field, kind, eff)
-              | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, go cutoff value, ty)
-              | PatternSynBind (field, kind, syn) -> PatternSynBind (field, kind, syn)
-              | OpenBind value -> OpenBind (go cutoff value)
-            in
-            Module { bindings = List.map binding bindings }
-        | Struct { con_fields; bindings; partial } ->
-            let con_fields = List.map (fun (field, ty) -> (field, go cutoff ty)) con_fields in
-            let binding = function
-              | LetBind (field, kind, value) -> LetBind (field, kind, go cutoff value)
-              | TypeBind (field, kind, nominal, ctors) -> TypeBind (field, kind, nominal, ctors)
-              | EffectBind (field, kind, eff) -> EffectBind (field, kind, eff)
-              | ImplBind (name, kind, value, ty) -> ImplBind (name, kind, go cutoff value, ty)
-              | PatternSynBind (field, kind, syn) -> PatternSynBind (field, kind, syn)
-              | OpenBind value -> OpenBind (go cutoff value)
-            in
-            Struct { con_fields; bindings = List.map binding bindings; partial }
-        | RecordConstruct { typ; fields } ->
-            RecordConstruct { typ = go cutoff typ; fields = List.map (fun (field, value) -> (field, go cutoff value)) fields }
-        | Open (s, body) -> Open (go cutoff s, go cutoff body)
-        | Fix body -> Fix (go (cutoff + 1) body)
-        | NomRef n -> NomRef { n with params = List.map (go cutoff) n.params }
-        | EffectRef (name, params) -> EffectRef (name, List.map (go cutoff) params)
-        | TraitRef _ as term -> term
-        | TraitDictTy { trait_id; trait_name; args; fields } ->
-            TraitDictTy
-              { trait_id;
-                trait_name;
-                args = List.map (go cutoff) args;
-                fields = List.map (fun (name, value) -> (name, go cutoff value)) fields }
-        | SelfTypeRef args -> SelfTypeRef (List.map (go cutoff) args)
-        | Ctor { name; spine; nominal_name; nominal_spine; nominal_value = nv } ->
-            Ctor { name; spine = List.map (go cutoff) spine; nominal_name; nominal_spine = List.map (go cutoff) nominal_spine; nominal_value = nv }
-        | Match (scrut, branches) ->
-            let go_branch = function
-              | ValueBranch (pat, body) -> ValueBranch (pat, go cutoff body)
-              | EffectBranch { eff; op; arg_pat; body } ->
-                  EffectBranch { eff; op; arg_pat; body = go cutoff body }
-            in
-            Match (go cutoff scrut, List.map go_branch branches)
-        | NominalDef { id; name; num_params; ctors; body } ->
-            NominalDef
-              { id; name; num_params;
-                ctors = List.map (fun (ctor, payloads) -> (ctor, List.map (go cutoff) payloads)) ctors;
-                body = go cutoff body }
-        | EffectDef { id; name; num_params; ops; body } ->
-            EffectDef
-              { id; name; num_params;
-                ops = List.map (fun (op, input, output) -> (op, go cutoff input, go cutoff output)) ops;
-                body = go cutoff body }
-        | Perform { eff; op; arg } -> Perform { eff = go cutoff eff; op; arg = go cutoff arg }
-        | Quote { template; holes } -> Quote { template; holes = List.map (fun (n, h) -> (n, go cutoff h)) holes }
-        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Stx _ | Imported _ as term -> term)
+        | _ ->
+            map_subterms
+              (fun under sub ->
+                match under with
+                | Some n -> go (cutoff + n) sub
+                | None -> Elab_defs.reject_unknown_binder_count "close_recursive_payload_group")
+              term)
   in
   go 0
 
