@@ -84,7 +84,7 @@ let closure_slots ~binders (body : term) : int list option =
         List.for_all (fun (_, input, output) -> go (d + num_params) input && go (d + num_params) output) ops
         && go (d + 1) body
     | Open _ -> false
-    | U | EffectRowTy | Atom _ | AtomTy _ | Prim _ | Con _ | Meta _ | TraitRef _ | Stx _ | Imported _ -> true
+    | U | EffectRowTy | Atom _ | AtomTy _ | Prim _ | Meta _ | TraitRef _ | Stx _ | Imported _ -> true
   and effect_row d (row : effect_row) =
     List.for_all (go d) row.effects && Option.fold ~none:true ~some:(go d) row.tail
   and binding_list d = function
@@ -372,7 +372,6 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
               eval_result mc (push_opened_values env entries) body
           | _ -> raise (EvalError "open of non-module"))
   | Fix body -> Done (VFix { body = { env; body } })
-  | Con name -> Done (eval_con env name)
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in
       sequence_values mc env params (fun param_vals ->
@@ -656,22 +655,6 @@ and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
     | _ -> raise (EvalError "bd mask length mismatch")
   in
   go base (List.rev env) (List.rev bds)
-
-(* Scan the environment for a VCon with the given name.
-   Head = most-recently-bound, so first match wins (correct shadowing). *)
-and eval_con (env : env) (name : string) : value =
-  let rec go = function
-    | [] -> raise (EvalError ("unbound constructor/type: " ^ name))
-    | VCon c :: _ when String.equal c.name name -> VCon c
-    | VModule { entries; _ } :: rest ->
-        (let fields = module_entry_fields entries in
-         match List.find_opt (fun (n, k, _v) ->
-           String.equal n name && Nbe_support.visible_kind k) fields with
-         | Some (_, _, v) -> v
-         | None -> go rest)
-    | _ :: rest -> go rest
-  in
-  go env
 
 (* Scan the environment, modules included, for the nominal with this id. *)
 and eval_nominal (env : env) (id : nominal_id) (name : string) : value =

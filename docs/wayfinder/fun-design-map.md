@@ -409,7 +409,7 @@ What remains, in the recommended order:
   (closed) — root cause was `NomRef` finding a nominal by spelling; it now
   carries the nominal id.
 - [A quoted constructor value is re-found by spelling](tickets/quoted-constructor-values-by-spelling.md)
-  — `VCon` quotes to `Con name`; the `NomRef` fix's sibling.
+  (closed) — `Con` deleted; a `VCon` quotes to the `Ctor` term carrying its nominal.
 - [Expansion errors reach the user raw](tickets/expansion-errors-reach-the-user-raw.md)
   (closed) — an overrun inside an application is its `Expand_error` with the
   operator's site; evaluator errors (`panic`, …) in a body still carry no site.

@@ -1618,6 +1618,12 @@ let path_heads =
       (eval_i64 "do M = module pub type E = MkE(I64) end; type A = MkA(M.E); match MkA(M.MkE(4)) do MkA(M.MkE(n)) -> n end end" 4L);
     Alcotest.test_case "an unqualified head nested under a qualified head" `Quick
       (eval_i64 "do type E = MkE(I64); M = module pub type A = MkA(E) end; match M.MkA(MkE(5)) do M.MkA(MkE(n)) -> n end end" 5L);
+    (* A quoted constructor value evaluates back to that constructor: [z]'s
+       let type [G(A(1))] is quoted and evaluated again at run time. *)
+    Alcotest.test_case "a quoted constructor with a payload evaluates" `Quick
+      (eval_i64 "do type T = A(I64) | B; h = fn(G : T -> Type, v : G(A(1))) -> do z = v; 1 end; h(fn(t : T) -> I64, 5) end" 1L);
+    Alcotest.test_case "a quoted constructor of a parametric type evaluates" `Quick
+      (eval_i64 "do type O(X) = N | S(X); h = fn(G : O(I64) -> Type, v : G(N)) -> do z = v; 1 end; h(fn(o : O(I64)) -> I64, 5) end" 1L);
   ]
 
 let () =

@@ -65,7 +65,7 @@ let term_mentions_var target term =
     | Perform { eff; arg; _ } -> go target eff || go target arg
     | Quote { holes; _ } -> List.exists (fun (_, h) -> go target h) holes
     | Stx _ | Imported _ -> false
-    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ -> false
+    | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ -> false
   in
   go target term
 
@@ -273,7 +273,7 @@ let close_recursive_payload_group members =
                 body = go cutoff body }
         | Perform { eff; op; arg } -> Perform { eff = go cutoff eff; op; arg = go cutoff arg }
         | Quote { template; holes } -> Quote { template; holes = List.map (fun (n, h) -> (n, go cutoff h)) holes }
-        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Con _ | Stx _ | Imported _ as term -> term)
+        | Atom _ | AtomTy _ | U | Prim _ | Meta _ | InsertedMeta _ | Stx _ | Imported _ as term -> term)
   in
   go 0
 

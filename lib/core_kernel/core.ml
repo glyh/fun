@@ -45,11 +45,6 @@ and term =
     }
   | Open of term * term            (* open S in body — evaluator extends env with module-view fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
-  | Con of string
-      (** Residual constructor reference in quoted output. Created when
-          [quote] hits a [VCon]. [eval] scans the environment
-          by name for a matching VCon. Like [Meta], never
-          produced by the elaborator. *)
   | NomRef of { id : nominal_id; name : string; params : term list }
       (** Applied nominal type reference. [eval] scans the environment for
           the [VNominal] template with this id (the name is for display only:
@@ -77,14 +72,15 @@ and term =
   | Ctor of {
       name : string;
       spine : term list;           (* type args then payload args *)
-      nominal_name : string;       (* VNominal template name, looked up in env *)
+      nominal_name : string;       (* the template's name, for display *)
       nominal_spine : term list;
     nominal_value : value;   (* type args for the nominal's params *)
     }
       (** Constructor value term. [eval] evaluates spine terms to values,
-          looks up [nominal_name] in env for the VNominal template, applies
-          [nominal_spine] as params, and constructs [VCon]. Used only inside
-          constructor lambda chains; never in surface syntax. *)
+          applies [nominal_spine] as the params of the template [nominal_value]
+          ([nominal_name] is for display), and constructs [VCon]. Built by
+          constructor lambda chains, and by [quote] for a [VCon]: a constructor
+          value carries its nominal, so it is never found again by spelling. *)
   | Meta of meta_id
       (** Residual metavariable in quoted output. Created when [quote] hits an
           unsolved [VFlex]. Used as the head of stuck neutrals

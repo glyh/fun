@@ -3,8 +3,10 @@ title: A quoted constructor value is re-found by spelling
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
+resolution: Fixed — `Con` is deleted. A constructor value quotes (in `Nbe_quote` and in `Unify`'s solution builder, through one `Nbe_quote.con_term`) to the `Ctor` term that builds it, carrying its nominal value and the nominal's params, so evaluation never looks a constructor up — by name or otherwise. `Nbe.eval_con` is gone. The live symptom was worse than shadowing: a quoted constructor with a payload, or of a parametric type, bound outside a module was not found at all (`unbound constructor/type`), because only nullary constructors sit in the environment as `VCon`.
+closed_date: 2026-09-14
 blocked_by:
 ---
 

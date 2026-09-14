@@ -192,10 +192,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             args = List.map (go d) dict.args;
             fields = List.map (fun (name, value) -> (name, go d value)) dict.fields }
     | VSelfType args -> SelfTypeRef (List.map (go d) args)
-    | VCon { name; spine; _ } ->
-        let spine_terms = List.map (go d) spine in
-        List.fold_left (fun acc t -> Ap (acc, Explicit, t))
-          (Con name) spine_terms
+    | VCon { name; spine; nominal } -> Nbe_quote.con_term (go d) name spine nominal
     | VFix { body = clo; _ } ->
         let var = VRigid { lvl = d; spine = [] } in
         Fix (go (d + 1) (Nbe.closure_apply mc clo var))

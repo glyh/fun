@@ -37,7 +37,6 @@ and pp_term (t : term) : string =
   | TraitDictTy { trait_name; args; _ } ->
       Printf.sprintf "TraitDictTy(%s, [%s])" trait_name (String.concat "," (List.map pp_term args))
   | SelfTypeRef args -> Printf.sprintf "SelfTypeRef([%s])" (String.concat "," (List.map pp_term args))
-  | Con name -> Printf.sprintf "Con(%s)" name
   | Ctor { name; nominal_name; _ } -> Printf.sprintf "Ctor(%s/%s)" name nominal_name
   | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
   | Perform { eff; op; arg } ->
