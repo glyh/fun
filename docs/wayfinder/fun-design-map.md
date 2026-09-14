@@ -305,7 +305,11 @@ order.
 
 [Port `core_tt` to .NET (F#/C#)](tickets/port-core-tt-to-dotnet.md) is the
 destination; it is **blocked** until the model exists and the defects a port
-would faithfully reproduce are gone. A port carries code, not invariants — and
+would faithfully reproduce are gone. **Blockers extended 2026-09-14:** the decided
+effect semantics, the `Self`-identity soundness hole and record knot, the open
+semantic questions, and M9's last distance — plus a stability signal (runs that
+land without reopening decisions) and two decisions made at port start (no
+native-stack recursion in the evaluator; F# vs C#). A port carries code, not invariants — and
 every defect below is an invariant with no name in the source.
 
 - [Domain model for `core_tt` before the port](tickets/domain-model-core-tt.md)

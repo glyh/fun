@@ -14,6 +14,17 @@ blocked_by:
   - constructor-lookup-matches-type-name.md
   - core-traversals-ignore-binding-list-depth.md
   - struct-open-does-not-scope-over-con-fields.md
+  - templates-desugar-to-macros.md
+  - bare-arrow-is-pure.md
+  - refs-in-effect-rows.md
+  - nominal-identity-applicative-by-purity.md
+  - handlers-tunnel-callback-effects.md
+  - self-type-has-no-identity.md
+  - recursive-records-cannot-hold-a-record.md
+  - mutually-recursive-record-types.md
+  - recursive-definitions-stuck-on-open-arguments.md
+  - pattern-head-accepts-type-formers.md
+  - macro-annotation-constraints-mean-nothing.md
 ---
 
 # Port `core_tt` to .NET (F#/C#)
@@ -61,9 +72,52 @@ vocabulary.
 - [struct open does not scope over `con_fields`](struct-open-does-not-scope-over-con-fields.md)
   — settle the rule before the struct elaborator is written a second time
 
-Explicitly **not** blocking: diagnostics polish (deliberately deferred to
-post-rewrite), enforester combinator work, the IR-layer-count question — the
-last is worth resolving *during* the port design, not before it.
+**Blockers added 2026-09-14** — the language is still moving, and a port carries
+the design as it stands the day it starts. These change meaning, not code shape,
+so each is cheaper to settle in the prototype than to re-port:
+
+- **Type-system semantics** (decided, unimplemented) — they change what a type
+  means for every program, through every elaborator and unifier path:
+  [a bare arrow is pure](bare-arrow-is-pure.md),
+  [refs in effect rows](refs-in-effect-rows.md),
+  [nominal identity by purity](nominal-identity-applicative-by-purity.md),
+  [handlers tunnel callback effects](handlers-tunnel-callback-effects.md).
+- **The known soundness hole and the knot it depends on** —
+  [`Self` has no identity](self-type-has-no-identity.md) (unrelated recursive
+  records unify), [recursive records cannot hold a record](recursive-records-cannot-hold-a-record.md),
+  [mutually recursive record types](mutually-recursive-record-types.md).
+- **Open semantic questions** (grilling) —
+  [recursive definitions stuck on open arguments](recursive-definitions-stuck-on-open-arguments.md),
+  [pattern heads accept type formers](pattern-head-accepts-type-formers.md),
+  [what a macro annotation constraint means](macro-annotation-constraints-mean-nothing.md),
+  alongside the existing struct-open blocker.
+- **The macro model's last distance** —
+  [templates desugar to macros](templates-desugar-to-macros.md) ("Left":
+  procedural macro parameter kinds, token-position quote holes).
+
+**Readiness is also a stability signal, not only a closed list:** start when a
+few implementation runs in a row land without reopening a decision. The M7/M9
+run revised two decisions mid-implementation (generated syntax is hygienic;
+quotes parse at definition).
+
+**Decide at the start of the port, not before:**
+
+- **The evaluator does not recurse on the native stack per object-level call.**
+  In OCaml 5 that is O(N²) through stack scanning
+  ([deep non-tail recursion](deep-non-tail-recursion-is-superlinear.md)); on the
+  CLR's default 1 MB stack it is a crash. CPS/trampolining for effects already
+  points there.
+- **F# or C#** (above) — C# has been the working assumption in conversation;
+  confirm it deliberately against F#'s near-transliteration of the elaborator
+  and NbE.
+
+Explicitly **not** blocking: diagnostics polish and error spans (deliberately
+deferred to post-rewrite), enforester combinator work, the IR-layer-count
+question (worth resolving *during* the port design), prototype performance
+hotspots ([type-case refinement](type-case-refinement-walks-whole-context.md)),
+the [role visibility gaps](role-visibility-gaps-after-m7.md) and
+[capture extents by exceptions](capture-extents-chosen-by-exceptions.md) —
+implementation defects the port redesigns rather than transliterates.
 
 ## Related
 
