@@ -402,6 +402,8 @@ What remains, in the recommended order:
   — no call name, no demanding conversion; pairs with error spans.
 - [Deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
   — measure against `ba0edd5` first.
+- [A qualified constructor nested in a pattern argument is unknown](tickets/nested-qualified-constructor-pattern.md)
+  — `M.MkA(M.MkE(n))` fails with `UnknownConstructor`.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
