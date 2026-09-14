@@ -46,13 +46,14 @@ and term =
   | Open of term * term            (* open S in body — evaluator extends env with module-view fields *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
   | Con of string
-      (** Residual constructor/type reference in quoted output. Created when
-          [quote] hits a [VCon] or [VNominal]. [eval] scans the environment
-          by name for a matching VCon or VNominal. Like [Meta], never
+      (** Residual constructor reference in quoted output. Created when
+          [quote] hits a [VCon]. [eval] scans the environment
+          by name for a matching VCon. Like [Meta], never
           produced by the elaborator. *)
-  | NomRef of string * term list
+  | NomRef of { id : nominal_id; name : string; params : term list }
       (** Applied nominal type reference. [eval] scans the environment for
-          a [VNominal] template with this name, evaluates the param terms,
+          the [VNominal] template with this id (the name is for display only:
+          a type is never found by its spelling), evaluates the param terms,
           and returns [VNominal] with those params. Used in constructor Pi
           types to express e.g. [Option a] where [a] is a de Bruijn var. *)
   | EffectRef of string * term list

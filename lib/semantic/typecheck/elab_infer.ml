@@ -51,7 +51,7 @@ let extend_from_slots (ctx : Ctx.t) (bind : Core.struct_binding_term) payloads =
      part of the binding's width;
    - the closure environment each payload is stored under, which excludes the
      params ([build_ctor] supplies those itself) and carries the nominal
-     placeholder outermost so [NomRef] can find it by name.
+     placeholder outermost so [NomRef] can find it by id.
 
    See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
 (* A type declaration's names as the elaborator's context keys them. *)
@@ -66,7 +66,6 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
           member_ctors = List.map (fun ((c : Syntax.id), payloads) -> (c.name, payloads)) m.ctors })
       members
   in
-  let group = List.map (fun (m : type_member) -> (m.member_name, List.length m.member_params)) members in
   let param_ctx_of (m : type_member) =
     List.fold_left
       (fun ctx param_name ->
@@ -101,6 +100,7 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
       members
   in
   let placeholders = List.map (fun (_, _, p, _, _, _) -> p) registered in
+  let group = List.map (fun ((m : type_member), id, _, _, _, _) -> (id, m.member_name, List.length m.member_params)) registered in
   (* Phase 2, elaborate: every member's payloads, in a context naming every
      member. Those names are temporary - they contribute no width. *)
   let elaborated =
@@ -108,13 +108,13 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
       (fun ((m : type_member), nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty) ->
         let group_ctx =
           List.fold_left
-            (fun gctx ((other : type_member), _, other_placeholder, _, _, other_ty) ->
+            (fun gctx ((other : type_member), other_id, other_placeholder, _, _, other_ty) ->
               let num_params = List.length other.member_params in
               if num_params = 0 then Ctx.define gctx other.member_name VU other_placeholder
               else
                 let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) other.member_params in
                 let type_core_term =
-                  List.fold_right (fun _ acc -> Lam acc) other.member_params (NomRef (other.member_name, type_var_terms))
+                  List.fold_right (fun _ acc -> Lam acc) other.member_params (NomRef { id = other_id; name = other.member_name; params = type_var_terms })
                 in
                 let type_val = Nbe.eval param_ctx.Ctx.metas (other_placeholder :: param_ctx.Ctx.env) type_core_term in
                 Ctx.define gctx other.member_name other_ty type_val)
@@ -818,7 +818,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         if num_params = 0 then Ctx.define param_ctx name VU nominal_placeholder
         else
           let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
-          let type_body_term = NomRef (name, type_var_terms) in
+          let type_body_term = NomRef { id = nominal_id; name; params = type_var_terms } in
           let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
           let type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
           let type_ty =
@@ -840,7 +840,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                 (fun payload_expr ->
                 let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
                 check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
-                let payload_core = close_recursive_payload_term name num_params payload_core in
+                let payload_core = close_recursive_payload_term nominal_id name num_params payload_core in
                 { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
                 payloads
             in
@@ -855,14 +855,14 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         if num_params = 0 then
           Ctx.define param_ctx name VU nominal
         else begin
-          (* Push VNominal first so NomRef evaluation can find it *)
+          (* Push VNominal first so NomRef evaluation can find it by id *)
           let body_ctx = { param_ctx with
             env = nominal :: param_ctx.env;
             lvl = param_ctx.lvl + 1;
             bds = Defined :: param_ctx.bds
           } in
           let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
-          let type_body_term = NomRef (name, type_var_terms) in
+          let type_body_term = NomRef { id = nominal_id; name; params = type_var_terms } in
           let type_core_term =
             List.fold_right (fun _ acc -> Lam acc) params type_body_term
           in
@@ -897,7 +897,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                 (fun payload_expr ->
                 let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
                 check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
-                close_recursive_payload_term name num_params payload_core)
+                close_recursive_payload_term nominal_id name num_params payload_core)
                 payloads
             in
             (cname, payload_terms))

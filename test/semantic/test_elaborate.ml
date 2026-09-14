@@ -1602,6 +1602,18 @@ let path_heads =
           f : [A : M.Same] -> A -> I64 = fn[A : Type](x) -> M.Same.same(x, x); f(1) end" 7L);
     Alcotest.test_case "a trait is not found by its name alone" `Quick
       (rejected "do M = module pub trait Same(A) = sig same : A -> A -> I64 end end; impl Same(I64) = module same = fn(x, y) -> 7 end; 0 end");
+    Alcotest.test_case "a qualified head nested under a qualified head in a type chain" `Quick
+      (eval_i64 "do M = module pub type A = MkA(E) and E = MkE(I64) end; match M.MkA(M.MkE(3)) do M.MkA(M.MkE(n)) -> n end end" 3L);
+    Alcotest.test_case "a chain member spelled like an outer type" `Quick
+      (eval_i64 "do type E = Other(I64); M = module pub type A = MkA(E) and E = MkE(I64) end; f = fn(a : M.A) -> match a do M.MkA(M.MkE(n)) -> n end; f(M.MkA(M.MkE(3))) end" 3L);
+    Alcotest.test_case "a chain member spelled like a prelude type" `Quick
+      (eval_i64 "do M = module pub type A = MkA(EffectRow) and EffectRow = MkE(I64) end; f = fn(a : M.A) -> match a do M.MkA(M.MkE(n)) -> n end; f(M.MkA(M.MkE(3))) end" 3L);
+    Alcotest.test_case "a qualified head nested under a qualified head" `Quick
+      (eval_i64 "do M = module pub type E = MkE(I64); pub type A = MkA(E) end; match M.MkA(M.MkE(3)) do M.MkA(M.MkE(n)) -> n end end" 3L);
+    Alcotest.test_case "a qualified head nested under an unqualified head" `Quick
+      (eval_i64 "do M = module pub type E = MkE(I64) end; type A = MkA(M.E); match MkA(M.MkE(4)) do MkA(M.MkE(n)) -> n end end" 4L);
+    Alcotest.test_case "an unqualified head nested under a qualified head" `Quick
+      (eval_i64 "do type E = MkE(I64); M = module pub type A = MkA(E) end; match M.MkA(MkE(5)) do M.MkA(MkE(n)) -> n end end" 5L);
   ]
 
 let () =

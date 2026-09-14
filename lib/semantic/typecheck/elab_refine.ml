@@ -44,7 +44,7 @@ let term_mentions_var target term =
              bindings
     | RecordConstruct { typ; fields } ->
         go target typ || List.exists (fun (_, value) -> go target value) fields
-    | NomRef (_, params) | EffectRef (_, params) -> List.exists (go target) params
+    | NomRef { params; _ } | EffectRef (_, params) -> List.exists (go target) params
     | TraitRef _ -> false
     | TraitDictTy { args; fields; _ } ->
         List.exists (go target) args || List.exists (fun (_, value) -> go target value) fields
@@ -166,8 +166,8 @@ let refine_context_type_var ctx target replacement =
 
 (* A payload elaborated in a context where a type chain's member names were
    temporarily defined, last member innermost: rewrite each reference to a
-   member into a [NomRef] by name, and drop the temporary slots. [members] is
-   the chain in declaration order, as [(name, num_params)]. *)
+   member into a [NomRef] by id, and drop the temporary slots. [members] is
+   the chain in declaration order, as [(id, name, num_params)]. *)
 let close_recursive_payload_group members =
   let width = List.length members in
   let member_at cutoff ix =
@@ -181,13 +181,14 @@ let close_recursive_payload_group members =
   let rec go cutoff term =
     match collect_apps [] term with
     | Var ix, args
-      when (match member_at cutoff ix with Some (_, n) -> List.length args = n | None -> false) ->
-        NomRef (fst (Option.get (member_at cutoff ix)), List.map (go cutoff) args)
+      when (match member_at cutoff ix with Some (_, _, n) -> List.length args = n | None -> false) ->
+        let id, name, _ = Option.get (member_at cutoff ix) in
+        NomRef { id; name; params = List.map (go cutoff) args }
     | _ -> (
         match term with
         | Var ix when Option.is_some (member_at cutoff ix) ->
-            let nominal_name, num_params = Option.get (member_at cutoff ix) in
-            NomRef (nominal_name, List.init num_params (fun i -> Var (num_params - 1 - i)))
+            let id, name, num_params = Option.get (member_at cutoff ix) in
+            NomRef { id; name; params = List.init num_params (fun i -> Var (num_params - 1 - i)) }
         | Var ix when ix >= cutoff + width -> Var (ix - width)
         | Var ix -> Var ix
         | Lam body -> Lam (go (cutoff + 1) body)
@@ -241,7 +242,7 @@ let close_recursive_payload_group members =
             RecordConstruct { typ = go cutoff typ; fields = List.map (fun (field, value) -> (field, go cutoff value)) fields }
         | Open (s, body) -> Open (go cutoff s, go cutoff body)
         | Fix body -> Fix (go (cutoff + 1) body)
-        | NomRef (name, params) -> NomRef (name, List.map (go cutoff) params)
+        | NomRef n -> NomRef { n with params = List.map (go cutoff) n.params }
         | EffectRef (name, params) -> EffectRef (name, List.map (go cutoff) params)
         | TraitRef _ as term -> term
         | TraitDictTy { trait_id; trait_name; args; fields } ->
@@ -277,8 +278,8 @@ let close_recursive_payload_group members =
   go 0
 
 
-let close_recursive_payload_term nominal_name num_params =
-  close_recursive_payload_group [ (nominal_name, num_params) ]
+let close_recursive_payload_term nominal_id nominal_name num_params =
+  close_recursive_payload_group [ (nominal_id, nominal_name, num_params) ]
 
 let rec refinement_for_nominal_head ctx = function
   | Syntax.PatCon (con_path, _) -> (

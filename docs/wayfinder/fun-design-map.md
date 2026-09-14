@@ -406,7 +406,8 @@ What remains, in the recommended order:
 - [Deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
   — measure against `ba0edd5` first.
 - [A qualified constructor nested in a pattern argument is unknown](tickets/nested-qualified-constructor-pattern.md)
-  — `M.MkA(M.MkE(n))` fails with `UnknownConstructor`.
+  (closed) — root cause was `NomRef` finding a nominal by spelling; it now
+  carries the nominal id.
 - [Expansion errors reach the user raw](tickets/expansion-errors-reach-the-user-raw.md)
   — expander budget overruns escape untranslated; macro-body errors lost the operator span.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)

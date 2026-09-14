@@ -181,9 +181,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
           { typ = go d typ;
             fields = List.map (fun (name, value) -> (name, go d value)) fields }
     | VNominal n ->
-        let params_terms = List.map (go d) n.params in
-        List.fold_left (fun acc t -> Ap (acc, Explicit, t))
-          (Con n.name) params_terms
+        NomRef { id = n.id; name = n.name; params = List.map (go d) n.params }
     | VEffect e ->
         EffectRef (e.name, List.map (go d) e.params)
     | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }

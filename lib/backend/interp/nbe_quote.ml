@@ -119,7 +119,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
         { typ = quote ops mc depth typ;
           fields = List.map (fun (name, value) -> (name, quote ops mc depth value)) fields }
   | VNominal n ->
-      if n.params = [] then Con n.name else NomRef (n.name, List.map (quote ops mc depth) n.params)
+      NomRef { id = n.id; name = n.name; params = List.map (quote ops mc depth) n.params }
   | VEffect e -> EffectRef (e.name, List.map (quote ops mc depth) e.params)
   | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }
   | VTraitDict d ->

@@ -31,7 +31,7 @@ and pp_term (t : term) : string =
   | AtomTy _ -> "AtomTy"
   | Meta id -> Printf.sprintf "Meta(%d)" id
   | InsertedMeta (id, _) -> Printf.sprintf "IMeta(%d)" id
-  | NomRef (name, args) -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
+  | NomRef { name; params = args; _ } -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
   | EffectRef (name, args) -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
   | TraitRef { trait_name; _ } -> Printf.sprintf "TraitRef(%s)" trait_name
   | TraitDictTy { trait_name; args; _ } ->

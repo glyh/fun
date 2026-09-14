@@ -214,7 +214,7 @@ let rec shift_term amount cutoff term =
       RecordConstruct { typ = shift cutoff typ; fields = List.map (fun (field, value) -> (field, shift cutoff value)) fields }
   | Open (s, body) -> Open (shift cutoff s, shift cutoff body)
   | Fix body -> Fix (shift (cutoff + 1) body)
-  | NomRef (name, params) -> NomRef (name, List.map (shift cutoff) params)
+  | NomRef n -> NomRef { n with params = List.map (shift cutoff) n.params }
   | EffectRef (name, params) -> EffectRef (name, List.map (shift cutoff) params)
   | TraitDictTy { trait_id; trait_name; args; fields } ->
       TraitDictTy { trait_id; trait_name; args = List.map (shift cutoff) args; fields = List.map (fun (name, value) -> (name, shift cutoff value)) fields }
@@ -278,7 +278,11 @@ let build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_na
   let depth = List.length env in
   let type_term =
     let nom_ret_vars = List.init num_params (fun i -> Var (payload_count + num_params - 1 - i)) in
-    let ret_term = NomRef (nominal_name, nom_ret_vars) in
+    let ret_term =
+      match List.hd env with
+      | VNominal { id; _ } -> NomRef { id; name = nominal_name; params = nom_ret_vars }
+      | _ -> failwith "build_ctor: the environment's head is not the nominal"
+    in
     let param_rigids = List.init num_params (fun i -> VRigid { lvl = depth + i; spine = [] }) in
     let payload_terms =
       List.mapi

@@ -32,7 +32,7 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
     | RecordConstruct { typ; fields } -> closed_under depth typ && List.for_all (fun (_, value) -> closed_under depth value) fields
     | Open (s, body) -> closed_under depth s && closed_under depth body
     | Fix body -> closed_under (depth + 1) body
-    | NomRef (_, params) | EffectRef (_, params) -> List.for_all (closed_under depth) params
+    | NomRef { params; _ } | EffectRef (_, params) -> List.for_all (closed_under depth) params
     | TraitDictTy { args; fields; _ } ->
         List.for_all (closed_under depth) args && List.for_all (fun (_, value) -> closed_under depth value) fields
     | SelfTypeRef args -> List.for_all (closed_under depth) args

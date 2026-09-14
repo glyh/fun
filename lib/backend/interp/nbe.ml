@@ -295,12 +295,10 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           | _ -> raise (EvalError "open of non-module"))
   | Fix body -> Done (VFix { body = { env; body } })
   | Con name -> Done (eval_con env name)
-  | NomRef (name, params) -> (
-      match eval_con env name with
-      | VNominal _ as nom ->
-          sequence_values mc env params (fun param_vals ->
-              Done (List.fold_left (fun acc v -> apply mc acc v) nom param_vals))
-      | _ -> raise (EvalError ("NomRef is not VNominal: " ^ name)))
+  | NomRef { id; name; params } ->
+      let nom = eval_nominal env id name in
+      sequence_values mc env params (fun param_vals ->
+          Done (List.fold_left (fun acc v -> apply mc acc v) nom param_vals))
   | EffectRef (name, params) -> (
       match eval_eff env name with
       | VEffect _ as eff ->
@@ -366,7 +364,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
         in
         add_params env 0
       in
-      (* Push the nominal template (used by NomRef/eval_con) *)
+      (* Push the nominal template (found by id by NomRef) *)
       let env = nominal :: env in
       (* For parameterized types, elaborator also pushes a type-name binding *)
       let env = if num_params > 0 then nominal :: env else env in
@@ -569,17 +567,30 @@ and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
   in
   go base (List.rev env) (List.rev bds)
 
-(* Scan the environment for a VCon or VNominal with the given name.
+(* Scan the environment for a VCon with the given name.
    Head = most-recently-bound, so first match wins (correct shadowing). *)
 and eval_con (env : env) (name : string) : value =
   let rec go = function
     | [] -> raise (EvalError ("unbound constructor/type: " ^ name))
     | VCon c :: _ when String.equal c.name name -> VCon c
-    | VNominal n :: _ when String.equal n.name name -> VNominal n
     | VModule { entries; _ } :: rest ->
         (let fields = module_entry_fields entries in
          match List.find_opt (fun (n, k, _v) ->
            String.equal n name && Nbe_support.visible_kind k) fields with
+         | Some (_, _, v) -> v
+         | None -> go rest)
+    | _ :: rest -> go rest
+  in
+  go env
+
+(* Scan the environment, modules included, for the nominal with this id. *)
+and eval_nominal (env : env) (id : nominal_id) (name : string) : value =
+  let is_it = function VNominal n -> n.id = id | _ -> false in
+  let rec go = function
+    | [] -> raise (EvalError ("unbound nominal type: " ^ name))
+    | v :: _ when is_it v -> v
+    | VModule { entries; _ } :: rest ->
+        (match List.find_opt (fun (_, k, v) -> Nbe_support.visible_kind k && is_it v) (module_entry_fields entries) with
          | Some (_, _, v) -> v
          | None -> go rest)
     | _ :: rest -> go rest
