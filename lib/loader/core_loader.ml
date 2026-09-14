@@ -17,7 +17,7 @@ type t = {
      prelude (the loader layer cannot). Seeded into every module parse so
      imported [.fun] files see the stdlib operators/[if], and returned for the
      reserved [import "std"] path. Replaces the old [builtin_syntax_hook] ref. *)
-  builtin_syntax : Binding.operator_info list;
+  builtin_syntax : (string * Syntax.role) list;
   runtime_expanded_cache : (string, Syntax.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
   (* The expanded unit [Macro_driver.run] produced, with its expander.
@@ -27,7 +27,7 @@ type t = {
      compiles no macro and leaves every macro call in the file unexpanded. *)
   driver_expanded_cache : (string, Syntax.t * Expand_ctx.t) Hashtbl.t;
   macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
-  syntax_cache : (string, Binding.operator_info list) Hashtbl.t;
+  syntax_cache : (string, (string * Syntax.role) list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
   macro_active : (string, string) Hashtbl.t;
   syntax_active : (string, string) Hashtbl.t;
@@ -68,7 +68,7 @@ let rec load_syntax_exports t path =
           ~finally:(fun () -> Hashtbl.remove t.syntax_active resolved)
           (fun () ->
              read_module_source resolved
-             |> Enforest.parse_public_syntax_exports ~file:resolved ~load_syntax:(load_syntax_exports t))
+             |> Parse_expand.syntax_exports ~file:resolved ~load_syntax:(load_syntax_exports t))
       in
       Hashtbl.replace t.syntax_cache resolved exports;
       exports

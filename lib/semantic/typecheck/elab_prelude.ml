@@ -148,9 +148,22 @@ pub Syntax = module {
     | RawQuote(Option(Span), Expr, List(QuoteHole))
     | RawQuoteDecls(Option(Span), List(Decl), List(QuoteHole))
     | RawMacroDef(Option(Span), Id, Expr, Expr, Option(MacroAnn))
-    | RawSyntaxDef(Option(Span), Id, Bool, Expr)
+    | RawSyntaxDef(Option(Span), Id, Role, Expr)
+    | RawBlock(Option(Span), List(TokenTree))
+    | RawInstantiate(Option(Span), Id, Rule, List(Capture), Option(String))
     | RawMacroCall(Option(Span), Expr, List(Expr))
     | RawOperatorUse(Option(Span), Id, Fixity, List(Expr), Option(Span), Option(Span), Option(String))
+  and TokenTree = Tok(Option(Span), TokenKind, Scopes) | TokGroup(Option(Span), Delim, List(TokenTree))
+  and TokenKind = IdentTok(String) | OperatorTok(String) | IntTok(I64) | CharTok(Char) | StringTok(String) | UnitTok | KeywordTok(String) | PunctTok(String)
+  and Delim = ParenDelim | BracketDelim | BraceDelim
+  and Role = MkRole(Fixity, I64, Assoc, RoleMeaning, Option(Span), Option(String))
+  and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule))
+  and Rule = MkRule(List(RulePart), Replacement, Option(Span))
+  and RulePart = PartToken(TokenTree) | PartGroup(Delim, List(RulePart), Option(Span)) | PartHole(String, HoleKind, Option(Span))
+  and HoleKind = HoleExpr | HoleBlock | HoleId | HoleDecl | HolePattern
+  and Replacement = ReplaceExpr(Expr) | ReplaceDecls(List(Decl))
+  and Capture = MkCapture(String, Captured)
+  and Captured = CapExpr(Expr) | CapBlock(List(TokenTree)) | CapId(TokenTree) | CapPattern(Pattern) | CapDecls(List(Decl))
   and Field = MkField(String, Expr)
   and QuoteHole = MkQuoteHole(String, Expr)
   and Param = MkParam(Id, Option(Expr), List(Path), Explicitness)
@@ -183,7 +196,9 @@ pub Syntax = module {
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
     | DeclOpen(Expr, String)
     | DeclHole(Id)
-    | DeclSyntax(Id, Bool);
+    | DeclSyntax(Id, Role, Bool)
+    | DeclItems(List(TokenTree))
+    | DeclInstantiate(Id, Rule, List(Capture), Option(String));
   pub pattern Var(name) = RawVar(_, name);
   pub pattern Ap(f, a) = RawAp(_, f, _, a);
   pub pattern Lam(name, body) = RawLam(_, name, body);
@@ -229,7 +244,7 @@ pub Syntax = module {
    than through the old [builtin_syntax_hook] inversion ref. Collecting the
    exports uses a non-seeded env, so there is no recursion even though this same
    source is later parsed for elaboration. *)
-let stdlib_syntax_exports = lazy (Enforest.parse_public_syntax_exports stdlib_source)
+let stdlib_syntax_exports = lazy (Parse_expand.syntax_exports stdlib_source)
 
 (* A [load_syntax] resolver for parses that have no loader (expression eval,
    the REPL's non-file input): it answers the reserved [import "std"] path with

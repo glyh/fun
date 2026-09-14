@@ -47,8 +47,15 @@ type t = {
   mutable unit_members : (string, (string * string) list) Hashtbl.t;
   mutable own_unit_members : (string * string) list;
   (* Every intro scope a macro application minted here (template instances
-     record theirs in [Syntax_template.template_intro_scopes]). *)
+     included). *)
   intro_scopes : (int, unit) Hashtbl.t;
+  (* The unit an application's intro scope belongs to, when the syntax form
+     applied was imported: ids its replacement introduces mean that unit's names. *)
+  intro_scope_units : (int, string) Hashtbl.t;
+  (* A unit's exported roles, by path (the reserved [std] path included). *)
+  mutable load_syntax : (string -> (string * Syntax.role) list) option;
+  (* The public roles this expansion declared: the unit's syntax exports. *)
+  mutable syntax_exports : (string * Syntax.role) list;
   (* Per open label, the names of the roles visible in that open's region -
      where it is written, or declared inside it. What an open supplies is known
      only to the elaborator, which rejects a member of one of these names (M7). *)
@@ -57,7 +64,9 @@ type t = {
 }
 
 let create ?loader () =
-  { binding_table = Binding.create ();
+  let binding_table = Binding.create () in
+  Enforest_util.base_roles binding_table;
+  { binding_table;
     scope_counter = 0;
     macro_definition_floor = None;
     opens = [];
@@ -74,6 +83,9 @@ let create ?loader () =
     unit_members = Hashtbl.create 4;
     own_unit_members = [];
     intro_scopes = Hashtbl.create 16;
+    intro_scope_units = Hashtbl.create 8;
+    load_syntax = None;
+    syntax_exports = [];
     open_roles = Hashtbl.create 8;
     loader }
 
@@ -159,7 +171,7 @@ let open_candidates (ctx : t) (id : Syntax.id) (binder : Binding.binding_info op
     | Some _ -> []
     | None ->
         List.filter_map
-          (fun s -> Option.map Compiler_names.Module_name.unit_open_label (Hashtbl.find_opt Syntax_template.intro_scope_units s))
+          (fun s -> Option.map Compiler_names.Module_name.unit_open_label (Hashtbl.find_opt ctx.intro_scope_units s))
           id.scope
   in
   List.fold_left (fun acc l -> if List.mem l acc then acc else acc @ [ l ]) [] (region @ units)
@@ -185,8 +197,7 @@ let fresh_resolved_name name =
   incr resolved_name_counter;
   Printf.sprintf "%s#%d" name i
 
-let is_intro_scope (ctx : t) s =
-  Hashtbl.mem ctx.intro_scopes s || Hashtbl.mem Syntax_template.template_intro_scopes s
+let is_intro_scope (ctx : t) s = Hashtbl.mem ctx.intro_scopes s
 
 (* M7: a syntactic role - a syntax form, operator or macro - never mixes with
    another binder of its name where both are visible. A new binder written
@@ -207,32 +218,25 @@ let check_role_mixing (ctx : t) ~name ~occurrence ~kind ~attaches ~span =
   if List.exists conflicts (Option.value ~default:[] (Hashtbl.find_opt ctx.binding_table name)) then
     Expand_error.raise_at (RoleConflict { name; span })
 
-let bind (ctx : t) ?(attaches = false) ?(span = Source_span.synthetic) ~name ~base_scope ~kind ~resolved_name scope =
+let bind (ctx : t) ?role ?(span = Source_span.synthetic) ~name ~base_scope ~kind ~resolved_name scope =
+  let attaches = match role with Some r -> Syntax.attaches r | None -> false in
   check_role_mixing ctx ~name ~occurrence:base_scope ~kind ~attaches ~span;
   if kind <> Binding.Value then
     List.iter (fun (o, label) -> if Scope_set.contains base_scope o then note_open_role ctx label name) ctx.opens;
-  Binding.extend ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name
+  Binding.extend ?role ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name
 
 let extend_at (ctx : t) ?span ~name ~base_scope ~resolved_name () =
   let scope = fresh_scope_set ctx in
   bind ctx ?span ~name ~base_scope ~kind:Binding.Value ~resolved_name scope;
   scope
 
-(* A syntax template or fixity declaration, as a binder (see [Syntax.SyntaxBinding]). *)
-let extend_role (ctx : t) ~attaches ~(name : Syntax.id) =
+(* A syntax form or fixity declaration, as a binder (see [Syntax.SyntaxBinding]):
+   the forms read after it resolve its role by scope set. *)
+let extend_role (ctx : t) ~(role : Syntax.role) ~(name : Syntax.id) =
   let scope = fresh_scope_set ctx in
-  bind ctx ~attaches ~span:name.span ~name:name.name ~base_scope:name.scope ~kind:Binding.Role
+  bind ctx ~role ~span:name.span ~name:name.name ~base_scope:name.scope ~kind:Binding.Role
     ~resolved_name:name.name scope;
   scope
-
-(* Roles an [import] harvested into the enforester, with the unit each came
-   from: visible to the whole unit. *)
-let add_imported_roles (ctx : t) (roles : (string * string option) list) =
-  List.iter
-    (fun (name, unit) ->
-      let resolved_name = match unit with Some path -> Compiler_names.Module_name.unit_open_label path | None -> name in
-      Binding.extend ctx.binding_table ~name ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name)
-    roles
 
 (** Like [extend_at] but tags the binding with an explicit [kind], so a
     procedural-macro definition can register itself as a [Macro] binding in the
@@ -272,6 +276,9 @@ let copy (ctx : t) : t =
     unit_members = Hashtbl.copy ctx.unit_members;
     own_unit_members = ctx.own_unit_members;
     intro_scopes = Hashtbl.copy ctx.intro_scopes;
+    intro_scope_units = ctx.intro_scope_units;
+    load_syntax = ctx.load_syntax;
+    syntax_exports = ctx.syntax_exports;
     open_roles = Hashtbl.copy ctx.open_roles;
     loader = ctx.loader }
 

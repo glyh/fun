@@ -1124,7 +1124,9 @@ let test_imported_macro_circular_visit () =
         ("b", "open (import \"std\");\npub macro mb(_) { { A = import \"a\"; Syntax.i64(2) } }") ]
       "{ A = import \"a\"; ma(0) }"
   with
-  | exception Core_loader.CircularMacroVisit "a" -> ()
+  (* Reading a unit's syntax expands it, macro bodies included, which reaches
+     the cycle first. *)
+  | exception (Core_loader.CircularMacroVisit "a" | Core_loader.CircularSyntaxVisit _) -> ()
   | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
   | _ -> Alcotest.fail "expected circular macro visit"
 
@@ -1499,8 +1501,7 @@ let test_binder_body_type_mismatch () =
 (** Stage 3: helper that produces a driver_output via the new [Macro_driver].
     Parses source, runs the driver, and returns the output. *)
 let run_driver source : Macro_driver.driver_output =
-  let stx = Enforest.parse_module ~load_syntax:Elab_prelude.std_load_syntax source in
-  Macro_driver.run stx
+  Macro_driver.run ~load_syntax:Elab_prelude.std_load_syntax (Enforest.parse_module source)
 
 (** Stage 3: equivalence helper — runs both the old pipeline
     ([Parse_expand.parse_module_with_ctx]) and the new driver, and
@@ -1587,8 +1588,7 @@ let compiled_macro_arity (v : Core.value) =
 (** Stage 8: driver run with a loader over temp modules. *)
 let run_driver_with_modules modules source f =
   with_modules modules (fun loader ->
-      let stx = Enforest.parse_module ~load_syntax:(Core_loader.load_syntax_exports loader) source in
-      f (Macro_driver.run ~loader stx))
+      f (Macro_driver.run ~loader ~load_syntax:(Core_loader.load_syntax_exports loader) (Enforest.parse_module source)))
 
 let exported_kind_with_modules modules source macro_name =
   run_driver_with_modules modules source (fun (output : Macro_driver.driver_output) ->
@@ -1891,7 +1891,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "one constructor per expression form" 37 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 39 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true
@@ -2267,7 +2267,10 @@ let test_syntax_template_imported_pub_syntax () =
   match
     eval_with_imported_macros
       [ ("syntax_lib",
-         "pub syntax inc { | inc $x => $x + 1 };
+         (* The replacement is read where it is written, so its [+] comes from
+            the unit's own prelude open (M10). *)
+         "open (import \"std\");
+          pub syntax inc { | inc $x => $x + 1 };
           pub x = 0") ]
       "{
          M = import \"syntax_lib\";
@@ -2443,7 +2446,8 @@ let test_decl_template_struct_field_deferred () =
 let test_7i_generated_pub_syntax_across_imports () =
   match
     eval_with_imported_macros
-      [ ("gen", "syntax export_syntax : Decl {
+      [ ("gen", "open (import \"std\");
+                  syntax export_syntax : Decl {
                   | export_syntax $(n : Id) =>
                       {
                         pub syntax $n { | $n $x => $x + 1 }
@@ -2549,15 +2553,19 @@ let test_7i_generated_pub_macro_rejected_in_struct () =
 let test_7i_generated_syntax_cycle () =
   match
     eval_with_imported_macros
-      [ ("cycle_a", "syntax gen_aop : Decl {
+      (* A replacement's import is quoted syntax, loaded where the form is
+         used; the cycle is the units importing each other. *)
+      [ ("cycle_a", "B = import \"cycle_b\";
+                     syntax gen_aop : Decl {
                      | gen_aop $(n : Id) => {
-                         pub syntax $n { | $n $x => { import \"cycle_b\"; $x } }
+                         pub syntax $n { | $n $x => $x }
                        }
                      };
                      gen_aop aop");
-        ("cycle_b", "syntax gen_bop : Decl {
+        ("cycle_b", "A = import \"cycle_a\";
+                     syntax gen_bop : Decl {
                      | gen_bop $(n : Id) => {
-                         pub syntax $n { | $n $x => { import \"cycle_a\"; $x } }
+                         pub syntax $n { | $n $x => $x }
                        }
                      };
                      gen_bop bop")

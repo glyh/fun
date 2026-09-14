@@ -48,7 +48,11 @@ and parse_group_expr env delimiter items span =
                   in
                   stx ~span (Syntax.Prod exprs))))
   | Bracket -> unsupported "bare bracket expression is not in Phase 7A"
-  | Brace -> parse_do_body_terms env span items
+  | Brace -> parse_block env span items
+
+(* A [{ … }] body: read when expansion reaches it (M9), or now, as quoted syntax. *)
+and parse_block env span items =
+  if env.eager then parse_do_body_terms env span items else stx ~span (Syntax.Block items)
 
 and parse_record_expr_fields env items =
   split_statements items
@@ -305,9 +309,9 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
       | [], _ -> params
       | _, Some Syntax.MacroAnnotation.Decl -> error "a Decl macro binds no type parameter"
       | [ p ], _ ->
-          let r_type =
-            stx (Syntax.FieldAccess (stx (Syntax.Var (id Compiler_names.Module_name.syntax)), Compiler_names.Syntax_name.r))
-          in
+          (* Written at the binder, so it carries the binder's scopes. *)
+          let syntax_id = Syntax.fresh_id ~span:p.name.span ~scope:p.name.scope Compiler_names.Module_name.syntax in
+          let r_type = stx (Syntax.FieldAccess (stx (Syntax.Var syntax_id), Compiler_names.Syntax_name.r)) in
           { p with type_ = Some (Option.value p.type_ ~default:r_type) } :: explicit_params
       | _ -> error "a macro binds at most one type parameter"
   in
@@ -325,7 +329,10 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
 (* A body is a brace group, parsed as a block. *)
 and parse_body env what terms =
   match drop_separators terms with
-  | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest -> (parse_do_body_terms env span items, rest, span)
+  | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest -> (parse_block env span items, rest, span)
+  (* A [Block] hole stands for a [{ … }] in quoted syntax (M9). *)
+  | ({ datum = Token _; span } as hole) :: rest when env.eager && Option.is_some (Enforest_template.hole_ident hole) ->
+      (stx ~span (Syntax.Block [ hole ]), rest, span)
   | term :: _ when token_kind ThinArrow term -> error ("expected { body } after " ^ what ^ "; -> body was removed, write { … }")
   | term :: _ when token_kind KwDo term -> error ("expected { body } after " ^ what ^ "; do … end was removed, write { … }")
   | _ -> error ("expected { body } after " ^ what)
@@ -385,7 +392,7 @@ and form_callbacks env =
       (fun ts -> parse_all (fun ts -> parse_expr_prec env 0 ts) ts);
     parse_do_body_terms = parse_do_body_terms env;
     parse_pat_terms;
-    parse_items = parse_module_bindings env;
+    parse_items = parse_module_items env;
     is_expr_start = is_expr_start env;
   }
 
@@ -416,13 +423,22 @@ and parse_resume env start_span terms =
 and parse_perform env start_span terms =
   Enforest_forms.parse_perform (form_callbacks env) start_span terms
 
-and parse_import env start_span terms =
-  Enforest_forms.parse_import env start_span terms
+and parse_import _env start_span terms =
+  Enforest_forms.parse_import start_span terms
+
+(* A module's items: read one form at a time as expansion reaches them (M9),
+   or now, as quoted syntax. *)
+and parse_module_items env body_terms =
+  if env.eager then parse_module_bindings env body_terms else [ Syntax.Items body_terms ]
 
 and parse_module_expr env start_span terms =
-  let body_terms, rest, span = brace_body "module" terms in
-  let bindings = parse_module_bindings env body_terms in
-  (stx ~span:(span_between start_span span) (Syntax.Module { bindings }), rest)
+  match drop_separators terms with
+  | ({ datum = Token _; span } as hole) :: rest when env.eager && Option.is_some (Enforest_template.hole_ident hole) ->
+      (stx ~span:(span_between start_span span) (Syntax.Module { bindings = [ Syntax.Items [ hole ] ] }), rest)
+  | _ ->
+      let body_terms, rest, span = brace_body "module" terms in
+      let bindings = parse_module_items env body_terms in
+      (stx ~span:(span_between start_span span) (Syntax.Module { bindings }), rest)
 
 and parse_sig_expr env start_span terms =
   let body_terms, rest, span = brace_body "sig" terms in
@@ -497,67 +513,30 @@ and parse_primary env terms =
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
       | Token { kind = Ident "quote"; _ }
         when (match drop_separators rest with { datum = Group ((Raw_syntax.Paren | Raw_syntax.Brace), _, _); _ } :: _ -> true | _ -> false) ->
-          Enforest_forms.parse_quote (form_callbacks env) term.span rest
-      | Token { kind = Ident name; _ } -> (
-          match
-            Binding.find_operator env.operators ~fixity:Binding.Prefix
-              ~syntax_class:env.syntax_class ~scope:(token_scope term) name
-          with
-          | Some { Binding.expansion = Binding.Template template; _ }
-            ->
-              expand_syntax_template env term.span template (term :: rest)
-          | Some op ->
-              let rhs, rest = parse_expr_prec env op.precedence rest in
+          Enforest_forms.parse_quote (form_callbacks (eager_env env)) term.span rest
+      | Token { kind = Ident name | Operator name; _ } -> (
+          match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
+          | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } ->
+              let inst, rest =
+                Enforest_template.instantiate (template_callbacks env) ~form:(id_of term name) ~kind:rules_kind
+                  ~position:Syntax.MacroAnnotation.Expr ~from_unit rules (term :: rest)
+              in
+              (stx ~span:term.span (Syntax.Instantiate inst), rest)
+          | Some role ->
+              let rhs, rest = parse_expr_prec env role.precedence rest in
               let span = span_between term.span rhs.span in
               let f = var_of term name in
               let expr =
-                match op.expansion with
-                | Binding.MacroOp ->
-                    stx ~span
-                      (Syntax.MacroCall
-                         ( f,
-                           [
-                             syntax_operator_arg ~span ~use:term op
-                               [ rhs ];
-                           ] ))
-                | Binding.Template _ ->
-                    error
-                      "internal error: template syntax should expand before \
-                       operand parsing"
+                match role.meaning with
+                | Syntax.CallMacro ->
+                    stx ~span (Syntax.MacroCall (f, [ syntax_operator_arg ~span ~use:term name role [ rhs ] ]))
                 | _ -> ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
-          | None -> (var_of term name, rest))
-      | Token { kind = Operator name; _ } -> (
-          match
-            Binding.find_operator env.operators ~fixity:Binding.Prefix
-              ~syntax_class:env.syntax_class ~scope:(token_scope term) name
-          with
-          | Some { Binding.expansion = Binding.Template template; _ }
-            ->
-              expand_syntax_template env term.span template (term :: rest)
-          | Some op ->
-              let rhs, rest = parse_expr_prec env op.precedence rest in
-              let span = span_between term.span rhs.span in
-              let f = var_of term name in
-              let expr =
-                match op.expansion with
-                | Binding.MacroOp ->
-                    stx ~span
-                      (Syntax.MacroCall
-                         ( f,
-                           [
-                             syntax_operator_arg ~span ~use:term op
-                               [ rhs ];
-                           ] ))
-                | Binding.Template _ ->
-                    error
-                      "internal error: template syntax should expand before \
-                       operand parsing"
-                | _ -> ap ~span f Explicitness.Explicit rhs
-              in
-              (expr, rest)
-          | None -> unsupported ("unsupported prefix operator: " ^ name))
+          | None -> (
+              match term.datum with
+              | Token { kind = Operator _; _ } -> unsupported ("unsupported prefix operator: " ^ name)
+              | _ -> (var_of term name, rest)))
       | Token { kind = Eof; _ } -> error "unexpected EOF in expression"
       | Token { kind; _ } -> (
           match keyword_name kind with
@@ -677,55 +656,29 @@ and parse_postfix_infix env min_prec lhs terms =
   | term :: rest -> (
       match token_text term with
       | Some symbol -> (
-          match
-            Binding.find_operator env.operators ~fixity:Binding.Infix
-              ~syntax_class:env.syntax_class ~scope:(token_scope term) symbol
-          with
-          | Some op when op.precedence >= min_prec ->
+          match Binding.find_role env.operators ~fixity:Syntax.InfixOp ~scope:(token_scope term) symbol with
+          | Some role when role.precedence >= min_prec ->
               let next_min =
-                match op.associativity with
-                | Left -> op.precedence + 1
-                | Right -> op.precedence
+                match role.assoc with
+                | Syntax.LeftAssoc -> role.precedence + 1
+                | Syntax.RightAssoc -> role.precedence
               in
               let rhs, rest = parse_expr_prec env next_min rest in
               let span = span_between lhs.span rhs.span in
               let lhs =
-                match op.expansion with
-                | Binding.BuiltinRefSet ->
-                    stx ~span (Syntax.RefSet (lhs, rhs))
-                | Binding.Template template ->
-                    let branch = List.hd template.Syntax_template.branches in
-                    let holes =
-                      Enforest_template.collect_pattern_holes branch.pattern
-                    in
+                match role.meaning with
+                | Syntax.AssignRef -> stx ~span (Syntax.RefSet (lhs, rhs))
+                | Syntax.Rules { rules = [ rule ]; _ } ->
                     let captures =
-                      List.map2
-                        (fun name operand ->
-                          ( name,
-                            {
-                              Syntax_template.syntax = operand;
-                              kind = Syntax_template.Expr;
-                              decl_terms = None;
-                              pat = None;
-                            } ))
-                        holes [ rhs; lhs ]
+                      match List.rev (Enforest_template.pattern_holes rule.pattern) with
+                      | [ l; r ] -> [ (l, Syntax.CapExpr lhs); (r, Syntax.CapExpr rhs) ]
+                      | _ -> error ("an infix syntax form takes two operands: " ^ symbol)
                     in
-                    Enforest_template.instantiate_template_replacement ?unit:template.unit
-                      (template_callbacks env (fun _ ->
-                           error "declaration templates are not available in expression context"))
-                      captures branch.replacement
-                | Binding.MacroOp ->
-                    let arg =
-                      syntax_operator_arg ~span ~use:term op
-                        [ lhs; rhs ]
-                    in
-                    arg
-                | Binding.BuiltinApply ->
-                    ap ~span
-                      (ap ~span
-                         (var_of term op.symbol)
-                         Explicitness.Explicit lhs)
-                      Explicitness.Explicit rhs
+                    stx ~span (Syntax.Instantiate { form = id_of term symbol; rule; captures; from_unit = role.from_unit })
+                | Syntax.Rules _ -> error ("an infix syntax form has one rule: " ^ symbol)
+                | Syntax.CallMacro -> syntax_operator_arg ~span ~use:term symbol role [ lhs; rhs ]
+                | Syntax.ApplyValue ->
+                    ap ~span (ap ~span (var_of term symbol) Explicitness.Explicit lhs) Explicitness.Explicit rhs
               in
               parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
@@ -1023,156 +976,103 @@ and parse_operator_value env start_span terms =
   ( List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body,
     rest )
 
+(* A rule's replacement, read as quoted syntax where the rule is written (M10):
+   an expression, or for a [: Decl] form a brace group of declarations. *)
+and parse_replacement env kind holes terms =
+  let env = eager_env ~holes env in
+  match kind, drop_separators terms with
+  | Syntax.MacroAnnotation.Decl, [ { datum = Group (Raw_syntax.Brace, body, _); _ } ] ->
+      if List.exists (fun stmt -> Option.is_some (parse_struct_field env stmt)) (split_statements body) then
+        error "struct field declarations are deferred in declaration syntax templates";
+      Syntax.ReplaceDecls (parse_module_bindings env body)
+  | Syntax.MacroAnnotation.Decl, _ -> error "a Decl syntax form's replacement is written { declarations }"
+  | Syntax.MacroAnnotation.Expr, _ -> Syntax.ReplaceExpr (parse_all (fun ts -> parse_expr_prec env 0 ts) terms)
+
+(* Reading quoted syntax, a declared role is registered as it is read, for the
+   statements after it; otherwise expansion registers it (M7). *)
+and declare_role ?macro_value env (name : Syntax.id) (role : Syntax.role) =
+  if env.registers then begin
+    Binding.extend env.operators ~name:name.name ~scope:name.scope ~kind:Binding.Role ~resolved_name:name.name ~role;
+    env.declared <- env.declared + 1
+  end;
+  { role_name = name; role; macro_value }
+
 and parse_operator_template_decl env (sym_id : Syntax.id) prec assoc value_terms =
   let sym = sym_id.name and sym_span = sym_id.span in
-  let terms = drop_separators value_terms in
-  let hole_names, rest =
-    match terms with
+  let holes, rest =
+    match drop_separators value_terms with
     | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
         let holes =
           split_commas (drop_separators items)
-          |> List.concat_map (fun ts ->
+          |> List.map (fun ts ->
               match drop_separators ts with
-              | [
-               { datum = Token { kind = Operator "$"; _ }; _ };
-               { datum = Token { kind = Ident name; _ }; span };
-              ] ->
-                  [ (name, span) ]
+              | [ { datum = Token { kind = Operator "$"; _ }; _ }; { datum = Token { kind = Ident name; _ }; _ } ] -> name
               | _ -> error "operator template params must be $hole names")
         in
         (holes, rest)
     | _ -> error "operator template requires parameter list"
   in
-  let holes = List.map fst hole_names in
   (* The replacement is the brace group itself, so it parses as a block. *)
-  let body, span =
+  let group, span =
     match drop_separators rest with
-    | [ ({ datum = Group (Raw_syntax.Brace, _, span); _ } as group) ] ->
-        (Enforest_template.rewrite_template_holes [ group ], span_between sym_span span)
+    | [ ({ datum = Group (Raw_syntax.Brace, _, span); _ } as group) ] -> (group, span_between sym_span span)
     | _ -> error "expected { body } after operator template parameters"
   in
   let pattern =
-    let hole name =
-      Syntax_template.Hole
-        { name; kind = Syntax_template.Expr; span = sym_span }
-    in
-    let op_literal =
-      {
-        datum = Token (Raw_syntax.token (Operator sym) sym_span);
-        span = sym_span;
-      }
-    in
+    let hole name = Syntax.PartHole { hole = name; hole_kind = Syntax.HoleExpr; hole_span = sym_span } in
+    let op_literal = Raw_syntax.syntax_token (Operator sym) sym_span in
     match holes with
-    | [ lhs; rhs ] -> [ hole lhs; Syntax_template.Literal op_literal; hole rhs ]
-    | [ single ] -> [ Syntax_template.Literal op_literal; hole single ]
-    | _ -> error "operator template must have 1 or 2 holes"
+    | [ lhs; rhs ] -> [ hole lhs; Syntax.PartToken op_literal; hole rhs ]
+    | _ -> error "operator template must have 2 holes"
   in
-  let template =
-    {
-      Syntax_template.head = sym;
-      annotation = Syntax.MacroAnnotation.Expr;
-      branches = [ { pattern; replacement = body; span } ];
-      declaration_span = sym_span;
-      inherited_captures = [];
-      unit = None;
-    }
-  in
-  let op = Binding.template_infix ~declaration_span:sym_span sym template prec assoc in
-  Binding.add_operator ~scope:sym_id.scope env.operators op;
-  Some
-    (TemplateSyntaxDecl
-       { syntax_name = sym_id; syntax_export = op })
+  let replacement = Enforest_template.rewrite_holes [ group ] in
+  List.iter
+    (fun name -> if not (List.mem name (holes @ env.holes)) then error ("unbound syntax template hole in replacement: " ^ name))
+    (Enforest_template.replacement_holes replacement);
+  let rule = { Syntax.pattern; replacement = parse_replacement env Syntax.MacroAnnotation.Expr holes replacement; rule_span = span } in
+  declare_role env sym_id
+    (Binding.role ~declared_at:sym_span ~fixity:Syntax.InfixOp ~precedence:prec ~assoc
+       (Syntax.Rules { rules_kind = Syntax.MacroAnnotation.Expr; rules = [ rule ] }))
 
 and parse_operator_assoc assoc_str =
   match assoc_str with
-  | "Left" -> Binding.Left
-  | "Right" -> Binding.Right
+  | "Left" -> Syntax.LeftAssoc
+  | "Right" -> Syntax.RightAssoc
   | _ -> error "operator infix associativity must be Left or Right"
 
-and parse_syntax_template_decl env head_term head kind body_terms rest =
+and parse_syntax_template_decl env (head_id : Syntax.id) kind body_terms rest =
   ensure_no_rest "syntax declaration" rest;
-  (* Sole surviving use of [load_imports_in_terms]: eagerly harvest every
-     [import "…"] referenced anywhere in the template body *before* the branches
-     are enforested. This cannot route through the ordinary in-order
-     [Enforest_forms.parse_import] harvest (which covers every other import site)
-     for two reasons:
-       1. The replacement may use operators from an imported module at a position
-          the reader reaches before that module's [import] statement is parsed, so
-          the operators must be registered up front, not in statement order.
-       2. Circular syntax imports (a template body importing a module whose body
-          imports back) are detected on the [load_syntax] visit stack at
-          declaration time; the eager scan is what unwinds that stack. Deferring
-          to branch parsing loses the detection (see the "syntax extension
-          circular" / "7I: generated {syntax,macro} cycle" tests). *)
-  load_imports_in_terms env body_terms;
-  let inherited_captures = env.template_captures in
-  let available = List.map fst inherited_captures in
-  let branches = Enforest_template.parse_branches ~available head body_terms in
-  let template =
-    {
-      Syntax_template.head;
-      annotation = kind;
-      branches;
-      declaration_span = head_term.span;
-      inherited_captures;
-      unit = None;
-    }
+  let rules =
+    Enforest_template.parse_rules ~available:env.holes ~head:head_id.name
+      ~parse_replacement:(fun holes terms -> parse_replacement env kind holes terms)
+      body_terms
   in
-  let op = Binding.template_prefix ~declaration_span:head_term.span head template 50 in
-  Binding.add_operator ~scope:(token_scope head_term) env.operators op;
-  TemplateSyntaxDecl
-    { syntax_name = id_of head_term head; syntax_export = op }
+  declare_role env head_id
+    (Binding.role ~declared_at:head_id.span ~fixity:Syntax.PrefixOp ~precedence:50
+       (Syntax.Rules { rules_kind = kind; rules }))
 
-and template_callbacks env parse_decl =
-  {
-    Enforest_template.parse_expr =
-      (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
-    parse_expr_with_captures =
-      (fun captures terms ->
-        let previous = env.template_captures in
-        env.template_captures <- captures @ previous;
-        Fun.protect
-          ~finally:(fun () -> env.template_captures <- previous)
-          (fun () -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms));
-    parse_decl_with_captures =
-      (fun captures terms ->
-        let previous = env.template_captures in
-        env.template_captures <- captures @ previous;
-        Fun.protect
-          ~finally:(fun () -> env.template_captures <- previous)
-          (fun () -> parse_decl terms));
-  }
+and template_callbacks env =
+  { Enforest_template.parse_expr = (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
+    parse_pat = parse_pat_terms;
+    eager = env.eager }
 
-and expand_syntax_template env use_span (template : Syntax_template.t) terms =
-  Enforest_template.expand
-    (template_callbacks env (fun _ ->
-         error "declaration templates are not available in expression context"))
-    use_span template terms
-
-and expand_decl_syntax_template env parse_decl use_span
-    (template : Syntax_template.t) terms =
-  Enforest_template.expand_decl
-    (template_callbacks env parse_decl)
-    use_span template terms
-
-and parse_decl_template_use env parse_decl stmt =
+(* A syntax form used where a declaration goes. *)
+and parse_decl_template_use env stmt =
   match drop_separators stmt with
-  | ({ datum = Token { kind = Ident head; _ }; span; _ } as head_term) :: _
-    -> (
-      match
-        Binding.find_operator env.operators ~fixity:Binding.Prefix
-          ~syntax_class:env.syntax_class ~scope:(token_scope head_term) head
-      with
-      | Some { Binding.expansion = Binding.Template template; _ } ->
-          let bindings, rest =
-            expand_decl_syntax_template env parse_decl span template stmt
+  | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: _ -> (
+      match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
+      | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } ->
+          let inst, rest =
+            Enforest_template.instantiate (template_callbacks env) ~form:(id_of head_term head) ~kind:rules_kind
+              ~position:Syntax.MacroAnnotation.Decl ~from_unit rules stmt
           in
           ensure_no_rest "declaration syntax template use" rest;
-          Some bindings
+          Some (Syntax.InstantiateBinding inst)
       | _ -> None)
   | _ -> None
 
-(* The declared operator's name, an id spanning its parenthesised symbol. *)
+(* The declared operator's name, an id spanning its parenthesised symbol. A
+   hole there names it with a capture (M7 decision 6). *)
 and operator_symbol kind sym_items sym_span =
   match drop_separators sym_items with
   | [ term ] when token_text term = Some "=>" -> error "=> is reserved and cannot be declared as an operator"
@@ -1182,117 +1082,62 @@ and operator_symbol kind sym_items sym_span =
 
 and parse_operator_shape stmt =
   match drop_separators stmt with
-  | { datum = Token { kind = Ident ifx; _ }; _ }
+  | { datum = Token { kind = Ident "infix"; _ }; _ }
     :: { datum = Group (Raw_syntax.Paren, sym_items, sym_span); _ }
     :: { datum = Token { kind = Int p; _ }; _ }
     :: { datum = Token { kind = Ident assoc_str; _ }; span = assoc_span }
-    :: value_terms
-    when String.equal ifx "infix" ->
-      let prec = Int64.to_int p in
+    :: value_terms ->
       let assoc = parse_operator_assoc assoc_str in
-      Some (`Infix (operator_symbol "infix" sym_items sym_span, prec, assoc, assoc_span, value_terms))
-  | { datum = Token { kind = Ident pfx; _ }; _ }
+      Some (`Infix (operator_symbol "infix" sym_items sym_span, Int64.to_int p, assoc, assoc_span, value_terms))
+  | { datum = Token { kind = Ident "prefix"; _ }; _ }
     :: { datum = Group (Raw_syntax.Paren, sym_items, sym_span); _ }
     :: { datum = Token { kind = Int p; _ }; _ }
-    :: value_terms
-    when String.equal pfx "prefix" ->
+    :: value_terms ->
       Some (`Prefix (operator_symbol "prefix" sym_items sym_span, Int64.to_int p, value_terms))
   | _ -> None
 
 and parse_operator_decl env stmt =
   match parse_operator_shape stmt with
-  | Some (`Prefix (name_id, prec, value_terms)) ->
-      let name = (name_id : Syntax.id).name and name_span = name_id.span in
-      (* Bodyless [prefix (op) prec] declares a builtin-apply prefix operator:
-         [op x] expands to [op(x)] against the same-named value binding.
-         (A future extension may add template/macro prefix bodies.) *)
-      (match drop_separators value_terms with
-       | [] ->
-           let op =
-             Binding.make_operator ~declaration_span:name_span ~symbol:name
-               ~fixity:Binding.Prefix ~precedence:prec ~associativity:Binding.Left
-               ~expansion:Binding.BuiltinApply ()
-           in
-           Binding.add_operator ~scope:name_id.scope env.operators op;
-           Some (TemplateSyntaxDecl { syntax_name = name_id; syntax_export = op })
-       | _ -> error "prefix operator with a body is not supported")
-  | Some (`Infix (name_id, prec, assoc, assoc_span, value_terms))
-    when drop_separators value_terms = [] ->
-      let name = (name_id : Syntax.id).name and name_span = name_id.span in
-      (* Bodyless [infix (op) prec assoc] declares a builtin-apply infix
-         operator: [a op b] expands to [op(a, b)] against the same-named value
-         binding. This is the fixity-only form the demoted prelude operators
-         ([+ - * / % == != < > <= >=]) use — the value is a separate [pub]
-         binding (a prim or prelude function). *)
-      ignore assoc_span;
-      let op =
-        Binding.make_operator ~declaration_span:name_span ~symbol:name
-          ~fixity:Binding.Infix ~precedence:prec ~associativity:assoc
-          ~expansion:Binding.BuiltinApply ()
-      in
-      Binding.add_operator ~scope:name_id.scope env.operators op;
-      Some (TemplateSyntaxDecl { syntax_name = name_id; syntax_export = op })
+  | Some (`Prefix (name_id, prec, value_terms)) -> (
+      (* [prefix (op) prec] is fixity only: [op x] calls the value [op]. *)
+      match drop_separators value_terms with
+      | [] ->
+          Some (declare_role env name_id
+                  (Binding.role ~declared_at:name_id.span ~fixity:Syntax.PrefixOp ~precedence:prec Syntax.ApplyValue))
+      | _ -> error "prefix operator with a body is not supported")
+  | Some (`Infix (name_id, prec, assoc, _, value_terms)) when drop_separators value_terms = [] ->
+      (* [infix (op) prec assoc] is fixity only: [a op b] calls the value [op]. *)
+      Some (declare_role env name_id
+              (Binding.role ~declared_at:name_id.span ~fixity:Syntax.InfixOp ~precedence:prec ~assoc Syntax.ApplyValue))
   | Some (`Infix (name_id, prec, assoc, assoc_span, value_terms)) ->
-      let name = (name_id : Syntax.id).name and name_span = name_id.span in
       let is_template =
         match drop_separators value_terms with
-        | { datum = Group (Raw_syntax.Paren, items, _); _ } :: _ ->
-            let param_tokens =
-              List.concat (split_commas (drop_separators items))
-            in
-            let tokens = drop_separators param_tokens in
-            let first_is_dollar =
-              match tokens with
-              | { datum = Token { kind = Operator "$"; _ }; _ } :: _ -> true
-              | _ -> false
-            in
-            first_is_dollar
+        | { datum = Group (Raw_syntax.Paren, items, _); _ } :: _ -> (
+            match drop_separators (List.concat (split_commas (drop_separators items))) with
+            | { datum = Token { kind = Operator "$"; _ }; _ } :: _ -> true
+            | _ -> false)
         | _ -> false
       in
-      if is_template then
-        parse_operator_template_decl env name_id prec assoc value_terms
+      if is_template then Some (parse_operator_template_decl env name_id prec assoc value_terms)
       else begin
         let value, rest = parse_operator_value env assoc_span value_terms in
         ensure_no_rest "infix declaration" rest;
-        let op = Binding.macro_infix ~declaration_span:name_span name prec assoc in
-        Binding.add_operator ~scope:name_id.scope env.operators op;
-        Some
-          (MacroSyntaxDecl
-             {
-               syntax_name = name_id;
-               syntax_value = value;
-               syntax_export = op;
-             })
+        Some (declare_role ~macro_value:value env name_id
+                (Binding.role ~declared_at:name_id.span ~fixity:Syntax.InfixOp ~precedence:prec ~assoc Syntax.CallMacro))
       end
   | None -> (
       match drop_separators stmt with
-      | { datum = Token { kind = Ident s; _ }; _ } :: head_term :: after
-        when String.equal s "syntax"
-             && (match Enforest_template.syntax_kind after with
-                 | _, _, { datum = Group (Raw_syntax.Brace, _, _); _ } :: _ -> true
-                 | _ -> false) -> (
+      | { datum = Token { kind = Ident "syntax"; _ }; _ } :: head_term :: after -> (
           let head =
             match head_term.datum with
-            | Token { kind = Ident name; _ } -> name
+            | Token { kind = Ident name; _ } -> id_of head_term name
             | _ -> error "syntax declaration head must be an identifier"
           in
           match Enforest_template.syntax_kind after with
-          | kind, _, { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest ->
-              Some (parse_syntax_template_decl env head_term head kind body_terms rest)
-          | _ -> assert false)
-      | { datum = Token { kind = Ident s; _ }; _ } :: _
-        when String.equal s "syntax" ->
-          unsupported "unsupported syntax declaration shape"
-      | _ -> None)
-
-and parse_operator_decl_in_do env stmt =
-  match parse_operator_shape stmt with
-  | Some _ -> parse_operator_decl env stmt
-  | None -> (
-      match drop_separators stmt with
-      | { datum = Token { kind = Ident s; _ }; _ } :: _
-        when String.equal s "syntax" ->
-          parse_operator_decl env stmt
+          | kind, { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest ->
+              Some (parse_syntax_template_decl env head kind body_terms rest)
+          | _ -> unsupported "unsupported syntax declaration shape")
+      | { datum = Token { kind = Ident "syntax"; _ }; _ } :: _ -> unsupported "unsupported syntax declaration shape"
       | _ -> None)
 
 and scoped_binding_to_expr env span stmt body =
@@ -1331,40 +1176,38 @@ and scoped_binding_to_expr env span stmt body =
                   stx ~span
                     (Syntax.Let { name = id ~span:value.span "_"; type_ = None; value; body; recursive = false }))))
 
+(* A [{ … }] body read now, as quoted syntax. A trailing [;] discards the
+   block's value: every item is a statement and the block is [()]. *)
 and parse_do_body_terms env span body_terms =
-  with_operator_scope env (fun env ->
-      (* A trailing [;] discards the block's value: every item is a statement
-         and the block is [()]. *)
-      let discards = match List.rev body_terms with last :: _ -> is_separator last | [] -> false in
-      let items =
-        map_context_statements
-          (fun ~last stmt ->
-            if last && not discards then Either.Right (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
-            else Either.Left (do_statement env span stmt))
-          body_terms
-      in
-      let rev_wrappers, body =
-        match List.rev items with
-        | [] -> error "empty block"
-        | Either.Right body :: rev -> (rev, body)
-        | rev -> (rev, unit ~span ())
-      in
-      List.fold_left
-        (fun acc item -> match item with Either.Left wrap -> wrap acc | Either.Right _ -> acc)
-        body rev_wrappers)
+  let discards = match List.rev body_terms with last :: _ -> is_separator last | [] -> false in
+  let items =
+    map_context_statements env
+      (fun ~last stmt ->
+        if last && not discards then Either.Right (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
+        else Either.Left (do_statement env span stmt))
+      body_terms
+  in
+  let rev_wrappers, body =
+    match List.rev items with
+    | [] -> error "empty block"
+    | Either.Right body :: rev -> (rev, body)
+    | rev -> (rev, unit ~span ())
+  in
+  List.fold_left
+    (fun acc item -> match item with Either.Left wrap -> wrap acc | Either.Right _ -> acc)
+    body rev_wrappers
 
 (* One statement of a block, as the wrapper that scopes it over the rest. *)
 and do_statement env span stmt =
-                match parse_operator_decl_in_do env stmt with
-                | Some
-                    (MacroSyntaxDecl
-                       { syntax_name = name; syntax_value = value; _ }) ->
+                match parse_operator_decl env stmt with
+                | Some { role_name = name; role; macro_value } ->
                     fun acc ->
-                      stx ~span
-                        (Syntax.MacroDef
-                           { name; value; body = acc; kind = None })
-                | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
-                    fun acc -> stx ~span (Syntax.SyntaxDef { name; attaches = attaches syntax_export; body = acc })
+                      let body =
+                        match macro_value with
+                        | Some value -> stx ~span (Syntax.MacroDef { name; value; body = acc; kind = None })
+                        | None -> acc
+                      in
+                      stx ~span (Syntax.SyntaxDef { name; role; body })
                 | None -> (
                     match parse_macro_binding env false stmt with
                     | Some
@@ -1415,17 +1258,6 @@ and parse_public_prefix stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwPub; _ }; _ } :: rest -> (true, rest)
   | rest -> (false, rest)
-
-(* A fixity-only declaration attaches to the value of its name. *)
-and attaches (op : Binding.operator_info) = op.expansion = Binding.BuiltinApply
-
-and parse_syntax_binding env public stmt =
-  match parse_operator_decl env stmt with
-  | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
-      Some (Syntax.MacroBinding { name; value; public; kind = None })
-  | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
-      Some (Syntax.SyntaxBinding { name; attaches = attaches syntax_export })
-  | None -> None
 
 and parse_macro_binding env public stmt =
   match drop_separators stmt with
@@ -1523,19 +1355,15 @@ and parse_open_binding env public stmt =
   | Some mod_expr -> Some (Syntax.OpenBinding (mod_expr, ""))
   | None -> None
 
+(* A role declaration as bindings: the role, then the macro its body defines. *)
+and role_bindings public { role_name = name; role; macro_value } =
+  Syntax.SyntaxBinding { name; role; public }
+  :: (match macro_value with Some value -> [ Syntax.MacroBinding { name; value; public; kind = None } ] | None -> [])
+
 and parse_module_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
-  | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
-      if public then
-        env.exports_collector := syntax_export :: !(env.exports_collector);
-      Some (Syntax.SyntaxBinding { name; attaches = attaches syntax_export })
-  | Some
-      (MacroSyntaxDecl
-         { syntax_name = name; syntax_value = value; syntax_export; _ }) ->
-      if public then
-        env.exports_collector := syntax_export :: !(env.exports_collector);
-      Some (Syntax.MacroBinding { name; value; public; kind = None })
+  | Some decl -> role_bindings public decl
   | None -> (
       match
         first_some
@@ -1552,7 +1380,7 @@ and parse_module_binding env stmt =
           ]
           stmt
       with
-      | Some binding -> Some binding
+      | Some binding -> [ binding ]
       | None ->
           let desc =
             match Enforest_util.drop_separators stmt with
@@ -1562,50 +1390,19 @@ and parse_module_binding env stmt =
           unsupported (Printf.sprintf "unsupported module item: %s" desc))
 
 and parse_module_statement env stmt =
-  let parse_decl terms = parse_module_statement env terms in
   match drop_separators stmt with
   (* A lone [$d] is a declaration hole: only [quote]'s rewriting spells an id
      with [$]. *)
   | [ ({ datum = Token { kind = Ident name; _ }; _ } as term) ] when String.length name > 1 && name.[0] = '$' ->
       [ Syntax.HoleBinding (id_of term name) ]
-  | _ ->
-  match parse_decl_template_use env parse_decl stmt with
-  | Some bindings -> bindings
-  | None -> (
-      match parse_module_binding env stmt with
+  | [] -> []
+  | _ -> (
+      match parse_decl_template_use env stmt with
       | Some binding -> [ binding ]
-      | None -> [])
+      | None -> parse_module_binding env stmt)
 
 and parse_module_bindings env body_terms =
-  with_operator_scope env (fun env ->
-      map_context_statements (fun ~last:_ stmt -> parse_module_statement env stmt) body_terms
-      |> List.concat)
-
-and collect_public_syntax_statement env stmt =
-  let parse_decl terms =
-    collect_public_syntax_statement env terms;
-    []
-  in
-  match parse_decl_template_use env parse_decl stmt with
-  | Some _ -> ()
-  | None -> (
-      let public, stmt = parse_public_prefix stmt in
-      match parse_operator_decl env stmt with
-      | Some (TemplateSyntaxDecl { syntax_export; _ }) ->
-          if public then
-            env.exports_collector := syntax_export :: !(env.exports_collector)
-      | Some (MacroSyntaxDecl { syntax_export; _ }) ->
-          if public then
-            env.exports_collector := syntax_export :: !(env.exports_collector)
-      | None ->
-          (* Not a syntax declaration. It may still be an [open] whose module
-             expression harvests operators the *later* declarations in this scan
-             need, so parse it for that effect and discard the binding. *)
-          ignore (parse_open_binding env public stmt))
-
-and collect_public_syntax_exports env body_terms =
-  with_operator_scope env (fun env ->
-      ignore (map_context_statements (fun ~last:_ stmt -> collect_public_syntax_statement env stmt) body_terms))
+  map_context_statements env (fun ~last:_ stmt -> parse_module_statement env stmt) body_terms |> List.concat
 
 and parse_struct_field env stmt =
   match drop_separators stmt with
@@ -1621,21 +1418,18 @@ and parse_struct_field env stmt =
 and parse_struct_binding env stmt =
   let public, stmt = parse_public_prefix stmt in
   match parse_operator_decl env stmt with
-  | Some (TemplateSyntaxDecl { syntax_name = name; syntax_export }) ->
+  | Some decl ->
       if public then error "pub syntax is not supported inside structs"
-      else Some (Syntax.SyntaxBinding { name; attaches = attaches syntax_export })
-  | Some (MacroSyntaxDecl { syntax_name = name; syntax_value = value; _ }) ->
-      if public then error "pub operator is not supported inside structs"
-      else Some (Syntax.MacroBinding { name; value; public; kind = None })
+      else Some (role_bindings false decl)
   | None -> (
       match parse_macro_binding env public stmt with
       | Some _ when public -> error "pub macro is not supported inside structs"
-      | Some binding -> Some binding
+      | Some binding -> Some [ binding ]
       | None -> (
           match parse_macro_call_binding env stmt with
           | Some _ when public ->
               error "pub macro call is not supported inside structs"
-          | Some binding -> Some binding
+          | Some binding -> Some [ binding ]
           | None -> (
               match
                 first_some
@@ -1650,7 +1444,7 @@ and parse_struct_binding env stmt =
                   ]
                   stmt
               with
-              | Some binding -> Some binding
+              | Some binding -> Some [ binding ]
               | None ->
                   let desc =
                     match Enforest_util.drop_separators stmt with
@@ -1661,21 +1455,13 @@ and parse_struct_binding env stmt =
                     (Printf.sprintf "unsupported struct item: %s" desc))))
 
 and parse_struct_statement env stmt =
-  let parse_decl terms = parse_struct_statement env terms in
-  match parse_struct_field env stmt with
-  | Some _ ->
-      error
-        "struct field declarations are deferred in declaration syntax templates"
-  | None -> (
-      match parse_decl_template_use env parse_decl stmt with
-      | Some bindings -> bindings
-      | None -> (
-          match parse_struct_binding env stmt with
-          | Some binding -> [ binding ]
-          | None -> []))
+  match parse_decl_template_use env stmt with
+  | Some binding -> [ binding ]
+  | None -> Option.value ~default:[] (parse_struct_binding env stmt)
 
 and parse_struct_items env body_terms =
-  map_context_statements
+  let env = registering_env env in
+  map_context_statements env
     (fun ~last:_ stmt ->
       match parse_struct_field env stmt with
       | Some field -> ([ field ], [])
@@ -1685,46 +1471,37 @@ and parse_struct_items env body_terms =
 
 let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms
 
-let parse_public_syntax_exports ?file ?load_syntax source =
-  let env = env ?load_syntax () in
-  try
-    env.exports_collector := [];
-    Raw_syntax.read ?file source |> collect_public_syntax_exports env;
-    let exports = List.rev !(env.exports_collector) in
-    (match Binding.duplicate_operator_exports_message exports with
-    | Some msg -> error msg
-    | None -> ());
-    exports
-  with Raw_syntax.Error msg -> error msg
+(* The first statement of a [{ … }] body as a form scoping over the rest, which
+   stays unread until expansion reaches it (M9). A trailing [;] discards the
+   body's value. *)
+let parse_block_head env span terms =
+  match take_statement terms with
+  | [], _ -> error "empty block"
+  | stmt, [] -> parse_all (fun ts -> parse_expr_prec env 0 ts) stmt
+  | stmt, rest -> (
+      match drop_separators rest with
+      | [] -> do_statement env span stmt (unit ~span ())
+      | more -> do_statement env span stmt (stx ~span:(syntax_span more) (Syntax.Block more)))
 
-(* Strict phase rule for the standard library: there is no blanket operator seed.
-   Prelude syntax — the arithmetic/comparison operators, prefix [not], and the
-   [if]/[&&]/[||] templates — becomes available only where [std] is opened. An
-   explicit in-source [open (import "std")] harvests it in statement order (see
-   [Enforest_forms.parse_import], which resolves the path through [load_syntax]).
-   [?open_prelude] is the *expression* entry-point convenience (the REPL, top-level
-   program evaluation): it harvests [std]'s exports before parsing and wraps the
-   result in [Open (Import "std", body)], i.e. an implicit leading
-   [open (import "std")]. It exists only because a bare expression has nowhere to
-   write the open; modules have [parse_open_binding] and get no such flag. A parse
-   without either sees [+]/[if]/… as ordinary identifiers. The prelude
-   exports themselves are resolved through [load_syntax] (the reserved [std]
-   path), so this [expand] layer never needs to name the semantic-layer prelude. *)
+(* The first item of a definition context, and the items after it. *)
+let parse_items_head env terms =
+  let stmt, rest = take_statement terms in
+  (parse_module_statement env stmt, rest)
+
 let std_import_stx () = stx (Syntax.Import Compiler_names.Module_name.std_import_path)
 
-let harvest_prelude env =
-  load_syntax_exports env Compiler_names.Module_name.std_import_path
-
-let parse_expr ?file ?load_syntax ?(open_prelude = false) source =
-  let env = env ?load_syntax () in
-  if open_prelude then harvest_prelude env;
+(* A source read as an expression: one body, read as expansion reaches it.
+   [?open_prelude] is the expression entry point's implicit leading
+   [open (import "std")]: a bare expression has nowhere to write the open. *)
+let parse_expr ?file ?(open_prelude = false) source =
   try
-    let body = Raw_syntax.read ?file source |> parse_terms env in
+    let terms = Raw_syntax.read ?file source in
+    let body = stx ~span:(syntax_span terms) (Syntax.Block terms) in
     if open_prelude then stx (Syntax.Open (std_import_stx (), body, "")) else body
   with Raw_syntax.Error msg -> error msg
 
 let parse_type ?file source =
-  let env = env ~syntax_class:Syntax_class.TypeExpr () in
+  let env = lazy_env (Binding.create ()) in
   try Raw_syntax.read ?file source |> parse_all (parse_type_entry env)
   with Raw_syntax.Error msg -> error msg
 
@@ -1732,15 +1509,8 @@ let parse_pat ?file source =
   try Raw_syntax.read ?file source |> parse_pat_terms
   with Raw_syntax.Error msg -> error msg
 
-(* Modules are strict: there is no [?open_prelude] convenience here. A module
-   that wants the prelude writes [open (import "std")] as its first item, which
-   both harvests the operators (in statement order, via [parse_open_binding])
-   and carries the semantic open to the elaborator as an [OpenBinding]. The
-   expression entry points keep the flag because a bare expression has nowhere
-   to write the open. *)
-let parse_module ?file ?load_syntax source =
-  let env = env ?load_syntax () in
-  try
-    let bindings = Raw_syntax.read ?file source |> parse_module_bindings env in
-    stx (Syntax.Module { bindings })
+(* A unit: its items, read one form at a time as expansion reaches them. Units
+   are strict: a unit that wants the prelude writes [open (import "std")]. *)
+let parse_module ?file source =
+  try stx (Syntax.Module { bindings = [ Syntax.Items (Raw_syntax.read ?file source) ] })
   with Raw_syntax.Error msg -> error msg

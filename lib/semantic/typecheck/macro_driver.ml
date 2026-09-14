@@ -23,7 +23,7 @@ type driver_output = {
   macro_exports : macro_export list;
 }
 
-let rec run ?loader ?(imported_roles = []) (stx : Syntax.t) : driver_output =
+let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
   let bindings =
     match stx.kind with
     | Syntax.Module { bindings } -> bindings
@@ -37,7 +37,7 @@ let rec run ?loader ?(imported_roles = []) (stx : Syntax.t) : driver_output =
   (* Build expand context with the same callbacks used by [eval_decl_module]. *)
   let expand_ctx = Expand_ctx.create () in
   Expand_ctx.set_syntax_nominals expand_ctx syntax_nominals;
-  Expand_ctx.add_imported_roles expand_ctx imported_roles;
+  expand_ctx.Expand_ctx.load_syntax <- load_syntax;
   (* A macro body is compiled in the unit's context as of its definition. *)
   expand_ctx.Expand_ctx.elaborate
     <- Some (fun expr ->
@@ -165,11 +165,8 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
           ~finally:(fun () -> Hashtbl.remove loader.Core_loader.macro_active resolved)
           (fun () ->
             let source = Core_loader.read_module_source resolved in
-            let load_syntax, imported_roles =
-              Parse_expand.recording_imported_roles (Some (Core_loader.load_syntax_exports loader))
-            in
-            let stx = Enforest.parse_module ~file:resolved ?load_syntax source in
-            let output = run ~loader ~imported_roles:(imported_roles ()) stx in
+            let stx = Enforest.parse_module ~file:resolved source in
+            let output = run ~loader ~load_syntax:(Core_loader.load_syntax_exports loader) stx in
             (* Keep the expanded unit, not just the exports. This is the one
                pass that expands the unit with macros live; without it the
                loader re-expands the file with no [elaborate] callback and every

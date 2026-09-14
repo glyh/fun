@@ -1465,7 +1465,8 @@ let imports =
         with_modules [ ("a", "pub B = import \"b\""); ("b", "pub A = import \"a\"") ]
           (fun loader ->
             match elab_with_loader loader "import \"a\"" with
-            | exception Core_loader.CircularImport "a" -> ()
+            (* Reading a unit's syntax expands it, which reaches the cycle first. *)
+            | exception (Core_loader.CircularImport "a" | Core_loader.CircularSyntaxVisit _) -> ()
             | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
             | _ -> Alcotest.fail "expected circular import"));
     Alcotest.test_case "import requires loader" `Quick

@@ -1,7 +1,7 @@
 open Syntax
 
 let test_spec_ident () =
-  let env = Enforest_util.env () in
+  let env = Enforest_util.lazy_env (Binding.create ()) in
   let tokens = Raw_syntax.read "hello" in
   match Parse_spec.parse Parse_spec.ident env tokens with
   | Some ((id, _span), []) ->
@@ -9,7 +9,7 @@ let test_spec_ident () =
   | _ -> Alcotest.fail "expected ident"
 
 let test_spec_seq () =
-  let env = Enforest_util.env () in
+  let env = Enforest_util.lazy_env (Binding.create ()) in
   let tokens = Raw_syntax.read "macro abc" in
   let name_spec = {
     Parse_spec.run = (fun _env -> function

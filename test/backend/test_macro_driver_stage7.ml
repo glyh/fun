@@ -104,7 +104,7 @@ let test_macro_body_spends_from_the_expansion () =
   | _ -> Alcotest.fail "expected an evaluation budget error"
 
 let test_driver_provisional_filled_and_cleared () =
-  let output = Macro_driver.run (Enforest.parse_module ~load_syntax:Elab_prelude.std_load_syntax "open (import \"std\");\nmacro mk(_) { Syntax.i64(1) }\n") in
+  let output = Macro_driver.run ~load_syntax:Elab_prelude.std_load_syntax (Enforest.parse_module "open (import \"std\");\nmacro mk(_) { Syntax.i64(1) }\n") in
   Alcotest.(check bool) "macro exported" true
     (List.exists (fun (e : Macro_driver.macro_export) -> String.equal e.name "mk") output.macro_exports);
   Alcotest.(check bool) "no pending marker remains" false

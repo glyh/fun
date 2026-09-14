@@ -88,12 +88,69 @@ and struct_binding =
   | HoleBinding of id
       (** A declaration hole [$d] in quoted items ([quote { … }], M10): a
           declaration, filled when the quote is evaluated. *)
-  | SyntaxBinding of { name : id; attaches : bool }
-      (** A syntax template or fixity declaration, as the binder it is: the
-          enforester has already read its role; expansion registers the binder,
-          so a value binder of the same name visible with it is an error (M7).
-          [attaches]: a fixity-only declaration, which attaches to the value of
-          its name visible where it is declared instead of binding a new one. *)
+  | SyntaxBinding of { name : id; role : role; public : bool }
+      (** A syntax form or fixity declaration, as the binder it is: expansion
+          registers the role, so the forms after it are read with it and a
+          value binder of the same name visible with it is an error (M7). A
+          fixity-only role ([ApplyValue]) attaches to the value of its name
+          visible where it is declared instead of binding a new one. *)
+  | Items of Token_tree.t list
+      (** Declarations not read yet: a definition context's remaining items,
+          enforested one form at a time as expansion reaches them (M9). *)
+  | InstantiateBinding of instantiation
+      (** A declaration syntax form's use, filled and expanded like a macro
+          application (M9). *)
+
+(** A syntactic role (M7): what a binder means to the enforester. *)
+and role = {
+  fixity : operator_fixity;
+  precedence : int;
+  assoc : assoc;
+  meaning : role_meaning;
+  declared_at : Source_span.t;
+  (* The unit an imported role came from. *)
+  from_unit : string option;
+}
+
+and assoc = LeftAssoc | RightAssoc
+
+and role_meaning =
+  | ApplyValue  (** fixity only: the use calls the value of its name *)
+  | AssignRef  (** [<-] *)
+  | CallMacro  (** the use applies the procedural macro of its name *)
+  | Rules of { rules_kind : MacroAnnotation.t; rules : rule list }
+      (** a syntax form: a macro whose rules match tokens and fill a quote (M9) *)
+
+(** One rule: the tokens a use consumes and what each hole captures, and the
+    replacement - quoted syntax parsed where the rule is written. *)
+and rule = { pattern : rule_part list; replacement : rule_replacement; rule_span : Source_span.t }
+
+and rule_part =
+  | PartToken of Token_tree.t
+  | PartGroup of Token_tree.delimiter * rule_part list * Source_span.t
+  | PartHole of { hole : string; hole_kind : hole_kind; hole_span : Source_span.t }
+
+(** What a hole captures: the reflection types (M10). *)
+and hole_kind = HoleExpr | HoleBlock | HoleId | HoleDecl | HolePattern
+
+and rule_replacement = ReplaceExpr of t | ReplaceDecls of struct_binding list
+
+(** A syntax form's use: the rule that matched and what its holes captured. *)
+and instantiation = {
+  form : id;
+  rule : rule;
+  captures : (string * capture) list;
+  (* The unit the form was imported from: ids its replacement introduces mean
+     that unit's names. *)
+  from_unit : string option;
+}
+
+and capture =
+  | CapExpr of t
+  | CapBlock of Token_tree.t list
+  | CapId of Token_tree.token
+  | CapPattern of pat
+  | CapDecls of struct_binding list
 
 and t = {
   kind : kind;
@@ -167,6 +224,10 @@ and kind =
   | RefGet of t
   | RefSet of t * t
   | Match of t * match_branch list
+  | Block of Token_tree.t list
+      (** A [{ … }] body not read yet: its statements are enforested one form
+          at a time as expansion reaches them (M9). *)
+  | Instantiate of instantiation
   | Stx of t  (* opaque syntax wrapper *)
   | Quote of { template : t; holes : (string * t) list }
       (** [quote(…)]: syntax written literally in a macro body. Each hole [$x]
@@ -175,7 +236,7 @@ and kind =
   | QuoteDecls of { items : struct_binding list; holes : (string * t) list }
       (** [quote { … }]: declarations written literally, holes as in [Quote]. *)
   | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option }
-  | SyntaxDef of { name : id; attaches : bool; body : t }
+  | SyntaxDef of { name : id; role : role; body : t }
       (** A [SyntaxBinding] scoped over the rest of a block. *)
   | MacroCall of t * t list
   | SyntaxOperatorUse of {
@@ -239,6 +300,14 @@ let macro_kind (ann : MacroAnnotation.t option) (value : t) : MacroKind.t =
 
 (* A form the compiler writes itself, with no source position. *)
 let synth kind = { kind; span = Source_span.synthetic }
+
+(* A fixity-only role attaches to the value of its name (M7). *)
+let attaches (role : role) = role.meaning = ApplyValue
+
+(* An id a hole is written as in quoted syntax: [$x] ([$] cannot begin a source
+   identifier). *)
+let hole_name (name : string) =
+  if String.length name > 1 && name.[0] = '$' then Some (String.sub name 1 (String.length name - 1)) else None
 
 let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
 

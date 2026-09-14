@@ -8,42 +8,56 @@ type value_decl = {
   decl_recursive : bool;
 }
 
-type syntax_decl =
-  | MacroSyntaxDecl of {
-      syntax_name : Syntax.id;
-      syntax_value : Syntax.t;
-      syntax_export : Binding.operator_info;
-    }
-  | TemplateSyntaxDecl of {
-      syntax_name : Syntax.id;
-      syntax_export : Binding.operator_info;
-    }
+(* A syntactic role's declaration: [syntax], [infix], [prefix]. [macro_value]
+   is the procedural macro an operator's body defines, if it has one. *)
+type role_decl = { role_name : Syntax.id; role : Syntax.role; macro_value : Syntax.t option }
 
 type env = {
-  mutable operators : Binding.t;
-  mutable template_captures : (string * Syntax_template.captured) list;
-  exports_collector : Binding.operator_info list ref;
-  load_syntax : (string -> Binding.operator_info list) option;
-  syntax_class : Syntax_class.t;
+  (* The roles the forms are read with: the expander's binder table when
+     reading as expansion reaches a form; a copy when reading quoted syntax. *)
+  operators : Binding.t;
+  (* Reading quoted syntax - a quote, or a rule's replacement (M10): it is
+     parsed completely where it is written, and a role declared in it is
+     registered as it is read, for the statements after it. *)
+  eager : bool;
+  (* Whether a role declared while reading is registered as it is read, for the
+     statements after it: reading quoted syntax, or a struct's items, which
+     are read together (their bodies still wait for expansion). *)
+  registers : bool;
+  (* The captures of the rules enclosing quoted syntax, which a rule declared
+     in it may use (M9). *)
+  holes : string list;
+  (* Roles registered while reading eagerly, so a statement that declared one
+     scopes it over the statements after it. *)
+  mutable declared : int;
   errors : Parse_error.t list ref;
 }
 
-(* The compiler-known base operators. Only [<-] remains here: it is core
-   ref-assignment machinery ([BuiltinRefSet]), always in scope, not a stdlib
-   feature. The arithmetic/comparison operators ([+ - * / % == != < > <= >=])
-   and prefix [not] were demoted into the prelude as ordinary [pub infix] /
-   [pub prefix] declarations; they now reach parse envs through the prelude's
-   syntax exports (see [Elab_prelude.stdlib_syntax_exports]), not this table. *)
-let base_operators () : Binding.t =
-  let tbl = Binding.create () in
-  List.iter (Binding.add_operator tbl)
-    [ Binding.make_operator ~symbol:"<-" ~fixity:Binding.Infix ~precedence:1
-        ~associativity:Binding.Right ~expansion:Binding.BuiltinRefSet () ];
-  tbl
+(* The compiler-known base role: [<-], ref assignment, always in scope. *)
+let base_roles (tbl : Binding.t) =
+  Binding.extend tbl ~name:"<-" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"<-"
+    ~role:(Binding.role ~fixity:Syntax.InfixOp ~precedence:1 ~assoc:Syntax.RightAssoc Syntax.AssignRef)
 
-let env ?load_syntax ?(syntax_class = Syntax_class.Expr) () =
-  { operators = base_operators (); template_captures = []; load_syntax; syntax_class;
-    exports_collector = ref []; errors = ref [] }
+(* Reading forms as expansion reaches them, with the expander's roles. *)
+let lazy_env operators = { operators; eager = false; registers = false; holes = []; declared = 0; errors = ref [] }
+
+(* Reading quoted syntax where it is written. *)
+let eager_env ?(holes = []) env =
+  if env.eager then { env with holes = holes @ env.holes }
+  else { env with operators = Binding.copy env.operators; eager = true; registers = true; holes; declared = 0 }
+
+(* Reading a struct's items together, with its own copy of the roles. *)
+let registering_env env =
+  if env.registers then env else { env with operators = Binding.copy env.operators; registers = true; declared = 0 }
+
+(* Scopes the enforester mints for the statements of quoted syntax count down
+   from -1, apart from the expander's. *)
+let scope_counter = ref (-1)
+
+let fresh_scope () =
+  let scope = !scope_counter in
+  decr scope_counter;
+  scope
 
 let unsupported msg = raise (Unsupported msg)
 let error msg = raise (Error msg)
@@ -81,17 +95,15 @@ let id_of (term : Raw_syntax.t) name = Syntax.fresh_id ~span:term.span ~scope:(t
 
 let var_of (term : Raw_syntax.t) name = stx ~span:term.span (Syntax.Var (id_of term name))
 
-let syntax_operator_arg ~span ~(use : Raw_syntax.t) (op : Binding.operator_info) operands =
-  let fixity = match op.fixity with Binding.Prefix -> Syntax.PrefixOp | Binding.Infix -> Syntax.InfixOp in
-  let use_span = use.span in
+let syntax_operator_arg ~span ~(use : Raw_syntax.t) name (role : Syntax.role) operands =
   stx ~span
     (Syntax.SyntaxOperatorUse
-       { operator = id_of use op.symbol;
-         fixity;
+       { operator = id_of use name;
+         fixity = role.fixity;
          operands;
-         declaration_span = op.declaration_span;
-         use_span;
-         unit = op.unit })
+         declaration_span = role.declared_at;
+         use_span = use.span;
+         unit = role.from_unit })
 
 let span_between (a : Source_span.t) (b : Source_span.t) =
   if a.synthetic || b.synthetic then Source_span.synthetic
@@ -198,7 +210,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 let is_expr_start env term =
   match term.datum with
   | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
-  | Token { kind = Operator s; scope; _ } -> Option.is_some (Binding.find_operator env.operators ~fixity:Binding.Prefix ~syntax_class:env.syntax_class ~scope s)
+  | Token { kind = Operator s; scope; _ } -> Option.is_some (Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false
 
@@ -344,72 +356,37 @@ let ensure_no_rest what rest =
   | [] -> ()
   | _ -> error (what ^ " has trailing terms")
 
-let with_operator_scope env f =
-  (* A declared role stays inside its context by scope set; the copy is what
-     keeps a role an [import] harvests - scope-less, since an imported
-     template's replacement must see it too - inside the context that imported
-     it. *)
-  f { env with operators = Binding.copy env.operators; template_captures = env.template_captures }
-
 let syntax_name term = token_text term
 
-let required_syntax_name term what =
-  match syntax_name term with Some name -> name | None -> error (what ^ " requires an operator or identifier name")
-
-let load_syntax_exports env path =
-  match env.load_syntax with
-  | None -> ()
-  | Some load ->
-      let exports = Binding.from_unit path (load path) in
-      (match Binding.duplicate_operator_exports_message exports with Some msg -> error msg | None -> ());
-      Binding.apply_operator_exports env.operators exports
-
-(* Recursively scan a term list for [import "path"] occurrences and eagerly
-   harvest each one's syntax exports. Operator delivery everywhere else goes
-   through the in-order [Enforest_forms.parse_import] harvest; this whole-body
-   pre-scan survives at exactly ONE call site — [parse_syntax_template_decl] in
-   enforest.ml — where a syntax-template body's imports must be resolved before
-   the branches are enforested (for out-of-order operator use and for circular
-   syntax-visit detection). See that call site for the full rationale. *)
-let rec load_imports_in_terms env = function
-  | { datum = Token { kind = KwImport; _ }; _ }
-    :: { datum = Token { kind = String path; _ }; _ } :: rest ->
-      load_syntax_exports env path;
-      load_imports_in_terms env rest
-  | { datum = Group (_, items, _); _ } :: rest ->
-      load_imports_in_terms env items;
-      load_imports_in_terms env rest
-  | _ :: rest -> load_imports_in_terms env rest
-  | [] -> ()
-
-
-and split_statements terms =
+let split_statements terms =
   split_by_top_level (fun term -> is_separator term || token_kind Comma term) terms
 
-(* A definition context's statements, read in order: [f ~last stmt] reads one.
-   The context's inside-edge scope is on all of them, and a statement that
-   declared a role adds its own scope to the statements after it, so the role
-   is visible after it and within it, and neither before it nor outside the
-   context (M7).
-   ponytail: re-scopes the remaining statements after each declaring one
-   (quadratic in a context's declarations); keep pending scopes lazily if a
-   long unit gets slow. *)
-let map_context_statements f body_terms =
+(* A definition context's statements, read in order as quoted syntax: [f
+   ~last stmt] reads one. A statement that declared a role adds its own scope
+   to the statements after it, so the role is visible after it and neither
+   before it nor outside the context (M7). *)
+let map_context_statements env f body_terms =
   let rec go acc = function
     | [] -> List.rev acc
     | stmt :: rest ->
-        let generation = !Binding.role_generation in
+        let declared = env.declared in
         let result = f ~last:(rest = []) stmt in
         let rest =
-          if !Binding.role_generation = generation then rest
-          else
-            let s = Scope_set.singleton (Syntax_template.fresh_scope ()) in
-            List.map (Raw_syntax.add_scope s) rest
+          if env.declared = declared then rest
+          else List.map (Raw_syntax.add_scope (Scope_set.singleton (fresh_scope ()))) rest
         in
         go (result :: acc) rest
   in
-  let edge = Scope_set.singleton (Syntax_template.fresh_scope ()) in
-  go [] (split_statements (Raw_syntax.add_scope edge body_terms))
+  go [] (split_statements body_terms)
+
+(* The first statement of a definition context, and the terms after it. *)
+let take_statement terms =
+  let rec go acc = function
+    | [] -> (List.rev acc, [])
+    | term :: rest when is_separator term || token_kind Comma term -> (List.rev acc, term :: rest)
+    | term :: rest -> go (term :: acc) rest
+  in
+  go [] (drop_separators terms)
 
 let desc_token term =
   match term.Raw_syntax.datum with

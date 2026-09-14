@@ -253,7 +253,8 @@ and lower_expr (stx : Syntax.t) : t =
        the resolved kind is carried by the macro registry/table, not this
        syntax node. *)
     MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body; kind = None }
-  | Syntax.SyntaxDef { name; attaches; body } -> SyntaxDef { name = lower_id name; attaches; body = lower_expr body }
+  | Syntax.SyntaxDef { name; role; body } -> SyntaxDef { name = lower_id name; attaches = Syntax.attaches role; body = lower_expr body }
+  | Syntax.Block _ | Syntax.Instantiate _ -> invalid_arg "lower_expr: unexpanded syntax"
   | Syntax.MacroCall (f, a) -> MacroCall (lower_expr f, List.map lower_expr a)
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit = _ } ->
     let fixity = match fixity with Syntax.PrefixOp -> PrefixOp | Syntax.InfixOp -> InfixOp in
@@ -293,7 +294,8 @@ and lower_struct_binding = function
                                 params = List.map lower_id params;
                                 rhs = lower_pat rhs; public }
   | Syntax.OpenBinding (m, label) -> OpenBinding (lower_expr m, label)
-  | Syntax.SyntaxBinding { name; attaches } -> SyntaxBinding { name = lower_id name; attaches }
+  | Syntax.SyntaxBinding { name; role; _ } -> SyntaxBinding { name = lower_id name; attaches = Syntax.attaches role }
+  | Syntax.Items _ | Syntax.InstantiateBinding _ -> invalid_arg "lower_struct_binding: unexpanded syntax"
   | Syntax.HoleBinding id -> HoleBinding (lower_id id)
 
 and lower_match_branch = function

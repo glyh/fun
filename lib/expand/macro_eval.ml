@@ -52,6 +52,18 @@ type syntax_nominals = {
   fixity : value;
   macro_ann : value;
   quote_hole : value;
+  token_tree : value;
+  token_kind : value;
+  delim : value;
+  assoc : value;
+  role : value;
+  role_meaning : value;
+  rule : value;
+  rule_part : value;
+  hole_kind : value;
+  replacement : value;
+  capture : value;
+  captured : value;
 }
 
 (* Reflection: [Syntax.t] and the reflection ADTs of the prelude's [Syntax]
@@ -139,6 +151,38 @@ let w_fixity ns = function
   | Syntax.PrefixOp -> con ns.fixity "PrefixFixity" []
   | InfixOp -> con ns.fixity "InfixFixity" []
 
+let w_delim ns (d : Token_tree.delimiter) =
+  con ns.delim (match d with Paren -> "ParenDelim" | Bracket -> "BracketDelim" | Brace -> "BraceDelim") []
+
+let w_token_kind ns (k : Token_tree.token_kind) =
+  let tk name spine = con ns.token_kind name spine in
+  match k with
+  | Ident s -> tk "IdentTok" [ w_string s ]
+  | Operator s -> tk "OperatorTok" [ w_string s ]
+  | Int n -> tk "IntTok" [ VAtom (I64 n) ]
+  | Char c -> tk "CharTok" [ VAtom (Char c) ]
+  | String s -> tk "StringTok" [ w_string s ]
+  | Unit -> tk "UnitTok" []
+  | k -> (
+      match Token_tree.spelling_of Token_tree.keyword_spellings k with
+      | Some s -> tk "KeywordTok" [ w_string s ]
+      | None -> tk "PunctTok" [ w_string (Option.get (Token_tree.spelling_of Token_tree.punct_spellings k)) ])
+
+(* A token tree, each token with its scope set (M9). *)
+let rec w_token_tree ns (t : Token_tree.t) =
+  match t.datum with
+  | Token tok -> con ns.token_tree "Tok" [ w_span ns t.span; w_token_kind ns tok.kind; VAtom (Scopes tok.scope) ]
+  | Group (d, items, span) -> con ns.token_tree "TokGroup" [ w_span ns span; w_delim ns d; w_list ns (w_token_tree ns) items ]
+
+let w_tokens ns ts = w_list ns (w_token_tree ns) ts
+
+let w_assoc ns = function Syntax.LeftAssoc -> con ns.assoc "Left" [] | RightAssoc -> con ns.assoc "Right" []
+
+let w_hole_kind ns (k : Syntax.hole_kind) =
+  con ns.hole_kind
+    (match k with HoleExpr -> "HoleExpr" | HoleBlock -> "HoleBlock" | HoleId -> "HoleId" | HoleDecl -> "HoleDecl" | HolePattern -> "HolePattern")
+    []
+
 let rec w_expr ns (stx : Syntax.t) : value =
   let e name spine = con ns.expr name (w_span ns stx.span :: spine) in
   let x = w_expr ns and ids = w_list ns (w_id ns) in
@@ -186,12 +230,51 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | QuoteDecls { items; holes } -> e "RawQuoteDecls" [ w_list ns (w_decl ns) items; w_quote_holes ns holes ]
   | MacroDef { name; value; body; kind } ->
       e "RawMacroDef" [ w_id ns name; x value; x body; w_option ns (w_macro_ann ns) kind ]
-  | SyntaxDef { name; attaches; body } -> e "RawSyntaxDef" [ w_id ns name; w_bool ns attaches; x body ]
+  | SyntaxDef { name; role; body } -> e "RawSyntaxDef" [ w_id ns name; w_role ns role; x body ]
+  | Block ts -> e "RawBlock" [ w_tokens ns ts ]
+  | Instantiate { form; rule; captures; from_unit } ->
+      e "RawInstantiate" [ w_id ns form; w_rule ns rule; w_captures ns captures; w_option ns w_string from_unit ]
   | MacroCall (f, args) -> e "RawMacroCall" [ x f; w_list ns x args ]
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
       e "RawOperatorUse"
         [ w_id ns operator; w_fixity ns fixity; w_list ns x operands; w_span ns declaration_span;
           w_span ns use_span; w_option ns w_string unit ]
+
+and w_role ns (r : Syntax.role) =
+  let meaning =
+    match r.meaning with
+    | ApplyValue -> con ns.role_meaning "ApplyValue" []
+    | AssignRef -> con ns.role_meaning "AssignRef" []
+    | CallMacro -> con ns.role_meaning "CallMacro" []
+    | Rules { rules_kind; rules } -> con ns.role_meaning "Rules" [ w_macro_ann ns rules_kind; w_list ns (w_rule ns) rules ]
+  in
+  con ns.role "MkRole"
+    [ w_fixity ns r.fixity; w_i64 r.precedence; w_assoc ns r.assoc; meaning; w_span ns r.declared_at;
+      w_option ns w_string r.from_unit ]
+
+and w_rule ns (r : Syntax.rule) =
+  let replacement =
+    match r.replacement with
+    | ReplaceExpr e -> con ns.replacement "ReplaceExpr" [ w_expr ns e ]
+    | ReplaceDecls ds -> con ns.replacement "ReplaceDecls" [ w_list ns (w_decl ns) ds ]
+  in
+  con ns.rule "MkRule" [ w_list ns (w_rule_part ns) r.pattern; replacement; w_span ns r.rule_span ]
+
+and w_rule_part ns = function
+  | Syntax.PartToken t -> con ns.rule_part "PartToken" [ w_token_tree ns t ]
+  | PartGroup (d, parts, span) -> con ns.rule_part "PartGroup" [ w_delim ns d; w_list ns (w_rule_part ns) parts; w_span ns span ]
+  | PartHole { hole; hole_kind; hole_span } ->
+      con ns.rule_part "PartHole" [ w_string hole; w_hole_kind ns hole_kind; w_span ns hole_span ]
+
+and w_captures ns captures =
+  let captured = function
+    | Syntax.CapExpr e -> con ns.captured "CapExpr" [ w_expr ns e ]
+    | CapBlock ts -> con ns.captured "CapBlock" [ w_tokens ns ts ]
+    | CapId tok -> con ns.captured "CapId" [ w_token_tree ns { datum = Token tok; span = tok.span } ]
+    | CapPattern p -> con ns.captured "CapPattern" [ w_pat ns p ]
+    | CapDecls ds -> con ns.captured "CapDecls" [ w_list ns (w_decl ns) ds ]
+  in
+  w_list ns (fun (n, c) -> con ns.capture "MkCapture" [ w_string n; captured c ]) captures
 
 and w_quote_holes ns holes = w_list ns (fun (n, h) -> con ns.quote_hole "MkQuoteHole" [ w_string n; w_expr ns h ]) holes
 
@@ -259,7 +342,10 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
   | OpenBinding (m, label) -> d "DeclOpen" [ w_expr ns m; w_string label ]
   | HoleBinding id -> d "DeclHole" [ w_id ns id ]
-  | SyntaxBinding { name; attaches } -> d "DeclSyntax" [ w_id ns name; w_bool ns attaches ]
+  | SyntaxBinding { name; role; public } -> d "DeclSyntax" [ w_id ns name; w_role ns role; w_bool ns public ]
+  | Items ts -> d "DeclItems" [ w_tokens ns ts ]
+  | InstantiateBinding { form; rule; captures; from_unit } ->
+      d "DeclInstantiate" [ w_id ns form; w_rule ns rule; w_captures ns captures; w_option ns w_string from_unit ]
 
 (* ---- reading values back ---- *)
 
@@ -363,6 +449,55 @@ let u_fixity ns v =
   match payload ns.fixity v with
   | Some ("PrefixFixity", []) -> Some Syntax.PrefixOp
   | Some ("InfixFixity", []) -> Some Syntax.InfixOp
+  | _ -> None
+
+let u_delim ns v : Token_tree.delimiter option =
+  match payload ns.delim v with
+  | Some ("ParenDelim", []) -> Some Paren
+  | Some ("BracketDelim", []) -> Some Bracket
+  | Some ("BraceDelim", []) -> Some Brace
+  | _ -> None
+
+let u_token_kind ns v : Token_tree.token_kind option =
+  match payload ns.token_kind v with
+  | Some ("IdentTok", [ s ]) -> let* s = u_string s in Some (Token_tree.Ident s)
+  | Some ("OperatorTok", [ s ]) -> let* s = u_string s in Some (Token_tree.Operator s)
+  | Some ("IntTok", [ VAtom (I64 n) ]) -> Some (Token_tree.Int n)
+  | Some ("CharTok", [ VAtom (Char c) ]) -> Some (Token_tree.Char c)
+  | Some ("StringTok", [ s ]) -> let* s = u_string s in Some (Token_tree.String s)
+  | Some ("UnitTok", []) -> Some Token_tree.Unit
+  | Some ("KeywordTok", [ s ]) -> let* s = u_string s in Token_tree.of_spelling Token_tree.keyword_spellings s
+  | Some ("PunctTok", [ s ]) -> let* s = u_string s in Token_tree.of_spelling Token_tree.punct_spellings s
+  | _ -> None
+
+let rec u_token_tree ns v : Token_tree.t option =
+  match payload ns.token_tree v with
+  | Some ("Tok", [ span; kind; VAtom (Scopes scope) ]) ->
+      let* span = u_span ns span in
+      let* kind = u_token_kind ns kind in
+      Some { Token_tree.datum = Token { kind; span; scope }; span }
+  | Some ("TokGroup", [ span; d; items ]) ->
+      let* span = u_span ns span in
+      let* d = u_delim ns d in
+      let* items = u_list ns (u_token_tree ns) items in
+      Some { Token_tree.datum = Group (d, items, span); span }
+  | _ -> None
+
+let u_tokens ns v = u_list ns (u_token_tree ns) v
+
+let u_assoc ns v =
+  match payload ns.assoc v with
+  | Some ("Left", []) -> Some Syntax.LeftAssoc
+  | Some ("Right", []) -> Some Syntax.RightAssoc
+  | _ -> None
+
+let u_hole_kind ns v : Syntax.hole_kind option =
+  match payload ns.hole_kind v with
+  | Some ("HoleExpr", []) -> Some HoleExpr
+  | Some ("HoleBlock", []) -> Some HoleBlock
+  | Some ("HoleId", []) -> Some HoleId
+  | Some ("HoleDecl", []) -> Some HoleDecl
+  | Some ("HolePattern", []) -> Some HolePattern
   | _ -> None
 
 let rec u_expr ns (v : value) : Syntax.t option =
@@ -472,11 +607,18 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* body = x body in
           let* kind = u_option ns (u_macro_ann ns) kind in
           mk (MacroDef { name; value; body; kind })
-      | "RawSyntaxDef", [ name; attaches; body ] ->
+      | "RawSyntaxDef", [ name; role; body ] ->
           let* name = u_id ns name in
-          let* attaches = u_bool ns attaches in
+          let* role = u_role ns role in
           let* body = x body in
-          mk (SyntaxDef { name; attaches; body })
+          mk (SyntaxDef { name; role; body })
+      | "RawBlock", [ ts ] -> let* ts = u_tokens ns ts in mk (Block ts)
+      | "RawInstantiate", [ form; rule; captures; from_unit ] ->
+          let* form = u_id ns form in
+          let* rule = u_rule ns rule in
+          let* captures = u_captures ns captures in
+          let* from_unit = u_option ns u_string from_unit in
+          mk (Instantiate { form; rule; captures; from_unit })
       | "RawMacroCall", [ f; args ] -> let* f = x f in let* args = u_list ns x args in mk (MacroCall (f, args))
       | "RawOperatorUse", [ operator; fixity; operands; declaration_span; use_span; unit ] ->
           let* operator = u_id ns operator in
@@ -487,6 +629,75 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* unit = u_option ns u_string unit in
           mk (SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit })
       | _ -> None)
+
+and u_role ns v : Syntax.role option =
+  match payload ns.role v with
+  | Some ("MkRole", [ fixity; precedence; assoc; meaning; declared_at; from_unit ]) ->
+      let* fixity = u_fixity ns fixity in
+      let* precedence = u_int precedence in
+      let* assoc = u_assoc ns assoc in
+      let* meaning =
+        match payload ns.role_meaning meaning with
+        | Some ("ApplyValue", []) -> Some Syntax.ApplyValue
+        | Some ("AssignRef", []) -> Some Syntax.AssignRef
+        | Some ("CallMacro", []) -> Some Syntax.CallMacro
+        | Some ("Rules", [ kind; rules ]) ->
+            let* rules_kind = u_macro_ann ns kind in
+            let* rules = u_list ns (u_rule ns) rules in
+            Some (Syntax.Rules { rules_kind; rules })
+        | _ -> None
+      in
+      let* declared_at = u_span ns declared_at in
+      let* from_unit = u_option ns u_string from_unit in
+      Some { Syntax.fixity; precedence; assoc; meaning; declared_at; from_unit }
+  | _ -> None
+
+and u_rule ns v : Syntax.rule option =
+  match payload ns.rule v with
+  | Some ("MkRule", [ pattern; replacement; rule_span ]) ->
+      let* pattern = u_list ns (u_rule_part ns) pattern in
+      let* replacement =
+        match payload ns.replacement replacement with
+        | Some ("ReplaceExpr", [ e ]) -> let* e = u_expr ns e in Some (Syntax.ReplaceExpr e)
+        | Some ("ReplaceDecls", [ ds ]) -> let* ds = u_list ns (u_decl ns) ds in Some (Syntax.ReplaceDecls ds)
+        | _ -> None
+      in
+      let* rule_span = u_span ns rule_span in
+      Some { Syntax.pattern; replacement; rule_span }
+  | _ -> None
+
+and u_rule_part ns v : Syntax.rule_part option =
+  match payload ns.rule_part v with
+  | Some ("PartToken", [ t ]) -> let* t = u_token_tree ns t in Some (Syntax.PartToken t)
+  | Some ("PartGroup", [ d; parts; span ]) ->
+      let* d = u_delim ns d in
+      let* parts = u_list ns (u_rule_part ns) parts in
+      let* span = u_span ns span in
+      Some (Syntax.PartGroup (d, parts, span))
+  | Some ("PartHole", [ hole; kind; span ]) ->
+      let* hole = u_string hole in
+      let* hole_kind = u_hole_kind ns kind in
+      let* hole_span = u_span ns span in
+      Some (Syntax.PartHole { hole; hole_kind; hole_span })
+  | _ -> None
+
+and u_captures ns v =
+  let captured c : Syntax.capture option =
+    match payload ns.captured c with
+    | Some ("CapExpr", [ e ]) -> let* e = u_expr ns e in Some (Syntax.CapExpr e)
+    | Some ("CapBlock", [ ts ]) -> let* ts = u_tokens ns ts in Some (Syntax.CapBlock ts)
+    | Some ("CapId", [ t ]) -> (
+        match u_token_tree ns t with Some { datum = Token tok; _ } -> Some (Syntax.CapId tok) | _ -> None)
+    | Some ("CapPattern", [ p ]) -> let* p = u_pat ns p in Some (Syntax.CapPattern p)
+    | Some ("CapDecls", [ ds ]) -> let* ds = u_list ns (u_decl ns) ds in Some (Syntax.CapDecls ds)
+    | _ -> None
+  in
+  u_list ns
+    (fun e ->
+      match payload ns.capture e with
+      | Some ("MkCapture", [ n; c ]) -> let* n = u_string n in let* c = captured c in Some (n, c)
+      | _ -> None)
+    v
 
 and u_quote_holes ns v =
   u_list ns
@@ -661,10 +872,18 @@ and u_decl ns v : Syntax.struct_binding option =
           Some (Syntax.PatternSynBinding { name; params; rhs; public })
       | "DeclOpen", [ m; label ] -> let* m = u_expr ns m in let* label = u_string label in Some (Syntax.OpenBinding (m, label))
       | "DeclHole", [ id ] -> let* id = u_id ns id in Some (Syntax.HoleBinding id)
-      | "DeclSyntax", [ name; attaches ] ->
+      | "DeclSyntax", [ name; role; public ] ->
           let* name = u_id ns name in
-          let* attaches = u_bool ns attaches in
-          Some (Syntax.SyntaxBinding { name; attaches })
+          let* role = u_role ns role in
+          let* public = u_bool ns public in
+          Some (Syntax.SyntaxBinding { name; role; public })
+      | "DeclItems", [ ts ] -> let* ts = u_tokens ns ts in Some (Syntax.Items ts)
+      | "DeclInstantiate", [ form; rule; captures; from_unit ] ->
+          let* form = u_id ns form in
+          let* rule = u_rule ns rule in
+          let* captures = u_captures ns captures in
+          let* from_unit = u_option ns u_string from_unit in
+          Some (Syntax.InstantiateBinding { form; rule; captures; from_unit })
       | _ -> None)
 
 (* ---- the interface the expander and elaborator use ---- *)

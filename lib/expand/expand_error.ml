@@ -12,6 +12,8 @@ type t =
   | MissingCallback of { callback : string }
   | BudgetExceeded of { macro : string; limit : int; call : string }
   | EvalFailed of { macro : string; message : string }
+  | UnfitHole of { hole : string; position : string }
+      (** A syntax form's hole filled where its capture cannot stand. *)
   | UnfilledHole of { hole : string }
       (** A declaration hole reached expansion: quoted items were placed without
           being evaluated. *)
@@ -36,6 +38,7 @@ let message = function
       Printf.sprintf "expanding macro '%s' exceeded the evaluation budget of %d calls, calling %s \
                       (the budget cannot yet be raised from source)" macro limit call
   | EvalFailed { macro; message } -> Printf.sprintf "expanding macro '%s' failed: %s" macro message
+  | UnfitHole { hole; position } -> Printf.sprintf "syntax form hole %s cannot stand as %s" hole position
   | UnfilledHole { hole } -> Printf.sprintf "declaration hole %s reached expansion unfilled" hole
   | RoleConflict { name; span } ->
       Printf.sprintf "'%s' at %s is bound both as a syntax form, operator or macro and as another binder \

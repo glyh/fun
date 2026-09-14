@@ -560,16 +560,14 @@ let pub_syntax_rejected_in_struct () =
   | _ -> Alcotest.fail "expected pub syntax in a struct expression to be rejected"
 
 let syntax_exports_include_operator_metadata () =
-  match Enforest.parse_public_syntax_exports "pub infix (~) 15 Right (stx) { stx }" with
-  | [ { symbol = "~"; fixity = Binding.Infix; precedence = 15; associativity = Binding.Right;
-        syntax_class = Syntax_class.Expr; expansion = Binding.MacroOp; _ } ] ->
-      ()
+  match Parse_expand.syntax_exports "pub infix (~) 15 Right (stx) { stx }" with
+  | [ ("~", { Syntax.fixity = InfixOp; precedence = 15; assoc = RightAssoc; meaning = CallMacro; _ }) ] -> ()
   | _ -> Alcotest.fail "expected public syntax export to include operator metadata"
 
 let duplicate_public_syntax_exports_rejected () =
   match
-    Enforest.parse_public_syntax_exports "pub syntax dup { | dup $x => $x };
-pub syntax dup { | dup $x => $x }"
+    Macro_driver.run ~load_syntax:(fun _ -> Parse_expand.syntax_exports "pub syntax dup { | dup $x => $x };
+pub syntax dup { | dup $x => $x }") (Enforest.parse_module "open (import \"dups\")")
   with
   | exception Enforest.Error msg when string_contains msg "ambiguous syntax extension candidates" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
@@ -602,7 +600,7 @@ let syntax_old_hole_kind_spelling_rejected () =
 
 let syntax_pattern_hole_expression_position_rejected () =
   match parse_with_macros "{ syntax bad { | bad $(p : Pattern) => $p }; bad x }" with
-  | exception Enforest.Error msg when string_contains msg "pattern hole used in expression position" -> ()
+  | exception Expand_error.Error { error = UnfitHole { hole = "$p"; _ }; _ } -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected a pattern hole in expression position to be rejected"
 
@@ -642,8 +640,10 @@ let operator_infix_bad_assoc_rejected () =
 
 let syntax_extension_circular_visit () =
   with_modules
-    [ ("a", "pub syntax aop { | aop $x => { import \"b\"; $x } }");
-      ("b", "pub syntax bop { | bop $x => { import \"a\"; $x } }") ]
+    (* A replacement's import is quoted syntax, loaded where the form is used;
+       reading a unit's syntax loads the units it imports. *)
+    [ ("a", "B = import \"b\"; pub syntax aop { | aop $x => $x }");
+      ("b", "A = import \"a\"; pub syntax bop { | bop $x => $x }") ]
     (fun loader ->
       match
         parse_with_macros

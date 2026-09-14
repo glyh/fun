@@ -7,73 +7,97 @@ let param_name (param : Syntax.param) : string = id_name param.name
 let add_id_scope (scope : Scope_set.t) (id : Syntax.id) : Syntax.id =
   { name = id.name; span = id.span; scope = Scope_set.union id.scope scope }
 
-let same_span_file (a : Source_span.t) (b : Source_span.t) =
-  match (a.file, b.file) with
-  | Some a, Some b -> String.equal a b
-  | None, None -> true
-  | _ -> false
-
-let span_contains (outer : Source_span.t) (inner : Source_span.t) =
-  outer.synthetic || inner.synthetic
-  || (same_span_file outer inner && outer.start_byte <= inner.start_byte
-     && inner.end_byte <= outer.end_byte)
-
-(* Which ids in a binder's body receive the binder's scope. In the model, all
-   of them - the body as it exists when the binder is expanded - and macro
-   output made later receives none. Templates break that order: they
-   instantiate during enforestation, so their output already sits in the body.
-   An id a template instance introduced carries that instance's intro scope,
-   and its span is its token in the template's replacement, so "inside the
-   binder's region" is exactly "the template was defined inside the binder's
-   body" - when the replacement's tokens would have received the scope. Every
-   other id - written at the use site, spliced through a hole, or produced by
-   a procedural macro during expansion - is in the body, and receives it. *)
-let add_id_scope_if within (scope : Scope_set.t) (id : Syntax.id) : Syntax.id =
-  match within with
-  | Some region when Syntax_template.has_template_intro id.scope && not (span_contains region id.span) -> id
-  | _ -> add_id_scope scope id
-
 let add_id_scopes scopes id =
   List.fold_left (fun id scope -> add_id_scope scope id) id scopes
 
 let bind_id scope resolved_name (id : Syntax.id) : Syntax.id =
   { name = resolved_name; span = id.span; scope = Scope_set.union id.scope scope }
 
-let map_path (on_id : Syntax.id -> Syntax.id) (p : Syntax.path) : Syntax.path = { p with head = on_id p.head }
+(** The one traversal every scope, intro, rename and fill goes through: [id] on
+    every identifier - occurrence and binder, and a token's scope set, seen as
+    an id - then [form], [binding], [pat] and [token] bottom-up on what they
+    rebuild, and [rule] on the rules a syntax declaration writes. The rule an
+    instantiation names is data from where its form was declared, and is left
+    alone. *)
+type mapper = {
+  id : Syntax.id -> Syntax.id;
+  form : t -> t;
+  binding : struct_binding -> struct_binding;
+  pat : pat -> pat;
+  token : Token_tree.token -> Token_tree.token;
+  rule : mapper -> rule -> rule;
+  (* The rule an instantiation names: left alone except by filling, since a
+     rule with holes to fill can only be one the same quoted syntax declared. *)
+  used_rule : mapper -> rule -> rule;
+}
 
-let map_param (on_id : Syntax.id -> Syntax.id) (f : Syntax.t -> Syntax.t) (param : Syntax.param) : Syntax.param =
-  { name = on_id param.name;
-    type_ = Option.map f param.type_;
-    trait_bounds = List.map (map_path on_id) param.trait_bounds;
+let token_id (tok : Token_tree.token) =
+  let name = match tok.kind with Ident s | Operator s -> s | _ -> "" in
+  { Syntax.name; span = tok.span; scope = tok.scope }
+
+let rec map_forms_with (m : mapper) (stx : t) : t = m.form { stx with kind = go_kind m stx.kind }
+
+and map_path m (p : Syntax.path) : Syntax.path = { p with head = m.id p.head }
+
+and map_param m (param : Syntax.param) : Syntax.param =
+  { name = m.id param.name;
+    type_ = Option.map (map_forms_with m) param.type_;
+    trait_bounds = List.map (map_path m) param.trait_bounds;
     explicitness = param.explicitness }
 
-(** Apply [on_id] to every identifier - occurrence and binder - in a form, and
-    [on_form] to every form, bottom-up. *)
-let rec map_forms (on_id : Syntax.id -> Syntax.id) (on_form : t -> t) (stx : t) : t =
-  on_form { stx with kind = go_kind on_id on_form stx.kind }
+and map_terms m terms =
+  List.map
+    (fun (term : Token_tree.t) ->
+      match term.datum with
+      | Token tok -> { term with datum = Token (m.token { tok with scope = (m.id (token_id tok)).scope }) }
+      | Group (d, items, span) -> { term with datum = Group (d, map_terms m items, span) })
+    terms
 
-and go_kind (on_id : Syntax.id -> Syntax.id) on_form (k : kind) : kind =
-  let go = map_forms on_id on_form in
+and map_rule_default m (r : rule) : rule =
+  let rec part = function
+    | PartToken t -> PartToken (List.hd (map_terms m [ t ]))
+    | PartGroup (d, parts, span) -> PartGroup (d, List.map part parts, span)
+    | PartHole _ as h -> h
+  in
+  { r with
+    pattern = List.map part r.pattern;
+    replacement =
+      (match r.replacement with
+       | ReplaceExpr e -> ReplaceExpr (map_forms_with m e)
+       | ReplaceDecls ds -> ReplaceDecls (List.map (go_struct_binding m) ds)) }
+
+and map_role m (role : role) : role =
+  match role.meaning with
+  | Rules { rules_kind; rules } -> { role with meaning = Rules { rules_kind; rules = List.map (m.rule m) rules } }
+  | ApplyValue | AssignRef | CallMacro -> role
+
+and map_capture m = function
+  | CapExpr e -> CapExpr (map_forms_with m e)
+  | CapBlock ts -> CapBlock (map_terms m ts)
+  | CapId tok -> CapId (m.token { tok with scope = (m.id (token_id tok)).scope })
+  | CapPattern p -> CapPattern (go_pat m p)
+  | CapDecls ds -> CapDecls (List.map (go_struct_binding m) ds)
+
+and map_instantiation m (inst : instantiation) : instantiation =
+  { inst with form = m.id inst.form; rule = m.used_rule m inst.rule;
+              captures = List.map (fun (n, c) -> (n, map_capture m c)) inst.captures }
+
+and go_kind m (k : kind) : kind =
+  let go = map_forms_with m and on_id = m.id in
   match k with
   | Var id -> Var (on_id id)
   | Atom _ -> k
   | Stx s -> Stx (go s)
   | Quote { template; holes } -> Quote { template = go template; holes = List.map (fun (n, h) -> (n, go h)) holes }
   | QuoteDecls { items; holes } ->
-    QuoteDecls { items = List.map (go_struct_binding on_id on_form) items; holes = List.map (fun (n, h) -> (n, go h)) holes }
+    QuoteDecls { items = List.map (go_struct_binding m) items; holes = List.map (fun (n, h) -> (n, go h)) holes }
   | Self -> k
   | SelfType -> k
   | Ap (f, e, a) -> Ap (go f, e, go a)
-  | Lam (p, body) ->
-    Lam (map_param on_id go p, go body)
+  | Lam (p, body) -> Lam (map_param m p, go body)
   | Let { name; type_; value; body; recursive } ->
-    Let { name = on_id name;
-          type_ = Option.map go type_;
-          value = go value;
-          body = go body;
-          recursive }
-  | Annotated { inner; typ } ->
-    Annotated { inner = go inner; typ = go typ }
+    Let { name = on_id name; type_ = Option.map go type_; value = go value; body = go body; recursive }
+  | Annotated { inner; typ } -> Annotated { inner = go inner; typ = go typ }
   | Prod xs -> Prod (List.map go xs)
   | ProdTy xs -> ProdTy (List.map go xs)
   | Arrow (expl, name, dom, eff, cod) ->
@@ -84,11 +108,10 @@ and go_kind (on_id : Syntax.id -> Syntax.id) on_form (k : kind) : kind =
     RecordConstruct { typ = go typ; fields = List.map (fun (n, e) -> (n, go e)) fields }
   | Struct { con_fields; bindings } ->
     Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields;
-             bindings = List.map (go_struct_binding on_id on_form) bindings }
-  | Module { bindings } ->
-    Module { bindings = List.map (go_struct_binding on_id on_form) bindings }
+             bindings = List.map (go_struct_binding m) bindings }
+  | Module { bindings } -> Module { bindings = List.map (go_struct_binding m) bindings }
   | Import _ -> k
-  | Open (m, body, label) -> Open (go m, go body, label)
+  | Open (md, body, label) -> Open (go md, go body, label)
   | OpenChoice c -> OpenChoice { c with name = on_id c.name }
   | RecordTypeDef { name; params; fields; body } ->
     RecordTypeDef { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
@@ -99,100 +122,191 @@ and go_kind (on_id : Syntax.id -> Syntax.id) on_form (k : kind) : kind =
   | TraitDef { name; params; fields; body } ->
     TraitDef { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | ImplDef { name; trait; args; fields; body } ->
-    ImplDef { name; trait = map_path on_id trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
-  | Perform { op; arg } ->
-    Perform { op = map_path on_id op; arg = go arg }
+    ImplDef { name; trait = map_path m trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
+  | Perform { op; arg } -> Perform { op = map_path m op; arg = go arg }
   | Resume e -> Resume (go e)
   | RefNew e -> RefNew (go e)
   | RefGet e -> RefGet (go e)
   | RefSet (l, r) -> RefSet (go l, go r)
-  | Match (scrut, brs) ->
-    Match (go scrut, List.map (go_match_branch on_id on_form) brs)
-  | MacroDef { name; value; body; kind } ->
-    MacroDef { name = on_id name; value = go value; body = go body; kind }
-  | SyntaxDef { name; attaches; body } -> SyntaxDef { name = on_id name; attaches; body = go body }
-  | MacroCall (f, args) ->
-    MacroCall (go f, List.map go args)
+  | Match (scrut, brs) -> Match (go scrut, List.map (go_match_branch m) brs)
+  | Block terms -> Block (map_terms m terms)
+  | Instantiate inst -> Instantiate (map_instantiation m inst)
+  | MacroDef { name; value; body; kind } -> MacroDef { name = on_id name; value = go value; body = go body; kind }
+  | SyntaxDef { name; role; body } -> SyntaxDef { name = on_id name; role = map_role m role; body = go body }
+  | MacroCall (f, args) -> MacroCall (go f, List.map go args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
     SyntaxOperatorUse { operator = on_id operator; fixity; operands = List.map go operands; declaration_span; use_span; unit }
 
-and go_struct_binding (on_id : Syntax.id -> Syntax.id) on_form (binding : Syntax.struct_binding) : Syntax.struct_binding =
-  match binding with
-  | LetBinding { name; value; public; recursive } ->
-    LetBinding { name = on_id name;
-                 value = map_forms on_id on_form value; public; recursive }
-  | MethodBinding { name; params; body; public } ->
-    let new_name = on_id name in
-    let new_params = List.map (map_param on_id (map_forms on_id on_form)) params in
-    MethodBinding { name = new_name; params = new_params;
-                    body = map_forms on_id on_form body; public }
-  | TypeBinding { members; public } ->
-    TypeBinding { members = List.map (fun (m : type_decl) ->
-                    { name = on_id m.name; params = List.map on_id m.params;
-                      ctors = List.map (fun (n, ps) -> (on_id n, List.map (map_forms on_id on_form) ps)) m.ctors }) members;
-                  public }
-  | RecordTypeBinding { name; params; fields; public } ->
-    RecordTypeBinding { name = on_id name;
-                        params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_forms on_id on_form e)) fields; public }
-  | EffectBinding { name; params; ops; public } ->
-    EffectBinding { name = on_id name;
-                    params = List.map on_id params; ops = List.map (fun op -> { op with input = map_forms on_id on_form op.input; output = map_forms on_id on_form op.output }) ops; public }
-  | TraitBinding { name; params; fields; public } ->
-    TraitBinding { name = on_id name;
-                   params = List.map on_id params; fields = List.map (fun (n, e) -> (n, map_forms on_id on_form e)) fields; public }
-  | ImplBinding { name; trait; args; fields; public } ->
-    ImplBinding { name; trait = map_path on_id trait; args = List.map (map_forms on_id on_form) args;
-                  fields = List.map (fun (n, e) -> (n, map_forms on_id on_form e)) fields; public }
-  | MacroBinding { name; value; public; kind } ->
-    MacroBinding { name = on_id name; value = map_forms on_id on_form value; public; kind }
-  | MacroCallBinding { f; args } ->
-    MacroCallBinding { f = map_forms on_id on_form f; args = List.map (map_forms on_id on_form) args }
-  | PatternSynBinding { name; params; rhs; public } ->
-    PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat on_id rhs; public }
-  | OpenBinding (m, label) -> OpenBinding (map_forms on_id on_form m, label)
-  | SyntaxBinding { name; attaches } -> SyntaxBinding { name = on_id name; attaches }
-  | HoleBinding id -> HoleBinding (on_id id)
+and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_binding =
+  let go = map_forms_with m and on_id = m.id in
+  m.binding
+    (match binding with
+     | LetBinding { name; value; public; recursive } -> LetBinding { name = on_id name; value = go value; public; recursive }
+     | MethodBinding { name; params; body; public } ->
+       MethodBinding { name = on_id name; params = List.map (map_param m) params; body = go body; public }
+     | TypeBinding { members; public } ->
+       TypeBinding { members = List.map (fun (d : type_decl) ->
+                       { name = on_id d.name; params = List.map on_id d.params;
+                         ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) d.ctors }) members;
+                     public }
+     | RecordTypeBinding { name; params; fields; public } ->
+       RecordTypeBinding { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
+     | EffectBinding { name; params; ops; public } ->
+       EffectBinding { name = on_id name; params = List.map on_id params;
+                       ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; public }
+     | TraitBinding { name; params; fields; public } ->
+       TraitBinding { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
+     | ImplBinding { name; trait; args; fields; public } ->
+       ImplBinding { name; trait = map_path m trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
+     | MacroBinding { name; value; public; kind } -> MacroBinding { name = on_id name; value = go value; public; kind }
+     | MacroCallBinding { f; args } -> MacroCallBinding { f = go f; args = List.map go args }
+     | PatternSynBinding { name; params; rhs; public } ->
+       PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat m rhs; public }
+     | OpenBinding (md, label) -> OpenBinding (go md, label)
+     | SyntaxBinding { name; role; public } -> SyntaxBinding { name = on_id name; role = map_role m role; public }
+     | HoleBinding id -> HoleBinding (on_id id)
+     | Items terms -> Items (map_terms m terms)
+     | InstantiateBinding inst -> InstantiateBinding (map_instantiation m inst))
 
-and go_match_branch on_id on_form = function
-  | ValueBranch (p, body) -> ValueBranch (go_pat on_id p, map_forms on_id on_form body)
+and go_match_branch m = function
+  | ValueBranch (p, body) -> ValueBranch (go_pat m p, map_forms_with m body)
   | EffectBranch { op; arg_pat; body } ->
-    EffectBranch { op = map_path on_id op; arg_pat = go_pat on_id arg_pat; body = map_forms on_id on_form body }
+    EffectBranch { op = map_path m op; arg_pat = go_pat m arg_pat; body = map_forms_with m body }
 
-and go_pat on_id k = match k with
-  | PatCon (path, ps) -> PatCon (map_path on_id path, List.map (go_pat on_id) ps)
-  | PatRecord { typ; fields; partial } ->
-    PatRecord { typ = map_path on_id typ;
-                fields = List.map (fun (n, p) -> (n, Option.map (go_pat on_id) p)) fields;
-                partial }
-  | PatStructType { fields; partial } ->
-    PatStructType { fields = List.map (fun (n, p) -> (n, go_pat on_id p)) fields; partial }
-  | PatOr (l, r) -> PatOr (go_pat on_id l, go_pat on_id r)
-  | PatProd ps -> PatProd (List.map (go_pat on_id) ps)
-  | PatAtom _ -> k
-  | PatType _ -> k
-  | PatWild -> k
-  | PatBind id -> PatBind (on_id id)
+and go_pat m k =
+  m.pat
+    (match k with
+     | PatCon (path, ps) -> PatCon (map_path m path, List.map (go_pat m) ps)
+     | PatRecord { typ; fields; partial } ->
+       PatRecord { typ = map_path m typ; fields = List.map (fun (n, p) -> (n, Option.map (go_pat m) p)) fields; partial }
+     | PatStructType { fields; partial } -> PatStructType { fields = List.map (fun (n, p) -> (n, go_pat m p)) fields; partial }
+     | PatOr (l, r) -> PatOr (go_pat m l, go_pat m r)
+     | PatProd ps -> PatProd (List.map (go_pat m) ps)
+     | PatAtom _ | PatType _ | PatWild -> k
+     | PatBind id -> PatBind (m.id id))
+
+let mapper ?(form = Fun.id) id =
+  { id; form; binding = Fun.id; pat = Fun.id; token = Fun.id; rule = map_rule_default; used_rule = (fun _ r -> r) }
+
+(** Apply [on_id] to every identifier, and [on_form] to every form, bottom-up. *)
+let map_forms on_id on_form stx = map_forms_with (mapper ~form:on_form on_id) stx
 
 let map_ids on_id stx = map_forms on_id Fun.id stx
 
-(** Add a scope mark to every identifier's scope set, only within [within]'s
-    source region when given. *)
-let add_scope ?within (s : Scope_set.t) (stx : t) : t = map_ids (add_id_scope_if within s) stx
+let map_binding_ids on_id binding = go_struct_binding (mapper on_id) binding
 
-let add_scope_within region scope stx = add_scope ~within:region scope stx
+let map_pat_ids on_id pat = go_pat (mapper on_id) pat
+
+(* The names a declaration binds - not the ids it refers to. *)
+let map_binders (f : Syntax.id -> Syntax.id) (binding : struct_binding) : struct_binding =
+  match binding with
+  | LetBinding b -> LetBinding { b with name = f b.name }
+  | MethodBinding b -> MethodBinding { b with name = f b.name }
+  | TypeBinding { members; public } ->
+    TypeBinding { members = List.map (fun (d : type_decl) -> { d with name = f d.name; ctors = List.map (fun (n, ps) -> (f n, ps)) d.ctors }) members; public }
+  | RecordTypeBinding b -> RecordTypeBinding { b with name = f b.name }
+  | EffectBinding b -> EffectBinding { b with name = f b.name }
+  | TraitBinding b -> TraitBinding { b with name = f b.name }
+  | ImplBinding b -> ImplBinding { b with name = Option.map f b.name }
+  | MacroBinding b -> MacroBinding { b with name = f b.name }
+  | PatternSynBinding b -> PatternSynBinding { b with name = f b.name }
+  | SyntaxBinding b -> SyntaxBinding { b with name = f b.name }
+  | MacroCallBinding _ | OpenBinding _ | HoleBinding _ | Items _ | InstantiateBinding _ -> binding
+
+(** Add a scope mark to every identifier's scope set - and every unread token's. *)
+let add_scope (s : Scope_set.t) (stx : t) : t = map_ids (add_id_scope s) stx
+
+(* Declaration holes [$d] in items are spliced: each is a lone item. *)
+let splice_decl_holes captures (bindings : struct_binding list) =
+  List.concat_map
+    (function
+      | HoleBinding { name; _ } as b -> (
+          match Option.bind (Syntax.hole_name name) (fun h -> List.assoc_opt h captures) with
+          | Some (CapDecls ds) -> ds
+          | Some _ -> Expand_error.raise_at (UnfitHole { hole = name; position = "a declaration" })
+          | None -> [ b ])
+      | b -> [ b ])
+    bindings
+
+(* Fill a rule's replacement with what its holes captured (M9). A hole is an id
+   spelled [$x]: in expression position it takes the capture itself, as a name
+   the captured identifier, as a pattern the captured pattern, as an item the
+   captured declarations, and as a [{ … }] the captured block. A rule the
+   replacement declares binds its own holes, which filling leaves alone. *)
+let rec fill (captures : (string * capture) list) : mapper =
+  let find name = Option.bind (Syntax.hole_name name) (fun h -> List.assoc_opt h captures) in
+  let unfit what name = Expand_error.raise_at (UnfitHole { hole = name; position = what }) in
+  let id (i : Syntax.id) =
+    match find i.name with
+    | Some (CapId tok) -> token_id tok
+    | _ -> i
+  in
+  let form (stx : t) =
+    match stx.kind with
+    | Var { name; _ } -> (
+        match find name with
+        | Some (CapExpr e) -> e
+        | Some (CapBlock ts) -> { stx with kind = Block ts }
+        | Some (CapId _) | None -> stx
+        | Some (CapPattern _ | CapDecls _) -> unfit "an expression" name)
+    | Module { bindings } -> { stx with kind = Module { bindings = splice_decl_holes captures bindings } }
+    | Struct { con_fields; bindings } -> { stx with kind = Struct { con_fields; bindings = splice_decl_holes captures bindings } }
+    | Block [ { datum = Token { kind = Ident name; _ }; _ } ] -> (
+        match find name with
+        | Some (CapBlock ts) -> { stx with kind = Block ts }
+        | Some (CapExpr e) -> e
+        | Some _ -> unfit "a { … } body" name
+        | None -> stx)
+    | _ -> stx
+  in
+  let binding = function
+    | Items [ { datum = Token { kind = Ident name; _ }; _ } ] as b -> (
+        match find name with
+        | Some (CapBlock ts) -> Items ts
+        | Some _ -> unfit "a { … } body" name
+        | None -> b)
+    | b -> b
+  in
+  let pat = function
+    | PatBind { name; _ } as p -> (
+        match find name with
+        | Some (CapPattern q) -> q
+        | Some (CapId _) | None -> p
+        | Some _ -> unfit "a pattern" name)
+    | p -> p
+  in
+  let token (tok : Token_tree.token) =
+    match tok.kind with
+    | Ident name -> (match find name with Some (CapId t) -> { t with span = tok.span } | _ -> tok)
+    | _ -> tok
+  in
+  let rule m (r : rule) =
+    let inner = pattern_hole_names r.pattern in
+    let captures = List.filter (fun (n, _) -> not (List.mem n inner)) captures in
+    ignore m;
+    map_rule_default (fill captures) r
+  in
+  { id; form; binding; pat; token; rule; used_rule = rule }
+
+and pattern_hole_names parts =
+  List.concat_map
+    (function PartHole { hole; _ } -> [ hole ] | PartGroup (_, ps, _) -> pattern_hole_names ps | PartToken _ -> [])
+    parts
 
 (** The one hygiene contract of a macro application (M2), for every path that
-    applies one. What the application receives gets a fresh use-site scope and
-    a fresh intro scope; what it returns has the intro scope flipped. Ids it
-    received lose the intro scope again; ids the macro wrote gain it, so they
-    cannot capture the caller's and the caller's cannot capture them. *)
+    applies one - a syntax form's use included. What the application receives
+    gets a fresh use-site scope and a fresh intro scope; what it returns has the
+    intro scope flipped. Ids it received lose the intro scope again; ids the
+    macro wrote gain it, so they cannot capture the caller's and the caller's
+    cannot capture them. *)
 type application = {
   receive : Syntax.t -> Syntax.t;
+  receive_capture : capture -> capture;
   emit : Syntax.t -> Syntax.t;
   emit_binding : Syntax.struct_binding -> Syntax.struct_binding;
 }
 
-let application (ctx : Expand_ctx.t) : application =
+let application ?unit (ctx : Expand_ctx.t) : application =
   let use_site = Expand_ctx.fresh_scope_set ctx in
   let intro = Expand_ctx.fresh_scope_set ctx in
   let flip (id : Syntax.id) =
@@ -202,13 +316,22 @@ let application (ctx : Expand_ctx.t) : application =
     in
     { id with scope }
   in
-  List.iter (fun s -> Hashtbl.replace ctx.Expand_ctx.intro_scopes s ()) intro;
-  { receive = (fun stx -> add_scope intro (add_scope use_site stx));
+  List.iter
+    (fun s ->
+      Hashtbl.replace ctx.Expand_ctx.intro_scopes s ();
+      Option.iter (Hashtbl.replace ctx.Expand_ctx.intro_scope_units s) unit)
+    intro;
+  let receive_id id = add_id_scope intro (add_id_scope use_site id) in
+  (* A declaration an application returns into a definition context binds for
+     the rest of that context, so its binders lose the use-site scope (Flatt
+     2016, use-site scopes): a name the caller passed binds where the caller
+     can see it. *)
+  let prune_use_site (id : Syntax.id) = { id with scope = Scope_set.diff id.scope use_site } in
+  { receive = map_ids receive_id;
+    receive_capture = map_capture (mapper receive_id);
     emit = map_ids flip;
-    emit_binding = go_struct_binding flip Fun.id }
+    emit_binding = (fun b -> map_binders prune_use_site (map_binding_ids flip b)) }
 
-let add_scopes_within region scopes stx =
-  List.fold_left (fun acc scope -> add_scope_within region scope acc) stx scopes
 
 let add_param_scope (scope : Scope_set.t) (param : Syntax.param) : Syntax.param =
   { param with name = add_id_scope scope param.name; type_ = Option.map (add_scope scope) param.type_ }
@@ -216,19 +339,14 @@ let add_param_scope (scope : Scope_set.t) (param : Syntax.param) : Syntax.param 
 let add_scopes (scopes : Scope_set.t list) (stx : Syntax.t) : Syntax.t =
   List.fold_left (fun acc scope -> add_scope scope acc) stx scopes
 
-let add_pat_scope (scope : Scope_set.t) pat = go_pat (add_id_scope scope) pat
+let add_pat_scope (scope : Scope_set.t) pat = map_pat_ids (add_id_scope scope) pat
 
 let add_pat_scopes (scopes : Scope_set.t list) pat =
   List.fold_left (fun acc scope -> add_pat_scope scope acc) pat scopes
 
 let add_struct_binding_scopes scopes binding =
   List.fold_left
-    (fun binding scope -> go_struct_binding (add_id_scope scope) Fun.id binding)
-    binding scopes
-
-let add_struct_binding_scopes_within region scopes binding =
-  List.fold_left
-    (fun binding scope -> go_struct_binding (add_id_scope_if (Some region) scope) Fun.id binding)
+    (fun binding scope -> map_binding_ids (add_id_scope scope) binding)
     binding scopes
 
 (* The syntax operator an application came from, for its errors to name. *)
@@ -383,6 +501,25 @@ let in_definition_site_opens (ctx : Expand_ctx.t) (name : Syntax.id) (body : Syn
     (Expand_ctx.enclosing_unit_opens ctx name.scope)
     body
 
+(* The roles unit [path] exports, when an [import] of it is expanded: visible to
+   the whole unit importing it. An imported rule's replacement was parsed in
+   that unit, so the scopes on its ids mean nothing here and are dropped; the
+   ids it introduces resolve through the unit's open. *)
+let import_roles (ctx : Expand_ctx.t) path =
+  match ctx.Expand_ctx.load_syntax with
+  | None -> ()
+  | Some load ->
+      let roles = Binding.from_unit path (load path) in
+      (match Binding.duplicate_exports_message roles with
+       | Some msg -> raise (Enforest_util.Error msg)
+       | None -> ());
+      let unscoped = map_role (mapper (fun id -> { id with scope = Scope_set.empty })) in
+      List.iter
+        (fun (name, role) ->
+          Binding.extend ctx.Expand_ctx.binding_table ~name ~scope:Scope_set.empty ~kind:Binding.Role
+            ~role:(unscoped role) ~resolved_name:(Compiler_names.Module_name.unit_open_label path))
+        roles
+
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
   | Var id ->
@@ -399,28 +536,37 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
                               holes = List.map (fun (n, h) -> (n, expand ctx h)) holes } }
   | QuoteDecls { items; holes } ->
     let prune (id : Syntax.id) = { id with scope = Expand_ctx.prune_to_definition_site ctx id.scope } in
-    { stx with kind = QuoteDecls { items = List.map (go_struct_binding prune Fun.id) items;
+    { stx with kind = QuoteDecls { items = List.map (map_binding_ids prune) items;
                                    holes = List.map (fun (n, h) -> (n, expand ctx h)) holes } }
   | Import path ->
+    import_roles ctx path;
     Option.iter (fun f -> f ctx path) ctx.Expand_ctx.load_macros;
     stx
+  | Block terms ->
+    (* Read the body's first statement with the roles bound here, scoped over
+       the rest, which stays unread until expansion reaches it (M9). *)
+    expand ctx (Enforest.parse_block_head (Enforest_util.lazy_env ctx.Expand_ctx.binding_table) stx.span terms)
+  | Instantiate inst ->
+    instantiate ctx inst (fun app captures -> function
+      | ReplaceExpr e -> expand ctx (app.emit (map_forms_with (fill captures) e))
+      | ReplaceDecls _ -> Expand_error.raise_at (NotSyntax { macro = inst.form.name; got = "declarations" }))
   | Lam (param, body) ->
     let pname = param_name param in
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:param.name.span ~name:pname ~base_scope:param.name.scope () in
-    let body = expand ctx (add_scope_within stx.span scope body) in
+    let body = expand ctx (add_scope scope body) in
     let param = { param with name = bind_id scope resolved_name param.name; type_ = Option.map (expand ctx) param.type_ } in
     { stx with kind = Lam (param, body) }
   | Let { name; type_; value; body; recursive } ->
     let binding_name = id_name name in
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:binding_name ~base_scope:name.scope () in
-    let value = if recursive then expand ctx (add_scope_within stx.span scope value) else expand ctx value in
+    let value = if recursive then expand ctx (add_scope scope value) else expand ctx value in
     (* [M = import "m"] makes [M] a handle on the unit, so [M.answer(0)] can
        find its macros. Checked after expansion, since the import may itself be
        what a macro produced. *)
     (match value.kind with
      | Import path -> Expand_ctx.bind_module_unit ctx ~resolved_name ~path
      | _ -> ());
-    let body = expand ctx (add_scope_within stx.span scope body) in
+    let body = expand ctx (add_scope scope body) in
     let name = bind_id scope resolved_name name in
     { stx with kind = Let { name; type_ = Option.map (expand ctx) type_; value; body; recursive } }
   | Ap (f, e, a) ->
@@ -473,7 +619,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let dom = expand ctx dom in
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:name.name ~base_scope:name.scope () in
     let name = bind_id scope resolved_name name in
-    let expand_scoped e = expand ctx (add_scope_within stx.span scope e) in
+    let expand_scoped e = expand ctx (add_scope scope e) in
     let eff = Option.map (fun e -> { effects = List.map expand_scoped e.effects; tail = Option.map expand_scoped e.tail }) eff in
     { stx with kind = Arrow (expl, Some name, dom, eff, expand_scoped cod) }
   | Arrow (expl, None, dom, eff, cod) ->
@@ -484,7 +630,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind = RecordConstruct { typ = expand ctx typ; fields = List.map (fun (n, e) -> (n, expand ctx e)) fields } }
   | Struct { con_fields; bindings } ->
     { stx with kind = Struct { con_fields = List.map (fun (n, e) -> (n, expand ctx e)) con_fields;
-                               bindings = expand_struct_bindings ctx bindings } }
+                               bindings = expand_struct_bindings ~in_struct:true ctx bindings } }
   | Module { bindings } ->
     { stx with kind = Module { bindings = expand_struct_bindings ctx bindings } }
   | Open (m, body, _) ->
@@ -494,12 +640,12 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let m' = expand ctx m in
     let open_scope, label = Expand_ctx.enter_open ctx ~occurrence:(member_scope m) m in
     let scopes = open_scope :: open_unit_macro_scopes ctx m in
-    { stx with kind = Open (m', expand ctx (add_scopes_within stx.span scopes body), label) }
+    { stx with kind = Open (m', expand ctx (add_scopes scopes body), label) }
   | RecordTypeDef { name; params; fields; body } ->
     let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
-    { stx with kind = RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes_within e.span param_scopes e))) fields; body = expand ctx (add_scope_within stx.span scope body) } }
+    { stx with kind = RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; body = expand ctx (add_scope scope body) } }
   | TypeDef { name; params; ctors; body } ->
     let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
@@ -523,17 +669,17 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
              ((add_id_scope ctor_scope cname, payload), ctor_scope))
            ctors)
     in
-    { stx with kind = TypeDef { name; params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes_within p.span (scope :: param_scopes) p)) ps)) ctors; body = expand ctx (add_scopes_within stx.span (scope :: ctor_scopes) body) } }
+    { stx with kind = TypeDef { name; params; ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes (scope :: param_scopes) p)) ps)) ctors; body = expand ctx (add_scopes (scope :: ctor_scopes) body) } }
   | EffectDef { name; params; ops; body } ->
     let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
-    { stx with kind = EffectDef { name; params; ops = List.map (fun op -> { op with input = expand ctx (add_scopes_within op.input.span param_scopes op.input); output = expand ctx (add_scopes_within op.output.span param_scopes op.output) }) ops; body = expand ctx (add_scope_within stx.span scope body) } }
+    { stx with kind = EffectDef { name; params; ops = List.map (fun op -> { op with input = expand ctx (add_scopes param_scopes op.input); output = expand ctx (add_scopes param_scopes op.output) }) ops; body = expand ctx (add_scope scope body) } }
   | TraitDef { name; params; fields; body } ->
     let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~resolved_name:name.name () in
     let name = add_id_scope scope name in
     let params, param_scopes = expand_id_params ctx [] params in
-    { stx with kind = TraitDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes_within e.span param_scopes e))) fields; body = expand ctx (add_scope_within stx.span scope body) } }
+    { stx with kind = TraitDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; body = expand ctx (add_scope scope body) } }
   | ImplDef { name; trait; args; fields; body } ->
     { stx with kind = ImplDef { name; trait = expand_path ctx trait; args = List.map (expand ctx) args;
                                 fields = List.map (fun (n, e) -> (n, expand ctx e)) fields;
@@ -548,9 +694,9 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind =
         Match (expand ctx scrut,
                List.map (expand_match_branch ctx) brs) }
-  | SyntaxDef { name; attaches; body } ->
-    let scope = Expand_ctx.extend_role ctx ~attaches ~name in
-    expand ctx (add_scope_within stx.span scope body)
+  | SyntaxDef { name; role; body } ->
+    let scope = Expand_ctx.extend_role ctx ~role ~name in
+    expand ctx (add_scope scope body)
   | MacroDef { name; value; body; kind; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
@@ -567,7 +713,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
         Expand_ctx.extend_at_fresh_kinded ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~kind:Binding.Macro () in
       Expand_ctx.register_macro ctx ~name:resolved_name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:resolved_name ~kind:resolved_kind;
-      expand ctx (add_scope_within stx.span scope body)
+      expand ctx (add_scope scope body)
     | None ->
       Expand_error.raise_at (MissingCallback { callback = "elaborate" })
     end
@@ -656,6 +802,14 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       { stx with kind = SyntaxOperatorUse { operator; fixity; operands = List.map (expand ctx) operands; declaration_span; use_span; unit } }
     end
 
+(* A syntax form's use (M9): a macro application whose macro fills its rule's
+   replacement with what the use captured, under the one budget. *)
+and instantiate : 'a. Expand_ctx.t -> instantiation -> (application -> (string * capture) list -> rule_replacement -> 'a) -> 'a =
+  fun ctx inst k ->
+  Expand_ctx.macro_application ctx ~name:inst.form.name (fun () ->
+    let app = application ?unit:inst.from_unit ctx in
+    k app (List.map (fun (n, c) -> (n, app.receive_capture c)) inst.captures) inst.rule.replacement)
+
 (** Run a resolved procedural-macro call: check kind compatibility against the
     current context, then either defer a type-aware macro to the elaborator
     (producing the internal [MacroCall] node with [Stx]-wrapped args) or expand
@@ -697,12 +851,18 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
   end
 
-and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) (ctx : Expand_ctx.t) bindings =
+and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) ?(in_struct = false) (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc all_scopes = function
     | [] -> (List.rev acc, all_scopes)
+    | Items terms :: rest -> (
+      (* The next item, read with the roles bound so far (M9). *)
+      let terms = List.fold_left (fun ts scope -> map_terms (mapper (add_id_scope scope)) ts) terms active_scopes in
+      let head, after = Enforest.parse_items_head (Enforest_util.lazy_env ctx.Expand_ctx.binding_table) terms in
+      let after = if Enforest_util.drop_separators after = [] then [] else [ Items after ] in
+      go active_scopes acc all_scopes (head @ after @ rest))
     | binding :: rest ->
       let binding = add_struct_binding_scopes active_scopes binding in
-      let expanded_bindings, introduced_scopes_list = expand_struct_binding ctx binding in
+      let expanded_bindings, introduced_scopes_list = expand_struct_binding ~in_struct ctx binding in
       let acc =
         List.fold_left (fun acc b -> b :: acc) acc expanded_bindings
       in
@@ -712,8 +872,8 @@ and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) (ctx : Exp
   in
   go [] [] [] bindings
 
-and expand_struct_bindings (ctx : Expand_ctx.t) bindings =
-  let expanded_bindings, _introduced_scopes_list = expand_struct_bindings_with_scopes ctx bindings in
+and expand_struct_bindings ?in_struct (ctx : Expand_ctx.t) bindings =
+  let expanded_bindings, _introduced_scopes_list = expand_struct_bindings_with_scopes ?in_struct ctx bindings in
   List.filter (function Syntax.MacroBinding _ -> false | _ -> true) expanded_bindings
 
 and expand_method_params_body ctx params body =
@@ -729,12 +889,19 @@ and expand_method_params_body ctx params body =
   in
   go [] [] [] params
 
-and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding) : Syntax.struct_binding list * Scope_set.t list list =
+and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : Syntax.struct_binding) : Syntax.struct_binding list * Scope_set.t list list =
+  (* A struct exports no syntax: declarations a syntax form or macro writes
+     into one are held to what its own items may be. *)
+  (match binding with
+   | SyntaxBinding { public = true; role; _ } when in_struct ->
+     Enforest_util.error (if role.meaning = CallMacro then "pub operator is not supported inside structs" else "pub syntax is not supported inside structs")
+   | MacroBinding { public = true; _ } when in_struct -> Enforest_util.error "pub macro is not supported inside structs"
+   | _ -> ());
   match binding with
   | LetBinding { name; value; public; recursive } ->
     let binding_name = id_name name in
     let scope = Expand_ctx.extend_at ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~resolved_name:binding_name () in
-    let value = if recursive then expand ctx (add_scope_within value.span scope value) else expand ctx value in
+    let value = if recursive then expand ctx (add_scope scope value) else expand ctx value in
     (* Same handle as the expression-level [Let]: [I = import "inner"] inside a
        module makes [I.answer(0)] expand. *)
     (match value.kind with
@@ -816,10 +983,18 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
   | PatternSynBinding { name; params; rhs; public } ->
      ([PatternSynBinding { name; params; rhs; public }], [[]])
   | HoleBinding id -> Expand_error.raise_at (UnfilledHole { hole = id.name })
-  | SyntaxBinding { name; attaches } ->
-    (* The enforester read the role; what remains is the binder, whose scope
-       the later bindings carry like any other. *)
-    ([], [ [ Expand_ctx.extend_role ctx ~attaches ~name ] ])
+  | SyntaxBinding { name; role; public } ->
+    (* The role is bound for the items read after it, whose scope they carry. *)
+    let scope = Expand_ctx.extend_role ctx ~role ~name in
+    if public then ctx.Expand_ctx.syntax_exports <- ctx.Expand_ctx.syntax_exports @ [ (name.name, role) ];
+    ([], [ [ scope ] ])
+  | Items _ -> assert false
+  | InstantiateBinding inst ->
+    instantiate ctx inst (fun app captures -> function
+      | ReplaceDecls ds ->
+        let filled = splice_decl_holes captures (List.map (go_struct_binding (fill captures)) ds) in
+        expand_struct_bindings_with_scopes ~in_struct ctx (List.map app.emit_binding filled)
+      | ReplaceExpr _ -> Expand_error.raise_at (NotDeclarations { macro = inst.form.name }))
   | OpenBinding (m, _) ->
     (* An open binds no name of its own. Its scope marks the later bindings as
        inside it, so a name there can resolve to an open choice. *)
@@ -890,7 +1065,7 @@ and expand_struct_binding (ctx : Expand_ctx.t) (binding : Syntax.struct_binding)
                     the shared binding-list loop so generated MacroBinding
                     annotations are resolved, macros are compiled/registered,
                     and sibling-generated scopes thread in source order. *)
-                 expand_struct_bindings_with_scopes ctx (List.map app.emit_binding bindings)
+                 expand_struct_bindings_with_scopes ~in_struct ctx (List.map app.emit_binding bindings)
              | None -> Expand_error.raise_at (NotDeclarations { macro = key })))
         | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
         end
