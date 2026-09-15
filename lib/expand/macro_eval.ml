@@ -302,7 +302,7 @@ and w_param ns (p : Syntax.param) =
       w_explicitness ns p.explicitness ]
 
 and w_effect_row ns (row : Syntax.effect_row) =
-  con ns.effect_row "MkEffectRow" [ w_list ns (w_expr ns) row.effects; w_option ns (w_expr ns) row.tail ]
+  con ns.effect_row "MkEffectRow" [ w_list ns (w_expr ns) row.effects; w_option ns (w_expr ns) row.tail; w_bool ns row.inferred ]
 
 and w_effect_op ns (op : Syntax.effect_op) =
   con ns.effect_op "MkEffectOp" [ w_string op.name; w_expr ns op.input; w_expr ns op.output ]
@@ -757,10 +757,11 @@ and u_param ns v : Syntax.param option =
 
 and u_effect_row ns v : Syntax.effect_row option =
   match payload ns.effect_row v with
-  | Some ("MkEffectRow", [ effects; tail ]) ->
+  | Some ("MkEffectRow", [ effects; tail; inferred ]) ->
       let* effects = u_list ns (u_expr ns) effects in
       let* tail = u_option ns (u_expr ns) tail in
-      Some { Syntax.effects; tail }
+      let* inferred = u_bool ns inferred in
+      Some { Syntax.effects; tail; inferred }
   | _ -> None
 
 and u_effect_op ns v : Syntax.effect_op option =

@@ -111,7 +111,7 @@ and go_kind m (k : kind) : kind =
   | Prod xs -> Prod (List.map go xs)
   | ProdTy xs -> ProdTy (List.map go xs)
   | Arrow (expl, name, dom, eff, cod) ->
-    Arrow (expl, Option.map on_id name, go dom, Option.map (fun e -> { effects = List.map go e.effects; tail = Option.map go e.tail }) eff, go cod)
+    Arrow (expl, Option.map on_id name, go dom, Option.map (fun e -> { e with effects = List.map go e.effects; tail = Option.map go e.tail }) eff, go cod)
   | FieldAccess (e, n) -> FieldAccess (go e, n)
   | Proj (e, n) -> Proj (go e, n)
   | RecordConstruct { typ; fields } ->
@@ -688,10 +688,10 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:name.name ~base_scope:name.scope () in
     let name = bind_id scope resolved_name name in
     let expand_scoped e = expand ctx (add_scope scope e) in
-    let eff = Option.map (fun e -> { effects = List.map expand_scoped e.effects; tail = Option.map expand_scoped e.tail }) eff in
+    let eff = Option.map (fun e -> { e with effects = List.map expand_scoped e.effects; tail = Option.map expand_scoped e.tail }) eff in
     { stx with kind = Arrow (expl, Some name, dom, eff, expand_scoped cod) }
   | Arrow (expl, None, dom, eff, cod) ->
-    { stx with kind = Arrow (expl, None, expand ctx dom, Option.map (fun e -> { effects = List.map (expand ctx) e.effects; tail = Option.map (expand ctx) e.tail }) eff, expand ctx cod) }
+    { stx with kind = Arrow (expl, None, expand ctx dom, Option.map (fun e -> { e with effects = List.map (expand ctx) e.effects; tail = Option.map (expand ctx) e.tail }) eff, expand ctx cod) }
   | FieldAccess (e, n) -> { stx with kind = FieldAccess (expand ctx e, n) }
   | Proj (e, n) -> { stx with kind = Proj (expand ctx e, n) }
   | RecordConstruct { typ; fields } ->

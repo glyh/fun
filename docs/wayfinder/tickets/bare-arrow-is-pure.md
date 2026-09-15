@@ -3,7 +3,9 @@ title: A bare arrow is pure
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. An omitted row is the closed empty row; `can _` (and a `_` tail) is a fresh meta tail; `~>` is a prelude infix in order group `arrow` (assoc right) expanding to `-> … can _`. Type annotations use the separate type grammar, which reads no user operators, so `~>` works only where the expression grammar reads a type.
 assignee:
 blocked_by:
 ---

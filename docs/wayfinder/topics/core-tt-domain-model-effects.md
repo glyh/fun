@@ -48,14 +48,10 @@ r}`) and row metavariables all normalise to this shape before conversion.
 
 ### E3 — a bare arrow is pure
 
-**Status: decided, not implemented — today's default is the opposite.** In the
+**Status: implemented (2026-09-15).** In the
 model `A -> B` means `A -> B can {}`; `A -> B can _` infers the row (Koka's
 `_e`), generalised at `let`, which is where effect polymorphism comes from;
-`~>` is prelude sugar for the inferred form. Today an omitted row *is* the
-inferred form — a fresh meta tail (`elab_type_expr.ml`) — so every unannotated
-arrow is possibly effectful and the checker must assume the worst. The
-unwritten case must be the safe one. Distance:
-[bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md).
+`~>` is prelude sugar for the inferred form ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md), closed). Remaining distance: `~>` is not read in type annotations, which use a separate type grammar.
 
 ### E4 — the checker evaluates pure closed terms under a budget
 

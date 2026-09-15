@@ -466,7 +466,10 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
         | VLam { body = lam } -> eval_result mc (va :: lam.env) lam.body
         | unfolded -> apply_result mc unfolded va
       in
-      if pure && Option.is_some mc.MetaContext.budget.limit then
+      (* A macro application runs its body like a program: its result is read
+         at once, so nothing is deferred there. *)
+      let budget = mc.MetaContext.budget in
+      if pure && Option.is_some budget.limit && Option.is_none budget.application then
         Done (VGlued { name; fix = clo; arg = va; unfolded = lazy (result_value mc (unfold ())) })
       else unfold ()
   | VGlued _ -> apply_result mc (force mc vf) va
@@ -896,7 +899,11 @@ let eval mc env t = request ~demand:"an evaluation" mc (fun () -> eval mc env t)
 let apply mc f a = request ~demand:"an application" mc (fun () -> apply mc f a)
 let closure_apply mc c v = request ~demand:"an application" mc (fun () -> closure_apply mc c v)
 let eval_effect_row_closure mc row binder = request ~demand:"an effect row" mc (fun () -> eval_effect_row_closure mc row binder)
-let force mc v = match v with VFlex _ | VGlued _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v) | _ -> v
+let force mc v =
+  match v with
+  | VFlex _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v)
+  | VGlued _ -> request ~demand:"an evaluation" mc (fun () -> force mc v)
+  | _ -> v
 (* A type as the shape it has: metavariables solved, a recursive occurrence
    unfolded to its struct type. *)
 let force_shape mc v =
