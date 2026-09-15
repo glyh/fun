@@ -9,6 +9,14 @@ Last updated: after methods follow the arrow rule, 2026-09-15.
 
 ## Completed
 
+### One declaration per primitive; checked I64 arithmetic (2026-09-15)
+
+- `Nbe_prim.declarations` is the one table of primitives (name, type, reducer:
+  `Atoms` or `Special`); the elaborator's prim types and the evaluator's reducers
+  derive from it. The pure-arrow combinators live in `core.ml`.
+- I64 `+ - * /` are checked: overflow (including `min_int / -1`) fails with
+  "integer overflow in <op>", as division by zero fails.
+
 ### Tuple types; one grammar for types (2026-09-15)
 
 - Tuple types are `Tuple(n, T1, …, Tn)`: a built-in whose type is

@@ -906,6 +906,14 @@ let test_eval_continuation_reuse_error () =
       | _ -> Alcotest.fail "expected continuation reuse error")
   | _ -> Alcotest.fail "unexpected continuation result"
 
+(* I64 arithmetic is checked: overflow is a language-level runtime error. *)
+let check_overflow label op source () =
+  let expected = "integer overflow in " ^ op in
+  match eval_source source with
+  | exception EvalError m when String.equal m expected -> ()
+  | exception e -> Alcotest.fail (label ^ ": unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail (label ^ ": expected " ^ expected)
+
 let check_div_by_zero label source () =
   match eval_source source with
   | exception EvalError "division by zero" -> ()
@@ -3554,6 +3562,16 @@ let () =
              (check_i64 "qualified constructor alias pattern" 1L
                 "{ S = module { pub type Color = Red | Green }; \
                  N = S; open N; match (Red) { Red => 1, Green => 2 } }");
+           Alcotest.test_case "addition overflow is a language error" `Quick
+             (check_overflow "add" "+" "{ 9223372036854775807 + 1 }");
+           Alcotest.test_case "subtraction overflow is a language error" `Quick
+             (check_overflow "sub" "-" "{ (0 - 9223372036854775807 - 1) - 1 }");
+           Alcotest.test_case "multiplication overflow is a language error" `Quick
+             (check_overflow "mul" "*" "{ 4611686018427387904 * 2 }");
+           Alcotest.test_case "min_int / -1 overflows" `Quick
+             (check_overflow "div" "/" "{ (0 - 9223372036854775807 - 1) / (0 - 1) }");
+           Alcotest.test_case "arithmetic at the I64 boundary does not overflow" `Quick
+             (check_i64 "boundary" (-1L) "{ (9223372036854775807 + (0 - 9223372036854775807 - 1)) * 1 + (0 - 9223372036854775807 - 1) % (0 - 1) }");
            Alcotest.test_case "division by zero is a language error" `Quick
              (check_div_by_zero "division by zero" "{ 1 / 0 }");
            Alcotest.test_case "remainder by zero is a language error" `Quick

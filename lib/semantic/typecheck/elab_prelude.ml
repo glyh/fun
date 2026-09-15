@@ -1,73 +1,7 @@
-open Core
 open Elab_common
 
-(* Was duplicated verbatim from [Nbe_prim]; kept as an alias so the mapping from
-   an atom to its type has one definition. *)
-let atom_ty_of_atom = Nbe_prim.atom_ty_of_atom
-
-(* Primitives never mention [Bool]: all predicates return I64 (1/0). The prelude
-   wraps them into the library [Bool] ADT via [i64_to_bool]. *)
-let prims =
-  let arithemetic = VAtomTy Atom_ty.TI64 ^-> AtomTy Atom_ty.TI64 ^->> AtomTy Atom_ty.TI64 in
-  let i64_predicate = VAtomTy Atom_ty.TI64 ^-> AtomTy Atom_ty.TI64 ^->> AtomTy Atom_ty.TI64 in
-  let char_predicate = VAtomTy Atom_ty.TChar ^-> AtomTy Atom_ty.TChar ^->> AtomTy Atom_ty.TI64 in
-  let unit_predicate = VAtomTy Atom_ty.TUnit ^-> AtomTy Atom_ty.TUnit ^->> AtomTy Atom_ty.TI64 in
-  let string_predicate = VAtomTy Atom_ty.TString ^-> AtomTy Atom_ty.TString ^->> AtomTy Atom_ty.TI64 in
-  [
-    ("+", arithemetic);
-    ("-", arithemetic);
-    ("*", arithemetic);
-    ("/", arithemetic);
-    ("%", arithemetic);
-    ("eq_i64", i64_predicate);
-    ("neq_i64", i64_predicate);
-    ("eq_char", char_predicate);
-    ("neq_char", char_predicate);
-    ("eq_unit", unit_predicate);
-    ("neq_unit", unit_predicate);
-    ("eq_string", string_predicate);
-    ("neq_string", string_predicate);
-    ("panic", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = AtomTy Atom_ty.TString ^->> Var 1 } });
-    ("lt_i64", i64_predicate);
-    ("gt_i64", i64_predicate);
-    ("le_i64", i64_predicate);
-    ("ge_i64", i64_predicate);
-    (* [expand_block[Syntax.Expr]]: typed in the prelude's [Syntax] module. *)
-    ("expand_block", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = Var 0 ^->> Var 1 } });
-    ("expand_decls", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = Var 0 ^->> Var 1 } });
-    (* [Tuple : (n : I64) -> tuple_arity(n)]: its arity is computed from [n]. *)
-    (Compiler_names.Type_name.tuple,
-     VPi { explicitness = Explicit; domain = VAtomTy Atom_ty.TI64; effects = pure_effects;
-           codomain = { env = []; body = Ap (Prim Compiler_names.Type_name.tuple_arity, Explicit, Var 0) } });
-  ]
-  |> NameMap.of_list
-
-(* Primitives that carry a type but deliberately have no entry in
-   [Nbe_prim.prim_table]. [panic] is special-cased inside [Nbe.try_prim_reduce]
-   because it needs the frame list and raises rather than returning an atom. *)
-let prims_without_reducer = [ "panic"; "expand_block"; "expand_decls"; Compiler_names.Type_name.tuple ]
-
-(* The one desync that is silent, and so the only one worth a check.
-   A name in [prims] but missing from [Nbe_prim.prim_table] type-checks fine and
-   then fails to reduce: [try_prim_reduce] falls through to [None], the
-   application stays a stuck neutral, and evaluation yields a [VNeutral (HPrim …)]
-   where a number was expected - no error, just a wrong value. The other
-   direction is already loud, since a name in the prelude source with no type
-   fails prelude elaboration and takes every test with it.
-   See docs/wayfinder/tickets/unify-primitive-declaration.md. *)
-let () =
-  let missing =
-    NameMap.bindings prims
-    |> List.filter_map (fun (name, _) ->
-           if List.mem name prims_without_reducer
-              || Hashtbl.mem Nbe_prim.prim_table name
-           then None
-           else Some name)
-  in
-  if missing <> [] then
-    failwith
-      ("primitives declared with a type but with no reducer, and not listed in "
-      ^ "prims_without_reducer: " ^ String.concat ", " missing)
+(* Every primitive's type comes from its one declaration ([Nbe_prim.declarations]). *)
+let prims = Nbe_prim.declarations |> List.map (fun (d : Nbe_prim.declaration) -> (d.name, d.ty)) |> NameMap.of_list
 
 let syntax_primitive_names = []
 

@@ -1,6 +1,5 @@
 open Core
 include Elab_error
-open Elab_prelude
 open Elab_validate
 open Elab_effects
 
@@ -98,7 +97,7 @@ let refine_match_scrutinee_ty_opt ctx scrut_ty branches =
             match find_nominal_template_opt ctx con_path with
             | Some _ -> Some VU
             | None -> find_nominal_for_pattern_head_opt ctx con_path)
-        | Syntax.PatAtom atom -> Some (VAtomTy (atom_ty_of_atom atom))
+        | Syntax.PatAtom atom -> Some (VAtomTy (Nbe_prim.atom_ty_of_atom atom))
         | Syntax.PatType _ -> Some VU
         | Syntax.PatProd ps ->
             (* Refine each element from its sub-pattern where possible (e.g. a
