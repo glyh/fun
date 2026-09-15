@@ -61,7 +61,7 @@ let base_roles (tbl : Binding.t) =
    among operators is relative (brackets-decide-grouping): an operand continues
    with an infix operator only if the operator binds tighter than the one whose
    operand it is. The built-in grammar keeps two fixed positions: [ArrowRhs],
-   where [->] continues but [can] does not, and [Tight], an argument no infix
+   where [->] continues, and [Tight], an argument no infix
    operator continues. *)
 type prec =
   | Top
@@ -217,7 +217,6 @@ let keyword_name = function
   | KwRef -> Some "ref"
   | KwDeref -> Some "deref"
   | KwRec -> Some "rec"
-  | KwCan -> Some "can"
   | KwPerform -> Some "perform"
   | KwResume -> Some "resume"
   | KwMethod -> Some "method"

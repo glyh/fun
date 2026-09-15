@@ -35,7 +35,6 @@ type token_kind =
   | KwRef
   | KwDeref
   | KwRec
-  | KwCan
   | KwPerform
   | KwResume
   | KwMethod
@@ -104,7 +103,7 @@ let keyword_spellings =
     (KwModule, "module"); (KwStruct, "struct"); (KwEnum, "enum"); (KwImpl, "impl"); (KwTrait, "trait");
     (KwPub, "pub"); (KwImport, "import"); (KwOpen, "open"); (KwMacro, "macro"); (KwPattern, "pattern");
     (KwSelf, "self"); (KwSelfType, "Self"); (KwRef, "ref"); (KwDeref, "deref"); (KwRec, "rec");
-    (KwCan, "can"); (KwPerform, "perform"); (KwResume, "resume"); (KwMethod, "method"); (KwUnit, "Unit") ]
+    (KwPerform, "perform"); (KwResume, "resume"); (KwMethod, "method"); (KwUnit, "Unit") ]
 
 let punct_spellings =
   [ (LParen, "("); (RParen, ")"); (LBracket, "["); (RBracket, "]"); (LBrace, "{"); (RBrace, "}");

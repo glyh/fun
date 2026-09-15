@@ -218,11 +218,11 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
 
 (* An optional result before a body: [: T] when pure, [->{E} T] or [~> T] when
    effectful - the result's type and its row. Brackets decide grouping: the type
-   ends at the first top-level [{ … }] or [can], so a type holding braces is
+   ends at the first top-level [{ … }], so a type holding braces is
    parenthesised ([: (struct { x : I64 })]). *)
 and parse_result_type env terms =
   let result_type what rest =
-    let ends term = token_kind KwCan term || (match term.datum with Group (Raw_syntax.Brace, _, _) -> true | _ -> false) in
+    let ends term = match term.datum with Group (Raw_syntax.Brace, _, _) -> true | _ -> false in
     let rec split acc = function
       | term :: _ as rest when ends term -> (List.rev acc, rest)
       | term :: rest -> split (term :: acc) rest
@@ -309,14 +309,7 @@ and parse_method_binding env public stmt =
           (* [: T] when pure, [->{E} T] when not: a method is pure unless it
              declares a row (E3). *)
           let result, rest = parse_result_type env rest in
-          let effects, rest =
-            match result, drop_separators rest with
-            | Some (_, Some row), rest -> (Some row, rest)
-            | _, term :: rest when token_kind KwCan term ->
-                let eff, rest = parse_can_effect_row env rest in
-                (Some eff, rest)
-            | _, rest -> (None, rest)
-          in
+          let effects = match result with Some (_, row) -> row | None -> None in
           let body, rest, _ = parse_body env "method parameters" rest in
           let body = match result with Some (typ, _) -> stx ~span:body.span (Syntax.Annotated { inner = body; typ }) | None -> body in
           ensure_no_rest "method declaration" rest;
@@ -363,10 +356,6 @@ and parse_group_arg env items =
 and parse_effect_row_terms env terms =
   Enforest_forms.parse_effect_row_terms (form_callbacks env) terms
 
-and parse_can_effect_row env terms =
-  Enforest_forms.parse_can_effect_row (form_callbacks env) terms
-
-and attach_effects lhs eff = Enforest_forms.attach_effects lhs eff
 
 and parse_ref env start_span terms =
   Enforest_forms.parse_ref (form_callbacks env) start_span terms
@@ -607,12 +596,6 @@ and parse_postfix_infix env min_prec lhs terms =
               (Syntax.Arrow (Explicitness.Explicit, None, lhs, row, rhs))
       in
       parse_postfix_infix env min_prec lhs rest
-  | term :: rest
-    when token_kind KwCan term
-         && (min_prec = Top
-            || match lhs.kind with Syntax.Arrow _ -> true | _ -> false) ->
-      let eff, rest = parse_can_effect_row env rest in
-      parse_postfix_infix env min_prec (attach_effects lhs eff) rest
   | term :: rest when token_kind Colon term ->
       let typ, rest = parse_type_entry env rest in
       let lhs =

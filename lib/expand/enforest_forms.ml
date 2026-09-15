@@ -61,29 +61,6 @@ let parse_effect_row_terms callbacks terms =
           | [ wild ] when is_wildcard_term wild -> { Syntax.effects = []; tail = None; inferred = true; polymorphic = false }
           | _ -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None; inferred = false; polymorphic = false }))
 
-let parse_can_effect_row callbacks terms =
-  match drop_separators terms with
-  | { datum = Group (Raw_syntax.Brace, items, _); _ } :: rest ->
-      (parse_effect_row_terms callbacks items, rest)
-  | wild :: rest when is_wildcard_term wild -> ({ Syntax.effects = []; tail = None; inferred = true; polymorphic = false }, rest)
-  | rest ->
-      let eff, rest = callbacks.parse_expr_prec Tight rest in
-      ({ Syntax.effects = [ eff ]; tail = None; inferred = false; polymorphic = false }, rest)
-
-let attach_effects (lhs : Syntax.t) (eff : Syntax.effect_row) =
-  match lhs.kind with
-  | Syntax.Arrow (expl, name, dom, None, cod) ->
-      (* The arrow's span covers its row: a binder's scope reaches only the
-         region its form spans, and a row naming the binder sits inside it. *)
-      let span =
-        match (eff.tail, List.rev eff.effects) with
-        | Some last, _ | None, last :: _ -> span_between lhs.span last.Syntax.span
-        | None, [] -> lhs.span
-      in
-      { Syntax.kind = Syntax.Arrow (expl, name, dom, Some eff, cod); span }
-  | Syntax.Arrow _ -> error "duplicate effect annotation"
-  | _ -> error "can annotation requires an arrow"
-
 let parse_ref callbacks start_span terms =
   match drop_separators terms with
   | { datum = Group (Raw_syntax.Paren, items, span); _ } :: rest ->

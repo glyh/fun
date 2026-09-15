@@ -945,7 +945,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let method_types = ref None in
       (* A method's type against the type it was known at: parameters and result.
          ponytail: rows are not compared - a declared row is the same syntax both
-         times; a [can _] method called through [self] before its body is checked
+         times; a [->{_}] method called through [self] before its body is checked
          performs its pre-body row (an unsolved tail). Compare rows once row
          metas can be shared across the two elaborations. *)
       let unify_method_types (ctx : Ctx.t) actual promised =

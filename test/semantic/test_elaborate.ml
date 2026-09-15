@@ -774,7 +774,7 @@ let structs =
         eval_i64 "{ rec fact = fn(n : I64) : I64 { if (n == 0) { 1 } else { n * fact(n - 1) } }; fact(5) }" 120L ();
         eval_i64 "{ add = fn(a : I64) : I64 -> I64 { fn(b : I64) : I64 { a + b } }; add(1)(2) }" 3L ();
         eval_i64 "{ C = struct { v : I64; pub method get() : I64 { self.v } }; C.get(C{v = 7}) }" 7L ();
-        elab_ok "{ effect Exc = sig { raise : I64 -> I64 }; C = struct { v : I64; pub method bump() : I64 can {Exc} { perform Exc.raise(1) } }; C.bump }" ();
+        elab_ok "{ effect Exc = sig { raise : I64 -> I64 }; C = struct { v : I64; pub method bump() ->{Exc} I64 { perform Exc.raise(1) } }; C.bump }" ();
         elab_fail "{ f = fn(n : I64) : Bool { n }; 1 }" ());
     Alcotest.test_case "a method is called through a value" `Quick
       (fun () ->
@@ -1405,16 +1405,16 @@ let effects =
     Alcotest.test_case "same effect family and params convert" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; \
-          ((fn(x) { x } : Unit -> Unit can State(I64)) : Unit -> Unit can State(I64)) }");
+          ((fn(x) { x } : Unit ->{State(I64)} Unit) : Unit ->{State(I64)} Unit) }");
     Alcotest.test_case "different effect params elaborate" `Quick
       (check_type
-         "{ effect State(S) = sig { get : Unit -> S }; Unit -> I64 can State(Bool) }"
+         "{ effect State(S) = sig { get : Unit -> S }; Unit ->{State(Bool)} I64 }"
          U);
     Alcotest.test_case "identical signatures remain nominal" `Quick
       (elab_fail
          "{ effect State(S) = sig { get : Unit -> S }; \
           effect Env(S) = sig { get : Unit -> S }; \
-          ((fn(x) { x } : Unit -> Unit can State(I64)) : Unit -> Unit can Env(I64)) }");
+          ((fn(x) { x } : Unit ->{State(I64)} Unit) : Unit ->{Env(I64)} Unit) }");
     Alcotest.test_case "public effect field through dot" `Quick
       (check_type
          "{ M = module { pub effect State(S) = sig { get : Unit -> S } }; M.State(I64) }"
@@ -1441,68 +1441,68 @@ let effects =
          "{ E = import \"effects\"; E.State(I64) }" U);
     Alcotest.test_case "effectful arrow has type Type" `Quick
       (check_type
-         "{ effect IO = sig { read : Unit -> I64 }; I64 -> I64 can IO }"
+         "{ effect IO = sig { read : Unit -> I64 }; I64 ->{IO} I64 }"
          U);
     Alcotest.test_case "parameterized row has type Type" `Quick
       (check_type
-         "{ effect State(S) = sig { get : Unit -> S }; Unit -> I64 can State(I64) }"
+         "{ effect State(S) = sig { get : Unit -> S }; Unit ->{State(I64)} I64 }"
          U);
     Alcotest.test_case "braced multi-effect row has type Type" `Quick
       (check_type
-         "{ effect State(S) = sig { get : Unit -> S }; effect IO = sig { read : Unit -> I64 }; Unit -> I64 can {State(I64), IO} }"
+         "{ effect State(S) = sig { get : Unit -> S }; effect IO = sig { read : Unit -> I64 }; Unit ->{State(I64), IO} I64 }"
          U);
     Alcotest.test_case "EffectRow has type Type" `Quick
       (check_type "EffectRow" U);
     Alcotest.test_case "open effect row has type Type" `Quick
       (check_type
-         "{ effect IO = sig { read : Unit -> I64 }; [r : EffectRow] -> (Unit -> I64 can {IO | r}) }"
+         "{ effect IO = sig { read : Unit -> I64 }; [r : EffectRow] -> (Unit ->{IO | r} I64) }"
          U);
     Alcotest.test_case "tail-only effect row has type Type" `Quick
       (check_type
-         "[r : EffectRow] -> (Unit -> I64 can {| r})"
+         "[r : EffectRow] -> (Unit ->{| r} I64)"
          U);
     Alcotest.test_case "lambda checks against effectful function type" `Quick
       (elab_ok
-         "{ effect IO = sig { read : Unit -> I64 }; (fn(x) { x } : I64 -> I64 can IO) }");
+         "{ effect IO = sig { read : Unit -> I64 }; (fn(x) { x } : I64 ->{IO} I64) }");
     Alcotest.test_case "row order ignored" `Quick
       (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; effect IO = sig { read : Unit -> I64 }; ((fn(x) { x } : I64 -> I64 can {IO, State(I64)}) : I64 -> I64 can {State(I64), IO}) }");
+         "{ effect State(S) = sig { get : Unit -> S }; effect IO = sig { read : Unit -> I64 }; ((fn(x) { x } : I64 ->{IO, State(I64)} I64) : I64 ->{State(I64), IO} I64) }");
     Alcotest.test_case "non-effect row entry rejected" `Quick
       (elab_fail
-         "I64 -> I64 can I64");
+         "I64 ->{I64} I64");
     Alcotest.test_case "duplicate row entry rejected" `Quick
       (elab_fail
-         "{ effect IO = sig { read : Unit -> I64 }; I64 -> I64 can {IO, IO} }");
+         "{ effect IO = sig { read : Unit -> I64 }; I64 ->{IO, IO} I64 }");
     Alcotest.test_case "perform get checks in effectful lambda" `Quick
       (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.get () } : Unit -> I64 can State(I64)) }");
+         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.get () } : Unit ->{State(I64)} I64) }");
     Alcotest.test_case "perform put checks in effectful lambda" `Quick
       (elab_ok
-         "{ effect State(S) = sig { put : S -> Unit }; (fn(_) { perform State.put(42) } : Unit -> Unit can State(I64)) }");
+         "{ effect State(S) = sig { put : S -> Unit }; (fn(_) { perform State.put(42) } : Unit ->{State(I64)} Unit) }");
     Alcotest.test_case "unknown operation rejected" `Quick
       (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.missing () } : Unit -> I64 can State(I64)) }");
+         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.missing () } : Unit ->{State(I64)} I64) }");
     Alcotest.test_case "wrong operation argument rejected" `Quick
       (elab_fail
-         "{ effect State(S) = sig { put : S -> Unit }; (fn(_) { perform State.put(True) } : Unit -> Unit can State(I64)) }");
+         "{ effect State(S) = sig { put : S -> Unit }; (fn(_) { perform State.put(True) } : Unit ->{State(I64)} Unit) }");
     Alcotest.test_case "pure lambda rejects perform" `Quick
       (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.get () } : Unit -> I64 can {}) }");
+         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.get () } : Unit -> I64) }");
     Alcotest.test_case "pure lambda still checks against effectful type" `Quick
       (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { 1 } : Unit -> I64 can State(I64)) }");
+         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { 1 } : Unit ->{State(I64)} I64) }");
     Alcotest.test_case "effectful call must be accounted for" `Quick
       (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; (fn(_) { f() } : Unit -> I64 can {}) }");
+         "{ effect State(S) = sig { get : Unit -> S }; f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; (fn(_) { f() } : Unit -> I64) }");
     Alcotest.test_case "effectful call propagates latent row" `Quick
       (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; (fn(_) { f() } : Unit -> I64 can State(I64)) }");
+         "{ effect State(S) = sig { get : Unit -> S }; f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; (fn(_) { f() } : Unit ->{State(I64)} I64) }");
     Alcotest.test_case "an inferred-row wrapper threads effects" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
-          wrap : (Unit -> I64 can _) -> Unit -> I64 can _ = fn(g) { fn(_) { g() } }; \
-          (fn(_) { wrap(f)() } : Unit -> I64 can State(I64)) }");
+          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
+          wrap : (Unit ->{_} I64) -> Unit ->{_} I64 = fn(g) { fn(_) { g() } }; \
+          (fn(_) { wrap(f)() } : Unit ->{State(I64)} I64) }");
     (* [~>] (effect-arrow-syntax): a parameter's [~>] mints a row variable the
        function is polymorphic in; a result's collects its parameters'. *)
     Alcotest.test_case "a bound set requires every trait" `Quick
@@ -1540,21 +1540,21 @@ let effects =
     Alcotest.test_case "a bare arrow rejects an effectful callback" `Quick
       (elab_fail
          "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
+          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
           app = fn(g : Unit -> I64) { g() }; \
           app(f) }");
     Alcotest.test_case "open row accepts concrete prefix effect" `Quick
       (elab_ok
          "{ effect IO = sig { read : Unit -> I64 }; \
-          ((fn[r : EffectRow] { fn(_) { perform IO.read () } }) : [r : EffectRow] -> (Unit -> I64 can {IO | r})) }");
+          ((fn[r : EffectRow] { fn(_) { perform IO.read () } }) : [r : EffectRow] -> (Unit ->{IO | r} I64)) }");
     Alcotest.test_case "tail-only row accepts empty tail" `Quick
       (elab_ok
-         "((fn[r : EffectRow] { fn(_) { 1 } }) : [r : EffectRow] -> (Unit -> I64 can {| r}))");
+         "((fn[r : EffectRow] { fn(_) { 1 } }) : [r : EffectRow] -> (Unit ->{| r} I64))");
     Alcotest.test_case "extra effect rejects against rigid explicit row" `Quick
       (elab_fail
          "{ effect IO = sig { read : Unit -> I64 }; \
            effect State(S) = sig { get : Unit -> S }; \
-           ((fn[r : EffectRow] { fn(_) { _ = perform IO.read (); perform State.get () } }) : [r : EffectRow] -> (Unit -> I64 can {IO | r})) }");
+           ((fn[r : EffectRow] { fn(_) { _ = perform IO.read (); perform State.get () } }) : [r : EffectRow] -> (Unit ->{IO | r} I64)) }");
     Alcotest.test_case "inferred perform lambda exposes latent effect" `Quick
       (fun () ->
         let expr = Parse_expand.parse_expr "{ effect State(S) = sig { get : Unit -> S }; fn(_) { perform State.get () } }" in
@@ -1590,7 +1590,7 @@ let effects =
           match (perform Ask.prompt(Request{value = 1; extra = 2})) { x => x, effect Ask.prompt Request{missing} => missing } }");
     Alcotest.test_case "multi-operation handler remains effectful when partial" `Quick
       (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S; put : S -> Unit }; (fn(_) { match (perform State.get ()) { x => x, effect State.get () => 0 } } : Unit -> I64 can {}) }");
+         "{ effect State(S) = sig { get : Unit -> S; put : S -> Unit }; (fn(_) { match (perform State.get ()) { x => x, effect State.get () => 0 } } : Unit -> I64) }");
     Alcotest.test_case "duplicate effect branch rejected" `Quick
       (elab_fail
          "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n, effect Exc.raise n => n } }");
@@ -1627,7 +1627,7 @@ let effects =
               x => x, \
             effect StateI64.get () => resume(1) \
             } } \
-           : Unit -> I64 can {}) }");
+           : Unit -> I64) }");
     Alcotest.test_case "handler branch can perform handled effect" `Quick
       (elab_ok
          "{ effect Ping = sig { hit : I64 -> I64 }; \
@@ -1791,14 +1791,14 @@ let imports =
       (import_elab_fail
          [ ( "effects",
               "effect Hidden(S) = sig { get : Unit -> S }; \
-               pub read : Unit -> I64 can Hidden(I64) = fn(_) { perform Hidden.get() }" ) ]
+               pub read : Unit ->{Hidden(I64)} I64 = fn(_) { perform Hidden.get() }" ) ]
          "{ E = import \"effects\"; \
            match (E.read()) { x => x, effect E.Hidden.get () => 0 } }");
     Alcotest.test_case "imported latent effect function" `Quick
       (check_import_type
          [ ( "effects",
               "pub effect State(S) = sig { get : Unit -> S }; \
-               pub read : Unit -> I64 can State(I64) = fn(_) { perform State.get() }" ) ]
+               pub read : Unit ->{State(I64)} I64 = fn(_) { perform State.get() }" ) ]
          "{ E = import \"effects\"; \
            StateI64 = E.State(I64); \
            match (E.read()) { x => x, effect StateI64.get () => 7 } }"
@@ -1871,10 +1871,10 @@ let ref_effects =
   [
     Alcotest.test_case "a bare arrow mutating its parameter is rejected" `Quick
       (mutates_unhandled "{ bump : Ref(I64) -> Unit = fn(r) { r <- deref(r) + 1 }; 1 }");
-    Alcotest.test_case "can {Mutate(r)} names the reference" `Quick
-      (eval_i64 "{ bump : (r : Ref(I64)) -> Unit can {Mutate(r)} = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); deref(x) }" 2L);
-    Alcotest.test_case "can _ infers the mutation" `Quick
-      (eval_i64 "{ bump : Ref(I64) -> Unit can _ = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); _ = bump(x); deref(x) }" 3L);
+    Alcotest.test_case "->{Mutate(r)} names the reference" `Quick
+      (eval_i64 "{ bump : (r : Ref(I64)) ->{Mutate(r)} Unit = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); deref(x) }" 2L);
+    Alcotest.test_case "->{_} infers the mutation" `Quick
+      (eval_i64 "{ bump : Ref(I64) ->{_} Unit = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); _ = bump(x); deref(x) }" 3L);
     Alcotest.test_case "a local reference is pure from outside" `Quick
       (eval_i64 ("{ " ^ sum_to ^ "; sum_to(3) }") 3L);
     Alcotest.test_case "a pure function using a local reference evaluates in a type" `Quick
@@ -1886,16 +1886,16 @@ let ref_effects =
     Alcotest.test_case "writing an outer reference through a merged heap is not local" `Quick
       (elab_fail "{ r = ref(0); f = fn(u : Unit) { b = ref(1); xs = Cons(r, Cons(b, Nil)); r <- 5 }; (f : Unit -> Unit) }");
     Alcotest.test_case "a pure arrow cannot write an outer reference" `Quick
-      (mutates_unhandled "{ r = ref(0); f : Unit -> Unit can {} = fn(_) { r <- 2 }; 1 }");
+      (mutates_unhandled "{ r = ref(0); f : Unit -> Unit = fn(_) { r <- 2 }; 1 }");
     Alcotest.test_case "a module-level reference works at the top" `Quick
-      (eval_i64 "{ Counter = module { pub count = ref(0); pub tick : Unit -> Unit can {Mutate(count)} = fn(_) { count <- deref(count) + 1 } }; _ = Counter.tick(()); deref(Counter.count) }" 1L);
+      (eval_i64 "{ Counter = module { pub count = ref(0); pub tick : Unit ->{Mutate(count)} Unit = fn(_) { count <- deref(count) + 1 } }; _ = Counter.tick(()); deref(Counter.count) }" 1L);
     Alcotest.test_case "a block with private mutation is pure" `Quick
       (elab_ok "{ p : Tuple({ acc = ref(1); acc <- 2; deref(acc) }, I64, I64) = (1, 2); p }");
     Alcotest.test_case "a block returning its reference keeps the effect" `Quick
-      (mutates_unhandled "{ f : Unit -> Ref(I64) can {} = fn(_) { { r = ref(1); r } }; 1 }");
+      (mutates_unhandled "{ f : Unit -> Ref(I64) = fn(_) { { r = ref(1); r } }; 1 }");
     Alcotest.test_case "an unhandled Mutate names the reference" `Quick
       (fun () ->
-        match elab "{ r = ref(0); f : Unit -> Unit can {} = fn(_) { r <- 2 }; 1 }" with
+        match elab "{ r = ref(0); f : Unit -> Unit = fn(_) { r <- 2 }; 1 }" with
         | exception Elaborate.ElabError (Elaborate.UnhandledEffects effs) ->
             Alcotest.(check (list string)) "names r" [ "effect Mutate(r)" ] effs
         | exception e -> Alcotest.fail (Printexc.to_string e)
@@ -2017,13 +2017,13 @@ let evaluation_budget =
       (elab_ok "{ rec inc : I64 -> I64 = fn(n) { n + 1 }; rec twice_inc : I64 -> I64 = fn(n) { inc(inc(n)) }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(twice_inc(n))) { (y : F(n + 1 + 1)) }; 2 }");
     Alcotest.test_case "mutually recursive functions unfold in a type" `Quick
       (elab_ok
-         "{ rec even : I64 -> Bool can {} = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
-          and odd : I64 -> Bool can {} = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
+         "{ rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
+          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
           F = fn(b : Bool) { if (b) { I64 } else { Bool } }; (42 : F(even(4))) }");
     Alcotest.test_case "two calls of one pure group member convert without unfolding" `Quick
       (elab_ok
-         "{ rec even : I64 -> Bool can {} = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
-          and odd : I64 -> Bool can {} = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
+         "{ rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
+          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
           F = fn(b : Bool) { if (b) { I64 } else { Bool } }; g = fn(n : I64, y : F(odd(n))) { (y : F(odd(n))) }; 2 }");
     Alcotest.test_case "a divergent mutually recursive pair in a type names a member" `Quick (fun () ->
         match elab "{ rec a : I64 -> Type = fn(n) { b(n) } and b : I64 -> Type = fn(n) { a(n) }; g = fn(n : I64, y : a(n)) { 1 }; 2 }" with
@@ -2031,7 +2031,7 @@ let evaluation_budget =
             Alcotest.(check bool) "names a or b" true (List.mem call [ "a"; "b" ])
         | _ -> Alcotest.fail "expected an evaluation budget error");
     Alcotest.test_case "two calls of one pure fixpoint on convertible arguments convert without unfolding" `Quick
-      (elab_ok "{ rec fact : I64 -> I64 can {} = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
+      (elab_ok "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
     Alcotest.test_case "a bare-arrow fixpoint converts without unfolding" `Quick
       (elab_ok "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
     Alcotest.test_case "calls of two fixpoints with the same body unfold until the budget runs out" `Quick
@@ -2048,14 +2048,14 @@ let evaluation_budget =
         in
         let effect_decl = "effect State(S) = sig { get : Unit -> S }" in
         Alcotest.(check bool) "an empty closed row" true
-          (purity "{ rec f : I64 -> I64 can {} = fn(n) { f(n) }; 1 }");
+          (purity "{ rec f : I64 -> I64 = fn(n) { f(n) }; 1 }");
         Alcotest.(check bool) "an effectful row" false
-          (purity ("{ " ^ effect_decl ^ "; rec f : Unit -> I64 can State(I64) = fn(u) { perform State.get () }; 1 }"));
+          (purity ("{ " ^ effect_decl ^ "; rec f : Unit ->{State(I64)} I64 = fn(u) { perform State.get () }; 1 }"));
         (* A bare arrow is pure (E3). *)
         Alcotest.(check bool) "a bare arrow" true
           (purity "{ rec f : I64 -> I64 = fn(n) { f(n) }; 1 }");
         Alcotest.(check bool) "an inferred row" false
-          (purity "{ rec f : I64 -> I64 can _ = fn(n) { f(n) }; 1 }"));
+          (purity "{ rec f : I64 ->{_} I64 = fn(n) { f(n) }; 1 }"));
     Alcotest.test_case "a closed call still evaluates" `Quick
       (elab_ok "{ rec k : I64 -> Type = fn(n) { if (n == 0) { I64 } else { k(n - 1) } }; g = fn(y : k(3)) { y + 1 }; 2 }");
     Alcotest.test_case "running a program is not budgeted" `Quick (fun () ->
