@@ -2618,6 +2618,16 @@ let test_syntax_template_reuse_duplicates_evaluation () =
        twice (inc())
      }" ()
 
+(* A syntax form's hole kind means what the parameter kind does: [Decl] one
+   declaration, [List(Decl)] any number. *)
+let test_decl_hole_kinds_match_parameters () =
+  check_i64_macro "a List(Decl) hole takes a group of declarations" 3L
+    "{ M = module { syntax both : Decl { both $(ds : List(Decl)) => { $ds } }; both { pub a = 1; pub b = 2 } }; M.a + M.b }" ();
+  match eval_with_macros "{ M = module { syntax one : Decl { one $(d : Decl) => { $d } }; one { pub a = 1; pub b = 2 } }; M.a }" with
+  | exception Enforest_util.Error msg when String.starts_with ~prefix:"no matching branch" msg -> ()
+  | exception e -> Alcotest.fail ("a Decl hole given two declarations: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "a Decl hole must not take two declarations"
+
 let test_decl_template_module_captures_pub_value () =
   check_i64_macro "decl template captures public module value" 42L
     "{
@@ -4026,6 +4036,7 @@ let () =
           Alcotest.test_case "syntax template: pattern hole" `Quick test_syntax_template_pattern_hole;
           Alcotest.test_case "syntax template: unused capture" `Quick test_syntax_template_unused_capture;
           Alcotest.test_case "syntax template: reuse duplicates evaluation" `Quick test_syntax_template_reuse_duplicates_evaluation;
+          Alcotest.test_case "decl hole kinds match parameter kinds" `Quick test_decl_hole_kinds_match_parameters;
           Alcotest.test_case "decl template: module captures pub value" `Quick test_decl_template_module_captures_pub_value;
           Alcotest.test_case "decl template: module preserves typed value" `Quick test_decl_template_module_preserves_typed_value;
           Alcotest.test_case "decl template: struct captures pub value" `Quick test_decl_template_struct_captures_pub_value;

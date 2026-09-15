@@ -231,6 +231,7 @@ let splice_decl_holes captures (bindings : struct_binding list) =
       | HoleBinding { name; _ } as b -> (
           match Option.bind (Syntax.hole_name name) (fun h -> List.assoc_opt h captures) with
           | Some (CapDecls ds) -> ds
+          | Some (CapDecl d) -> [ d ]
           | Some _ -> Expand_error.raise_at (UnfitHole { hole = name; position = "a declaration" })
           | None -> [ b ])
       | b -> [ b ])

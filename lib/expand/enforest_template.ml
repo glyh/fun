@@ -60,6 +60,12 @@ let parse_hole = function
       | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident kind; _ }; _ } ]
         when token_kind Colon colon ->
           Some (Syntax.PartHole { hole = name; hole_kind = parse_hole_kind kind; hole_span = span }, rest)
+      (* [$(d : List(Decl))]: any number of declarations, as the parameter kind. *)
+      | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident "List"; _ }; _ };
+          { datum = Group (Raw_syntax.Paren, arg, _); _ } ]
+        when token_kind Colon colon
+             && (match drop_separators arg with [ { datum = Token { kind = Ident "Decl"; _ }; _ } ] -> true | _ -> false) ->
+          Some (Syntax.PartHole { hole = name; hole_kind = Syntax.HoleDecl; hole_span = span }, rest)
       | _ -> error "expected template hole annotation $(name : Kind)")
   | ({ datum = Token _; span } as term) :: rest when Option.is_some (hole_ident term) ->
       Some (Syntax.PartHole { hole = Option.get (hole_ident term); hole_kind = Syntax.HoleExpr; hole_span = span }, rest)
@@ -268,9 +274,16 @@ and match_parts ?(whole = false) callbacks captures pattern input =
                   (Syntax.CapPattern p, List.tl ts))
                 with_capture input)
       | Syntax.HoleDecl | HoleOneDecl -> (
-          (* Declarations, captured unread: they are read where they are spliced. *)
-          match decl_extent (extent rest) (drop_separators input) with
-          | Some (decls, after) when drop_separators decls <> [] -> with_capture (Syntax.CapDecls [ Syntax.Items decls ]) after
+          (* Declarations, captured unread: they are read where they are spliced.
+             A [Decl] hole takes exactly one item, a [List(Decl)] any number. *)
+          let unbrace = function [ { datum = Group (Raw_syntax.Brace, items, _); _ } ] -> items | decls -> decls in
+          match Option.map (fun (decls, after) -> (unbrace (drop_separators decls), after)) (decl_extent (extent rest) (drop_separators input)) with
+          | Some (decls, after) when drop_separators decls <> [] -> (
+              match hole_kind with
+              | Syntax.HoleOneDecl ->
+                  if List.length (split_statements decls) = 1 then with_capture (Syntax.CapDecl (Syntax.Items decls)) after
+                  else None
+              | _ -> with_capture (Syntax.CapDecls [ Syntax.Items decls ]) after)
           | _ -> None))
 
 let match_rules callbacks (rules : Syntax.rule list) terms =
