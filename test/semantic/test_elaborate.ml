@@ -511,6 +511,14 @@ let structs =
       (check_type
          "{ Counter = struct { value: I64; pub method add(x) { self.value + x } }; Counter.add(Counter{value = 1})(2) }"
          (AtomTy Atom_ty.TI64));
+    (* A NomRef names the template; a binding holding an instance of the same
+       nominal ([Decls = List(Decl)] in the prelude) must not be taken for it. *)
+    Alcotest.test_case "nominal reference skips an instance binding" `Quick
+      (elab_ok "{ f = fn(d : List(I64)) { d }; g = fn(d : List(I64)) { x : List(I64) = f(d); x }; 1 }");
+    Alcotest.test_case "nominal reference skips a local instance binding" `Quick
+      (elab_ok "{ type Box A = MkBox(A); BoolBox = Box(Bool); f = fn(b : Box(I64)) { b }; g = fn(b : Box(I64)) { fn(u : Unit) { y : Box(I64) = f(b); y } }; 1 }");
+    Alcotest.test_case "nominal reference skips an option instance" `Quick
+      (elab_ok "{ OB = Option(Bool); f = fn(o : Option(I64)) { o }; g = fn(o : Option(I64)) { y : Option(I64) = f(o); y }; 1 }");
     Alcotest.test_case "method uses Self type" `Quick
       (check_type
          "{ Box = fn[A : Type] { struct { value: A; pub method id(other : Self) { other.value } } }; Box[I64].id(Box[I64]{value = 1})(Box[I64]{value = 2}) }"

@@ -551,7 +551,9 @@ and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
 
 (* Scan the environment, modules included, for the nominal with this id. *)
 and eval_nominal (env : env) (id : nominal_id) (name : string) : value =
-  let is_it = function VNominal n -> n.id = id | _ -> false in
+  (* The template, not an instance: a binding like [Decls = List(Decl)] holds a
+     [VNominal] with the same id and its params already applied. *)
+  let is_it = function VNominal n -> n.id = id && n.params = [] | _ -> false in
   let rec go = function
     | [] -> raise (EvalError ("unbound nominal type: " ^ name))
     | v :: _ when is_it v -> v

@@ -239,7 +239,7 @@ pub Syntax = module {
   pub unit = fn(_) { atom_val(UnitAtom) };
   pub tokens = fn(b : Expr) { match (b) { RawBlock(_, ts) => ts, _ => panic[List(TokenTree)]("tokens: not a block") } };
   pub expand_block = fn(b : Expr) { expand_block[Expr](b) };
-  pub expand_decls : Decls -> Decls = fn(d) { expand_decls[Decls](d) };
+  pub expand_decls = fn(d : Decls) { expand_decls[Decls](d) };
   pub id_name = fn(stx) { match (stx) { RawVar(_, id) => id.name, _ => panic[String]("expected identifier") } };
   pub id_eq = fn(a, b) { match (a) { RawVar(_, ida) => match (b) { RawVar(_, idb) => i64_to_bool(eq_string(ida.name, idb.name)), _ => panic[Bool]("expected identifier") }, _ => panic[Bool]("expected identifier") } }
 

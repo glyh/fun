@@ -528,7 +528,7 @@ What remains, in the recommended order:
 ### Found by the domain-model audit (2026-09-15)
 
 - [A `List(I64)` parameter infers a wrong type](tickets/let-bound-lambda-list-param-wrong-type.md)
-  — `f(d)` gets `List(Decl, I64)`; `NominalMismatch(List, List)`.
+  — (closed) a NomRef took an applied instance (`Decls = List(Decl)`) for its template; `eval_nominal` now matches only the template.
 - [`expand_decls`](tickets/expand-decls-reader.md)
   (closed) — read a `List(Decl)` argument's items, parsed in order (counterpart of `expand_block`).
 - [A let-bound signature cannot be a parameter type](tickets/named-signatures-as-parameter-types.md)

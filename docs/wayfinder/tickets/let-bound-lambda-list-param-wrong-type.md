@@ -3,7 +3,9 @@ title: Calling a let-bound lambda with a `List(I64)` parameter infers a wrong ty
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Fixed. `Nbe.eval_nominal` found a NomRef's template by scanning the environment for any VNominal with its id, and took the prelude's `Decls = List(Decl)` instance for the template, so `NomRef(List, [I64])` evaluated to `List(Decl, I64)`. It now matches only the unapplied template (no params). The prelude `expand_decls` annotation workaround is removed.
 assignee:
 blocked_by:
 ---
