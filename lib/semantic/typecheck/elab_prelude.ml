@@ -71,8 +71,14 @@ let stdlib_source =
   {|
 pub type Bool = False | True;
 pub syntax if { if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t, False => $e } };
-pub infix (&&) 4 Left ($a, $b) { match ($a) { True => $b, False => False } };
-pub infix (||) 3 Left ($a, $b) { match ($a) { True => True, False => $b } };
+pub order disjunction;
+pub order conjunction : stronger_than(disjunction);
+pub order comparison : stronger_than(conjunction);
+pub order additive : stronger_than(comparison);
+pub order multiplicative : stronger_than(additive);
+pub order negation : stronger_than(multiplicative);
+pub infix (&&) conjunction ($a, $b) { match ($a) { True => $b, False => False } };
+pub infix (||) disjunction ($a, $b) { match ($a) { True => True, False => $b } };
 pub i64_to_bool = fn(n) { match (n) { 0 => False, _ => True } };
 pub not = fn(b) { match (b) { True => False, False => True } };
 pub (<) = fn(x, y) { i64_to_bool(lt_i64(x, y)) };
@@ -87,18 +93,18 @@ pub impl Eq(Unit) = module { fn eq(x, y) { i64_to_bool(eq_unit(x, y)) } };
 pub impl Eq(String) = module { fn eq(x, y) { i64_to_bool(eq_string(x, y)) } };
 pub (==) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) { Eq.eq(lhs, rhs) };
 pub (!=) : [A : Eq] -> A -> A -> Bool = fn[A : Type](lhs, rhs) { not((==)[A](lhs, rhs)) };
-pub infix (==) 5 Left;
-pub infix (!=) 5 Left;
-pub infix (<) 5 Left;
-pub infix (>) 5 Left;
-pub infix (<=) 5 Left;
-pub infix (>=) 5 Left;
-pub infix (+) 10 Left;
-pub infix (-) 10 Left;
-pub infix (*) 20 Left;
-pub infix (/) 20 Left;
-pub infix (%) 20 Left;
-pub prefix (not) 30;
+pub infix (==) comparison;
+pub infix (!=) comparison;
+pub infix (<) comparison;
+pub infix (>) comparison;
+pub infix (<=) comparison;
+pub infix (>=) comparison;
+pub infix (+) additive;
+pub infix (-) additive;
+pub infix (*) multiplicative;
+pub infix (/) multiplicative;
+pub infix (%) multiplicative;
+pub prefix (not) negation;
 pub type Option(A) = Some(A) | None;
 pub type List(A) = Nil | Cons(A, List(A));
 pub Syntax = module {
@@ -158,8 +164,9 @@ pub Syntax = module {
   and TokenTree = Tok(Option(Span), TokenKind, Scopes) | TokGroup(Option(Span), Delim, List(TokenTree))
   and TokenKind = IdentTok(String) | OperatorTok(String) | IntTok(I64) | CharTok(Char) | StringTok(String) | UnitTok | KeywordTok(String) | PunctTok(String)
   and Delim = ParenDelim | BracketDelim | BraceDelim
-  and Role = MkRole(Fixity, I64, Assoc, RoleMeaning, Option(Span), Option(String))
-  and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule))
+  and Role = MkRole(Fixity, Option(Order), RoleMeaning, Option(Span), Option(String))
+  and Order = MkOrder(String, String, Assoc, List(Order), List(Order))
+  and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule)) | OrderGroup
   and Rule = MkRule(List(RulePart), Replacement, Option(Span))
   and RulePart = PartToken(TokenTree) | PartGroup(Delim, List(RulePart), Option(Span)) | PartHole(String, HoleKind, Option(Span))
   and HoleKind = HoleExpr | HoleBlock | HoleId | HoleDecl | HolePattern

@@ -1,7 +1,7 @@
 open Raw_syntax
 open Enforest_util
 
-let parse_pat_terms terms =
+let parse_pat_terms, parse_pat_prefix =
   let rec parse_pat_atom terms =
     match drop_separators terms with
     | [] -> error "expected pattern"
@@ -38,7 +38,10 @@ let parse_pat_terms terms =
                 (Syntax.PatStructType { fields; partial }, rest)
             | _ -> error "struct type pattern is written struct { field: pattern; _ }")
         | _ -> error "unsupported pattern in Phase 7B match")
-  and parse_pat_postfix lhs terms =
+  (* A constructor takes juxtaposed arguments ([Option _]) unless it is a group
+     or has a parenthesised argument list ([juxtapose]); anything else ends the
+     pattern, as a group written apart ends an expression. *)
+  and parse_pat_postfix ?(juxtapose = true) lhs terms =
     match drop_separators terms with
     | dot :: field :: rest when token_kind Dot dot ->
         let field_name =
@@ -52,7 +55,7 @@ let parse_pat_terms terms =
           | Syntax.PatBind name -> Syntax.PatCon ({ Syntax.head = name; members = [ field_name ]; head_choice = None }, [])
           | _ -> error "only constructor patterns can be qualified"
         in
-        parse_pat_postfix lhs rest
+        parse_pat_postfix ~juxtapose lhs rest
     | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
         let args =
           match drop_separators items with
@@ -64,7 +67,7 @@ let parse_pat_terms terms =
           | Syntax.PatCon (path, []) -> Syntax.PatCon (path, args)
           | _ -> error "only constructor patterns can take arguments"
         in
-        parse_pat_postfix lhs rest
+        parse_pat_postfix ~juxtapose:false lhs rest
     | { datum = Group (Raw_syntax.Brace, items, _); _ } :: rest ->
         let fields, partial = parse_pat_record_fields items in
         let lhs =
@@ -73,15 +76,13 @@ let parse_pat_terms terms =
               Syntax.PatRecord { typ; fields; partial }
           | _ -> error "record pattern fields must follow a type name"
         in
-        parse_pat_postfix lhs rest
-    | term :: rest when is_expr_start (lazy_env (Binding.create ())) term ->
-        let arg, rest = parse_pat_atom (term :: rest) in
-        let lhs =
-          match lhs with
-          | Syntax.PatCon (path, args) -> Syntax.PatCon (path, args @ [ arg ])
-          | _ -> error "only constructor patterns can take arguments"
-        in
-        parse_pat_postfix lhs rest
+        parse_pat_postfix ~juxtapose:false lhs rest
+    | term :: rest when juxtapose && is_expr_start (lazy_env (Binding.create ())) term -> (
+        match lhs with
+        | Syntax.PatCon (path, args) ->
+            let arg, rest = parse_pat_atom (term :: rest) in
+            parse_pat_postfix (Syntax.PatCon (path, args @ [ arg ])) rest
+        | _ -> (lhs, term :: rest))
     | rest -> (lhs, rest)
 
   and parse_pat_struct_type_fields items =
@@ -134,9 +135,14 @@ let parse_pat_terms terms =
     match split_at_token Bar terms with
     | Some (lhs_terms, _, rhs_terms) -> Syntax.PatOr (parse_pat_all lhs_terms, parse_pat_all rhs_terms)
     | None ->
-        let lhs, rest = parse_pat_atom terms in
-        let lhs, rest = parse_pat_postfix lhs rest in
+        let lhs, rest = parse_pat_head terms in
         let rest = drop_separators rest in
         if rest = [] then lhs else error "unconsumed terms after pattern"
-  and parse_pat_all terms = parse_pat_or terms in
-  parse_pat_all terms
+  and parse_pat_all terms = parse_pat_or terms
+  (* A pattern and the terms after it. *)
+  and parse_pat_head terms =
+    let lhs, rest = parse_pat_atom terms in
+    let juxtapose = match drop_separators terms with { datum = Group _; _ } :: _ -> false | _ -> true in
+    parse_pat_postfix ~juxtapose lhs rest
+  in
+  (parse_pat_all, parse_pat_head)

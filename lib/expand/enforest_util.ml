@@ -39,7 +39,27 @@ type env = {
 (* The compiler-known base role: [<-], ref assignment, always in scope. *)
 let base_roles (tbl : Binding.t) =
   Binding.extend tbl ~name:"<-" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"<-"
-    ~role:(Binding.role ~fixity:Syntax.InfixOp ~precedence:1 ~assoc:Syntax.RightAssoc Syntax.AssignRef)
+    ~role:(Binding.role ~fixity:Syntax.InfixOp Syntax.AssignRef)
+
+(* Where an expression is read, which decides what may continue it. Precedence
+   among operators is relative (brackets-decide-grouping): an operand continues
+   with an infix operator only if the operator binds tighter than the one whose
+   operand it is. The built-in grammar keeps two fixed positions: [ArrowRhs],
+   where [->] continues but [can] does not, and [Tight], an argument no infix
+   operator continues. *)
+type prec =
+  | Top
+  | ArrowRhs
+  | Tight
+  | Operand of string * Syntax.role
+
+(* An order group's identity: its declaration, told apart by a counter. The
+   [@] no written name contains keeps it apart from any spelling. *)
+let order_counter = ref 0
+
+let fresh_order_group name =
+  incr order_counter;
+  Printf.sprintf "%s@%d" name !order_counter
 
 (* Reading forms as expansion reaches them, with the expander's roles. *)
 let lazy_env ?(macro_params = fun _ -> None) operators =

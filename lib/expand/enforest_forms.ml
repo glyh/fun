@@ -2,7 +2,7 @@ open Raw_syntax
 open Enforest_util
 
 type callbacks = {
-  parse_expr_prec : int -> Raw_syntax.t list -> Syntax.t * Raw_syntax.t list;
+  parse_expr_prec : Enforest_util.prec -> Raw_syntax.t list -> Syntax.t * Raw_syntax.t list;
   parse_expr_terms : Raw_syntax.t list -> Syntax.t;
   parse_do_body_terms : Source_span.t -> Raw_syntax.t list -> Syntax.t;
   parse_pat_terms : Raw_syntax.t list -> Syntax.pat;
@@ -58,7 +58,7 @@ let parse_can_effect_row callbacks terms =
   | { datum = Group (Raw_syntax.Brace, items, _); _ } :: rest ->
       (parse_effect_row_terms callbacks items, rest)
   | rest ->
-      let eff, rest = callbacks.parse_expr_prec 40 rest in
+      let eff, rest = callbacks.parse_expr_prec Tight rest in
       ({ Syntax.effects = [ eff ]; tail = None }, rest)
 
 let attach_effects (lhs : Syntax.t) (eff : Syntax.effect_row) =
@@ -81,7 +81,7 @@ let parse_ref callbacks start_span terms =
       let arg = parse_group_arg callbacks items in
       (stx ~span:(span_between start_span span) (Syntax.RefNew arg), rest)
   | term :: _ when callbacks.is_expr_start term ->
-      let arg, rest = callbacks.parse_expr_prec 41 terms in
+      let arg, rest = callbacks.parse_expr_prec Tight terms in
       (stx ~span:(span_between start_span arg.span) (Syntax.RefNew arg), rest)
   | _ -> error "ref requires an argument"
 
@@ -127,13 +127,13 @@ let parse_resume callbacks start_span terms =
       let arg = parse_group_arg callbacks items in
       (stx ~span:(span_between start_span span) (Syntax.Resume arg), rest)
   | term :: _ when callbacks.is_expr_start term ->
-      let arg, rest = callbacks.parse_expr_prec 41 terms in
+      let arg, rest = callbacks.parse_expr_prec Tight terms in
       (stx ~span:(span_between start_span arg.span) (Syntax.Resume arg), rest)
   | _ -> error "resume requires an argument"
 
 let parse_perform callbacks start_span terms =
   let op, rest = path_from_terms terms in
-  let arg, rest = callbacks.parse_expr_prec 41 rest in
+  let arg, rest = callbacks.parse_expr_prec Tight rest in
   (stx ~span:(span_between start_span arg.span) (Syntax.Perform { op; arg }), rest)
 
 (* The unit's roles arrive when expansion reaches the import. *)

@@ -260,7 +260,7 @@ idempotent expansion, unwritable resolved names `x#n`) — see `docs/STATUS.md`.
    procedural macro parameter kinds `(n : Id)`, and token-position holes in
    `quote { … }`. Fresh code; the ticket names the mechanism (enforester needs
    parameter kinds while reading a call; loader macro caches carry them).
-2. **Small defects**: [capture extents by exceptions](tickets/capture-extents-chosen-by-exceptions.md),
+2. **Small defects**: ~~[capture extents by exceptions](tickets/capture-extents-chosen-by-exceptions.md)~~ (closed),
    [role visibility gaps](tickets/role-visibility-gaps-after-m7.md),
    [term_mentions_var ignores inserted metas](tickets/term-mentions-var-ignores-inserted-metas.md),
    [budget error names no source call](tickets/budget-error-names-no-source-call.md)
@@ -509,14 +509,18 @@ What remains, in the recommended order:
 - [Brackets decide grouping](tickets/brackets-decide-grouping.md)
   — adopt Rhombus's structural extents without layout: `{}`/`[]`/`()` group, a
   hole never ends at a bare keyword; Rust-style arms (`A | B => e,`), `|` only
-  union (arms implemented); relative precedence in named, transitive order groups; a non-trailing hole is one term. Grilled 2026-09-15. Supersedes
-  the split rule on the unmerged `capture-extents` branch.
+  union; relative precedence in named, transitive order groups; a non-trailing
+  hole is one term. Grilled and implemented 2026-09-15 (arms; order groups and
+  hole extents on `order-groups`, with `capture-extents` merged in). Open: tail-
+  returning forms, dotted group references.
 - [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
   (closed) — an import's roles bind in the region of the open or binder that
   imported it; `Import` carries its written scope set, so every open is checked
   against the roles visible where it is written, driver-run opens included.
 - [Capture extents are chosen by catching parse errors](tickets/capture-extents-chosen-by-exceptions.md)
-  — `try_prefixes`: exceptions as control flow, quadratic re-parsing.
+  (closed) — a capture reads as far as its parser does, one parse per hole; the
+  hole ending a use reads at the form's precedence (`inc 1 * 10` is
+  `(inc 1) * 10`); whitespace never ends a capture.
 - [Type-case refinement walks the whole context per branch](tickets/type-case-refinement-walks-whole-context.md)
   — the remaining elaboration hotspot after the M9 performance fix.
 - Struct items are read together with a private copy of the roles, not form by

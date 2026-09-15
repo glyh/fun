@@ -13,7 +13,7 @@ let rec parse_args env terms =
       List.map
         (fun part ->
           if List.for_all is_separator part then error "empty argument";
-          parse_all (fun ts -> parse_expr_prec env 0 ts) part)
+          parse_all (fun ts -> parse_expr_prec env Top ts) part)
         parts
 
 (* A call's arguments read as the kinds of the macro its head names, when any
@@ -29,10 +29,10 @@ and macro_call_args env (head : Syntax.t) items =
         (List.map2
            (fun kind part ->
              match (kind : Syntax.hole_kind), drop_separators part with
-             | HoleExpr, _ -> Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env 0 ts) part)
+             | HoleExpr, _ -> Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env Top ts) part)
              | HoleId, [ { datum = Token ({ kind = Ident _ | Operator _; _ } as tok); _ } ] -> Syntax.CapId tok
              | HoleBlock, [ ({ datum = Group (Raw_syntax.Brace, ts, _); _ } as group) ] ->
-                 if env.eager then Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env 0 ts) [ group ])
+                 if env.eager then Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env Top ts) [ group ])
                  else Syntax.CapBlock ts
              | HolePattern, _ :: _ -> Syntax.CapPattern (parse_pat_terms part)
              (* Declarations, captured unread as a syntax form's are: read where
@@ -58,20 +58,20 @@ and parse_group_expr env delimiter items span =
                 (Syntax.Annotated
                    {
                      inner =
-                       parse_all (fun ts -> parse_expr_prec env 0 ts) expr_terms;
+                       parse_all (fun ts -> parse_expr_prec env Top ts) expr_terms;
                      typ = parse_type_terms env typ_terms;
                    })
           | None -> (
               match split_commas items with
               | [ only ] ->
                   {
-                    (parse_all (fun ts -> parse_expr_prec env 0 ts) only) with
+                    (parse_all (fun ts -> parse_expr_prec env Top ts) only) with
                     span;
                   }
               | parts ->
                   let exprs =
                     List.map
-                      (parse_all (fun ts -> parse_expr_prec env 0 ts))
+                      (parse_all (fun ts -> parse_expr_prec env Top ts))
                       parts
                   in
                   stx ~span (Syntax.Prod exprs))))
@@ -88,7 +88,7 @@ and parse_record_expr_fields env items =
       match drop_separators part with
       | { datum = Token { kind = Ident name; _ }; _ } :: eq :: value_terms
         when token_kind Equals eq ->
-          (name, parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms)
+          (name, parse_all (fun ts -> parse_expr_prec env Top ts) value_terms)
       | _ -> error "expected record field of the form name = expr")
 
 and parse_type_terms env terms = parse_all (parse_type_entry env) terms
@@ -319,7 +319,7 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           match drop_separators items with
           | [ { datum = Token { kind = Ident "_"; _ }; _ } ] -> (Some Syntax.MacroAnnotation.Expr, None, rest)
           | items ->
-              let t, t_rest = parse_expr_prec env 0 items in
+              let t, t_rest = parse_expr_prec env Top items in
               ensure_no_rest "macro annotation" t_rest;
               (Some Syntax.MacroAnnotation.Expr, Some t, rest))
       | { datum = Token { kind = Colon; _ }; _ } :: { datum = Token { kind = Ident "Decl"; _ }; _ } :: rest ->
@@ -417,7 +417,7 @@ and form_callbacks env =
   {
     Enforest_forms.parse_expr_prec = parse_expr_prec env;
     parse_expr_terms =
-      (fun ts -> parse_all (fun ts -> parse_expr_prec env 0 ts) ts);
+      (fun ts -> parse_all (fun ts -> parse_expr_prec env Top ts) ts);
     parse_do_body_terms = parse_do_body_terms env;
     parse_pat_terms;
     parse_items = parse_module_items env;
@@ -544,14 +544,14 @@ and parse_primary env terms =
           Enforest_forms.parse_quote (fun holes -> form_callbacks (eager_env ~holes env)) term.span rest
       | Token { kind = Ident name | Operator name; _ } -> (
           match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
-          | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } ->
+          | Some ({ meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } as role) ->
               let inst, rest =
-                Enforest_template.instantiate (template_callbacks env) ~form:(id_of term name) ~kind:rules_kind
+                Enforest_template.instantiate (template_callbacks env (Operand (name, role))) ~form:(id_of term name) ~kind:rules_kind
                   ~position:Syntax.MacroAnnotation.Expr ~from_unit rules (term :: rest)
               in
               (stx ~span:term.span (Syntax.Instantiate inst), rest)
           | Some role ->
-              let rhs, rest = parse_expr_prec env role.precedence rest in
+              let rhs, rest = parse_expr_prec env (Operand (name, role)) rest in
               let span = span_between term.span rhs.span in
               let f = var_of term name in
               let expr =
@@ -579,7 +579,7 @@ and parse_primary env terms =
           | arrow :: cod_terms when token_kind ThinArrow arrow ->
               let params = parse_param_group env Explicitness.Implicit items in
               let cod : Syntax.t =
-                parse_all (fun ts -> parse_expr_prec env 0 ts) cod_terms
+                parse_all (fun ts -> parse_expr_prec env Top ts) cod_terms
               in
               let result =
                 List.fold_right
@@ -596,15 +596,37 @@ and parse_primary env terms =
       | Group (delimiter, items, span) ->
           (parse_group_expr env delimiter items span, rest))
 
-and parse_expr_prec env min_prec terms =
+and parse_expr_prec env prec terms =
   let lhs, rest = parse_primary env terms in
-  parse_postfix_infix env min_prec lhs rest
+  parse_postfix_infix env prec lhs rest
+
+(* Whether infix operator [symbol] continues an expression read at [prec]: at
+   an operand, only if it binds tighter than the operator the operand belongs
+   to - by their groups' declared order, never a guess. *)
+and continues prec symbol (role : Syntax.role) =
+  let no_order outer =
+    error (Printf.sprintf "`%s` and `%s` have no declared order; parenthesise one of them" outer symbol)
+  in
+  match prec with
+  | Top | ArrowRhs -> true
+  | Tight -> false
+  | Operand (outer, outer_role) -> (
+      match outer_role.order, role.order with
+      | Some o, Some i -> (
+          match Syntax.order_relation i o with
+          | Syntax.Stronger -> true
+          | Weaker -> false
+          | Same -> o.group_assoc = Syntax.RightAssoc
+          | Unrelated -> no_order outer)
+      | Some _, None -> false
+      | None, Some _ -> true
+      | None, None -> no_order outer)
 
 and parse_postfix_infix env min_prec lhs terms =
   match terms with
   | term :: _ when is_separator term -> (lhs, terms)
-  | term :: rest when token_kind ThinArrow term && min_prec <= 1 ->
-      let rhs, rest = parse_expr_prec env 1 rest in
+  | term :: rest when token_kind ThinArrow term && (match min_prec with Top | ArrowRhs -> true | _ -> false) ->
+      let rhs, rest = parse_expr_prec env ArrowRhs rest in
       let span = span_between lhs.span rhs.span in
       let lhs =
         match lhs.kind with
@@ -618,7 +640,7 @@ and parse_postfix_infix env min_prec lhs terms =
       parse_postfix_infix env min_prec lhs rest
   | term :: rest
     when token_kind KwCan term
-         && (min_prec <= 0
+         && (min_prec = Top
             || match lhs.kind with Syntax.Arrow _ -> true | _ -> false) ->
       let eff, rest = parse_can_effect_row env rest in
       parse_postfix_infix env min_prec (attach_effects lhs eff) rest
@@ -667,7 +689,7 @@ and parse_postfix_infix env min_prec lhs terms =
             (Syntax.RecordConstruct
                { typ = lhs; fields = parse_record_expr_fields env items })
         else
-          let arg = parse_all (fun ts -> parse_expr_prec env 0 ts) items in
+          let arg = parse_all (fun ts -> parse_expr_prec env Top ts) items in
           ap ~span:call_span lhs Explicitness.Implicit arg
       in
       parse_postfix_infix env min_prec lhs rest
@@ -688,13 +710,8 @@ and parse_postfix_infix env min_prec lhs terms =
       match token_text term with
       | Some symbol -> (
           match Binding.find_role env.operators ~fixity:Syntax.InfixOp ~scope:(token_scope term) symbol with
-          | Some role when role.precedence >= min_prec ->
-              let next_min =
-                match role.assoc with
-                | Syntax.LeftAssoc -> role.precedence + 1
-                | Syntax.RightAssoc -> role.precedence
-              in
-              let rhs, rest = parse_expr_prec env next_min rest in
+          | Some role when continues min_prec symbol role ->
+              let rhs, rest = parse_expr_prec env (Operand (symbol, role)) rest in
               let span = span_between lhs.span rhs.span in
               let lhs =
                 match role.meaning with
@@ -710,6 +727,7 @@ and parse_postfix_infix env min_prec lhs terms =
                 | Syntax.CallMacro -> syntax_operator_arg ~span ~use:term symbol role [ lhs; rhs ]
                 | Syntax.ApplyValue ->
                     ap ~span (ap ~span (var_of term symbol) Explicitness.Explicit lhs) Explicitness.Explicit rhs
+                | Syntax.OrderGroup -> error ("an order group is not an operator: " ^ symbol)
               in
               parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
@@ -768,7 +786,7 @@ and parse_value_decl_after_prefix env ~recursive stmt =
                    syntax"
           in
           let decl_value =
-            try parse_all (fun ts -> parse_expr_prec env 0 ts) value_terms with
+            try parse_all (fun ts -> parse_expr_prec env Top ts) value_terms with
             | Unsupported msg ->
                 unsupported ("binding " ^ name_id.name ^ ": " ^ msg)
             | Error msg -> error ("binding " ^ name_id.name ^ ": " ^ msg)
@@ -982,7 +1000,7 @@ and parse_impl_binding env public stmt =
 and parse_open_statement env stmt =
   match drop_separators stmt with
   | open_kw :: rest when token_kind KwOpen open_kw ->
-      let value, rest = parse_expr_prec env 0 rest in
+      let value, rest = parse_expr_prec env Top rest in
       ensure_no_rest "open statement" rest;
       Some value
   | _ -> None
@@ -990,7 +1008,7 @@ and parse_open_statement env stmt =
 and parse_import_statement env stmt =
   let spec = Parse_spec.punct KwImport in
   match Parse_spec.to_option spec env stmt with
-  | Some () -> Some (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
+  | Some () -> Some (parse_all (fun ts -> parse_expr_prec env Top ts) stmt)
   | None -> None
 
 and parse_operator_value env start_span terms =
@@ -1017,7 +1035,7 @@ and parse_replacement env kind holes terms =
         error "struct field declarations are deferred in declaration syntax templates";
       Syntax.ReplaceDecls (parse_module_bindings env body)
   | Syntax.MacroAnnotation.Decl, _ -> error "a Decl syntax form's replacement is written { declarations }"
-  | Syntax.MacroAnnotation.Expr, _ -> Syntax.ReplaceExpr (parse_all (fun ts -> parse_expr_prec env 0 ts) terms)
+  | Syntax.MacroAnnotation.Expr, _ -> Syntax.ReplaceExpr (parse_all (fun ts -> parse_expr_prec env Top ts) terms)
 
 (* Reading quoted syntax, a declared role is registered as it is read, for the
    statements after it; otherwise expansion registers it (M7). *)
@@ -1028,7 +1046,7 @@ and declare_role ?macro_value env (name : Syntax.id) (role : Syntax.role) =
   end;
   { role_name = name; role; macro_value }
 
-and parse_operator_template_decl env (sym_id : Syntax.id) prec assoc value_terms =
+and parse_operator_template_decl env (sym_id : Syntax.id) order value_terms =
   let sym = sym_id.name and sym_span = sym_id.span in
   let holes, rest =
     match drop_separators value_terms with
@@ -1062,16 +1080,60 @@ and parse_operator_template_decl env (sym_id : Syntax.id) prec assoc value_terms
     (Enforest_template.replacement_holes replacement);
   let rule = { Syntax.pattern; replacement = parse_replacement env Syntax.MacroAnnotation.Expr holes replacement; rule_span = span } in
   declare_role env sym_id
-    (Binding.role ~declared_at:sym_span ~fixity:Syntax.InfixOp ~precedence:prec ~assoc
+    (Binding.role ~declared_at:sym_span ~fixity:Syntax.InfixOp ?order
        (Syntax.Rules { rules_kind = Syntax.MacroAnnotation.Expr; rules = [ rule ] }))
 
-and parse_operator_assoc assoc_str =
-  match assoc_str with
-  | "Left" -> Syntax.LeftAssoc
-  | "Right" -> Syntax.RightAssoc
-  | _ -> error "operator infix associativity must be Left or Right"
+(* An order group named where an operator, form or group declaration names it:
+   resolved by scope set, like any binder. *)
+and resolve_order env term =
+  match term.datum with
+  | Token { kind = Ident name; _ } -> (
+      match Binding.find_order env.operators ~scope:(token_scope term) name with
+      | Some order -> order
+      | None -> error ("unknown order group: " ^ name))
+  | _ -> error "an order group is named by an identifier"
 
-and parse_syntax_template_decl env (head_id : Syntax.id) kind body_terms rest =
+(* [order name : stronger_than(g, …), weaker_than(g, …), assoc(left|right)]:
+   precedence is relative, and a group is related only by declarations. The
+   order is transitive; a declaration that would make it cyclic is an error. *)
+and parse_order_decl env name_term name clauses =
+  let groups items =
+    List.map
+      (fun ts -> match drop_separators ts with [ t ] -> resolve_order env t | _ -> error "expected an order group")
+      (split_commas items)
+  in
+  (* Clauses follow each other: a [,] would end the declaration's statement. *)
+  let rec read_clauses (s, w, a) = function
+    | [] -> (s, w, a)
+    | { datum = Token { kind = Ident "stronger_than"; _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
+        read_clauses (s @ groups items, w, a) rest
+    | { datum = Token { kind = Ident "weaker_than"; _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
+        read_clauses (s, w @ groups items, a) rest
+    | { datum = Token { kind = Ident "assoc"; _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest -> (
+        match drop_separators items with
+        | [ { datum = Token { kind = Ident "left"; _ }; _ } ] -> read_clauses (s, w, Syntax.LeftAssoc) rest
+        | [ { datum = Token { kind = Ident "right"; _ }; _ } ] -> read_clauses (s, w, Syntax.RightAssoc) rest
+        | _ -> error "assoc is written assoc(left) or assoc(right)")
+    | _ -> error "an order clause is stronger_than(…), weaker_than(…) or assoc(left|right)"
+  in
+  let stronger_than, weaker_than, group_assoc = read_clauses ([], [], Syntax.LeftAssoc) (drop_separators clauses) in
+  List.iter
+    (fun (st : Syntax.order) ->
+      List.iter
+        (fun (wk : Syntax.order) ->
+          match Syntax.order_relation st wk with
+          | Syntax.Same | Stronger ->
+              error
+                (Printf.sprintf "order %s would be both stronger than %s and weaker than %s: the order would be cyclic"
+                   name st.group_name wk.group_name)
+          | Weaker | Unrelated -> ())
+        weaker_than)
+    stronger_than;
+  let order = { Syntax.group = fresh_order_group name; group_name = name; group_assoc; stronger_than; weaker_than } in
+  declare_role env (id_of name_term name)
+    (Binding.role ~declared_at:name_term.span ~fixity:Syntax.PrefixOp ~order Syntax.OrderGroup)
+
+and parse_syntax_template_decl env (head_id : Syntax.id) kind order body_terms rest =
   ensure_no_rest "syntax declaration" rest;
   let rules =
     Enforest_template.parse_rules ~available:env.holes ~head:head_id.name
@@ -1079,12 +1141,14 @@ and parse_syntax_template_decl env (head_id : Syntax.id) kind body_terms rest =
       body_terms
   in
   declare_role env head_id
-    (Binding.role ~declared_at:head_id.span ~fixity:Syntax.PrefixOp ~precedence:50
+    (Binding.role ~declared_at:head_id.span ~fixity:Syntax.PrefixOp ?order
        (Syntax.Rules { rules_kind = kind; rules }))
 
-and template_callbacks env =
-  { Enforest_template.parse_expr = (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
-    parse_pat = parse_pat_terms;
+and template_callbacks env trailing =
+  { Enforest_template.parse_expr = (fun terms -> parse_all (fun ts -> parse_expr_prec env Top ts) terms);
+    parse_expr_prefix = parse_expr_prec env;
+    trailing;
+    parse_pat_prefix = Enforest_pat.parse_pat_prefix;
     eager = env.eager }
 
 (* A syntax form used where a declaration goes. *)
@@ -1092,9 +1156,9 @@ and parse_decl_template_use env stmt =
   match drop_separators stmt with
   | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: _ -> (
       match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
-      | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } ->
+      | Some ({ meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } as role) ->
           let inst, rest =
-            Enforest_template.instantiate (template_callbacks env) ~form:(id_of head_term head) ~kind:rules_kind
+            Enforest_template.instantiate (template_callbacks env (Operand (head, role))) ~form:(id_of head_term head) ~kind:rules_kind
               ~position:Syntax.MacroAnnotation.Decl ~from_unit rules stmt
           in
           ensure_no_rest "declaration syntax template use" rest;
@@ -1111,36 +1175,43 @@ and operator_symbol kind sym_items sym_span =
       Syntax.fresh_id ~span:sym_span ~scope:(token_scope term) (Option.get (token_text term))
   | _ -> error (kind ^ " requires a symbol in parens")
 
-and parse_operator_shape stmt =
+(* The group an operator or form joins, written after its name: [None] when it
+   joins none. A number there is the removed numeric precedence. *)
+and parse_joined_order env terms =
+  match drop_separators terms with
+  | { datum = Token { kind = Int _; _ }; _ } :: _ ->
+      error "numeric precedence was removed; declare an order group (order g : stronger_than(…)) and write infix (op) g"
+  | ({ datum = Token { kind = Ident _; _ }; _ } as term) :: rest -> (Some (resolve_order env term), rest)
+  | rest -> (None, rest)
+
+and parse_operator_shape env stmt =
   match drop_separators stmt with
-  | { datum = Token { kind = Ident "infix"; _ }; _ }
+  | { datum = Token { kind = Ident "infix"; _ }; span = infix_span }
     :: { datum = Group (Raw_syntax.Paren, sym_items, sym_span); _ }
-    :: { datum = Token { kind = Int p; _ }; _ }
-    :: { datum = Token { kind = Ident assoc_str; _ }; span = assoc_span }
     :: value_terms ->
-      let assoc = parse_operator_assoc assoc_str in
-      Some (`Infix (operator_symbol "infix" sym_items sym_span, Int64.to_int p, assoc, assoc_span, value_terms))
+      let order, value_terms = parse_joined_order env value_terms in
+      Some (`Infix (operator_symbol "infix" sym_items sym_span, order, infix_span, value_terms))
   | { datum = Token { kind = Ident "prefix"; _ }; _ }
     :: { datum = Group (Raw_syntax.Paren, sym_items, sym_span); _ }
-    :: { datum = Token { kind = Int p; _ }; _ }
     :: value_terms ->
-      Some (`Prefix (operator_symbol "prefix" sym_items sym_span, Int64.to_int p, value_terms))
+      let order, value_terms = parse_joined_order env value_terms in
+      Some (`Prefix (operator_symbol "prefix" sym_items sym_span, order, value_terms))
   | _ -> None
 
 and parse_operator_decl env stmt =
-  match parse_operator_shape stmt with
-  | Some (`Prefix (name_id, prec, value_terms)) -> (
-      (* [prefix (op) prec] is fixity only: [op x] calls the value [op]. *)
+  match parse_operator_shape env stmt with
+  | Some (`Prefix (name_id, order, value_terms)) -> (
+      (* [prefix (op) g] is fixity only: [op x] calls the value [op]. *)
       match drop_separators value_terms with
       | [] ->
           Some (declare_role env name_id
-                  (Binding.role ~declared_at:name_id.span ~fixity:Syntax.PrefixOp ~precedence:prec Syntax.ApplyValue))
+                  (Binding.role ~declared_at:name_id.span ~fixity:Syntax.PrefixOp ?order Syntax.ApplyValue))
       | _ -> error "prefix operator with a body is not supported")
-  | Some (`Infix (name_id, prec, assoc, _, value_terms)) when drop_separators value_terms = [] ->
-      (* [infix (op) prec assoc] is fixity only: [a op b] calls the value [op]. *)
+  | Some (`Infix (name_id, order, _, value_terms)) when drop_separators value_terms = [] ->
+      (* [infix (op) g] is fixity only: [a op b] calls the value [op]. *)
       Some (declare_role env name_id
-              (Binding.role ~declared_at:name_id.span ~fixity:Syntax.InfixOp ~precedence:prec ~assoc Syntax.ApplyValue))
-  | Some (`Infix (name_id, prec, assoc, assoc_span, value_terms)) ->
+              (Binding.role ~declared_at:name_id.span ~fixity:Syntax.InfixOp ?order Syntax.ApplyValue))
+  | Some (`Infix (name_id, order, infix_span, value_terms)) ->
       let is_template =
         match drop_separators value_terms with
         | { datum = Group (Raw_syntax.Paren, items, _); _ } :: _ -> (
@@ -1149,24 +1220,33 @@ and parse_operator_decl env stmt =
             | _ -> false)
         | _ -> false
       in
-      if is_template then Some (parse_operator_template_decl env name_id prec assoc value_terms)
+      if is_template then Some (parse_operator_template_decl env name_id order value_terms)
       else begin
-        let value, rest = parse_operator_value env assoc_span value_terms in
+        let value, rest = parse_operator_value env infix_span value_terms in
         ensure_no_rest "infix declaration" rest;
         Some (declare_role ~macro_value:value env name_id
-                (Binding.role ~declared_at:name_id.span ~fixity:Syntax.InfixOp ~precedence:prec ~assoc Syntax.CallMacro))
+                (Binding.role ~declared_at:name_id.span ~fixity:Syntax.InfixOp ?order Syntax.CallMacro))
       end
   | None -> (
       match drop_separators stmt with
+      | { datum = Token { kind = Ident "order"; _ }; _ }
+        :: ({ datum = Token { kind = Ident name; _ }; _ } as name_term)
+        :: after -> (
+          match drop_separators after with
+          | [] -> Some (parse_order_decl env name_term name [])
+          | colon :: clauses when token_kind Colon colon -> Some (parse_order_decl env name_term name clauses)
+          | _ -> error "an order group is declared order name or order name : clauses")
       | { datum = Token { kind = Ident "syntax"; _ }; _ } :: head_term :: after -> (
           let head =
             match head_term.datum with
             | Token { kind = Ident name; _ } -> id_of head_term name
             | _ -> error "syntax declaration head must be an identifier"
           in
-          match Enforest_template.syntax_kind after with
-          | kind, { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest ->
-              Some (parse_syntax_template_decl env head kind body_terms rest)
+          let kind, after = Enforest_template.syntax_kind after in
+          let order, after = parse_joined_order env after in
+          match after with
+          | { datum = Group (Raw_syntax.Brace, body_terms, _); _ } :: rest ->
+              Some (parse_syntax_template_decl env head kind order body_terms rest)
           | _ -> unsupported "unsupported syntax declaration shape")
       | { datum = Token { kind = Ident "syntax"; _ }; _ } :: _ -> unsupported "unsupported syntax declaration shape"
       | _ -> None)
@@ -1203,7 +1283,7 @@ and scoped_binding_to_expr env span stmt body =
               | Some _ -> error "unexpected non-impl binding"
               | None ->
                   (* An expression statement: its value is discarded. *)
-                  let value = parse_all (fun ts -> parse_expr_prec env 0 ts) stmt in
+                  let value = parse_all (fun ts -> parse_expr_prec env Top ts) stmt in
                   stx ~span
                     (Syntax.Let { name = id ~span:value.span "_"; type_ = None; value; body; recursive = false }))))
 
@@ -1214,7 +1294,7 @@ and parse_do_body_terms env span body_terms =
   let items =
     map_context_statements env
       (fun ~last stmt ->
-        if last && not discards then Either.Right (parse_all (fun ts -> parse_expr_prec env 0 ts) stmt)
+        if last && not discards then Either.Right (parse_all (fun ts -> parse_expr_prec env Top ts) stmt)
         else Either.Left (do_statement env span stmt))
       body_terms
   in
@@ -1499,7 +1579,7 @@ and parse_struct_items env body_terms =
     body_terms
   |> List.fold_left (fun (fields, bindings) (f, b) -> (fields @ f, bindings @ b)) ([], [])
 
-let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms
+let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env Top ts) terms
 
 (* The first statement of a [{ … }] body as a form scoping over the rest, which
    stays unread until expansion reaches it (M9). A trailing [;] discards the
@@ -1507,7 +1587,7 @@ let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env 0 ts) terms
 let parse_block_head env span terms =
   match take_statement terms with
   | [], _ -> error "empty block"
-  | stmt, [] -> parse_all (fun ts -> parse_expr_prec env 0 ts) stmt
+  | stmt, [] -> parse_all (fun ts -> parse_expr_prec env Top ts) stmt
   | stmt, rest -> (
       match drop_separators rest with
       | [] -> do_statement env span stmt (unit ~span ())

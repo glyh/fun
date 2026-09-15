@@ -173,32 +173,54 @@ let parse_rules ~(available : string list) ~head ~parse_replacement body_terms :
 
 type callbacks = {
   parse_expr : Raw_syntax.t list -> Syntax.t;
-  parse_pat : Raw_syntax.t list -> Syntax.pat;
+  (* An expression at the front of the terms, read at a position, and the
+     terms after it. *)
+  parse_expr_prefix : prec -> Raw_syntax.t list -> Syntax.t * Raw_syntax.t list;
+  (* Where the hole ending a use reads: the form's operand, at its order. A
+     hole ending its group or item reads a whole expression ([Top]). *)
+  trailing : prec;
+  parse_pat_prefix : Raw_syntax.t list -> Syntax.pat * Raw_syntax.t list;
   (* Reading quoted syntax, which is parsed completely where it is written: a
      captured block is read now too (M10). *)
   eager : bool;
 }
 
-(* The shortest prefix of [input] that [capture] reads and after which the rest
-   of the pattern matches. *)
-let try_prefixes capture continue input =
-  let rec go prefix = function
-    | [] -> None
-    | term :: rest ->
-        let prefix = prefix @ [ term ] in
-        let candidate =
-          match capture prefix with
-          | captured -> continue captured rest
-          | exception (Error _ | Unsupported _) -> None
-        in
-        (match candidate with Some _ -> candidate | None -> go prefix rest)
-  in
-  go [] (drop_separators input)
+(* A capture reads as far as its parser does: [read] returns what it read and
+   the terms after it. An empty capture matches nothing. *)
+let capture read continue input =
+  match drop_separators input with
+  | [] -> None
+  | input ->
+      let captured, after = read input in
+      continue captured after
 
-(* A group's pattern must consume the whole group, so a hole ending it keeps
-   extending its capture rather than stopping at the shortest parse. *)
+(* How far a hole reads is structural (brackets-decide-grouping): the hole
+   ending a use reads its form's operand; one ending its group, or followed by
+   [,] or [;], reads to that end; any other hole is exactly one term - a token or
+   one bracket group. *)
+type extent = Trailing | ToSeparator | OneTerm
+
+let extent = function
+  | [] -> Trailing
+  | Syntax.PartToken t :: _ when token_kind Comma t || is_separator t -> ToSeparator
+  | _ -> OneTerm
+
+(* Declarations are captured unread: to the separator, the rest of the use, or
+   the items of one brace group. *)
+let decl_extent extent input =
+  match extent, input with
+  | Trailing, _ -> Some (input, [])
+  | ToSeparator, _ -> (
+      match split_at_pred (fun t -> token_kind Comma t || is_separator t) [] input with
+      | Some (before, sep, after) -> Some (before, sep :: after)
+      | None -> Some (input, []))
+  | OneTerm, { datum = Group (Raw_syntax.Brace, items, _); _ } :: after -> Some (items, after)
+  | OneTerm, _ -> None
+
+(* A group's pattern must consume the whole group: a hole ending it must read
+   to the group's end. *)
 let rec match_group callbacks captures pattern_items input_items =
-  Option.map fst (match_parts ~whole:true callbacks captures pattern_items input_items)
+  Option.map fst (match_parts ~whole:true { callbacks with trailing = Top } captures pattern_items input_items)
 
 and match_parts ?(whole = false) callbacks captures pattern input =
   let continue captures rest input = match_parts ~whole callbacks captures rest input in
@@ -229,16 +251,27 @@ and match_parts ?(whole = false) callbacks captures pattern input =
           | ({ datum = Group (Raw_syntax.Brace, items, _); _ } as group) :: input_rest ->
               with_capture (if callbacks.eager then Syntax.CapExpr (callbacks.parse_expr [ group ]) else Syntax.CapBlock items) input_rest
           | _ -> None)
-      | Syntax.HoleExpr -> try_prefixes (fun p -> Syntax.CapExpr (callbacks.parse_expr p)) with_capture input
-      | Syntax.HolePattern -> try_prefixes (fun p -> Syntax.CapPattern (callbacks.parse_pat p)) with_capture input
-      | Syntax.HoleDecl ->
+      | Syntax.HoleExpr -> (
+          match extent rest with
+          | Trailing -> capture (fun ts -> let e, after = callbacks.parse_expr_prefix callbacks.trailing ts in (Syntax.CapExpr e, after)) with_capture input
+          | ToSeparator -> capture (fun ts -> let e, after = callbacks.parse_expr_prefix Top ts in (Syntax.CapExpr e, after)) with_capture input
+          | OneTerm -> capture (fun ts -> (Syntax.CapExpr (callbacks.parse_expr [ List.hd ts ]), List.tl ts)) with_capture input)
+      | Syntax.HolePattern -> (
+          match extent rest with
+          | Trailing | ToSeparator ->
+              capture (fun ts -> let p, after = callbacks.parse_pat_prefix ts in (Syntax.CapPattern p, after)) with_capture input
+          | OneTerm ->
+              capture
+                (fun ts ->
+                  let p, after = callbacks.parse_pat_prefix [ List.hd ts ] in
+                  ensure_no_rest "pattern hole" after;
+                  (Syntax.CapPattern p, List.tl ts))
+                with_capture input)
+      | Syntax.HoleDecl -> (
           (* Declarations, captured unread: they are read where they are spliced. *)
-          let decls p = if drop_separators p = [] then raise (Error "empty declaration") else Syntax.CapDecls [ Syntax.Items p ] in
-          if rest = [] then
-            match drop_separators input with
-            | [] -> None
-            | input -> Some ((hole, decls input) :: captures, [])
-          else try_prefixes decls with_capture input)
+          match decl_extent (extent rest) (drop_separators input) with
+          | Some (decls, after) when drop_separators decls <> [] -> with_capture (Syntax.CapDecls [ Syntax.Items decls ]) after
+          | _ -> None))
 
 let match_rules callbacks (rules : Syntax.rule list) terms =
   List.find_map

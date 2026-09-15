@@ -58,6 +58,7 @@ type syntax_nominals = {
   assoc : value;
   role : value;
   role_meaning : value;
+  order : value;
   rule : value;
   rule_part : value;
   hole_kind : value;
@@ -247,10 +248,16 @@ and w_role ns (r : Syntax.role) =
     | AssignRef -> con ns.role_meaning "AssignRef" []
     | CallMacro -> con ns.role_meaning "CallMacro" []
     | Rules { rules_kind; rules } -> con ns.role_meaning "Rules" [ w_macro_ann ns rules_kind; w_list ns (w_rule ns) rules ]
+    | OrderGroup -> con ns.role_meaning "OrderGroup" []
   in
   con ns.role "MkRole"
-    [ w_fixity ns r.fixity; w_i64 r.precedence; w_assoc ns r.assoc; meaning; w_span ns r.declared_at;
+    [ w_fixity ns r.fixity; w_option ns (w_order ns) r.order; meaning; w_span ns r.declared_at;
       w_option ns w_string r.from_unit ]
+
+and w_order ns (o : Syntax.order) =
+  con ns.order "MkOrder"
+    [ w_string o.group; w_string o.group_name; w_assoc ns o.group_assoc;
+      w_list ns (w_order ns) o.stronger_than; w_list ns (w_order ns) o.weaker_than ]
 
 and w_rule ns (r : Syntax.rule) =
   let replacement =
@@ -632,10 +639,9 @@ let rec u_expr ns (v : value) : Syntax.t option =
 
 and u_role ns v : Syntax.role option =
   match payload ns.role v with
-  | Some ("MkRole", [ fixity; precedence; assoc; meaning; declared_at; from_unit ]) ->
+  | Some ("MkRole", [ fixity; order; meaning; declared_at; from_unit ]) ->
       let* fixity = u_fixity ns fixity in
-      let* precedence = u_int precedence in
-      let* assoc = u_assoc ns assoc in
+      let* order = u_option ns (u_order ns) order in
       let* meaning =
         match payload ns.role_meaning meaning with
         | Some ("ApplyValue", []) -> Some Syntax.ApplyValue
@@ -645,11 +651,23 @@ and u_role ns v : Syntax.role option =
             let* rules_kind = u_macro_ann ns kind in
             let* rules = u_list ns (u_rule ns) rules in
             Some (Syntax.Rules { rules_kind; rules })
+        | Some ("OrderGroup", []) -> Some Syntax.OrderGroup
         | _ -> None
       in
       let* declared_at = u_span ns declared_at in
       let* from_unit = u_option ns u_string from_unit in
-      Some { Syntax.fixity; precedence; assoc; meaning; declared_at; from_unit }
+      Some { Syntax.fixity; order; meaning; declared_at; from_unit }
+  | _ -> None
+
+and u_order ns v : Syntax.order option =
+  match payload ns.order v with
+  | Some ("MkOrder", [ group; group_name; assoc; stronger; weaker ]) ->
+      let* group = u_string group in
+      let* group_name = u_string group_name in
+      let* group_assoc = u_assoc ns assoc in
+      let* stronger_than = u_list ns (u_order ns) stronger in
+      let* weaker_than = u_list ns (u_order ns) weaker in
+      Some { Syntax.group; group_name; group_assoc; stronger_than; weaker_than }
   | _ -> None
 
 and u_rule ns v : Syntax.rule option =
