@@ -187,6 +187,10 @@ and lower_effect_row (eff : Syntax.effect_row) : effect_row =
 and lower_effect_op (op : Syntax.effect_op) : effect_op =
   { name = op.name; input = lower_expr op.input; output = lower_expr op.output }
 
+and lower_capture = function
+  | Syntax.CapExpr e -> lower_expr e
+  | CapBlock _ | CapId _ | CapPattern _ | CapDecls _ -> invalid_arg "lower_capture: an argument not read as an Expr"
+
 and lower_expr (stx : Syntax.t) : t =
   match stx.kind with
   | Syntax.Stx s -> StxExpr s
@@ -255,7 +259,7 @@ and lower_expr (stx : Syntax.t) : t =
     MacroDef { name = lower_id name; value = lower_expr value; body = lower_expr body; kind = None }
   | Syntax.SyntaxDef { name; role; body } -> SyntaxDef { name = lower_id name; attaches = Syntax.attaches role; body = lower_expr body }
   | Syntax.Block _ | Syntax.Instantiate _ -> invalid_arg "lower_expr: unexpanded syntax"
-  | Syntax.MacroCall (f, a) -> MacroCall (lower_expr f, List.map lower_expr a)
+  | Syntax.MacroCall (f, a) -> MacroCall (lower_expr f, List.map lower_capture a)
   | Syntax.SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit = _ } ->
     let fixity = match fixity with Syntax.PrefixOp -> PrefixOp | Syntax.InfixOp -> InfixOp in
     SyntaxOperatorUse { operator = lower_id operator; fixity; operands = List.map lower_expr operands; declaration_span; use_span }
@@ -288,7 +292,7 @@ and lower_struct_binding = function
   | Syntax.MacroBinding { name; value; public; kind } ->
     MacroBinding { name = lower_id name; value = lower_expr value; public; kind }
   | Syntax.MacroCallBinding { f; args } ->
-    MacroCallBinding { f = lower_expr f; args = List.map lower_expr args }
+    MacroCallBinding { f = lower_expr f; args = List.map lower_capture args }
   | Syntax.PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = lower_id name;
                                 params = List.map lower_id params;

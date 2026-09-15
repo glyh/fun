@@ -66,10 +66,8 @@ let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nomi
     let app = runtime.application () in
     let fn = runtime.run_macro macro_fn wrapped_ty in
     let fn = List.fold_left (fun fn arg ->
-      match arg with
-      | { Syntax.kind = Syntax.Stx stx_arg; _ } ->
-          runtime.run_macro fn (Macro_eval.wrap_stx ~nominals:macro_nominals (app.Expand.receive stx_arg))
-      | _ -> fn) fn args in
+      let arg = match arg with Syntax.CapExpr { kind = Syntax.Stx stx_arg; _ } -> Syntax.CapExpr stx_arg | c -> c in
+      runtime.run_macro fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.Expand.receive_capture arg))) fn args in
     match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
     | Some expanded -> elaborate (runtime.expand (app.emit expanded))
     | None -> raise (ElabError (MacroDidNotReturnSyntax name)))

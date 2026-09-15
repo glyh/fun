@@ -11,6 +11,7 @@
 type macro_export = {
   name : string;
   kind : Syntax.MacroKind.t;
+  params : Syntax.hole_kind list;
   compiled : Core.value;
   syntax_nominals : Macro_eval.syntax_nominals option;
   public : bool;
@@ -107,6 +108,7 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
           | None -> Syntax.MacroKind.default
         in
         { name; kind; compiled = entry.Expand_ctx.value;
+          params = Option.value ~default:[] (Expand_ctx.lookup_macro_params expand_ctx name);
           syntax_nominals = entry.Expand_ctx.syntax_nominals;
           public = List.mem name public_macro_names }
         :: acc)
@@ -143,8 +145,8 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
   if not (Sys.file_exists resolved) then raise (Core_loader.ImportNotFound path);
   let register_cached macros =
     List.iter
-      (fun (name, value, kind, syntax_nominals) ->
-        Expand_ctx.register_unit_macro ctx ~path ~name ~value ~kind ~syntax_nominals)
+      (fun (name, value, kind, params, syntax_nominals) ->
+        Expand_ctx.register_unit_macro ctx ~path ~name ~value ~kind ~params ~syntax_nominals)
       macros
   in
   (* Whatever the unit's own expander learned has to cross into this one, or a
@@ -177,7 +179,7 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
               output.expand_ctx.Expand_ctx.own_unit_members;
             List.filter_map
               (fun (e : macro_export) ->
-                if e.public then Some (e.name, e.compiled, e.kind, e.syntax_nominals)
+                if e.public then Some (e.name, e.compiled, e.kind, e.params, e.syntax_nominals)
                 else None)
               output.macro_exports)
       in

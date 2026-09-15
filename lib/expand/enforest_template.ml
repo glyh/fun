@@ -8,14 +8,12 @@ open Enforest_util
 
 (* A hole's kind is written as its reflection type: [$(x : Id)]. *)
 let parse_hole_kind = function
-  | "Expr" -> Syntax.HoleExpr
-  | "Block" -> Syntax.HoleBlock
-  | "Id" -> Syntax.HoleId
-  | "Decl" -> Syntax.HoleDecl
-  | "Pattern" -> Syntax.HolePattern
   | ("expr" | "block" | "binder" | "ident" | "decl") as kind ->
       error ("hole kinds are written as types (Expr, Block, Id, Decl, Pattern), not " ^ kind)
-  | kind -> error ("unknown syntax template hole kind: " ^ kind)
+  | kind -> (
+      match Syntax.hole_kind_of_name kind with
+      | Some k -> k
+      | None -> error ("unknown syntax template hole kind: " ^ kind))
 
 let raw_token_spelling term =
   match term.datum with

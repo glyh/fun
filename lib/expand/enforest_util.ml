@@ -31,6 +31,9 @@ type env = {
      scopes it over the statements after it. *)
   mutable declared : int;
   errors : Parse_error.t list ref;
+  (* The parameter kinds of the macro a call's head names, when it names one:
+     its arguments are read as those kinds (M9). The expander answers. *)
+  macro_params : Syntax.t -> Syntax.hole_kind list option;
 }
 
 (* The compiler-known base role: [<-], ref assignment, always in scope. *)
@@ -39,7 +42,8 @@ let base_roles (tbl : Binding.t) =
     ~role:(Binding.role ~fixity:Syntax.InfixOp ~precedence:1 ~assoc:Syntax.RightAssoc Syntax.AssignRef)
 
 (* Reading forms as expansion reaches them, with the expander's roles. *)
-let lazy_env operators = { operators; eager = false; registers = false; holes = []; declared = 0; errors = ref [] }
+let lazy_env ?(macro_params = fun _ -> None) operators =
+  { operators; eager = false; registers = false; holes = []; declared = 0; errors = ref []; macro_params }
 
 (* Reading quoted syntax where it is written. *)
 let eager_env ?(holes = []) env =

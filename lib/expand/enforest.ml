@@ -16,6 +16,30 @@ let rec parse_args env terms =
           parse_all (fun ts -> parse_expr_prec env 0 ts) part)
         parts
 
+(* A call's arguments read as the kinds of the macro its head names, when any
+   is not an [Expr] (M9); [None] otherwise, and the call is an application. *)
+and macro_call_args env (head : Syntax.t) items =
+  match env.macro_params head with
+  | Some kinds when List.exists (fun k -> k <> Syntax.HoleExpr) kinds ->
+      let macro = match head.kind with Syntax.Var id -> id.name | FieldAccess (_, f) -> f | _ -> "_" in
+      let parts = match drop_separators items with [] -> [] | items -> split_commas items in
+      if List.length parts <> List.length kinds then
+        Expand_error.raise_at (ArgumentCount { macro; expected = List.length kinds; got = List.length parts });
+      Some
+        (List.map2
+           (fun kind part ->
+             match (kind : Syntax.hole_kind), drop_separators part with
+             | HoleExpr, _ -> Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env 0 ts) part)
+             | HoleId, [ { datum = Token ({ kind = Ident _ | Operator _; _ } as tok); _ } ] -> Syntax.CapId tok
+             | HoleBlock, [ ({ datum = Group (Raw_syntax.Brace, ts, _); _ } as group) ] ->
+                 if env.eager then Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env 0 ts) [ group ])
+                 else Syntax.CapBlock ts
+             | HolePattern, _ :: _ -> Syntax.CapPattern (parse_pat_terms part)
+             | (HoleId | HoleBlock | HolePattern | HoleDecl), _ ->
+                 Expand_error.raise_at (ArgumentKind { macro; kind; span = syntax_span part }))
+           kinds parts)
+  | _ -> None
+
 and parse_group_expr env delimiter items span =
   match delimiter with
   | Raw_syntax.Paren -> (
@@ -529,7 +553,7 @@ and parse_primary env terms =
               let expr =
                 match role.meaning with
                 | Syntax.CallMacro ->
-                    stx ~span (Syntax.MacroCall (f, [ syntax_operator_arg ~span ~use:term name role [ rhs ] ]))
+                    stx ~span (Syntax.MacroCall (f, [ Syntax.CapExpr (syntax_operator_arg ~span ~use:term name role [ rhs ]) ]))
                 | _ -> ap ~span f Explicitness.Explicit rhs
               in
               (expr, rest)
@@ -604,16 +628,19 @@ and parse_postfix_infix env min_prec lhs terms =
       parse_postfix_infix env min_prec lhs rest
   | ({ datum = Group (Raw_syntax.Paren, items, span); _ } as term) :: rest ->
       require_adjacent_postfix lhs term "function call";
-      let args =
-        match drop_separators items with
-        | [] -> [ unit ~span () ]
-        | _ -> parse_args env items
-      in
       let call_span = span_between lhs.span term.span in
       let lhs =
-        List.fold_left
-          (fun f arg -> ap ~span:call_span f Explicitness.Explicit arg)
-          lhs args
+        match macro_call_args env lhs items with
+        | Some args -> stx ~span:call_span (Syntax.MacroCall (lhs, args))
+        | None ->
+            let args =
+              match drop_separators items with
+              | [] -> [ unit ~span () ]
+              | _ -> parse_args env items
+            in
+            List.fold_left
+              (fun f arg -> ap ~span:call_span f Explicitness.Explicit arg)
+              lhs args
       in
       parse_postfix_infix env min_prec lhs rest
   | ({ datum = Group (Raw_syntax.Bracket, items, _); _ } as term) :: rest ->
@@ -1310,22 +1337,21 @@ and parse_macro_call_binding env stmt =
      which reclassifies it into the internal [MacroCallBinding]. There is no
      [@] marker; the same [f(args)] surface is used as for function calls. *)
   let args_spec =
-    Parse_spec.custom_spec ~name:"args" (fun _env items ->
-        let items = Enforest_util.drop_separators items in
-        let args =
-          match items with
-          | [] -> [ unit ~span:Source_span.synthetic () ]
-          | _ -> parse_args env items
-        in
-        Some (args, []))
+    Parse_spec.custom_spec ~name:"args" (fun _env items -> Some (items, []))
   in
   Parse_spec.to_option
     (Parse_spec.map
        (Parse_spec.seq3 Parse_spec.str_ident
           (Parse_spec.paren_group args_spec)
           Parse_spec.eof)
-       (fun ((name, name_term), (args, _), ()) ->
+       (fun ((name, name_term), (items, _), ()) ->
          let f = var_of name_term name in
+         let args =
+           match macro_call_args env f items, Enforest_util.drop_separators items with
+           | Some args, _ -> args
+           | None, [] -> [ Syntax.CapExpr (unit ~span:Source_span.synthetic ()) ]
+           | None, _ -> List.map (fun a -> Syntax.CapExpr a) (parse_args env items)
+         in
          Syntax.MacroCallBinding { f; args }))
     env stmt
 
