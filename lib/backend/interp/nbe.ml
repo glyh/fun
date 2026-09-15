@@ -294,7 +294,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           | VModule { entries; partial = _ } ->
               eval_result mc (push_opened_values env entries) body
           | _ -> fail mc "open of non-module")
-  | Fix (name, body) -> Done (VFix { name; body = { env; body } })
+  | Fix (name, pure, body) -> Done (VFix { name; pure; body = { env; body } })
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in
       sequence_values mc env params (fun param_vals ->
@@ -454,18 +454,25 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VLam { body = clo; _ } ->
       spend_call mc clo;
       eval_result mc (va :: clo.env) clo.body
-  | VFix { name; body = clo } ->
+  | VFix { name; pure; body = clo } ->
       (* A fixpoint unfolds on any argument, open or closed; under the checker a
          divergent unfolding runs out of budget (an error). Unfolding is charged
          too: a fixpoint that unfolds to another fixpoint would otherwise loop
-         without ever making a call. *)
-      mc.MetaContext.budget.calling <- Some name;
-      spend_call mc clo;
-      let self = VFix { name; body = clo } in
-      begin match eval mc (self :: clo.env) clo.body with
-      | VLam { body = lam } -> eval_result mc (va :: lam.env) lam.body
-      | unfolded -> apply_result mc unfolded va
-      end
+         without ever making a call. Under the checker a pure call is deferred
+         until something inspects it, so conversion can compare two calls of
+         the same fixpoint by their arguments first. *)
+      let unfold () =
+        mc.MetaContext.budget.calling <- Some name;
+        spend_call mc clo;
+        let self = VFix { name; pure; body = clo } in
+        match eval mc (self :: clo.env) clo.body with
+        | VLam { body = lam } -> eval_result mc (va :: lam.env) lam.body
+        | unfolded -> apply_result mc unfolded va
+      in
+      if pure && Option.is_some mc.MetaContext.budget.limit then
+        Done (VGlued { name; fix = clo; arg = va; unfolded = lazy (result_value mc (unfold ())) })
+      else unfold ()
+  | VGlued _ -> apply_result mc (force mc vf) va
   | VCont c ->
       let cont = c in
       if cont.used then fail mc "continuation already used";
@@ -1018,6 +1025,7 @@ and resolve_occurrence_opt (mc : MetaContext.t) (root : value)
 
 and force (mc : MetaContext.t) (v : value) : value =
   match v with
+  | VGlued { unfolded; _ } -> force mc (Lazy.force unfolded)
   | VFlex { id; spine = sp } -> (
       match MetaContext.lookup mc id with
       | Solved v ->
@@ -1047,7 +1055,7 @@ let eval mc env t = request ~demand:"an evaluation" mc (fun () -> eval mc env t)
 let apply mc f a = request ~demand:"an application" mc (fun () -> apply mc f a)
 let closure_apply mc c v = request ~demand:"an application" mc (fun () -> closure_apply mc c v)
 let eval_effect_row_closure mc row binder = request ~demand:"an effect row" mc (fun () -> eval_effect_row_closure mc row binder)
-let force mc v = match v with VFlex _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v) | _ -> v
+let force mc v = match v with VFlex _ | VGlued _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v) | _ -> v
 let quote mc depth value = request ~demand:"a normalisation" mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
 let conv mc depth lhs rhs = request ~demand:"a conversion" mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)
 

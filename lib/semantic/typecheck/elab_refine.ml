@@ -77,7 +77,11 @@ let value_substituter (mc : MetaContext.t) (target : lvl) (replacement : value) 
     in
     if frames == n.frames then n else { n with frames }
   and sub_uncached v =
-    match Nbe.force mc v with
+    match (match v with VGlued _ -> v | _ -> Nbe.force mc v) with
+    (* A deferred call stays deferred: substitute into its argument. *)
+    | VGlued { name; fix; arg; _ } as v ->
+        let arg' = sub arg in
+        if arg' == arg then v else Nbe.apply mc (VFix { name; pure = true; body = fix }) arg'
     | VRigid { lvl; spine } when lvl = target -> List.fold_left (Nbe.apply mc) replacement spine
     | VPi ({ domain; effects; codomain; _ } as pi) as v ->
         let domain' = sub domain and effects' = row_closure effects and codomain' = closure codomain in

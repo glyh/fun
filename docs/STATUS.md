@@ -149,6 +149,10 @@ Last updated: after struct source-order scoping, 2026-09-15.
 - A fixpoint unfolds at check time on any argument, open or closed (revised
   2026-09-15, see below): `double(n)` converts with `n + n`; a divergent
   unfolding such as `loop(n)` in a type is a budget error naming the call.
+- The budget measures work: calls plus every conversion and unification step.
+  Two calls of one known-pure fixpoint (closed empty effect row) on convertible
+  arguments convert without unfolding: under the checker such a call is a
+  deferred `VGlued`, unfolded when inspected (lazy delta).
 - **One binder count per core form.** `Core.map_subterms` states how many
   environment entries each immediate subterm sits under (`None` where only
   evaluation knows: an `open`'s body, bindings after an `OpenBind`); the

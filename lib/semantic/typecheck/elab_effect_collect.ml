@@ -143,7 +143,8 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
             ty_val
         | None -> Ctx.raw_meta ctx
       in
-      let fix_core = Fix (name, ops.check (Ctx.bind ctx name rec_ty) value rec_ty) in
+      let fix_body = ops.check (Ctx.bind ctx name rec_ty) value rec_ty in
+      let fix_core = Fix (name, Ctx.pure_call ctx rec_ty, fix_body) in
       let fix_val = Ctx.eval ctx fix_core in
       union_expr_effects ctx (ops.collect_effects (Ctx.bind ctx name rec_ty) value) (ops.collect_effects (Ctx.define ctx name rec_ty fix_val) body)
   | Syntax.Annotated { inner; typ } ->

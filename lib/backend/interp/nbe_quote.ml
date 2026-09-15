@@ -53,7 +53,7 @@ let rec conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   | _ -> false
 
 let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
-  match ops.force mc v with
+  match (match v with VGlued _ -> v | _ -> ops.force mc v) with
   | VLam { body = clo; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       Lam (quote ops mc (depth + 1) (ops.closure_apply mc clo var))
@@ -79,9 +79,12 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VAtomTy t -> AtomTy t
   | VProd elems -> Prod (List.map (quote ops mc depth) elems)
   | VProdTy elems -> ProdTy (List.map (quote ops mc depth) elems)
-  | VFix { name; body = clo } ->
+  | VFix { name; pure; body = clo } ->
       let var = VRigid { lvl = depth; spine = [] } in
-      Fix (name, quote ops mc (depth + 1) (ops.closure_apply mc clo var))
+      Fix (name, pure, quote ops mc (depth + 1) (ops.closure_apply mc clo var))
+  (* A deferred call quotes as the call, not its unfolding. *)
+  | VGlued { name; fix; arg; _ } ->
+      Ap (quote ops mc depth (VFix { name; pure = true; body = fix }), Explicit, quote ops mc depth arg)
   | VModule { entries; partial = _ } ->
       let fields = module_entry_fields entries in
       let bindings =
@@ -178,7 +181,26 @@ and quote_frames ops (mc : MetaContext.t) (depth : lvl) (head : term) (frames : 
                 branches ))
     head frames
 
+(* The checker's budget measures work, not calls (see [Eval_budget]): every step
+   of a conversion or unification spends too, so comparing ever larger stuck
+   terms runs out in bounded time. *)
+let step (mc : MetaContext.t) =
+  let budget = mc.MetaContext.budget in
+  Eval_budget.spend budget ~call:(fun () -> Option.value budget.calling ~default:"a comparison")
+
+(* Two deferred calls of one fixpoint: the same closure, or the same body over
+   the same captured values. *)
+let same_fixpoint (c1 : closure) (c2 : closure) =
+  let rec same_env e1 e2 = e1 == e2 || match (e1, e2) with v1 :: e1, v2 :: e2 -> v1 == v2 && same_env e1 e2 | _ -> false in
+  c1 == c2 || (c1.body == c2.body && same_env c1.env c2.env)
+
 let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool =
+  step mc;
+  match (v1, v2) with
+  (* Lazy delta: two pure calls of the same fixpoint on convertible arguments
+     are equal without unfolding either; otherwise unfold and compare. *)
+  | VGlued g1, VGlued g2 when same_fixpoint g1.fix g2.fix && conv ops mc depth g1.arg g2.arg -> true
+  | _ ->
   let v1 = ops.force mc v1 in
   let v2 = ops.force mc v2 in
   match (v1, v2) with

@@ -89,6 +89,7 @@ let env_value_label (v : value) =
   | VProd _ -> "VProd"
   | VProdTy _ -> "VProdTy"
   | VFix _ -> "VFix"
+  | VGlued _ -> "VGlued"
   | VModule _ -> "VModule"
   | VStruct _ -> "VStruct"
   | VRecord _ -> "VRecord"

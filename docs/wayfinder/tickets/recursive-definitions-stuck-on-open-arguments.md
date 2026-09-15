@@ -3,7 +3,9 @@ title: Recursive definitions no longer unfold on open arguments at check time
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Recursive definitions unfold on open arguments under the checker budget, which measures work; two calls of one known-pure fixpoint on convertible arguments convert without unfolding (lazy delta).
 assignee:
 blocked_by:
 ---
@@ -74,19 +76,29 @@ g : (n : I64) -> Vec(fact(n)) -> I64            // error: evaluation budget exce
   unknown variable are budget errors. (There is no value-level `rec … and …`,
   so no mutual group rule is needed.)
 
-**Open — decide before closing:** recursion under a stuck branch is a budget
-error in principle but not in practice.
+**Decided and implemented (2026-09-15): lazy delta guarded by purity, and a
+work budget.**
+
+1. **Two calls of the same fixpoint on convertible arguments are equal without
+   unfolding** — only when the fixpoint is known pure. Under the checker a
+   pure fixpoint's call is a deferred value (`VGlued`), unfolded only when
+   something inspects it (`force`); conversion and unification compare two
+   deferred calls of the same closure by their arguments first and fall back
+   to unfolding. A deferred call quotes as the call.
+   - **Purity criterion:** the fixpoint's type is an arrow whose effect row is
+     closed and empty, as its annotation reads after checking
+     (`Ctx.pure_call`, stored in `Fix`/`VFix`). An open row (today every bare
+     arrow, until [bare-arrow-is-pure](bare-arrow-is-pure.md)) is not known
+     pure, and an effectful row is not pure: those calls unfold eagerly.
+2. **The checker budget measures work:** every call and every step of a
+   conversion or unification spends. Converting calls of two different
+   fixpoints with the same body (`fact(n)` vs `fact2(n)`) is a budget error in
+   well under a second.
 
 ```fun
-rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } };
-F = fn(m : I64) { if (m == 4) { I64 } else { Bool } };
-g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }   // conversion unfolds fact under the neutral if
+rec fact : I64 -> I64 can {} = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } };
+g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }   // ok, no unfolding
 ```
 
-Evaluating `fact(n)` stops at the neutral `if`, but converting it with itself
-opens both branches and unfolds `fact(n - 1)`, and so on. Each step costs
-O(depth) (list-indexed environments under growing binders): 32,768 unfoldings
-take ~15 s, so reaching the 1,000,000-call budget takes hours. Options: a much
-smaller checker budget; charge by work (e.g. depth) not calls; compare two
-identical neutral fixpoint applications without unfolding (syntactic equality
-first); or accept.
+`fact(n)` vs `fact(m)` is a type mismatch, not a budget error: after one unfold
+the stuck scrutinees `n == 0` and `m == 0` differ.
