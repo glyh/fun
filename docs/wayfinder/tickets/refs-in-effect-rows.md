@@ -3,7 +3,9 @@ title: Refs belong in effect rows
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented as grilled. Ref(A) takes its heap as an implicit argument (VRefTy carries heap and element); ref/deref/<- perform Mutate(h); Mutate(r) maps a reference to its heap's effect, can _ infers. A heap created inside a function that its type does not mention and no older heap aliases is discharged at the function boundary; the entry's runtime handler discharges Mutate on any heap.
 assignee:
 blocked_by:
 ---

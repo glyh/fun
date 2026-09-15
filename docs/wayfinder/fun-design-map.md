@@ -594,9 +594,9 @@ Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 Decided by the effects domain-model pass; unimplemented, each ticket is the
 distance from an E-invariant in the topic doc.
 
-- [Refs belong in effect rows](tickets/refs-in-effect-rows.md) — mutation is
-  the three heap effects `Alloc(h)`/`Read(h)`/`Write(h)` over branded
-  `Ref(h, A)`; discharge at generalisation. Today refs are invisible in types.
+- [Refs belong in effect rows](tickets/refs-in-effect-rows.md) (closed) —
+  `Mutate(r)` over a hidden heap (`Ref(A)` takes it implicitly); local heaps
+  discharged at function boundaries; top-level refs through the runtime heap.
 - [Nominal identity is applicative by purity](tickets/nominal-identity-applicative-by-purity.md)
   — same declaration + convertible free variables = same type; generative only
   under a run-time effect. Today a nominal declared under a binder does not
