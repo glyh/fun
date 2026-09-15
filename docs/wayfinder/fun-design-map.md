@@ -530,7 +530,7 @@ What remains, in the recommended order:
   — `type X = struct { … }` deleted; a `rec` struct binding mints the recursive
   record's identity; needs value-level `rec … and …`.
 - [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
-  — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` deleted.
+  — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` deleted (maybe kept only as sugar: bind + open the constructors).
   **Blocked on** nominal identity applicative by purity (E11).
 Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 

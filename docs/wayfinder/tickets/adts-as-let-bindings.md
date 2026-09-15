@@ -55,3 +55,18 @@ and Stmt = enum { Do(Expr) }
   former, `rec … and …` knot, delete `TypeBinding`/`TypeDef` and the `and` chain.
 - Migrate the 15 prelude types, compiler-known `Expr` ADTs and their pattern
   synonyms (see `CLAUDE.md`, "Adding a new Syntax ADT"), and every test.
+
+## Open: `type` as sugar (2026-09-15)
+
+The user may keep `type … = …` for ADTs **only as sugar**: a let binding of the
+`enum` plus an open of its constructors, so the branches are in scope without
+writing `open`.
+
+```fun
+type Color = Red | Green | Blue
+// sugar for:
+Color = enum { Red, Green, Blue }; open Color
+```
+
+This would tension with "one syntax per construct" (records dropped
+`type X = struct`); decide when implementing whether the sugar stays.
