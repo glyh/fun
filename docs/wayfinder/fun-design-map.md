@@ -527,6 +527,9 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Effect collection rejects a deferred typed macro call](tickets/effect-collection-rejects-deferred-macro-calls.md)
+  — a typed macro call left for the elaborator aborts effect collection
+  ("macro-only syntax should not reach elaboration").
 - [Records are declared only by let bindings](tickets/records-only-let-bindings.md)
   — `type X = struct { … }` deleted; a `rec` struct binding mints the recursive
   record's identity; needs value-level `rec … and …`.
