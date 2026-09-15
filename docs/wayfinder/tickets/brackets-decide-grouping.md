@@ -139,3 +139,15 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   `with_decls { x = 1; y = 2 } in x + y` (already what the order-groups run built).
 - **`Std.additive`** (a group through a module path) is decided (groups are
   ordinary binders); only the parsing is missing.
+
+## Found by the order-group leftovers run (2026-09-15)
+
+- **`<-` is not weaker than a user group unrelated to the prelude's order.**
+  `assignment` sits below `disjunction` only, so a group with no relation to the
+  prelude groups cannot meet `<-` ("no declared order"). The grilled rule says
+  `<-` is weaker than every group — decide how that is expressed without a
+  special case (e.g. a group may declare `weaker_than(all)`, or `assignment` is
+  the bottom every group is implicitly above).
+- **`Std = import "std"` in the test helper fails with `OpenSuppliesRole "not"`**
+  — likely pre-existing (an import binder of the prelude conflicting with the
+  already-open prelude's roles). Investigate.
