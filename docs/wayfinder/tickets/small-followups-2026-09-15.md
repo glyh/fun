@@ -3,7 +3,7 @@ title: Small follow-ups from the 2026-09-15 runs
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open  # items 2 and 4 remain
+status: open
 assignee:
 blocked_by:
 ---
