@@ -55,6 +55,10 @@ module Ctx = struct
        with none). A call whose row does not name one of them tunnels past
        these handlers (E5). *)
     handler_scopes : int list list;
+    (* The levels the enclosing module or function body names (E11): a nominal
+       declared in it captures them, so it is the same type exactly when they
+       are the same. *)
+    scope_captures : lvl list;
   }
 
 and macro_runtime = {
@@ -100,6 +104,7 @@ and macro_runtime = {
       base = None;
       sink = { performed = { effects = []; tail = None } };
       handler_scopes = [];
+      scope_captures = [];
     }
 
   (* The context an imported compilation unit is elaborated against: this
@@ -214,6 +219,31 @@ and macro_runtime = {
     { ctx with trait_evidence = evidence :: ctx.trait_evidence }
 
   let clear_self (ctx : t) : t = { ctx with self_entry = None; self_methods = [] }
+  (* The levels [visit]'s forms name in [ctx], from the first bound variable on:
+     entries before it are constants of the whole program, so capturing them
+     would only make identities larger. *)
+  let enclosing_scope (ctx : t) (visit : Expand.mapper -> unit) : t =
+    let first_bound =
+      List.fold_left (fun (lvl, acc) bd -> (lvl - 1, if bd = Bound then Some (lvl - 1) else acc)) (ctx.lvl, None) ctx.bds |> snd
+    in
+    let found = ref [] in
+    let note = function
+      | Some (ix, _) ->
+          let level = ctx.lvl - 1 - ix in
+          (match first_bound with
+           | Some b when level >= b && not (List.mem level !found) -> found := level :: !found
+           | _ -> ())
+      | None -> ()
+    in
+    let form (stx : Syntax.t) =
+      (match stx.kind with
+       | Syntax.OpenChoice { name; opens; fallback } -> note (lookup_choice_opt ctx name.name { opens; fallback })
+       | _ -> ());
+      stx
+    in
+    visit (Expand.mapper ~form (fun id -> note (lookup_opt ctx id.Syntax.name); id));
+    { ctx with scope_captures = List.sort compare !found }
+
   let clear_self_scope (ctx : t) : t = { ctx with self_entry = None; self_type = None; self_methods = [] }
 
   let fresh_meta (ctx : t) : term =

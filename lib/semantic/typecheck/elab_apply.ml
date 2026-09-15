@@ -197,7 +197,7 @@ let infer_lam ops (ctx : Ctx.t) (param : Syntax.param) (body : Syntax.t) :
     | None ->
         Ctx.raw_meta ctx
   in
-  let ctx' = Ctx.bind ctx param.name.name a_ty in
+  let ctx' = Ctx.enclosing_scope (Ctx.bind ctx param.name.name a_ty) (fun m -> ignore (Expand.map_forms_with m body)) in
   let since = MetaContext.count ctx.metas in
   let (body_core, body_ty), body_effects = collecting ctx' (fun ctx' -> ops.infer ctx' body) in
   let body_ty_term = Ctx.quote ctx' body_ty in

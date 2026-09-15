@@ -489,7 +489,7 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
         raise (UnifyError (NominalMismatch (n1.name, n2.name)));
       (* Captures are the declaration's free variables: a disagreement there
          is two different types, reported as such. *)
-      (try List.iter2 (unify mc env depth) n1.captures n2.captures
+      (try List.iter2 (fun c1 c2 -> if c1 != c2 then unify mc env depth c1 c2) n1.captures n2.captures
        with UnifyError _ -> raise (UnifyError (NominalMismatch (n1.name, n2.name))));
       List.iter2 (unify mc env depth) n1.params n2.params
   | VEffect e1, VEffect e2 ->

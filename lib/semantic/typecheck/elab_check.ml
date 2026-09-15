@@ -19,7 +19,7 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
   match (expr.kind, expected) with
   | Lam (param, body), VPi { explicitness; domain = a_ty; effects; codomain = b_clo } ->
       if expl_of_syntax param.explicitness <> explicitness then raise (ElabError ApplyingNonFunction);
-      let ctx' = Ctx.bind ctx param.name.name a_ty in
+      let ctx' = Ctx.enclosing_scope (Ctx.bind ctx param.name.name a_ty) (fun m -> ignore (Expand.map_forms_with m body)) in
       let binder = VRigid { lvl = ctx.lvl; spine = [] } in
       let rec insert_hidden_dicts ctx body_ty inserted =
         match Nbe.force ctx.Ctx.metas body_ty with

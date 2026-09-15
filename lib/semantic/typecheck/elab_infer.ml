@@ -281,7 +281,7 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
   in
   (* The declaration's own free variables, shared by its members (E11). *)
   let levels, captured =
-    capture_payloads ~group_ids:(List.map (fun (id, _, _) -> id) group) ~scope_lvl:ctx.Ctx.lvl
+    capture_payloads ~group_ids:(List.map (fun (id, _, _) -> id) group) ~scope_lvl:ctx.Ctx.lvl ~enclosing:ctx.Ctx.scope_captures
       (List.concat_map
          (fun ((m : type_member), _, _, _, _, _, payload_terms) ->
            List.map (fun (_, payloads) -> (List.length m.member_params, payloads)) payload_terms)
@@ -720,7 +720,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | Sig { bindings } -> Elab_type_expr.infer_signature ops ctx bindings
   | Module { bindings } ->
-      let binding_ctx = Ctx.clear_self_scope ctx in
+      let binding_ctx =
+        Ctx.enclosing_scope (Ctx.clear_self_scope ctx) (fun m -> List.iter (fun b -> ignore (Expand.go_struct_binding m b)) bindings)
+      in
       let _end_ctx, core_bindings, entries =
         List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
           let ctx', b, e = elab_module_binding ops ctx b in
@@ -1062,7 +1064,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           ctors
       in
       let levels, captured =
-        capture_payloads ~group_ids:[ nominal_id ] ~scope_lvl:ctx.lvl
+        capture_payloads ~group_ids:[ nominal_id ] ~scope_lvl:ctx.lvl ~enclosing:ctx.scope_captures
           (List.map (fun (_, payloads) -> (num_params, payloads)) payload_terms)
       in
       let ctor_payload_terms = List.map2 (fun (cname, _) payloads -> (cname, payloads)) payload_terms captured in

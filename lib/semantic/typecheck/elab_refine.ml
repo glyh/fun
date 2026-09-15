@@ -206,14 +206,15 @@ let close_recursive_payload_group members =
   go 0
 
 
-(* A nominal declaration's own free variables (E11): the variables of the
-   declaring scope its payloads mention, as levels there, in order. Each payload
+(* A nominal declaration's free variables (E11): the variables of the
+   declaring scope its payloads mention and those its enclosing module or
+   function body names ([enclosing]), as levels there, in order. Each payload
    is a term over its member's [num_params] params, then that scope (whose level
    is [scope_lvl]); it is rewritten over the params, then the captures in this
    order, and a reference to a member of the declaration ([group_ids], still
    without captures) gets them. Payloads are normal forms (no inserted metas). *)
-let capture_payloads ~group_ids ~scope_lvl (members : (int * term list) list) : int list * term list list =
-  let found = ref [] in
+let capture_payloads ~group_ids ~scope_lvl ~enclosing (members : (int * term list) list) : int list * term list list =
+  let found = ref (List.filter (fun l -> l < scope_lvl) enclosing) in
   let rec collect n cutoff t =
     match t with
     | Var ix when ix >= cutoff + n ->
