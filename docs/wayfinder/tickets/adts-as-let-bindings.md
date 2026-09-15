@@ -147,3 +147,11 @@ Step 3 (the prelude `type` macro and migration) remains.
 scope-resolved built-in role. `type` remains an ordinary identifier because it is
 a prelude macro (step 3), not a core form. Rule of thumb: core structural forms
 that produce a primitive node are keywords; library-level forms are roles.
+
+## Grilled (2026-09-16): `pub type` re-exports its constructors
+
+`pub type Option A = Some(A) | None` expands to `pub rec Option = fn(A : Type) {
+enum { … } }; pub open Option`. `pub open` is allowed only when the opened value
+is an enum: it re-exports exactly its constructors (a general `pub open` stays
+rejected). So `open Std; Some(1)` works as before. The rule is in the macro's
+output plus that one narrow `pub open` case.
