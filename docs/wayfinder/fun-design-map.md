@@ -525,6 +525,30 @@ What remains, in the recommended order:
 - Struct items are read together with a private copy of the roles, not form by
   form (M9 run 2 choice; their bodies still wait for expansion).
 
+### Found by the domain-model audit (2026-09-15)
+
+Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
+
+- [Declaration binders keep their written name](tickets/declaration-binders-keep-written-names.md)
+  — M12/S5: types, constructors, traits, effects and module items resolve under
+  their spelling; the elaborator's macro table is string-keyed. Grill: which
+  binders get fresh names.
+- [A resolved name can be forged](tickets/resolved-names-forgeable.md)
+  — M11/M12: any `#` name is trusted as resolved (`new_id("x#5")`); empty-scope
+  and operator macro heads fall back to spelling. Grill: does `new_id` stay.
+- [Opening a module needs its value](tickets/module-open-width-depends-on-value.md)
+  — I2: open width zips type and value entries; effect collection skips a
+  non-module open silently.
+- [Dotted paths found by first match](tickets/dotted-paths-first-match.md)
+  — I3/M12: `Elab_stdlib.resolve` and named-impl lookup take the first member;
+  prelude nominal names are literals outside `Compiler_names`.
+- [The elaborator's macro runtime is mutable](tickets/elaborator-macro-runtime-is-mutable.md)
+  — I4e: with `base = None` an import overwrites the importer's handle.
+- [An under-applied Decl macro is fed a dummy Unit](tickets/decl-macro-fed-dummy-unit.md)
+  — M8: `force_val` fabricates arguments; arity is checked only for kinded calls.
+- [Refresh the domain-model docs' "today" sections](tickets/refresh-domain-model-today-sections.md)
+  — stale descriptive prose in the core, macro and surface topics.
+
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 
 Decided by the effects domain-model pass; unimplemented, each ticket is the
