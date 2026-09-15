@@ -558,19 +558,14 @@ and unify_effect_rows (mc : MetaContext.t) (env : env) (depth : lvl)
           MetaContext.restore mc snapshot;
           Option.map (fun rest -> candidate :: rest) (remove_match eff rest))
   in
-  let remaining =
+  (* Each side's effects the other side does not name: those go to the other
+     side's tail. *)
+  let remaining1, remaining2 =
     List.fold_left
-      (fun remaining eff -> Option.bind remaining (remove_match eff))
-      (Some row2.effect_values) row1.effect_values
+      (fun (left, rest2) eff -> match remove_match eff rest2 with Some rest2 -> (left, rest2) | None -> (eff :: left, rest2))
+      ([], row2.effect_values) row1.effect_values
   in
-  match remaining with
-  | None -> raise (UnifyError EffectRowMismatch)
-  | Some remaining2 ->
-      let remaining1 =
-        List.filter
-          (fun eff -> not (List.exists (fun other -> Nbe.conv mc depth eff other) row2.effect_values))
-          row1.effect_values
-      in
+  let remaining1 = List.rev remaining1 in
       match remaining1, remaining2, row1.tail_value, row2.tail_value with
       | [], [], None, None -> ()
       | [], [], Some lhs, Some rhs -> unify mc env depth lhs rhs

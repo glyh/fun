@@ -732,12 +732,14 @@ module MetaContext = struct
   type entry = Solved of value | Unsolved
   (* The metas and the evaluation budget travel together: both are the state of
      one checking session that every evaluator call is handed. *)
-  type t = { entries : entry Dynarray.t; budget : value Eval_budget.t }
+  (* [written_rows]: the metas standing for a written [->{_}] row, which must
+     be solved by the time a program's entry is checked. *)
+  type t = { entries : entry Dynarray.t; budget : value Eval_budget.t; written_rows : meta_id Dynarray.t }
 
   (* [budget] is shared, not copied: a macro application evaluates its body
      with fresh metas (it solves nothing its caller needs) under the budget of
      the expansion it belongs to. *)
-  let create ?(budget = Eval_budget.create ()) () : t = { entries = Dynarray.create (); budget }
+  let create ?(budget = Eval_budget.create ()) () : t = { entries = Dynarray.create (); budget; written_rows = Dynarray.create () }
 
   let fresh (mc : t) : meta_id =
     let id = Dynarray.length mc.entries in

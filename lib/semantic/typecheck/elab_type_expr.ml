@@ -94,7 +94,11 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
       check_unique entries;
       let tail =
         if Option.is_some written_tail then written_tail
-        else if row.inferred then Some (Ctx.fresh_row_meta ctx)
+        else if row.inferred then begin
+          let meta = Ctx.fresh_row_meta ctx in
+          (match meta with InsertedMeta (id, _) -> Dynarray.add_last ctx.Ctx.metas.written_rows id | _ -> ());
+          Some meta
+        end
         else
           Option.map
             (fun tail_expr ->

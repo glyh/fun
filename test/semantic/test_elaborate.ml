@@ -1512,6 +1512,26 @@ let effects =
           both(4, 4) }" 40L);
     Alcotest.test_case "a bound set names a trait once" `Quick
       (elab_fail "{ same : [A : {Eq, Eq}] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; 1 }");
+    Alcotest.test_case "a row sits on its own arrow" `Quick
+      (eval_i64
+         "{ effect Log = sig { write : I64 -> I64 }; effect Exc = sig { raise : I64 -> I64 }; \
+          user : I64 ->{Log} I64 = fn(x) { perform Log.write(x) }; \
+          h : (I64 ->{Log} I64) ->{Exc} I64 = fn(f) { match (f(1)) { v => v, effect Log.write n => perform Exc.raise(n + 1) } }; \
+          match (h(user)) { v => v, effect Exc.raise n => n * 10 } }" 20L);
+    Alcotest.test_case "an open row names its tail after a bar" `Quick
+      (elab_ok "{ effect Log = sig { write : I64 -> I64 }; f : [e : EffectRow] -> (I64 ->{Log | e} I64) -> I64 ->{Log | e} I64 = fn[e : EffectRow](g, x) { g(x) }; 1 }");
+    Alcotest.test_case "a row variable beside effects is written as the tail" `Quick
+      (elab_fail "{ effect Log = sig { write : I64 -> I64 }; f : [e : EffectRow] -> (I64 ->{Log, e} I64) -> I64 = fn[e : EffectRow](g) { 1 }; 1 }");
+    Alcotest.test_case "a ~> definition infers its parameter's row and its own" `Quick
+      (eval_i64
+         "{ effect Log = sig { write : I64 -> I64 }; effect Exc = sig { raise : I64 -> I64 }; \
+          log_map = fn(f : I64 ~> I64, x : I64) ~> I64 { perform Log.write(f(x)) }; \
+          boom : I64 ->{Exc} I64 = fn(n) { perform Exc.raise(n) }; \
+          a = match (log_map(fn(n : I64) { n + 1 }, 1)) { v => v, effect Log.write n => n }; \
+          b = match (match (log_map(boom, 5)) { v => v, effect Log.write n => n }) { v => v, effect Exc.raise n => n * 100 }; \
+          a + b }" 502L);
+    Alcotest.test_case "~> in a trait signature" `Quick
+      (elab_ok "{ trait Apply(A) = sig { apply : (A ~> A) ~> A }; 1 }");
     Alcotest.test_case "~> in a parameter is effect-polymorphic" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; \
@@ -2055,7 +2075,11 @@ let evaluation_budget =
         Alcotest.(check bool) "a bare arrow" true
           (purity "{ rec f : I64 -> I64 = fn(n) { f(n) }; 1 }");
         Alcotest.(check bool) "an inferred row" false
-          (purity "{ rec f : I64 ->{_} I64 = fn(n) { f(n) }; 1 }"));
+          (purity ("{ " ^ effect_decl ^ "; rec f : Unit ->{_} I64 = fn(u) { perform State.get () }; 1 }"));
+        (* Nothing constrains a recursive [->{_}]: an error, not a default. *)
+        (match elab "{ rec f : I64 ->{_} I64 = fn(n) { f(n) }; 1 }" with
+         | exception Elab_error.ElabError Elab_error.UnsolvedEffectRow -> ()
+         | _ -> Alcotest.fail "expected an unsolved row error"));
     Alcotest.test_case "a closed call still evaluates" `Quick
       (elab_ok "{ rec k : I64 -> Type = fn(n) { if (n == 0) { I64 } else { k(n - 1) } }; g = fn(y : k(3)) { y + 1 }; 2 }");
     Alcotest.test_case "running a program is not budgeted" `Quick (fun () ->

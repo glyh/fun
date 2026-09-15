@@ -158,7 +158,15 @@ let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value
       [] actual.effects
     |> List.rev
   in
+  (* A written [->{_}] row checked against a body is exactly what the body
+     performs: nothing, when it performs nothing. *)
+  let written_row tail =
+    match Nbe.force ctx.Ctx.metas tail with
+    | VFlex { id; _ } -> Dynarray.exists (Int.equal id) ctx.Ctx.metas.written_rows
+    | _ -> false
+  in
   match unmatched, actual.tail, expected.tail_value with
+  | [], None, Some expected_tail when written_row expected_tail -> Ctx.unify ctx expected_tail (VEffectRow { effect_values = []; tail_value = None })
   | [], None, _ -> ()
   | [], Some actual_tail, Some expected_tail when same_flex actual_tail.value expected_tail || Ctx.conv ctx actual_tail.value expected_tail -> ()
   | [], Some actual_tail, Some expected_tail -> Ctx.unify ctx actual_tail.value expected_tail
@@ -182,7 +190,18 @@ let runtime_handled_effects ctx : effect_row_value =
 
 (* A program's top - a unit's bindings, an entry expression - performs only
    what the runtime handles. *)
-let require_handled_at_entry ctx effects = check_effect_subset ctx effects (runtime_handled_effects ctx)
+let require_handled_at_entry ctx effects =
+  check_effect_subset ctx effects (runtime_handled_effects ctx);
+  (* A written [->{_}] nothing solved: an error, never a default (effects
+     follow-ups, item 4). A meta restored away by a failed trial is gone. *)
+  let metas = ctx.Ctx.metas in
+  Dynarray.iter
+    (fun id ->
+      if id < MetaContext.count metas then
+        match MetaContext.lookup metas id with
+        | Unsolved -> raise (ElabError UnsolvedEffectRow)
+        | Solved _ -> ())
+    metas.written_rows
 
 let effect_row_of_expr_effects ctx (effects : expr_effects) : effect_row =
   { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects.effects;

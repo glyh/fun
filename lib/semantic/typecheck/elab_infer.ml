@@ -943,17 +943,18 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
          declared row. So [self.m] can call a method written later. The self
          parameter is the fields (a partial struct: any struct holding them). *)
       let method_types = ref None in
-      (* A method's type against the type it was known at: parameters and result.
-         ponytail: rows are not compared - a declared row is the same syntax both
-         times; a [->{_}] method called through [self] before its body is checked
-         performs its pre-body row (an unsolved tail). Compare rows once row
-         metas can be shared across the two elaborations. *)
+      (* A method's type against the type it was known at: parameters, rows and
+         result - so a [->{_}] row known before the body is the row the body
+         solved. *)
       let unify_method_types (ctx : Ctx.t) actual promised =
         let rec go depth actual promised =
           match Nbe.force ctx.metas actual, Nbe.force ctx.metas promised with
           | VPi a, VPi p ->
               Unify.unify ctx.metas ctx.env depth a.domain p.domain;
               let var = VRigid { lvl = depth; spine = [] } in
+              Unify.unify ctx.metas ctx.env (depth + 1)
+                (VEffectRow (Nbe.eval_effect_row_closure ctx.metas a.effects var))
+                (VEffectRow (Nbe.eval_effect_row_closure ctx.metas p.effects var));
               go (depth + 1) (Nbe.closure_apply ctx.metas a.codomain var) (Nbe.closure_apply ctx.metas p.codomain var)
           | a, p -> Unify.unify ctx.metas ctx.env depth a p
         in
