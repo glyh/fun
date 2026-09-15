@@ -450,6 +450,13 @@ let empty_effect_row = { effects = []; tail = None }
 let is_empty_effect_row row = List.is_empty row.effects && Option.is_none row.tail
 let effect_row_closure env row = { env; effects = row.effects; tail = row.tail }
 
+(* Pure arrows, for types the compiler writes itself (primitives, constructors). *)
+let pure_effects = effect_row_closure [] empty_effect_row
+let ( ^-> ) = fun lhs rhs -> VPi { explicitness = Explicit; domain = lhs; effects = pure_effects; codomain = { env = []; body = rhs } }
+let ( ^=> ) = fun lhs rhs -> VPi { explicitness = Implicit; domain = lhs; effects = pure_effects; codomain = { env = []; body = rhs } }
+let ( ^->> ) = fun lhs rhs -> Pi { explicitness = Explicit; domain = lhs; effects = empty_effect_row; codomain = rhs }
+let ( ^=>> ) = fun lhs rhs -> Pi { explicitness = Implicit; domain = lhs; effects = empty_effect_row; codomain = rhs }
+
 let validate_module_fields fields =
   if List.exists (fun (_, kind, _) -> kind = Field || kind = Method || kind = PrivateMethod) fields then
     failwith "VModule invariant violation: non-module field"
