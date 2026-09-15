@@ -143,3 +143,12 @@ at the lambda (its codomain) or at the effectful `let`, (3) the run-time side
 Also not done: a `rec` struct type under a binder still mints one identity per
 elaboration (`fresh_record_id`, `ponytail:`); the same captures representation
 applies uniformly (`RecOcc` + captures, `finished_records` as terms).
+
+## Grilled (2026-09-15), part 1: captures are what the enclosing module uses
+
+A nominal's identity captures the free variables of the **enclosing module** (the
+module expression the declaration lives in), not only those its constructors
+mention. So `Set(I64, less).T ≠ Set(I64, greater).T` because `union` uses `cmp`,
+while a parameter nothing in the module mentions still does not split the type.
+A nominal declared directly in a function body (no enclosing module) captures
+what that body uses.
