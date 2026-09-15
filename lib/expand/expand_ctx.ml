@@ -138,7 +138,7 @@ let enter_open (ctx : t) ?(occurrence = Scope_set.empty) (m : Syntax.t) : Scope_
   let scope = fresh_scope ctx in
   let label =
     match m.kind with
-    | Syntax.Import path -> Compiler_names.Module_name.unit_open_label path
+    | Syntax.Import { path; _ } -> Compiler_names.Module_name.unit_open_label path
     | _ -> "open:" ^ string_of_int scope
   in
   Hashtbl.iter

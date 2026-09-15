@@ -2700,6 +2700,44 @@ let test_m7_open_without_conflict () =
   check_i64_macro "an open supplying other names" 7L
     "{ M = module { pub x = 7 }; syntax answer { | answer => 42 }; open M; x }" ()
 
+(* Role visibility gaps left by M7: an imported role is visible in the region
+   of the open or binder that imported it, and every open is checked. *)
+let answer_syntax = ("ops", "pub syntax answer { | answer => 42 }")
+
+let test_m7_import_open_role_in_region () =
+  match eval_with_imported_macros [ answer_syntax ] "{ x = { open (import \"ops\"); answer }; x }" with
+  | VAtom (I64 n) -> Alcotest.(check int64) "an imported role is visible in its open's region" 42L n
+  | _ -> Alcotest.fail "expected 42"
+
+let imported_role_leaks label source () =
+  match eval_with_imported_macros [ answer_syntax ] source with
+  | VAtom (I64 84L) -> Alcotest.fail (label ^ ": an imported role leaked out of its region")
+  | _ -> Alcotest.fail (label ^ ": expected the use outside the region to be rejected")
+  | exception (Enforest.Error _ | Enforest.Unsupported _ | Elab_error.ElabError _) -> ()
+
+let test_m7_import_open_role_not_after_block () =
+  imported_role_leaks "a block's open (import …)" "{ x = { open (import \"ops\"); answer }; x + answer }" ()
+
+let test_m7_import_binder_role_not_after_block () =
+  imported_role_leaks "a block's M = import …" "{ x = { M = import \"ops\"; answer }; x + answer }" ()
+
+let test_m7_import_open_under_syntax () =
+  match
+    eval_with_imported_macros
+      [ ("m_answer", "pub answer = 7");
+        ("user", "syntax answer { | answer => 42 };\nopen (import \"m_answer\");\npub r = 1") ]
+      "{ U = import \"user\"; U.r }"
+  with
+  | exception Elab_error.ElabError (OpenSuppliesRole "answer") -> ()
+  | exception e -> Alcotest.fail ("unexpected exception " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "an import open supplying a name a unit role has must be rejected"
+
+let test_m7_driver_open_under_syntax () =
+  match run_driver "M = module { pub answer = 7 };\nsyntax answer { | answer => 42 };\nopen M;\npub r = 1" with
+  | exception Elab_error.ElabError (OpenSuppliesRole "answer") -> ()
+  | exception e -> Alcotest.fail ("unexpected exception " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "an open the driver elaborates must be checked"
+
 let test_m7_template_written_syntax_invisible () =
   match
     eval_with_imported_macros
@@ -3504,6 +3542,11 @@ let () =
           Alcotest.test_case "open under syntax" `Quick test_m7_open_under_syntax;
           Alcotest.test_case "syntax inside open region" `Quick test_m7_syntax_inside_open_region;
           Alcotest.test_case "open without conflict" `Quick test_m7_open_without_conflict;
+          Alcotest.test_case "imported role in its open's region" `Quick test_m7_import_open_role_in_region;
+          Alcotest.test_case "block open (import) role not after block" `Quick test_m7_import_open_role_not_after_block;
+          Alcotest.test_case "block import binder role not after block" `Quick test_m7_import_binder_role_not_after_block;
+          Alcotest.test_case "import open under unit syntax" `Quick test_m7_import_open_under_syntax;
+          Alcotest.test_case "driver-run open under syntax" `Quick test_m7_driver_open_under_syntax;
         ] );
       ( "m9 forms",
         [

@@ -205,7 +205,7 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | RecordConstruct { typ; fields } -> e "RawRecordConstruct" [ x typ; w_fields ns fields ]
   | Struct { con_fields; bindings } -> e "RawStruct" [ w_fields ns con_fields; w_list ns (w_decl ns) bindings ]
   | Module { bindings } -> e "RawModule" [ w_list ns (w_decl ns) bindings ]
-  | Import path -> e "RawImport" [ w_string path ]
+  | Import { path; scope } -> e "RawImport" [ w_string path; VAtom (Scopes scope) ]
   | Open (m, body, label) -> e "RawOpen" [ x m; x body; w_string label ]
   | OpenChoice { name; opens; fallback } ->
       e "RawOpenChoice" [ w_id ns name; w_list ns w_string opens; w_option ns w_string fallback ]
@@ -543,7 +543,7 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* bindings = u_list ns (u_decl ns) bindings in
           mk (Struct { con_fields; bindings })
       | "RawModule", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Module { bindings })
-      | "RawImport", [ path ] -> let* path = u_string path in mk (Import path)
+      | "RawImport", [ path; VAtom (Scopes scope) ] -> let* path = u_string path in mk (Import { path; scope })
       | "RawOpen", [ m; body; label ] ->
           let* m = x m in let* body = x body in let* label = u_string label in mk (Open (m, body, label))
       | "RawOpenChoice", [ name; opens; fallback ] ->

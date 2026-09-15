@@ -177,7 +177,10 @@ and kind =
       bindings : struct_binding list;
     }
   | Module of { bindings : struct_binding list }
-  | Import of string
+  | Import of { path : string; scope : Scope_set.t }
+      (** [import "path"]. [scope] is where it is written, the scope set the
+          [import] keyword carries: the roles visible there are what an open of
+          it must not supply (M7). *)
   | Open of t * t * string
       (** [open m; body]. The string labels this open, so an open choice can
           name it: [""] until expansion assigns one - ["unit:p"] for an open of

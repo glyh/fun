@@ -132,7 +132,7 @@ pub Syntax = module {
     | RawRecordConstruct(Option(Span), Expr, List(Field))
     | RawStruct(Option(Span), List(Field), List(Decl))
     | RawModule(Option(Span), List(Decl))
-    | RawImport(Option(Span), String)
+    | RawImport(Option(Span), String, Scopes)
     | RawOpen(Option(Span), Expr, Expr, String)
     | RawOpenChoice(Option(Span), Id, List(String), Option(String))
     | RawRecordTypeDef(Option(Span), Id, List(Id), List(Field), Expr)
