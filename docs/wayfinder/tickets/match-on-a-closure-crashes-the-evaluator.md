@@ -3,7 +3,9 @@ title: A match whose scrutinee is a closure crashes the evaluator
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Root cause - the match dispatch listed the matchable shapes and sent everything else to the stuck path, which accepts only neutral, flex and rigid values. It now lists the stuck shapes instead; every other value (a closure, a function type, a universe) gets a decision tree whose unknown occurrences have the Unknown domain, so a variable or wildcard binds it. The dead value-returning duplicate eval_match and its helpers are deleted.
 assignee:
 blocked_by:
 ---

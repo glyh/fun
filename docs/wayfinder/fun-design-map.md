@@ -534,9 +534,10 @@ What remains, in the recommended order:
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
   — a top-level `perform` or a closure escaping its handler fails only at run time.
 - [The unhandled-effect error says handlers are not implemented](tickets/unhandled-effect-message-is-stale.md)
-  — stale run-time message.
+  (closed) — the error names the operation with no handler in scope.
 - [A match on a closure crashes the evaluator](tickets/match-on-a-closure-crashes-the-evaluator.md)
-  — `match (fn(u) { 1 }) { x => x }` fails with "if condition is not a boolean".
+  (closed) — only a value with an unknown head makes a match stuck; every other
+  value, a closure included, goes through the decision tree.
 - [Effect collection rejects a deferred typed macro call](tickets/effect-collection-rejects-deferred-macro-calls.md)
   (closed) — a typed call's effects are read from the output it produced, and
   every effect read follows the elaboration it reads.

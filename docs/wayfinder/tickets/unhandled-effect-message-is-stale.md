@@ -3,7 +3,9 @@ title: The unhandled-effect run-time error says handlers are not implemented
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: The message is "unhandled effect E.op: no handler for it is in scope" (nbe_support.ml).
 assignee:
 blocked_by:
 ---

@@ -404,9 +404,16 @@ let test_eval_unhandled_perform () =
   let state = VEffect { id = 7; name = "State"; params = [ VAtomTy Atom_ty.TI64 ]; operations = [] } in
   let term = Perform { eff = Var 0; op = "put"; arg = Atom (I64 42L) } in
   match Nbe.eval (mc ()) [ state ] term with
-  | exception Nbe.EvalError msg ->
-      if not (String.contains msg 'S') then Alcotest.fail ("unexpected perform error: " ^ msg)
+  | exception Nbe.EvalError "unhandled effect State.put: no handler for it is in scope" -> ()
+  | exception Nbe.EvalError msg -> Alcotest.fail ("unexpected perform error: " ^ msg)
   | _ -> Alcotest.fail "expected unhandled perform error"
+
+let test_eval_match_binds_a_closure () =
+  check_i64 "a variable pattern binds a closure scrutinee" 1L
+    "{ h = match (fn(u : Unit) { 1 }) { x => x }; h(()) }" ();
+  check_i64 "a closure scrutinee under a handler" 1L
+    "{ effect Exc = sig { raise : I64 -> I64 }; h = match (fn(u : Unit) { 1 }) { x => x, effect Exc.raise n => fn(u : Unit) { n } }; h(()) }"
+    ()
 
 let test_debug_perform () =
   let text = Debug.pp_term (Perform { eff = EffectRef ("State", [ AtomTy Atom_ty.TI64 ]); op = "get"; arg = Atom Unit }) in
@@ -3217,6 +3224,7 @@ let () =
           Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
           Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;
+          Alcotest.test_case "match binds a closure scrutinee" `Quick test_eval_match_binds_a_closure;
           Alcotest.test_case "handler outer bubble" `Quick test_eval_handler_outer_bubble;
           Alcotest.test_case "handler escape skips continuation" `Quick test_eval_handler_escape_skips_continuation;
           Alcotest.test_case "handler ping pong effects" `Quick test_eval_handler_ping_pong_effects;

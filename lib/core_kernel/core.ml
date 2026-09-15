@@ -356,9 +356,9 @@ and value =
           Examples:
           - [+|]  — bare "+" primitive with no frames.
           - [#3 > if _]  — variable #3 stuck as an if-condition.
-          - [?7 > if _]  — metavariable ?7 stuck in the same situation. [eval_if]
-            calls [stuck_head_frames] which converts the VFlex into a VNeutral
-            with [head = HMeta 7] and an [FIf] frame. *)
+          - [?7 > match _]  — metavariable ?7 stuck as a match scrutinee: the
+            VFlex becomes a VNeutral with [head = HMeta 7] and an [FMatch]
+            frame. *)
 
   | VFlex of { id : meta_id; spine : spine }
       (** Metavariable applied to a spine. Unification dispatches to [solve] when
