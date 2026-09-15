@@ -28,6 +28,7 @@ type token_kind =
   | KwPub
   | KwImport
   | KwOpen
+  | KwExport
   | KwMacro
   | KwPattern
   | KwSelf
@@ -101,7 +102,7 @@ let keyword_spellings =
   [ (KwLet, "let"); (KwFun, "fun"); (KwThen, "then"); (KwSig, "sig"); (KwFn, "fn"); (KwDo, "do");
     (KwEnd, "end"); (KwElse, "else"); (KwMatch, "match"); (KwWith, "with"); (KwEffect, "effect");
     (KwModule, "module"); (KwStruct, "struct"); (KwEnum, "enum"); (KwImpl, "impl"); (KwTrait, "trait");
-    (KwPub, "pub"); (KwImport, "import"); (KwOpen, "open"); (KwMacro, "macro"); (KwPattern, "pattern");
+    (KwPub, "pub"); (KwImport, "import"); (KwOpen, "open"); (KwExport, "export"); (KwMacro, "macro"); (KwPattern, "pattern");
     (KwSelf, "self"); (KwSelfType, "Self"); (KwRef, "ref"); (KwDeref, "deref"); (KwRec, "rec");
     (KwPerform, "perform"); (KwResume, "resume"); (KwMethod, "method"); (KwUnit, "Unit") ]
 

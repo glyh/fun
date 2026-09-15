@@ -1482,6 +1482,27 @@ and parse_open_binding env public stmt =
   | Some mod_expr -> Some (Syntax.OpenBinding (mod_expr, ""))
   | None -> None
 
+(* [export M] or [export M.{a, b}]: the selection is the trailing [.{ … }]. *)
+and parse_export_binding env public stmt =
+  match drop_separators stmt with
+  | kw :: rest when token_kind KwExport kw ->
+      if public then error "export is not a public item: an export already publishes";
+      let module_terms, names =
+        match List.rev (drop_separators rest) with
+        | { datum = Group (Raw_syntax.Brace, items, _); _ } :: dot :: rev_module when token_kind Dot dot ->
+            let name item =
+              match drop_separators item with
+              | [ { datum = Token { kind = Ident n; _ }; _ } ] -> n
+              | _ -> error "export M.{a, b} names members"
+            in
+            (List.rev rev_module, Some (List.map name (List.filter (fun ts -> drop_separators ts <> []) (split_commas (drop_separators items)))))
+        | _ -> (rest, None)
+      in
+      let m, rest = parse_expr_prec env Top module_terms in
+      ensure_no_rest "export" rest;
+      Some (Syntax.ExportBinding { m; names })
+  | _ -> None
+
 (* A role declaration as bindings: the role, then the macro its body defines. *)
 and role_bindings public { role_name = name; role; macro_value } =
   Syntax.SyntaxBinding { name; role; public }
@@ -1496,6 +1517,7 @@ and parse_module_binding env stmt =
         first_some
           [
             parse_open_binding env public;
+            parse_export_binding env public;
             parse_macro_binding env public;
             parse_macro_call_binding env public;
             parse_pattern_syn_binding env public;

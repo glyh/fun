@@ -2242,6 +2242,49 @@ let test_7i_generated_syntax_later_wins_shadow () =
       Alcotest.fail (Printf.sprintf "7I later-wins: %s" (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "7I later-wins: %s" (Printexc.to_string e))
 
+
+(* [export M] / [export M.{a, b}]: members join the enclosing module (export-construct). *)
+let expect_elab_error label check source =
+  match eval_with_macros source with
+  | exception Elaborate.ElabError e when check e -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+  | _ -> Alcotest.fail (label ^ ": expected an elaboration error")
+
+let test_export_module_members () =
+  check_i64_macro "export M" 3L "{ M = module { pub x = 1; pub y = 2 }; N = module { export M }; N.x + N.y }" ();
+  check_i64_macro "export M.{x}" 1L "{ M = module { pub x = 1; pub y = 2 }; N = module { export M.{x} }; N.x }" ();
+  expect_elab_error "export M.{x} leaves y out" (fun _ -> true)
+    "{ M = module { pub x = 1; pub y = 2 }; N = module { export M.{x} }; N.y }";
+  expect_elab_error "export opens nothing locally" (function Elaborate.UnboundVariable _ -> true | _ -> false)
+    "{ M = module { pub x = 1 }; N = module { export M; pub z = x }; N.z }"
+
+let test_export_enum_constructors () =
+  check_i64_macro "export an enum's constructors" 2L
+    "{ N = module { pub rec T = enum { A, B }; export T }; open N; match (B) { A => 1, B => 2 } }" ()
+
+let test_export_errors () =
+  expect_elab_error "export clashes with an own member" (function Elaborate.ExportClash "x" -> true | _ -> false)
+    "{ M = module { pub x = 1 }; N = module { pub x = 5; export M }; 0 }";
+  expect_elab_error "an own member clashes with an export" (function Elaborate.ExportClash "x" -> true | _ -> false)
+    "{ M = module { pub x = 1 }; N = module { export M; pub x = 5 }; 0 }";
+  expect_elab_error "two exports clash" (function Elaborate.ExportClash "x" -> true | _ -> false)
+    "{ M = module { pub x = 1 }; K = module { pub x = 2 }; N = module { export M; export K }; 0 }";
+  expect_elab_error "an unknown exported name" (function Elaborate.ExportUnknownMember "z" -> true | _ -> false)
+    "{ M = module { pub x = 1 }; N = module { export M.{z} }; 0 }";
+  expect_elab_error "a module with impls" (function Elaborate.ExportImpls -> true | _ -> false)
+    "{ M = module { pub C = struct { v : I64 }; pub impl Eq(C) = module { fn eq(a, b) { True } } }; N = module { export M }; 0 }"
+
+let test_export_unit_roles () =
+  match
+    eval_with_imported_macros
+      [ ("ops", "pub syntax answer { answer => 42 };\npub x = 1");
+        ("reops", "Ops = import \"ops\";\nexport Ops") ]
+      "{ R = import \"reops\"; answer + R.x }"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "re-exported role and value" 43L n
+  | v -> Alcotest.fail (Printf.sprintf "re-exported role: %s" (Debug.pp_value_short (MetaContext.create ()) v))
+  | exception e -> Alcotest.fail (Printf.sprintf "re-exported role: %s" (Printexc.to_string e))
+
 let test_imported_operator_prefix_expands () =
   match
     eval_with_imported_macros
@@ -4196,6 +4239,10 @@ let () =
           Alcotest.test_case "type is shadowable" `Quick test_type_is_shadowable;
           Alcotest.test_case "pub form uses export" `Quick test_pub_form_uses;
           Alcotest.test_case "List(TokenTree) holes" `Quick test_token_list_hole;
+          Alcotest.test_case "export a module's members" `Quick test_export_module_members;
+          Alcotest.test_case "export an enum's constructors" `Quick test_export_enum_constructors;
+          Alcotest.test_case "export errors" `Quick test_export_errors;
+          Alcotest.test_case "export a unit's roles" `Quick test_export_unit_roles;
           Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
           Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
           Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;

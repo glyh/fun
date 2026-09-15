@@ -9,6 +9,18 @@ Last updated: after enum expressions, 2026-09-16.
 
 ## Completed
 
+
+### `export`; block-level enum groups (2026-09-16)
+
+- `export M` / `export M.{a, b}` re-exports a module's public members or an enum's
+  constructors as members of the enclosing module, opening nothing locally;
+  clashes are `ExportClash`; a unit's roles re-export with it. A module with
+  public impls is `ExportImpls` (undecided).
+- A block's `rec A = enum { … } and B = enum { … }` elaborates with the module
+  knot; its slots become `Let`s.
+- The `type` prelude macro is blocked: the prelude has no elaborator to compile a
+  procedural macro, and `std` delivers no macros (see the ADT ticket).
+
 ### Enums: ADTs as values (2026-09-16)
 
 - `enum { Red, Some(A) }` is a type value; its constructors are members:

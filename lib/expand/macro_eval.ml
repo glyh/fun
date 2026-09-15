@@ -368,6 +368,7 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
   | FieldBinding { name; type_ } -> d "DeclField" [ w_string name; w_expr ns type_ ]
   | OpenBinding (m, label) -> d "DeclOpen" [ w_expr ns m; w_string label ]
+  | ExportBinding { m; names } -> d "DeclExport" [ w_expr ns m; w_option ns (w_list ns w_string) names ]
   | HoleBinding id -> d "DeclHole" [ w_id ns id ]
   | SyntaxBinding { name; role; public } -> d "DeclSyntax" [ w_id ns name; w_role ns role; w_bool ns public ]
   | Items ts -> d "DeclItems" [ w_tokens ns ts ]
@@ -928,6 +929,10 @@ and u_decl ns v : Syntax.struct_binding option =
           let* public = u_bool ns public in
           Some (Syntax.PatternSynBinding { name; params; rhs; public })
       | "DeclField", [ name; type_ ] -> let* name = u_string name in let* type_ = u_expr ns type_ in Some (Syntax.FieldBinding { name; type_ })
+      | "DeclExport", [ m; names ] ->
+          let* m = u_expr ns m in
+          let* names = u_option ns (u_list ns u_string) names in
+          Some (Syntax.ExportBinding { m; names })
       | "DeclOpen", [ m; label ] -> let* m = u_expr ns m in let* label = u_string label in Some (Syntax.OpenBinding (m, label))
       | "DeclHole", [ id ] -> let* id = u_id ns id in Some (Syntax.HoleBinding id)
       | "DeclSyntax", [ name; role; public ] ->

@@ -29,6 +29,7 @@ let keyword = function
   | "pub" -> Some KwPub
   | "import" -> Some KwImport
   | "open" -> Some KwOpen
+  | "export" -> Some KwExport
   | "macro" -> Some KwMacro
   | "pattern" -> Some KwPattern
   | "self" -> Some KwSelf
@@ -181,6 +182,7 @@ let read ?file source =
     | KwPub -> "pub"
     | KwImport -> "import"
     | KwOpen -> "open"
+    | KwExport -> "export"
     | KwMacro -> "macro"
     | KwPattern -> "pattern"
     | KwSelf -> "self"

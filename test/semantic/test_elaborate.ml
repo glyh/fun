@@ -866,6 +866,11 @@ let enums =
       (eval_i64
          "{ M = module { pub rec A = enum { MkA(B), StopA } and B = enum { MkB(A), StopB } };
             match (M.A.MkA(M.B.MkB(M.A.StopA))) { M.A.MkA(M.B.MkB(_)) => 1, _ => 0 } }" 1L);
+    Alcotest.test_case "a block's mutually recursive enums" `Quick
+      (eval_i64
+         "{ rec A = enum { MkA(B), StopA } and B = enum { MkB(A), StopB };
+            open A; open B;
+            match (MkA(MkB(StopA))) { MkA(MkB(StopA)) => 1, _ => 0 } }" 1L);
     Alcotest.test_case "an enum and a struct type do not share a rec group" `Quick
       (elab_fail "{ M = module { pub rec A = enum { MkA(B) } and B = struct { a : A } }; 1 }");
     Alcotest.test_case "an enum under a generative maker is named by its binder" `Quick

@@ -146,6 +146,7 @@ pub Syntax = module {
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
     | DeclField(String, Expr)
     | DeclOpen(Expr, String)
+    | DeclExport(Expr, Option(List(String)))
     | DeclHole(Id)
     | DeclSyntax(Id, Role, Bool)
     | DeclItems(List(TokenTree))

@@ -140,3 +140,68 @@ hole rules; `type` lexes as a keyword. Decided:
 - `type` lexes as an identifier; the built-in declaration is the base role
   `TypeDeclaration` (shadowable by a user form).
 Step 3 (the prelude `type` macro and migration) remains.
+
+## Grilled (2026-09-16): `enum` stays a keyword
+
+`enum` is a lexer keyword, like `struct`, `module` and `sig` (user decision), not a
+scope-resolved built-in role. `type` remains an ordinary identifier because it is
+a prelude macro (step 3), not a core form. Rule of thumb: core structural forms
+that produce a primitive node are keywords; library-level forms are roles.
+
+## Grilled (2026-09-16): `pub type` re-exports its constructors
+
+`pub type Option A = Some(A) | None` expands to `pub rec Option = fn(A : Type) {
+enum { … } }; pub open Option`. `pub open` is allowed only when the opened value
+is an enum: it re-exports exactly its constructors (a general `pub open` stays
+rejected). So `open Std; Some(1)` works as before. The rule is in the macro's
+output plus that one narrow `pub open` case.
+
+## Revised (2026-09-16): `export`, not `pub open`
+
+`pub open` stays rejected in every case. A separate construct re-exports:
+
+- **`export M`** makes `M`'s public members members of the enclosing module;
+  **`export M.{a, b}`** exports only those. `M` may be any module or enum.
+- **`export` does not bring names into the module's own scope** — that is `open`'s
+  job. `open` uses names; `export` passes them on.
+- An exported name that clashes with the module's own member (or another export)
+  is an error.
+- `pub type Option A = Some(A) | None` expands to
+  `pub rec Option = fn(A : Type) { enum { Some(A), None } }; open Option; export Option`.
+
+## Step 3 blocked (2026-09-16): the prelude cannot define a procedural macro
+
+Found by the type-macro run. Block-level `rec … and …` enum groups are done
+(`48e36ae`) and `export` exists (`1dc107f`); the `type` macro itself is blocked:
+
+- **The prelude is expanded without an elaborator** (`Elab_prelude.parsed_stdlib
+  = Parse_expand.parse_module stdlib_source`, no callbacks), and a `macro`
+  definition compiles only when `Expand_ctx.elaborate` is set
+  (`expand.ml`, `MacroBinding` → `None` branch keeps it uncompiled).
+- **`std` delivers roles, never procedural macros**: `std_load_syntax` returns
+  `syntax_exports`; `Macro_driver.visit_macros` skips the reserved `std` path.
+- **Bootstrapping**: the macro body needs `List`, `TokenTree` and the `Syntax`
+  nominals, which the prelude itself declares with `type`.
+- A template-only `type` form cannot turn `C1(T) | C2` into `enum { C1(T), C2 }`
+  (a replacement is parsed syntax, not tokens).
+
+Mechanics verified: a `: Decl` form with a `List(TokenTree)` hole returning
+`DeclItems(tokens)` works; macro-written tokens can carry definition-site scopes
+from `quote(Type)`; always emitting `rec` works for non-recursive parameterised
+enums, so recursion detection is unnecessary.
+
+**Needs a decision:** (a) stage the prelude: core types declared with `enum`
+directly, then a second prelude stage expanded with an elaborator defines
+`type`, and `std` delivers its compiled macros like an imported unit; (b) keep
+`type` compiler-built (reverses "type is a macro"); (c) a small core splice rule
+so a template can place a captured `Pattern` union into `enum { … }`.
+
+## Grilled (2026-09-16): stage the prelude
+
+Option (a). **Stage 1** declares the core types directly with `enum` (`List`,
+`Option`, `TokenTree`, the `Syntax` nominals, …) and is expanded without an
+elaborator as today. **Stage 2** is expanded and elaborated with the elaborator
+available (stage 1 in scope); it defines the `type` macro and other macro-based
+prelude forms. `std` delivers stage 2's compiled procedural macros to user code
+like an imported unit (`visit_macros` no longer skips it). This also unblocks
+Stage 11's library-level `if` / `&&` macros.

@@ -49,6 +49,7 @@ and struct_binding =
   | SyntaxBinding of { name : string; attaches : bool }
   | HoleBinding of string
   | FieldBinding of { name : string; type_ : t }
+  | ExportBinding of { m : t; names : string list option }
   | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level. Brings the module's
           public fields into scope for the *subsequent* items only (statement
@@ -292,6 +293,7 @@ and lower_struct_binding = function
                                 rhs = lower_pat rhs; public }
   | Syntax.FieldBinding { name; type_ } -> FieldBinding { name; type_ = lower_expr type_ }
   | Syntax.OpenBinding (m, label) -> OpenBinding (lower_expr m, label)
+  | Syntax.ExportBinding { m; names } -> ExportBinding { m = lower_expr m; names }
   | Syntax.SyntaxBinding { name; role; _ } -> SyntaxBinding { name = lower_id name; attaches = Syntax.attaches role }
   | Syntax.Items _ | Syntax.InstantiateBinding _ -> invalid_arg "lower_struct_binding: unexpanded syntax"
   | Syntax.HoleBinding id -> HoleBinding (lower_id id)
