@@ -3,7 +3,9 @@ title: Records are declared only by let bindings; recursion through `rec`
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented 2026-09-15 (branch recursive-records). A rec binding whose value is a struct type (under any parameters) mints a record identity; its body sees the name as a recursive occurrence (Core.RecOcc / VRecOcc) that unfolds on demand to the finished value and compares by identity. rec A = … and B = … groups (RecGroupBinding / LetRecGroup) hold struct types. type X = struct { … } and rewrite_record_self_refs are deleted.
 decided: 2026-09-15
 assignee:
 blocked_by:
