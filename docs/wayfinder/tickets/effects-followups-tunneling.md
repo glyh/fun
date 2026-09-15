@@ -13,7 +13,11 @@ blocked_by:
 1. **`resume` does not re-enter the value branch (deep handlers, E8).**
    `match (perform E.op(1)) { x => x + 5, effect E.op n => resume(n + 40) }`
    answers 41; a deep handler answers 46 (the resumed computation's result goes
-   through the value branch). Pre-existing. **Bug.**
+   through the value branch). Pre-existing. **Fixed 2026-09-15** (branch
+   `resume-value-branch`): the continuation handed to an effect branch now
+   re-enters the handler (`resume_with`), so its result passes through the value
+   branch. The shallow-style state test (re-installing the handler per call)
+   was migrated to the deep encoding (the handler returns a function of the state).
 2. **Tunneling routes by effect family, not instance.** `State(I64)` and
    `State(Bool)` count as one family for the hop count, while E1 says an effect is
    family + parameters. Route by the instance.
