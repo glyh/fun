@@ -471,7 +471,8 @@ let operator_prefix_simple_do () =
 
 let operator_infix_in_do_block () =
   match parse_with_macros "{
-  infix (~) 15 Left (stx) { Syntax.i64(9) };
+  order tilde : stronger_than(additive);
+  infix (~) tilde (stx) { Syntax.i64(9) };
   1 + 2 ~ 3
 }" with
   | Ap (Ap (Var "+", Explicit, Atom (Atom.I64 1L)), Explicit, Atom (Atom.I64 9L)) -> ()
@@ -560,8 +561,9 @@ let pub_syntax_rejected_in_struct () =
   | _ -> Alcotest.fail "expected pub syntax in a struct expression to be rejected"
 
 let syntax_exports_include_operator_metadata () =
-  match Parse_expand.syntax_exports "pub infix (~) 15 Right (stx) { stx }" with
-  | [ ("~", { Syntax.fixity = InfixOp; precedence = 15; assoc = RightAssoc; meaning = CallMacro; _ }) ] -> ()
+  match Parse_expand.syntax_exports "pub order g : assoc(right); pub infix (~) g (stx) { stx }" with
+  | [ ("g", { meaning = OrderGroup; _ });
+      ("~", { Syntax.fixity = InfixOp; order = Some { group_name = "g"; group_assoc = RightAssoc; _ }; meaning = CallMacro; _ }) ] -> ()
   | _ -> Alcotest.fail "expected public syntax export to include operator metadata"
 
 let duplicate_public_syntax_exports_rejected () =
@@ -633,10 +635,10 @@ let old_syntax_declaration_rejected () =
   | _ -> Alcotest.fail "expected old syntax declaration spelling to be rejected"
 
 let operator_infix_bad_assoc_rejected () =
-  match parse_module "infix (~) 15 middle (stx) { stx }" with
-  | exception Enforest.Error "operator infix associativity must be Left or Right" -> ()
+  match parse_module "order g : assoc(middle); infix (~) g (stx) { stx }" with
+  | exception Enforest.Error "assoc is written assoc(left) or assoc(right)" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
-  | _ -> Alcotest.fail "expected invalid operator infix associativity to be rejected"
+  | _ -> Alcotest.fail "expected invalid order associativity to be rejected"
 
 let syntax_extension_circular_visit () =
   with_modules
@@ -712,7 +714,7 @@ let brace_syntax_suite =
     Alcotest.test_case "do block rejected" `Quick (rejected_with "blocks were removed" parse "do 1 end");
     Alcotest.test_case "match without parens rejected" `Quick (rejected_with "match (scrutinee)" parse "match x { _ => 1 }");
     Alcotest.test_case "match arm needs =>" `Quick (rejected_with "=>" parse "match (x) { _ -> 1 }");
-    Alcotest.test_case "=> is reserved" `Quick (rejected_with "reserved" parse_module "infix (=>) 3 Left");
+    Alcotest.test_case "=> is reserved" `Quick (rejected_with "reserved" parse_module "infix (=>)");
     Alcotest.test_case "record type needs struct" `Quick (rejected_with "struct {" parse_module "type P = {x: I64}");
     Alcotest.test_case "trailing ; discards" `Quick trailing_semicolon_discards;
     Alcotest.test_case "no trailing ; keeps value" `Quick no_trailing_semicolon_keeps_value;

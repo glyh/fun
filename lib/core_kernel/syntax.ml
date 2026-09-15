@@ -104,8 +104,9 @@ and struct_binding =
 (** A syntactic role (M7): what a binder means to the enforester. *)
 and role = {
   fixity : operator_fixity;
-  precedence : int;
-  assoc : assoc;
+  (* The order group the operator or form belongs to; [None] is weaker than
+     every grouped one. *)
+  order : order option;
   meaning : role_meaning;
   declared_at : Source_span.t;
   (* The unit an imported role came from. *)
@@ -114,12 +115,24 @@ and role = {
 
 and assoc = LeftAssoc | RightAssoc
 
+(** An order group (brackets-decide-grouping): precedence is relative. A group
+    is its declaration - [group] is unique - and carries the groups its
+    declaration names, so two groups compare wherever their roles travel. *)
+and order = {
+  group : string;
+  group_name : string;
+  group_assoc : assoc;
+  stronger_than : order list;
+  weaker_than : order list;
+}
+
 and role_meaning =
   | ApplyValue  (** fixity only: the use calls the value of its name *)
   | AssignRef  (** [<-] *)
   | CallMacro  (** the use applies the procedural macro of its name *)
   | Rules of { rules_kind : MacroAnnotation.t; rules : rule list }
       (** a syntax form: a macro whose rules match tokens and fill a quote (M9) *)
+  | OrderGroup  (** an order group's name, [order] its declaration *)
 
 (** One rule: the tokens a use consumes and what each hole captures, and the
     replacement - quoted syntax parsed where the rule is written. *)
@@ -309,6 +322,34 @@ let synth kind = { kind; span = Source_span.synthetic }
 
 (* A fixity-only role attaches to the value of its name (M7). *)
 let attaches (role : role) = role.meaning = ApplyValue
+
+type relation = Stronger | Weaker | Same | Unrelated
+
+(** How group [a] relates to group [b]: the transitive closure of the relations
+    the two declarations, and the declarations they name, state. *)
+let order_relation (a : order) (b : order) : relation =
+  let rec collect seen (o : order) =
+    if List.exists (fun (s : order) -> String.equal s.group o.group) seen then seen
+    else List.fold_left collect (o :: seen) (o.stronger_than @ o.weaker_than)
+  in
+  let nodes = collect (collect [] a) b in
+  (* The groups [x] is declared directly stronger than, by either side. *)
+  let below (x : string) =
+    List.concat_map
+      (fun (n : order) ->
+        if String.equal n.group x then List.map (fun (o : order) -> o.group) n.stronger_than
+        else if List.exists (fun (o : order) -> String.equal o.group x) n.weaker_than then [ n.group ]
+        else [])
+      nodes
+  in
+  let rec reaches seen x target =
+    String.equal x target
+    || (not (List.mem x seen) && List.exists (fun y -> reaches (x :: seen) y target) (below x))
+  in
+  if String.equal a.group b.group then Same
+  else if reaches [] a.group b.group then Stronger
+  else if reaches [] b.group a.group then Weaker
+  else Unrelated
 
 (* An id a hole is written as in quoted syntax: [$x] ([$] cannot begin a source
    identifier). *)

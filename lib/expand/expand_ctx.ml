@@ -149,7 +149,7 @@ let enter_open (ctx : t) ?(occurrence = Scope_set.empty) (m : Syntax.t) : Scope_
     (fun name infos ->
       if List.exists
            (fun (info : Binding.binding_info) ->
-             info.kind <> Binding.Value && Scope_set.subset info.scope occurrence
+             info.kind <> Binding.Value && (not (Binding.is_group info)) && Scope_set.subset info.scope occurrence
              && not (String.equal info.resolved_name label))
            infos
       then note_open_role ctx label name)
@@ -218,10 +218,11 @@ let is_intro_scope (ctx : t) s = Hashtbl.mem ctx.intro_scopes s
    hygiene keeps the two apart. A fixity-only declaration [attaches] to the
    value visible where it is written. Checked in the funnel every binder goes
    through, so every binder kind - and its order against the role - is covered. *)
-let check_role_mixing (ctx : t) ~name ~occurrence ~kind ~attaches ~span =
+let check_role_mixing (ctx : t) ~name ~occurrence ~kind ~attaches ~group ~span =
   let is_role (k : Binding.binding_kind) = k <> Binding.Value in
   let conflicts (info : Binding.binding_info) =
-    is_role info.kind <> is_role kind
+    (not group) && (not (Binding.is_group info))
+    && is_role info.kind <> is_role kind
     && Scope_set.subset info.scope occurrence
     && not (List.exists (is_intro_scope ctx) (Scope_set.diff occurrence info.scope))
     && not (attaches && info.kind = Binding.Value)
@@ -231,8 +232,9 @@ let check_role_mixing (ctx : t) ~name ~occurrence ~kind ~attaches ~span =
 
 let bind (ctx : t) ?role ?(span = Source_span.synthetic) ~name ~base_scope ~kind ~resolved_name scope =
   let attaches = match role with Some r -> Syntax.attaches r | None -> false in
-  check_role_mixing ctx ~name ~occurrence:base_scope ~kind ~attaches ~span;
-  if kind <> Binding.Value then
+  let group = match role with Some r -> r.Syntax.meaning = Syntax.OrderGroup | None -> false in
+  check_role_mixing ctx ~name ~occurrence:base_scope ~kind ~attaches ~group ~span;
+  if kind <> Binding.Value && not group then
     List.iter (fun (o, label) -> if Scope_set.contains base_scope o then note_open_role ctx label name) ctx.opens;
   Binding.extend ?role ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name
 

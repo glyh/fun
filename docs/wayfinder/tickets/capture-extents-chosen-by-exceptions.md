@@ -52,7 +52,13 @@ Decisions (user, 2026-09-15):
    not one with a `(…)` argument list).
 5. **A `Decl` hole** extends to the pattern's next literal, else to the end.
 
-Implementation choice on 1, pending confirmation: a hole the pattern bounds -
+**Superseded 2026-09-15** by [brackets-decide-grouping](brackets-decide-grouping.md)
+decisions 3 and 4 (branch `order-groups`): the trailing hole reads at its form's
+order group (a form in no group is weakest, so `inc 1 * 10` = `inc (1 * 10)`), a
+non-trailing hole is one term, and a hole before `,`/`;` reads to it. The split
+rule below is gone.
+
+Former implementation choice on 1: a hole the pattern bounds -
 followed by a literal or hole, or inside a group - reads a whole expression
 (precedence 0). Uniform role precedence breaks
 `choose flag yes then 40 + 2 else 0` (`$branch` reads `40`, `+` is 10 < 50).

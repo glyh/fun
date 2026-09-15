@@ -512,8 +512,10 @@ What remains, in the recommended order:
 - [Brackets decide grouping](tickets/brackets-decide-grouping.md)
   — adopt Rhombus's structural extents without layout: `{}`/`[]`/`()` group, a
   hole never ends at a bare keyword; Rust-style arms (`A | B => e,`), `|` only
-  union (arms implemented); relative precedence in named, transitive order groups; a non-trailing hole is one term. Grilled 2026-09-15. Supersedes
-  the split rule on the unmerged `capture-extents` branch.
+  union; relative precedence in named, transitive order groups; a non-trailing
+  hole is one term. Grilled and implemented 2026-09-15 (arms; order groups and
+  hole extents on `order-groups`, with `capture-extents` merged in). Open: tail-
+  returning forms, dotted group references.
 - [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
   (closed) — an import's roles bind in the region of the open or binder that
   imported it; `Import` carries its written scope set, so every open is checked

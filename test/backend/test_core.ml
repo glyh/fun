@@ -1031,7 +1031,7 @@ let check_operator label expected modules src =
       Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
 
-let op_returns_1 = ("opa", "open (import \"std\");\npub infix (~) 15 Left (stx) { Syntax.i64(1) }")
+let op_returns_1 = ("opa", "open (import \"std\");\npub infix (~) (stx) { Syntax.i64(1) }")
 
 let test_imported_operator_used_inside_a_unit () =
   check_operator "operator inside a unit" 1L
@@ -1040,7 +1040,7 @@ let test_imported_operator_used_inside_a_unit () =
 
 let test_operator_declared_and_used_in_one_unit () =
   check_operator "operator declared and used in one unit" 3L
-    [ ("mid", "open (import \"std\");\npub infix (~) 15 Left (stx) { Syntax.i64(3) };\npub v = 1 ~ 2") ]
+    [ ("mid", "open (import \"std\");\npub infix (~) (stx) { Syntax.i64(3) };\npub v = 1 ~ 2") ]
     "{ M = import \"mid\"; M.v }"
 
 (* A locally declared operator is added after the import, and [find_operator]
@@ -1049,7 +1049,7 @@ let test_operator_declared_and_used_in_one_unit () =
 let test_local_operator_shadows_imported () =
   check_operator "local operator shadows imported" 9L
     [ op_returns_1 ]
-    "{ A = import \"opa\"; infix (~) 15 Left (stx) { Syntax.i64(9) }; 1 ~ 2 }"
+    "{ A = import \"opa\"; infix (~) (stx) { Syntax.i64(9) }; 1 ~ 2 }"
 
 (* An operator's fixity resolves last-wins by design, so a user operator can
    override a builtin. Its macro body now comes from that same declaration: the
@@ -1059,8 +1059,8 @@ let test_local_operator_shadows_imported () =
    and the body could come from different units. *)
 let test_operator_body_follows_last_import () =
   let modules =
-    [ ("opa", "open (import \"std\");\npub infix (~) 15 Left (stx) { Syntax.i64(1) }");
-      ("opb", "open (import \"std\");\npub infix (~) 15 Left (stx) { Syntax.i64(2) }") ]
+    [ ("opa", "open (import \"std\");\npub infix (~) (stx) { Syntax.i64(1) }");
+      ("opb", "open (import \"std\");\npub infix (~) (stx) { Syntax.i64(2) }") ]
   in
   let run label expected src =
     match eval_with_imported_macros modules src with
@@ -1179,7 +1179,7 @@ let test_operator_prefix_macro_expands () =
 let test_operator_infix_macro_expands () =
   check_i64_macro "infix macro expands" 9L
     "{
-       infix (~) 15 Left (stx) { Syntax.i64(9) };
+       infix (~) (stx) { Syntax.i64(9) };
        1 ~ 2
        }" ()
 
@@ -1736,22 +1736,22 @@ let test_macro_and_syntax_together () =
 let test_operator_uses_operands () =
   check_i64_macro "operator uses operands (Left assoc)" 2L
     "{
-       infix (>>>) 15 Left ($lhs, $rhs) { $lhs - $rhs };
+       order shift; infix (>>>) shift ($lhs, $rhs) { $lhs - $rhs };
        10 >>> 5 >>> 3
      }" ()
 
 let test_operator_right_assoc () =
   check_i64_macro "operator right assoc" 8L
     "{
-       infix (<<<) 15 Right ($lhs, $rhs) { $lhs - $rhs };
+       order rshift : assoc(right); infix (<<<) rshift ($lhs, $rhs) { $lhs - $rhs };
        10 <<< 5 <<< 3
      }" ()
 
 let test_operator_mixed_precedence () =
   check_i64_macro "operator mixed precedence" 14L
     "{
-       infix (+++) 10 Left ($lhs, $rhs) { $lhs + $rhs };
-       infix (***) 20 Left ($lhs, $rhs) { $lhs * $rhs };
+       infix (+++) additive ($lhs, $rhs) { $lhs + $rhs };
+       infix (***) multiplicative ($lhs, $rhs) { $lhs * $rhs };
        2 +++ 3 *** 4
      }" ()
 
@@ -1759,7 +1759,7 @@ let test_operator_bodyless_infix_builtin_apply () =
   check_i64_macro "bodyless infix applies same-named value" 7L
     "{
        myfst = fn(x, y) { x };
-       infix (myfst) 5 Left;
+       infix (myfst);
        7 myfst 2
      }" ()
 
@@ -1767,7 +1767,7 @@ let test_operator_bodyless_prefix_builtin_apply () =
   check_i64_macro "bodyless prefix applies same-named value" 5L
     "{
        ident = fn(x) { x };
-       prefix (ident) 30;
+       prefix (ident);
        ident 5
      }" ()
 
@@ -1790,7 +1790,7 @@ let test_operator_macro_error_reports_spans () =
   match
     eval_with_macros
        "{
-          infix (~) 15 Left (stx) { 1 };
+          infix (~) (stx) { 1 };
           1 ~ 2
         }"
   with
@@ -1817,7 +1817,7 @@ let test_macro_body_budget_overrun_names_the_macro () =
 let test_operator_body_error_reports_use_span () =
   match
     eval_with_macros
-      ("{\n  infix (~) 15 Left (stx) { " ^ diverging_body ^ " };\n  1 ~ 2\n}")
+      ("{\n  infix (~) (stx) { " ^ diverging_body ^ " };\n  1 ~ 2\n}")
   with
   | exception (Expand_error.Error { error = BudgetExceeded _; site = Some { use_span; _ } } as e) ->
       Alcotest.(check bool) "use span is a source span" false (use_span = Source_span.synthetic);
@@ -1828,7 +1828,7 @@ let test_operator_body_error_reports_use_span () =
 (* Any evaluation failure inside a syntax operator's body - not only an overrun -
    is the application's error, carrying the operator's site. *)
 let operator_body_failure_reports_use_span body expected () =
-  match eval_with_macros ("{\n  infix (~) 15 Left (stx) { " ^ body ^ " };\n  1 ~ 2\n}") with
+  match eval_with_macros ("{\n  infix (~) (stx) { " ^ body ^ " };\n  1 ~ 2\n}") with
   | exception (Expand_error.Error { error = EvalFailed { message; _ }; site = Some { use_span; _ } } as e) ->
       Alcotest.(check string) "message" expected message;
       Alcotest.(check bool) "use span is a source span" false (use_span = Source_span.synthetic);
@@ -2059,17 +2059,66 @@ let test_syntax_template_unless () =
        unless False 10
      }" ()
 
-(* A capture extends as far as its parser reads: the hole ending a use reads at
-   the form's precedence, like a prefix operator's operand; a hole the pattern
-   bounds reads a whole expression. *)
+(* How far a hole reads is structural (brackets-decide-grouping): the hole
+   ending a use reads its form's operand at the form's order - a form in no group
+   is weaker than every grouped operator - and any other hole is one term. *)
 let test_syntax_template_capture_extent () =
-  check_i64_macro "trailing hole reads at the form's precedence" 20L
-    "{ syntax inc { | inc $x => $x + 1 }; inc 1 * 10 }" ();
-  check_i64_macro "a bounded hole reads a whole expression" 42L
-    "{ syntax pick { | pick $c then $t else $e => if ($c) { $t } else { $e } }; pick True then 40 + 2 else 0 }" ();
-  check_i64_macro "a literal inside the capture is read by the capture" 2L
-    "{ syntax when { | when $c $t else $e => if ($c) { $t } else { $e } };
-       when True if (False) { 1 } else { 2 } else 0 }" ()
+  check_i64_macro "an ungrouped form's trailing hole reads a whole expression" 11L
+    "{ syntax inc { inc $x => $x + 1 }; inc 1 * 10 }" ();
+  check_i64_macro "a grouped form's trailing hole reads at its order" 20L
+    "{ order incs : stronger_than(multiplicative); syntax inc incs { inc $x => $x + 1 }; inc 1 * 10 }" ();
+  check_i64_macro "a non-trailing hole is one term" 42L
+    "{ syntax pick { pick $c then $t else $e => if ($c) { $t } else { $e } }; pick (1 < 2) then (40 + 2) else 0 }" ();
+  check_i64_macro "a hole before a comma reads to it" 5L
+    "{ syntax both { both ($a, $b) => $a + $b }; both (1 + 1, 3) }" ();
+  check_i64_macro "a literal inside a bracketed capture stays in it" 2L
+    "{ syntax when { when $c $t else $e => if ($c) { $t } else { $e } };
+       when True (if (False) { 1 } else { 2 }) else 0 }" ();
+  match eval_with_macros "{ syntax pick { pick $c then $t else $e => if ($c) { $t } else { $e } }; pick 1 < 2 then 1 else 0 }" with
+  | exception Enforest_util.Error msg when String.starts_with ~prefix:"no matching branch" msg -> ()
+  | exception e -> Alcotest.fail ("a multi-term inner hole: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "a multi-term inner hole must not match"
+
+(* Precedence is relative (brackets-decide-grouping): order groups, transitive,
+   with associativity on the group; operators with no declared order never mix. *)
+let test_order_groups () =
+  check_i64_macro "a transitive order" 7L
+    "{ order low; order mid : stronger_than(low); order high : stronger_than(mid);
+       infix (<+>) low ($a, $b) { $a + $b }; infix (<*>) high ($a, $b) { $a * $b };
+       1 <+> 2 <*> 3 }" ();
+  check_i64_macro "associativity lives on the group" 5L
+    "{ order sub : assoc(right); infix (<->) sub ($a, $b) { $a - $b }; 10 <-> 8 <-> 3 }" ();
+  check_i64_macro "a group related to the prelude's" 14L
+    "{ order tight : stronger_than(multiplicative); infix (<~>) tight ($a, $b) { $a + $b }; 2 * 3 <~> 4 }" ();
+  check_i64_macro "an ungrouped operator is weaker than a grouped one" 9L
+    "{ infix (<>) ($a, $b) { $a * $b }; 1 + 2 <> 3 }" ()
+
+let test_order_group_errors () =
+  let rejects label fragment source =
+    match eval_with_macros source with
+    | exception Enforest_util.Error msg when string_contains msg fragment -> ()
+    | exception e -> Alcotest.fail (label ^ ": " ^ Printexc.to_string e)
+    | _ -> Alcotest.fail (label ^ ": expected an error")
+  in
+  rejects "undeclared order" "have no declared order"
+    "{ order a; order b; infix (<+>) a ($x, $y) { $x }; infix (<*>) b ($x, $y) { $x }; 1 <+> 2 <*> 3 }";
+  rejects "two ungrouped operators" "have no declared order"
+    "{ infix (<+>) ($x, $y) { $x }; infix (<*>) ($x, $y) { $x }; 1 <+> 2 <*> 3 }";
+  rejects "a cyclic order" "cyclic"
+    "{ order a; order b : stronger_than(a); order c : stronger_than(b) weaker_than(a); 1 }";
+  rejects "numeric precedence" "numeric precedence was removed" "{ infix (<+>) 10 ($x, $y) { $x }; 1 }";
+  rejects "an unknown group" "unknown order group: nowhere" "{ infix (<+>) nowhere ($x, $y) { $x }; 1 }"
+
+let test_order_group_imported () =
+  let ops = ("ops", "open (import \"std\");\npub order tight : stronger_than(multiplicative);\npub infix (<~>) tight ($a, $b) { $a + $b }") in
+  let expect label expected source =
+    match eval_with_imported_macros [ ops ] source with
+    | VAtom (I64 n) -> Alcotest.(check int64) label expected n
+    | _ -> Alcotest.fail (label ^ ": expected an integer")
+  in
+  expect "an opened group relates to a new one" 14L
+    "{ open (import \"ops\"); order tighter : stronger_than(tight); infix (<~~>) tighter ($a, $b) { $a * $b }; 2 <~> 3 <~~> 4 }";
+  expect "a bound import's operator keeps its order" 14L "{ O = import \"ops\"; 2 * 3 <~> 4 }"
 
 let test_syntax_template_when_match () =
   check_i64_macro "when False falls back" 0L
@@ -2175,7 +2224,7 @@ let test_syntax_template_generates_syntax_form () =
            choose $cond then $branch else $fallback =>
                if ($cond) { $branch } else { $fallback }
            };
-           choose flag yes then 40 + 2 else 0
+           choose (flag yes) then (40 + 2) else 0
          }
        };
        build_choose
@@ -2243,7 +2292,7 @@ let test_syntax_template_nested_callsite_parenthesized () =
      }" ()
 
 let test_syntax_template_nested_callsite_unparenthesized () =
-  check_i64_macro "nested syntax callsite inside unparenthesized holes" 7L
+  check_i64_macro "nested syntax callsite inside parenthesised holes" 7L
     "{
        syntax bool {
        bool yes => True,
@@ -2254,7 +2303,7 @@ let test_syntax_template_nested_callsite_unparenthesized () =
        pick $cond then $branch otherwise $fallback =>
            if ($cond) { $branch } else { $fallback }
        };
-       pick bool yes then add2 5 otherwise add2 10
+       pick (bool yes) then (add2 5) otherwise add2 10
      }" ()
 
 let test_syntax_template_nested_callsite_repeated_hole () =
@@ -2494,7 +2543,7 @@ let test_7i_generated_pub_operator_across_imports () =
                   syntax export_operator : Decl {
                   export_operator $(op : Id) =>
                       {
-                        pub infix ($op) 15 Left (stx) { Syntax.i64(9) }
+                        pub infix ($op) (stx) { Syntax.i64(9) }
                       }
                   };
                   export_operator ~") ]
@@ -2531,7 +2580,7 @@ let test_7i_generated_pub_operator_rejected_in_struct () =
            syntax export_operator : Decl {
            export_operator =>
                {
-                 pub infix (~) 15 Left (stx) { Syntax.i64(9) }
+                 pub infix (~) (stx) { Syntax.i64(9) }
                }
            };
            export_operator
@@ -2628,8 +2677,8 @@ let test_m7_syntax_shadows_syntax_in_block () =
 
 let test_m7_replacement_reads_roles_at_definition () =
   check_i64_macro "a replacement reads roles as of its definition" (-7L)
-    "{ infix (~) 5 Left ($a, $b) { $a - $b }; syntax t { t => 1 ~ 2 };
-       infix (~) 5 Left ($a, $b) { $a + $b }; t * 10 + (1 ~ 2) }" ()
+    "{ infix (~) ($a, $b) { $a - $b }; syntax t { t => 1 ~ 2 };
+       infix (~) ($a, $b) { $a + $b }; t * 10 + (1 ~ 2) }" ()
 
 let test_m7_template_syntax_visible_in_its_output () =
   check_i64_macro "a template's syntax form is visible in its own output" 42L
@@ -2688,11 +2737,11 @@ let test_m7_hygienic_macro_binder_is_apart () =
 
 let test_m7_fixity_attaches_to_value () =
   check_i64_macro "a fixity declaration attaches to the value of its name" 42L
-    "{ twice = fn(x) { x * 2 }; prefix (twice) 30; twice 21 }" ()
+    "{ twice = fn(x) { x * 2 }; prefix (twice); twice 21 }" ()
 
 let test_m7_new_binder_under_attached_fixity () =
   role_conflict "a new binder of a name whose value has a fixity"
-    "{ twice = fn(x) { x * 2 }; prefix (twice) 30; { twice = 5; 1 } }" ()
+    "{ twice = fn(x) { x * 2 }; prefix (twice); { twice = 5; 1 } }" ()
 
 let open_supplies_role label source () =
   match eval_with_macros source with
@@ -2774,7 +2823,7 @@ let test_arms_evaluate () =
        type Color = Red | Green | Blue;
        pick = fn(c) { match (c) { Red | Blue => { x = 1; x + 1 } Green => 3, } };
        syntax twice { twice $x => $x + $x, twice => 0 };
-       pick(Blue) * 10 + twice 1 + match (Green) { Green => if (True) { 1 } else { 2 }, _ => 0 }
+       pick(Blue) * 10 + (twice 1) + match (Green) { Green => if (True) { 1 } else { 2 }, _ => 0 }
      }" ()
 
 let test_m9_block_tokens_inspected () =
@@ -3610,6 +3659,9 @@ let () =
           Alcotest.test_case "operator prefix shadowing is lexical" `Quick test_operator_prefix_shadowing_is_lexical;
           Alcotest.test_case "syntax template: unless guard" `Quick test_syntax_template_unless;
           Alcotest.test_case "syntax template: capture extent" `Quick test_syntax_template_capture_extent;
+          Alcotest.test_case "order groups" `Quick test_order_groups;
+          Alcotest.test_case "order group errors" `Quick test_order_group_errors;
+          Alcotest.test_case "order group imported" `Quick test_order_group_imported;
           Alcotest.test_case "syntax template: when/else match" `Quick test_syntax_template_when_match;
           Alcotest.test_case "syntax template: hole reuse duplicates effects" `Quick test_syntax_template_hole_reuse;
           Alcotest.test_case "syntax template: {/} delimiters" `Quick test_syntax_template_do_end_delimiters;

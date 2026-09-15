@@ -54,14 +54,16 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
 
 3. **Precedence is relative, in named order groups** (grilled 2026-09-15; numbers
    replaced because "it is often unclear what precedence to assign at all").
+   (**Implemented** 2026-09-15, branch `order-groups`; spelling as below.)
    ```fun
    order comparison;
-   order additive : stronger_than(comparison), assoc(left);
-   order multiplicative : stronger_than(additive), assoc(left);
+   order additive : stronger_than(comparison) assoc(left);
+   order multiplicative : stronger_than(additive);
 
-   infix additive + ;
-   infix multiplicative * ;
-   syntax inc : stronger_than(multiplicative) { inc $x => $x + 1 }
+   infix (+) additive;
+   infix (*) multiplicative;
+   order incs : stronger_than(multiplicative);
+   syntax inc incs { inc $x => $x + 1 }
    ```
    - **Groups, not per-operator numbers.** An operator or syntax form joins a
      group, or declares its relation to groups.
@@ -76,7 +78,7 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
      (this revises the earlier same-day "form's precedence 50" answer).
    - **Groups are ordinary binders** (M7/M12): resolved by scope set, exported
      with `pub`, reached by `open` or `Std.additive`; no global table.
-4. **Hole extents.**
+4. **Hole extents.** (**Implemented** 2026-09-15, branch `order-groups`.)
    - **The trailing hole** reads at the form's order (above).
    - **A non-trailing hole matches exactly one term**: an atom or one bracket
      group (Rhombus `$x`). `choose (x < n) then (a + 1) else 0` is fine;
@@ -88,10 +90,35 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   unconsumed tail) — not now; ticket as an escape hatch when a case needs it.
 - **Parse "as if after operator `op`"** (Rhombus `AfterPrefixParsed`) for a hole —
   not decided; no known case needs it.
-- **Migration of numeric fixity** (`infix 10 +`, prelude operators) to groups.
-- **The `capture-extents` branch** (one-pass captures, `try_prefixes` deleted)
-  currently implements a split rule for bounded holes; rebase it onto this
-  decision rather than merge as is.
+- **A dotted group reference** (`stronger_than(Std.additive)`, `infix (op) M.g`):
+  a group is reached bare, through `open` or an import's binder; the dotted
+  spelling is not read yet.
+
+## Implementation notes (branch `order-groups`, 2026-09-15)
+
+- **Spelling.** `order g : stronger_than(a, b) weaker_than(c) assoc(right)` -
+  clauses follow each other, since a `,` ends a statement. An operator or form
+  *joins* a group by naming it after its name: `infix (op) g`, `prefix (op) g`,
+  `syntax name [: Decl] g { … }`; relations are declared only on groups. A number
+  there is an error naming the new form. `pub order` exports a group.
+- **Data.** `Syntax.role` carries `order : order option` (the numeric
+  `precedence` and per-operator `assoc` are gone); an `order` carries its unique
+  identity and the orders its declaration names, so two roles compare wherever
+  they travel (`Syntax.order_relation`, the transitive closure). A group is a role
+  binder with meaning `OrderGroup`, resolved by scope set; it never conflicts with
+  a value or another role of its name. Reflected as `Syntax.Order`.
+- **Prelude.** `disjunction < conjunction < comparison < additive <
+  multiplicative < negation`, reproducing the old numbers.
+- **`<-` joins no group**, so `a <- b <- c` is now a "no declared order" error
+  (it was right-associative); `r <- n + 1` is unchanged.
+- **The built-in grammar** keeps two fixed positions: after `->` and a `Tight`
+  argument (`perform`, `ref`, `resume`, `can`), which no infix operator continues.
+- **Holes.** A hole followed by `,` or `;` reads to it (it ends its item). A
+  non-trailing `Decl` hole is one brace group of items (the pattern-literal rule
+  is gone).
+- **Forms rewritten** (the language rule, uses parenthesised):
+  `choose (flag yes) then (40 + 2) else 0`, `pick (bool yes) then (add2 5) otherwise …`,
+  `(twice 1) + match …` (an ungrouped form's trailing hole now reads the `+`).
 - **`Decl` parameters** (merged, 09edfdb) questions: a `Decl` argument arrives as one unread
   `DeclItems` (no per-item inspection without an `expand_block`-like reader); a
   `$d` hole accepts only a list.

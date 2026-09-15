@@ -50,6 +50,7 @@ let syntax_nominals ctx : Macro_eval.syntax_nominals =
     assoc = resolve ctx [Compiler_names.Module_name.syntax; "Assoc"];
     role = resolve ctx [Compiler_names.Module_name.syntax; "Role"];
     role_meaning = resolve ctx [Compiler_names.Module_name.syntax; "RoleMeaning"];
+    order = resolve ctx [Compiler_names.Module_name.syntax; "Order"];
     rule = resolve ctx [Compiler_names.Module_name.syntax; "Rule"];
     rule_part = resolve ctx [Compiler_names.Module_name.syntax; "RulePart"];
     hole_kind = resolve ctx [Compiler_names.Module_name.syntax; "HoleKind"];

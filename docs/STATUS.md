@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after M9 run 3 (M9 complete), 2026-09-15.
+Last updated: after order groups and structural hole extents, 2026-09-15.
 
 ---
 
@@ -58,7 +58,7 @@ Last updated: after M9 run 3 (M9 complete), 2026-09-15.
 
 ### Brace surface syntax (2026-09-14)
 - Bodies are brace groups: `fn(x) { … }`, `method m() { … }`, `macro m(x) : K { … }`,
-  `infix (op) p Assoc ($a, $b) { … }`, blocks `{ … }`, `module { … }`,
+  `infix (op) g ($a, $b) { … }`, blocks `{ … }`, `module { … }`,
   `sig { … }`, `struct { … }`, `multi { … }`, `syntax head { rule => replacement, … }`.
 - `if (c) { t } else { e }` (a prelude template, `if ($c) $t else $e`) and
   `match (v) { pattern => result, effect E.op x => result }` (Rust-style arms: a `{ … }` result ends its arm, any other ends at `,`; `|` is pattern union).
@@ -74,6 +74,21 @@ Last updated: after M9 run 3 (M9 complete), 2026-09-15.
 - A template hole ending a group now extends its capture to the whole group.
 - Prelude and every test source migrated mechanically
   ([surface-syntax-braces](wayfinder/tickets/surface-syntax-braces.md)).
+
+### Order groups and structural hole extents (2026-09-15)
+- Precedence is relative: `order g : stronger_than(a) weaker_than(b) assoc(right)`
+  declares a group (a binder resolved by scope set, `pub`, delivered by `open` and
+  import binders); the order is transitive and a cyclic declaration is an error.
+  `infix (op) g`, `prefix (op) g`, `syntax name g { … }` join a group; numeric
+  precedence is gone (an error names the new form). Operators with no declared
+  order never mix ("no declared order; parenthesise"); a form or operator in no
+  group is weaker than every grouped one. The prelude's operators are in
+  `disjunction < conjunction < comparison < additive < multiplicative < negation`.
+- A syntax form's hole extent is structural: the hole ending a use reads the
+  form's operand at its order; a hole before `,`/`;` reads to it; any other hole
+  is one term (a token or one bracket group). Captures are one parse per hole
+  (`try_prefixes` deleted). See
+  [brackets-decide-grouping](wayfinder/tickets/brackets-decide-grouping.md).
 
 ### Macro model M9, run 3 — M9 complete (2026-09-15)
 - A macro parameter takes a kind: `macro m(n : Id, p : Pattern, b : Block, d : Decl)`.

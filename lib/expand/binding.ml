@@ -46,6 +46,11 @@ let best name candidates =
   | [] -> None
   | first :: rest -> Some (List.fold_left better first rest)
 
+(* An order group's name is a role binder of its own sort: it never mixes with
+   another binder of its name. *)
+let is_group (info : binding_info) =
+  match info.role with Some { Syntax.meaning = Syntax.OrderGroup; _ } -> true | _ -> false
+
 let resolve (tbl : t) (id : Syntax.id) : binding_info option =
   Option.value ~default:[] (Hashtbl.find_opt tbl id.name)
   |> List.filter (fun info -> info.kind <> Role && Scope_set.subset info.scope id.scope)
@@ -57,12 +62,20 @@ let find_role (tbl : t) ~(fixity : Syntax.operator_fixity) ~(scope : Scope_set.t
   Option.value ~default:[] (Hashtbl.find_opt tbl name)
   |> List.filter (fun info ->
          Scope_set.subset info.scope scope
+         && (not (is_group info))
          && match info.role with Some r -> r.Syntax.fixity = fixity | None -> false)
   |> best name
   |> Fun.flip Option.bind (fun info -> info.role)
 
-let role ?(declared_at = Source_span.synthetic) ~fixity ~precedence ?(assoc = Syntax.LeftAssoc) meaning : Syntax.role =
-  { Syntax.fixity; precedence; assoc; meaning; declared_at; from_unit = None }
+(* An order group, resolved by scope set like any binder. *)
+let find_order (tbl : t) ~(scope : Scope_set.t) name : Syntax.order option =
+  Option.value ~default:[] (Hashtbl.find_opt tbl name)
+  |> List.filter (fun info -> Scope_set.subset info.scope scope && is_group info)
+  |> best name
+  |> Fun.flip Option.bind (fun info -> Option.bind info.role (fun (r : Syntax.role) -> r.order))
+
+let role ?(declared_at = Source_span.synthetic) ~fixity ?order meaning : Syntax.role =
+  { Syntax.fixity; order; meaning; declared_at; from_unit = None }
 
 (* A unit's exported roles, stamped with the unit at the import site - the only
    place that knows the written path. An imported rule's replacement was parsed
@@ -78,7 +91,12 @@ let duplicate_exports_message (exports : (string * Syntax.role) list) =
   let rec go seen = function
     | [] -> None
     | (name, (r : Syntax.role)) :: rest -> (
-        match List.find_opt (fun (n, (p : Syntax.role)) -> String.equal n name && p.fixity = r.fixity) seen with
+        match
+          List.find_opt
+            (fun (n, (p : Syntax.role)) ->
+              String.equal n name && p.fixity = r.fixity && (p.meaning = Syntax.OrderGroup) = (r.meaning = Syntax.OrderGroup))
+            seen
+        with
         | Some (_, previous) ->
             Some
               (Printf.sprintf
