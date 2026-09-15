@@ -529,6 +529,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Small follow-ups](tickets/small-followups-2026-09-15.md)
+  — `self.a(2)` crash, method row scope, `$(d : Decl)` hole kind, `+` bound by spelling.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
