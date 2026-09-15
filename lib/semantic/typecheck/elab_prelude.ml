@@ -111,12 +111,12 @@ pub Syntax = module {
   pub type Explicitness = Explicit | Implicit;
   pub type Assoc = Left | Right | NonAssoc;
 
-  pub type Span = struct {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)};
+  pub Span = struct {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)};
 
-  pub type Id = struct {name: String; span: Option(Span); scope: Scopes};
+  pub Id = struct {name: String; span: Option(Span); scope: Scopes};
 
-  pub type PathChoice = struct {opens: List(String); fallback: Option(String)};
-  pub type Path = struct {head: Id; members: List(String); head_choice: Option(PathChoice)};
+  pub PathChoice = struct {opens: List(String); fallback: Option(String)};
+  pub Path = struct {head: Id; members: List(String); head_choice: Option(PathChoice)};
   pub type AtomVal = I64Atom(I64) | CharAtom(Char) | StringAtom(String) | UnitAtom | ScopesAtom(Scopes);
   pub type AtomTy = TyI64 | TyUnit | TyChar | TyString | TyScopes | TyAbsurd;
   pub type Fixity = PrefixFixity | InfixFixity;
@@ -142,7 +142,6 @@ pub Syntax = module {
     | RawImport(Option(Span), String, Scopes)
     | RawOpen(Option(Span), Expr, Expr, String)
     | RawOpenChoice(Option(Span), Id, List(String), Option(String))
-    | RawRecordTypeDef(Option(Span), Id, List(Id), List(Field), Expr)
     | RawTypeDef(Option(Span), TypeDecl, Expr)
     | RawEffectDef(Option(Span), Id, List(Id), List(EffectOp), Expr)
     | RawTraitDef(Option(Span), Id, List(Id), List(Field), Expr)
@@ -197,7 +196,6 @@ pub Syntax = module {
     | DeclLet(Id, Expr, Bool, Bool)
     | DeclMethod(Id, List(Param), Expr, Bool)
     | DeclType(List(TypeDecl), Bool)
-    | DeclRecordType(Id, List(Id), List(Field), Bool)
     | DeclEffect(Id, List(Id), List(EffectOp), Bool)
     | DeclTrait(Id, List(Id), List(Field), Bool)
     | DeclImpl(Option(Id), Path, List(Expr), List(Field), Bool)

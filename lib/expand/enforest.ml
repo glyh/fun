@@ -829,7 +829,6 @@ and parse_type_binding env public stmt =
               (fun segment ->
                 match parse_type_decl env public (type_kw :: segment) with
                 | Some (Syntax.TypeBinding { members = [ member ]; _ }) -> member
-                | Some (Syntax.RecordTypeBinding _) -> error "record types cannot be part of an and chain"
                 | _ -> error "expected type declaration in and chain")
               segments
           in
@@ -847,35 +846,10 @@ and parse_type_decl env public stmt =
     :: rest -> (
       match split_at_token Equals rest with
       | Some
-          ( param_terms,
+          ( _,
             _,
-            [ { datum = Token { kind = KwStruct; _ }; _ }; { datum = Group (Raw_syntax.Brace, field_terms, _); _ } ] ) ->
-          let params =
-            drop_separators param_terms
-            |> List.concat_map (function
-              | ({ datum = Token { kind = Ident p; _ }; _ } as term) -> [ id_of term p ]
-              | { datum = Group (Paren, items, _); _ } ->
-                  split_commas (drop_separators items)
-                  |> List.map (fun ts ->
-                      match drop_separators ts with
-                      | [ ({ datum = Token { kind = Ident p; _ }; _ } as term) ] ->
-                          id_of term p
-                      | _ -> error "expected type parameter in parens")
-              | _ -> error "expected type parameter")
-          in
-          let fields =
-            split_statements field_terms
-            |> List.map (fun field ->
-                match drop_separators field with
-                | { datum = Token { kind = Ident fname; _ }; _ }
-                  :: colon :: typ_terms
-                  when token_kind Colon colon ->
-                    (fname, parse_type_terms env typ_terms)
-                | _ -> error "expected record type field")
-          in
-          Some
-            (Syntax.RecordTypeBinding
-               { name = id_of name_term name; params; fields; public })
+            [ { datum = Token { kind = KwStruct; _ }; _ }; { datum = Group (Raw_syntax.Brace, _, _); _ } ] ) ->
+          error "a record type is a value: write X = struct { field : Type }, or rec X = struct { … } when it refers to itself"
       | Some (_, _, [ { datum = Group (Raw_syntax.Brace, _, _); _ } ]) ->
           error "record types are written struct { field: Type }"
       | Some (param_terms, _, ctor_terms) ->
@@ -1316,8 +1290,6 @@ and scoped_binding_to_expr env span stmt body =
       stx ~span (Syntax.TypeDef { name; params; ctors; body })
   | Some (Syntax.TypeBinding _) ->
       error "and chains are not supported in a scoped do head; declare the chain as a do-body statement"
-  | Some (Syntax.RecordTypeBinding { name; params; fields; _ }) ->
-      stx ~span (Syntax.RecordTypeDef { name; params; fields; body })
   | Some _ -> error "unexpected non-type binding"
   | None -> (
       match parse_effect_binding env false stmt with

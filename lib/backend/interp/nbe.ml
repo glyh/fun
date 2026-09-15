@@ -317,8 +317,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                     eval_fields ((name, value) :: acc) rest)
           in
           eval_fields [] fields)
-  | SelfTypeRef args ->
-      sequence_values mc env args (fun arg_vals -> Done (VSelfType arg_vals))
+  | RecOcc { id; name; args } ->
+      sequence_values mc env args (fun arg_vals -> Done (VRecOcc { id; name; args = arg_vals }))
   | Ctor { name; spine; nominal_spine; nominal_value; _ } ->
       sequence_values mc env spine (fun spine_vals ->
           sequence_values mc env nominal_spine (fun nom_spine_vals ->
@@ -895,6 +895,12 @@ let apply mc f a = request ~demand:"an application" mc (fun () -> apply mc f a)
 let closure_apply mc c v = request ~demand:"an application" mc (fun () -> closure_apply mc c v)
 let eval_effect_row_closure mc row binder = request ~demand:"an effect row" mc (fun () -> eval_effect_row_closure mc row binder)
 let force mc v = match v with VFlex _ | VGlued _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v) | _ -> v
+(* A type as the shape it has: metavariables solved, a recursive occurrence
+   unfolded to its struct type. *)
+let force_shape mc v =
+  match force mc v with
+  | VRecOcc _ as occ -> (match request ~demand:"unfolding a recursive type" mc (fun () -> Nbe_quote.unfold_rec quote_ops mc occ) with VRecOcc _ as v -> v | v -> force mc v)
+  | v -> v
 let quote mc depth value = request ~demand:"a normalisation" mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
 let conv mc depth lhs rhs = request ~demand:"a conversion" mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)
 

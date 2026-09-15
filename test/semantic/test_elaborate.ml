@@ -221,7 +221,7 @@ let equality_rejections =
     Alcotest.test_case "nominal equality requires impl" `Quick
       (elab_fail "{ type Color = Red; Red == Red }");
     Alcotest.test_case "record equality requires impl" `Quick
-      (elab_fail "{ type Point = struct {x: I64}; Point{x = 1} == Point{x = 1} }");
+      (elab_fail "{ Point = struct {x: I64}; Point{x = 1} == Point{x = 1} }");
   ]
 
 let dependent =
@@ -458,47 +458,77 @@ let structs =
          "{ Pair = fn[A : Type, B : Type] { struct { fst: A; snd: B; } }; (Pair[I64, Bool]{fst = 1; snd = True}).snd }");
     Alcotest.test_case "record type declaration" `Quick
       (check_type
-         "{ type Point = struct {x: I64; y: I64}; (Point{x = 1; y = 2}).x }"
+         "{ Point = struct {x: I64; y: I64}; (Point{x = 1; y = 2}).x }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "parameterized record type declaration" `Quick
       (check_type_src
-         "{ type Pair A B = struct {fst: A; snd: B}; (Pair{fst = 1; snd = True}).snd }"
+         "{ Pair = fn[A : Type, B : Type] { struct {fst: A; snd: B} }; (Pair{fst = 1; snd = True}).snd }"
          "Bool");
     Alcotest.test_case "record type declaration pattern" `Quick
       (check_type
-         "{ type Point = struct {x: I64; y: I64}; match (Point{x = 1; y = 2}) { Point {x; y} => x + y } }"
+         "{ Point = struct {x: I64; y: I64}; match (Point{x = 1; y = 2}) { Point {x; y} => x + y } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record construction field order" `Quick
       (check_type
-         "{ type Point = struct {x: I64; y: I64}; p = Point{y = 20; x = 10}; p.x + p.y }"
+         "{ Point = struct {x: I64; y: I64}; p = Point{y = 20; x = 10}; p.x + p.y }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "polymorphic record multiple instantiations" `Quick
       (check_type
-         "{ type Pair A B = struct {fst: A; snd: B}; \
+         "{ Pair = fn[A : Type, B : Type] { struct {fst: A; snd: B} }; \
           p1 = Pair{fst = 10; snd = 20}; \
           p2 = Pair{fst = True; snd = 3}; \
           if (p2.fst) { p1.fst + p2.snd } else { 0 } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "record type declaration missing field" `Quick
-      (elab_fail "{ type Point = struct {x: I64; y: I64}; Point{x = 1} }");
+      (elab_fail "{ Point = struct {x: I64; y: I64}; Point{x = 1} }");
     Alcotest.test_case "record type declaration unknown field" `Quick
-      (elab_fail "{ type Point = struct {x: I64}; Point{x = 1; y = 2} }");
+      (elab_fail "{ Point = struct {x: I64}; Point{x = 1; y = 2} }");
     Alcotest.test_case "record construction duplicate field" `Quick
-      (elab_fail "{ type Point = struct {x: I64}; Point{x = 1; x = 2} }");
+      (elab_fail "{ Point = struct {x: I64}; Point{x = 1; x = 2} }");
     Alcotest.test_case "record declaration duplicate field" `Quick
-      (elab_fail "{ type Point = struct {x: I64; x: Bool}; Point }");
+      (elab_fail "{ Point = struct {x: I64; x: Bool}; Point }");
+    Alcotest.test_case "a record type is not a type declaration" `Quick
+      (fun () ->
+        match elab "{ type Point = struct {x: I64}; Point }" with
+        | exception Enforest_util.Error msg ->
+            Alcotest.(check bool) "names the let form" true (String.starts_with ~prefix:"a record type is a value" msg)
+        | _ -> Alcotest.fail "type X = struct was accepted");
     Alcotest.test_case "record type declaration same recursion" `Quick
-      (elab_ok "{ type Option A = Some A | None; type List A = struct {meta: A; next: Option(List(A))}; List }");
+      (elab_ok "{ type Option A = Some A | None; rec List = fn[A : Type] { struct {meta: A; next: Option(List[A])} }; List }");
     Alcotest.test_case "recursive record construction" `Quick
-      (elab_ok "{ type Option A = Some A | None; type List A = struct {meta: A; next: Option(List(A))}; List{meta = 1; next = None} }");
+      (elab_ok "{ type Option A = Some A | None; rec List = fn[A : Type] { struct {meta: A; next: Option(List[A])} }; List{meta = 1; next = None} }");
     Alcotest.test_case "recursive record rejects non-self payload" `Quick
-      (elab_fail "{ type Option A = Some A | None; type List A = struct {meta: A; next: Option(List(A))}; List{meta = 1; next = Some(2)} }");
-    Alcotest.test_case "record rewrite respects type name shadowing" `Quick
-      (elab_ok "{ type R A = struct {x: (fn(R) { R })(I64)}; R }");
-    Alcotest.test_case "record rewrite respects parameter shadowing" `Quick
-      (elab_ok "{ type R A = struct {x: (fn(A) { A })(I64)}; R }");
-    Alcotest.test_case "record type declaration changed recursion rejected" `Quick
-      (elab_fail "{ type Bad(A, B) = struct {x: Bad(B, A)}; Bad }");
+      (elab_fail "{ type Option A = Some A | None; rec List = fn[A : Type] { struct {meta: A; next: Option(List[A])} }; List{meta = 1; next = Some(2)} }");
+    Alcotest.test_case "a recursive record's name is shadowed by a binder" `Quick
+      (elab_ok "{ rec R = fn[A : Type] { struct {x: (fn(R) { R })(I64)} }; R }");
+    Alcotest.test_case "a recursive record's parameter is shadowed by a binder" `Quick
+      (elab_ok "{ rec R = fn[A : Type] { struct {x: (fn(A) { A })(I64)} }; R }");
+    Alcotest.test_case "a non-uniform recursive occurrence is accepted" `Quick
+      (elab_ok "{ rec Odd = fn[A : Type, B : Type] { struct {x: Option(Odd[B, A])} }; Odd }");
+    Alcotest.test_case "a recursive record holds itself" `Quick
+      (check_type
+         "{ rec Numbers = struct { head : I64; tail : Option(Numbers) }; \
+          l1 = Numbers{ head = 1, tail = None }; l2 = Numbers{ head = 2, tail = Some(l1) }; \
+          match (l2.tail) { Some(x) => x.head, None => 0 } }"
+         (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "a parameterised recursive record holds itself" `Quick
+      (check_type
+         "{ rec L = fn(A : Type) { struct { meta : A; next : Option(L(A)) } }; \
+          l1 = L(I64){ meta = 1, next = None }; l2 = L(I64){ meta = 2, next = Some(l1) }; l2.meta }"
+         (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "same-shape recursive records are distinct" `Quick
+      (fun () ->
+        match elab
+                "{ rec Numbers = struct { head : I64; tail : Option(Numbers) }; \
+                 rec Scores = struct { head : I64; tail : Option(Scores) }; \
+                 s = Scores{ head = 9, tail = None }; Numbers{ head = 1, tail = s.tail } }" with
+        | exception Unify.UnifyError (CannotUnify msg) ->
+            Alcotest.(check bool) "names the recursive occurrences" true
+              (String.equal msg "recursive occurrence Numbers vs recursive occurrence Scores")
+        | exception e -> Alcotest.fail ("unexpected " ^ Printexc.to_string e)
+        | _ -> Alcotest.fail "same-shape recursive records unified");
+    Alcotest.test_case "same-shape plain records unify" `Quick
+      (check_type "{ P = struct { x : I64 }; Q = struct { x : I64 }; q : Q = P{ x = 3 }; q.x }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "method uses self" `Quick
       (check_type
          "{ Box = fn[A : Type] { struct { value: A; pub method get() { self.value } } }; Box[I64].get(Box[I64]{value = 1}) }"
@@ -1419,14 +1449,14 @@ let imports =
          "{ U = import \"u\"; match (U.v) { stdlib.Some(k) => k, stdlib.None => 0 } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported record field access" `Quick
-      (check_import_type [ ("shapes", "pub type Point = struct {x: I64; y: I64}") ]
+      (check_import_type [ ("shapes", "pub Point = struct {x: I64; y: I64}") ]
          "{ S = import \"shapes\"; (S.Point{x = 1; y = 2}).x }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported record pattern" `Quick
-      (check_import_type [ ("shapes", "pub type Point = struct {x: I64; y: I64}") ]
+      (check_import_type [ ("shapes", "pub Point = struct {x: I64; y: I64}") ]
          "{ S = import \"shapes\"; match (S.Point{x = 1; y = 2}) { S.Point {x; y} => x + y } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported record pattern alias" `Quick
-      (check_import_type [ ("shapes", "pub type Point = struct {x: I64; y: I64}") ]
+      (check_import_type [ ("shapes", "pub Point = struct {x: I64; y: I64}") ]
          "{ S = import \"shapes\"; Alias = S; match (S.Point{x = 1; y = 2}) { Alias.Point {x; y} => x + y } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported method uses self" `Quick
@@ -1682,8 +1712,8 @@ let evaluation_budget =
    of the head's name, and traits and nominals are located through the entry
    the head resolves to. *)
 let path_heads =
-  let shadowed_m = "N = module { pub M = module { pub type T = C | D; pub type R = struct {y: I64}; pub effect E = sig { tell : I64 -> I64 } } }" in
-  let outer_m = "M = module { pub type T = A | B; pub type R = struct {x: I64}; pub effect E = sig { ask : I64 -> I64 } }" in
+  let shadowed_m = "N = module { pub M = module { pub type T = C | D; pub R = struct {y: I64}; pub effect E = sig { tell : I64 -> I64 } } }" in
+  let outer_m = "M = module { pub type T = A | B; pub R = struct {x: I64}; pub effect E = sig { ask : I64 -> I64 } }" in
   let under_open body = "{ " ^ outer_m ^ "; " ^ shadowed_m ^ "; open N; " ^ body ^ " }" in
   [
     Alcotest.test_case "a qualified pattern head" `Quick

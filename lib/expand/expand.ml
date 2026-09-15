@@ -120,8 +120,6 @@ and go_kind m (k : kind) : kind =
   | Import { path; scope } -> Import { path; scope = (on_id (Syntax.fresh_id ~scope "")).scope }
   | Open (md, body, label) -> Open (go md, go body, label)
   | OpenChoice c -> OpenChoice { c with name = on_id c.name }
-  | RecordTypeDef { name; params; fields; body } ->
-    RecordTypeDef { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | TypeDef { name; params; ctors; body } ->
     TypeDef { name = on_id name; params = List.map on_id params; ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) ctors; body = go body }
   | EffectDef { name; params; ops; body } ->
@@ -156,8 +154,6 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
                        { name = on_id d.name; params = List.map on_id d.params;
                          ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) d.ctors }) members;
                      public }
-     | RecordTypeBinding { name; params; fields; public } ->
-       RecordTypeBinding { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
      | EffectBinding { name; params; ops; public } ->
        EffectBinding { name = on_id name; params = List.map on_id params;
                        ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; public }
@@ -212,7 +208,6 @@ let map_binders (f : Syntax.id -> Syntax.id) (binding : struct_binding) : struct
   | MethodBinding b -> MethodBinding { b with name = f b.name }
   | TypeBinding { members; public } ->
     TypeBinding { members = List.map (fun (d : type_decl) -> { d with name = f d.name; ctors = List.map (fun (n, ps) -> (f n, ps)) d.ctors }) members; public }
-  | RecordTypeBinding b -> RecordTypeBinding { b with name = f b.name }
   | EffectBinding b -> EffectBinding { b with name = f b.name }
   | TraitBinding b -> TraitBinding { b with name = f b.name }
   | ImplBinding b -> ImplBinding { b with name = Option.map f b.name }
@@ -534,7 +529,6 @@ let decl_over (binding : struct_binding) (body : t) : t =
   | SyntaxBinding { name; role; public = false } -> over (SyntaxDef { name; role; body })
   | MacroBinding { name; value; kind; output; public = false } -> over (MacroDef { name; value; body; kind; output })
   | TypeBinding { members = [ { name; params; ctors } ]; public = false } -> over (TypeDef { name; params; ctors; body })
-  | RecordTypeBinding { name; params; fields; public = false } -> over (RecordTypeDef { name; params; fields; body })
   | EffectBinding { name; params; ops; public = false } -> over (EffectDef { name; params; ops; body })
   | TraitBinding { name; params; fields; public = false } -> over (TraitDef { name; params; fields; body })
   | ImplBinding { name; trait; args; fields; public = false } -> over (ImplDef { name; trait; args; fields; body })
@@ -701,10 +695,6 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     import_roles ctx ~base_scope:(member_scope m) ~scope:open_scope m';
     let scopes = open_scope :: open_unit_macro_scopes ctx m in
     { stx with kind = Open (m', expand ctx (add_scopes scopes body), label) }
-  | RecordTypeDef { name; params; fields; body } ->
-    let scope, name = bind_declaration ctx name in
-    let params, param_scopes = expand_id_params ctx [] params in
-    { stx with kind = RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; body = expand ctx (add_scope scope body) } }
   | TypeDef { name; params; ctors; body } ->
     let scope, name = bind_declaration ctx name in
     let params, param_scopes = expand_id_params ctx [] params in
@@ -1027,12 +1017,6 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
            members member_scopes)
     in
     ([TypeBinding { members; public }], [member_scopes @ List.concat ctor_scopes])
-  | RecordTypeBinding { name; params; fields; public } ->
-    let scope, name = bind_declaration ctx name in
-    let params, param_scopes = expand_id_params ctx [] params in
-    ([RecordTypeBinding { name;
-                          params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
-     [[ scope ]])
   | EffectBinding { name; params; ops; public } ->
     let scope, name = bind_declaration ctx name in
     let params, param_scopes = expand_id_params ctx [] params in

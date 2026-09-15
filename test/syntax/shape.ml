@@ -22,12 +22,6 @@ and struct_binding =
   | LetBinding of { name : string; value : t; public : bool; recursive : bool }
   | MethodBinding of { name : string; params : param list; body : t; public : bool }
   | TypeBinding of { members : type_decl list; public : bool }
-  | RecordTypeBinding of {
-      name : string;
-      params : string list;
-      fields : (string * t) list;
-      public : bool;
-    }
   | EffectBinding of {
       name : string;
       params : string list;
@@ -80,12 +74,6 @@ and t =
   | Import of string
   | Open of t * t * string
   | OpenChoice of { name : string; opens : string list; fallback : string option }
-  | RecordTypeDef of {
-      name : string;
-      params : string list;
-      fields : (string * t) list;
-      body : t;
-    }
   | TypeDef of {
       name : string;
       params : string list;
@@ -228,8 +216,6 @@ and lower_expr (stx : Syntax.t) : t =
   | Syntax.Import { path; _ } -> Import path
   | Syntax.Open (m, body, label) -> Open (lower_expr m, lower_expr body, label)
   | Syntax.OpenChoice { name; opens; fallback } -> OpenChoice { name = name.name; opens; fallback }
-  | Syntax.RecordTypeDef { name; params; fields; body } ->
-    RecordTypeDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.TypeDef { name; params; ctors; body } ->
     TypeDef { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors; body = lower_expr body }
   | Syntax.EffectDef { name; params; ops; body } ->
@@ -276,8 +262,6 @@ and lower_struct_binding = function
                 ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors })
             members;
         public }
-  | Syntax.RecordTypeBinding { name; params; fields; public } ->
-    RecordTypeBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.EffectBinding { name; params; ops; public } ->
     EffectBinding { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; public }
   | Syntax.TraitBinding { name; params; fields; public } ->

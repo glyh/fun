@@ -77,9 +77,10 @@ and term =
     }
       (** Internal trait dictionary type reference. Used by quotation to preserve
           trait dictionary identity without encoding marker fields in structs. *)
-  | SelfTypeRef of term list
-      (** Internal recursive record [Self] type reference while a record type is
-          being elaborated. The arguments are the current record parameters. *)
+  | RecOcc of { id : int; name : string; args : term list }
+      (** A recursive occurrence: a [rec] struct type's reference to itself (or to
+          a member of its [rec] group), by the identity its binding minted,
+          applied to its parameters. Unfolded on demand ([finished_records]). *)
   | Ctor of {
       name : string;
       spine : term list;           (* type args then payload args *)
@@ -340,8 +341,9 @@ and value =
     }
       (** Trait dictionary type. The runtime dictionary value is struct-like,
           but the type is not encoded as private marker fields on [VStruct]. *)
-  | VSelfType of value list
-      (** Recursive record [Self] type while the record type is being built. *)
+  | VRecOcc of { id : int; name : string; args : value list }
+      (** A recursive occurrence (see [RecOcc]): equal only to an occurrence of the
+          same identity; unfolds to its struct type where a shape is needed. *)
   | VRefTy of value
   | VRef of value ref
   | VCon of { name : string; spine : value list; nominal : value }
@@ -549,7 +551,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | EffectRowLit r -> EffectRowLit (row 0 r)
   | Prod ts -> Prod (List.map (at 0) ts)
   | ProdTy ts -> ProdTy (List.map (at 0) ts)
-  | SelfTypeRef ts -> SelfTypeRef (List.map (at 0) ts)
+  | RecOcc r -> RecOcc { r with args = List.map (at 0) r.args }
   | NomRef n -> NomRef { n with params = List.map (at 0) n.params }
   | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
   | RefTy a -> RefTy (at 0 a)
@@ -684,6 +686,17 @@ let nominal_constructors id constructors =
   match constructors with
   | [] -> Option.value (Hashtbl.find_opt finished_nominals id) ~default:[]
   | _ -> constructors
+
+(* A [rec] struct type's identity. The binding mints it before its body is
+   elaborated, so the body's references to the type are occurrences of that
+   identity; [finish_record] records the finished value (a struct type, or a
+   function of the parameters to one) that an occurrence unfolds to.
+   ponytail: minted once at elaboration, like a nominal's id - a [rec] struct
+   under a binder shares one identity across evaluations until E11. *)
+let record_counter = ref 0
+let fresh_record_id () = let id = !record_counter in incr record_counter; id
+let finished_records : (int, value) Hashtbl.t = Hashtbl.create 64
+let finish_record id value = Hashtbl.replace finished_records id value
 
 (** Global counter for fresh effect family identities.
     Equality of effect families compares by id and instantiated params, not by

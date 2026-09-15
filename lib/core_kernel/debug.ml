@@ -36,7 +36,7 @@ and pp_term (t : term) : string =
   | TraitRef { trait_name; _ } -> Printf.sprintf "TraitRef(%s)" trait_name
   | TraitDictTy { trait_name; args; _ } ->
       Printf.sprintf "TraitDictTy(%s, [%s])" trait_name (String.concat "," (List.map pp_term args))
-  | SelfTypeRef args -> Printf.sprintf "SelfTypeRef([%s])" (String.concat "," (List.map pp_term args))
+  | RecOcc { name; args; _ } -> Printf.sprintf "RecOcc(%s, [%s])" name (String.concat "," (List.map pp_term args))
   | Ctor { name; nominal_name; _ } -> Printf.sprintf "Ctor(%s/%s)" name nominal_name
   | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
   | Perform { eff; op; arg } ->
@@ -108,8 +108,8 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VTraitDict d ->
         Printf.sprintf "<impl %s%s>" d.trait_name
           (if List.is_empty d.args then "" else " " ^ String.concat " " (List.map (go (depth + 1)) d.args))
-    | VSelfType args ->
-        if List.is_empty args then "Self" else Printf.sprintf "Self(%s)" (String.concat ", " (List.map (go (depth + 1)) args))
+    | VRecOcc { name; args; _ } ->
+        if List.is_empty args then name else Printf.sprintf "%s(%s)" name (String.concat ", " (List.map (go (depth + 1)) args))
     | VRefTy a -> Printf.sprintf "Ref %s" (go (depth + 1) a)
     | VRef _ -> "<ref>"
     | VCon { name; spine; _ } ->

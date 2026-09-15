@@ -52,12 +52,6 @@ and struct_binding =
   | TypeBinding of { members : type_decl list; public : bool }
       (** [type A = … and B = …]: one binding per chain, its members mutually
           recursive; a single declaration is the one-member chain. *)
-  | RecordTypeBinding of {
-      name : id;
-      params : id list;
-      fields : (string * t) list;
-      public : bool;
-    }
   | EffectBinding of {
       name : id;
       params : id list;
@@ -210,12 +204,6 @@ and kind =
           are the candidate opens' labels, innermost first; [fallback] is the
           resolved name of the binder they shadow, if any. With no opens and no
           binder it names only the base context. *)
-  | RecordTypeDef of {
-      name : id;
-      params : id list;
-      fields : (string * t) list;
-      body : t;
-    }
   | TypeDef of {
       name : id;
       params : id list;

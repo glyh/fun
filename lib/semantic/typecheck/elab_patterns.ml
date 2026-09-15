@@ -87,7 +87,7 @@ let rec pattern_binder_types ctx scrutinee_ty = function
           List.concat (List.map2 (pattern_binder_types ctx) tys sub_pats)
       | _ -> [])
   | CPatRecord { fields; _ } -> (
-      match Nbe.force ctx.Ctx.metas scrutinee_ty with
+      match Nbe.force_shape ctx.Ctx.metas scrutinee_ty with
       | VStruct { entries; _ } ->
           let record_fields = visible_record_fields (struct_entry_fields entries) in
           List.concat
@@ -186,7 +186,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
           (CPatRecord { fields = List.rev core_fields; partial }, List.rev binders)
       | _ -> raise (ElabError ApplyingNonFunction))
   | PatStructType { fields; partial } ->
-      (match Nbe.force ctx.metas scrutinee_ty with
+      (match Nbe.force_shape ctx.metas scrutinee_ty with
       | VStruct _ -> ()
       | _ -> Ctx.unify ctx scrutinee_ty VU);
       check_duplicate_names (List.map fst fields);
