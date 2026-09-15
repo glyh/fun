@@ -69,3 +69,19 @@ invisible too, and:
 
 `compile_time_safe` may survive as the elaborator's implementation of "do not
 run this during type checking", but it is no longer where purity is decided.
+
+## Grilled (2026-09-15), part 1: the heap is never written
+
+- **The heap `h` is an implementation detail.** Surface `Ref(A)` has one argument;
+  no `Heap` kind or heap binder is ever written. The checker tracks each ref's
+  heap internally and drops the heap effects when no ref of that heap escapes
+  (so local mutation is pure from outside).
+- **A signature says what it mutates by naming the ref**, or infers it; both are
+  valid:
+  ```fun
+  bump = fn(r : Ref(I64)) can {Mutate(r)} { r <- !r + 1 }   // names the ref
+  bump = fn(r : Ref(I64)) can _ { r <- !r + 1 }             // inferred
+  ```
+  `Mutate(r)` maps to `r`'s hidden heap. An effect row may therefore mention a
+  parameter (see small-followups item 2: method rows are expanded in the wrong
+  scope for this).
