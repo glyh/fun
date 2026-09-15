@@ -214,7 +214,7 @@ let if_do_else_end () =
   | _ -> Alcotest.fail "expected if { else } shape"
 
 let match_do_end () =
-  match parse "match (True) { True => 1 | False => 0 }" with
+  match parse "match (True) { True => 1, False => 0 }" with
   | Match
       ( Var "True",
         [ ValueBranch (PatCon ([], "True", []), Atom (Atom.I64 1L));
@@ -426,7 +426,7 @@ let fn_with_product_type () =
   | _ -> Alcotest.fail "expected product type in fn param"
 
 let match_constructor_payload () =
-  match parse "match (x) { Some(y) => y | None => 0 }" with
+  match parse "match (x) { Some(y) => y, None => 0 }" with
   | Match (Var "x",
       [ ValueBranch (PatCon ([], "Some", [PatBind "y"]), Var "y");
         ValueBranch (PatCon ([], "None", []), Atom (Atom.I64 0L)) ]) -> ()
@@ -455,7 +455,7 @@ let match_record_pattern_renamed_partial () =
 let operator_prefix_in_do_block () =
   match parse_with_macros "{
   x = 1;
-  syntax twice { | twice $x => $x };
+  syntax twice { twice $x => $x };
   twice x
 }" with
   | Let { name = "x"; value = Atom (Atom.I64 1L); body = Var "x"; _ } -> ()
@@ -463,7 +463,7 @@ let operator_prefix_in_do_block () =
 
 let operator_prefix_simple_do () =
   match parse_with_macros "{
-  syntax twice { | twice $x => 1 };
+  syntax twice { twice $x => 1 };
   twice 1
 }" with
   | Atom (Atom.I64 1L) -> ()
@@ -478,7 +478,7 @@ let operator_infix_in_do_block () =
   | _ -> Alcotest.fail "expected operator infix with correct precedence grouping"
 
 let operator_prefix_in_module () =
-  match parse_module_with_macros "syntax twice { | twice $x => 1 };
+  match parse_module_with_macros "syntax twice { twice $x => 1 };
 pub test = { twice 1 }" with
   | Module
       { bindings =
@@ -493,7 +493,7 @@ pub test = { twice 1 }" with
 let operator_rhs_can_use_earlier_macro () =
   match parse_with_macros "{
   macro one_body(_) { Syntax.i64(1) };
-  syntax choose { | choose $x => one_body(0) };
+  syntax choose { choose $x => one_body(0) };
   choose 0
 }" with
   | Atom (Atom.I64 1L) -> ()
@@ -502,7 +502,7 @@ let operator_rhs_can_use_earlier_macro () =
 
 
 let operator_declaration_is_sequential () =
-  match parse_with_macros "{ before = late 0; syntax late { | late $x => 1 }; late 0 }" with
+  match parse_with_macros "{ before = late 0; syntax late { late $x => 1 }; late 0 }" with
   | exception Enforest.Unsupported _ -> ()
   | exception Enforest.Error _ -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
@@ -510,9 +510,9 @@ let operator_declaration_is_sequential () =
 
 let duplicate_operator_later_wins () =
   match parse_with_macros "{
-  syntax choose { | choose $x => 1 };
+  syntax choose { choose $x => 1 };
   first = choose 0;
-  syntax choose { | choose $x => 2 };
+  syntax choose { choose $x => 2 };
   choose 0
 }" with
   | Let { name = "first"; value = Atom (Atom.I64 1L); body = Atom (Atom.I64 2L); _ } -> ()
@@ -520,7 +520,7 @@ let duplicate_operator_later_wins () =
 
 let syntax_extension_cross_module () =
   with_modules
-    [ ("syntax_ops", "pub syntax inc { | inc $x => 2 };\npub x = 1") ]
+    [ ("syntax_ops", "pub syntax inc { inc $x => 2 };\npub x = 1") ]
     (fun loader ->
       match
         parse_with_macros
@@ -536,7 +536,7 @@ let syntax_extension_cross_module () =
 
 let syntax_import_does_not_leak_between_parses () =
   with_modules
-    [ ("syntax_ops", "pub syntax inc { | inc $x => 1 }") ]
+    [ ("syntax_ops", "pub syntax inc { inc $x => 1 }") ]
     (fun loader ->
       let _ =
         parse_with_macros
@@ -548,13 +548,13 @@ let syntax_import_does_not_leak_between_parses () =
       | _ -> Alcotest.fail "expected imported syntax extension to stay local to its parse")
 
 let syntax_extension_not_runtime_field () =
-  match parse_module "syntax hidden { | hidden $x => $x };
+  match parse_module "syntax hidden { hidden $x => $x };
 pub x = 1" with
   | Module { bindings = [ LetBinding { name = "x"; value = Atom (Atom.I64 1L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected syntax extension to be dropped from runtime module bindings"
 
 let pub_syntax_rejected_in_struct () =
-  match parse "struct { pub syntax hidden { | hidden $x => $x } }" with
+  match parse "struct { pub syntax hidden { hidden $x => $x } }" with
   | exception Enforest.Error msg when string_contains msg "pub syntax is not supported inside structs" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected pub syntax in a struct expression to be rejected"
@@ -566,21 +566,21 @@ let syntax_exports_include_operator_metadata () =
 
 let duplicate_public_syntax_exports_rejected () =
   match
-    Macro_driver.run ~load_syntax:(fun _ -> Parse_expand.syntax_exports "pub syntax dup { | dup $x => $x };
-pub syntax dup { | dup $x => $x }") (Enforest.parse_module "open (import \"dups\")")
+    Macro_driver.run ~load_syntax:(fun _ -> Parse_expand.syntax_exports "pub syntax dup { dup $x => $x };
+pub syntax dup { dup $x => $x }") (Enforest.parse_module "open (import \"dups\")")
   with
   | exception Enforest.Error msg when string_contains msg "ambiguous syntax extension candidates" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected duplicate public syntax exports to be rejected"
 
 let syntax_branch_head_mismatch_rejected () =
-  match parse_module "syntax good { | bad $x => $x }" with
+  match parse_module "syntax good { bad $x => $x }" with
   | exception Enforest.Error msg when string_contains msg "must start with declared head" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected mismatched syntax branch head to be rejected"
 
 let syntax_unbound_replacement_hole_rejected () =
-  match parse_module "syntax good { | good $x => $y }" with
+  match parse_module "syntax good { good $x => $y }" with
   | exception Enforest.Error msg when string_contains msg "unbound syntax template hole" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected unbound replacement hole to be rejected"
@@ -588,24 +588,24 @@ let syntax_unbound_replacement_hole_rejected () =
 (* A hole's kind is its reflection type (M10); [Id] names a binder or refers,
    the splice position decides which. *)
 let syntax_id_hole_binds_and_refers () =
-  match parse_with_macros "{ syntax twice_bound { | twice_bound $(name : Id) => { $name = 1; $name } }; twice_bound x }" with
+  match parse_with_macros "{ syntax twice_bound { twice_bound $(name : Id) => { $name = 1; $name } }; twice_bound x }" with
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> ()
 
 let syntax_old_hole_kind_spelling_rejected () =
-  match parse_with_macros "{ syntax bad { | bad $(name: ident) => $name }; bad x }" with
+  match parse_with_macros "{ syntax bad { bad $(name: ident) => $name }; bad x }" with
   | exception Enforest.Error msg when string_contains msg "written as types" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected a lowercase hole kind to be rejected"
 
 let syntax_pattern_hole_expression_position_rejected () =
-  match parse_with_macros "{ syntax bad { | bad $(p : Pattern) => $p }; bad x }" with
+  match parse_with_macros "{ syntax bad { bad $(p : Pattern) => $p }; bad x }" with
   | exception Expand_error.Error { error = UnfitHole { hole = "$p"; _ }; _ } -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected a pattern hole in expression position to be rejected"
 
 let syntax_multi_rejected () =
-  match parse_module "syntax bad : Decl { | bad => multi { x = 1 } }" with
+  match parse_module "syntax bad : Decl { bad => multi { x = 1 } }" with
   | exception Enforest.Error msg when string_contains msg "multi { … } was removed" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected multi to be rejected"
@@ -642,8 +642,8 @@ let syntax_extension_circular_visit () =
   with_modules
     (* A replacement's import is quoted syntax, loaded where the form is used;
        reading a unit's syntax loads the units it imports. *)
-    [ ("a", "B = import \"b\"; pub syntax aop { | aop $x => $x }");
-      ("b", "A = import \"a\"; pub syntax bop { | bop $x => $x }") ]
+    [ ("a", "B = import \"b\"; pub syntax aop { aop $x => $x }");
+      ("b", "A = import \"a\"; pub syntax bop { bop $x => $x }") ]
     (fun loader ->
       match
         parse_with_macros
@@ -677,11 +677,41 @@ let newline_is_whitespace () =
   | Let { body = Ap _; _ } -> ()
   | _ -> Alcotest.fail "expected a newline not to end the expression"
 
+(* Rust-style arms (brackets-decide-grouping): a [{ … }] result ends its arm,
+   any other result ends at [,]; [|] is pattern union. *)
+let arm_count source expected () =
+  match parse source with
+  | Match (_, branches) -> Alcotest.(check int) source expected (List.length branches)
+  | _ -> Alcotest.fail ("expected a match: " ^ source)
+
+let top_level_union_arm () =
+  match parse "match (x) { A | B => 1, _ => 0 }" with
+  | Match (_, [ ValueBranch (PatOr _, _); ValueBranch (PatWild, _) ]) -> ()
+  | _ -> Alcotest.fail "expected A | B to be one union pattern"
+
+let arm_suite =
+  [ Alcotest.test_case "brace result needs no comma" `Quick (arm_count "match (x) { 0 => { 10 } _ => { 20 } }" 2);
+    Alcotest.test_case "expression result ends at comma" `Quick (arm_count "match (x) { 0 => 10, _ => 20 }" 2);
+    Alcotest.test_case "trailing comma" `Quick (arm_count "match (x) { 0 => 10, _ => 20, }" 2);
+    Alcotest.test_case "brace result then comma" `Quick (arm_count "match (x) { 0 => { 10 }, _ => 20 }" 2);
+    Alcotest.test_case "if result needs its comma" `Quick
+      (arm_count "match (x) { 0 => if (c) { 1 } else { 2 }, _ => 3 }" 2);
+    Alcotest.test_case "expression result without comma rejected" `Quick
+      (rejected_with "ends at ," parse "match (x) { 0 => 10 _ => 20 }");
+    Alcotest.test_case "brace result ends its arm" `Quick
+      (rejected_with "ends at its }" parse "match (x) { A => { 1 } + 2 }");
+    Alcotest.test_case "union at the top of an arm" `Quick top_level_union_arm;
+    Alcotest.test_case "leading | rejected" `Quick
+      (rejected_with "does not begin with |" parse "match (x) { | _ => 1 }");
+    Alcotest.test_case "leading | in syntax rules rejected" `Quick
+      (rejected_with "does not begin with |" parse "{ syntax twice { | twice $x => $x + $x }; twice 4 }");
+  ]
+
 let brace_syntax_suite =
   [ Alcotest.test_case "-> body rejected" `Quick (rejected_with "-> body was removed" parse "fn(x) -> x");
     Alcotest.test_case "do block rejected" `Quick (rejected_with "blocks were removed" parse "do 1 end");
-    Alcotest.test_case "match without parens rejected" `Quick (rejected_with "match (scrutinee)" parse "match x { | _ => 1 }");
-    Alcotest.test_case "match arm needs =>" `Quick (rejected_with "=>" parse "match (x) { | _ -> 1 }");
+    Alcotest.test_case "match without parens rejected" `Quick (rejected_with "match (scrutinee)" parse "match x { _ => 1 }");
+    Alcotest.test_case "match arm needs =>" `Quick (rejected_with "=>" parse "match (x) { _ -> 1 }");
     Alcotest.test_case "=> is reserved" `Quick (rejected_with "reserved" parse_module "infix (=>) 3 Left");
     Alcotest.test_case "record type needs struct" `Quick (rejected_with "struct {" parse_module "type P = {x: I64}");
     Alcotest.test_case "trailing ; discards" `Quick trailing_semicolon_discards;
@@ -692,6 +722,7 @@ let brace_syntax_suite =
 
 let suites =
   [ ( "brace syntax", brace_syntax_suite );
+    ( "arms", arm_suite );
     ( "enforest",
       [ Alcotest.test_case "raw grouping" `Quick raw_grouping;
         Alcotest.test_case "comments" `Quick line_and_block_comments;

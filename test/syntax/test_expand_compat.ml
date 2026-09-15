@@ -71,7 +71,7 @@ let suites =
         Alcotest.test_case "annotation" `Quick (check_compat "(1 : I64)");
         Alcotest.test_case "field access" `Quick (check_compat "p.x");
         Alcotest.test_case "record construction" `Quick (check_compat "Point{x = 1; y = 2}");
-        Alcotest.test_case "match" `Quick (check_compat "match (x) { Some(y) => y | None => 0 }");
+        Alcotest.test_case "match" `Quick (check_compat "match (x) { Some(y) => y, None => 0 }");
         Alcotest.test_case "struct" `Quick (check_compat "struct { x: I64; pub y = 1 }");
         Alcotest.test_case "module" `Quick (check_compat "module { pub x = 1 }");
       ] );

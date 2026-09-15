@@ -414,22 +414,22 @@ let test_debug_perform () =
 
 let test_eval_handler_ignores_continuation () =
   check_i64 "handler ignores continuation" 2L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x | effect Exc.raise n => n + 1 } }"
+    "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } }"
     ()
 
 let test_eval_handler_resumes_once () =
   check_i64 "handler resumes once" 2L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x | effect Exc.raise n => resume(n + 1) } }"
+    "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => resume(n + 1) } }"
     ()
 
 let test_eval_handler_value_branch () =
   check_i64 "handler value branch" 42L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (41) { x => x + 1 | effect Exc.raise n => 0 } }"
+    "{ effect Exc = sig { raise : I64 -> I64 }; match (41) { x => x + 1, effect Exc.raise n => 0 } }"
     ()
 
 let test_eval_handler_outer_bubble () =
   check_i64 "handler outer bubble" 2L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (match (perform Exc.raise(1)) { x => x }) { x => x | effect Exc.raise n => n + 1 } }"
+    "{ effect Exc = sig { raise : I64 -> I64 }; match (match (perform Exc.raise(1)) { x => x }) { x => x, effect Exc.raise n => n + 1 } }"
     ()
 
 let test_eval_handler_escape_skips_continuation () =
@@ -440,8 +440,8 @@ let test_eval_handler_escape_skips_continuation () =
          _ = perform Exit.now(99);
          0
        } };
-       match (program()) { x => x
-       | effect Exit.now value => value
+       match (program()) { x => x,
+       effect Exit.now value => value
        }
      }"
     ()
@@ -455,9 +455,9 @@ let test_eval_handler_ping_pong_effects () =
          x = perform Ping.hit(1);
          perform Pong.hit(x + 10)
        } };
-       match (program()) { x => x
-       | effect Ping.hit n => { y = perform Pong.hit(n + 1); resume(y) }
-       | effect Pong.hit n => resume(n + 100)
+       match (program()) { x => x,
+       effect Ping.hit n => { y = perform Pong.hit(n + 1); resume(y) }
+       effect Pong.hit n => resume(n + 100)
        }
      }"
     ()
@@ -474,9 +474,9 @@ let test_eval_recursive_handler_ping_pong_effects () =
             { x = perform Ping.hit(n); y = perform Pong.hit(n - 1); x + y + loop(n - 2) }
           }
         };
-        match (loop(4)) { x => x
-       | effect Ping.hit n => resume(n)
-       | effect Pong.hit n => resume(n)
+        match (loop(4)) { x => x,
+       effect Ping.hit n => resume(n),
+       effect Pong.hit n => resume(n)
        }
      }"
     ()
@@ -491,9 +491,9 @@ let test_eval_state_handler_sequences_operations () =
          perform State.get()
        } };
         rec run : I64 -> (Unit -> I64 can State(I64)) -> I64 = fn(state, thunk) {
-          match (thunk()) { x => x
-          | effect State.get () => run(state, fn(_) { resume(state) })
-          | effect State.put next => run(next, fn(_) { resume() })
+          match (thunk()) { x => x,
+          effect State.get () => run(state, fn(_) { resume(state) }),
+          effect State.put next => run(next, fn(_) { resume() })
           }
         };
         run(1, program)
@@ -502,12 +502,12 @@ let test_eval_state_handler_sequences_operations () =
 
 let test_eval_handler_tuple_payload_pattern () =
   check_i64 "handler tuple payload pattern" 42L
-    "{ effect Console = sig { log : I64 * I64 -> I64 }; match (perform Console.log((40, 2))) { x => x | effect Console.log (level, message) => level + message } }"
+    "{ effect Console = sig { log : I64 * I64 -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level + message } }"
     ()
 
 let test_eval_handler_tuple_payload_binding_order () =
   check_i64 "handler tuple payload binding order" 38L
-    "{ effect Console = sig { log : I64 * I64 -> I64 }; match (perform Console.log((40, 2))) { x => x | effect Console.log (level, message) => level - message } }"
+    "{ effect Console = sig { log : I64 * I64 -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level - message } }"
     ()
 
 let test_eval_handler_record_payload_pattern () =
@@ -515,8 +515,8 @@ let test_eval_handler_record_payload_pattern () =
     "{
        Request = struct { value: I64; extra: I64; };
        effect Ask = sig { prompt : Request -> I64 };
-       match (perform Ask.prompt(Request{value = 40; extra = 2})) { x => x
-       | effect Ask.prompt Request{value; extra} => value + extra
+       match (perform Ask.prompt(Request{value = 40; extra = 2})) { x => x,
+       effect Ask.prompt Request{value; extra} => value + extra
        }
      }"
     ()
@@ -526,8 +526,8 @@ let test_eval_handler_record_payload_binding_order () =
     "{
        Request = struct { value: I64; extra: I64; };
        effect Ask = sig { prompt : Request -> I64 };
-       match (perform Ask.prompt(Request{value = 40; extra = 2})) { x => x
-       | effect Ask.prompt Request{value; extra} => value - extra
+       match (perform Ask.prompt(Request{value = 40; extra = 2})) { x => x,
+       effect Ask.prompt Request{value; extra} => value - extra
        }
      }"
     ()
@@ -535,11 +535,11 @@ let test_eval_handler_record_payload_binding_order () =
 let is_zeroish_source call =
   "{
      is_zeroish : [T : Type] -> T -> Bool = fn[T : Type](x) {
-       match (T) { I64 => x == 0
-       | Bool => x == False
-       | Unit => True
-       | Char => x == 'a'
-       | _ => False
+       match (T) { I64 => x == 0,
+       Bool => x == False,
+       Unit => True,
+       Char => x == 'a',
+       _ => False
        }
      };
      " ^ call ^ "
@@ -566,11 +566,11 @@ let test_eval_type_case_char_a () =
 let default_source call =
   "{
      default : [T : Type] -> T = fn[T : Type] {
-       match (T) { I64 => 0
-       | Bool => False
-       | Unit => ()
-       | Char => 'a'
-       | _ => panic(\"no default\")
+       match (T) { I64 => 0,
+       Bool => False,
+       Unit => (),
+       Char => 'a',
+       _ => panic(\"no default\")
        }
      };
      " ^ call ^ "
@@ -594,12 +594,12 @@ let test_eval_type_case_default_string_panics () =
 let default_or_source call =
   "{
      default_or : [T : Type] -> T -> T = fn[T : Type](fallback) {
-       match (T) { I64 => 0
-       | Bool => False
-       | Unit => ()
-       | Char => 'a'
-       | String => \"\"
-       | _ => fallback
+       match (T) { I64 => 0,
+       Bool => False,
+       Unit => (),
+       Char => 'a',
+       String => \"\",
+       _ => fallback
        }
      };
      " ^ call ^ "
@@ -616,18 +616,18 @@ let test_eval_type_case_default_or_string () =
 
 let test_eval_type_case_default_or_nominal_fallback () =
   check_i64 "type-case default_or nominal fallback" 2L
-    (default_or_source "type Color = Red | Blue; match (default_or[Color](Blue)) { Red => 1 | Blue => 2 }")
+    (default_or_source "type Color = Red | Blue; match (default_or[Color](Blue)) { Red => 1, Blue => 2 }")
     ()
 
 let type_name_source call =
   "{
      type_name : Type -> String = fn(T) {
-       match (T) { I64 => \"i64\"
-       | Bool => \"bool\"
-       | Char => \"char\"
-       | Unit => \"unit\"
-       | String => \"string\"
-       | _ => \"other\"
+       match (T) { I64 => \"i64\",
+       Bool => \"bool\",
+       Char => \"char\",
+       Unit => \"unit\",
+       String => \"string\",
+       _ => \"other\"
        }
      };
      " ^ call ^ "
@@ -650,9 +650,9 @@ let test_eval_equality_nominal_rejected () =
 let test_eval_type_case_nominal_full_application () =
   check_i64 "type-case nominal full application" 1L
     "{ type Option a = Some a | None;
-     match (Option(I64)) { Option(I64) => 1
-     | Option(Bool) => 2
-     | _ => 3
+     match (Option(I64)) { Option(I64) => 1,
+     Option(Bool) => 2,
+     _ => 3
      }
      }"
     ()
@@ -660,8 +660,8 @@ let test_eval_type_case_nominal_full_application () =
 let test_eval_type_case_nominal_param_bind () =
   check_i64 "type-case nominal param bind" 1L
     "{ type Option a = Some a | None;
-     match (Option(I64)) { Option x => match (x) { I64 => 1 | _ => 2 }
-     | _ => 3
+     match (Option(I64)) { Option x => match (x) { I64 => 1, _ => 2 },
+     _ => 3
      }
      }"
     ()
@@ -669,9 +669,9 @@ let test_eval_type_case_nominal_param_bind () =
 let test_eval_type_case_nominal_complex_param_pattern () =
   check_i64 "type-case nominal complex param pattern" 1L
     "{ type Option a = Some a | None;
-     match (Option(Option(I64))) { Option(Option(I64) | I64) => 1
-     | Option _ => 2
-     | _ => 3
+     match (Option(Option(I64))) { Option(Option(I64) | I64) => 1,
+     Option _ => 2,
+     _ => 3
      }
      }"
     ()
@@ -680,9 +680,9 @@ let nominal_classify_source call =
   "{
      type Option a = Some a | None;
      classify : Type -> I64 = fn(T) {
-       match (T) { Option(I64) => 1
-       | Option _ => 2
-       | _ => 0
+       match (T) { Option(I64) => 1,
+       Option _ => 2,
+       _ => 0
        }
      };
      " ^ call ^ "
@@ -700,10 +700,10 @@ let test_eval_type_case_nominal_classifier_fallback () =
 let struct_type_classify_source call =
   "{
      classify : Type -> I64 = fn(T) {
-       match (T) { struct { x: I64; _ } => 1
-       | struct { x: Bool; _ } => 2
-       | struct { y: p; _ } => match (p) { String => 3 | _ => 4 }
-       | _ => 0
+       match (T) { struct { x: I64; _ } => 1,
+       struct { x: Bool; _ } => 2,
+       struct { y: p; _ } => match (p) { String => 3, _ => 4 },
+       _ => 0
        }
      };
      " ^ call ^ "
@@ -730,9 +730,9 @@ let test_eval_type_case_struct_field_fallback () =
 let test_eval_type_case_struct_closed_rejects_extra () =
   check_i64 "type-case struct closed rejects extra" 2L
     "{ type Point = struct {x: I64; y: Bool};
-     match (Point) { struct { x: I64 } => 1
-     | struct { x: I64; _ } => 2
-     | _ => 3
+     match (Point) { struct { x: I64 } => 1,
+     struct { x: I64; _ } => 2,
+     _ => 3
      }
      }"
     ()
@@ -740,8 +740,8 @@ let test_eval_type_case_struct_closed_rejects_extra () =
 let test_eval_handler_same_match_branch_effect () =
   check_i64 "handler same match branch effect" 43L
     "{ effect Ping = sig { hit : I64 -> I64 };
-     match (perform Ping.hit(1)) { x => x
-     | effect Ping.hit n =>
+     match (perform Ping.hit(1)) { x => x,
+     effect Ping.hit n =>
          if (n == 1) {
            { y = perform Ping.hit(42); y + 1 }
           } else {
@@ -757,9 +757,9 @@ let test_eval_handler_parameterized_dispatch () =
       effect State(S) = sig { get : Unit -> S };
      StateI64 = State(I64);
      StateBool = State(Bool);
-     match (if (perform StateBool.get(())) { perform StateI64.get(()) + 1 } else { 0 }) { x => x
-     | effect StateI64.get () => resume(10)
-     | effect StateBool.get () => resume(True)
+     match (if (perform StateBool.get(())) { perform StateI64.get(()) + 1 } else { 0 }) { x => x,
+     effect StateI64.get () => resume(10),
+     effect StateBool.get () => resume(True)
      }
      }"
     ()
@@ -767,8 +767,8 @@ let test_eval_handler_parameterized_dispatch () =
 let test_eval_handler_value_branch_handles_same_effect () =
   check_i64 "handler value branch handles same effect" 42L
     "{ effect Ask = sig { value : Unit -> I64 };
-     match (0) { x => perform Ask.value(())
-     | effect Ask.value () => 42
+     match (0) { x => perform Ask.value(()),
+     effect Ask.value () => 42
      }
      }"
     ()
@@ -778,10 +778,10 @@ let test_eval_handler_value_branch_bubbles_outer_effect () =
     "{
       effect Inner = sig { value : Unit -> I64 };
       effect Outer = sig { value : Unit -> I64 };
-     match (match (0) { x => perform Outer.value(())
-       | effect Inner.value () => 0
-       }) { x => x
-     | effect Outer.value () => 42
+     match (match (0) { x => perform Outer.value(()),
+       effect Inner.value () => 0
+       }) { x => x,
+     effect Outer.value () => 42
      }
      }"
     ()
@@ -789,8 +789,8 @@ let test_eval_handler_value_branch_bubbles_outer_effect () =
 let test_eval_handler_resumed_continuation_is_deep () =
   check_i64 "handler resumed continuation is deep" 42L
     "{ effect Ping = sig { hit : I64 -> I64 };
-     match (if (perform Ping.hit(1) == 41) { perform Ping.hit(2) } else { 0 }) { x => x
-     | effect Ping.hit n => resume(n + 40)
+     match (if (perform Ping.hit(1) == 41) { perform Ping.hit(2) } else { 0 }) { x => x,
+     effect Ping.hit n => resume(n + 40)
      }
      }"
     ()
@@ -800,10 +800,10 @@ let test_eval_handler_outer_handles_residual_effect () =
     "{
       effect Inner = sig { hit : I64 -> I64 };
       effect Outer = sig { hit : I64 -> I64 };
-     match (match (perform Outer.hit(1)) { x => x
-       | effect Inner.hit n => resume(n)
-       }) { x => x
-     | effect Outer.hit n => n + 41
+     match (match (perform Outer.hit(1)) { x => x,
+       effect Inner.hit n => resume(n)
+       }) { x => x,
+     effect Outer.hit n => n + 41
      }
      }"
     ()
@@ -811,8 +811,8 @@ let test_eval_handler_outer_handles_residual_effect () =
 let test_eval_handler_lexical_resume_nested_lambda () =
   check_i64 "handler lexical resume nested lambda" 41L
     "{ effect Exc = sig { raise : I64 -> I64 };
-     match (perform Exc.raise(1)) { x => x
-     | effect Exc.raise n => (fn(x) { resume(x + 40) })(n)
+     match (perform Exc.raise(1)) { x => x,
+     effect Exc.raise n => (fn(x) { resume(x + 40) })(n)
      }
      }"
     ()
@@ -1172,7 +1172,7 @@ let test_imported_macro_calls_regular_function () =
 let test_operator_prefix_macro_expands () =
   check_i64_macro "operator prefix" 42L
     "{
-       syntax answer { | answer => 42 };
+       syntax answer { answer => 42 };
        answer
      }" ()
 
@@ -1289,8 +1289,8 @@ let test_type_aware_checking () =
   let _module_val = eval_decl_module
     "open (import \"std\");\nmacro default[A](_) : Expr(A) {
        match (A) {
-       | RExpr(I64) => Syntax.i64(42)
-       | _ => Syntax.i64(0)
+       RExpr(I64) => Syntax.i64(42),
+       _ => Syntax.i64(0)
        }
      };
      pub x : I64 = default(0);
@@ -1305,9 +1305,9 @@ let test_type_default_macro () =
     "{
        macro default[A](_) : Expr(A) {
          match (A) {
-         | RExpr(I64) => Syntax.i64(0)
-         | RExpr(Bool) => Syntax.var(\"False\")
-         | _ => { _ = A; Syntax.i64(42) }
+         RExpr(I64) => Syntax.i64(0),
+         RExpr(Bool) => Syntax.var(\"False\"),
+         _ => { _ = A; Syntax.i64(42) }
          }
        };
        { x : I64 = default(0); x }
@@ -1318,9 +1318,9 @@ let test_type_default_bool () =
     "{
        macro default[A](_) : Expr(A) {
          match (A) {
-         | RExpr(I64) => Syntax.i64(0)
-         | RExpr(Bool) => quote(False)
-         | _ => { _ = A; quote(False) }
+         RExpr(I64) => Syntax.i64(0),
+         RExpr(Bool) => quote(False),
+         _ => { _ = A; quote(False) }
          }
        };
        { x : Bool = default(0); x }
@@ -1333,7 +1333,7 @@ let test_rtype_match_non_exhaustive_missing_ctors () =
   match eval_decl_module
     "open (import \"std\");\nmacro default[A](_) : Expr(A) {
        match (A) {
-       | RExpr(I64) => Syntax.i64(0)
+       RExpr(I64) => Syntax.i64(0)
        }
      };
      pub x : I64 = default(0)"
@@ -1375,7 +1375,7 @@ pub trait Show(T) = sig { show : T -> String };
 pub impl Show(I64) = module { fn show(x) { "n" } };
 pub M = struct { v : I64; pub method get() { self.v } };
 pub f = fn[T : Type](x : T, g : T -> T) { g(x) };
-pub h = fn(r) { match (r) { P{x = 1; y = _} => 1 | _ => 2 } };
+pub h = fn(r) { match (r) { P{x = 1; y = _} => 1, _ => 2 } };
 pub k = fn(z) { { w = ref(1); (z, 3).0 } };
 pub pattern Two(a) = MkA(a);
 open M|}
@@ -1392,7 +1392,7 @@ open M|}
 let test_unit_level_type_chain () =
   match eval_decl_module
     "pub type A = MkA(B) | NoA and B = MkB(A) | NoB;
-     pub x = match (MkA(MkB(NoA))) { MkA(MkB(NoA)) => 1 | _ => 0 }"
+     pub x = match (MkA(MkB(NoA))) { MkA(MkB(NoA)) => 1, _ => 0 }"
   with
   | VModule { entries; _ } ->
       (match List.find_map (function ModuleField ("x", _, _) -> Some () | _ -> None) entries with
@@ -1421,7 +1421,7 @@ let test_macro_does_not_capture_argument () =
     [ "{ x = 1; macro m(e) { Syntax.ap(Syntax.lam(\"x\", e), Syntax.i64(2)) }; y : I64 = m(x); y }";
       "{ x = 1; macro m(e) { quote((fn(x) { $e })(2)) }; y : I64 = m(x); y }";
       "{ x = 1; macro m[A](e) : Expr(A) { { _ = A; Syntax.ap(Syntax.lam(\"x\", e), Syntax.i64(2)) } }; y : I64 = m(x); y }";
-      "{ x = 1; syntax li { | li $body => { x = 2; $body } }; y : I64 = li x; y }" ]
+      "{ x = 1; syntax li { li $body => { x = 2; $body } }; y : I64 = li x; y }" ]
 
 (* A template's literal ids mean the declarer's names: a caller's [False] or
    [True] does not reach inside the prelude's [&&] / [||]. The caller's own
@@ -1440,7 +1440,7 @@ let test_template_literals_resolve_at_definition () =
 let test_quote_splices_holes () =
   check_i64_macro "quote splices an expression hole" 42L "{ macro m(e) { quote($e + 1) }; m(41) }" ();
   check_i64_macro "quoted syntax parses where written" 1L
-    "{ macro m(e) { quote(match ($e) { True => 1 | False => 0 }) }; m(True) }" ();
+    "{ macro m(e) { quote(match ($e) { True => 1, False => 0 }) }; m(True) }" ();
   match eval_with_macros "{ macro m(e) { quote(fn($e) { $e }) }; m(1) }" with
   | _ -> Alcotest.fail "a hole in both binder and expression position must be rejected"
   | exception _ -> ()
@@ -1729,7 +1729,7 @@ let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "{
        macro twice(x) { Syntax.ap(Syntax.ap(Syntax.var(\"+\"), x), x) };
-       syntax wrap { | wrap $x => twice($x) };
+       syntax wrap { wrap $x => twice($x) };
        wrap 10
      }" ()
 
@@ -1775,14 +1775,14 @@ let test_operator_rhs_can_use_earlier_macro () =
   check_i64_macro "operator RHS macro path" 5L
     "{
        macro answer_body(_) { Syntax.i64(5) };
-       syntax answer { | answer => answer_body(0) };
+       syntax answer { answer => answer_body(0) };
        answer
       }" ()
 
 let test_operator_prefix_receives_structured_input () =
   check_i64_macro "syntax template reuses hole" 4L
     "{
-       syntax twice { | twice $x => $x + $x };
+       syntax twice { twice $x => $x + $x };
        twice 2
       }" ()
 
@@ -1838,39 +1838,39 @@ let operator_body_failure_reports_use_span body expected () =
 
 let test_syntax_module_expression_kind () =
   check_i64_macro "Syntax.kind expression object" 1L
-    "{ macro answer(stx) { match (stx) { | Syntax.Var(_) => Syntax.i64(1) | _ => Syntax.i64(0) } }; x = 10; answer(x) }" ()
+    "{ macro answer(stx) { match (stx) { Syntax.Var(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; x = 10; answer(x) }" ()
 
 let test_syntax_module_literal_inspectors () =
   check_i64_macro "Syntax literal inspectors" 42L
     "{ macro answer(_) { Syntax.i64(42) }; answer() }" ()
 
 let test_syntax_module_literal_inspector_error () =
-  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Atom(_) => Syntax.i64(1) | _ => Syntax.i64(0) } }; f(Syntax.var(\"x\")) }" with
+  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Atom(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(Syntax.var(\"x\")) }" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected atom fallback on non-atom"
 
 let test_syntax_module_ap_deconstructors () =
   check_i64_macro "Syntax ap deconstructors" 1L
-    "{ macro f(stx) { match (stx) { | Syntax.Ap(f, a) => Syntax.i64(1) | _ => Syntax.i64(0) } }; f(add(1, 2)) }" ()
+    "{ macro f(stx) { match (stx) { Syntax.Ap(f, a) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(add(1, 2)) }" ()
 
 let test_syntax_module_ap_deconstructor_error () =
-  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Ap(_, _) => Syntax.i64(1) | _ => Syntax.i64(0) } }; f(1) }" with
+  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Ap(_, _) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(1) }" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected ap fallback on non-ap"
 
 let test_syntax_module_lam_deconstructor_error () =
-  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Lam(_, _) => Syntax.i64(1) | _ => Syntax.i64(0) } }; f(Syntax.i64(0)) }" with
+  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Lam(_, _) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(Syntax.i64(0)) }" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected lam fallback on non-lam"
 
 let test_syntax_module_let_deconstructor_error () =
-  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Let(_, _, _) => Syntax.i64(1) | _ => Syntax.i64(0) } }; f(Syntax.i64(0)) }" with
+  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Let(_, _, _) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(Syntax.i64(0)) }" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected let fallback on non-let"
 
 let test_syntax_module_identifier_inspection () =
   check_i64_macro "Syntax identifier inspection" 1L
-    "{ macro inspect(stx) { match (stx) { Syntax.Var(_) => Syntax.i64(1) | _ => Syntax.i64(0) } }; target = 10; inspect(target) }" ()
+    "{ macro inspect(stx) { match (stx) { Syntax.Var(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; target = 10; inspect(target) }" ()
 
 
 let test_syntax_module_i64_builder () =
@@ -1952,58 +1952,58 @@ let test_syntax_module_let_builder () =
 let test_operator_macro_discards_unelaborated_perform_operand () =
   check_i64_macro "operator macro discards perform operand before elaboration" 7L
     "{
-       syntax discard { | discard $x => 7 };
+       syntax discard { discard $x => 7 };
        discard perform Missing.get(())
       }" ()
 
 let test_7g_adt_matching_hygiene_roundtrip () =
   check_i64_macro "7G: ADT matching preserves binding hygiene" 42L
-    "{ x = 1; macro passthrough(stx) { match (stx) { | Syntax.Lam(_, _) => stx | _ => stx } }; (passthrough(fn(x) { x }))(42) }" ()
+    "{ x = 1; macro passthrough(stx) { match (stx) { Syntax.Lam(_, _) => stx, _ => stx } }; (passthrough(fn(x) { x }))(42) }" ()
 
 (* Rebuilding a lambda around its destructured body binds the body only through
    the lambda's own parameter. A binder the macro builds from a string is the
    macro's, and does not capture the caller's [x] (M2). *)
 let test_7g_adt_matching_hygiene_introduced_body () =
   check_i64_macro "7G: rebuilt lambda binds its body through its own parameter" 80L
-    "{ macro double(stx) { match (stx) { | Syntax.Lam(p, body) => Syntax.RawLam(None, p, Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }" ();
+    "{ macro double(stx) { match (stx) { Syntax.Lam(p, body) => Syntax.RawLam(None, p, Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)), _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }" ();
   match eval_with_macros
-    "{ macro double(stx) { match (stx) { | Syntax.Lam(_, body) => Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)) | _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }"
+    "{ macro double(stx) { match (stx) { Syntax.Lam(_, body) => Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)), _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }"
   with
   | _ -> Alcotest.fail "a string-built binder must not capture the caller's x"
   | exception _ -> ()
 
 let test_7g_adt_matching_flip_args () =
   check_i64_macro "7G: computed multi-kind dispatch not possible with templates" 1L
-    "{ macro classify(stx) { match (stx) { | Syntax.Lam(_, _) => Syntax.i64(1) | Syntax.Ap(_, _) => Syntax.i64(2) | Syntax.Var(_) => Syntax.i64(3) | _ => Syntax.i64(0) } }; classify(fn(x) { x }) }" ()
+    "{ macro classify(stx) { match (stx) { Syntax.Lam(_, _) => Syntax.i64(1), Syntax.Ap(_, _) => Syntax.i64(2), Syntax.Var(_) => Syntax.i64(3), _ => Syntax.i64(0) } }; classify(fn(x) { x }) }" ()
 
 let test_7g_adt_simple_flip () =
   check_i64_macro "7G: simple swap args via nested match" (-2L)
-    "{ macro swap(stx) { match (stx) { | Syntax.Ap(inner, b) => match (inner) { | Syntax.Ap(f, a) => Syntax.ap(Syntax.ap(f, b), a) | _ => stx } | _ => stx } }; result = swap((fn(x, y) { x - y })(5, 3)); result }" ()
+    "{ macro swap(stx) { match (stx) { Syntax.Ap(inner, b) => match (inner) { Syntax.Ap(f, a) => Syntax.ap(Syntax.ap(f, b), a), _ => stx }, _ => stx } }; result = swap((fn(x, y) { x - y })(5, 3)); result }" ()
 
 let test_7g_diag_outer_binders () =
   check_i64_macro "7G: DEBUG outer match with named binders" 1L
-    "{ macro t(stx) { match (stx) { | Syntax.Ap(inner, b) => Syntax.i64(1) | _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
+    "{ macro t(stx) { match (stx) { Syntax.Ap(inner, b) => Syntax.i64(1), _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
 
 let test_7g_diag_inner_binders_wildcards () =
   check_i64_macro "7G: DEBUG inner match with wildcards only" 1L
-    "{ macro t(stx) { match (stx) { | Syntax.Ap(inner, _) => match (inner) { | Syntax.Ap(_, _) => Syntax.i64(1) | _ => Syntax.i64(0) } | _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
+    "{ macro t(stx) { match (stx) { Syntax.Ap(inner, _) => match (inner) { Syntax.Ap(_, _) => Syntax.i64(1), _ => Syntax.i64(0) }, _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
 
 let test_7g_diag_inner_binders_named () =
   check_i64_macro "7G: DEBUG inner match with named binders" 1L
-    "{ macro t(stx) { match (stx) { | Syntax.Ap(inner, _) => match (inner) { | Syntax.Ap(f, a) => Syntax.i64(1) | _ => Syntax.i64(0) } | _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
+    "{ macro t(stx) { match (stx) { Syntax.Ap(inner, _) => match (inner) { Syntax.Ap(f, a) => Syntax.i64(1), _ => Syntax.i64(0) }, _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
 
 let test_7i_generated_syntax_later_wins_shadow () =
   match
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");\n\
                  syntax build_inc : Decl {\n\
-                 | build_inc $(n : Id) =>\n\
+                 build_inc $(n : Id) =>\n\
                      {\n\
-                       syntax $n { | $n $x => $x + 1 }\n\
+                       syntax $n { $n $x => $x + 1 }\n\
                      }\n\
                  };\n\
                  build_inc inc;\n\
-                 syntax inc { | inc $x => $x + 100 };\n\
+                 syntax inc { inc $x => $x + 100 };\n\
                  pub result = inc 1") ]
       "{ M = import \"gen\"; M.result }"
   with
@@ -2016,7 +2016,7 @@ let test_7i_generated_syntax_later_wins_shadow () =
 let test_imported_operator_prefix_expands () =
   match
     eval_with_imported_macros
-      [ ("ops", "pub syntax answer { | answer => 42 };\npub x = 1") ]
+      [ ("ops", "pub syntax answer { answer => 42 };\npub x = 1") ]
       "{
          Ops = import \"ops\";
           answer
@@ -2031,7 +2031,7 @@ let test_imported_operator_prefix_expands () =
 let test_imported_syntax_not_runtime_field () =
   match
     eval_with_imported_macros
-      [ ("ops", "pub syntax answer { | answer => 42 };\npub x = 1") ]
+      [ ("ops", "pub syntax answer { answer => 42 };\npub x = 1") ]
       "{ Ops = import \"ops\"; Ops.answer }"
   with
   | exception Elaborate.ElabError _ -> ()
@@ -2042,9 +2042,9 @@ let test_imported_syntax_not_runtime_field () =
 let test_operator_prefix_shadowing_is_lexical () =
   check_i64_macro "operator shadowing" 1L
     "{
-       syntax choose { | choose => 1 };
+       syntax choose { choose => 1 };
        ignored = {
-         syntax choose { | choose => 2 };
+         syntax choose { choose => 2 };
          choose
        };
        choose
@@ -2054,7 +2054,7 @@ let test_syntax_template_unless () =
   check_i64_macro "unless False passes through" 10L
     "{
        syntax unless {
-       | unless $cond $branch => if ($cond) { 0 } else { $branch }
+       unless $cond $branch => if ($cond) { 0 } else { $branch }
        };
        unless False 10
      }" ()
@@ -2063,7 +2063,7 @@ let test_syntax_template_when_match () =
   check_i64_macro "when False falls back" 0L
     "{
        syntax when {
-       | when $cond $branch else $fallback =>
+       when $cond $branch else $fallback =>
            if ($cond) { $branch } else { $fallback }
        };
        when False 42 else 0
@@ -2072,7 +2072,7 @@ let test_syntax_template_when_match () =
 let test_syntax_template_hole_reuse () =
   check_i64_macro "twice hole reuse" 6L
     "{
-       syntax twice { | twice $x => $x + $x };
+       syntax twice { twice $x => $x + $x };
        twice 3
      }" ()
 
@@ -2080,7 +2080,7 @@ let test_syntax_template_do_end_delimiters () =
   check_i64_macro "extract expression from do block" 42L
     "{
        syntax extract {
-       | extract { $body } => $body
+       extract { $body } => $body
        };
        extract { 42 }
      }" ()
@@ -2090,7 +2090,7 @@ let test_syntax_template_hygiene () =
     "{
        x = 1;
        syntax let_in {
-       | let_in $val $body => { x = $val; $body }
+       let_in $val $body => { x = $val; $body }
        };
        let_in 2 x
      }" ()
@@ -2099,7 +2099,7 @@ let test_syntax_template_def_site_scope () =
   check_i64_macro "definition-site scope for template refs" 2L
     "{
        y = 2;
-       syntax get_y { | get_y => y };
+       syntax get_y { get_y => y };
        {
          y = 99;
          get_y
@@ -2110,7 +2110,7 @@ let test_syntax_template_hole_keeps_use_site_scope () =
   check_i64_macro "captured hole keeps use-site scope" 99L
     "{
        x = 1;
-       syntax passthrough { | passthrough $body => $body };
+       syntax passthrough { passthrough $body => $body };
        {
          x = 99;
          passthrough x
@@ -2121,7 +2121,7 @@ let test_syntax_template_intro_binding_captures_intro_ref () =
   check_i64_macro "introduced binder captures introduced reference" 7L
     "{
        x = 1;
-       syntax local_x { | local_x => { x = 7; x } };
+       syntax local_x { local_x => { x = 7; x } };
        {
          x = 99;
          local_x
@@ -2132,7 +2132,7 @@ let test_syntax_template_def_site_scope_through_lambda () =
   check_i64_macro "definition-site ref is not captured by lambda use site" 1L
     "{
        x = 1;
-       syntax get_x { | get_x => x };
+       syntax get_x { get_x => x };
        (fn(x) { get_x })(99)
      }" ()
 
@@ -2140,7 +2140,7 @@ let test_syntax_template_nested_def_site_scope () =
   check_i64_macro "definition-site ref ignores nested use-site shadows" 3L
     "{
        z = 3;
-       syntax get_z { | get_z => z };
+       syntax get_z { get_z => z };
        {
          z = 4;
          {
@@ -2154,13 +2154,13 @@ let test_syntax_template_generates_syntax_form () =
   check_i64_macro "generated syntax forms are usable in generated body" 42L
     "{
        syntax build_choose {
-       | build_choose => {
+       build_choose => {
            syntax flag {
-           | flag yes => True
-           | flag no => False
+           flag yes => True,
+           flag no => False
            };
            syntax choose {
-           | choose $cond then $branch else $fallback =>
+           choose $cond then $branch else $fallback =>
                if ($cond) { $branch } else { $fallback }
            };
            choose flag yes then 40 + 2 else 0
@@ -2173,8 +2173,8 @@ let test_syntax_template_generated_syntax_closes_over_hole () =
   check_i64_macro "generated syntax form can reuse outer hole" 16L
     "{
        syntax make_adder {
-       | make_adder $base => {
-           syntax add_base { | add_base $x => $x + $base };
+       make_adder $base => {
+           syntax add_base { add_base $x => $x + $base };
            add_base 5 + add_base 1
          }
        };
@@ -2184,10 +2184,10 @@ let test_syntax_template_generated_syntax_closes_over_hole () =
 let test_syntax_template_generated_syntax_scope_is_local () =
   check_i64_macro "generated syntax form does not shadow caller syntax" 6L
     "{
-       syntax tag { | tag $x => $x + 1 };
+       syntax tag { tag $x => $x + 1 };
        syntax make_tag {
-       | make_tag => {
-           syntax tag { | tag $x => $x + 2 };
+       make_tag => {
+           syntax tag { tag $x => $x + 2 };
            tag 2
          }
        };
@@ -2197,8 +2197,8 @@ let test_syntax_template_generated_syntax_scope_is_local () =
 let test_syntax_template_expands_to_template_use () =
   check_i64_macro "syntax template can expand to another syntax use" 5L
     "{
-       syntax five { | five => 5 };
-       syntax call_five { | call_five => five };
+       syntax five { five => 5 };
+       syntax call_five { call_five => five };
        call_five
      }" ()
 
@@ -2206,10 +2206,10 @@ let test_syntax_template_generates_parameterized_syntax_form () =
   check_i64_macro "generated syntax form can bind its own holes and branches" 11L
     "{
        syntax make_bounded {
-       | make_bounded $limit => {
+       make_bounded $limit => {
            syntax bound {
-           | bound $x below => if ($x < $limit) { $x } else { $limit }
-           | bound $x above => if ($x > $limit) { $x } else { $limit }
+           bound $x below => if ($x < $limit) { $x } else { $limit },
+           bound $x above => if ($x > $limit) { $x } else { $limit }
            };
            bound 2 below + bound 9 above
          }
@@ -2220,11 +2220,11 @@ let test_syntax_template_generates_parameterized_syntax_form () =
 let test_syntax_template_nested_callsite_parenthesized () =
   check_i64_macro "nested syntax callsite inside parenthesized holes" 4L
     "{
-       syntax is_zero { | is_zero $x => $x == 0 };
-       syntax inc { | inc $x => $x + 1 };
-       syntax wrap { | wrap $x => $x + 1 };
+       syntax is_zero { is_zero $x => $x == 0 };
+       syntax inc { inc $x => $x + 1 };
+       syntax wrap { wrap $x => $x + 1 };
        syntax choose {
-       | choose $cond then $branch else $fallback =>
+       choose $cond then $branch else $fallback =>
            if ($cond) { $branch } else { $fallback }
        };
        choose (is_zero 0) then (wrap (inc 2)) else (wrap 10)
@@ -2234,12 +2234,12 @@ let test_syntax_template_nested_callsite_unparenthesized () =
   check_i64_macro "nested syntax callsite inside unparenthesized holes" 7L
     "{
        syntax bool {
-       | bool yes => True
-       | bool no => False
+       bool yes => True,
+       bool no => False
        };
-       syntax add2 { | add2 $x => $x + 2 };
+       syntax add2 { add2 $x => $x + 2 };
        syntax pick {
-       | pick $cond then $branch otherwise $fallback =>
+       pick $cond then $branch otherwise $fallback =>
            if ($cond) { $branch } else { $fallback }
        };
        pick bool yes then add2 5 otherwise add2 10
@@ -2248,8 +2248,8 @@ let test_syntax_template_nested_callsite_unparenthesized () =
 let test_syntax_template_nested_callsite_repeated_hole () =
   check_i64_macro "nested syntax callsite in repeated hole" 12L
     "{
-       syntax inc { | inc $x => $x + 1 };
-       syntax triple { | triple $x => $x + $x + $x };
+       syntax inc { inc $x => $x + 1 };
+       syntax triple { triple $x => $x + $x + $x };
        triple (inc (inc 2))
      }" ()
 
@@ -2257,8 +2257,8 @@ let test_syntax_template_multi_branch () =
   check_i64_macro "multi-branch: first-match disambiguation" 1L
     "{
        syntax choose {
-       | choose one => 1
-       | choose two => 2
+       choose one => 1,
+       choose two => 2
        };
        choose one
      }" ()
@@ -2270,7 +2270,7 @@ let test_syntax_template_imported_pub_syntax () =
          (* The replacement is read where it is written, so its [+] comes from
             the unit's own prelude open (M10). *)
          "open (import \"std\");
-          pub syntax inc { | inc $x => $x + 1 };
+          pub syntax inc { inc $x => $x + 1 };
           pub x = 0") ]
       "{
          M = import \"syntax_lib\";
@@ -2288,7 +2288,7 @@ let test_syntax_template_imported_intro_binding_hygiene () =
   match
     eval_with_imported_macros
       [ ("syntax_lib",
-         "pub syntax local_x { | local_x => { x = 7; x } };
+         "pub syntax local_x { local_x => { x = 7; x } };
           pub x = 0") ]
       "{
          M = import \"syntax_lib\";
@@ -2311,7 +2311,7 @@ let test_syntax_template_imported_intro_binding_hygiene () =
 let test_syntax_template_no_holes () =
   check_i64_macro "syntax with no holes" 42L
     "{
-       syntax answer { | answer => 42 };
+       syntax answer { answer => 42 };
        answer
      }" ()
 
@@ -2319,7 +2319,7 @@ let test_syntax_template_binder_hole () =
   check_i64_macro "binder hole can introduce use-site name" 3L
     "{
        syntax bind {
-       | bind $(name : Id) $value in $body => { $name = $value; $body }
+       bind $(name : Id) $value in $body => { $name = $value; $body }
        };
        bind x 3 in x
      }" ()
@@ -2328,7 +2328,7 @@ let test_syntax_template_ident_hole () =
   check_i64_macro "identifier hole can reference use-site name" 4L
     "{
        x = 4;
-       syntax use { | use $(name : Id) => $name };
+       syntax use { use $(name : Id) => $name };
        use x
      }" ()
 
@@ -2336,7 +2336,7 @@ let test_syntax_template_pattern_hole () =
   check_i64_macro "pattern hole splices a use-site pattern and its binders" 4L
     "{
        syntax unwrap_or {
-       | unwrap_or $v $(p : Pattern) $body $d => match ($v) { | $p => $body | _ => $d }
+       unwrap_or $v $(p : Pattern) $body $d => match ($v) { $p => $body, _ => $d }
        };
        unwrap_or (Some(4)) (Some(x)) x 0
      }" ()
@@ -2344,7 +2344,7 @@ let test_syntax_template_pattern_hole () =
 let test_syntax_template_unused_capture () =
   check_i64_macro "unused captured hole is accepted" 7L
     "{
-       syntax ignore { | ignore $unused => 7 };
+       syntax ignore { ignore $unused => 7 };
        ignore MissingName
      }" ()
 
@@ -2353,7 +2353,7 @@ let test_syntax_template_reuse_duplicates_evaluation () =
     "{
        r = ref(0);
        inc = fn(_) { { n = deref(r); _ = r <- n + 1; deref(r) } };
-       syntax twice { | twice $x => $x + $x };
+       syntax twice { twice $x => $x + $x };
        twice (inc())
      }" ()
 
@@ -2361,7 +2361,7 @@ let test_decl_template_module_captures_pub_value () =
   check_i64_macro "decl template captures public module value" 42L
     "{
        M = module {
-         syntax keep : Decl { | keep $(d : Decl) => { $d } };
+         syntax keep : Decl { keep $(d : Decl) => { $d } };
          keep pub answer = 42
        };
        M.answer
@@ -2371,7 +2371,7 @@ let test_decl_template_module_preserves_typed_value () =
   check_i64_macro "decl template preserves typed value" 42L
     "{
        M = module {
-         syntax keep : Decl { | keep $(d : Decl) => { $d } };
+         syntax keep : Decl { keep $(d : Decl) => { $d } };
          keep pub answer : I64 = 42
        };
        M.answer
@@ -2382,7 +2382,7 @@ let test_decl_template_struct_captures_pub_value () =
     "{
        Box = struct {
          value: I64;
-         syntax keep : Decl { | keep $(d : Decl) => { $d } };
+         syntax keep : Decl { keep $(d : Decl) => { $d } };
          keep pub answer = 42
        };
        Box.answer
@@ -2394,7 +2394,7 @@ let test_decl_template_multi_generates_siblings () =
       [ ( "decls",
           "open (import \"std\");
            syntax pair : Decl {
-           | pair => {
+           pair => {
                base = 40;
                pub answer = base + 2
              }
@@ -2414,7 +2414,7 @@ let test_decl_template_multi_rejected_in_expr () =
     eval_with_imported_macros
       [ ( "bad_syntax",
           "pub syntax bad : Decl {
-           | bad => {
+           bad => {
                x = 1
              }
            }" ) ]
@@ -2431,7 +2431,7 @@ let test_decl_template_struct_field_deferred () =
     eval_with_macros
       "{
          Box = struct {
-           syntax field : Decl { | field => { value: I64 } };
+           syntax field : Decl { field => { value: I64 } };
            field
          };
          0
@@ -2448,9 +2448,9 @@ let test_7i_generated_pub_syntax_across_imports () =
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");
                   syntax export_syntax : Decl {
-                  | export_syntax $(n : Id) =>
+                  export_syntax $(n : Id) =>
                       {
-                        pub syntax $n { | $n $x => $x + 1 }
+                        pub syntax $n { $n $x => $x + 1 }
                       }
                   };
                   export_syntax inc") ]
@@ -2466,9 +2466,9 @@ let test_7i_generated_syntax_usable_later_same_module () =
   check_import_i64 "7I generated syntax usable later" 
     [ ("gen", "open (import \"std\");
                syntax make_inc : Decl {
-               | make_inc $(n : Id) =>
+               make_inc $(n : Id) =>
                    {
-                     syntax $n { | $n $x => $x + 1 }
+                     syntax $n { $n $x => $x + 1 }
                    }
                };
                make_inc inc;
@@ -2480,7 +2480,7 @@ let test_7i_generated_pub_operator_across_imports () =
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");
                   syntax export_operator : Decl {
-                  | export_operator $(op : Id) =>
+                  export_operator $(op : Id) =>
                       {
                         pub infix ($op) 15 Left (stx) { Syntax.i64(9) }
                       }
@@ -2498,7 +2498,7 @@ let test_7i_generated_pub_macro_across_imports () =
   match
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");\nsyntax export_macro : Decl {
-                  | export_macro =>
+                  export_macro =>
                       {
                         pub macro answer(_) { Syntax.i64(42) }
                       }
@@ -2517,7 +2517,7 @@ let test_7i_generated_pub_operator_rejected_in_struct () =
     eval_with_macros
       "struct {
            syntax export_operator : Decl {
-           | export_operator =>
+           export_operator =>
                {
                  pub infix (~) 15 Left (stx) { Syntax.i64(9) }
                }
@@ -2536,7 +2536,7 @@ let test_7i_generated_pub_macro_rejected_in_struct () =
     eval_with_macros
       "struct {
            syntax export_macro : Decl {
-           | export_macro =>
+           export_macro =>
                {
                  pub macro answer(_) { Syntax.i64(42) }
                }
@@ -2557,15 +2557,15 @@ let test_7i_generated_syntax_cycle () =
          used; the cycle is the units importing each other. *)
       [ ("cycle_a", "B = import \"cycle_b\";
                      syntax gen_aop : Decl {
-                     | gen_aop $(n : Id) => {
-                         pub syntax $n { | $n $x => $x }
+                     gen_aop $(n : Id) => {
+                         pub syntax $n { $n $x => $x }
                        }
                      };
                      gen_aop aop");
         ("cycle_b", "A = import \"cycle_a\";
                      syntax gen_bop : Decl {
-                     | gen_bop $(n : Id) => {
-                         pub syntax $n { | $n $x => $x }
+                     gen_bop $(n : Id) => {
+                         pub syntax $n { $n $x => $x }
                        }
                      };
                      gen_bop bop")
@@ -2579,13 +2579,13 @@ let test_7i_generated_macro_cycle () =
   match
     eval_with_imported_macros
       [ ("mac_a", "open (import \"std\");\nsyntax gen_ma : Decl {
-                   | gen_ma => {
+                   gen_ma => {
                        pub macro ma(_) { { B = import \"mac_b\"; Syntax.i64(1) } }
                      }
                    };
                    gen_ma");
         ("mac_b", "open (import \"std\");\nsyntax gen_mb : Decl {
-                   | gen_mb => {
+                   gen_mb => {
                        pub macro mb(_) { { A = import \"mac_a\"; Syntax.i64(2) } }
                      }
                    };
@@ -2600,7 +2600,7 @@ let test_7i_generated_syntax_hygiene_introduced_binder () =
   check_i64_macro "7I generated syntax hygiene preserves introduced binders" 99L
     "{
        M = module {
-         syntax let_x { | let_x $body => { x = 1; $body } };
+         syntax let_x { let_x $body => { x = 1; $body } };
          pub result = {
            x = 99;
            let_x x
@@ -2612,21 +2612,21 @@ let test_7i_generated_syntax_hygiene_introduced_binder () =
 (* M7: syntactic roles resolve by scope set. *)
 let test_m7_syntax_shadows_syntax_in_block () =
   check_i64_macro "syntax shadows syntax in a nested block" 21L
-    "{ syntax t { | t => 1 }; x = { syntax t { | t => 2 }; t }; x * 10 + t }" ()
+    "{ syntax t { t => 1 }; x = { syntax t { t => 2 }; t }; x * 10 + t }" ()
 
 let test_m7_replacement_reads_roles_at_definition () =
   check_i64_macro "a replacement reads roles as of its definition" (-7L)
-    "{ infix (~) 5 Left ($a, $b) { $a - $b }; syntax t { | t => 1 ~ 2 };
+    "{ infix (~) 5 Left ($a, $b) { $a - $b }; syntax t { t => 1 ~ 2 };
        infix (~) 5 Left ($a, $b) { $a + $b }; t * 10 + (1 ~ 2) }" ()
 
 let test_m7_template_syntax_visible_in_its_output () =
   check_i64_macro "a template's syntax form is visible in its own output" 42L
-    "{ syntax mk { | mk => { syntax inc { | inc $x => $x + 1 }; inc 41 } }; mk }" ()
+    "{ syntax mk { mk => { syntax inc { inc $x => $x + 1 }; inc 41 } }; mk }" ()
 
 let test_m7_generated_syntax_usable_by_next_form () =
   check_import_i64 "generated syntax named at the use site is usable by the next form"
     [ ("gen", "open (import \"std\");
-               syntax make : Decl { | make $(n : Id) => { syntax $n { | $n $x => $x * 2 } } };
+               syntax make : Decl { make $(n : Id) => { syntax $n { $n $x => $x * 2 } } };
                make double;
                pub r = double 21") ]
     42L "{ M = import \"gen\"; M.r }" ()
@@ -2640,23 +2640,23 @@ let role_conflict label source () =
 
 let test_m7_value_binder_under_syntax () =
   role_conflict "a value binder under a syntax form of its name"
-    "{ syntax answer { | answer => 42 }; { answer = 7; 1 } }" ()
+    "{ syntax answer { answer => 42 }; { answer = 7; 1 } }" ()
 
 let test_m7_syntax_after_value_binder () =
   role_conflict "a syntax form declared where a value of its name is visible"
-    "{ answer = 7; syntax answer { | answer => 42 }; 1 }" ()
+    "{ answer = 7; syntax answer { answer => 42 }; 1 }" ()
 
 let test_m7_fn_param_under_syntax () =
   role_conflict "a parameter named like a syntax form"
-    "{ syntax answer { | answer => 42 }; f = fn(answer) { 1 }; 0 }" ()
+    "{ syntax answer { answer => 42 }; f = fn(answer) { 1 }; 0 }" ()
 
 let test_m7_match_binder_under_syntax () =
   role_conflict "a pattern binder named like a syntax form"
-    "{ syntax answer { | answer => 42 }; match (5) { | answer => 1 } }" ()
+    "{ syntax answer { answer => 42 }; match (5) { answer => 1 } }" ()
 
 let test_m7_syntax_inside_param_region () =
   role_conflict "a syntax form declared inside a parameter's region"
-    "{ f = fn(answer) { syntax answer { | answer => 42 }; 1 }; 0 }" ()
+    "{ f = fn(answer) { syntax answer { answer => 42 }; 1 }; 0 }" ()
 
 let test_m7_value_under_macro () =
   role_conflict "a value binder named like a macro"
@@ -2668,11 +2668,11 @@ let test_m7_value_under_imported_operator () =
 
 let test_m7_sibling_regions_do_not_conflict () =
   check_i64_macro "a parameter and a later syntax form of its name in a sibling region" 42L
-    "{ f = fn(answer) { answer }; { syntax answer { | answer => 42 }; answer } }" ()
+    "{ f = fn(answer) { answer }; { syntax answer { answer => 42 }; answer } }" ()
 
 let test_m7_hygienic_macro_binder_is_apart () =
   check_i64_macro "a macro's own binder named like a syntax form" 1L
-    "{ syntax answer { | answer => 42 }; macro m(_) { quote({ answer = 7; 1 }) }; m(0) }" ()
+    "{ syntax answer { answer => 42 }; macro m(_) { quote({ answer = 7; 1 }) }; m(0) }" ()
 
 let test_m7_fixity_attaches_to_value () =
   check_i64_macro "a fixity declaration attaches to the value of its name" 42L
@@ -2690,19 +2690,19 @@ let open_supplies_role label source () =
 
 let test_m7_open_under_syntax () =
   open_supplies_role "an open supplying a member named like a visible syntax form"
-    "{ M = module { pub answer = 7 }; syntax answer { | answer => 42 }; open M; 1 }" ()
+    "{ M = module { pub answer = 7 }; syntax answer { answer => 42 }; open M; 1 }" ()
 
 let test_m7_syntax_inside_open_region () =
   open_supplies_role "a syntax form declared where an open supplies its name"
-    "{ M = module { pub answer = 7 }; open M; syntax answer { | answer => 42 }; 1 }" ()
+    "{ M = module { pub answer = 7 }; open M; syntax answer { answer => 42 }; 1 }" ()
 
 let test_m7_open_without_conflict () =
   check_i64_macro "an open supplying other names" 7L
-    "{ M = module { pub x = 7 }; syntax answer { | answer => 42 }; open M; x }" ()
+    "{ M = module { pub x = 7 }; syntax answer { answer => 42 }; open M; x }" ()
 
 (* Role visibility gaps left by M7: an imported role is visible in the region
    of the open or binder that imported it, and every open is checked. *)
-let answer_syntax = ("ops", "pub syntax answer { | answer => 42 }")
+let answer_syntax = ("ops", "pub syntax answer { answer => 42 }")
 
 let test_m7_import_open_role_in_region () =
   match eval_with_imported_macros [ answer_syntax ] "{ x = { open (import \"ops\"); answer }; x }" with
@@ -2725,7 +2725,7 @@ let test_m7_import_open_under_syntax () =
   match
     eval_with_imported_macros
       [ ("m_answer", "pub answer = 7");
-        ("user", "syntax answer { | answer => 42 };\nopen (import \"m_answer\");\npub r = 1") ]
+        ("user", "syntax answer { answer => 42 };\nopen (import \"m_answer\");\npub r = 1") ]
       "{ U = import \"user\"; U.r }"
   with
   | exception Elab_error.ElabError (OpenSuppliesRole "answer") -> ()
@@ -2733,7 +2733,7 @@ let test_m7_import_open_under_syntax () =
   | _ -> Alcotest.fail "an import open supplying a name a unit role has must be rejected"
 
 let test_m7_driver_open_under_syntax () =
-  match run_driver "M = module { pub answer = 7 };\nsyntax answer { | answer => 42 };\nopen M;\npub r = 1" with
+  match run_driver "M = module { pub answer = 7 };\nsyntax answer { answer => 42 };\nopen M;\npub r = 1" with
   | exception Elab_error.ElabError (OpenSuppliesRole "answer") -> ()
   | exception e -> Alcotest.fail ("unexpected exception " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "an open the driver elaborates must be checked"
@@ -2742,7 +2742,7 @@ let test_m7_template_written_syntax_invisible () =
   match
     eval_with_imported_macros
       [ ("gen", "open (import \"std\");
-                 syntax make : Decl { | make => { syntax inc { | inc $x => $x + 1 } } };
+                 syntax make : Decl { make => { syntax inc { inc $x => $x + 1 } } };
                  make;
                  pub r = inc 5") ]
       "{ M = import \"gen\"; M.r }"
@@ -2755,14 +2755,24 @@ let test_m7_template_written_syntax_invisible () =
 (* M9: syntax forms are macros filled at expansion; bodies stay unread until
    expansion reaches them; blocks reflect as token trees. *)
 
+(* Rust-style arms: brackets end an arm, otherwise [,] does; [|] is union. *)
+let test_arms_evaluate () =
+  check_i64 "brace and expression arms" 23L
+    "{
+       type Color = Red | Green | Blue;
+       pick = fn(c) { match (c) { Red | Blue => { x = 1; x + 1 } Green => 3, } };
+       syntax twice { twice $x => $x + $x, twice => 0 };
+       pick(Blue) * 10 + twice 1 + match (Green) { Green => if (True) { 1 } else { 2 }, _ => 0 }
+     }" ()
+
 let test_m9_block_tokens_inspected () =
   check_i64_macro "a macro reads a block's tokens" 1L
     "{
        macro sql(q) {
          match (Syntax.tokens(q)) {
-         | Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
-             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) }
-         | _ => Syntax.i64(2)
+         Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
+             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) },
+         _ => Syntax.i64(2)
          }
        };
        sql({ SELECT name FROM users WHERE age > 18 })
@@ -2771,7 +2781,7 @@ let test_m9_block_tokens_inspected () =
 let test_m9_block_hole_in_module_slot () =
   check_import_i64 "a Block hole fills a module body"
     [ ("ns", "open (import \"std\");
-              syntax namespace : Decl { | namespace $(n : Id) $(b : Block) => { pub $n = module $b } };
+              syntax namespace : Decl { namespace $(n : Id) $(b : Block) => { pub $n = module $b } };
               namespace Geometry { pub pi = 3; pub tau = 6 };
               pub answer = Geometry.tau") ]
     6L "{ M = import \"ns\"; M.answer }" ()
@@ -2779,7 +2789,7 @@ let test_m9_block_hole_in_module_slot () =
 let test_m9_body_read_after_earlier_statement () =
   check_i64_macro "a body inside a macro argument reads generated syntax" 12L
     "{
-       syntax make_inc : Decl { | make_inc $(n : Id) => { syntax $n { | $n $x => $x + 1 } } };
+       syntax make_inc : Decl { make_inc $(n : Id) => { syntax $n { $n $x => $x + 1 } } };
        macro twice(e) { quote($e + $e) };
        run = fn(f) { f(()) };
        twice(run(fn(_) { make_inc inc; inc 5 }))
@@ -2788,7 +2798,7 @@ let test_m9_body_read_after_earlier_statement () =
 let test_m9_decl_form_as_block_statement () =
   check_i64_macro "a Decl form binds for the rest of a block" 7L
     "{
-       syntax seven : Decl { | seven $(n : Id) => { $n = 7 } };
+       syntax seven : Decl { seven $(n : Id) => { $n = 7 } };
        seven x;
        x
      }" ()
@@ -2796,7 +2806,7 @@ let test_m9_decl_form_as_block_statement () =
 let test_m9_expand_block_placed_back () =
   check_i64_macro "expanded forms placed back into output" 8L
     "{
-       syntax double { | double $x => $x + $x };
+       syntax double { double $x => $x + $x };
        macro pre(b) { Syntax.expand_block(b) };
        pre({ z = 4; double z })
      }" ()
@@ -2806,7 +2816,7 @@ let test_m9_quote_nested_rule_holes () =
     "{
        M = module {
          macro make_adder(base) : Decl {
-           quote { syntax add_base { | add_base $x => $x + $base }; pub result = add_base 1 + add_base 10; }
+           quote { syntax add_base { add_base $x => $x + $base }; pub result = add_base 1 + add_base 10; }
          };
          make_adder(5)
        };
@@ -2818,7 +2828,7 @@ let test_m9_quote_token_position_hole () =
     "{
        M = module {
          macro make(n) : Decl {
-           match (n) { | Syntax.Var(name) => quote { syntax $name { | $name $x => $x * 2 }; } | _ => quote { } }
+           match (n) { Syntax.Var(name) => quote { syntax $name { $name $x => $x * 2 }; }, _ => quote { } }
          };
          make(double);
          pub r = double 21
@@ -2853,7 +2863,7 @@ let test_m9_param_id_binds () =
 let test_m9_param_pattern () =
   check_i64_macro "a Pattern parameter is read as a pattern" 10L
     "{
-       macro matches(p : Pattern, e) { quote(match ($e) { | $p => 1 | _ => 0 }) };
+       macro matches(p : Pattern, e) { quote(match ($e) { $p => 1, _ => 0 }) };
        matches(Some(_), Some(3)) * 10 + matches(None, Some(3))
      }" ()
 
@@ -2866,9 +2876,9 @@ let test_m9_param_block () =
     "{
        macro sql(q : Block) {
          match (Syntax.tokens(q)) {
-         | Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
-             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) }
-         | _ => Syntax.i64(2)
+         Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
+             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) },
+         _ => Syntax.i64(2)
          }
        };
        sql({ SELECT name FROM users })
@@ -2908,7 +2918,7 @@ let test_m9_param_decl () =
   check_i64_macro "a Decl parameter's items arrive unread" 1L
     "{
        macro unread(d : Decl) {
-         match (d) { | Cons(Syntax.DeclItems(_), Nil) => Syntax.i64(1) | _ => Syntax.i64(0) }
+         match (d) { Cons(Syntax.DeclItems(_), Nil) => Syntax.i64(1), _ => Syntax.i64(0) }
        };
        unread({ a = 1; b = 2 })
      }" ()
@@ -2939,7 +2949,7 @@ let test_m9_param_imported () =
 let erase_scopes stx = Expand.map_ids (fun id -> { id with Syntax.scope = Scope_set.empty }) stx
 
 let test_m9_expansion_idempotent () =
-  let source = "{ syntax double { | double $x => $x + $x }; f = fn(y) { z = double y; match (z) { w => w } }; f(3) }" in
+  let source = "{ syntax double { double $x => $x + $x }; f = fn(y) { z = double y; match (z) { w => w } }; f(3) }" in
   let once, ctx = Parse_expand.parse_expr_with_ctx ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
   let twice = Expand.expand ctx once in
   Alcotest.(check bool) "expanding expanded syntax renames nothing" true (erase_scopes once = erase_scopes twice)
@@ -2963,7 +2973,7 @@ let expanded_body source =
 
 let test_m9_filling_equals_quote () =
   Alcotest.(check bool) "a syntax form fills what its macro's quote evaluates to" true
-    (expanded_body "{ syntax plus1 { | plus1 $x => $x + 1 }; plus1 41 }"
+    (expanded_body "{ syntax plus1 { plus1 $x => $x + 1 }; plus1 41 }"
      = expanded_body "{ macro plus1(x) { quote($x + 1) }; plus1(41) }")
 
 let () =
@@ -3097,15 +3107,15 @@ let () =
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
           Alcotest.test_case "match ctor" `Quick
             (check_i64 "match ctor" 1L
-               "{ type Color = Red | Green; match (Red) { Red => 1 | Green => 2 } }");
+               "{ type Color = Red | Green; match (Red) { Red => 1, Green => 2 } }");
           Alcotest.test_case "match wildcard" `Quick
             (check_i64 "match wildcard" 99L
                "{ type Color = Red | Green | Blue; \
-                match (Green) { Red => 1 | _ => 99 } }");
+                match (Green) { Red => 1, _ => 99 } }");
            Alcotest.test_case "match bind" `Quick
              (check_i64 "match bind" 42L
                 "{ type Option a = Some(a) | None; \
-                  match (Some(42)) { Some(x) => x | None => 0 } }");
+                  match (Some(42)) { Some(x) => x, None => 0 } }");
           Alcotest.test_case "match binder shadows outer" `Quick
             (check_i64 "match binder shadows outer" 7L
                "{ x = 99; match (7) { x => x } }");
@@ -3117,16 +3127,16 @@ let () =
              (check_i64 "match nested" 7L
                 "{ type Option a = Some(a) | None; \
                  match (Some(Some(7))) { \
-                   | Some(Some(x)) => x | Some(None) => 0 | None => 0 } }");
+                   Some(Some(x)) => x, Some(None) => 0, None => 0 } }");
              Alcotest.test_case "recursive parameterized ADT match" `Quick
                 (check_i64 "recursive parameterized ADT match" 1L
                    "{ type MyList(a) = Cons(a, MyList(a)) | Nil; \
-                    match (Cons(1, Nil)) { Cons(x, _) => x | Nil => 0 } }");
+                    match (Cons(1, Nil)) { Cons(x, _) => x, Nil => 0 } }");
               Alcotest.test_case "recursive list sum" `Quick
                 (check_i64 "recursive list sum" 6L
                    "{ type MyList(a) = Cons(a, MyList(a)) | Nil; \
                     rec sum : MyList(I64) -> I64 = fn(xs) { \
-                      match (xs) { Cons(x, rest) => x + sum(rest) | Nil => 0 } }; \
+                      match (xs) { Cons(x, rest) => x + sum(rest), Nil => 0 } }; \
                     sum(Cons(1, Cons(2, Cons(3, Nil)))) }");
              Alcotest.test_case "constructor comma payload distinct from tuple" `Quick
                (check_i64 "constructor comma payload distinct from tuple" 6L
@@ -3139,15 +3149,15 @@ let () =
            Alcotest.test_case "qualified constructor pattern" `Quick
              (check_i64 "qualified constructor pattern" 2L
                 "{ S = module { pub type Color = Red | Green }; \
-                 open S; match (Green) { Red => 1 | Green => 2 } }");
+                 open S; match (Green) { Red => 1, Green => 2 } }");
            Alcotest.test_case "qualified nested constructor pattern" `Quick
              (check_i64 "qualified nested constructor pattern" 7L
                 "{ A = module { pub B = module { pub type T = X(I64) | Y } }; \
-                 open A; open B; match (X(7)) { X(n) => n | Y => 0 } }");
+                 open A; open B; match (X(7)) { X(n) => n, Y => 0 } }");
            Alcotest.test_case "qualified constructor alias pattern" `Quick
              (check_i64 "qualified constructor alias pattern" 1L
                 "{ S = module { pub type Color = Red | Green }; \
-                 N = S; open N; match (Red) { Red => 1 | Green => 2 } }");
+                 N = S; open N; match (Red) { Red => 1, Green => 2 } }");
            Alcotest.test_case "division by zero is a language error" `Quick
              (check_div_by_zero "division by zero" "{ 1 / 0 }");
            Alcotest.test_case "remainder by zero is a language error" `Quick
@@ -3158,11 +3168,11 @@ let () =
            Alcotest.test_case "constructor sharing its type name" `Quick
              (check_i64 "constructor sharing its type name" 7L
                 "{ type T = T(I64) | Y; \
-                 match (T(7)) { T(n) => n | Y => 0 } }");
+                 match (T(7)) { T(n) => n, Y => 0 } }");
            Alcotest.test_case "qualified constructor sharing its type name" `Quick
              (check_i64 "qualified constructor sharing its type name" 7L
                 "{ M = module { pub type T = T(I64) | Y }; \
-                 match (M.T(7)) { M.T(n) => n | M.Y => 0 } }");
+                 match (M.T(7)) { M.T(n) => n, M.Y => 0 } }");
            Alcotest.test_case "duplicate module field resolves to last" `Quick
              (check_i64 "duplicate module field resolves to last" 2L
                 "{ M = module { pub x = 1; pub x = 2 }; M.x }");
@@ -3172,37 +3182,37 @@ let () =
            Alcotest.test_case "open (import std) prelude value in scope" `Quick
              (check_i64 "open import std prelude value" 1L
                 "{ open (import \"std\"); \
-                 match (not(False)) { True => 1 | False => 0 } }");
+                 match (not(False)) { True => 1, False => 0 } }");
           Alcotest.test_case "match int literal hit" `Quick
             (check_i64 "match int literal hit" 10L
-               "match (1) { 1 => 10 | _ => 20 }");
+               "match (1) { 1 => 10, _ => 20 }");
           Alcotest.test_case "match int literal default" `Quick
             (check_i64 "match int literal default" 20L
-               "match (2) { 1 => 10 | _ => 20 }");
+               "match (2) { 1 => 10, _ => 20 }");
            Alcotest.test_case "match literal or-pattern" `Quick
              (check_i64 "match literal or-pattern" 42L
-                "match (1) { (0 | 1) => 42 | _ => 0 }");
+                "match (1) { (0 | 1) => 42, _ => 0 }");
           Alcotest.test_case "match bool literal" `Quick
             (check_i64 "match bool literal" 0L
-               "match (False) { True => 1 | False => 0 }");
+               "match (False) { True => 1, False => 0 }");
           Alcotest.test_case "match unit literal" `Quick
             (check_i64 "match unit literal" 7L
                "match () { () => 7 }");
           Alcotest.test_case "match char literal hit" `Quick
             (check_i64 "match char literal hit" 10L
-               "match ('a') { 'a' => 10 | _ => 20 }");
+               "match ('a') { 'a' => 10, _ => 20 }");
           Alcotest.test_case "match char literal default" `Quick
             (check_i64 "match char literal default" 20L
-               "match ('b') { 'a' => 10 | _ => 20 }");
+               "match ('b') { 'a' => 10, _ => 20 }");
           Alcotest.test_case "match escaped char literal" `Quick
             (check_i64 "match escaped char literal" 1L
-               "match ('\\n') { '\\n' => 1 | _ => 0 }");
+               "match ('\\n') { '\\n' => 1, _ => 0 }");
           Alcotest.test_case "match literal binder fallback" `Quick
             (check_i64 "match literal binder fallback" 42L
-               "match (42) { 0 => 0 | x => x }");
+               "match (42) { 0 => 0, x => x }");
           Alcotest.test_case "match first branch wins" `Quick
             (check_i64 "match first branch wins" 0L
-               "match (1) { _ => 0 | 1 => 1 }");
+               "match (1) { _ => 0, 1 => 1 }");
            Alcotest.test_case "match tagged payload" `Quick
              (check_i64 "match tagged payload" 42L
                 "{ type Wrapper = W(I64); match (W(41)) { W(x) => x + 1 } }");
@@ -3220,7 +3230,7 @@ let () =
                "match ((1, True), 2) { ((x, _), y) => x + y }");
           Alcotest.test_case "match tuple literals" `Quick
             (check_i64 "match tuple literals" 9L
-               "match (False, 1) { (True, x) => x | (False, _) => 9 }");
+               "match (False, 1) { (True, x) => x, (False, _) => 9 }");
           Alcotest.test_case "record field access" `Quick
             (check_i64 "record field access" 1L
                "{ Point = struct { x: I64; y: I64; }; (Point{x = 1; y = 2}).x }");
@@ -3288,7 +3298,7 @@ let () =
             (check_i64 "record pattern literal dispatch" 4L
                "{ Flag = struct { flag: Bool; value: I64; }; \
                 match (Flag{flag = False; value = 3}) { \
-                | Flag {flag = True; value} => value | Flag {flag = False; value} => value + 1 } }");
+                Flag {flag = True; value} => value, Flag {flag = False; value} => value + 1 } }");
            Alcotest.test_case "qualified record pattern" `Quick
              (check_i64 "qualified record pattern" 3L
                 "{ M = module { pub Point = struct { x: I64; y: I64; } }; \
@@ -3308,7 +3318,7 @@ let () =
           Alcotest.test_case "open struct constructors" `Quick
             (check_i64 "open struct constructors" 1L
                "{ Color = module { pub type Color = Red | Green | Blue }; \
-                open Color; match (Red) { Red => 1 | Green => 2 | Blue => 3 } }");
+                open Color; match (Red) { Red => 1, Green => 2, Blue => 3 } }");
         ] );
       ( "module-level open",
         [
@@ -3327,7 +3337,7 @@ let () =
               (check_import_i64 "opened constructors usable in later bindings"
                  [ ("color", "pub type Color = Red | Green");
                    ("user", "open (import \"color\");\npub v = Red") ]
-                 1L "{ M = import \"user\"; match (M.v) { Green => 2 | Red => 1 } }");
+                 1L "{ M = import \"user\"; match (M.v) { Green => 2, Red => 1 } }");
             Alcotest.test_case "inline module open" `Quick
               (check_i64 "inline module open" 3L
                  "{ B = module { pub x = 3 }; M = module { open B; pub y = x }; M.y }");
@@ -3365,11 +3375,11 @@ let () =
             Alcotest.test_case "imported ADT match" `Quick
               (check_import_i64 "imported ADT match"
                  [ ("color", "pub type Color = Red | Green | Blue; pub default = Green") ] 2L
-                 "{ C = import \"color\"; match (C.default) { C.Red => 1 | C.Green => 2 | C.Blue => 3 } }");
+                 "{ C = import \"color\"; match (C.default) { C.Red => 1, C.Green => 2, C.Blue => 3 } }");
             Alcotest.test_case "open imported module exposes constructors" `Quick
               (check_import_i64 "open imported module exposes constructors"
                  [ ("color", "pub type Color = Red | Green") ] 1L
-                 "{ C = import \"color\"; open C; match (Red) { Red => 1 | Green => 2 } }");
+                 "{ C = import \"color\"; open C; match (Red) { Red => 1, Green => 2 } }");
             Alcotest.test_case "imported record field access" `Quick
               (check_import_i64 "imported record field access"
                  [ ("shapes", "pub type Point = struct {x: I64; y: I64}") ] 1L
@@ -3385,25 +3395,25 @@ let () =
             Alcotest.test_case "imported nested constructor pattern" `Quick
               (check_import_i64 "imported nested constructor pattern"
                  [ ("nested", "pub M = module { pub type T = X(I64) | Y }") ] 7L
-                 "{ N = import \"nested\"; match (N.M.X(7)) { N.M.X(n) => n | N.M.Y => 0 } }");
+                 "{ N = import \"nested\"; match (N.M.X(7)) { N.M.X(n) => n, N.M.Y => 0 } }");
             Alcotest.test_case "imported module alias pattern" `Quick
               (check_import_i64 "imported module alias pattern"
                  [ ("color", "pub type Color = Red | Green") ] 1L
-                 "{ C = import \"color\"; Alias = C; match (C.Red) { Alias.Red => 1 | Alias.Green => 2 } }");
+                 "{ C = import \"color\"; Alias = C; match (C.Red) { Alias.Red => 1, Alias.Green => 2 } }");
             Alcotest.test_case "imported public effect handler" `Quick
               (check_import_i64 "imported public effect handler"
                  [ ("effects", "pub effect Exc = sig { raise : I64 -> I64 }") ] 2L
-                 "{ E = import \"effects\"; match (perform E.Exc.raise(1)) { x => x | effect E.Exc.raise n => n + 1 } }");
+                 "{ E = import \"effects\"; match (perform E.Exc.raise(1)) { x => x, effect E.Exc.raise n => n + 1 } }");
             Alcotest.test_case "open imported module exposes effect" `Quick
               (check_import_i64 "open imported module exposes effect"
                  [ ("effects", "pub effect Exc = sig { raise : I64 -> I64 }") ] 2L
-                 "{ E = import \"effects\"; open E; match (perform Exc.raise(1)) { x => x | effect Exc.raise n => n + 1 } }");
+                 "{ E = import \"effects\"; open E; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } }");
             Alcotest.test_case "imported public parameterized effect handler" `Quick
               (check_import_i64 "imported public parameterized effect handler"
                  [ ("effects", "pub effect State(S) = sig { get : Unit -> S }") ] 42L
                  "{ E = import \"effects\"; \
                   StateI64 = E.State(I64); \
-                  match (perform StateI64.get(())) { x => x | effect StateI64.get () => 42 } }");
+                  match (perform StateI64.get(())) { x => x, effect StateI64.get () => 42 } }");
             Alcotest.test_case "imported latent effect function" `Quick
               (check_import_i64 "imported latent effect function"
                  [ ( "effects",
@@ -3412,7 +3422,7 @@ let () =
                  7L
                  "{ E = import \"effects\"; \
                   StateI64 = E.State(I64); \
-                  match (E.read(())) { x => x | effect StateI64.get () => 7 } }");
+                  match (E.read(())) { x => x, effect StateI64.get () => 7 } }");
             Alcotest.test_case "imported parameterized handler distinguishes instances" `Quick
               (check_import_i64 "imported parameterized handler distinguishes instances"
                  [ ("effects", "pub effect State(S) = sig { get : Unit -> S }") ] 1L
@@ -3420,9 +3430,9 @@ let () =
                   StateI64 = E.State(I64); \
                   StateBool = E.State(Bool); \
                   match (if (perform StateBool.get(())) { perform StateI64.get(()) } else { 0 }) { \
-                    x => x \
-                  | effect StateI64.get () => resume(1) \
-                  | effect StateBool.get () => resume(True) \
+                    x => x, \
+                  effect StateI64.get () => resume(1), \
+                  effect StateBool.get () => resume(True) \
                   } }");
         ] );
       ( "conv",
@@ -3658,6 +3668,7 @@ let () =
         ] );
       ( "m9 forms",
         [
+          Alcotest.test_case "rust-style arms evaluate" `Quick test_arms_evaluate;
           Alcotest.test_case "a macro reads a block's tokens" `Quick test_m9_block_tokens_inspected;
           Alcotest.test_case "a Block hole fills a module body" `Quick test_m9_block_hole_in_module_slot;
           Alcotest.test_case "a body in a macro argument reads generated syntax" `Quick test_m9_body_read_after_earlier_statement;

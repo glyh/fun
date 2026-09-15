@@ -338,16 +338,37 @@ let split_by_top_level_bar terms = split_by_top_level (token_kind Bar) terms
 let split_type_chain terms =
   split_by_top_level (fun term -> match term.datum with Token { kind = Ident "and"; _ } -> true | _ -> false) terms
 
-(* Arms are split by the rule "a pattern holds no bare [=>], a result holds no
-   bare [|]": a [|] ends an arm only once its [=>] has been seen. *)
+(* Arms - match arms, effect branches, syntax rules - are [pattern => result],
+   ended by brackets or a comma: a result that is exactly one [{ … }] group
+   ends at its [}] (a comma after it is optional); any other result ends at the
+   next top-level [,]. A [|] belongs to the pattern (union). An arm with no
+   [=>] is returned whole, for the caller to name what it lacks. *)
 let split_match_branches terms =
-  let rec go seen_arrow current acc = function
-    | [] -> List.rev (List.rev current :: acc)
-    | term :: rest when token_kind Bar term && drop_separators current = [] -> go false current acc rest
-    | term :: rest when token_kind Bar term && seen_arrow -> go false [] (List.rev current :: acc) rest
-    | term :: rest -> go (seen_arrow || is_fat_arrow term) (term :: current) acc rest
+  let skip_comma = function term :: rest when token_kind Comma term -> rest | rest -> rest in
+  let rec go acc terms =
+    match drop_separators terms with
+    | [] -> List.rev acc
+    | term :: _ when token_kind Bar term ->
+        error "an arm does not begin with |: write pattern => result, … (| is pattern union)"
+    | terms -> (
+        match split_at_fat_arrow terms with
+        | None -> List.rev (terms :: acc)
+        | Some (pattern, arrow, ({ datum = Group (Raw_syntax.Brace, _, _); _ } as body) :: after) ->
+            let after = skip_comma after in
+            if drop_separators after <> [] && Option.is_none (split_at_fat_arrow after) then
+              error "an arm whose result is { … } ends at its }: parenthesise a longer result, pattern => ({ … } …)";
+            go ((pattern @ [ arrow; body ]) :: acc) after
+        | Some (pattern, arrow, result) ->
+            let result, after =
+              match split_at_token Comma result with
+              | Some (result, _, after) -> (result, after)
+              | None -> (result, [])
+            in
+            if Option.is_some (split_at_fat_arrow result) then
+              error "an arm's result ends at , before the next arm: pattern => result, pattern => …";
+            go ((pattern @ (arrow :: result)) :: acc) after)
   in
-  go false [] [] terms |> List.filter (fun part -> drop_separators part <> [])
+  go [] terms
 
 (* [module { … }], [sig { … }], [struct { … }]: the items of a brace group. *)
 let brace_body what terms =
