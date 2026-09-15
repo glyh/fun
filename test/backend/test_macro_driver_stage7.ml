@@ -6,7 +6,7 @@ let id name = Syntax.fresh_id name
 
 (* Macro applications are calls under the evaluation budget (M5). The tests run
    them under a tiny limit so exhaustion is cheap to reach. *)
-let with_limit ctx limit f = Eval_budget.start ~limit:(Some limit) ctx.Expand_ctx.budget f
+let with_limit ctx limit f = Eval_budget.start ~limit:(Some limit) ~demand:"a test" ctx.Expand_ctx.budget f
 
 (* An overrun inside an application is that application's error (ticket
    expansion-errors-reach-the-user-raw): it names the macro, not a raw budget

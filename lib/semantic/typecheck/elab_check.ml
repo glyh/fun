@@ -85,7 +85,7 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
         in
         let ctx_with_self = Ctx.bind ctx name rec_ty in
         let val_core = ops.check ctx_with_self value rec_ty in
-        let fix_core = Fix val_core in
+        let fix_core = Fix (name, val_core) in
         let fix_val = Ctx.eval ctx fix_core in
         let ty_term = Ctx.quote ctx rec_ty in
         let ctx' = Ctx.define ctx name rec_ty fix_val in

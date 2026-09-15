@@ -220,7 +220,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
       let val_core, val_ty = ops.infer value_ctx value in
       (if recursive then Ctx.unify ctx rec_ty val_ty);
-      let val_core = if recursive then Fix val_core else val_core in
+      let val_core = if recursive then Fix (name, val_core) else val_core in
       let val_val = Ctx.eval ctx val_core in
       let kind = if public then Public else Private in
       let bind = LetBind (name, kind, val_core) in
@@ -365,7 +365,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         in
         let ctx_with_self = Ctx.bind ctx name rec_ty in
         let val_core = ops.check ctx_with_self value rec_ty in
-        let fix_core = Fix val_core in
+        let fix_core = Fix (name, val_core) in
         let fix_val = Ctx.eval ctx fix_core in
         let ty_term = Ctx.quote ctx rec_ty in
         let ctx' = Ctx.define ctx name rec_ty fix_val in
@@ -676,7 +676,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
             let val_core, val_ty = ops.infer value_ctx value in
             (if recursive then Ctx.unify ctx rec_ty val_ty);
-            let val_core = if recursive then Fix val_core else val_core in
+            let val_core = if recursive then Fix (name, val_core) else val_core in
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
             let bind = LetBind (name, kind, val_core) in

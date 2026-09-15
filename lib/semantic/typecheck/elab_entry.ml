@@ -51,7 +51,7 @@ let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
 (* A budget overrun surfaces from deep inside the evaluator; the checker reports
    it as an elaboration error like any other. *)
 let reporting_budget f =
-  try f () with Eval_budget.Exceeded { limit; call } -> raise (ElabError (EvaluationBudgetExceeded { limit; call }))
+  try f () with Eval_budget.Exceeded { limit; call; demand; site } -> raise (ElabError (EvaluationBudgetExceeded { limit; call; demand; site }))
 
 let on_expr ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in

@@ -28,7 +28,7 @@ type elab_error =
   | MissingTraitImplementation of string
   | MacroDidNotReturnSyntax of string
   | QuoteHoleKindConflict of string
-  | EvaluationBudgetExceeded of { limit : int; call : string }
+  | EvaluationBudgetExceeded of { limit : int; call : string; demand : string; site : Eval_budget.site option }
   | OpenSuppliesRole of string
       (** M7: an open supplies a member named like a syntax form, operator or
           macro visible in its region. *)
@@ -65,8 +65,8 @@ let string_of_elab_error = function
   | MissingTraitImplementation n -> "MissingTraitImplementation \"" ^ n ^ "\""
   | MacroDidNotReturnSyntax n -> "MacroDidNotReturnSyntax \"" ^ n ^ "\""
   | QuoteHoleKindConflict n -> "QuoteHoleKindConflict \"" ^ n ^ "\""
-  | EvaluationBudgetExceeded { limit; call } ->
-      Printf.sprintf "EvaluationBudgetExceeded %d \"%s\"" limit call
+  | EvaluationBudgetExceeded { limit; call; demand; site } ->
+      "EvaluationBudgetExceeded \"" ^ Eval_budget.message ~limit ~call ~demand ~site ^ "\""
   | OpenSuppliesRole n -> "OpenSuppliesRole \"" ^ n ^ "\""
 
 let () =

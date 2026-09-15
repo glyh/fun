@@ -202,10 +202,10 @@ and macro_runtime = {
   let quote (ctx : t) (v : value) : term = Nbe.quote ctx.metas ctx.lvl v
 
   let unify (ctx : t) (v1 : value) (v2 : value) : unit =
-    Unify.unify ctx.metas ctx.env ctx.lvl v1 v2
+    Eval_budget.demanding ctx.metas.budget "a unification" (fun () -> Unify.unify ctx.metas ctx.env ctx.lvl v1 v2)
 
   let try_unify (ctx : t) (v1 : value) (v2 : value) : bool =
-    Unify.try_unify ctx.metas ctx.env ctx.lvl v1 v2
+    Eval_budget.demanding ctx.metas.budget "a unification" (fun () -> Unify.try_unify ctx.metas ctx.env ctx.lvl v1 v2)
 
   let conv (ctx : t) (v1 : value) (v2 : value) : bool =
     Nbe.conv ctx.metas ctx.lvl v1 v2

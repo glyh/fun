@@ -316,7 +316,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           | VModule { entries; partial = _ } ->
               eval_result mc (push_opened_values env entries) body
           | _ -> fail mc "open of non-module")
-  | Fix body -> Done (VFix { body = { env; body } })
+  | Fix (name, body) -> Done (VFix { name; body = { env; body } })
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in
       sequence_values mc env params (fun param_vals ->
@@ -476,15 +476,16 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VLam { body = clo; _ } ->
       spend_call mc clo;
       eval_result mc (va :: clo.env) clo.body
-  | VFix { body = clo; _ } ->
+  | VFix { name; body = clo } ->
       (* Only fixpoints can diverge, so only they wait for a closed call.
          Unfolding is charged too: a fixpoint that unfolds to another fixpoint
          would otherwise loop without ever making a call. *)
       if Eval_budget.checking mc.MetaContext.budget && not (closed mc va) then
-        Done (VNeutral { ty = VU; neutral = { head = HFix clo; frames = [ FApp va ] } })
+        Done (VNeutral { ty = VU; neutral = { head = HFix (name, clo); frames = [ FApp va ] } })
       else begin
+        mc.MetaContext.budget.calling <- Some name;
         spend_call mc clo;
-        let self = VFix { body = clo } in
+        let self = VFix { name; body = clo } in
         match eval mc (self :: clo.env) clo.body with
         | VLam { body = lam } -> eval_result mc (va :: lam.env) lam.body
         | unfolded -> apply_result mc unfolded va
@@ -535,7 +536,7 @@ and closed (mc : MetaContext.t) (v : value) : bool =
       closed mc domain
       && closure_closed mc ~binders:1 { env = effects.env; body = EffectRowLit { effects = effects.effects; tail = effects.tail } }
       && closure_closed mc ~binders:1 codomain
-  | VLam { body } | VFix { body } -> closure_closed mc ~binders:1 body
+  | VLam { body } | VFix { body; _ } -> closure_closed mc ~binders:1 body
   | VEffectRow { effect_values; tail_value } -> all effect_values && Option.fold ~none:true ~some:(closed mc) tail_value
   | VU | VPatternSyn _ | VEffectRowTy | VAtom _ | VAtomTy _ | VModule _ | VStruct _
   | VTrait _ | VRef _ | VCont _ | VStx _ ->
@@ -548,6 +549,9 @@ and closure_closed (mc : MetaContext.t) ~binders (clo : closure) : bool =
 
 and spend_call (mc : MetaContext.t) (clo : closure) =
   Eval_budget.spend mc.MetaContext.budget ~call:(fun () ->
+      match mc.MetaContext.budget.calling with
+      | Some name -> name
+      | None ->
       let body = Debug.pp_term clo.body in
       if String.length body <= 120 then body else String.sub body 0 120 ^ "…")
 
@@ -1098,15 +1102,15 @@ let conv_pat = Nbe_quote.conv_pat
    evaluation under the budget (see [Eval_budget]); the evaluator's own
    recursion above binds the unwrapped functions, so re-entry spends from the
    same request. [run] is the one entry that runs a program, with no limit. *)
-let request mc f = Eval_budget.request mc.MetaContext.budget f
+let request ~demand mc f = Eval_budget.request ~demand mc.MetaContext.budget f
 let run mc env t = Eval_budget.run mc.MetaContext.budget (fun () -> eval mc env t)
-let eval mc env t = request mc (fun () -> eval mc env t)
-let apply mc f a = request mc (fun () -> apply mc f a)
-let closure_apply mc c v = request mc (fun () -> closure_apply mc c v)
-let eval_effect_row_closure mc row binder = request mc (fun () -> eval_effect_row_closure mc row binder)
-let force mc v = match v with VFlex _ -> request mc (fun () -> force mc v) | _ -> v
-let quote mc depth value = request mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
-let conv mc depth lhs rhs = request mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)
+let eval mc env t = request ~demand:"an evaluation" mc (fun () -> eval mc env t)
+let apply mc f a = request ~demand:"an application" mc (fun () -> apply mc f a)
+let closure_apply mc c v = request ~demand:"an application" mc (fun () -> closure_apply mc c v)
+let eval_effect_row_closure mc row binder = request ~demand:"an effect row" mc (fun () -> eval_effect_row_closure mc row binder)
+let force mc v = match v with VFlex _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v) | _ -> v
+let quote mc depth value = request ~demand:"a normalisation" mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
+let conv mc depth lhs rhs = request ~demand:"a conversion" mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)
 
 (* How a macro is applied (the expander's [eval_and_apply]): with fresh metas,
    since an application solves nothing its caller needs, under the budget of the

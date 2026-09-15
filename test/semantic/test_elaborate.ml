@@ -1569,8 +1569,20 @@ let budget_exceeded source () =
   | exception Elaborate.ElabError (Elaborate.EvaluationBudgetExceeded _) -> ()
   | _ -> Alcotest.fail ("expected an evaluation budget error: " ^ source)
 
+(* The overrun names the fixpoint it was calling, the request that demanded
+   the evaluation, and where the elaborator was. *)
+let budget_message source expected () =
+  match elab source with
+  | exception Elaborate.ElabError (Elaborate.EvaluationBudgetExceeded { limit; call; demand; site }) ->
+      Alcotest.(check string) source expected (Eval_budget.message ~limit ~call ~demand ~site)
+  | _ -> Alcotest.fail ("expected an evaluation budget error: " ^ source)
+
 let evaluation_budget =
   [
+    Alcotest.test_case "a budget error names the call, the demand and the form" `Quick
+      (budget_message "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(y : loop(0)) { 1 }; 2 }"
+         "evaluation exceeded the budget of 1000000 calls while type checking: calling loop, in an evaluation \
+          while reading the type at <unknown>:1:57-1:64 (the budget cannot yet be raised from source)");
     Alcotest.test_case "a divergent type is a budget error" `Quick
       (budget_exceeded "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(y : loop(0)) { 1 }; 2 }");
     Alcotest.test_case "a call mentioning an unknown variable costs nothing" `Quick
