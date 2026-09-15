@@ -38,3 +38,12 @@ exported the same way as values).
   projects the impl positionally; or never re-export impls.
 - Also not re-exported: a unit's procedural macros; a role selected by name
   (`export Ops.{answer}` where `answer` is only a role) is `ExportUnknownMember`.
+
+## Grilled (2026-09-16): impls travel only when named
+
+`export M` re-exports `M`'s **named** public impls like any member
+(`pub eq_point = impl Eq(Point) …` → `Lib.eq_point`, and `open Lib` brings it into
+trait resolution). An unnamed public impl in `M` is not exported: `export M` is
+an error naming it and asking for a name (never silently dropped) — consistent
+with impls required by a signature being named. The same impl reached through two
+paths counts once (identity).

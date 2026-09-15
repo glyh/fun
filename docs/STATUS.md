@@ -3,11 +3,25 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after enum expressions, 2026-09-16.
+Last updated: after effect arrows, 2026-09-16.
 
 ---
 
 ## Completed
+
+### Effects on the arrow; `~>`; bound sets (2026-09-16)
+
+- A row sits on its arrow: `A ->{Log, Exc} B`, open `A ->{Log | e} B`, a variable
+  alone `A ->{e} B`, inferred `A ->{_} B` (unsolved at the entry is
+  `UnsolvedEffectRow`). A bare arrow is pure. `can` is deleted.
+- `~>` (a base role): a parameter's `~>` mints a row variable bound implicitly at
+  the signature (`Elab_poly_arrows`); a result's `~>` carries its parameters'
+  variables, and on a definition also what the body performs. A result uniting
+  two variables is `UnsupportedRowUnion` (one tail per row, E2).
+- Definitions: `fn(n : I64) : I64 { … }` when pure, `fn(n : I64) ->{Log} I64 { … }`
+  or `fn(g : Unit ~> I64) ~> I64 { … }` when not; `pub method m() ->{Exc} I64 { … }`.
+- Trait bounds are a set: `[A : {Eq, Show}]` (a single bound may stay bare).
+- Row unification sends each side's unnamed effects to the other side's tail.
 
 
 ### `export`; block-level enum groups (2026-09-16)

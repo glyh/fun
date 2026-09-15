@@ -208,6 +208,7 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Annotated { inner; typ } -> e "RawAnnotated" [ x inner; x typ ]
   | Prod xs -> e "RawProd" [ w_list ns x xs ]
   | ProdTy xs -> e "RawProdTy" [ w_list ns x xs ]
+  | TraitBoundSet xs -> e "RawTraitBoundSet" [ w_list ns x xs ]
   | Arrow (ex, name, dom, row, cod) ->
       e "RawArrow" [ w_explicitness ns ex; w_option ns (w_id ns) name; x dom; w_option ns (w_effect_row ns) row; x cod ]
   | FieldAccess (r, f) -> e "RawFieldAccess" [ x r; w_string f ]
@@ -261,6 +262,7 @@ and w_role ns (r : Syntax.role) =
     | CallMacro -> con ns.role_meaning "CallMacro" []
     | Rules { rules_kind; rules } -> con ns.role_meaning "Rules" [ w_macro_ann ns rules_kind; w_list ns (w_rule ns) rules ]
     | OrderGroup -> con ns.role_meaning "OrderGroup" []
+    | PolyArrow -> con ns.role_meaning "PolyArrow" []
   in
   con ns.role "MkRole"
     [ w_fixity ns r.fixity; w_option ns (w_order ns) r.order; meaning; w_span ns r.declared_at;
@@ -307,7 +309,7 @@ and w_param ns (p : Syntax.param) =
       w_explicitness ns p.explicitness ]
 
 and w_effect_row ns (row : Syntax.effect_row) =
-  con ns.effect_row "MkEffectRow" [ w_list ns (w_expr ns) row.effects; w_option ns (w_expr ns) row.tail; w_bool ns row.inferred ]
+  con ns.effect_row "MkEffectRow" [ w_list ns (w_expr ns) row.effects; w_option ns (w_expr ns) row.tail; w_bool ns row.inferred; w_bool ns row.polymorphic ]
 
 and w_effect_op ns (op : Syntax.effect_op) =
   con ns.effect_op "MkEffectOp" [ w_string op.name; w_expr ns op.input; w_expr ns op.output ]
@@ -561,6 +563,7 @@ let rec u_expr ns (v : value) : Syntax.t option =
       | "RawAnnotated", [ inner; typ ] -> let* inner = x inner in let* typ = x typ in mk (Annotated { inner; typ })
       | "RawProd", [ xs ] -> let* xs = u_list ns x xs in mk (Prod xs)
       | "RawProdTy", [ xs ] -> let* xs = u_list ns x xs in mk (ProdTy xs)
+      | "RawTraitBoundSet", [ xs ] -> let* xs = u_list ns x xs in mk (TraitBoundSet xs)
       | "RawArrow", [ ex; name; dom; row; cod ] ->
           let* ex = u_explicitness ns ex in
           let* name = u_option ns (u_id ns) name in
@@ -676,6 +679,7 @@ and u_role ns v : Syntax.role option =
             let* rules = u_list ns (u_rule ns) rules in
             Some (Syntax.Rules { rules_kind; rules })
         | Some ("OrderGroup", []) -> Some Syntax.OrderGroup
+        | Some ("PolyArrow", []) -> Some Syntax.PolyArrow
         | _ -> None
       in
       let* declared_at = u_span ns declared_at in
@@ -772,11 +776,12 @@ and u_param ns v : Syntax.param option =
 
 and u_effect_row ns v : Syntax.effect_row option =
   match payload ns.effect_row v with
-  | Some ("MkEffectRow", [ effects; tail; inferred ]) ->
+  | Some ("MkEffectRow", [ effects; tail; inferred; polymorphic ]) ->
       let* effects = u_list ns (u_expr ns) effects in
       let* tail = u_option ns (u_expr ns) tail in
       let* inferred = u_bool ns inferred in
-      Some { Syntax.effects; tail; inferred }
+      let* polymorphic = u_bool ns polymorphic in
+      Some { Syntax.effects; tail; inferred; polymorphic }
   | _ -> None
 
 and u_effect_op ns v : Syntax.effect_op option =

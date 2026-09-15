@@ -713,7 +713,7 @@ let arm_suite =
   ]
 
 let brace_syntax_suite =
-  [ Alcotest.test_case "-> body rejected" `Quick (rejected_with "-> body was removed" parse "fn(x) -> x");
+  [ Alcotest.test_case "-> body rejected" `Quick (rejected_with "a pure result is written : T" parse "fn(x) -> x");
     Alcotest.test_case "do block rejected" `Quick (rejected_with "blocks were removed" parse "do 1 end");
     Alcotest.test_case "match without parens rejected" `Quick (rejected_with "match (scrutinee)" parse "match x { _ => 1 }");
     Alcotest.test_case "match arm needs =>" `Quick (rejected_with "=>" parse "match (x) { _ -> 1 }");

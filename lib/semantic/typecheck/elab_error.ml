@@ -14,6 +14,10 @@ type elab_error =
   | MissingRecordField of string
   | DuplicateEffectOperation of string
   | ExpectedEffect
+  | UnsupportedRowUnion of int
+  | PolyArrowOutsideSignature
+  | RowVariableAmongEffects
+  | UnsolvedEffectRow
   | DuplicateEffect
   | DuplicateEffectBranch of string
   | UnknownEffectOperation of string
@@ -28,6 +32,7 @@ type elab_error =
   | UnknownTrait of string
   | UnknownTraitMethod of string
   | DuplicateTraitField of string
+  | DuplicateTraitBound of string
   | MissingTraitField of string
   | AmbiguousTraitImplementation of string
   | MissingTraitImplementation of string
@@ -72,6 +77,10 @@ let string_of_elab_error = function
   | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
   | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
   | ExpectedEffect -> "ExpectedEffect"
+  | UnsupportedRowUnion n -> Printf.sprintf "UnsupportedRowUnion %d: a row holds one row variable; a union of %d is not supported yet" n n
+  | PolyArrowOutsideSignature -> "PolyArrowOutsideSignature: ~> is read where it sits in a signature (a parameter or result position)"
+  | RowVariableAmongEffects -> "RowVariableAmongEffects: a row variable next to effects is the row's tail; write {Log | e}"
+  | UnsolvedEffectRow -> "UnsolvedEffectRow: can't infer the effects of a ->{_} arrow; write ->{…} or a pure ->"
   | DuplicateEffect -> "DuplicateEffect"
   | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
   | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
@@ -85,6 +94,7 @@ let string_of_elab_error = function
   | UnknownTrait n -> "UnknownTrait \"" ^ n ^ "\""
   | UnknownTraitMethod n -> "UnknownTraitMethod \"" ^ n ^ "\""
   | DuplicateTraitField n -> "DuplicateTraitField \"" ^ n ^ "\""
+  | DuplicateTraitBound n -> "DuplicateTraitBound \"" ^ n ^ "\""
   | MissingTraitField n -> "MissingTraitField \"" ^ n ^ "\""
   | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""
   | MissingTraitImplementation n -> "MissingTraitImplementation \"" ^ n ^ "\""

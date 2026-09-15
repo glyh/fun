@@ -74,7 +74,8 @@ let on_expr_effects ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value * Ela
 
 (* A program's entry: what it leaves unhandled is an error, not a run-time crash. *)
 let on_expr ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value =
+  let since = MetaContext.count ctx.metas in
   let core, ty, effects = on_expr_effects ?loader ctx expr in
-  reporting_budget (fun () -> Elab_effects.require_handled_at_entry ctx effects);
+  reporting_budget (fun () -> Elab_effects.require_handled_at_entry ~since ctx effects);
   (core, ty)
 

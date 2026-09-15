@@ -37,7 +37,6 @@ let keyword = function
   | "ref" -> Some KwRef
   | "deref" -> Some KwDeref
   | "rec" -> Some KwRec
-  | "can" -> Some KwCan
   | "perform" -> Some KwPerform
   | "resume" -> Some KwResume
   | "method" -> Some KwMethod
@@ -191,7 +190,6 @@ let read ?file source =
     | KwRef -> "ref"
     | KwDeref -> "deref"
     | KwRec -> "rec"
-    | KwCan -> "can"
     | KwPerform -> "perform"
     | KwResume -> "resume"
     | KwMethod -> "method"

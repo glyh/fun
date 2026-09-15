@@ -80,7 +80,7 @@ and map_rule_default m (r : rule) : rule =
 and map_role m (role : role) : role =
   match role.meaning with
   | Rules { rules_kind; rules } -> { role with meaning = Rules { rules_kind; rules = List.map (m.rule m) rules } }
-  | ApplyValue | AssignRef | CallMacro | OrderGroup -> role
+  | ApplyValue | AssignRef | CallMacro | OrderGroup | PolyArrow -> role
 
 and map_capture m c =
   match m.capture c with
@@ -120,6 +120,7 @@ and go_kind m (k : kind) : kind =
   | Annotated { inner; typ } -> Annotated { inner = go inner; typ = go typ }
   | Prod xs -> Prod (List.map go xs)
   | ProdTy xs -> ProdTy (List.map go xs)
+  | TraitBoundSet xs -> TraitBoundSet (List.map go xs)
   | Arrow (expl, name, dom, eff, cod) ->
     Arrow (expl, Option.map on_id name, go dom, Option.map (map_effect_row go) eff, go cod)
   | FieldAccess (e, n) -> FieldAccess (go e, n)
@@ -718,6 +719,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind = Annotated { inner = expand ctx inner; typ = expand ctx typ } }
   | Prod xs -> { stx with kind = Prod (List.map (expand ctx) xs) }
   | ProdTy xs -> { stx with kind = ProdTy (List.map (expand ctx) xs) }
+  | TraitBoundSet xs -> { stx with kind = TraitBoundSet (List.map (expand ctx) xs) }
   | Arrow (expl, Some name, dom, eff, cod) ->
     let dom = expand ctx dom in
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:name.name ~base_scope:name.scope () in

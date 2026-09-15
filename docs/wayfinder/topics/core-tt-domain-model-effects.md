@@ -43,15 +43,19 @@ conversion).
 
 **Status: enforced by construction.** Concrete effects are order-insensitive
 and duplicate-free; a row tail flattens into the prefix
-(`normalize_effect_row_value`). Closed rows (`can {IO}`), open rows (`can {IO |
+(`normalize_effect_row_value`). Closed rows (`->{IO}`), open rows (`->{IO |
 r}`) and row metavariables all normalise to this shape before conversion.
 
 ### E3 — a bare arrow is pure
 
 **Status: implemented (2026-09-15).** In the
-model `A -> B` means `A -> B can {}`; `A -> B can _` infers the row (Koka's
-`_e`), generalised at `let`, which is where effect polymorphism comes from;
-`~>` is prelude sugar for the inferred form ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md), closed). Remaining distance: `~>` is not read in type annotations, which use a separate type grammar. Methods follow the same rule: pure unless `can` declares a row ([methods-follow-the-arrow-rule](../tickets/methods-follow-the-arrow-rule.md), closed).
+model `A -> B` means `A ->{} B`; a row sits on its arrow (`A ->{IO} B`, open
+`A ->{IO | e} B`), `A ->{_} B` infers it and is an error when nothing solves it,
+and `~>` is effect polymorphism: a parameter's `~>` mints a row variable bound at
+the signature, a result's collects them ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md),
+[effect-arrow-syntax](../tickets/effect-arrow-syntax.md), closed). Remaining
+distance: a result uniting two row variables needs multi-tail rows, which E2
+rules out. Methods follow the same rule: pure unless `->{E} T` declares a row ([methods-follow-the-arrow-rule](../tickets/methods-follow-the-arrow-rule.md), closed).
 
 ### E4 — the checker evaluates pure closed terms under a budget
 
@@ -71,8 +75,8 @@ closed). Running a program stays unbudgeted. Effects are computed in
 the one inference pass, and a let is evaluated at check time only when its value
 performs nothing. Distance: refs contribute no effect, so a ref-using value still
 counts as pure ([refs-in-effect-rows](../tickets/refs-in-effect-rows.md));
-and a fixpoint counts as pure only with a written `can {}`, since a bare arrow's
-row is still open ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md)).
+and (historically) a fixpoint counted as pure only with a written empty row, before a bare arrow
+was pure ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md)).
 
 ### E5 — handling is lexical, not dynamic
 
@@ -180,7 +184,7 @@ Checked against main on 2026-09-15 (probes in the effects audit).
   **Reference** for the branded cell — `Ref(h, A)` under the surface `Ref(A)`.
   Not `region` (that is lifetime inference's word), not `Ref` as an effect.
 - **Mutation effect** as the trio `Alloc`/`Read`/`Write` — not a merged `Mut`,
-  not `can Ref`.
+  not a `Ref` row.
 - **Discharge** for dropping a non-escaping heap's effects at generalisation.
   Not `mask` — Koka's written `mask` is a different thing.
 - **Evaluation budget** measuring work — one budget shared with macro

@@ -26,8 +26,8 @@ let single_trait_bound_shape () =
   | _ -> Alcotest.fail "expected single trait bound"
 
 let multi_trait_bound_shape () =
-  match parse_expr "[A : Eq + Jsonable] -> A" with
-  | Arrow (Implicit, Some "A", Ap (Ap (Var "+", Explicit, Var "Eq"), Explicit, Var "Jsonable"), None, Var "A") -> ()
+  match parse_expr "[A : {Eq, Jsonable}] -> A" with
+  | Arrow (Implicit, Some "A", TraitBoundSet [ Var "Eq"; Var "Jsonable" ], None, Var "A") -> ()
   | _ -> Alcotest.fail "expected multi trait bound"
 
 let ref_new_shape () =

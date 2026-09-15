@@ -44,7 +44,7 @@ let is_wildcard_term (term : Raw_syntax.t) = match term.datum with Token { kind 
 
 let parse_effect_row_terms callbacks terms =
   match drop_separators terms with
-  | [] -> { Syntax.effects = []; tail = None; inferred = false }
+  | [] -> { Syntax.effects = []; tail = None; inferred = false; polymorphic = false }
   | _ -> (
       match split_at_token Bar terms with
       | Some (effect_terms, _, tail_terms) ->
@@ -54,32 +54,12 @@ let parse_effect_row_terms callbacks terms =
             | _ -> List.map callbacks.parse_expr_terms (split_commas effect_terms)
           in
           (match drop_separators tail_terms with
-           | [ wild ] when is_wildcard_term wild -> { Syntax.effects = effects; tail = None; inferred = true }
-           | _ -> { Syntax.effects = effects; tail = Some (callbacks.parse_expr_terms tail_terms); inferred = false })
-      | None -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None; inferred = false })
-
-let parse_can_effect_row callbacks terms =
-  match drop_separators terms with
-  | { datum = Group (Raw_syntax.Brace, items, _); _ } :: rest ->
-      (parse_effect_row_terms callbacks items, rest)
-  | wild :: rest when is_wildcard_term wild -> ({ Syntax.effects = []; tail = None; inferred = true }, rest)
-  | rest ->
-      let eff, rest = callbacks.parse_expr_prec Tight rest in
-      ({ Syntax.effects = [ eff ]; tail = None; inferred = false }, rest)
-
-let attach_effects (lhs : Syntax.t) (eff : Syntax.effect_row) =
-  match lhs.kind with
-  | Syntax.Arrow (expl, name, dom, None, cod) ->
-      (* The arrow's span covers its row: a binder's scope reaches only the
-         region its form spans, and a row naming the binder sits inside it. *)
-      let span =
-        match (eff.tail, List.rev eff.effects) with
-        | Some last, _ | None, last :: _ -> span_between lhs.span last.Syntax.span
-        | None, [] -> lhs.span
-      in
-      { Syntax.kind = Syntax.Arrow (expl, name, dom, Some eff, cod); span }
-  | Syntax.Arrow _ -> error "duplicate effect annotation"
-  | _ -> error "can annotation requires an arrow"
+           | [ wild ] when is_wildcard_term wild -> { Syntax.effects = effects; tail = None; inferred = true; polymorphic = false }
+           | _ -> { Syntax.effects = effects; tail = Some (callbacks.parse_expr_terms tail_terms); inferred = false; polymorphic = false })
+      | None -> (
+          match drop_separators terms with
+          | [ wild ] when is_wildcard_term wild -> { Syntax.effects = []; tail = None; inferred = true; polymorphic = false }
+          | _ -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None; inferred = false; polymorphic = false }))
 
 let parse_ref callbacks start_span terms =
   match drop_separators terms with

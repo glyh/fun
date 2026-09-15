@@ -25,13 +25,13 @@ let pure_arrow_shape () =
   | Arrow (Explicit, None, Var "I64", None, Var "I64") -> ()
   | _ -> Alcotest.fail "expected pure arrow"
 
-let single_can_shape () =
-  match parse_expr "I64 -> I64 can IO" with
+let single_row_shape () =
+  match parse_expr "I64 ->{IO} I64" with
   | Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tail = None }, Var "I64") -> ()
-  | _ -> Alcotest.fail "expected single-effect can row"
+  | _ -> Alcotest.fail "expected single-effect row"
 
-let braced_can_shape () =
-  match parse_expr "Unit -> I64 can {State(I64), IO}" with
+let braced_row_shape () =
+  match parse_expr "Unit ->{State(I64), IO} I64" with
   | Arrow
       ( Explicit,
         None,
@@ -41,18 +41,18 @@ let braced_can_shape () =
       ()
   | _ -> Alcotest.fail "expected braced effect row"
 
-let pure_can_shape () =
-  match parse_expr "Unit -> I64 can {}" with
+let pure_row_shape () =
+  match parse_expr "Unit ->{} I64" with
   | Arrow (Explicit, None, Var "Unit", Some { effects = []; tail = None }, Var "I64") -> ()
   | _ -> Alcotest.fail "expected pure effect row"
 
-let open_can_shape () =
-  match parse_expr "Unit -> I64 can {IO | r}" with
+let open_row_shape () =
+  match parse_expr "Unit ->{IO | r} I64" with
   | Arrow (Explicit, None, Var "Unit", Some { effects = [ Var "IO" ]; tail = Some (Var "r") }, Var "I64") -> ()
   | _ -> Alcotest.fail "expected open effect row"
 
-let open_can_multi_shape () =
-  match parse_expr "Unit -> I64 can {State(I64), IO | r}" with
+let open_row_multi_shape () =
+  match parse_expr "Unit ->{State(I64), IO | r} I64" with
   | Arrow
       ( Explicit,
         None,
@@ -62,13 +62,13 @@ let open_can_multi_shape () =
       ()
   | _ -> Alcotest.fail "expected open multi-effect row"
 
-let open_can_tail_only_shape () =
-  match parse_expr "Unit -> I64 can {| r}" with
+let open_row_tail_only_shape () =
+  match parse_expr "Unit ->{| r} I64" with
   | Arrow (Explicit, None, Var "Unit", Some { effects = []; tail = Some (Var "r") }, Var "I64") -> ()
   | _ -> Alcotest.fail "expected tail-only effect row"
 
-let closest_arrow_can_shape () =
-  match parse_expr "I64 -> I64 -> I64 can IO" with
+let closest_arrow_row_shape () =
+  match parse_expr "I64 -> I64 ->{IO} I64" with
   | Arrow
       ( Explicit,
         None,
@@ -76,7 +76,7 @@ let closest_arrow_can_shape () =
         None,
         Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tail = None }, Var "I64") ) ->
       ()
-  | _ -> Alcotest.fail "expected can to bind to closest arrow"
+  | _ -> Alcotest.fail "expected the row on its arrow"
 
 let perform_get_shape () =
   match parse_expr "perform State.get()" with
@@ -125,13 +125,13 @@ let suites =
         Alcotest.test_case "zero-param effect shape" `Quick effect_zero_param_shape;
         Alcotest.test_case "struct effect shape" `Quick effect_struct_shape;
         Alcotest.test_case "pure arrow shape" `Quick pure_arrow_shape;
-        Alcotest.test_case "single can shape" `Quick single_can_shape;
-        Alcotest.test_case "braced can shape" `Quick braced_can_shape;
-        Alcotest.test_case "pure can shape" `Quick pure_can_shape;
-        Alcotest.test_case "open can shape" `Quick open_can_shape;
-        Alcotest.test_case "open can multi shape" `Quick open_can_multi_shape;
-        Alcotest.test_case "open can tail-only shape" `Quick open_can_tail_only_shape;
-        Alcotest.test_case "closest arrow can shape" `Quick closest_arrow_can_shape;
+        Alcotest.test_case "single row shape" `Quick single_row_shape;
+        Alcotest.test_case "braced row shape" `Quick braced_row_shape;
+        Alcotest.test_case "pure row shape" `Quick pure_row_shape;
+        Alcotest.test_case "open row shape" `Quick open_row_shape;
+        Alcotest.test_case "open row multi shape" `Quick open_row_multi_shape;
+        Alcotest.test_case "open row tail-only shape" `Quick open_row_tail_only_shape;
+        Alcotest.test_case "closest arrow row shape" `Quick closest_arrow_row_shape;
         Alcotest.test_case "perform get shape" `Quick perform_get_shape;
         Alcotest.test_case "perform put shape" `Quick perform_put_shape;
         Alcotest.test_case "perform qualified shape" `Quick perform_qualified_shape;

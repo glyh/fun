@@ -55,17 +55,34 @@ let infer_signature ops ctx bindings =
 let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_row = function
   (* A bare arrow is pure (E3). *)
   | None -> empty_effect_row
+  | Some (row : Syntax.effect_row) when row.polymorphic -> raise (ElabError PolyArrowOutsideSignature)
   | Some (row : Syntax.effect_row) ->
-      let entries =
+      (* An entry is an effect, or - alone - a row variable ([->{e}]: the row is
+         just that tail); next to effects the variable is written as the tail,
+         after a bar. *)
+      let classified =
         List.map
           (fun eff_expr ->
             let eff_core, eff_ty = infer_pure ops ctx eff_expr in
-            Ctx.unify ctx eff_ty VU;
-            let eff_value = Ctx.eval ctx eff_core in
-            match Nbe.force ctx.metas eff_value with
-            | VEffect _ -> (eff_core, eff_value)
-            | _ -> raise (ElabError ExpectedEffect))
+            match Nbe.force ctx.metas eff_ty with
+            | VEffectRowTy -> Either.Right eff_core
+            | _ -> (
+                Ctx.unify ctx eff_ty VU;
+                let eff_value = Ctx.eval ctx eff_core in
+                match Nbe.force ctx.metas eff_value with
+                | VEffect _ -> Either.Left (eff_core, eff_value)
+                | _ -> raise (ElabError ExpectedEffect)))
           row.effects
+      in
+      let entries, row_vars = List.partition_map Fun.id classified in
+      let written_tail =
+        match row_vars, row.tail with
+        | [], _ -> None
+        | [ var ], None when not row.inferred && entries = [] -> Some var
+        | [ _ ], None when not row.inferred -> raise (ElabError RowVariableAmongEffects)
+        (* ponytail: a row holds one tail (E2); a union of row variables
+           ([->{e1, e2}]) needs multi-tail rows. *)
+        | _ -> raise (ElabError (UnsupportedRowUnion (List.length row_vars)))
       in
       let rec check_unique = function
         | [] -> ()
@@ -76,7 +93,12 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
       in
       check_unique entries;
       let tail =
-        if row.inferred then Some (Meta (MetaContext.fresh ctx.Ctx.metas))
+        if Option.is_some written_tail then written_tail
+        else if row.inferred then begin
+          let meta = Ctx.fresh_row_meta ctx in
+          (match meta with InsertedMeta (id, _) -> Dynarray.add_last ctx.Ctx.metas.written_rows id | _ -> ());
+          Some meta
+        end
         else
           Option.map
             (fun tail_expr ->

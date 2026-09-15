@@ -44,9 +44,11 @@ and open_choice = { opens : string list; fallback : string option }
 
 and type_decl = { name : id; params : id list; ctors : (id * t list) list }
 
-(** [inferred]: the row was written [_] ([can _], or [{E | _}]): the rest is
-    inferred. An arrow with no row is pure (E3). *)
-and effect_row = { effects : t list; tail : t option; inferred : bool }
+(** [inferred]: the row was written [_] ([->{_}], or [{E | _}]): the rest is
+    inferred. [polymorphic]: the arrow was written [~>]; its row is decided by
+    where the arrow sits in its signature ([Elab_poly_arrows]). An arrow with no
+    row is pure (E3). *)
+and effect_row = { effects : t list; tail : t option; inferred : bool; polymorphic : bool }
 
 and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }
@@ -147,6 +149,7 @@ and role_meaning =
   | OrderGroup  (** an order group's name, [order] its declaration *)
       (** [type A = … and B = …]: the built-in type declaration, a base role so
           [type] is an ordinary identifier a user form may shadow *)
+  | PolyArrow  (** [~>]: an arrow whose effects are polymorphic *)
 
 (** One rule: the tokens a use consumes and what each hole captures, and the
     replacement - quoted syntax parsed where the rule is written. *)
@@ -201,6 +204,9 @@ and kind =
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
+  | TraitBoundSet of t list
+      (** [[A : {Eq, Show}]]: the traits a binder must implement - only as an
+          implicit binder's bound *)
   | Arrow of Explicitness.t * id option * t * effect_row option * t
   | FieldAccess of t * string
   | Proj of t * int
@@ -534,8 +540,7 @@ let macro_compiled ~output (ann : MacroAnnotation.t option) (value : t) : t * ma
 let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
 
 (* The name a bare-name form was written with, whether expansion resolved it to
-   a binder or left it an open choice. Only for sugar matched as written - the
-   [+] of a trait bound [A : Eq + Show] - never for a lookup. *)
+   a binder or left it an open choice. Never for a lookup. *)
 let written_name (stx : t) =
   match stx.kind with
   | Var id -> Some id.name

@@ -16,7 +16,7 @@ and pp_term (t : term) : string =
       let row =
         if is_empty_effect_row effects then ""
         else
-          Printf.sprintf " can %s"
+          Printf.sprintf " ->{%s}"
             (String.concat ", " (List.map pp_term effects.effects))
       in
       (match explicitness with
@@ -88,15 +88,13 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
         else base
     | VLam _ -> "<lam>"
     | VPi { explicitness; domain; effects; _ } ->
-        let arrow =
-          match explicitness with
-          | Implicit -> Printf.sprintf "{%s} -> ..." (go (depth + 1) domain)
-          | Explicit -> Printf.sprintf "%s -> ..." (go (depth + 1) domain)
+        let row =
+          if List.is_empty effects.effects && Option.is_none effects.tail then ""
+          else Printf.sprintf "{%s}" (String.concat ", " (List.map pp_term effects.effects))
         in
-        if List.is_empty effects.effects && Option.is_none effects.tail then arrow
-        else
-          Printf.sprintf "%s can %s" arrow
-            (String.concat ", " (List.map pp_term effects.effects))
+        (match explicitness with
+        | Implicit -> Printf.sprintf "{%s} ->%s ..." (go (depth + 1) domain) row
+        | Explicit -> Printf.sprintf "%s ->%s ..." (go (depth + 1) domain) row)
     | VNominal n ->
         if List.length n.params = 0 then n.name
         else Printf.sprintf "%s(%s)" n.name

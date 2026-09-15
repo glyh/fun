@@ -114,6 +114,11 @@ and parse_param_item env explicitness terms =
       param ~type_:(unit_type ()) Explicitness.Explicit "_"
   | [ ({ datum = Token { kind = Ident name; _ }; _ } as term) ] ->
       param_id explicitness (id_of term name)
+  (* [[A : {Eq, Show}]]: an implicit binder's bound set. *)
+  | ({ datum = Token { kind = Ident name; _ }; _ } as term) :: colon :: [ { datum = Group (Raw_syntax.Brace, items, span); _ } ]
+    when token_kind Colon colon && explicitness = Explicitness.Implicit ->
+      let bounds = List.map (fun ts -> parse_all (fun ts -> parse_expr_prec env Top ts) ts) (split_commas (drop_separators items)) in
+      param_id ~type_:(stx ~span (Syntax.TraitBoundSet bounds)) explicitness (id_of term name)
   | ({ datum = Token { kind = Ident name; _ }; _ } as term) :: colon :: typ_terms
     when token_kind Colon colon ->
       param_id ~type_:(parse_type_terms env typ_terms) explicitness (id_of term name)
@@ -203,34 +208,49 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
             implicit_params
           @ explicit_params
   in
-  (* [fn(x) : T { … }]: the result type, the body checked against it. A macro's
-     [:] is its annotation, above. *)
-  let result_type, rest = if kind_annotation then (None, rest) else parse_result_type env rest in
+  (* [fn(x) : T { … }]: the result type, the body checked against it; an
+     effectful result [fn(x : A) ->{E} T { … }] / [~> T] annotates the whole
+     function with its arrow type. A macro's [:] is its annotation, above. *)
+  let result, rest = if kind_annotation then (None, rest) else parse_result_type env rest in
   let body, rest, span = parse_body env "fn parameters" rest in
   let span = span_between start_span span in
-  (params, kind, output, annotate_result result_type body, rest, span)
+  (params, kind, output, result, body, rest, span)
 
-(* An optional [: T] before a body. Brackets decide grouping: the type ends at
-   the first top-level [{ … }] or [can], so a type holding braces is
+(* An optional result before a body: [: T] when pure, [->{E} T] or [~> T] when
+   effectful - the result's type and its row. Brackets decide grouping: the type
+   ends at the first top-level [{ … }], so a type holding braces is
    parenthesised ([: (struct { x : I64 })]). *)
 and parse_result_type env terms =
+  let result_type what rest =
+    let ends term = match term.datum with Group (Raw_syntax.Brace, _, _) -> true | _ -> false in
+    let rec split acc = function
+      | term :: _ as rest when ends term -> (List.rev acc, rest)
+      | term :: rest -> split (term :: acc) rest
+      | [] -> (List.rev acc, [])
+    in
+    let type_terms, rest = split [] rest in
+    if drop_separators type_terms = [] then error ("expected a result type after " ^ what);
+    (parse_all (fun ts -> parse_expr_prec env Top ts) type_terms, rest)
+  in
   match drop_separators terms with
   | colon :: rest when token_kind Colon colon ->
-      let ends term = token_kind KwCan term || (match term.datum with Group (Raw_syntax.Brace, _, _) -> true | _ -> false) in
-      let rec split acc = function
-        | term :: _ as rest when ends term -> (List.rev acc, rest)
-        | term :: rest -> split (term :: acc) rest
-        | [] -> (List.rev acc, [])
-      in
-      let type_terms, rest = split [] rest in
-      if drop_separators type_terms = [] then error "expected a result type after :";
-      (Some (parse_all (fun ts -> parse_expr_prec env Top ts) type_terms), rest)
+      let typ, rest = result_type ":" rest in
+      (Some (typ, None), rest)
+  | arrow :: { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest
+    when token_kind ThinArrow arrow && spans_adjacent arrow.span span ->
+      let row = parse_effect_row_terms env items in
+      let typ, rest = result_type "->{…}" rest in
+      (Some (typ, Some row), rest)
+  | arrow :: _ when token_kind ThinArrow arrow -> error "a pure result is written : T; ->{E} T is for an effectful one"
+  | arrow :: rest when is_poly_arrow env arrow ->
+      let typ, rest = result_type "~>" rest in
+      (Some (typ, Some { Syntax.effects = []; tail = None; inferred = true; polymorphic = true }), rest)
   | _ -> (None, terms)
 
-and annotate_result result_type (body : Syntax.t) =
-  match result_type with
-  | Some typ -> stx ~span:body.span (Syntax.Annotated { inner = body; typ })
-  | None -> body
+and annotate_result result (body : Syntax.t) =
+  match result with
+  | Some (typ, None) -> stx ~span:body.span (Syntax.Annotated { inner = body; typ })
+  | _ -> body
 
 (* A body is a brace group, parsed as a block. *)
 and parse_body env what terms =
@@ -244,12 +264,31 @@ and parse_body env what terms =
   | _ -> error ("expected { body } after " ^ what)
 
 and parse_fn ?(kind_annotation = false) env start_span terms =
-  let params, kind, output, body, rest, span =
+  let params, kind, output, result, body, rest, span =
     parse_fn_parts ~kind_annotation env start_span terms
   in
-  ( (kind, output),
-    List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body,
-    rest )
+  let lam = List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params (annotate_result result body) in
+  let value =
+    match result with
+    | Some (typ, Some row) -> stx ~span (Syntax.Annotated { inner = lam; typ = function_type ~span params row typ })
+    | _ -> lam
+  in
+  ((kind, output), value, rest)
+
+(* [fn(p1 : A, …) ->{E} T]'s type: its parameters' arrows, the last carrying the row. *)
+and function_type ~span (params : Syntax.param list) row typ =
+  let rec go = function
+    | [] -> error "an effectful result needs a parameter list"
+    | (p : Syntax.param) :: rest ->
+        let dom =
+          match p.type_ with
+          | Some t -> t
+          | None -> error ("an effectful result form needs every parameter's type: " ^ p.name.name)
+        in
+        let row, cod = match rest with [] -> (Some row, typ) | _ -> (None, go rest) in
+        stx ~span (Syntax.Arrow (p.explicitness, Some p.name, dom, row, cod))
+  in
+  go params
 
 and parse_method_params env items =
   let items = drop_separators items in
@@ -267,18 +306,12 @@ and parse_method_binding env public stmt =
           require_adjacent_span name_term.span params_group.span
             "method parameter list";
           let params = parse_method_params env items in
-          (* [: T] then [can row], in the order of an arrow type [A -> T can {E}]. *)
-          let result_type, rest = parse_result_type env rest in
-          (* [can row]: a method is pure unless it declares a row (E3). *)
-          let effects, rest =
-            match drop_separators rest with
-            | term :: rest when token_kind KwCan term ->
-                let eff, rest = parse_can_effect_row env rest in
-                (Some eff, rest)
-            | rest -> (None, rest)
-          in
+          (* [: T] when pure, [->{E} T] when not: a method is pure unless it
+             declares a row (E3). *)
+          let result, rest = parse_result_type env rest in
+          let effects = match result with Some (_, row) -> row | None -> None in
           let body, rest, _ = parse_body env "method parameters" rest in
-          let body = annotate_result result_type body in
+          let body = match result with Some (typ, _) -> stx ~span:body.span (Syntax.Annotated { inner = body; typ }) | None -> body in
           ensure_no_rest "method declaration" rest;
           Some
             (Syntax.MethodBinding
@@ -323,10 +356,6 @@ and parse_group_arg env items =
 and parse_effect_row_terms env terms =
   Enforest_forms.parse_effect_row_terms (form_callbacks env) terms
 
-and parse_can_effect_row env terms =
-  Enforest_forms.parse_can_effect_row (form_callbacks env) terms
-
-and attach_effects lhs eff = Enforest_forms.attach_effects lhs eff
 
 and parse_ref env start_span terms =
   Enforest_forms.parse_ref (form_callbacks env) start_span terms
@@ -542,25 +571,29 @@ and continues prec symbol (role : Syntax.role) =
 and parse_postfix_infix env min_prec lhs terms =
   match terms with
   | term :: _ when is_separator term -> (lhs, terms)
-  | term :: rest when token_kind ThinArrow term && (match min_prec with Top | ArrowRhs -> true | _ -> false) ->
+  | term :: rest when (token_kind ThinArrow term || is_poly_arrow env term) && (match min_prec with Top | ArrowRhs -> true | _ -> false) ->
+      (* [A ->{E} B]: a brace group adjacent to the arrow is its effect row.
+         [A ~> B]: a polymorphic row, decided by the arrow's signature. *)
+      let row, rest =
+        match rest with
+        | _ when not (token_kind ThinArrow term) ->
+            (Some { Syntax.effects = []; tail = None; inferred = false; polymorphic = true }, rest)
+        | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest when spans_adjacent term.span span ->
+            (Some (parse_effect_row_terms env items), rest)
+        | _ -> (None, rest)
+      in
       let rhs, rest = parse_expr_prec env ArrowRhs rest in
       let span = span_between lhs.span rhs.span in
       let lhs =
         match lhs.kind with
         | Syntax.Annotated { inner = { kind = Syntax.Var name; _ }; typ } ->
             stx ~span
-              (Syntax.Arrow (Explicitness.Explicit, Some name, typ, None, rhs))
+              (Syntax.Arrow (Explicitness.Explicit, Some name, typ, row, rhs))
         | _ ->
             stx ~span
-              (Syntax.Arrow (Explicitness.Explicit, None, lhs, None, rhs))
+              (Syntax.Arrow (Explicitness.Explicit, None, lhs, row, rhs))
       in
       parse_postfix_infix env min_prec lhs rest
-  | term :: rest
-    when token_kind KwCan term
-         && (min_prec = Top
-            || match lhs.kind with Syntax.Arrow _ -> true | _ -> false) ->
-      let eff, rest = parse_can_effect_row env rest in
-      parse_postfix_infix env min_prec (attach_effects lhs eff) rest
   | term :: rest when token_kind Colon term ->
       let typ, rest = parse_type_entry env rest in
       let lhs =
@@ -644,12 +677,20 @@ and parse_postfix_infix env min_prec lhs terms =
                 | Syntax.CallMacro -> syntax_operator_arg ~span ~use:term symbol role [ lhs; rhs ]
                 | Syntax.ApplyValue ->
                     ap ~span (ap ~span (var_of term symbol) Explicitness.Explicit lhs) Explicitness.Explicit rhs
-                | Syntax.OrderGroup -> error ("not an infix operator: " ^ symbol)
+                | Syntax.OrderGroup | Syntax.PolyArrow -> error ("not an infix operator: " ^ symbol)
               in
               parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
       | None -> (lhs, term :: rest))
   | [] -> (lhs, [])
+
+and is_poly_arrow env term =
+  match token_text term with
+  | Some symbol -> (
+      match Binding.find_role env.operators ~fixity:Syntax.InfixOp ~scope:(token_scope term) symbol with
+      | Some { meaning = Syntax.PolyArrow; _ } -> true
+      | _ -> false)
+  | None -> false
 
 and parse_binding_statement env stmt =
   match parse_value_decl_statement env stmt with

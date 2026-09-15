@@ -50,13 +50,16 @@ let base_roles (tbl : Binding.t) =
   Binding.extend tbl ~name:"assignment" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"assignment"
     ~role:(Binding.role ~fixity:Syntax.PrefixOp ~order:assignment_order Syntax.OrderGroup);
   Binding.extend tbl ~name:"<-" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"<-"
-    ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef)
+    ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef);
+  (* [~>]: read like [->], a base role so the arrow family needs no lexer rule. *)
+  Binding.extend tbl ~name:"~>" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"~>"
+    ~role:(Binding.role ~fixity:Syntax.InfixOp Syntax.PolyArrow)
 
 (* Where an expression is read, which decides what may continue it. Precedence
    among operators is relative (brackets-decide-grouping): an operand continues
    with an infix operator only if the operator binds tighter than the one whose
    operand it is. The built-in grammar keeps two fixed positions: [ArrowRhs],
-   where [->] continues but [can] does not, and [Tight], an argument no infix
+   where [->] continues, and [Tight], an argument no infix
    operator continues. *)
 type prec =
   | Top
@@ -213,7 +216,6 @@ let keyword_name = function
   | KwRef -> Some "ref"
   | KwDeref -> Some "deref"
   | KwRec -> Some "rec"
-  | KwCan -> Some "can"
   | KwPerform -> Some "perform"
   | KwResume -> Some "resume"
   | KwMethod -> Some "method"

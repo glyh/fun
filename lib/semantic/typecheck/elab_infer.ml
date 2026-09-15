@@ -713,6 +713,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           check_sealed_stays ctx.metas ~inner:ctx.lvl ~depth:ctx'.Ctx.lvl ~name:(Syntax.label name) body_ty;
         (Let (ty_term, gen_val_core, body_core), body_ty)
       end
+  | Lam _ when Elab_poly_arrows.lambda_has_poly expr -> ops.infer ctx (Elab_poly_arrows.lambda expr)
   | Lam (param, body) -> infer_lam ops ctx param body
   | Annotated { inner; typ } ->
       let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx typ in
@@ -723,6 +724,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let cores = List.map fst cores_tys in
       let tys = List.map snd cores_tys in
       (Prod cores, VProdTy tys)
+  (* Reached only when a bound set does not name traits (a bound is read by
+     the implicit arrow, [trait_bounds_opt]). *)
+  | TraitBoundSet _ -> raise (ElabError (UnknownTrait "a {…} bound lists traits"))
   | ProdTy elems ->
       let core_elems =
         List.map
@@ -733,6 +737,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           elems
       in
       (ProdTy core_elems, VU)
+  | Arrow _ when Elab_poly_arrows.has_poly expr -> ops.infer ctx (Elab_poly_arrows.signature expr)
   | Arrow (Explicitness.Implicit, Some { name; _ }, a, effects, b) -> (
       match trait_bounds_opt ctx a with
       | Some trait_infos ->
@@ -890,8 +895,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                        See docs/wayfinder/tickets/base-context-shared-state.md. *)
                     let unit_ctx = Ctx.with_expander (Ctx.unit_base ctx) expand_ctx in
                     (* A unit's top-level bindings run when it loads: a program's top. *)
+                    let since = MetaContext.count unit_ctx.metas in
                     let (core, ty), effects = collecting unit_ctx (fun unit_ctx -> ops.infer unit_ctx imported) in
-                    Elab_effects.require_handled_at_entry unit_ctx effects;
+                    Elab_effects.require_handled_at_entry ~since unit_ctx effects;
                     (core, Ctx.eval unit_ctx core, ty))
                 ~eval_and_apply:Nbe.apply_macro
                 ~syntax_nominals:(Elab_stdlib.syntax_nominals ctx)
@@ -1017,17 +1023,18 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
          declared row. So [self.m] can call a method written later. The self
          parameter is the fields (a partial struct: any struct holding them). *)
       let method_types = ref None in
-      (* A method's type against the type it was known at: parameters and result.
-         ponytail: rows are not compared - a declared row is the same syntax both
-         times; a [can _] method called through [self] before its body is checked
-         performs its pre-body row (an unsolved tail). Compare rows once row
-         metas can be shared across the two elaborations. *)
+      (* A method's type against the type it was known at: parameters, rows and
+         result - so a [->{_}] row known before the body is the row the body
+         solved. *)
       let unify_method_types (ctx : Ctx.t) actual promised =
         let rec go depth actual promised =
           match Nbe.force ctx.metas actual, Nbe.force ctx.metas promised with
           | VPi a, VPi p ->
               Unify.unify ctx.metas ctx.env depth a.domain p.domain;
               let var = VRigid { lvl = depth; spine = [] } in
+              Unify.unify ctx.metas ctx.env (depth + 1)
+                (VEffectRow (Nbe.eval_effect_row_closure ctx.metas a.effects var))
+                (VEffectRow (Nbe.eval_effect_row_closure ctx.metas p.effects var));
               go (depth + 1) (Nbe.closure_apply ctx.metas a.codomain var) (Nbe.closure_apply ctx.metas p.codomain var)
           | a, p -> Unify.unify ctx.metas ctx.env depth a p
         in

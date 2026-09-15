@@ -404,7 +404,7 @@ let test_unify_effect_row_mismatch () =
 let test_debug_effectful_pi () =
   let mc = mc () in
   let text = Debug.pp_value_short mc (effectful_pi [ Var 1 ]) in
-  if not (String.contains text 'c') then Alcotest.fail ("expected can in debug output, got " ^ text)
+  if not (String.contains text '{') then Alcotest.fail ("expected an arrow row in debug output, got " ^ text)
 
 let test_debug_effect () =
   let mc = mc () in
@@ -445,7 +445,7 @@ let test_top_escaping_closure () =
 
 (* Tunneling (E5): a handler handles what its own code performs; what a
    row-polymorphic callback performs passes it. *)
-let tunnel_find body = "{ effect Exc = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 -> I64 can {| r}) -> I64 -> I64 can {| r} = fn[r : EffectRow](pred, x) { " ^ body ^ " }; user : I64 -> I64 can {Exc} = fn(x) { perform Exc.raise(x) }; match (find(user, 1)) { v => v, effect Exc.raise n => 999 } }"
+let tunnel_find body = "{ effect Exc = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 ->{| r} I64) -> I64 ->{| r} I64 = fn[r : EffectRow](pred, x) { " ^ body ^ " }; user : I64 ->{Exc} I64 = fn(x) { perform Exc.raise(x) }; match (find(user, 1)) { v => v, effect Exc.raise n => 999 } }"
 
 let test_handlers_tunnel () =
   check_i64 "a callback's effect passes the library's handler" 999L
@@ -455,16 +455,16 @@ let test_handlers_tunnel () =
   check_i64 "a closure made under one handler and called under another" 999L
     (tunnel_find "g = match (0) { _ => fn(y : I64) { pred(y) }, effect Exc.raise n => fn(y : I64) { pred(0) } }; match (g(x)) { v => v, effect Exc.raise n => 2 }") ();
   check_i64 "a parameterised effect instance tunnels" 999L
-    "{ effect E(A) = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 -> I64 can {| r}) -> I64 -> I64 can {| r} = fn[r : EffectRow](pred, x) { match (pred(x)) { v => v, effect E.raise n => 0 } }; user : I64 -> I64 can {E(I64)} = fn(x) { perform E.raise(x) }; match (find(user, 1)) { v => v, effect E.raise n => 999 } }" ();
+    "{ effect E(A) = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 ->{| r} I64) -> I64 ->{| r} I64 = fn[r : EffectRow](pred, x) { match (pred(x)) { v => v, effect E.raise n => 0 } }; user : I64 ->{E(I64)} I64 = fn(x) { perform E.raise(x) }; match (find(user, 1)) { v => v, effect E.raise n => 999 } }" ();
   check_i64 "a call whose row names the effect is handled locally" 6L
-    "{ effect Exc = sig { raise : I64 -> I64 }; helper : Unit -> I64 can {Exc} = fn(_) { perform Exc.raise(5) }; match (helper(())) { v => v, effect Exc.raise n => n + 1 } }" ()
+    "{ effect Exc = sig { raise : I64 -> I64 }; helper : Unit ->{Exc} I64 = fn(_) { perform Exc.raise(5) }; match (helper(())) { v => v, effect Exc.raise n => n + 1 } }" ()
 
 let test_handled_effect_escape () =
   (match eval_source "{ effect Exc = sig { raise : I64 -> I64 }; g = match (0) { x => fn(u : Unit) { perform Exc.raise(x) }, effect Exc.raise n => fn(u : Unit) { perform Exc.raise(n) } }; 1 }" with
    | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
    | exception e -> Alcotest.fail (Printexc.to_string e)
    | _ -> Alcotest.fail "expected HandledEffectEscapes");
-  (match eval_source "{ effect Exc = sig { raise : I64 -> I64 }; q : Ref(Unit -> I64 can {Exc}) = ref(fn(u) { perform Exc.raise(0) }); _ = match (0) { x => { q <- fn(u : Unit) { perform Exc.raise(x) }; 1 }, effect Exc.raise n => 2 }; 5 }" with
+  (match eval_source "{ effect Exc = sig { raise : I64 -> I64 }; q : Ref(Unit ->{Exc} I64) = ref(fn(u) { perform Exc.raise(0) }); _ = match (0) { x => { q <- fn(u : Unit) { perform Exc.raise(x) }; 1 }, effect Exc.raise n => 2 }; 5 }" with
    | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
    | exception e -> Alcotest.fail (Printexc.to_string e)
    | _ -> Alcotest.fail "expected HandledEffectEscapes through an outer ref");
@@ -484,30 +484,30 @@ let test_top_unhandled_in_imported_unit () =
       expect_unhandled "an imported unit's top-level perform" [ "effect Exc" ] (fun () ->
           eval_source_with_loader loader "{ M = import \"noisy\"; 0 }"))
 
-(* A method follows the arrow rule: pure unless its [can] declares a row. *)
+(* A method follows the arrow rule: pure unless its [->{E} T] declares a row. *)
 let exc_counter methods = "effect Exc = sig { raise : I64 -> I64 }; C = struct { n : I64; " ^ methods ^ " }"
 
 let test_method_rows () =
   expect_unhandled "a method performing an undeclared effect" [ "effect Exc" ] (fun () ->
       eval_source ("{ " ^ exc_counter "pub method bump() { perform Exc.raise(1); self.n }" ^ "; 0 }"));
   check_i64 "a method declaring its row, handled at the call" 11L
-    ("{ " ^ exc_counter "pub method bump() can {Exc} { perform Exc.raise(1); self.n }"
+    ("{ " ^ exc_counter "pub method bump() ->{Exc} I64 { perform Exc.raise(1); self.n }"
      ^ "; match (C.bump(C{n = 1})) { x => x, effect Exc.raise v => v + 10 } }") ();
   expect_unhandled "a declared method called at the top without a handler" [ "effect Exc" ] (fun () ->
-      eval_source ("{ " ^ exc_counter "pub method bump() can {Exc} { perform Exc.raise(1); self.n }" ^ "; C.bump(C{n = 1}) }"));
-  check_i64 "can _ infers a method's row" 13L
-    ("{ " ^ exc_counter "pub method add(k : I64) can _ { perform Exc.raise(k) }"
+      eval_source ("{ " ^ exc_counter "pub method bump() ->{Exc} I64 { perform Exc.raise(1); self.n }" ^ "; C.bump(C{n = 1}) }"));
+  check_i64 "->{_} infers a method's row" 13L
+    ("{ " ^ exc_counter "pub method add(k : I64) ->{_} I64 { perform Exc.raise(k) }"
      ^ "; match (C.add(C{n = 1})(3)) { x => x, effect Exc.raise v => v + 10 } }") ();
   check_i64 "a method calling another performs its declared row" 12L
-    ("{ " ^ exc_counter "pub method a(k : I64) can {Exc} { perform Exc.raise(k) }; pub method b() can {Exc} { a(self)(2) }"
+    ("{ " ^ exc_counter "pub method a(k : I64) ->{Exc} I64 { perform Exc.raise(k) }; pub method b() ->{Exc} I64 { a(self)(2) }"
      ^ "; match (C.b(C{n = 1})) { x => x, effect Exc.raise v => v + 10 } }") ();
   expect_unhandled "a pure method calling an effectful one" [ "effect Exc" ] (fun () ->
-      eval_source ("{ " ^ exc_counter "pub method a(k : I64) can {Exc} { perform Exc.raise(k) }; pub method b() { a(self)(2) }" ^ "; 0 }"))
+      eval_source ("{ " ^ exc_counter "pub method a(k : I64) ->{Exc} I64 { perform Exc.raise(k) }; pub method b() : I64 { a(self)(2) }" ^ "; 0 }"))
 
 let test_trait_method_rows () =
   let trait_src impl_body =
     "{ effect Exc = sig { raise : I64 -> I64 }; effect Other = sig { ping : I64 -> I64 }; \
-     trait Log(A) = sig { log : A -> I64 can {Exc} }; \
+     trait Log(A) = sig { log : A ->{Exc} I64 }; \
      impl Log(I64) = module { log = fn(x) { " ^ impl_body ^ " } }; 0 }"
   in
   check_i64 "an impl method within its trait's row" 0L (trait_src "perform Exc.raise(x)") ();
@@ -560,7 +560,7 @@ let test_eval_handler_escape_skips_continuation () =
   check_i64 "handler escape skips continuation" 99L
     "{
        effect Exit = sig { now : I64 -> I64 };
-       program : Unit -> I64 can Exit = fn(_) { {
+       program : Unit ->{Exit} I64 = fn(_) { {
          _ = perform Exit.now(99);
          0
        } };
@@ -575,7 +575,7 @@ let test_eval_handler_ping_pong_effects () =
     "{
        effect Ping = sig { hit : I64 -> I64 };
        effect Pong = sig { hit : I64 -> I64 };
-       program : Unit -> I64 can {Ping, Pong} = fn(_) { {
+       program : Unit ->{Ping, Pong} I64 = fn(_) { {
          x = perform Ping.hit(1);
          perform Pong.hit(x + 10)
        } };
@@ -591,7 +591,7 @@ let test_eval_recursive_handler_ping_pong_effects () =
     "{
        effect Ping = sig { hit : I64 -> I64 };
        effect Pong = sig { hit : I64 -> I64 };
-       rec loop : I64 -> I64 can {Ping, Pong} = fn(n) {
+       rec loop : I64 ->{Ping, Pong} I64 = fn(n) {
           if (n == 0) {
             0
           } else {
@@ -611,7 +611,7 @@ let test_eval_state_handler_sequences_operations () =
   check_i64 "state handler sequences operations" 2L
     "{
        effect State(S) = sig { get : Unit -> S; put : S -> Unit };
-       program : Unit -> I64 can State(I64) = fn(_) { {
+       program : Unit ->{State(I64)} I64 = fn(_) { {
          x = perform State.get();
          _ = perform State.put(x + 1);
          perform State.get()
@@ -2134,7 +2134,7 @@ let test_syntax_expr_nominal_resolvable () =
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; id; captures; _ } ->
       let constructors = Core.nominal_constructors id captures in
-      Alcotest.(check int) "one constructor per expression form" 41 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 42 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true
@@ -3992,7 +3992,7 @@ let () =
               (check_import_i64 "imported latent effect function"
                  [ ( "effects",
                      "pub effect State(S) = sig { get : Unit -> S }; \
-                      pub read : Unit -> I64 can State(I64) = fn(_) { perform State.get(()) }" ) ]
+                      pub read : Unit ->{State(I64)} I64 = fn(_) { perform State.get(()) }" ) ]
                  7L
                  "{ E = import \"effects\"; \
                   StateI64 = E.State(I64); \
