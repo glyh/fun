@@ -65,8 +65,7 @@ each case has one spelling. Methods and `Mutate(r)` rows follow (`->{Mutate(r)}`
 - `can {…}`, `can _`, `can any`, the prelude `~>` = `-> … can _`.
 - The "`_` in a parameter becomes a hidden row parameter" proposal (not adopted;
   `~>` covers it).
-- `+` on trait bounds (small-followups item 4) and `can any` at a call — `->{any}`
-  meaning at a call site still to be specified during implementation.
+- `can any` — now `->{any}`; its meaning at a call site is still open (grill).
 
 ## Work
 
