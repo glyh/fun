@@ -141,7 +141,8 @@ heap, is dropped; the program entry's runtime handler discharges the rest
 
 ### E11 — nominal identity is applicative by purity
 
-**Status: decided, not implemented.** Same declaration + convertible free
+**Status: applicative half implemented (2026-09-15); generative half open** — an
+effectful maker does not yet seal its nominal (see the ticket). Same declaration + convertible free
 variables = same type; generative only under a run-time effect, inferred from
 the row, never declared. Forced by dependent types (the checker re-evaluates
 `Set(I64, cmp).T` during conversion — a type minted per evaluation would not

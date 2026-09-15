@@ -3,11 +3,23 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after handler tunneling, 2026-09-15.
+Last updated: after applicative nominal identity, 2026-09-15.
 
 ---
 
 ## Completed
+
+### Nominal identity is applicative (E11, first half, 2026-09-15)
+
+- A nominal's identity is its declaration id plus `captures`, the values of the
+  declaration's own free variables, compared by conversion (`VNominal`,
+  `NomRef`). `NomRef` builds the nominal directly; constructors come from
+  `Core.nominal_decls` over an instance's captures. No environment scan.
+- `TypeBind` / `NominalDef` build nominals in their evaluation scope: a type
+  declared under a binder evaluates, and `Set(I64, less)` twice shares `T`.
+- Module values quote each binding at the depth the earlier bindings push.
+- Open: generative nominals under an effectful maker (sealing), and `rec` struct
+  identities under binders (see nominal-identity-applicative-by-purity).
 
 ### Handlers tunnel callback effects (2026-09-15)
 
