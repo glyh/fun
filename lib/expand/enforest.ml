@@ -423,8 +423,8 @@ and parse_resume env start_span terms =
 and parse_perform env start_span terms =
   Enforest_forms.parse_perform (form_callbacks env) start_span terms
 
-and parse_import _env start_span terms =
-  Enforest_forms.parse_import start_span terms
+and parse_import _env (kw : Raw_syntax.t) terms =
+  Enforest_forms.parse_import ~scope:(token_scope kw) kw.span terms
 
 (* A module's items: read one form at a time as expansion reaches them (M9),
    or now, as quoted syntax. *)
@@ -507,7 +507,7 @@ and parse_primary env terms =
       | Token { kind = KwDeref; _ } -> parse_deref env term.span rest
       | Token { kind = KwResume; _ } -> parse_resume env term.span rest
       | Token { kind = KwPerform; _ } -> parse_perform env term.span rest
-      | Token { kind = KwImport; _ } -> parse_import env term.span rest
+      | Token { kind = KwImport; _ } -> parse_import env term rest
       | Token { kind = KwModule; _ } -> parse_module_expr env term.span rest
       | Token { kind = KwSig; _ } -> parse_sig_expr env term.span rest
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
@@ -1499,7 +1499,7 @@ let parse_block_decl_form env terms =
       | _ -> None)
   | _ -> None
 
-let std_import_stx () = stx (Syntax.Import Compiler_names.Module_name.std_import_path)
+let std_import_stx () = stx (Syntax.Import { path = Compiler_names.Module_name.std_import_path; scope = Scope_set.empty })
 
 (* A source read as an expression: one body, read as expansion reaches it.
    [?open_prelude] is the expression entry point's implicit leading

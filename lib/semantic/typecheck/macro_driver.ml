@@ -46,6 +46,9 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
              Elaborate.Ctx.eval !elab_ctx core));
   expand_ctx.Expand_ctx.eval_and_apply
     <- Some Nbe.apply_macro;
+  (* Installed before any binding elaborates, so every open the unit elaborates
+     is checked against the roles visible in its region (M7). *)
+  !elab_ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   (* Stage 8: driver-based import loading. Imported macros are compiled
      through [visit_macros] (a nested driver run); the elaboration context
      carries the loader so imports elaborated by the [after_binding] hook
@@ -125,7 +128,6 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
       Hashtbl.replace !elab_ctx.Elab_ctx.Ctx.macro_table name
         (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
     expand_ctx.Expand_ctx.macro_table;
-  !elab_ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   { expanded; expand_ctx; elab_ctx = !elab_ctx; macro_exports }
 
 (** Stage 8: driver-based import loading. Compiles the public macros of

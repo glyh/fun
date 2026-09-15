@@ -223,7 +223,7 @@ and lower_expr (stx : Syntax.t) : t =
                      bindings = List.map lower_struct_binding bindings }
   | Syntax.Module { bindings } ->
     Module { bindings = List.map lower_struct_binding bindings }
-  | Syntax.Import s -> Import s
+  | Syntax.Import { path; _ } -> Import path
   | Syntax.Open (m, body, label) -> Open (lower_expr m, lower_expr body, label)
   | Syntax.OpenChoice { name; opens; fallback } -> OpenChoice { name = name.name; opens; fallback }
   | Syntax.RecordTypeDef { name; params; fields; body } ->

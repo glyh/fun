@@ -112,7 +112,7 @@ and go_kind m (k : kind) : kind =
     Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields;
              bindings = List.map (go_struct_binding m) bindings }
   | Module { bindings } -> Module { bindings = List.map (go_struct_binding m) bindings }
-  | Import _ -> k
+  | Import { path; scope } -> Import { path; scope = (on_id (Syntax.fresh_id ~scope "")).scope }
   | Open (md, body, label) -> Open (go md, go body, label)
   | OpenChoice c -> OpenChoice { c with name = on_id c.name }
   | RecordTypeDef { name; params; fields; body } ->
@@ -429,7 +429,7 @@ let macro_head_key (ctx : Expand_ctx.t) (id : Syntax.id) :
    what both [M.answer(0)] and [open M] need in order to find them. *)
 let rec unit_path_of (ctx : Expand_ctx.t) (m : t) : string option =
   match m.kind with
-  | Import path -> Some path
+  | Import { path; _ } -> Some path
   | Var id -> (
       match Expand_ctx.resolve ctx id with
       | Some { Binding.resolved_name; _ } -> Expand_ctx.module_unit ctx resolved_name
@@ -475,7 +475,7 @@ let open_unit_macro_scopes (ctx : Expand_ctx.t) (m : t) : Scope_set.t list =
    module expression itself carries, so the rewritten head stays in the same
    hygienic position as what it replaces. *)
 let member_scope (m : t) : Scope_set.t =
-  match m.kind with Var id -> id.scope | _ -> Scope_set.empty
+  match m.kind with Var id -> id.scope | Import { scope; _ } -> scope | _ -> Scope_set.empty
 
 (* Where an occurrence resolves (M12): its binder's resolved name, or an open
    choice when some open may supply it or no binder takes it. *)
@@ -498,7 +498,7 @@ let expand_path (ctx : Expand_ctx.t) (p : Syntax.path) : Syntax.path =
 let in_definition_site_opens (ctx : Expand_ctx.t) (name : Syntax.id) (body : Syntax.t) : Syntax.t =
   List.fold_right
     (fun path body ->
-      { body with kind = Open (synth (Import path), body, Compiler_names.Module_name.unit_open_label path) })
+      { body with kind = Open (synth (Import { path; scope = Scope_set.empty }), body, Compiler_names.Module_name.unit_open_label path) })
     (Expand_ctx.enclosing_unit_opens ctx name.scope)
     body
 
@@ -517,24 +517,26 @@ let decl_over (binding : struct_binding) (body : t) : t =
   | OpenBinding (m, label) -> over (Open (m, body, label))
   | _ -> Enforest_util.error "a declaration syntax form in a block writes only private lets, types, effects, traits, impls, opens, macros and syntax"
 
-(* The roles unit [path] exports, when an [import] of it is expanded: visible to
-   the whole unit importing it. An imported rule's replacement was parsed in
-   that unit, so the scopes on its ids mean nothing here and are dropped; the
-   ids it introduces resolve through the unit's open. *)
-let import_roles (ctx : Expand_ctx.t) path =
-  match ctx.Expand_ctx.load_syntax with
-  | None -> ()
-  | Some load ->
+(* The roles unit [path] exports, when [m] is an import of it: bound like any
+   binder, at [base_scope] plus [scope] - the region of the open or the binder
+   that imported it, so a block's import does not reach past the block. An
+   imported rule's replacement was parsed in that unit, so the scopes on its ids
+   mean nothing here and are dropped; the ids it introduces resolve through the
+   unit's open. *)
+let import_roles (ctx : Expand_ctx.t) ~base_scope ~scope (m : t) =
+  match m.kind, ctx.Expand_ctx.load_syntax with
+  | Import { path; _ }, Some load ->
       let roles = Binding.from_unit path (load path) in
       (match Binding.duplicate_exports_message roles with
        | Some msg -> raise (Enforest_util.Error msg)
        | None -> ());
       let unscoped = map_role (mapper (fun id -> { id with scope = Scope_set.empty })) in
       List.iter
-        (fun (name, role) ->
-          Binding.extend ctx.Expand_ctx.binding_table ~name ~scope:Scope_set.empty ~kind:Binding.Role
-            ~role:(unscoped role) ~resolved_name:(Compiler_names.Module_name.unit_open_label path))
+        (fun (name, (role : Syntax.role)) ->
+          Expand_ctx.bind ctx ~role:(unscoped role) ~span:role.declared_at ~name ~base_scope ~kind:Binding.Role
+            ~resolved_name:(Compiler_names.Module_name.unit_open_label path) scope)
         roles
+  | _ -> ()
 
 let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   match stx.kind with
@@ -554,8 +556,11 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let prune (id : Syntax.id) = { id with scope = Expand_ctx.prune_to_definition_site ctx id.scope } in
     { stx with kind = QuoteDecls { items = List.map (map_binding_ids prune) items;
                                    holes = List.map (fun (n, h) -> (n, expand ctx h)) holes } }
-  | Import path ->
-    import_roles ctx path;
+  | Import { path; _ } ->
+    (* An import loads its unit - syntax exports, then macros - wherever it is
+       written; its roles are bound only by the open or binder around it
+       ([import_roles]). *)
+    Option.iter (fun load -> ignore (load path)) ctx.Expand_ctx.load_syntax;
     Option.iter (fun f -> f ctx path) ctx.Expand_ctx.load_macros;
     stx
   | Block terms -> (
@@ -594,8 +599,9 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
        find its macros. Checked after expansion, since the import may itself be
        what a macro produced. *)
     (match value.kind with
-     | Import path -> Expand_ctx.bind_module_unit ctx ~resolved_name ~path
+     | Import { path; _ } -> Expand_ctx.bind_module_unit ctx ~resolved_name ~path
      | _ -> ());
+    import_roles ctx ~base_scope:name.scope ~scope value;
     let body = expand ctx (add_scope scope body) in
     let name = bind_id scope resolved_name name in
     { stx with kind = Let { name; type_ = Option.map (expand ctx) type_; value; body; recursive } }
@@ -669,6 +675,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
        them for the body. *)
     let m' = expand ctx m in
     let open_scope, label = Expand_ctx.enter_open ctx ~occurrence:(member_scope m) m in
+    import_roles ctx ~base_scope:(member_scope m) ~scope:open_scope m';
     let scopes = open_scope :: open_unit_macro_scopes ctx m in
     { stx with kind = Open (m', expand ctx (add_scopes scopes body), label) }
   | RecordTypeDef { name; params; fields; body } ->
@@ -938,10 +945,11 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
     (* Same handle as the expression-level [Let]: [I = import "inner"] inside a
        module makes [I.answer(0)] expand. *)
     (match value.kind with
-     | Import path ->
+     | Import { path; _ } ->
        Expand_ctx.bind_module_unit ctx ~resolved_name:binding_name ~path;
        if public then Expand_ctx.record_own_unit_member ctx ~name:binding_name ~path
      | _ -> ());
+    import_roles ctx ~base_scope:name.scope ~scope value;
     ([LetBinding { name = add_id_scope scope name; value; public; recursive }], [[ scope ]])
   | MethodBinding { name; params; body; public } ->
     let binding_name = id_name name in
@@ -1033,6 +1041,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
        inside it, so a name there can resolve to an open choice. *)
     let m' = expand ctx m in
     let open_scope, label = Expand_ctx.enter_open ctx ~occurrence:(member_scope m) m in
+    import_roles ctx ~base_scope:(member_scope m) ~scope:open_scope m';
     ([OpenBinding (m', label)], [ open_scope :: open_unit_macro_scopes ctx m ])
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
