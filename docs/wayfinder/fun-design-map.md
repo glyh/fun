@@ -505,6 +505,11 @@ What remains, in the recommended order:
 
 ### Found by the M7 and M9 implementations (2026-09-14)
 
+- [Brackets decide grouping](tickets/brackets-decide-grouping.md)
+  — adopt Rhombus's structural extents without layout: `{}`/`[]`/`()` group, a
+  hole never ends at a bare keyword; Rust-style arms (`A | B => e,`), `|` only
+  union. Decided 2026-09-15; syntax-form precedence still to grill. Supersedes
+  the split rule on the unmerged `capture-extents` branch.
 - [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
   (closed) — an import's roles bind in the region of the open or binder that
   imported it; `Import` carries its written scope set, so every open is checked
