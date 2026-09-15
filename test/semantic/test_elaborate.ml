@@ -643,6 +643,24 @@ let structs =
           l1 = Numbers{ head = 1, tail = None }; l2 = Numbers{ head = 2, tail = Some(l1) }; \
           match (l2.tail) { Some(x) => x.head, None => 0 } }"
          (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "a parameterised recursive record is one type per argument" `Quick
+      (eval_i64
+         "{ rec L = fn(A : Type) { struct { v : A; next : Option(L(A)) } };
+            f = fn(x : L(I64)) { x.v }; f(L(I64){ v = 3, next = None }) }" 3L);
+    Alcotest.test_case "a parameterised recursive record differs by argument" `Quick
+      (elab_fail
+         "{ rec L = fn(A : Type) { struct { v : A; next : Option(L(A)) } };
+            g = fn(x : L(Bool)) { 1 }; g(L(I64){ v = 3, next = None }) }");
+    Alcotest.test_case "a recursive record under a binder is an instance per captures" `Quick
+      (eval_i64
+         "{ mk = fn(B : Type) { rec L = struct { v : B; next : Option(L) }; L };
+            LI = mk(I64); LI2 = mk(I64);
+            x : LI = LI2{ v = 1, next = None }; y : LI = LI{ v = 2, next = Some(x) };
+            match (y.next) { Some(z) => z.v, None => 0 } }" 1L);
+    Alcotest.test_case "a recursive record under a binder differs by captures" `Quick
+      (elab_fail
+         "{ mk = fn(B : Type) { rec L = struct { v : B; next : Option(L) }; L };
+            LI = mk(I64); LB = mk(Bool); x : LI = LI{ v = 1, next = None }; y : LB = x; 1 }");
     Alcotest.test_case "a parameterised recursive record holds itself" `Quick
       (check_type
          "{ rec L = fn(A : Type) { struct { meta : A; next : Option(L(A)) } }; \

@@ -196,7 +196,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             trait_name = dict.trait_name;
             args = List.map (go d) dict.args;
             fields = List.map (fun (name, value) -> (name, go d value)) dict.fields }
-    | VRecOcc r -> RecOcc { id = r.id; name = r.name; args = List.map (go d) r.args }
+    | VRecOcc r -> RecOcc { id = r.id; name = r.name; captures = List.map (go d) r.captures; args = List.map (go d) r.args }
     | VCon { name; spine; nominal } -> Nbe_quote.con_term (go d) name spine nominal
     | VFix fc ->
         let d' = d + List.length fc.fix_members in
@@ -306,7 +306,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VTraitDict d ->
             List.iter occurs_check d.args;
             List.iter (fun (_, value) -> occurs_check value) d.fields
-        | VRecOcc r -> List.iter occurs_check r.args
+        | VRecOcc r -> List.iter occurs_check (r.captures @ r.args)
         | VCon { spine; nominal; _ } -> List.iter occurs_check spine; occurs_check nominal
         | VNeutral { neutral = { frames; _ }; _ } ->
             List.iter (fun f -> match f with
@@ -513,6 +513,8 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
   | VRecOcc r1, VRecOcc r2 ->
       if r1.id <> r2.id then raise (UnifyError (CannotUnify ("recursive occurrence " ^ r1.name ^ " vs recursive occurrence " ^ r2.name)));
       if List.length r1.args <> List.length r2.args then raise (UnifyError TupleLengthMismatch);
+      (try List.iter2 (fun c1 c2 -> if c1 != c2 then unify mc env depth c1 c2) r1.captures r2.captures
+       with UnifyError _ -> raise (UnifyError (CannotUnify ("recursive occurrence " ^ r1.name ^ " vs another instance of it"))));
       List.iter2 (unify mc env depth) r1.args r2.args
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc env depth sp1 sp2

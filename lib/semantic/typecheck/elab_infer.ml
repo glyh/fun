@@ -65,12 +65,15 @@ and elab_struct_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend member
       (fun ((key : string), (value : Syntax.t)) -> (key, Syntax.label key, Option.get (struct_type_params value), value))
       members
   in
+  (* An occurrence captures what the enclosing scope names (E11). *)
+  let levels = List.filter (fun l -> l < ctx.Ctx.lvl) ctx.Ctx.scope_captures in
   let occurrences =
     List.map
       (fun (_, name, params, _) ->
         let id = fresh_record_id () in
         let n = List.length params in
-        let term = List.fold_right (fun _ acc -> Lam acc) params (RecOcc { id; name; args = List.init n (fun i -> Var (n - 1 - i)) }) in
+        let captures = List.map (fun l -> Var (n + ctx.Ctx.lvl - 1 - l)) levels in
+        let term = List.fold_right (fun _ acc -> Lam acc) params (RecOcc { id; name; captures; args = List.init n (fun i -> Var (n - 1 - i)) }) in
         let ty =
           List.fold_right
             (fun (param : Syntax.param) acc ->
@@ -88,14 +91,14 @@ and elab_struct_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend member
       (fun (ctx, acc) ((key, name, _, value), (id, _, _)) ->
         let body_ctx =
           List.fold_left2
-            (fun body_ctx (key, _, _, _) (_, term, ty) -> Ctx.define body_ctx key ty (Nbe.eval ctx.Ctx.metas [] term))
+            (fun body_ctx (key, _, _, _) (_, term, ty) -> Ctx.define body_ctx key ty (Nbe.eval ctx.Ctx.metas ctx.Ctx.env term))
             (value_ctx ctx) members occurrences
         in
         let (body_core, body_ty), effects = collecting body_ctx (fun body_ctx -> ops.infer body_ctx value) in
         emit ctx effects;
         let core = wrap body_core in
         let finished = Ctx.eval ctx core in
-        finish_record id finished;
+        finish_record id { record_env = ctx.Ctx.env; record_body = core; record_levels = levels };
         let member = (key, name, core, body_ty, finished) in
         (extend ctx member, member :: acc))
       (ctx, []) (List.combine members occurrences)

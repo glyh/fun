@@ -294,9 +294,9 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           (* [v.m] on a record with no field [m]: a method of its type, applied to it. *)
           | VRecord { typ; fields } when not (List.mem_assoc name fields) ->
               let typ = match typ with
-                | VRecOcc { id; args; _ } -> (
+                | VRecOcc { id; captures; args; _ } -> (
                     match Hashtbl.find_opt Core.finished_records id with
-                    | Some f -> List.fold_left (apply mc) f args
+                    | Some r -> List.fold_left (apply mc) (eval mc (Core.record_instance_env r captures) r.record_body) args
                     | None -> typ)
                 | _ -> typ
               in
@@ -333,8 +333,9 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
                     eval_fields ((name, value) :: acc) rest)
           in
           eval_fields [] fields)
-  | RecOcc { id; name; args } ->
-      sequence_values mc env args (fun arg_vals -> Done (VRecOcc { id; name; args = arg_vals }))
+  | RecOcc { id; name; captures; args } ->
+      sequence_values mc env captures (fun captures ->
+          sequence_values mc env args (fun arg_vals -> Done (VRecOcc { id; name; captures; args = arg_vals })))
   | Ctor { name; spine; nominal_spine; nominal; _ } ->
       sequence_values mc env spine (fun spine_vals ->
           sequence_values mc env nominal_spine (fun nom_spine_vals ->

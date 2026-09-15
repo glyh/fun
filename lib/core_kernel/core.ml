@@ -84,10 +84,11 @@ and term =
     }
       (** Internal trait dictionary type reference. Used by quotation to preserve
           trait dictionary identity without encoding marker fields in structs. *)
-  | RecOcc of { id : int; name : string; args : term list }
+  | RecOcc of { id : int; name : string; captures : term list; args : term list }
       (** A recursive occurrence: a [rec] struct type's reference to itself (or to
-          a member of its [rec] group), by the identity its binding minted,
-          applied to its parameters. Unfolded on demand ([finished_records]). *)
+          a member of its [rec] group), by the identity its binding minted and the
+          values of what its enclosing scope names ([captures], E11), applied to
+          its parameters. Unfolded on demand ([finished_records]). *)
   | Ctor of {
       name : string;
       spine : term list;           (* type args then payload args *)
@@ -365,7 +366,7 @@ and value =
     }
       (** Trait dictionary type. The runtime dictionary value is struct-like,
           but the type is not encoded as private marker fields on [VStruct]. *)
-  | VRecOcc of { id : int; name : string; args : value list }
+  | VRecOcc of { id : int; name : string; captures : value list; args : value list }
       (** A recursive occurrence (see [RecOcc]): equal only to an occurrence of the
           same identity; unfolds to its struct type where a shape is needed. *)
   | VRefTy of value * value (* heap, element *)
@@ -646,7 +647,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | EffectRowLit r -> EffectRowLit (row 0 r)
   | Prod ts -> Prod (List.map (at 0) ts)
   | ProdTy ts -> ProdTy (List.map (at 0) ts)
-  | RecOcc r -> RecOcc { r with args = List.map (at 0) r.args }
+  | RecOcc r -> RecOcc { r with captures = List.map (at 0) r.captures; args = List.map (at 0) r.args }
   | NomRef n -> NomRef { n with captures = List.map (at 0) n.captures; params = List.map (at 0) n.params }
   | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
   | RefTy (h, a) -> RefTy (at 0 h, at 0 a)
@@ -794,16 +795,25 @@ let nominal_constructors id (captures : value list) : (string * closure list) li
   | None -> []
   | Some ctors -> List.map (fun (c, payloads) -> (c, List.map (fun body -> { env = captures; body }) payloads)) ctors
 
-(* A [rec] struct type's identity. The binding mints it before its body is
-   elaborated, so the body's references to the type are occurrences of that
-   identity; [finish_record] records the finished value (a struct type, or a
-   function of the parameters to one) that an occurrence unfolds to.
-   ponytail: minted once at elaboration, like a nominal's id - a [rec] struct
-   under a binder shares one identity across evaluations until E11. *)
+(* A [rec] struct type's declaration. The binding mints its id before its body is
+   elaborated, so the body's references to the type are occurrences of it;
+   [finish_record] records the finished body (a struct type, or a function of the
+   parameters to one) as a term in the declaring environment, and the levels an
+   occurrence captures (E11). An occurrence unfolds to that body evaluated with
+   its own captures in place of those levels - one instance per captures. *)
+type finished_record = { record_env : env; record_body : term; record_levels : lvl list }
+
 let record_counter = ref 0
 let fresh_record_id () = let id = !record_counter in incr record_counter; id
-let finished_records : (int, value) Hashtbl.t = Hashtbl.create 64
-let finish_record id value = Hashtbl.replace finished_records id value
+let finished_records : (int, finished_record) Hashtbl.t = Hashtbl.create 64
+let finish_record id record = Hashtbl.replace finished_records id record
+
+(* The environment a recursive occurrence's body is read in: the declaring one,
+   with the occurrence's captures at the levels they were taken from. *)
+let record_instance_env (r : finished_record) (captures : value list) =
+  let width = List.length r.record_env in
+  let at_position = List.map2 (fun level c -> (width - 1 - level, c)) r.record_levels captures in
+  List.mapi (fun i v -> match List.assoc_opt i at_position with Some c -> c | None -> v) r.record_env
 
 (** Global counter for fresh effect family identities.
     Equality of effect families compares by id and instantiated params, not by
