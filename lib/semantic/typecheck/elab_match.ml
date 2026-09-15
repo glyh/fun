@@ -235,3 +235,51 @@ let elaborate_effect_branch ops ctx ret_ty residual scrutinee_effects branch =
   let body_ctx, resume_entry = Ctx.bind_anonymous arg_ctx cont_ty in
   let body_core = ops.check { body_ctx with Ctx.resume_entry = Some resume_entry } branch.body ret_ty in
   EffectBranch { eff = effect_value; op = branch.op; arg_pat = core_pat; body = body_core }
+
+(* The effect families a match's effect branches handle: the scope its scrutinee
+   and branch bodies elaborate in, for tunneling (E5). *)
+let handler_scope ctx (branches : Syntax.match_branch list) =
+  effect_branches_of branches
+  |> List.filter_map (fun branch ->
+         let _core, value, _input, _output = resolve_perform_operation ctx branch.op_path in
+         match Nbe.force ctx.Ctx.metas value with VEffect { id; _ } -> Some id | _ -> None)
+  |> List.sort_uniq compare
+
+let with_handler ctx branches =
+  match handler_scope ctx branches with
+  | [] -> ctx
+  | scope -> { ctx with Ctx.handler_scopes = scope :: ctx.Ctx.handler_scopes }
+
+(* E6: a match's result may not carry a function whose row names an effect
+   family the match handles - the closure would escape its handler. A saved
+   continuation is fine: its row is the residual, without the handled effects.
+   ponytail: looks through arrows, tuples, nominal parameters, refs and struct
+   fields of the result type only; an escape through an outer ref's type is not
+   checked. *)
+let check_handled_effects_do_not_escape ctx branches ret_ty =
+  match handler_scope ctx branches with
+  | [] -> ()
+  | ids ->
+      let metas = ctx.Ctx.metas in
+      let named v =
+        match Nbe.force metas v with
+        | VEffect { id; name; _ } when List.mem id ids -> Some name
+        | _ -> None
+      in
+      let rec escaping lvl ty =
+        match Nbe.force metas ty with
+        | VPi { domain; effects; codomain; _ } -> (
+            let x = VRigid { lvl; spine = [] } in
+            match List.find_map named (Nbe.eval_effect_row_closure metas effects x).effect_values with
+            | Some _ as found -> found
+            | None -> (
+                match escaping lvl domain with
+                | Some _ as found -> found
+                | None -> escaping (lvl + 1) (Nbe.closure_apply metas codomain x)))
+        | VProdTy tys | VNominal { params = tys; _ } -> List.find_map (escaping lvl) tys
+        | VRefTy (_, elem) -> escaping lvl elem
+        | VStruct { entries; _ } ->
+            List.find_map (function StructField (_, _, t) -> escaping lvl t | StructImpl _ -> None) entries
+        | _ -> None
+      in
+      Option.iter (fun name -> raise (ElabError (HandledEffectEscapes name))) (escaping ctx.Ctx.lvl ret_ty)

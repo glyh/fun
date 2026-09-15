@@ -406,12 +406,24 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       in
       eval_result mc (eff :: env) body
   | Match (scrut, branches) -> eval_match_result mc env scrut branches
+  | Tunnel (skips, body) ->
+      let rec tunnel = function
+        | Done v -> Done v
+        | Effect request ->
+            let hops =
+              match force mc request.eff with
+              | VEffect { id; _ } -> Option.value (List.assoc_opt id skips) ~default:request.hops
+              | _ -> request.hops
+            in
+            Effect { request with hops; k = (fun v -> tunnel (request.k v)) }
+      in
+      tunnel (eval_result mc env body)
   | Perform { eff; op; arg } ->
       bind_result (eval_result mc env eff) (fun eff ->
           bind_result (eval_result mc env arg) (fun arg ->
               match force mc eff with
               | VEffect _ as eff ->
-                  Effect { eff; op; arg; k = (fun v -> Done v) }
+                  Effect { eff; op; arg; hops = 0; k = (fun v -> Done v) }
               | _ -> fail mc "perform target is not an effect"))
 
 and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : value option =
@@ -614,6 +626,15 @@ and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : term)
     | Done v -> Done v
     | Effect request -> handle_effect handle_body request
   and handle_effect resume_with request =
+    (* A tunneled request skips this handler when it handles the request's
+       effect family at all (the count was taken per family). *)
+    let handles_family =
+      request.hops > 0
+      && List.exists (fun (branch_eff, _, _, _) -> same_effect_family mc branch_eff request.eff) effect_branches
+    in
+    if handles_family then
+      Effect { request with hops = request.hops - 1; k = (fun resume -> resume_with (request.k resume)) }
+    else
     match
       find_effect_branch mc effect_branches request.eff request.op request.arg
     with
@@ -651,6 +672,11 @@ and find_effect_branch mc branches eff op arg =
           (match_core_pat mc arg_pat arg)
       else None)
     branches
+
+and same_effect_family mc lhs rhs =
+  match (force mc lhs, force mc rhs) with
+  | VEffect e1, VEffect e2 -> e1.id = e2.id
+  | _ -> false
 
 and runtime_value_equal mc lhs rhs =
   match (force mc lhs, force mc rhs) with

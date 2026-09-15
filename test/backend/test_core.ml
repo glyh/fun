@@ -438,6 +438,28 @@ let test_top_escaping_closure () =
            g = match (0) { x => fn(u : Unit) { perform Exc.raise(x) }, effect Exc.raise n => fn(u : Unit) { n } };
            g(()) }")
 
+(* Tunneling (E5): a handler handles what its own code performs; what a
+   row-polymorphic callback performs passes it. *)
+let tunnel_find body = "{ effect Exc = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 -> I64 can {| r}) -> I64 -> I64 can {| r} = fn[r : EffectRow](pred, x) { " ^ body ^ " }; user : I64 -> I64 can {Exc} = fn(x) { perform Exc.raise(x) }; match (find(user, 1)) { v => v, effect Exc.raise n => 999 } }"
+
+let test_handlers_tunnel () =
+  check_i64 "a callback's effect passes the library's handler" 999L
+    (tunnel_find "match ({ v = pred(x); if (v > 3) { perform Exc.raise(v) } else { v } }) { v => v, effect Exc.raise n => 0 }") ();
+  check_i64 "it passes every handler in the library's body" 999L
+    (tunnel_find "match (match (pred(x)) { v => v, effect Exc.raise n => 1 }) { v => v, effect Exc.raise n => 2 }") ();
+  check_i64 "a closure made under one handler and called under another" 999L
+    (tunnel_find "g = match (0) { _ => fn(y : I64) { pred(y) }, effect Exc.raise n => fn(y : I64) { pred(0) } }; match (g(x)) { v => v, effect Exc.raise n => 2 }") ();
+  check_i64 "a call whose row names the effect is handled locally" 6L
+    "{ effect Exc = sig { raise : I64 -> I64 }; helper : Unit -> I64 can {Exc} = fn(_) { perform Exc.raise(5) }; match (helper(())) { v => v, effect Exc.raise n => n + 1 } }" ()
+
+let test_handled_effect_escape () =
+  (match eval_source "{ effect Exc = sig { raise : I64 -> I64 }; g = match (0) { x => fn(u : Unit) { perform Exc.raise(x) }, effect Exc.raise n => fn(u : Unit) { perform Exc.raise(n) } }; 1 }" with
+   | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
+   | exception e -> Alcotest.fail (Printexc.to_string e)
+   | _ -> Alcotest.fail "expected HandledEffectEscapes");
+  check_i64 "a saved continuation may outlive its handler" 5L
+    "{ effect Async = sig { pause : Unit -> Unit }; q = ref(fn(u : Unit) { 0 }); _ = match (perform Async.pause(())) { v => 1, effect Async.pause _ => { q <- fn(u : Unit) { resume(()) }; 2 } }; 5 }" ()
+
 let test_top_handled_and_latent () =
   check_i64 "a handled perform and an uncalled effectful function" 2L
     "{ effect Exc = sig { raise : I64 -> I64 };
@@ -3457,6 +3479,8 @@ let () =
           Alcotest.test_case "unhandled perform" `Quick test_eval_unhandled_perform;
           Alcotest.test_case "unhandled effect at the top is an error" `Quick test_top_unhandled_perform;
           Alcotest.test_case "an escaping closure called at the top is an error" `Quick test_top_escaping_closure;
+          Alcotest.test_case "handlers tunnel callback effects" `Quick test_handlers_tunnel;
+          Alcotest.test_case "a handled effect may not escape its handler" `Quick test_handled_effect_escape;
           Alcotest.test_case "handled and latent effects pass the top" `Quick test_top_handled_and_latent;
           Alcotest.test_case "an imported unit's unhandled effect is an error" `Quick test_top_unhandled_in_imported_unit;
           Alcotest.test_case "a method is pure unless it declares a row" `Quick test_method_rows;

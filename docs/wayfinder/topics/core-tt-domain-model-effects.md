@@ -76,30 +76,27 @@ row is still open ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md)).
 
 ### E5 — handling is lexical, not dynamic
 
-**Status: decided, not implemented — handling is dynamic today.** A handler
-handles the effects its own scrutinee performs. An effect raised by a function
-passed *in* belongs to that function's row and tunnels past handlers in code
-polymorphic over that row. Today an unhandled request is rewrapped into the
-nearest enclosing handler (`handle_effect`'s `resume_with`), so a library's
-internal handler catches a callback's raise that no type ever mentioned — the
-repro in [handlers-tunnel-callback-effects](../tickets/handlers-tunnel-callback-effects.md)
-answers `0` where the model answers `999`. The port must route operations by
-evidence (the handler the row was bound to), not by a runtime search.
-Distance: same ticket.
+**Status: implemented (2026-09-15).** A handler handles the effects its own
+scrutinee performs. An effect raised by a function passed *in* belongs to that
+function's row and tunnels past handlers in code polymorphic over that row: a
+call whose row has an open tail is wrapped in `Core.Tunnel`, and a request of an
+effect family the row does not name, but a handler lexically enclosing the call
+in the same function body handles, skips those handlers (`effect_request.hops`).
+The repro in [handlers-tunnel-callback-effects](../tickets/handlers-tunnel-callback-effects.md)
+answers `999`. Granularity is the effect family, not the instance. The port may
+route by evidence instead; the observable rule is the same.
 
 ### E6 — a handler's effects may not escape its scope
 
-**Status: decided, not implemented — no check exists.** A stored continuation
+**Status: implemented (2026-09-15), for the result type.** A stored continuation
 may be resumed after its branch returns (schedulers, async); resuming re-enters
 the handler scope. What may not happen is a closure whose row *names* a handled
 effect escaping the handler that handles it — the handler binds its effect like
 a type variable, and the escape check is the one existentials and `runST`-style
-brands need. No such check exists today: an escaping closure fails only at run
-time with "unhandled effect". Distance: the same ticket's second half. A
-program's residual row is checked empty at its entry
-([unhandled-effects-pass-the-checker](../tickets/unhandled-effects-pass-the-checker.md),
-closed), so an escaping closure called at the top is an elaboration error; one
-that escapes and is never called at the top is not yet caught.
+brands need. A match whose result type carries a function whose row names a
+family the match handles is `HandledEffectEscapes`. Not checked: an escape
+through an outer ref's type (assigning the closure to a ref declared outside the
+handler).
 
 ### E7 — continuations are one-shot
 
