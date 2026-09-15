@@ -26,7 +26,7 @@ type t = {
      here instead would run an expander with no [elaborate] callback, which
      compiles no macro and leaves every macro call in the file unexpanded. *)
   driver_expanded_cache : (string, Syntax.t * Expand_ctx.t) Hashtbl.t;
-  macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) list) Hashtbl.t;
+  macro_cache : (string, (string * Core.value * Syntax.MacroKind.t * Syntax.hole_kind list * Macro_eval.syntax_nominals option) list) Hashtbl.t;
   syntax_cache : (string, (string * Syntax.role) list) Hashtbl.t;
   active : (string, string) Hashtbl.t;
   macro_active : (string, string) Hashtbl.t;
@@ -83,9 +83,9 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
   let load_macros ctx _path =
     match Hashtbl.find_opt t.macro_cache resolved with
     | Some macros ->
-        List.iter (fun (name, value, kind, syntax_nominals) ->
+        List.iter (fun (name, value, kind, params, syntax_nominals) ->
           Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals ~name ~value;
-          Expand_ctx.register_macro_kind ctx ~name ~kind)
+          Expand_ctx.register_macro_kind ctx ~name ~kind ~params)
           macros
     | None -> ()
   in
@@ -98,7 +98,8 @@ let parse_runtime_module t ?eval_and_apply ?syntax_nominals path =
           let kind = match Hashtbl.find_opt ctx.Expand_ctx.macro_kind_table name with
             | Some k -> k | None -> Syntax.MacroKind.default in
           Hashtbl.replace t.macro_cache resolved
-            ((name, entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals) :: (Option.value ~default:[] (Hashtbl.find_opt t.macro_cache resolved))))
+            ((name, entry.Expand_ctx.value, kind,
+              Option.value ~default:[] (Expand_ctx.lookup_macro_params ctx name), entry.Expand_ctx.syntax_nominals) :: (Option.value ~default:[] (Hashtbl.find_opt t.macro_cache resolved))))
           ctx.Expand_ctx.macro_table;
        expanded
    | None ->
@@ -128,9 +129,9 @@ let load_elaborated t path ~elaborate ~eval_and_apply ~syntax_nominals =
       let load_macros ctx _path =
         match Hashtbl.find_opt t.macro_cache resolved with
         | Some macros ->
-            List.iter (fun (name, value, kind, syntax_nominals) ->
+            List.iter (fun (name, value, kind, params, syntax_nominals) ->
               Expand_ctx.register_macro_with_nominals ctx ~syntax_nominals ~name ~value;
-              Expand_ctx.register_macro_kind ctx ~name ~kind)
+              Expand_ctx.register_macro_kind ctx ~name ~kind ~params)
               macros
         | None -> ()
       in

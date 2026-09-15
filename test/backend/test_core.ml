@@ -2826,6 +2826,83 @@ let test_m9_quote_token_position_hole () =
        M.r
      }" ()
 
+(* M9: a macro parameter takes a kind, as a syntax form's hole does; its call's
+   arguments are read as those kinds. *)
+
+let expect_expand_error label check source =
+  match eval_with_macros source with
+  | exception Expand_error.Error { error; _ } when check error -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+  | _ -> Alcotest.fail (label ^ ": expected an expansion error")
+
+let test_m9_param_id () =
+  check_i64_macro "an Id parameter names the use site's binder" 5L
+    "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 5; same(x) }" ()
+
+let test_m9_param_id_binds () =
+  check_i64_macro "an Id parameter binds for the caller" 7L
+    "{
+       M = module {
+         macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
+         seven(x);
+         pub r = x
+       };
+       M.r
+     }" ()
+
+let test_m9_param_pattern () =
+  check_i64_macro "a Pattern parameter is read as a pattern" 10L
+    "{
+       macro matches(p : Pattern, e) { quote(match ($e) { | $p => 1 | _ => 0 }) };
+       matches(Some(_), Some(3)) * 10 + matches(None, Some(3))
+     }" ()
+
+let test_m9_param_type_aware () =
+  check_i64_macro "a type-aware macro's Id parameter" 4L
+    "{ macro pick[A](n : Id) : Expr(A) { { _ = A; Syntax.RawVar(None, n) } }; x = 3; pick(x) + 1 }" ()
+
+let test_m9_param_block () =
+  check_i64_macro "a Block parameter is the unread block" 1L
+    "{
+       macro sql(q : Block) {
+         match (Syntax.tokens(q)) {
+         | Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
+             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) }
+         | _ => Syntax.i64(2)
+         }
+       };
+       sql({ SELECT name FROM users })
+     }" ()
+
+let test_m9_param_kind_mismatch () =
+  expect_expand_error "an Id argument that is not an identifier"
+    (function Expand_error.ArgumentKind { kind = HoleId; _ } -> true | _ -> false)
+    "{ macro same(n : Id) { Syntax.RawVar(None, n) }; same(1) }";
+  expect_expand_error "a Block argument that is not a block"
+    (function Expand_error.ArgumentKind { kind = HoleBlock; _ } -> true | _ -> false)
+    "{ macro b(q : Block) { q }; b(1) }";
+  expect_expand_error "too many arguments"
+    (function Expand_error.ArgumentCount { expected = 1; got = 2; _ } -> true | _ -> false)
+    "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 1; same(x, x) }"
+
+let test_m9_param_decl_rejected () =
+  expect_expand_error "a Decl parameter"
+    (function Expand_error.ParameterKind { kind = HoleDecl; _ } -> true | _ -> false)
+    "{ macro m(d : Decl) { Syntax.i64(1) }; 0 }"
+
+let kinded_unit =
+  ("kinds", "open (import \"std\");
+             pub macro same(n : Id) { Syntax.RawVar(None, n) };
+             pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) }")
+
+let test_m9_param_imported () =
+  check_operator "an imported macro's Id parameter, dotted" 5L [ kinded_unit ]
+    "{ M = import \"kinds\"; x = 5; M.same(x) }";
+  check_operator "an imported macro's Id parameter, opened" 5L [ kinded_unit ]
+    "{ open (import \"kinds\"); x = 5; same(x) }";
+  check_operator "an imported Decl macro's Id parameter" 7L [ kinded_unit ]
+    "{ M = module { open (import \"kinds\"); seven(y); pub r = y }; M.r }"
+
 (* Names and shape only: a binder expanded again gets a fresh scope, which
    resolution of an already-resolved name never consults. *)
 let erase_scopes stx = Expand.map_ids (fun id -> { id with Syntax.scope = Scope_set.empty }) stx
@@ -3559,5 +3636,13 @@ let () =
           Alcotest.test_case "filling equals the quote" `Quick test_m9_filling_equals_quote;
           Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
           Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
+          Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
+          Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
+          Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;
+          Alcotest.test_case "a Block parameter" `Quick test_m9_param_block;
+          Alcotest.test_case "a type-aware macro's Id parameter" `Quick test_m9_param_type_aware;
+          Alcotest.test_case "an argument of the wrong kind" `Quick test_m9_param_kind_mismatch;
+          Alcotest.test_case "a Decl parameter is rejected" `Quick test_m9_param_decl_rejected;
+          Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;
         ] );
     ]

@@ -33,9 +33,7 @@ type mapper = {
   used_rule : mapper -> rule -> rule;
 }
 
-let token_id (tok : Token_tree.token) =
-  let name = match tok.kind with Ident s | Operator s -> s | _ -> "" in
-  { Syntax.name; span = tok.span; scope = tok.scope }
+let token_id = Syntax.token_id
 
 let rec map_forms_with (m : mapper) (stx : t) : t = m.form { stx with kind = go_kind m stx.kind }
 
@@ -135,7 +133,7 @@ and go_kind m (k : kind) : kind =
   | Instantiate inst -> Instantiate (map_instantiation m inst)
   | MacroDef { name; value; body; kind } -> MacroDef { name = on_id name; value = go value; body = go body; kind }
   | SyntaxDef { name; role; body } -> SyntaxDef { name = on_id name; role = map_role m role; body = go body }
-  | MacroCall (f, args) -> MacroCall (go f, List.map go args)
+  | MacroCall (f, args) -> MacroCall (go f, List.map (map_capture m) args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
     SyntaxOperatorUse { operator = on_id operator; fixity; operands = List.map go operands; declaration_span; use_span; unit }
 
@@ -161,7 +159,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
      | ImplBinding { name; trait; args; fields; public } ->
        ImplBinding { name; trait = map_path m trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
      | MacroBinding { name; value; public; kind } -> MacroBinding { name = on_id name; value = go value; public; kind }
-     | MacroCallBinding { f; args } -> MacroCallBinding { f = go f; args = List.map go args }
+     | MacroCallBinding { f; args } -> MacroCallBinding { f = go f; args = List.map (map_capture m) args }
      | PatternSynBinding { name; params; rhs; public } ->
        PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat m rhs; public }
      | OpenBinding (md, label) -> OpenBinding (go md, label)
@@ -477,6 +475,33 @@ let open_unit_macro_scopes (ctx : Expand_ctx.t) (m : t) : Scope_set.t list =
 let member_scope (m : t) : Scope_set.t =
   match m.kind with Var id -> id.scope | Import { scope; _ } -> scope | _ -> Scope_set.empty
 
+(* The parameter kinds of the macro a call's head names - found as the call
+   will find the macro - for the enforester to read its arguments as (M9). *)
+let macro_params_of (ctx : Expand_ctx.t) (head : t) =
+  let key =
+    match head.kind, macro_member_key ctx head with
+    | FieldAccess _, Some (key, _) -> Some key
+    | Var id, _ -> Option.map (fun (key, _, _) -> key) (macro_head_key ctx id)
+    | _ -> None
+  in
+  Option.bind key (Expand_ctx.lookup_macro_params ctx)
+
+(* The reader of the forms expansion reaches, with the roles bound here. *)
+let lazy_env (ctx : Expand_ctx.t) =
+  Enforest_util.lazy_env ~macro_params:(macro_params_of ctx) ctx.Expand_ctx.binding_table
+
+(* A macro's parameter kinds, and its value with each kind annotation made its
+   type; a kind no parameter can take yet is the definition's error. *)
+let macro_params ~(name : Syntax.id) value =
+  let params, value = Syntax.macro_params value in
+  if List.mem Syntax.HoleDecl params then
+    Expand_error.raise_at (ParameterKind { macro = name.name; kind = HoleDecl });
+  (params, value)
+
+let expand_capture expand = function
+  | CapExpr e -> CapExpr (expand e)
+  | c -> c
+
 (* Where an occurrence resolves (M12): its binder's resolved name, or an open
    choice when some open may supply it or no binder takes it. *)
 let resolve_occurrence (ctx : Expand_ctx.t) (id : Syntax.id) : (string, Syntax.open_choice) Either.t =
@@ -566,7 +591,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | Block terms -> (
     (* Read the body's first statement with the roles bound here, scoped over
        the rest, which stays unread until expansion reaches it (M9). *)
-    let env = Enforest_util.lazy_env ctx.Expand_ctx.binding_table in
+    let env = lazy_env ctx in
     match Enforest.parse_block_decl_form env terms with
     | Some (inst, rest) ->
       let body =
@@ -623,7 +648,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
           | [] -> ([], [])
       in
       let macro_spine, rest = split take spine in
-      let macro_args = List.map snd macro_spine in
+      let macro_args = List.map (fun (_, a) -> CapExpr a) macro_spine in
       let head_stx = { head with kind = Var { head_id with name = key } } in
       let macro_result = run_macro_call ctx stx ~key ~macro_entry ~head:head_stx macro_args in
       match rest with
@@ -737,6 +762,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | MacroDef { name; value; body; kind; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
+      let params, value = macro_params ~name value in
       let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
       let macro_fn = elab (in_definition_site_opens ctx name value) in
       let resolved_kind = Syntax.macro_kind kind value in
@@ -749,7 +775,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       let scope, resolved_name =
         Expand_ctx.extend_at_fresh_kinded ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~kind:Binding.Macro () in
       Expand_ctx.register_macro ctx ~name:resolved_name ~value:macro_fn;
-      Expand_ctx.register_macro_kind ctx ~name:resolved_name ~kind:resolved_kind;
+      Expand_ctx.register_macro_kind ctx ~name:resolved_name ~kind:resolved_kind ~params;
       expand ctx (add_scope scope body)
     | None ->
       Expand_error.raise_at (MissingCallback { callback = "elaborate" })
@@ -759,18 +785,21 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
        syntax). They still arrive here from the operator-macro prefix path.
        The argument list is exact (not a curried spine), so it is passed
        through verbatim. *)
-    begin match f.kind with
-    | Var id ->
+    let unexpanded () = { stx with kind = MacroCall (expand ctx f, List.map (expand_capture (expand ctx)) args) } in
+    begin match f.kind, macro_member_key ctx f with
+    | FieldAccess (m, _), Some (key, macro_entry) ->
+      let head_stx = { f with kind = Var { Syntax.name = key; span = f.span; scope = member_scope m } } in
+      run_macro_call ctx stx ~key ~macro_entry ~head:head_stx args
+    | Var id, _ ->
       begin match macro_head_key ctx id with
       | Some (key, Some macro_entry, _) ->
         let head_stx = { f with kind = Var { id with name = key } } in
         run_macro_call ctx stx ~key ~macro_entry ~head:head_stx args
       | Some (_, None, true) ->
         Expand_error.raise_at (ExpandedDuringDefinition { macro = id.name })
-      | Some (_, None, false) | None ->
-        { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
+      | Some (_, None, false) | None -> unexpanded ()
       end
-    | _ -> { stx with kind = MacroCall (expand ctx f, List.map (expand ctx) args) }
+    | _ -> unexpanded ()
     end
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
     (* Take the body from the unit whose declaration won the fixity. The node
@@ -854,7 +883,7 @@ and instantiate : 'a. Expand_ctx.t -> instantiation -> (application -> (string *
     [macro_args] is the exact argument list; [head] is the head with its
     macro-table key as name (so a deferred node resolves in the elaborator). *)
 and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
-    ~(macro_entry : Expand_ctx.macro_entry) ~(head : t) (macro_args : t list) : t =
+    ~(macro_entry : Expand_ctx.macro_entry) ~(head : t) (macro_args : capture list) : t =
   let macro_fn = macro_entry.Expand_ctx.value in
   let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
   let macro_kind =
@@ -867,18 +896,19 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
   check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Expr;
   if Syntax.MacroKind.has_type_binding macro_kind then
     (* Defer to the elaborator: args travel as syntax objects, marked [Stx]. *)
-    let wrap_stx arg = { arg with kind = Syntax.Stx arg } in
+    let wrap_stx = function CapExpr arg -> CapExpr { arg with kind = Syntax.Stx arg } | c -> c in
     { stx with kind = MacroCall (head, List.map wrap_stx macro_args) }
   else begin match ctx.Expand_ctx.eval_and_apply with
     | Some apply_fn ->
       let apply_fn = apply_fn ctx.Expand_ctx.budget in
-      let site = Option.bind (List.nth_opt macro_args 0) syntax_operator_site in
+      let site =
+        match macro_args with CapExpr arg :: _ -> syntax_operator_site arg | _ -> None
+      in
       Expand_ctx.macro_application ?site ctx ~name:key ~expand:(expand ctx) (fun () ->
         let app = application ctx in
         let result =
           List.fold_left (fun fn arg ->
-              let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals (app.receive arg) in
-              apply_fn fn arg_stx)
+              apply_fn fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.receive_capture arg)))
             macro_fn macro_args
         in
         begin match Macro_eval.unwrap_stx ?nominals:macro_nominals result with
@@ -897,7 +927,7 @@ and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) ?(in_struc
          active scopes; the rest takes them when it is reached. *)
       let stmt, after = Enforest_util.take_statement terms in
       let stmt = map_terms (mapper (add_id_scope (union_scopes active_scopes))) stmt in
-      let head = Enforest.parse_module_statement (Enforest_util.lazy_env ctx.Expand_ctx.binding_table) stmt in
+      let head = Enforest.parse_module_statement (lazy_env ctx) stmt in
       let after = if Enforest_util.drop_separators after = [] then [] else [ Items after ] in
       go active_scopes acc all_scopes (head @ after @ rest))
     | binding :: rest ->
@@ -1046,6 +1076,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
+      let params, value = macro_params ~name value in
       let resolved_kind = Syntax.macro_kind kind value in
       let binding_name = id_name name in
       (* Stage 7: introduce name scope and register provisional macro BEFORE
@@ -1055,7 +1086,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
       let scope = Expand_ctx.extend_at_kinded ctx ~span:name.span ~name:binding_name ~base_scope:name.scope ~kind:Binding.Macro ~resolved_name:binding_name () in
       let macro_snapshot = Expand_ctx.snapshot_macro ctx binding_name in
       Expand_ctx.register_provisional_macro ctx ~name:binding_name ();
-      Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind;
+      Expand_ctx.register_macro_kind ctx ~name:binding_name ~kind:resolved_kind ~params;
       Fun.protect
         ~finally:(fun () ->
           if Expand_ctx.is_provisional_macro ctx binding_name then
@@ -1090,8 +1121,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
            Expand_ctx.macro_application ctx ~name:key ~expand:(expand ctx) (fun () ->
              let app = application ctx in
              let fn = List.fold_left (fun fn arg ->
-                let arg_stx = Macro_eval.wrap_stx ~nominals:macro_nominals (app.receive arg) in
-                apply_fn fn arg_stx) macro_fn args in
+                apply_fn fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.receive_capture arg))) macro_fn args in
              let rec force_val v =
                match v with
                | Core.VLam _ | Core.VFlex _ ->
@@ -1113,9 +1143,9 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
         end
       | Some (key, None, true) ->
         Expand_error.raise_at (ExpandedDuringDefinition { macro = key })
-      | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
+      | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args }], [[]])
       end
-    | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand ctx) args }], [[]])
+    | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args }], [[]])
     end
 
 and expand_match_branch ctx = function
