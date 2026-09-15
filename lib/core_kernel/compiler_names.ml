@@ -74,3 +74,12 @@ module Constructor_name = struct
   let some = "Some"
   let none = "None"
 end
+
+module Effect_name = struct
+  (* [Mutate(r)]: the effect of using reference [r]'s hidden heap. The name is
+     both the family's display name and the surface function mapping a
+     reference to its heap's effect. *)
+  let mutate = "Mutate"
+  (* The binding holding the [Mutate] family itself; not writable in source. *)
+  let mutate_family = "Mutate#family"
+end

@@ -140,7 +140,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           Done (Quote_holes.fill template (List.combine (List.map fst holes) values)))
   (* Anchor-independent: a unit's value carries its own environment. *)
   | Imported v -> Done v
-  | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))
+  | RefTy (h, a) -> bind_result (eval_result mc env h) (fun h -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy (h, a))))
   | RefNew e ->
       bind_result (eval_result mc env e) (fun value -> Done (VRef (ref value)))
   | RefGet r ->
@@ -149,7 +149,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           | VRef cell -> Done !cell
           | VNeutral { ty; neutral } -> (
               match force mc ty with
-              | VRefTy elem_ty ->
+              | VRefTy (_, elem_ty) ->
                   Done
                     (VNeutral
                        {

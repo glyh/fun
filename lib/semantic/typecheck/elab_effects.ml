@@ -40,6 +40,44 @@ let collecting (ctx : Ctx.t) f =
   let result = f { ctx with Ctx.sink } in
   (result, sink.performed)
 
+(* Using a reference performs [Mutate] on its heap. *)
+let mutate_effect ctx heap =
+  let value = VEffect { id = mutate_effect_id; name = Compiler_names.Effect_name.mutate; params = [ heap ]; operations = [] } in
+  singleton_expr_effect (Ctx.quote ctx value) value
+
+(* A heap allocated while elaborating a function (its meta is newer than
+   [since]) that nothing [visible] outside mentions - the function's domain and
+   result - cannot be observed from outside: its [Mutate] effects are dropped, so
+   local mutation is pure. An outer heap, or one merged into an outer heap by
+   unification, is never dropped. *)
+let discharge_local_heaps ctx ~since ~(visible : term list) effects =
+  let metas = ctx.Ctx.metas in
+  (* An older heap unified with a newer one is solved to it: the newer id then
+     stands for the older heap too, which is not local. *)
+  let aliased_by_older m =
+    Seq.exists
+      (fun i ->
+        match MetaContext.lookup metas i with
+        | Solved _ -> (match Nbe.force metas (VFlex { id = i; spine = [] }) with VFlex { id; spine = [] } -> id = m | _ -> false)
+        | Unsolved -> false)
+      (Seq.init since Fun.id)
+  in
+  let local_heap eff =
+    match Nbe.force metas eff.value with
+    | VEffect { id; params = [ heap ]; _ } when id = mutate_effect_id -> (
+        (* ponytail: scans every older meta per candidate heap; index heap aliases if ref-heavy code slows down. *)
+        match Nbe.force metas heap with
+        | VFlex { id = m; spine = [] } when m >= since && not (aliased_by_older m) -> Some m
+        | _ -> None)
+    | _ -> None
+  in
+  let rec mentions m = function
+    | Meta id | InsertedMeta (id, _) when id = m -> true
+    | t -> List.exists (fun (_, sub) -> mentions m sub) (subterms t)
+  in
+  let observable eff = match local_heap eff with Some m -> List.exists (mentions m) visible | None -> true in
+  { effects with effects = List.filter observable effects.effects }
+
 let unhandled ctx effects =
   ElabError (UnhandledEffects (List.map (fun eff -> Debug.pp_value_short ctx.Ctx.metas eff.value) effects))
 
@@ -98,14 +136,17 @@ let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value
   | leftovers, _, None -> raise (unhandled ctx leftovers)
 
 (* The effects a program's entry may leave unhandled: those the handler the
-   runtime wraps around the entry discharges. The runtime handles none yet, so
-   an entry's residual row must be empty; a runtime-provided effect joins this
-   row rather than an exemption list. *)
-let runtime_handled_effects : effect_row_value = { effect_values = []; tail_value = None }
+   runtime wraps around the entry discharges: the heap, so top-level references
+   work ([Mutate] on any heap). A runtime-provided effect joins this row rather
+   than an exemption list. *)
+let runtime_handled_effects ctx : effect_row_value =
+  let heap = Ctx.raw_meta ctx in
+  { effect_values = [ VEffect { id = mutate_effect_id; name = Compiler_names.Effect_name.mutate; params = [ heap ]; operations = [] } ];
+    tail_value = None }
 
 (* A program's top - a unit's bindings, an entry expression - performs only
    what the runtime handles. *)
-let require_handled_at_entry ctx effects = check_effect_subset ctx effects runtime_handled_effects
+let require_handled_at_entry ctx effects = check_effect_subset ctx effects (runtime_handled_effects ctx)
 
 let effect_row_of_expr_effects ctx (effects : expr_effects) : effect_row =
   { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects.effects;

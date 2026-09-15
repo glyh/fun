@@ -1689,6 +1689,42 @@ let references =
     Alcotest.test_case "assign non-ref rejected" `Quick (elab_fail "1 <- 2");
   ]
 
+(* Refs in effect rows: using a reference performs [Mutate] on its hidden heap. *)
+let mutates_unhandled source () =
+  match elab source with
+  | exception Elaborate.ElabError (Elaborate.UnhandledEffects effs)
+    when List.exists (fun e -> String.starts_with ~prefix:"effect Mutate" e) effs -> ()
+  | exception e -> Alcotest.fail ("expected an unhandled Mutate: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected an unhandled Mutate"
+
+let sum_to = "sum_to : I64 -> I64 = fn(n) { acc = ref(0); _ = acc <- deref(acc) + n; deref(acc) }"
+
+let ref_effects =
+  [
+    Alcotest.test_case "a bare arrow mutating its parameter is rejected" `Quick
+      (mutates_unhandled "{ bump : Ref(I64) -> Unit = fn(r) { r <- deref(r) + 1 }; 1 }");
+    Alcotest.test_case "can {Mutate(r)} names the reference" `Quick
+      (eval_i64 "{ bump : (r : Ref(I64)) -> Unit can {Mutate(r)} = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); deref(x) }" 2L);
+    Alcotest.test_case "can _ infers the mutation" `Quick
+      (eval_i64 "{ bump : Ref(I64) -> Unit can _ = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); _ = bump(x); deref(x) }" 3L);
+    Alcotest.test_case "a local reference is pure from outside" `Quick
+      (eval_i64 ("{ " ^ sum_to ^ "; sum_to(3) }") 3L);
+    Alcotest.test_case "a pure function using a local reference evaluates in a type" `Quick
+      (elab_ok ("{ " ^ sum_to ^ "; p : Tuple(sum_to(2), I64, Bool) = (1, True); p.1 }"));
+    Alcotest.test_case "returning a local reference keeps its mutation" `Quick
+      (mutates_unhandled "{ leak : I64 -> Ref(I64) = fn(n) { acc = ref(0); acc }; 1 }");
+    Alcotest.test_case "a reference merged with an outer one is not local" `Quick
+      (elab_fail "{ outer = ref(0); f = fn(u : Unit) { b = ref(2); xs = Cons(outer, Cons(b, Nil)); 1 }; (f : Unit -> I64) }");
+    Alcotest.test_case "writing an outer reference through a merged heap is not local" `Quick
+      (elab_fail "{ r = ref(0); f = fn(u : Unit) { b = ref(1); xs = Cons(r, Cons(b, Nil)); r <- 5 }; (f : Unit -> Unit) }");
+    Alcotest.test_case "a pure arrow cannot write an outer reference" `Quick
+      (mutates_unhandled "{ r = ref(0); f : Unit -> Unit can {} = fn(_) { r <- 2 }; 1 }");
+    Alcotest.test_case "a module-level reference works at the top" `Quick
+      (eval_i64 "{ Counter = module { pub count = ref(0); pub tick : Unit -> Unit can {Mutate(count)} = fn(_) { count <- deref(count) + 1 } }; _ = Counter.tick(()); deref(Counter.count) }" 1L);
+    Alcotest.test_case "a module function touching its reference declares it" `Quick
+      (mutates_unhandled "{ Counter = module { pub count = ref(0); pub tick : Unit -> Unit = fn(_) { count <- deref(count) + 1 } }; 1 }");
+  ]
+
 let let_rec =
   [
     Alcotest.test_case "recursive function annotated" `Quick
@@ -1940,5 +1976,6 @@ let () =
       ("imports", imports);
       ("module-level open", module_level_open);
       ("references", references);
+      ("ref effects", ref_effects);
       ("let_rec", let_rec);
     ]

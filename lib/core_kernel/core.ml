@@ -138,7 +138,10 @@ and term =
           repeated evaluation of the same declaration remains applicative. *)
   | Perform of { eff : term; op : string; arg : term }
       (** Effect operation invocation. Handlers/runtime bubbling are not implemented yet. *)
-  | RefTy of term
+  | RefTy of term * term
+      (** [Ref(h, A)]: a reference into the hidden heap [h] holding an [A]. The
+          heap is never written in source: surface [Ref(A)] takes it as an
+          implicit argument, so each use gets a fresh one. *)
   | RefNew of term
   | RefGet of term
   | RefSet of term * term
@@ -353,7 +356,7 @@ and value =
   | VRecOcc of { id : int; name : string; args : value list }
       (** A recursive occurrence (see [RecOcc]): equal only to an occurrence of the
           same identity; unfolds to its struct type where a shape is needed. *)
-  | VRefTy of value
+  | VRefTy of value * value (* heap, element *)
   | VRef of value ref
   | VCon of { name : string; spine : value list; nominal : value }
       (** Fully saturated constructor value. [name] is the constructor tag,
@@ -583,7 +586,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | RecOcc r -> RecOcc { r with args = List.map (at 0) r.args }
   | NomRef n -> NomRef { n with params = List.map (at 0) n.params }
   | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
-  | RefTy a -> RefTy (at 0 a)
+  | RefTy (h, a) -> RefTy (at 0 h, at 0 a)
   | RefNew a -> RefNew (at 0 a)
   | RefGet a -> RefGet (at 0 a)
   | RefSet (r, v) -> RefSet (at 0 r, at 0 v)
@@ -677,6 +680,9 @@ module MetaContext = struct
   let lookup (mc : t) (id : meta_id) : entry =
     Dynarray.get mc.entries id
 
+  (* The id the next fresh meta gets: every meta created from here on is newer. *)
+  let count (mc : t) : int = Dynarray.length mc.entries
+
   let snapshot (mc : t) : entry array =
     Array.init (Dynarray.length mc.entries) (Dynarray.get mc.entries)
 
@@ -740,3 +746,8 @@ end = struct
     incr counter;
     id
 end
+
+(** The one mutation effect family, [Mutate(h)] over a hidden heap [h]: allocating,
+    reading or writing a reference of that heap. Its family carries no
+    operations; a reference form performs it directly. *)
+let mutate_effect_id = EffectId.fresh ()

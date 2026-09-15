@@ -22,8 +22,18 @@ let init_ctx () : Ctx.t =
   let ctx = add_type ctx Compiler_names.Type_name.absurd (VAtomTy Atom_ty.TAbsurd) in
   let ctx = Ctx.define ctx Compiler_names.Type_name.type_ VU VU in
   let ctx = Ctx.define ctx Compiler_names.Type_name.effect_row VU VEffectRowTy in
-  let ref_ty = VPi { explicitness = Explicit; domain = VU; effects = effect_row_closure ctx.env empty_effect_row; codomain = { env = ctx.env; body = U } } in
-  let ctx = Ctx.define ctx Compiler_names.Type_name.ref_ ref_ty (VLam { body = { env = ctx.env; body = RefTy (Var 0) } }) in
+  (* [Ref : [h : Type] -> Type -> Type]: the heap is an implicit argument, never
+     written, so each [Ref(A)] gets a fresh one. *)
+  let pi explicitness domain codomain = Pi { explicitness; domain; effects = empty_effect_row; codomain } in
+  let ref_ty = Ctx.eval ctx (pi Implicit U (pi Explicit U U)) in
+  let ctx = Ctx.define ctx Compiler_names.Type_name.ref_ ref_ty (Ctx.eval ctx (Lam (Lam (RefTy (Var 1, Var 0))))) in
+  (* The [Mutate] family, and [Mutate : [h : Type] -> [A : Type] -> Ref(h, A) -> Type]
+     mapping a reference to the effect on its heap. *)
+  let mutate = Compiler_names.Effect_name.mutate in
+  let family = VEffect { id = mutate_effect_id; name = mutate; params = []; operations = [] } in
+  let ctx = Ctx.define ctx Compiler_names.Effect_name.mutate_family VU family in
+  let mutate_ty = Ctx.eval ctx (pi Implicit U (pi Implicit U (pi Explicit (RefTy (Var 1, Var 0)) U))) in
+  let ctx = Ctx.define ctx mutate mutate_ty (Ctx.eval ctx (Lam (Lam (Lam (EffectRef (mutate, [ Var 2 ])))))) in
   let ctx =
     NameMap.fold
       (fun name ty ctx ->
