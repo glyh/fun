@@ -294,10 +294,10 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Open (s, members, body) ->
       bind_result (eval_result mc env s) (fun vs -> eval_result mc (push_open_members mc env vs members) body)
   | Fix { members; index } -> Done (VFix { fix_members = members; fix_env = env; fix_index = index })
-  | NomRef { id; name; params } ->
-      let nom = eval_nominal env id name in
-      sequence_values mc env params (fun param_vals ->
-          Done (List.fold_left (fun acc v -> apply mc acc v) nom param_vals))
+  | NomRef { id; name; num_params; captures; params } ->
+      sequence_values mc env captures (fun captures ->
+          sequence_values mc env params (fun params ->
+              Done (VNominal { id; name; num_params; captures; params })))
   | EffectRef (name, params) -> (
       match eval_eff env name with
       | VEffect _ as eff ->
@@ -324,10 +324,10 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           eval_fields [] fields)
   | RecOcc { id; name; args } ->
       sequence_values mc env args (fun arg_vals -> Done (VRecOcc { id; name; args = arg_vals }))
-  | Ctor { name; spine; nominal_spine; nominal_value; _ } ->
+  | Ctor { name; spine; nominal_spine; nominal; _ } ->
       sequence_values mc env spine (fun spine_vals ->
           sequence_values mc env nominal_spine (fun nom_spine_vals ->
-              match force mc nominal_value with
+              match eval mc env nominal with
               | VNominal n ->
                   Done
                     (VCon
@@ -342,58 +342,26 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       Done (VNeutral { ty = VU; neutral = { head = HPrim name; frames = [] } })
   | Meta id -> Done (eval_meta mc id)
   | InsertedMeta (id, bds) -> Done (eval_inserted_meta mc env id bds)
-  | NominalDef { id; name; num_params; ctors; body } ->
-      let elaborated_ctors =
-        List.map
-          (fun (cname, payloads) ->
-            (cname, List.map (fun t -> { env; body = t }) payloads))
-          ctors
-      in
-      let nominal =
-        VNominal
-          { id; name; num_params; params = []; constructors = elaborated_ctors }
-      in
-      (* Add dummy entries for type params (body expects them in scope) *)
-      let depth = List.length env in
-      let env =
-        let rec add_params env i =
-          if i >= num_params then env
-          else add_params (VRigid { lvl = depth + i; spine = [] } :: env) (i + 1)
-        in
-        add_params env 0
-      in
-      (* Push the nominal template (found by id by NomRef) *)
-      let env = nominal :: env in
-      (* For parameterized types, elaborator also pushes a type-name binding *)
-      let env = if num_params > 0 then nominal :: env else env in
-      let env =
-        List.fold_left
-          (fun env (cname, payload_clos) ->
-            let payload_count = List.length payload_clos in
-            let total_args = num_params + payload_count in
-            if total_args = 0 then
-              VCon { name = cname; spine = []; nominal } :: env
-            else
-              let ctor_body =
-                let param_vars =
-                  List.init num_params (fun i -> Var (total_args - 1 - i))
+  | NominalDef { id; name; num_params; captures; ctors; body } ->
+      sequence_values mc env captures (fun capture_vals ->
+          let nominal = VNominal { id; name; num_params; captures = capture_vals; params = [] } in
+          (* Rigid stand-ins for the type params (the body expects them in scope),
+             the nominal, and for a parameterised type its type-name entry. *)
+          let depth = List.length env in
+          let env = List.rev (List.init num_params (fun i -> VRigid { lvl = depth + i; spine = [] })) @ env in
+          let env = nominal :: env in
+          let env = if num_params > 0 then nominal :: env else env in
+          (* Each constructor chain reads the nominal it sits over: [i] entries in. *)
+          let env =
+            List.fold_left
+              (fun env (i, (cname, payloads)) ->
+                let ctor =
+                  ctor_term ~nominal:(Var i) ~name:cname ~nominal_name:name ~num_params ~payload_count:(List.length payloads)
                 in
-                let payload_vars = List.init payload_count (fun i -> Var (payload_count - 1 - i)) in
-                Ctor
-                  {
-                    name = cname;
-                    spine = param_vars @ payload_vars;
-                    nominal_name = name;
-                    nominal_spine = param_vars;
-                    nominal_value = nominal;
-                  }
-              in
-              let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in
-              let ctor_term = wrap total_args ctor_body in
-              eval mc env ctor_term :: env)
-          env elaborated_ctors
-      in
-      eval_result mc env body
+                eval mc env ctor :: env)
+              env (List.mapi (fun i c -> (i, c)) ctors)
+          in
+          eval_result mc env body)
   | EffectDef { id; name; ops; body; _ } ->
       let elaborated_ops =
         List.map
@@ -588,22 +556,6 @@ and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
   in
   go base (List.rev env) (List.rev bds)
 
-(* Scan the environment, modules included, for the nominal with this id. *)
-and eval_nominal (env : env) (id : nominal_id) (name : string) : value =
-  (* The template, not an instance: a binding like [Decls = List(Decl)] holds a
-     [VNominal] with the same id and its params already applied. *)
-  let is_it = function VNominal n -> n.id = id && n.params = [] | _ -> false in
-  let rec go = function
-    | [] -> raise (EvalError ("unbound nominal type: " ^ name))
-    | v :: _ when is_it v -> v
-    | VModule { entries; _ } :: rest ->
-        (match List.find_opt (fun (_, k, v) -> Nbe_support.visible_kind k && is_it v) (module_entry_fields entries) with
-         | Some (_, _, v) -> v
-         | None -> go rest)
-    | _ :: rest -> go rest
-  in
-  go env
-
 and eval_eff (env : env) (name : string) : value =
   let rec go = function
     | [] -> raise (EvalError ("unbound eff: " ^ name))
@@ -686,6 +638,8 @@ and runtime_value_equal mc lhs rhs =
       && List.for_all2 (runtime_value_equal mc) e1.params e2.params
   | VNominal n1, VNominal n2 ->
       n1.id = n2.id
+      && List.length n1.captures = List.length n2.captures
+      && List.for_all2 (runtime_value_equal mc) n1.captures n2.captures
       && List.length n1.params = List.length n2.params
       && List.for_all2 (runtime_value_equal mc) n1.params n2.params
   | VAtom a, VAtom b -> Atom.equal a b
@@ -844,11 +798,11 @@ and eval_match_direct_result (mc : MetaContext.t) (env : env)
 and nominal_constructors (mc : MetaContext.t) (nom : value) :
     (string * int * int) list =
   match force mc nom with
-  | VNominal { id; params; constructors; _ } ->
+  | VNominal { id; params; captures; _ } ->
       let ntp = List.length params in
       List.map
         (fun (name, payloads) -> (name, ntp, List.length payloads))
-        (Core.nominal_constructors id constructors)
+        (Core.nominal_constructors id captures)
   | _ -> fail mc "match scrutinee type is not a nominal"
 
 and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)

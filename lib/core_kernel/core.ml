@@ -62,12 +62,13 @@ and term =
     }
   | Open of term * open_member list * term  (* open S in body — the evaluator pushes each member of S *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
-  | NomRef of { id : nominal_id; name : string; params : term list }
-      (** Applied nominal type reference. [eval] scans the environment for
-          the [VNominal] template with this id (the name is for display only:
-          a type is never found by its spelling), evaluates the param terms,
-          and returns [VNominal] with those params. Used in constructor Pi
-          types to express e.g. [Option a] where [a] is a de Bruijn var. *)
+  | NomRef of { id : nominal_id; name : string; num_params : int; captures : term list; params : term list }
+      (** Applied nominal type reference. A nominal's identity is its declaration
+          ([id], whose constructors [nominal_decls] holds) and the values of the
+          declaration's own free variables ([captures]) - applicative (E11), so
+          the same declaration over convertible captures is the same type. [eval]
+          builds the [VNominal] directly, never looking the declaration up in an
+          environment ([name] is for display), and applies [params]. *)
   | EffectRef of string * term list
       (** Applied effect family reference. [eval] scans the environment for a
           [VEffect] template with this name, evaluates the param terms, and
@@ -91,11 +92,11 @@ and term =
       name : string;
       spine : term list;           (* type args then payload args *)
       nominal_name : string;       (* the template's name, for display *)
-      nominal_spine : term list;
-    nominal_value : value;   (* type args for the nominal's params *)
+      nominal_spine : term list;   (* type args for the nominal's params *)
+      nominal : term;              (* the unapplied nominal (a [NomRef]) *)
     }
       (** Constructor value term. [eval] evaluates spine terms to values,
-          applies [nominal_spine] as the params of the template [nominal_value]
+          applies [nominal_spine] as the params of the template [nominal]
           ([nominal_name] is for display), and constructs [VCon]. Built by
           constructor lambda chains, and by [quote] for a [VCon]: a constructor
           value carries its nominal, so it is never found again by spelling. *)
@@ -121,12 +122,15 @@ and term =
       id : nominal_id;
       name : string;
       num_params : int;
+      captures : term list;
       ctors : (string * term list) list;
       body : term;
     }
-      (** Nominal type definition. Evaluator creates a fresh VNominal, builds
-          constructor values, extends env with [type, ctor1, ..., ctorN], then
-          evaluates [body]. The body's Var indices account for these bindings. *)
+      (** Nominal type definition. [captures] are the declaration's own free
+          variables, as terms in the definition's scope. Evaluator builds the
+          [VNominal] over their values, builds constructor values, extends env
+          with [type, ctor1, ..., ctorN], then evaluates [body]. The body's Var
+          indices account for these bindings. *)
   | EffectDef of {
       id : effect_id;
       name : string;
@@ -207,9 +211,13 @@ and core_pat =
 
 and struct_binding_term =
   | LetBind of string * struct_field_kind * term
-  | TypeBind of string * struct_field_kind * value * (string * value) list
-      (** name, kind, nominal_value, [(ctor_name, ctor_value)].
-          Evaluator stores values directly without routing through [eval]. *)
+  | TypeBind of { name : string; kind : struct_field_kind; id : nominal_id; num_params : int;
+                  captures : term list; ctors : (string * int) list }
+      (** A nominal type binding: its declaration [id], its own free variables
+          ([captures], terms in the binding's scope) and each constructor's
+          payload arity. The evaluator builds the nominal and its constructors
+          in the scope it is pushed in ([binding_slots]), so a type declared
+          under a binder is instantiated per evaluation. *)
   | EffectBind of string * struct_field_kind * value
       (** name, kind, effect_family_value. Operations are metadata and are not
           exposed as fields in phase one. *)
@@ -326,19 +334,15 @@ and value =
       id : nominal_id;
       name : string;
       num_params : int;
+      captures : value list;
       params : value list;
-      constructors : (string * closure list) list;
-          (** (ctor_name, payload_type_closures). [[]] = nullary. Each closure's
-              env is the definition env (without type params); its body is the
-              payload type term with de Bruijn indices 0..n-1 referencing the
-              type params. Instantiate by evaluating with
-              [List.rev actual_params @ clo.env]. *)
     }
-      (** Nominal ADT type. Unifies by [id] equality. [num_params] is the
-          arity of type parameters for the template (unapplied) nominal.
-          [params] are the applied type arguments, e.g. [Option I64] has
-          params = [VAtomTy Atom_ty.TI64]. [constructors] maps each constructor name
-          to its payload type closure. *)
+      (** Nominal ADT type. Its identity is its declaration [id] and the values
+          of the declaration's own free variables [captures] (E11: applicative);
+          two nominals are equal when both agree, by conversion. [num_params] is
+          the arity of the template (unapplied) nominal; [params] are the applied
+          type arguments, e.g. [Option I64] has params = [VAtomTy TI64]. Its
+          constructors are read from the declaration ([nominal_constructors]). *)
   | VEffect of {
       id : effect_id;
       name : string;
@@ -503,20 +507,49 @@ type slot = {
 
 let slot ?name kind sl_source = { sl_name = name; sl_kind = kind; sl_source }
 
+(* A capture is a variable of the scope a nominal is declared in; [pushed]
+   entries later it sits that much further out. *)
+let shift_capture pushed = function
+  | Var ix -> Var (ix + pushed)
+  | _ -> invalid_arg "a nominal's capture is a variable of its declaring scope"
+
+(* The unapplied nominal of a declaration, over its captures. *)
+let nominal_template ~id ~name ~num_params captures = NomRef { id; name; num_params; captures; params = [] }
+
+(* A constructor as the lambda chain over its type params and payloads.
+   [nominal] is the unapplied nominal, as a term in the scope the chain is built
+   in; the chain's own binders push it out. *)
+let ctor_term ~nominal ~name ~nominal_name ~num_params ~payload_count =
+  let total = num_params + payload_count in
+  let param_vars = List.init num_params (fun i -> Var (total - 1 - i)) in
+  let payload_vars = List.init payload_count (fun i -> Var (payload_count - 1 - i)) in
+  let nominal =
+    match nominal with
+    | NomRef n -> NomRef { n with captures = List.map (shift_capture total) n.captures }
+    | t -> shift_capture total t
+  in
+  let body = Ctor { name; spine = param_vars @ payload_vars; nominal_name; nominal_spine = param_vars; nominal } in
+  let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in
+  wrap total body
+
 let binding_slots : struct_binding_term -> slot list option = function
   | LetBind (name, kind, def) -> Some [ slot ~name kind (SlotDef def) ]
   | EffectBind (name, kind, eff) -> Some [ slot ~name kind (SlotValue eff) ]
   | PatternSynBind (name, kind, syn) -> Some [ slot ~name kind (SlotValue syn) ]
   | ImplBind (name, kind, def, _ty) ->
       Some [ { sl_name = name; sl_kind = kind; sl_source = SlotDef def } ]
-  | TypeBind (name, kind, nominal, ctors) ->
-      let num_params =
-        match nominal with VNominal { num_params; _ } -> num_params | _ -> 0
-      in
+  | TypeBind { name; kind; id; num_params; captures; ctors } ->
+      (* Pushed in order: the params (placeholders), each constructor, then the
+         type; each term is read in the scope so far, so the captures shift by
+         what this binding has already pushed. *)
+      let nominal pushed = nominal_template ~id ~name ~num_params (List.map (shift_capture pushed) captures) in
       Some
         (List.init num_params (fun _ -> slot kind SlotPlaceholder)
-        @ List.map (fun (n, v) -> slot ~name:n kind (SlotValue v)) ctors
-        @ [ slot ~name kind (SlotValue nominal) ])
+        @ List.mapi
+            (fun i (cname, payload_count) ->
+              slot ~name:cname kind (SlotDef (ctor_term ~nominal:(nominal (num_params + i)) ~name:cname ~nominal_name:name ~num_params ~payload_count)))
+            ctors
+        @ [ slot ~name kind (SlotDef (nominal (num_params + List.length ctors))) ])
   | OpenBind _ -> None
 
 (* The slots of a binding list, or [None] if it contains an [open]. *)
@@ -571,7 +604,8 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
         | LetBind (name, kind, def) -> LetBind (name, kind, g def)
         | ImplBind (name, kind, def, ty) -> ImplBind (name, kind, g def, ty)
         | OpenBind (def, members) -> OpenBind (g def, members)
-        | TypeBind _ | EffectBind _ | PatternSynBind _ -> b
+        | TypeBind t -> TypeBind { t with captures = List.map g t.captures }
+        | EffectBind _ | PatternSynBind _ -> b
       in
       let width =
         match b with
@@ -598,7 +632,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | Prod ts -> Prod (List.map (at 0) ts)
   | ProdTy ts -> ProdTy (List.map (at 0) ts)
   | RecOcc r -> RecOcc { r with args = List.map (at 0) r.args }
-  | NomRef n -> NomRef { n with params = List.map (at 0) n.params }
+  | NomRef n -> NomRef { n with captures = List.map (at 0) n.captures; params = List.map (at 0) n.params }
   | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
   | RefTy (h, a) -> RefTy (at 0 h, at 0 a)
   | RefNew a -> RefNew (at 0 a)
@@ -613,7 +647,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
       RecordConstruct { typ = at 0 typ; fields = List.map (fun (n, v) -> (n, at 0 v)) fields }
   | TraitDictTy d ->
       TraitDictTy { d with args = List.map (at 0) d.args; fields = List.map (fun (n, v) -> (n, at 0 v)) d.fields }
-  | Ctor c -> Ctor { c with spine = List.map (at 0) c.spine; nominal_spine = List.map (at 0) c.nominal_spine }
+  | Ctor c -> Ctor { c with spine = List.map (at 0) c.spine; nominal_spine = List.map (at 0) c.nominal_spine; nominal = at 0 c.nominal }
   | Open (s, members, body) -> Open (at 0 s, members, at (List.length members) body)
   | Module { bindings = bs; signature } -> Module { bindings = bindings bs; signature }
   | Sig body -> Sig (at 1 body)
@@ -633,6 +667,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
       let body_under = d.num_params + 1 + (if d.num_params > 0 then 1 else 0) + List.length d.ctors in
       NominalDef
         { d with
+          captures = List.map (at 0) d.captures;
           ctors = List.map (fun (c, payloads) -> (c, List.map (at d.num_params) payloads)) d.ctors;
           body = at body_under d.body }
   | EffectDef d ->
@@ -722,21 +757,20 @@ end = struct
     id
 end
 
-(* A recursive nominal is registered as a placeholder - its id, no
-   constructors - before its payloads are elaborated, and the payloads' types
-   keep pointing at that placeholder: a value cannot contain itself. The
-   placeholder and the finished nominal share one id, and that identity is
-   what ties the knot. [finish_nominal] records a declaration's constructors
-   under its id once they exist; [nominal_constructors] is the one way to read
-   a nominal's constructors, so a placeholder answers with its finished set. *)
-let finished_nominals : (nominal_id, (string * closure list) list) Hashtbl.t = Hashtbl.create 64
+(* A nominal's declaration: each constructor's payload types, as terms over the
+   type params (innermost, the last param at index 0) and then the declaration's
+   captures. A recursive nominal's payloads refer to it before this is recorded;
+   [finish_nominal] records it under the id once the payloads exist, and
+   [nominal_constructors] is the one way to read a nominal's constructors - an
+   instance's payload closures, over its own captures. *)
+let nominal_decls : (nominal_id, (string * term list) list) Hashtbl.t = Hashtbl.create 64
 
-let finish_nominal id constructors = Hashtbl.replace finished_nominals id constructors
+let finish_nominal id ctors = Hashtbl.replace nominal_decls id ctors
 
-let nominal_constructors id constructors =
-  match constructors with
-  | [] -> Option.value (Hashtbl.find_opt finished_nominals id) ~default:[]
-  | _ -> constructors
+let nominal_constructors id (captures : value list) : (string * closure list) list =
+  match Hashtbl.find_opt nominal_decls id with
+  | None -> []
+  | Some ctors -> List.map (fun (c, payloads) -> (c, List.map (fun body -> { env = captures; body }) payloads)) ctors
 
 (* A [rec] struct type's identity. The binding mints it before its body is
    elaborated, so the body's references to the type are occurrences of that

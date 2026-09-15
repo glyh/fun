@@ -240,35 +240,30 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
       (fun (m : type_member) ->
         let nominal_id = NominalId.fresh () in
         let placeholder =
-          VNominal { id = nominal_id; name = m.member_name; num_params = 0; params = []; constructors = [] }
+          VNominal { id = nominal_id; name = m.member_name; num_params = List.length m.member_params; captures = []; params = [] }
         in
         let param_ctx = param_ctx_of m in
         let placeholder_env = placeholder :: param_ctx.Ctx.env in
         (m, nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty_of m placeholder_env param_ctx))
       members
   in
-  let placeholders = List.map (fun (_, _, p, _, _, _) -> p) registered in
   let group = List.map (fun ((m : type_member), id, _, _, _, _) -> (id, m.member_name, List.length m.member_params)) registered in
   (* Phase 2, elaborate: every member's payloads, in a context naming every
-     member. Those names are temporary - they contribute no width. *)
+     member. Those names are temporary - they contribute no width. Each payload
+     leaves as a normal form over the member's params and the declaring scope. *)
   let elaborated =
     List.map
       (fun ((m : type_member), nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty) ->
         let group_ctx =
           List.fold_left
-            (fun gctx ((other : type_member), other_id, other_placeholder, _, _, other_ty) ->
-              let num_params = List.length other.member_params in
-              if num_params = 0 then Ctx.define gctx other.member_key VU other_placeholder
+            (fun gctx ((other : type_member), _, other_placeholder, _, _, other_ty) ->
+              if other.member_params = [] then Ctx.define gctx other.member_key VU other_placeholder
               else
-                let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) other.member_params in
-                let type_core_term =
-                  List.fold_right (fun _ acc -> Lam acc) other.member_params (NomRef { id = other_id; name = other.member_name; params = type_var_terms })
-                in
-                let type_val = Nbe.eval param_ctx.Ctx.metas (other_placeholder :: param_ctx.Ctx.env) type_core_term in
-                Ctx.define gctx other.member_key other_ty type_val)
+                let former = nominal_former_term param_ctx.Ctx.metas ~depth:param_ctx.Ctx.lvl other_placeholder in
+                Ctx.define gctx other.member_key other_ty (Nbe.eval param_ctx.Ctx.metas param_ctx.Ctx.env former))
             param_ctx registered
         in
-        let elaborated_ctors =
+        let payload_terms =
           List.map
             (fun (cname, payloads) ->
               ( cname,
@@ -276,39 +271,54 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
                   (fun payload_expr ->
                     let payload_core, payload_ty = ops.infer group_ctx payload_expr in
                     check_type_like group_ctx payload_ty (Ctx.eval group_ctx payload_core);
-                    { env = ctx.Ctx.env @ placeholders; body = close_recursive_payload_group group payload_core })
+                    let closed = close_recursive_payload_group group payload_core in
+                    Nbe.quote param_ctx.Ctx.metas param_ctx.Ctx.lvl (Ctx.eval param_ctx closed))
                   payloads ))
             m.member_ctors
         in
-        (m, nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty, elaborated_ctors))
+        (m, nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty, payload_terms))
       registered
   in
+  (* The declaration's own free variables, shared by its members (E11). *)
+  let levels, captured =
+    capture_payloads ~group_ids:(List.map (fun (id, _, _) -> id) group) ~scope_lvl:ctx.Ctx.lvl
+      (List.concat_map
+         (fun ((m : type_member), _, _, _, _, _, payload_terms) ->
+           List.map (fun (_, payloads) -> (List.length m.member_params, payloads)) payload_terms)
+         elaborated)
+  in
+  let captured = ref captured in
+  List.iter
+    (fun (_, nominal_id, _, _, _, _, payload_terms) ->
+      finish_nominal nominal_id
+        (List.map (fun (cname, _) -> let payloads = List.hd !captured in captured := List.tl !captured; (cname, payloads)) payload_terms))
+    elaborated;
+  let capture_vals = capture_values ctx.Ctx.env ~lvl:ctx.Ctx.lvl levels in
   (* Phase 3, finish: build each nominal and its constructors, and extend the
      context in chain order - params, constructors, then the type. *)
   let kind = if public then Public else Private in
   let ctx', results =
     List.fold_left
-      (fun (ctx, acc) (i, ((m : type_member), nominal_id, _, param_ctx, placeholder_env, nominal_ty, elaborated_ctors)) ->
+      (fun (ctx, acc) ((m : type_member), nominal_id, _, param_ctx, placeholder_env, nominal_ty, _) ->
         let num_params = List.length m.member_params in
         let nominal =
-          VNominal { id = nominal_id; name = m.member_name; num_params; params = []; constructors = elaborated_ctors }
+          VNominal { id = nominal_id; name = m.member_name; num_params; captures = capture_vals; params = [] }
         in
-        finish_nominal nominal_id elaborated_ctors;
         let ctor_values, ctor_types =
           List.split
             (List.map
                (fun (cname, payload_clos) ->
                  let ctor_value, ctor_ty =
-                   (* The other members' placeholders sit under the head so a
-                      constructor type naming them re-evaluates; levels count
-                      from the tail, so no index moves. *)
-                   let others = List.filteri (fun j _ -> j <> i) placeholders in
-                   build_ctor param_ctx.Ctx.metas (nominal :: others @ placeholder_env) m.member_name cname num_params payload_clos
+                   build_ctor param_ctx.Ctx.metas (nominal :: placeholder_env) m.member_name cname num_params payload_clos
                  in
                  ((cname, ctor_value), (cname, ctor_ty)))
-               elaborated_ctors)
+               (nominal_constructors nominal_id capture_vals))
         in
-        let bind = TypeBind (m.member_name, kind, nominal, ctor_values) in
+        let bind =
+          TypeBind { name = m.member_name; kind; id = nominal_id; num_params;
+                     captures = capture_terms ~lvl:ctx.Ctx.lvl levels;
+                     ctors = List.map (fun (c, clos) -> (c, List.length clos)) (nominal_constructors nominal_id capture_vals) }
+        in
         let ctx' =
           extend_from_slots ctx bind
             (List.map (fun p -> `Param p) m.member_params
@@ -319,7 +329,7 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
         in
         let fields = (m.member_name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
         (ctx', (bind, fields) :: acc))
-      (ctx, []) (List.mapi (fun i e -> (i, e)) elaborated)
+      (ctx, []) elaborated
   in
   (ctx', List.rev results)
 
@@ -914,60 +924,54 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           ctx params
       in
       let nominal_id = NominalId.fresh () in
-      let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
+      let nominal_placeholder = VNominal { id = nominal_id; name; num_params; captures = []; params = [] } in
+      let former_ty =
+        let depth = param_ctx.lvl + 1 in
+        List.fold_right
+          (fun _ acc ->
+            VPi { explicitness = Explicit; domain = VU;
+                  effects = effect_row_closure (nominal_placeholder :: param_ctx.env) empty_effect_row;
+                  codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
+          params VU
+      in
+      let former ctx nominal = Nbe.eval ctx.Ctx.metas ctx.Ctx.env (nominal_former_term ctx.Ctx.metas ~depth:ctx.Ctx.lvl nominal) in
       let recursive_param_ctx =
         if num_params = 0 then Ctx.define param_ctx key VU nominal_placeholder
-        else
-          let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
-          let type_body_term = NomRef { id = nominal_id; name; params = type_var_terms } in
-          let type_core_term = List.fold_right (fun _ acc -> Lam acc) params type_body_term in
-          let type_val = Nbe.eval param_ctx.metas (nominal_placeholder :: param_ctx.env) type_core_term in
-          let type_ty =
-            let depth = List.length param_ctx.env + 1 in
-            List.fold_right
-              (fun _ acc ->
-                VPi { explicitness = Explicit; domain = VU;
-                      effects = effect_row_closure (nominal_placeholder :: param_ctx.env) empty_effect_row;
-                      codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
-              params VU
-          in
-          Ctx.define param_ctx key type_ty type_val
+        else Ctx.define param_ctx key former_ty (former param_ctx nominal_placeholder)
       in
-      let elaborated_ctors =
+      (* Each payload as a normal form over the params and the declaring scope. *)
+      let payload_terms =
         List.map
           (fun (cname, payloads) ->
-            let payload_clos =
+            ( cname,
               List.map
                 (fun payload_expr ->
-                let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
-                check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
-                let payload_core = close_recursive_payload_term nominal_id name num_params payload_core in
-                { env = ctx.env @ [ nominal_placeholder ]; body = payload_core })
-                payloads
-            in
-            (cname, payload_clos))
+                  let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
+                  check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
+                  let closed = close_recursive_payload_term nominal_id name num_params payload_core in
+                  Nbe.quote param_ctx.metas param_ctx.lvl (Ctx.eval param_ctx closed))
+                payloads ))
           ctors
       in
-      let nominal = VNominal { id = nominal_id; name; num_params; params = []; constructors = elaborated_ctors } in
-      finish_nominal nominal_id elaborated_ctors;
+      let levels, captured =
+        capture_payloads ~group_ids:[ nominal_id ] ~scope_lvl:ctx.lvl
+          (List.map (fun (_, payloads) -> (num_params, payloads)) payload_terms)
+      in
+      let ctor_payload_terms = List.map2 (fun (cname, _) payloads -> (cname, payloads)) payload_terms captured in
+      finish_nominal nominal_id ctor_payload_terms;
+      let captures = capture_values ctx.env ~lvl:ctx.lvl levels in
+      let nominal = VNominal { id = nominal_id; name; num_params; captures; params = [] } in
       (* For parameterized types, build an Explicit VPi chain so Option I64 works.
          For nullary types, just bind with VU as before. *)
       let body_ctx =
         if num_params = 0 then
           Ctx.define param_ctx key VU nominal
         else begin
-          (* Push VNominal first so NomRef evaluation can find it by id *)
           let body_ctx = { param_ctx with
             env = nominal :: param_ctx.env;
             lvl = param_ctx.lvl + 1;
             bds = Defined :: param_ctx.bds
           } in
-          let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
-          let type_body_term = NomRef { id = nominal_id; name; params = type_var_terms } in
-          let type_core_term =
-            List.fold_right (fun _ acc -> Lam acc) params type_body_term
-          in
-          let type_val = Nbe.eval body_ctx.metas body_ctx.env type_core_term in
           let type_ty =
             let depth = List.length body_ctx.env in
             List.fold_right
@@ -977,34 +981,21 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                       codomain = { env = body_ctx.env; body = Nbe.quote body_ctx.metas depth acc } })
               params VU
           in
-          Ctx.define body_ctx key type_ty type_val
+          Ctx.define body_ctx key type_ty (former body_ctx nominal)
         end
       in
       let env = nominal :: body_ctx.env in
       let body_ctx =
         List.fold_left2
-          (fun ctx (key, (cname, _payload_surface)) payload_clos ->
+          (fun ctx (key, _) (cname, payload_clos) ->
             let ctor_val, ctor_ty =
               build_ctor body_ctx.metas env name cname num_params payload_clos in
             Ctx.define ctx key ctor_ty ctor_val)
-          body_ctx (List.combine ctor_keys ctors) (List.map snd elaborated_ctors)
+          body_ctx (List.combine ctor_keys ctors) (nominal_constructors nominal_id captures)
       in
       let body_core, body_ty = ops.infer body_ctx body in
-      let ctor_payload_terms =
-        List.map
-          (fun (cname, payloads) ->
-            let payload_terms =
-              List.map
-                (fun payload_expr ->
-                let payload_core, payload_ty = ops.infer recursive_param_ctx payload_expr in
-                check_type_like recursive_param_ctx payload_ty (Ctx.eval recursive_param_ctx payload_core);
-                close_recursive_payload_term nominal_id name num_params payload_core)
-                payloads
-            in
-            (cname, payload_terms))
-          ctors
-      in
-      (NominalDef { id = nominal_id; name; num_params; ctors = ctor_payload_terms; body = body_core },
+      (NominalDef { id = nominal_id; name; num_params; captures = capture_terms ~lvl:ctx.lvl levels;
+                    ctors = ctor_payload_terms; body = body_core },
        body_ty)
   | EffectDef { name = { name = key; _ }; params; ops = eff_ops; body } ->
       let name = Syntax.label key in

@@ -202,26 +202,18 @@ let build_ctor (mc : MetaContext.t) (env : env) (nominal_name : string) (ctor_na
     (num_params : int) (payload_clos : closure list)
     : value * value =
   let payload_count = List.length payload_clos in
-  let total_args = num_params + payload_count in
-  let param_vars = List.init num_params (fun i -> Var (total_args - 1 - i)) in
-  let payload_vars = List.init payload_count (fun i -> Var (payload_count - 1 - i)) in
-  let all_spine_vars = param_vars @ payload_vars in
-  let body_term =
-    Ctor { name = ctor_name; spine = all_spine_vars;
-           nominal_name; nominal_spine = param_vars;
-           nominal_value = List.hd env }
-  in
-  let core_term =
-    let rec wrap n t = if n = 0 then t else wrap (n - 1) (Lam t) in
-    wrap total_args body_term
-  in
-  let ctor_val = Nbe.eval mc env core_term in
+  let nominal = List.hd env in
+  let ctor_val = Nbe.eval mc env (ctor_term ~nominal:(Var 0) ~name:ctor_name ~nominal_name ~num_params ~payload_count) in
   let depth = List.length env in
   let type_term =
     let nom_ret_vars = List.init num_params (fun i -> Var (payload_count + num_params - 1 - i)) in
     let ret_term =
-      match List.hd env with
-      | VNominal { id; _ } -> NomRef { id; name = nominal_name; params = nom_ret_vars }
+      match nominal with
+      | VNominal n ->
+          (* under the params and the payloads *)
+          NomRef { id = n.id; name = nominal_name; num_params = n.num_params;
+                   captures = List.map (Nbe.quote mc (depth + num_params + payload_count)) n.captures;
+                   params = nom_ret_vars }
       | _ -> failwith "build_ctor: the environment's head is not the nominal"
     in
     let param_rigids = List.init num_params (fun i -> VRigid { lvl = depth + i; spine = [] }) in
