@@ -1,8 +1,15 @@
 module Ctx = Elab_ctx.Ctx
 
-(* The form being elaborated, for a budget overrun to name. *)
+(* The form being elaborated, for a budget overrun to name. An evaluation that
+   fails while checking it is an elaboration error at that form: the innermost
+   form converts it, outer ones see the elaboration error. *)
 let at (ctx : Ctx.t) (expr : Syntax.t) mode f =
-  Eval_budget.at ctx.metas.budget { span = expr.span; mode } f
+  let site : Eval_budget.site = { span = expr.span; mode } in
+  Eval_budget.at ctx.metas.budget site (fun () ->
+      try f ()
+      with Nbe_error.EvalError message ->
+        let site = if expr.span.Source_span.synthetic then ctx.metas.budget.site else Some site in
+        raise (Elab_error.ElabError (EvaluationFailed { message; site })))
 
 let rec ops : Elab_ops.t =
   {

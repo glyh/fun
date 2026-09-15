@@ -108,12 +108,12 @@ let macro_application budget ~call ~application f =
 (* A resolved name ([loop#3]) as written. *)
 let written name = match String.index_opt name '#' with Some i -> String.sub name 0 i | None -> name
 
+let where = function
+  | Some { span; mode } -> Format.asprintf " while %s at %a" mode Source_span.pp span
+  | None -> ""
+
 let message ~limit ~call ~demand ~site =
-  let where =
-    match site with
-    | Some { span; mode } -> Format.asprintf " while %s at %a" mode Source_span.pp span
-    | None -> ""
-  in
+  let where = where site in
   Printf.sprintf
     "evaluation exceeded the budget of %d calls while type checking: calling %s, in %s%s (the budget cannot yet be raised from source)"
     limit (written call) demand where

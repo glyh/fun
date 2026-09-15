@@ -201,13 +201,16 @@ let tuples =
       (check_type_src "{ p : Tuple(3, I64, Bool, String) = (1, True, \"a\"); p.2 }" "String");
     Alcotest.test_case "Tuple is flat" `Quick
       (check_type_of "(1, True, \"a\")" "((0, False, \"b\") : Tuple(3, I64, Bool, String))");
-    (* ponytail: the checker lets an evaluation error escape as [EvalError]
-       (a [panic] in a type does too); wrap once checker errors carry sites. *)
+    (* An evaluation that fails while checking is an elaboration error at its form. *)
     Alcotest.test_case "Tuple with a negative count" `Quick (fun () ->
         match elab "{ T = Tuple(0 - 1); 1 }" with
-        | exception Nbe_error.EvalError msg ->
-            Alcotest.(check string) "message" "Tuple: the number of components is negative" msg
-        | _ -> Alcotest.fail "expected a negative Tuple count to be rejected");
+        | exception Elab_error.ElabError (Elab_error.EvaluationFailed { message; site = Some _ }) ->
+            Alcotest.(check string) "message" "Tuple: the number of components is negative" message
+        | _ -> Alcotest.fail "expected a negative Tuple count to be an elaboration error");
+    Alcotest.test_case "a panic in a type is an elaboration error" `Quick (fun () ->
+        match elab "{ x : panic[Type](\"boom\") = 1; 1 }" with
+        | exception Elab_error.ElabError (Elab_error.EvaluationFailed { message = "boom"; site = Some _ }) -> ()
+        | _ -> Alcotest.fail "expected a panic in a type to be an elaboration error");
     Alcotest.test_case "Tuple under-applied is a type function" `Quick
       (check_type_src "Tuple(2, I64)" "Type -> Type");
   ]
@@ -671,6 +674,11 @@ let structs =
       (elab_fail "{ R = struct { n : Type; v : n }; 0 }");
     Alcotest.test_case "a method sees a later field" `Quick
       (check_type_src "{ C = struct { a : I64; pub method get() { self.b }; b : I64 }; C.get(C{a = 1; b = 9}) }" "I64");
+    Alcotest.test_case "self holds only fields: a method or unknown name is an error" `Quick
+      (fun () ->
+        elab_fail "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { self.a(2) } }; C.b(C{v = 1}) }" ();
+        elab_fail "{ C = struct { v : I64; pub method b() { self.zzz } }; 1 }" ();
+        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { a(self)(2) } }; C.b(C{v = 1}) }" 3L ());
     Alcotest.test_case "a field type mentioning an earlier method is a cycle" `Quick
       (fun () ->
         match elab "{ C = struct { a : I64; pub method get() { self.a }; b : get; }; 0 }" with

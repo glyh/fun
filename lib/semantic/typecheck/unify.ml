@@ -451,6 +451,13 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       let fs2 = struct_entry_fields es2 in
       let visible fs = List.filter (fun (_, k, _) -> k <> Private && k <> PrivateMethod) fs in
       let vs1 = visible fs1 and vs2 = visible fs2 in
+      (* A method's [self] type is the fields alone (closed): against a finished
+         struct type it matches the fields, since methods are not in the value. *)
+      let fields_only fs = List.for_all (fun (_, k, _) -> k = Field) fs in
+      let only_fields fs = List.filter (fun (_, k, _) -> k = Field) fs in
+      let vs1, vs2 =
+        if fields_only vs1 || fields_only vs2 then (only_fields vs1, only_fields vs2) else (vs1, vs2)
+      in
       if (not p1) && (not p2) then begin
         if List.length vs1 <> List.length vs2 then
           raise (UnifyError TupleLengthMismatch);

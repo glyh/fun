@@ -733,8 +733,10 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             in
             ((Lam body_core, method_ty), row)
       in
+      (* A method is elaborated once every field is known, so [self]'s type is
+         closed: a name that is not a field is an error, not a new field. *)
       let elaborate_method ctx params effects body =
-        let self_ty = partial_self () in
+        let self_ty = match partial_self () with VStruct s -> VStruct { s with partial = false } | ty -> ty in
         let ctx = Ctx.with_self_type ctx self_ty in
         let self_ctx, self_entry = Ctx.bind_anonymous ctx self_ty in
         let self_ctx = { self_ctx with Ctx.self_entry = Some self_entry } in
