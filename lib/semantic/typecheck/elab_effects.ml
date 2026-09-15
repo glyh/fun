@@ -3,8 +3,8 @@ open Elab_error
 
 module Ctx = Elab_ctx.Ctx
 
-type expr_effect = { core : term; value : value }
-type expr_effects = { effects : expr_effect list; tail : expr_effect option }
+type expr_effect = Elab_ctx.expr_effect = { core : term; value : value }
+type expr_effects = Elab_ctx.expr_effects = { effects : expr_effect list; tail : expr_effect option }
 
 let empty_expr_effects = { effects = []; tail = None }
 let singleton_expr_effect core value = { effects = [ { core; value } ]; tail = None }
@@ -28,11 +28,32 @@ let union_expr_effects ctx lhs rhs =
 
 let union_many_expr_effects ctx effs = List.fold_left (union_expr_effects ctx) empty_expr_effects effs
 
+(* The form being elaborated performs [effects]. *)
+let emit ctx effects =
+  if not (is_empty_expr_effects effects) then
+    ctx.Ctx.sink.performed <- union_expr_effects ctx ctx.Ctx.sink.performed effects
+
+(* [f] elaborates in a fresh sink: its result, and what it performed - which
+   does not reach the enclosing form. *)
+let collecting (ctx : Ctx.t) f =
+  let sink = { Elab_ctx.performed = empty_expr_effects } in
+  let result = f { ctx with Ctx.sink } in
+  (result, sink.performed)
+
+let unhandled ctx effects =
+  ElabError (UnhandledEffects (List.map (fun eff -> Debug.pp_value_short ctx.Ctx.metas eff.value) effects))
+
 let require_empty_effects ctx effects =
   match effects.effects, effects.tail with
   | [], None -> ()
   | [], Some tail -> Ctx.unify ctx tail.value (VEffectRow { effect_values = []; tail_value = None })
-  | _ :: _, _ -> raise (ElabError UnhandledEffects)
+  | effs, _ -> raise (unhandled ctx effs)
+
+(* A type is evaluated at check time, so it must be pure (E4). *)
+let pure ctx f =
+  let result, effects = collecting ctx f in
+  require_empty_effects ctx effects;
+  result
 
 let effect_row_values ctx row binder =
   Nbe.eval_effect_row_closure ctx.Ctx.metas row binder
@@ -74,7 +95,17 @@ let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value
   | leftovers, Some actual_tail, Some expected_tail ->
       Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = Some actual_tail.value })
   | [], Some actual_tail, None -> Ctx.unify ctx actual_tail.value (VEffectRow { effect_values = []; tail_value = None })
-  | _ :: _, _, None -> raise (ElabError UnhandledEffects)
+  | leftovers, _, None -> raise (unhandled ctx leftovers)
+
+(* The effects a program's entry may leave unhandled: those the handler the
+   runtime wraps around the entry discharges. The runtime handles none yet, so
+   an entry's residual row must be empty; a runtime-provided effect joins this
+   row rather than an exemption list. *)
+let runtime_handled_effects : effect_row_value = { effect_values = []; tail_value = None }
+
+(* A program's top - a unit's bindings, an entry expression - performs only
+   what the runtime handles. *)
+let require_handled_at_entry ctx effects = check_effect_subset ctx effects runtime_handled_effects
 
 let effect_row_of_expr_effects ctx (effects : expr_effects) : effect_row =
   { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects.effects;
@@ -94,3 +125,13 @@ let effect_instance_ops = function
 
 let effect_row_closure_of_expr_effects ctx effects =
   effect_row_closure ctx.Ctx.env (effect_row_of_expr_effects ctx effects)
+
+(* A let's value is known in its body only when evaluating it performs nothing:
+   the checker may then evaluate it. *)
+let let_body_ctx ctx name ty core value_effects =
+  if is_empty_expr_effects value_effects then Ctx.define ctx name ty (Ctx.eval ctx core) else Ctx.bind ctx name ty
+
+(* A handler: the scrutinee's and the branch bodies' effects - a handler is deep,
+   so what a branch body performs it handles too - less those it handles. *)
+let emit_residual ctx ~residual_of scrutinee_effects body_effects =
+  emit ctx (residual_of (union_expr_effects ctx scrutinee_effects body_effects))

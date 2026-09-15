@@ -2,6 +2,16 @@ open Core
 open Elab_error
 open Elab_common
 
+(* An effect a form performs, as the elaborator records it. *)
+type expr_effect = { core : term; value : value }
+type expr_effects = { effects : expr_effect list; tail : expr_effect option }
+
+(* Where elaboration records what the form being elaborated performs: infer and
+   check emit into it as they go, in the one pass. The contexts a form derives
+   share it; a fresh one starts where effects stop flowing outward - a lambda's
+   body (they become its latent row), a type, a handled scrutinee, a unit. *)
+type effect_sink = { mutable performed : expr_effects }
+
 (* A SCOPE: one ordered sequence of entries, viewed through several columns that
    must stay the same length, [lvl]. [env] is the column the evaluator receives -
    NbE is handed that projection alone, never the scope. [bds] records, per entry,
@@ -36,6 +46,7 @@ module Ctx = struct
        instead of against whatever the importer happened to have in scope.
        [None] only in the half-built context [init_ctx] is itself assembling. *)
     base : t option;
+    sink : effect_sink;
   }
 
 and macro_runtime = {
@@ -78,6 +89,7 @@ and macro_runtime = {
       loader = None;
       macro_runtime = None;
       base = None;
+      sink = { performed = { effects = []; tail = None } };
     }
 
   (* The context an imported compilation unit is elaborated against: this

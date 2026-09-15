@@ -538,7 +538,8 @@ What remains, in the recommended order:
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
   (closed) — `: Decl` is one, `: List(Decl)` many, checked at the definition.
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
-  — a top-level `perform` or a closure escaping its handler fails only at run time.
+  (closed) — effects are computed in one pass during inference; an effect left
+  unhandled at a program's entry or a unit's top is an elaboration error.
 - [The unhandled-effect error says handlers are not implemented](tickets/unhandled-effect-message-is-stale.md)
   (closed) — the error names the operation with no handler in scope.
 - [A match on a closure crashes the evaluator](tickets/match-on-a-closure-crashes-the-evaluator.md)

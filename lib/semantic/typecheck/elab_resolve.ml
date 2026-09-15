@@ -52,20 +52,8 @@ let resolve_path_value_opt ctx p =
 (* Typed macro arguments already elaborated, by [Syntax.Elaborated]'s [arg]: the
    core, its type, and the context level it was elaborated at. An entry lives for
    one typed macro application. *)
-let elaborated_args : (int, term * value * lvl) Hashtbl.t = Hashtbl.create 8
+let elaborated_args : (int, term * value * lvl * Elab_effects.expr_effects) Hashtbl.t = Hashtbl.create 8
 let elaborated_counter = ref 0
-
-(* The output each deferred typed macro call produced, by the call's own node.
-   The effect pass walks syntax after elaboration has run the call, and a call's
-   effects are its output's. Keyed by identity, not structure: two equal calls
-   may run at different expected types and produce different outputs. *)
-module Call_outputs = Ephemeron.K1.Make (struct
-  type t = Syntax.t
-  let equal = ( == )
-  let hash = Hashtbl.hash
-end)
-
-let deferred_outputs : Syntax.t Call_outputs.t = Call_outputs.create 8
 
 (** A call to a macro whose signature promises types (macro-annotation
     decisions, 2026-09-15). The macro applies like a function over types: its
@@ -76,7 +64,7 @@ let deferred_outputs : Syntax.t Call_outputs.t = Call_outputs.create 8
     like every macro's output (M6) and checked at the type it promised. The run
     and the output's expansion are one call under the evaluation budget (M5).
     [check] elaborates a form at a type; returns the output's core and type. *)
-let apply_typed_macro ~check (ctx : Ctx.t) ~(call : Syntax.t) ~name (args : Syntax.capture list) ~(expected : value option) =
+let apply_typed_macro ~check (ctx : Ctx.t) ~name (args : Syntax.capture list) ~(expected : value option) =
   (* Expansion defers only a call whose macro has a signature, and only with a
      runtime to hand it back to. *)
   let runtime, entry, signature =
@@ -110,13 +98,15 @@ let apply_typed_macro ~check (ctx : Ctx.t) ~(call : Syntax.t) ~name (args : Synt
         | false, _, _ -> ty
         | true, Syntax.CapExpr stx, VPi { explicitness = Explicit; domain; codomain; _ } ->
             let form = runtime.Ctx.expand stx in
-            let core =
-              try check ctx form domain
-              with Unify.UnifyError _ as e ->
-                raise (ElabError (MacroArgumentType { macro; param; promised = show domain; reason = Printexc.to_string e }))
+            (* What the argument performs happens where the output places it. *)
+            let core, effects =
+              Elab_effects.collecting ctx (fun ctx ->
+                try check ctx form domain
+                with Unify.UnifyError _ as e ->
+                  raise (ElabError (MacroArgumentType { macro; param; promised = show domain; reason = Printexc.to_string e })))
             in
             incr elaborated_counter;
-            Hashtbl.replace elaborated_args !elaborated_counter (core, domain, ctx.Ctx.lvl);
+            Hashtbl.replace elaborated_args !elaborated_counter (core, domain, ctx.Ctx.lvl, effects);
             elaborated := (!elaborated_counter, stx, form) :: !elaborated;
             Nbe.closure_apply ctx.Ctx.metas codomain (Ctx.eval ctx core)
         | true, _, _ -> failwith "Elab_resolve.apply_typed_macro: a typed parameter's argument is an Expr in the signature's order")
@@ -163,7 +153,6 @@ let apply_typed_macro ~check (ctx : Ctx.t) ~(call : Syntax.t) ~name (args : Synt
            match top-down if that case matters. *)
         let mark (f : Syntax.t) = match List.assoc_opt f placed with Some kind -> { f with kind } | None -> f in
         let output = runtime.expand (Expand.map_forms Fun.id mark (app.emit expanded)) in
-        Call_outputs.replace deferred_outputs call output;
         let core =
           try check ctx output promised
           with Unify.UnifyError _ as e ->

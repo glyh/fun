@@ -37,6 +37,19 @@ let extend_from_slots (ctx : Ctx.t) (bind : Core.struct_binding_term) payloads =
       | `Anonymous (ty, value) -> fst (Ctx.define_anonymous ctx ty value))
     ctx slots payloads
 
+(* A module or struct member [name = value]: its core, its type, and the value
+   the items after it see - evaluated when evaluating it performs nothing,
+   otherwise opaque, for evaluating it here would run what it performs. *)
+let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~recursive value =
+  let rec_ty = Ctx.raw_meta ctx in
+  let value_ctx = if recursive then Ctx.bind value_ctx key rec_ty else value_ctx in
+  let (val_core, val_ty), effects = collecting value_ctx (fun value_ctx -> ops.infer value_ctx value) in
+  emit ctx effects;
+  (if recursive then Ctx.unify ctx rec_ty val_ty);
+  let val_core = if recursive then Fix (name, Ctx.pure_call ctx rec_ty, val_core) else val_core in
+  let val_val = if is_empty_expr_effects effects then Ctx.eval ctx val_core else VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
+  (val_core, val_ty, val_val)
+
 (* THE nominal-type binding elaboration, in one place.
 
    [type T(p...) = C1(..) | C2(..)] as a module or struct member. Three things
@@ -223,13 +236,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       (ctx, [OpenBind (mod_core, members)], [])
   | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive } ->
       let name = Syntax.label key in
-      let rec_ty = Ctx.raw_meta ctx in
-      let value_ctx = Ctx.clear_self_scope ctx in
-      let value_ctx = if recursive then Ctx.bind value_ctx key rec_ty else value_ctx in
-      let val_core, val_ty = ops.infer value_ctx value in
-      (if recursive then Ctx.unify ctx rec_ty val_ty);
-      let val_core = if recursive then Fix (name, Ctx.pure_call ctx rec_ty, val_core) else val_core in
-      let val_val = Ctx.eval ctx val_core in
+      let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~key ~name ~recursive value in
       let kind = if public then Public else Private in
       let bind = LetBind (name, kind, val_core) in
       let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
@@ -325,8 +332,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       (Ctx.quote ctx (Ctx.lookup_self_type ctx), VU)
   | Perform { op = op_path; arg } ->
       let op = Syntax.path_last op_path in
-      let effect_core, _effect_value, input_ty, output_ty = resolve_perform_operation ctx op_path in
+      let effect_core, effect_value, input_ty, output_ty = resolve_perform_operation ctx op_path in
       let arg_core = ops.check ctx arg input_ty in
+      emit ctx (singleton_expr_effect effect_core effect_value);
       (Perform { eff = effect_core; op; arg = arg_core }, Nbe.force ctx.metas output_ty)
   | Resume arg -> infer_resume ops ctx arg
   | RefNew e ->
@@ -366,18 +374,19 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         let body_core, body_ty = ops.infer ctx' body in
         (Let (ty_term, fix_core, body_core), body_ty)
       end else begin
-        let val_core, val_ty =
-          match type_ with
-          | Some ty_expr ->
-              let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx ty_expr in
-              let core = ops.check ctx value ty_val in
-              (core, ty_val)
-          | None -> ops.infer ctx value
+        let (val_core, val_ty), value_effects =
+          collecting ctx (fun ctx ->
+            match type_ with
+            | Some ty_expr ->
+                let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx ty_expr in
+                let core = ops.check ctx value ty_val in
+                (core, ty_val)
+            | None -> ops.infer ctx value)
         in
+        emit ctx value_effects;
         let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
-        let val_val = Ctx.eval ctx gen_val_core in
         let ty_term = Ctx.quote ctx gen_val_ty in
-        let ctx' = Ctx.define ctx name gen_val_ty val_val in
+        let ctx' = let_body_ctx ctx name gen_val_ty gen_val_core value_effects in
         let body_core, body_ty = ops.infer ctx' body in
         (Let (ty_term, gen_val_core, body_core), body_ty)
       end
@@ -395,8 +404,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let core_elems =
         List.map
           (fun elem ->
-            let elem_core, elem_ty = ops.infer ctx elem in
-            require_empty_effects ctx (ops.collect_effects ctx elem);
+            let elem_core, elem_ty = pure ctx (fun ctx -> ops.infer ctx elem) in
             check_type_like ctx elem_ty (Ctx.eval ctx elem_core);
             elem_core)
           elems
@@ -408,8 +416,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           let type_ctx = Ctx.bind ctx name VU in
           let dict_ctx, dict_layers = bind_trait_bound_dicts ctx name trait_infos in
           let effects = Elab_type_expr.elaborate_effect_row ops type_ctx effects in
-          let b_core, b_ty = ops.infer dict_ctx b in
-          require_empty_effects dict_ctx (ops.collect_effects dict_ctx b);
+          let b_core, b_ty = pure dict_ctx (fun dict_ctx -> ops.infer dict_ctx b) in
           check_type_like dict_ctx b_ty (Ctx.eval dict_ctx b_core);
           let core =
             Pi
@@ -427,16 +434,14 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           let a_core, _a_ty, a_val = ops.type_value_of_expr ctx a in
           let ctx' = Ctx.bind ctx name a_val in
           let effects = Elab_type_expr.elaborate_effect_row ops ctx' effects in
-          let b_core, b_ty = ops.infer ctx' b in
-          require_empty_effects ctx' (ops.collect_effects ctx' b);
+          let b_core, b_ty = pure ctx' (fun ctx' -> ops.infer ctx' b) in
           check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
           (Pi { explicitness = Implicit; domain = a_core; effects; codomain = b_core }, VU))
   | Arrow (expl, name, a, effects, b) ->
       let a_core, _a_ty, a_val = ops.type_value_of_expr ctx a in
       let ctx' = Ctx.bind ctx (Option.fold ~none:"_" ~some:(fun (i : Syntax.id) -> i.name) name) a_val in
       let effects = Elab_type_expr.elaborate_effect_row ops ctx' effects in
-      let b_core, b_ty = ops.infer ctx' b in
-      require_empty_effects ctx' (ops.collect_effects ctx' b);
+      let b_core, b_ty = pure ctx' (fun ctx' -> ops.infer ctx' b) in
       check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
       (Pi { explicitness = expl_of_syntax expl; domain = a_core; effects; codomain = b_core }, VU)
   | FieldAccess (head, name)
@@ -520,7 +525,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                        both would otherwise come from the last imported unit.
                        See docs/wayfinder/tickets/base-context-shared-state.md. *)
                     let unit_ctx = Ctx.with_expander (Ctx.unit_base ctx) expand_ctx in
-                    let core, ty = ops.infer unit_ctx imported in
+                    (* A unit's top-level bindings run when it loads: a program's top. *)
+                    let (core, ty), effects = collecting unit_ctx (fun unit_ctx -> ops.infer unit_ctx imported) in
+                    Elab_effects.require_handled_at_entry unit_ctx effects;
                     (core, Ctx.eval unit_ctx core, ty))
                 ~eval_and_apply:Nbe.apply_macro
                 ~syntax_nominals:(Elab_stdlib.syntax_nominals ctx)
@@ -585,8 +592,10 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let rec elaborate_method_params ctx params body =
         match params with
         | [] ->
-            let body_core, body_ty = ops.infer ctx body in
-            (body_core, body_ty)
+            (* ponytail: a method's type carries no row, so what its body performs is
+               dropped here (as before); give the innermost arrow the body's row when
+               methods get latent effects. *)
+            fst (collecting ctx (fun ctx -> ops.infer ctx body))
         | param :: rest ->
             let a_ty =
               match param.Syntax.type_ with
@@ -675,13 +684,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest
         | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive; _ } :: rest ->
             let name = Syntax.label key in
-            let rec_ty = Ctx.raw_meta ctx in
-            let value_ctx = Ctx.clear_self ctx in
-            let value_ctx = if recursive then Ctx.bind value_ctx key rec_ty else value_ctx in
-            let val_core, val_ty = ops.infer value_ctx value in
-            (if recursive then Ctx.unify ctx rec_ty val_ty);
-            let val_core = if recursive then Fix (name, Ctx.pure_call ctx rec_ty, val_core) else val_core in
-            let val_val = Ctx.eval ctx val_core in
+            let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~key ~name ~recursive value in
             let kind = if public then Public else Private in
             let bind = LetBind (name, kind, val_core) in
             let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
@@ -959,28 +962,29 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       (Let (U, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name }, body_core), body_ty)
   | ImplDef { name; trait; args; fields; body } ->
       let name = Option.map (fun (i : Syntax.id) -> i.name) name in
-      let body_ctx, _impl_effects, _evidence, impl_ty, impl_core =
+      let body_ctx, _evidence, impl_ty, impl_core =
         elaborate_impl ?impl_name:name ops ctx trait args fields in
       let body_core, body_ty = ops.infer body_ctx body in
       (Let (Ctx.quote ctx impl_ty, impl_core, body_core), body_ty)
   | Match (scrutinee, branches) ->
-      let scrut_core, scrut_ty = ops.infer ctx scrutinee in
+      let (scrut_core, scrut_ty), scrutinee_effects = collecting ctx (fun ctx -> ops.infer ctx scrutinee) in
       let value_branches = value_branches_of branches in
       let effect_branches = effect_branches_of branches in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let ret_ty = Ctx.raw_meta ctx in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
-      let scrutinee_effects = ops.collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
-      let value_branches' =
-        List.map (fun (pat, body) ->
-          let branch_ctx = refine_branch_context ctx refinement_target pat in
-          let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
-          let body_core = ops.check ctx' body ret_ty in
-          ValueBranch (core_pat, body_core))
-          value_branches
+      let (value_branches', effect_branches'), body_effects =
+        collecting ctx (fun ctx ->
+          ( List.map (fun (pat, body) ->
+              let branch_ctx = refine_branch_context ctx refinement_target pat in
+              let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
+              let body_core = ops.check ctx' body ret_ty in
+              ValueBranch (core_pat, body_core))
+              value_branches,
+            List.map (elaborate_effect_branch ops ctx ret_ty residual scrutinee_effects) effect_branches ))
       in
-      let effect_branches' = List.map (elaborate_effect_branch ops ctx ret_ty residual scrutinee_effects) effect_branches in
+      emit_residual ctx ~residual_of:(fun effects -> residual_effects ctx effects effect_branches) scrutinee_effects body_effects;
       let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
@@ -988,7 +992,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let macro_name = match f.kind with Var n -> Some n.name | _ -> None in
       (match macro_name with
        | Some name ->
-           apply_typed_macro ~check:ops.check ctx ~call:expr ~name args ~expected:None
+           apply_typed_macro ~check:ops.check ctx ~name args ~expected:None
        | None -> failwith "macro-only syntax should not reach elaboration")
   | MacroDef _ | SyntaxDef _ | SyntaxOperatorUse _ | Block _ | Instantiate _ ->
       failwith "macro-only syntax should not reach elaboration"
@@ -999,7 +1003,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
      again from its expanded form. *)
   | Elaborated { arg; form } -> (
       match Hashtbl.find_opt elaborated_args arg with
-      | Some (core, ty, at_lvl) when ctx.lvl >= at_lvl && (ctx.lvl = at_lvl || shiftable core) ->
+      | Some (core, ty, at_lvl, effects) when ctx.lvl >= at_lvl && (ctx.lvl = at_lvl || shiftable core) ->
+          emit ctx effects;
           (shift_term (ctx.lvl - at_lvl) 0 core, ty)
       | Some _ -> ops.infer ctx form
       | None -> failwith "Elab_infer: an elaborated macro argument outlived its application")
