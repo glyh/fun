@@ -290,7 +290,40 @@ let default_matrix m =
   in
   { header; rows }
 
-let collect_leaf_bindings m =
+(* Where each binder of [pat] sits, in source order (left to right, the order the
+   direct matcher binds): the environment a branch body is elaborated against. *)
+let binder_occurrences (pat : core_pat) : DT.occurrence list =
+  let rec go occ acc = function
+    | CPatBind -> occ :: acc
+    | CPatCon (_, ntp, subs) ->
+        List.fold_left (fun (i, acc) p -> (i + 1, go (DT.OChild { parent = occ; index = ntp + i }) acc p))
+          (0, acc) subs
+        |> snd
+    | CPatProd subs | CPatNominalHead { param_pats = subs; _ } ->
+        List.fold_left (fun (i, acc) p -> (i + 1, go (DT.OChild { parent = occ; index = i }) acc p)) (0, acc) subs
+        |> snd
+    | CPatRecord { fields; _ } | CPatStructType { fields; _ } ->
+        List.fold_left (fun acc (name, p) -> go (DT.OField { parent = occ; name }) acc p) acc fields
+    | CPatSyn { rhs; _ } -> go occ acc rhs
+    (* Alternatives bind the same variables; each alternative's own order is the
+       order its row binds, so collect every alternative's occurrences. *)
+    | CPatOr _ as p -> List.fold_left (fun acc alt -> go occ acc alt) acc (or_alternatives p)
+    | CPatWild | CPatAtom _ | CPatType _ -> acc
+  in
+  List.rev (go DT.OBase [] pat)
+
+(* An occurrence and its ancestors, outermost first (the base excluded). *)
+let path_prefixes occ =
+  let rec go acc = function
+    | DT.OBase -> acc
+    | (DT.OChild { parent; _ } | DT.OField { parent; _ }) as o -> go (o :: acc) parent
+  in
+  go [] occ
+
+(* A leaf's bindings in the order its branch's pattern writes them. Columns are
+   resolved in whatever order the compiler picks refutable ones, so the order they
+   were collected in is not the source order. *)
+let collect_leaf_bindings (pats : core_pat list) m =
   let r = List.hd m.rows in
   let extra =
     Array.to_list m.header
@@ -298,7 +331,22 @@ let collect_leaf_bindings m =
     |> List.filter_map (fun (i, occ) ->
          match r.pats.(i) with CPatBind -> Some occ | _ -> None)
   in
-  r.bindings @ extra
+  (* Source order is the occurrence paths' order: children by position, fields in
+     the order the pattern writes them. (A constructor's payload offset is the same
+     for every child, so comparing positions needs no type-parameter count.) *)
+  let field_order =
+    List.filter_map (function DT.OField { name; _ } -> Some name | _ -> None)
+      (binder_occurrences (List.nth pats r.branch) |> List.concat_map path_prefixes)
+  in
+  let component = function
+    | DT.OChild { index; _ } -> index
+    | DT.OField { name; _ } ->
+        let rec find i = function [] -> max_int | n :: ns -> if String.equal n name then i else find (i + 1) ns in
+        find 0 field_order
+    | DT.OBase -> 0
+  in
+  let key occ = List.map component (path_prefixes occ) in
+  List.stable_sort (fun a b -> compare (key a) (key b)) (r.bindings @ extra)
 
 let all_atoms = function
   | Atom_ty.TUnit -> Some [ Atom.Unit ]
@@ -321,7 +369,7 @@ let compile_with_domains ~domain_of_occurrence (pats : core_pat list) : DT.t =
     match find_refutable_column m with
     | None ->
         DTB.get (Leaf { branch = (List.hd m.rows).branch;
-                        bindings = collect_leaf_bindings m })
+                        bindings = collect_leaf_bindings pats m })
     | Some i ->
         let m = swap_columns m 0 i in
         (match expand_first_column_ors m with

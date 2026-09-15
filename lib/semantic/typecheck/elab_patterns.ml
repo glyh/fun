@@ -146,7 +146,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
             List.fold_left2
               (fun (core_acc, binder_acc) pat ty ->
                 let core_pat, binders = elaborate_pat_binders ctx pat ty in
-                (core_pat :: core_acc, binders @ binder_acc))
+                (core_pat :: core_acc, List.rev_append binders binder_acc))
               ([], []) sub_pats tys
           in
           (CPatProd (List.rev core_subs), List.rev binders)
@@ -179,7 +179,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                 in
                 let field_pat = Option.value pat_opt ~default:(Syntax.PatBind (Syntax.fresh_id name)) in
                 let core_pat, binders = elaborate_pat_binders ctx field_pat field_ty in
-                ((name, core_pat) :: core_acc, binders @ binder_acc))
+                ((name, core_pat) :: core_acc, List.rev_append binders binder_acc))
               ([], []) fields
           in
           (CPatRecord { fields = List.rev core_fields; partial }, List.rev binders)
@@ -193,7 +193,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
         List.fold_left
           (fun (core_acc, binder_acc) (name, field_pat) ->
             let core_pat, binders = elaborate_pat_binders ctx field_pat VU in
-            ((name, core_pat) :: core_acc, binders @ binder_acc))
+            ((name, core_pat) :: core_acc, List.rev_append binders binder_acc))
           ([], []) fields
       in
       (CPatStructType { fields = List.rev core_fields; partial }, List.rev binders)
@@ -226,7 +226,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                 List.fold_left2
                   (fun (pat_acc, binder_acc) sub_pat param_ty ->
                     let core_pat, sub_binders = elaborate_pat_binders ctx sub_pat param_ty in
-                    (core_pat :: pat_acc, sub_binders @ binder_acc))
+                    (core_pat :: pat_acc, List.rev_append sub_binders binder_acc))
                   ([], []) sub_pats param_tys
               in
               (CPatNominalHead { id; name = nm; num_params = ctor_params;
@@ -291,7 +291,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                         let payload_ty =
                           Nbe.eval ctx.metas (List.rev n.params @ payload_clo.env) payload_clo.body in
                         let core_sub, binders = elaborate_pat_binders ctx sub_pat payload_ty in
-                        (core_sub :: core_acc, binders @ binder_acc))
+                        (core_sub :: core_acc, List.rev_append binders binder_acc))
                       ([], []) sub_pats payloads
                   in
                   (CPatCon (name, num_type_params, List.rev core_subs), List.rev binders)
@@ -305,5 +305,5 @@ and elaborate_pattern_syn_args ctx sub_pats syn_ty rhs =
   List.fold_left2
     (fun (pats, binds) sub_pat expected_ty ->
       let core_p, bs = elaborate_pat_binders ctx sub_pat expected_ty in
-      (core_p :: pats, bs @ binds))
+      (core_p :: pats, List.rev_append bs binds))
     ([], []) sub_pats expected_tys

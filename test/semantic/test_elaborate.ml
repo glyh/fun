@@ -845,6 +845,16 @@ let tuple_proj =
 let enums =
   let option = "Option2 = fn(A : Type) { enum { Some2(A), None2 } }; " in
   [
+    (* A nested refutable sub-pattern makes the decision tree resolve columns out
+       of source order; a branch still binds its variables in source order. *)
+    Alcotest.test_case "nested constructor pattern binds in source order" `Quick
+      (eval_i64 "{ rec f = fn(xs : List(I64)) : I64 { match (xs) { Cons(m, Nil) => m, Cons(m, rest) => f(rest), Nil => 0 } }; f(Cons(1, Cons(2, Nil))) }" 2L);
+    Alcotest.test_case "nested option pattern binds in source order" `Quick
+      (eval_i64 "{ match ((5, Some(3))) { (a, None) => a, (a, Some(b)) => a - b } }" 2L);
+    Alcotest.test_case "nested tuple pattern binds in source order" `Quick
+      (eval_i64 "{ match ((1, (2, 3))) { (a, (b, c)) => a * 100 + b * 10 + c } }" 123L);
+    Alcotest.test_case "nested user enum pattern binds in source order" `Quick
+      (eval_i64 "{ P = enum { Pair(I64, Option(I64)) }; open P; match (Pair(10, Some(4))) { Pair(a, None) => a, Pair(a, Some(b)) => a - b } }" 6L);
     Alcotest.test_case "a constructor is a member of its enum" `Quick
       (eval_i64 "{ Color = enum { Red, Green }; match (Color.Green) { Color.Red => 1, Color.Green => 2 } }" 2L);
     Alcotest.test_case "open brings an enum's constructors into scope" `Quick

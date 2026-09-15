@@ -85,4 +85,10 @@ Decide: make `+` a trait method language-wide, or give bound sets another
 non-overloaded form. Spelling recognition in `trait_bound_forms` stays until then.
 11. **Match on a list inside a recursive function fails at run time**:
     `Cons(m, Nil) => …, Cons(m, rest) => f(rest)` → "match on non-constructor
-    value" (found by the staged-prelude run). **Bug.**
+    value" (found by the staged-prelude run). **Fixed 2026-09-16:** a decision
+    tree leaf bound variables in the order its columns were resolved, not source
+    order, so a nested refutable sub-pattern (`Nil` in `Cons(m, Nil)`) swapped
+    `m` and `rest` and the call recursed on the head. Leaf bindings are now sorted
+    into source order (`Core_match_compile.collect_leaf_bindings`), and the
+    elaborator's binder lists for nested multi-binder sub-patterns are in source
+    order too (they were reversed within each sub-pattern).
