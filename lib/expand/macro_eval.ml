@@ -216,6 +216,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Struct { bindings } -> e "RawStruct" [ w_list ns (w_decl ns) bindings ]
   | Module { bindings } -> e "RawModule" [ w_list ns (w_decl ns) bindings ]
   | Sig { bindings } -> e "RawSig" [ w_list ns (w_decl ns) bindings ]
+  | Enum { name; ctors } ->
+      e "RawEnum" [ w_option ns w_string name; w_ctors ns (List.map (fun (c, ps) -> (Syntax.fresh_id c, ps)) ctors) ]
   | Import { path; scope } -> e "RawImport" [ w_string path; VAtom (Scopes (scope, None)) ]
   | Open (m, body, label) -> e "RawOpen" [ x m; x body; w_string label ]
   | OpenChoice { name; opens; fallback } ->
@@ -312,7 +314,9 @@ and w_effect_op ns (op : Syntax.effect_op) =
 and w_type_decl ns (d : Syntax.type_decl) =
   con ns.type_decl "MkTypeDecl"
     [ w_id ns d.name; w_list ns (w_id ns) d.params;
-      w_list ns (fun (c, payloads) -> con ns.ctor "MkCtor" [ w_id ns c; w_list ns (w_expr ns) payloads ]) d.ctors ]
+      w_ctors ns d.ctors ]
+
+and w_ctors ns ctors = w_list ns (fun (c, payloads) -> con ns.ctor "MkCtor" [ w_id ns c; w_list ns (w_expr ns) payloads ]) ctors
 
 and w_branch ns = function
   | Syntax.ValueBranch (p, body) -> con ns.branch "ValueBranch" [ w_pat ns p; w_expr ns body ]
@@ -569,6 +573,10 @@ let rec u_expr ns (v : value) : Syntax.t option =
       | "RawStruct", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Struct { bindings })
       | "RawModule", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Module { bindings })
       | "RawSig", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Sig { bindings })
+      | "RawEnum", [ name; ctors ] ->
+          let* name = u_option ns u_string name in
+          let* ctors = u_ctors ns ctors in
+          mk (Enum { name; ctors = List.map (fun ((c : Syntax.id), ps) -> (c.name, ps)) ctors })
       | "RawImport", [ path; VAtom (Scopes (scope, _)) ] -> let* path = u_string path in mk (Import { path; scope })
       | "RawOpen", [ m; body; label ] ->
           let* m = x m in let* body = x body in let* label = u_string label in mk (Open (m, body, label))
@@ -782,19 +790,20 @@ and u_type_decl ns v : Syntax.type_decl option =
   | Some ("MkTypeDecl", [ name; params; ctors ]) ->
       let* name = u_id ns name in
       let* params = u_list ns (u_id ns) params in
-      let* ctors =
-        u_list ns
-          (fun c ->
-            match payload ns.ctor c with
-            | Some ("MkCtor", [ cname; payloads ]) ->
-                let* cname = u_id ns cname in
-                let* payloads = u_list ns (u_expr ns) payloads in
-                Some (cname, payloads)
-            | _ -> None)
-          ctors
-      in
+      let* ctors = u_ctors ns ctors in
       Some { Syntax.name; params; ctors }
   | _ -> None
+
+and u_ctors ns ctors =
+  u_list ns
+    (fun c ->
+      match payload ns.ctor c with
+      | Some ("MkCtor", [ cname; payloads ]) ->
+          let* cname = u_id ns cname in
+          let* payloads = u_list ns (u_expr ns) payloads in
+          Some (cname, payloads)
+      | _ -> None)
+    ctors
 
 and u_branch ns v : Syntax.match_branch option =
   match payload ns.branch v with

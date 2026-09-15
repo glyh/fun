@@ -176,6 +176,7 @@ let token_text (term : Raw_syntax.t) =
   | Token { kind = KwRef; _ } -> Some "ref"
   | Token { kind = KwModule; _ } -> Some "module"
   | Token { kind = KwStruct; _ } -> Some "struct"
+  | Token { kind = KwEnum; _ } -> Some "enum"
   | Token { kind = KwType; _ } -> Some "type"
   | Token { kind = KwEffect; _ } -> Some "effect"
   | Token { kind = KwTrait; _ } -> Some "trait"
@@ -201,6 +202,7 @@ let keyword_name = function
   | KwType -> Some "type"
   | KwModule -> Some "module"
   | KwStruct -> Some "struct"
+  | KwEnum -> Some "enum"
   | KwImpl -> Some "impl"
   | KwTrait -> Some "trait"
   | KwPub -> Some "pub"
@@ -250,7 +252,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 
 let is_expr_start env term =
   match term.datum with
-  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
+  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwEnum | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
   | Token { kind = Operator s; scope; _ } -> Option.is_some (Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false

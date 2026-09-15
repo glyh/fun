@@ -199,6 +199,10 @@ and kind =
   | Sig of { bindings : struct_binding list }
       (** [sig { x : I64 }]: a signature value, its own kind of value (not a
           module); each item is a [LetBinding] whose value is a type. *)
+  | Enum of { name : string option; ctors : (string * t list) list }
+      (** [enum { Red, Some(A) }]: a nominal type value; its constructors are its
+          members ([Color.Red], [open Color]). [name] is the binder it is bound to,
+          for display only (set by elaboration). *)
   | Import of { path : string; scope : Scope_set.t }
       (** [import "path"]. [scope] is where it is written, the scope set the
           [import] keyword carries: the roles visible there are what an open of
@@ -533,3 +537,11 @@ let rec path_of_form (stx : t) : path option =
 (* A struct whose items are exactly these fields: a record declaration's body. *)
 let struct_of_fields (fields : (string * t) list) =
   Struct { bindings = List.map (fun (name, type_) -> FieldBinding { name; type_ }) fields }
+
+(* An [enum] bound to [label] - directly, or as a function's body - displays as
+   [label]. *)
+let rec name_enum label (stx : t) =
+  match stx.kind with
+  | Enum { name = None; ctors } -> { stx with kind = Enum { name = Some label; ctors } }
+  | Lam (param, body) -> { stx with kind = Lam (param, name_enum label body) }
+  | _ -> stx

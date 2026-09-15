@@ -383,6 +383,22 @@ and parse_sig_expr env start_span terms =
   in
   (stx ~span:(span_between start_span span) (Syntax.Sig { bindings }), rest)
 
+(* [enum { Red, Some(A), Pair(A, B) }]: constructors separated by commas; a
+   constructor's payloads are its parenthesised, comma-separated types. *)
+and parse_enum_expr env start_span terms =
+  let body_terms, rest, span = brace_body "enum" terms in
+  let ctors =
+    split_commas (drop_separators body_terms)
+    |> List.filter (fun item -> drop_separators item <> [])
+    |> List.map (fun item ->
+        match drop_separators item with
+        | [ { datum = Token { kind = Ident cname; _ }; _ } ] -> (cname, [])
+        | [ { datum = Token { kind = Ident cname; _ }; _ }; { datum = Group (Raw_syntax.Paren, items, _); _ } ] ->
+            (cname, List.map (parse_type_terms env) (List.filter (fun ts -> drop_separators ts <> []) (split_commas (drop_separators items))))
+        | _ -> error "an enum constructor is written Name or Name(Type, …)")
+  in
+  (stx ~span:(span_between start_span span) (Syntax.Enum { name = None; ctors }), rest)
+
 and parse_struct_expr env start_span terms =
   let body_terms, rest, span = brace_body "struct" terms in
   let bindings = parse_struct_items env body_terms in
@@ -434,6 +450,7 @@ and parse_primary env terms =
       | Token { kind = KwModule; _ } -> parse_module_expr env term.span rest
       | Token { kind = KwSig; _ } -> parse_sig_expr env term.span rest
       | Token { kind = KwStruct; _ } -> parse_struct_expr env term.span rest
+      | Token { kind = KwEnum; _ } -> parse_enum_expr env term.span rest
       | Token { kind = Ident "quote"; _ }
         when (match drop_separators rest with { datum = Group ((Raw_syntax.Paren | Raw_syntax.Brace), _, _); _ } :: _ -> true | _ -> false) ->
           Enforest_forms.parse_quote (fun holes -> form_callbacks (eager_env ~holes env)) term.span rest

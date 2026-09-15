@@ -73,6 +73,7 @@ and t =
   | Struct of { bindings : struct_binding list }
   | Module of { bindings : struct_binding list }
   | Sig of { bindings : struct_binding list }
+  | Enum of { name : string option; ctors : (string * t list) list }
   | Import of string
   | Open of t * t * string
   | OpenChoice of { name : string; opens : string list; fallback : string option }
@@ -217,6 +218,8 @@ and lower_expr (stx : Syntax.t) : t =
     Module { bindings = List.map lower_struct_binding bindings }
   | Syntax.Sig { bindings } ->
     Sig { bindings = List.map lower_struct_binding bindings }
+  | Syntax.Enum { name; ctors } ->
+    Enum { name; ctors = List.map (fun (c, ps) -> (c, List.map lower_expr ps)) ctors }
   | Syntax.Import { path; _ } -> Import path
   | Syntax.Open (m, body, label) -> Open (lower_expr m, lower_expr body, label)
   | Syntax.OpenChoice { name; opens; fallback } -> OpenChoice { name = name.name; opens; fallback }

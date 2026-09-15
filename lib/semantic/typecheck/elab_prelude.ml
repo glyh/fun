@@ -80,6 +80,7 @@ pub Syntax = module {
     | RawStruct(Option(Span), List(Decl))
     | RawModule(Option(Span), List(Decl))
     | RawSig(Option(Span), List(Decl))
+    | RawEnum(Option(Span), Option(String), List(Ctor))
     | RawImport(Option(Span), String, Scopes)
     | RawOpen(Option(Span), Expr, Expr, String)
     | RawOpenChoice(Option(Span), Id, List(String), Option(String))

@@ -24,6 +24,7 @@ let keyword = function
   | "type" -> Some KwType
   | "module" -> Some KwModule
   | "struct" -> Some KwStruct
+  | "enum" -> Some KwEnum
   | "impl" -> Some KwImpl
   | "trait" -> Some KwTrait
   | "pub" -> Some KwPub
@@ -177,6 +178,7 @@ let read ?file source =
     | KwType -> "type"
     | KwModule -> "module"
     | KwStruct -> "struct"
+    | KwEnum -> "enum"
     | KwImpl -> "impl"
     | KwTrait -> "trait"
     | KwPub -> "pub"

@@ -251,9 +251,8 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
           (match con_path.members with
            | [] -> None
            | _ ->
-               let ctor_value, _ = resolve_path_value ctx con_path in
-               match Nbe.force ctx.metas ctor_value with
-                | VPatternSyn { name = _; params; rhs; scrutinee_ty = syn_ty } ->
+               match Option.map (fun (v, _) -> Nbe.force ctx.metas v) (resolve_path_value_opt ctx con_path) with
+                | Some (VPatternSyn { name = _; params; rhs; scrutinee_ty = syn_ty }) ->
                     if List.length sub_pats <> List.length params then
                       raise (ElabError PatternArityMismatch);
                     Ctx.unify ctx scrutinee_ty syn_ty;
@@ -267,12 +266,16 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
           let resolved_nominal =
             match con_path.members with
             | [] -> None
-            | _ ->
-                let ctor_value, _ = resolve_path_value ctx con_path in
-                match Nbe.force ctx.metas ctor_value with
-                | VCon { nominal; _ } -> Some nominal
-                | VLam _ | VPi _ -> None
-                | _ -> raise (ElabError (UnknownConstructor name))
+            | _ -> (
+                match Option.map (fun (v, _) -> Nbe.force ctx.metas v) (resolve_path_value_opt ctx con_path) with
+                | Some (VCon { nominal; _ }) -> Some nominal
+                | Some (VLam _ | VPi _) -> None
+                | Some _ -> raise (ElabError (UnknownConstructor name))
+                (* [T.C]: the type the rest of the path names. *)
+                | None -> (
+                    match find_nominal_for_pattern_head_opt ctx con_path with
+                    | Some _ as nominal -> nominal
+                    | None -> raise (ElabError (UnknownConstructor name))))
           in
           (match Nbe.force ctx.metas scrutinee_ty with
           | VNominal n ->

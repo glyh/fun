@@ -355,6 +355,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Meta id -> Done (eval_meta mc id)
   | InsertedMeta (id, bds) -> Done (eval_inserted_meta mc env id bds)
   | NominalDef { id; name; num_params; captures; ctors; body } ->
+      let env0 = env in
       sequence_values mc env captures (fun capture_vals ->
           let nominal = VNominal { id; name; num_params; captures = capture_vals; params = [] } in
           (* Rigid stand-ins for the type params (the body expects them in scope),
@@ -362,13 +363,20 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           let depth = List.length env in
           let env = List.rev (List.init num_params (fun i -> VRigid { lvl = depth + i; spine = [] })) @ env in
           let env = nominal :: env in
-          let env = if num_params > 0 then nominal :: env else env in
+          (* A parameterised type's name is its former, [fn(params) { NomRef }]. *)
+          let former () =
+            eval mc env0
+              (List.fold_right (fun _ acc -> Lam acc) (List.init num_params Fun.id)
+                 (NomRef { id; name; num_params; captures = List.map (shift_capture num_params) captures;
+                           params = List.init num_params (fun i -> Var (num_params - 1 - i)) }))
+          in
+          let env = if num_params > 0 then former () :: env else env in
           (* Each constructor chain reads the nominal it sits over: [i] entries in. *)
           let env =
             List.fold_left
               (fun env (i, (cname, payloads)) ->
                 let ctor =
-                  ctor_term ~nominal:(Var i) ~name:cname ~nominal_name:name ~num_params ~payload_count:(List.length payloads)
+                  ctor_term ~nominal:(Var (if num_params > 0 then i + 1 else i)) ~name:cname ~nominal_name:name ~num_params ~payload_count:(List.length payloads)
                 in
                 eval mc env ctor :: env)
               env (List.mapi (fun i c -> (i, c)) ctors)

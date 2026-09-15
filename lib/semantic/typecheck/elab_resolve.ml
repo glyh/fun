@@ -425,7 +425,15 @@ let nominal_for_constructor_path_opt ctx (p : Syntax.path) =
 let find_nominal_for_pattern_head_opt ctx (p : Syntax.path) =
   match find_nominal_template_opt ctx p with
   | Some nominal -> Some nominal
-  | None -> nominal_for_constructor_path_opt ctx p
+  | None -> (
+      match nominal_for_constructor_path_opt ctx p, List.rev p.members with
+      | (Some _ as found), _ -> found
+      (* [T.C]: a constructor as a member of the type the rest of the path names. *)
+      | None, constructor :: rev_type_members -> (
+          match find_nominal_template_opt ctx { p with members = List.rev rev_type_members } with
+          | Some (VNominal n) as found when List.mem_assoc constructor (nominal_constructors n.id n.captures) -> found
+          | _ -> None)
+      | None, [] -> None)
 
 let rec insert_explicit_effect_metas ctx core ty =
   match Nbe.force ctx.Ctx.metas ty with

@@ -215,11 +215,12 @@ and core_pat =
 
 and struct_binding_term =
   | LetBind of string * struct_field_kind * term
-  | TypeBind of { name : string; kind : struct_field_kind; id : nominal_id; num_params : int;
+  | TypeBind of { name : string; kind : struct_field_kind; ctor_kind : struct_field_kind; id : nominal_id; num_params : int;
                   captures : term list; ctors : (string * int) list }
       (** A nominal type binding: its declaration [id], its own free variables
           ([captures], terms in the binding's scope) and each constructor's
-          payload arity. The evaluator builds the nominal and its constructors
+          payload arity; [ctor_kind] is its constructors' visibility (an [enum]'s
+          are members of the type, not of the module: [Private]). The evaluator builds the nominal and its constructors
           in the scope it is pushed in ([binding_slots]), so a type declared
           under a binder is instantiated per evaluation. *)
   | EffectBind of string * struct_field_kind * value
@@ -542,7 +543,7 @@ let binding_slots : struct_binding_term -> slot list option = function
   | PatternSynBind (name, kind, syn) -> Some [ slot ~name kind (SlotValue syn) ]
   | ImplBind (name, kind, def, _ty) ->
       Some [ { sl_name = name; sl_kind = kind; sl_source = SlotDef def } ]
-  | TypeBind { name; kind; id; num_params; captures; ctors } ->
+  | TypeBind { name; kind; ctor_kind; id; num_params; captures; ctors } ->
       (* Pushed in order: the params (placeholders), each constructor, then the
          type; each term is read in the scope so far, so the captures shift by
          what this binding has already pushed. *)
@@ -551,7 +552,7 @@ let binding_slots : struct_binding_term -> slot list option = function
         (List.init num_params (fun _ -> slot kind SlotPlaceholder)
         @ List.mapi
             (fun i (cname, payload_count) ->
-              slot ~name:cname kind (SlotDef (ctor_term ~nominal:(nominal (num_params + i)) ~name:cname ~nominal_name:name ~num_params ~payload_count)))
+              slot ~name:cname ctor_kind (SlotDef (ctor_term ~nominal:(nominal (num_params + i)) ~name:cname ~nominal_name:name ~num_params ~payload_count)))
             ctors
         @ [ slot ~name kind (SlotDef (nominal (num_params + List.length ctors))) ])
   | OpenBind _ -> None

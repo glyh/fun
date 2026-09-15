@@ -120,6 +120,7 @@ and go_kind m (k : kind) : kind =
   | Struct { bindings } -> Struct { bindings = List.map (go_struct_binding m) bindings }
   | Module { bindings } -> Module { bindings = List.map (go_struct_binding m) bindings }
   | Sig { bindings } -> Sig { bindings = List.map (go_struct_binding m) bindings }
+  | Enum { name; ctors } -> Enum { name; ctors = List.map (fun (n, ps) -> (n, List.map go ps)) ctors }
   | Import { path; scope } -> Import { path; scope = (on_id (Syntax.fresh_id ~scope "")).scope }
   | Open (md, body, label) -> Open (go md, go body, label)
   | OpenChoice c -> OpenChoice { c with name = on_id c.name }
@@ -704,6 +705,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     { stx with kind = Module { bindings = expand_struct_bindings ctx bindings } }
   | Sig { bindings } ->
     { stx with kind = Sig { bindings = expand_struct_bindings ctx bindings } }
+  | Enum { name; ctors } ->
+    { stx with kind = Enum { name; ctors = List.map (fun (n, ps) -> (n, List.map (expand ctx) ps)) ctors } }
   | Open (m, body, _) ->
     (* Expand the module expression first: an [open (import "m")] is what loads
        that unit's macros, and they have to be there before the open can bind

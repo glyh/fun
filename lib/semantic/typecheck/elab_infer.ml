@@ -45,6 +45,91 @@ let rec struct_type_params (value : Syntax.t) =
       Option.map (fun params -> param :: params) (struct_type_params body)
   | _ -> None
 
+(* The parameters a value takes before it is an enum, and its constructors:
+   [enum { … }] or [fn(A : Type) { enum { … } }]. [None] for any other value. *)
+let rec enum_type_params (value : Syntax.t) =
+  match value.kind with
+  | Syntax.Enum { ctors; _ } -> Some ([], ctors)
+  | Syntax.Lam (param, body) -> Option.map (fun (params, ctors) -> (param.name :: params, ctors)) (enum_type_params body)
+  | _ -> None
+
+(* An [enum] is the type declaration its value names: a [TypeDef] named [name]
+   over [params], whose body is the type. Its constructors are members of the
+   type, never names in scope, so their keys are resolved names nothing spells. *)
+let enum_type_def ~(name : Syntax.id) ~params ~ctors ~span : Syntax.t =
+  let hidden cname = Syntax.fresh_id (cname ^ "#ctor") in
+  { kind = Syntax.TypeDef { name; params; ctors = List.map (fun (c, ps) -> (hidden c, ps)) ctors; body = { kind = Syntax.Var name; span } };
+    span }
+
+(* A [rec] group whose members are enums, as the type declarations they are. *)
+let enum_group_decls members : Syntax.type_decl list option =
+  let decls = List.map (fun ((n : Syntax.id), v) -> (n, enum_type_params v)) members in
+  if List.for_all (fun (_, d) -> Option.is_none d) decls then None
+  else if List.exists (fun (_, d) -> Option.is_none d) decls then
+    raise (ElabError (InvalidRecursiveRecord "a rec … and … group holds enums, struct types or functions, not a mix"))
+  else
+    Some
+      (List.map
+         (fun ((name : Syntax.id), d) ->
+           let params, ctors = Option.get d in
+           { Syntax.name; params; ctors = List.map (fun (c, ps) -> (Syntax.fresh_id (c ^ "#ctor"), ps)) ctors })
+         decls)
+
+(* The constructors of a type value, as members: for [e : Type] naming a nominal,
+   or a type former [e : (A : Type) -> … -> Type], each constructor with its core
+   at [ctx] and its type. A former's constructors are generic over its
+   parameters ([Option.Some : [A : Type] -> A -> Option(A)]). [None] when [e] is
+   not a nominal type. *)
+let type_constructors (ctx : Ctx.t) e_core e_ty =
+  let mc = ctx.Ctx.metas in
+  let rec peel depth ty value domains =
+    match Nbe.force mc ty with
+    | VU -> Some (depth, List.rev domains, value)
+    | VPi { domain; codomain; _ } ->
+        let arg = VRigid { lvl = depth; spine = [] } in
+        peel (depth + 1) (Nbe.closure_apply mc codomain arg) (Nbe.apply mc value arg) (Nbe.quote mc depth domain :: domains)
+    | _ -> None
+  in
+  match peel ctx.Ctx.lvl e_ty (Ctx.eval ctx e_core) [] with
+  | None -> None
+  | Some (depth, domains, value) -> (
+      match Nbe.force mc value with
+      | VNominal nom ->
+          let env = List.init (depth - ctx.Ctx.lvl) (fun i -> VRigid { lvl = depth - 1 - i; spine = [] }) @ ctx.Ctx.env in
+          let unapplied = VNominal { nom with params = [] } in
+          let nomref = NomRef { id = nom.id; name = nom.name; num_params = nom.num_params;
+                                captures = List.map (Nbe.quote mc depth) nom.captures; params = [] } in
+          let wrap_params body = List.fold_left (fun acc _ -> Lam acc) body domains in
+          let wrap_pis body = List.fold_right (fun domain acc -> Pi { explicitness = Implicit; domain; effects = empty_effect_row; codomain = acc }) domains body in
+          Some
+            (List.map
+               (fun (cname, payload_clos) ->
+                 let payload_count = List.length payload_clos in
+                 let chain = ctor_term ~nominal:(Var 0) ~name:cname ~nominal_name:nom.name ~num_params:nom.num_params ~payload_count in
+                 let applied = List.fold_left (fun acc p -> Ap (acc, Implicit, Nbe.quote mc (depth + 1) p)) chain nom.params in
+                 let core = wrap_params (Let (U, nomref, applied)) in
+                 let _, generic_ty = build_ctor mc (unapplied :: env) nom.name cname nom.num_params payload_clos in
+                 let instance_ty =
+                   List.fold_left
+                     (fun ty p -> match Nbe.force mc ty with VPi { codomain; _ } -> Nbe.closure_apply mc codomain p | _ -> ty)
+                     generic_ty nom.params
+                 in
+                 (cname, core, Nbe.eval mc ctx.Ctx.env (wrap_pis (Nbe.quote mc depth instance_ty))))
+               (nominal_constructors nom.id nom.captures))
+      | _ -> None)
+
+(* [open T] of a type value: its constructors, in scope by their names for what
+   follows, each bound as the core it is at [ctx] shifted past the ones before. *)
+let open_type_constructors ~label (ctx : Ctx.t) ctors =
+  let ctx0 = ctx in
+  let ctx, members =
+    List.fold_left
+      (fun (c, members) (cname, core, ty) ->
+        (add_opened_field c cname ty (Ctx.eval ctx0 core), NameMap.add cname { level = c.Ctx.lvl; ty } members))
+      (ctx, NameMap.empty) ctors
+  in
+  ({ ctx with Ctx.opened = (label, members) :: ctx.Ctx.opened }, List.mapi (fun i (cname, core, ty) -> (cname, shift_term i 0 core, ty)) ctors)
+
 (* A recursive group of struct types: [rec Numbers = struct { … }], or
    [rec A = struct { b : Option(B) } and B = struct { a : Option(A) }].
    Each binding mints an identity. Every member's body sees every member's name
@@ -148,7 +233,13 @@ and elab_fixpoint_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend memb
 (* A module or struct member [name = value]: its core, its type, and the value
    the items after it see - evaluated when evaluating it performs nothing,
    otherwise opaque, for evaluating it here would run what it performs. *)
-let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~recursive value =
+let rec elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~recursive value =
+  let value = Syntax.name_enum name value in
+  match if recursive then enum_type_params value else None with
+  | Some (params, ctors) ->
+      elab_member_value ops ctx ~value_ctx ~key ~name ~recursive:false
+        (enum_type_def ~name:(Syntax.fresh_id key) ~params ~ctors ~span:value.span)
+  | None ->
   match if recursive then struct_type_params value else None with
   | Some _ ->
       let _, members = elab_rec_group ops ctx ~value_ctx:(fun _ -> value_ctx) ~extend:(fun ctx _ -> ctx) [ (key, value) ] in
@@ -209,7 +300,7 @@ type type_member = {
   member_ctor_keys : string list;
 }
 
-let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_decl list) ~public
+let elab_type_group ?(ctors_private = false) (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_decl list) ~public
     : Ctx.t * (Core.struct_binding_term * (string * struct_field_kind * value) list) list =
   let members =
     List.map
@@ -302,6 +393,7 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
   (* Phase 3, finish: build each nominal and its constructors, and extend the
      context in chain order - params, constructors, then the type. *)
   let kind = if public then Public else Private in
+  let ctor_kind = if ctors_private then Private else kind in
   let ctx', results =
     List.fold_left
       (fun (ctx, acc) ((m : type_member), nominal_id, _, param_ctx, placeholder_env, nominal_ty, _) ->
@@ -320,7 +412,7 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
                (nominal_constructors nominal_id capture_vals))
         in
         let bind =
-          TypeBind { name = m.member_name; kind; id = nominal_id; num_params;
+          TypeBind { name = m.member_name; kind; ctor_kind; id = nominal_id; num_params;
                      captures = capture_terms ~lvl:ctx.Ctx.lvl levels;
                      ctors = List.map (fun (c, clos) -> (c, List.length clos)) (nominal_constructors nominal_id capture_vals) }
         in
@@ -332,11 +424,18 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
                 m.member_ctor_keys (List.combine ctor_values ctor_types)
             @ [ `Entry (m.member_key, nominal_ty, nominal) ])
         in
-        let fields = (m.member_name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
+        let fields = (m.member_name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, ctor_kind, ty)) ctor_types in
         (ctx', (bind, fields) :: acc))
       (ctx, []) elaborated
   in
   (ctx', List.rev results)
+
+(* A struct's accumulated binds and entries after a type group. *)
+let type_group_entries (acc_binds, acc_entries) results =
+  List.fold_left
+    (fun (acc_binds, acc_entries) (bind, fields) ->
+      (bind :: acc_binds, List.rev_append (List.map (fun (name, kind, ty) -> StructField (name, kind, ty)) fields) acc_entries))
+    (acc_binds, acc_entries) results
 
 (** Stage 7: per-binding module elaboration. Processes a single
     [Syntax.struct_binding] and returns the updated elaboration context,
@@ -374,9 +473,15 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
          open exports nothing itself. [OpenBind] carries the same scope
          extension to the evaluator. *)
       let mod_core, mod_ty = ops.infer ctx mod_expr in
-      let mod_value = Ctx.eval ctx mod_core in
-      let ctx, members = open_module_value ~label ctx mod_ty mod_value in
-      (ctx, [OpenBind (mod_core, members)], [])
+      (match type_constructors ctx mod_core mod_ty with
+       | Some ctors ->
+           let ctx, ctors = open_type_constructors ~label ctx ctors in
+           (ctx, List.rev_map (fun (c, core, _) -> LetBind (c, Private, core)) ctors,
+            List.rev_map (fun (c, _, ty) -> ModuleField (c, Private, ty)) ctors)
+       | None ->
+           let mod_value = Ctx.eval ctx mod_core in
+           let ctx, members = open_module_value ~label ctx mod_ty mod_value in
+           (ctx, [OpenBind (mod_core, members)], []))
   | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive } ->
       let name = Syntax.label key in
       let val_core, val_ty, val_val, sealed = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~key ~name ~recursive value in
@@ -384,6 +489,10 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let bind = LetBind (name, kind, val_core) in
       let ctx' = note_sealed (extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ]) ctx.Ctx.lvl sealed in
       (ctx', [bind], [ModuleField (name, kind, val_ty)])
+  | Syntax.RecGroupBinding { members; public } when Option.is_some (enum_group_decls members) ->
+      let ctx', results = elab_type_group ~ctors_private:true ops ctx ~members:(Option.get (enum_group_decls members)) ~public in
+      (ctx', List.rev_map fst results,
+       List.rev_map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) (List.concat_map snd results))
   | Syntax.RecGroupBinding { members; public } ->
       let kind = if public then Public else Private in
       let extend ctx (key, name, core, ty, finished) = extend_from_slots ctx (LetBind (name, kind, core)) [ `Entry (key, ty, finished) ] in
@@ -482,6 +591,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | Ap (f, Explicitness.Explicit, a) -> infer_ap ops ctx f a
   | Ap (f, Explicitness.Implicit, a) -> infer_ap_implicit ops ctx f a
+  | LetRecGroup { members; _ } when Option.is_some (enum_group_decls members) ->
+      raise (ElabError (InvalidRecursiveRecord "mutually recursive enums are declared as module items"))
   | LetRecGroup { members; body } ->
       let body_ctx, members =
         elab_rec_group ops ctx ~value_ctx:Fun.id ~extend:(fun ctx (key, _, _, ty, finished) -> Ctx.define ctx key ty finished)
@@ -494,7 +605,11 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           members (body_core, ctx.lvl + List.length members - 1)
       in
       (core, body_ty)
+  | Let ({ recursive = true; value; _ } as l) when Option.is_some (enum_type_params value) ->
+      let params, ctors = Option.get (enum_type_params value) in
+      ops.infer ctx { expr with kind = Let { l with recursive = false; value = enum_type_def ~name:l.name ~params ~ctors ~span:value.span } }
   | Let { name = { name; _ }; type_; value; body; recursive } ->
+      let value = Syntax.name_enum (Syntax.label name) value in
       if recursive then begin
         let ty_term, fix_core, rec_ty, fix_val = elab_rec_let ops ctx ~name ~type_ value in
         let ctx' = Ctx.define ctx name rec_ty fix_val in
@@ -580,6 +695,12 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let (e_core, e_ty), head_effects = collecting ctx (fun ctx -> ops.infer ctx e) in
       emit ctx head_effects;
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
+      (match type_constructors ctx e_core e_ty with
+      | Some ctors -> (
+          match List.find_opt (fun (c, _, _) -> String.equal c name) ctors with
+          | Some (_, core, ty) -> (core, ty)
+          | None -> raise (ElabError (UnboundVariable name)))
+      | None ->
       (match Nbe.force_shape ctx.metas (Nbe.module_type_of ctx.metas e_ty (Ctx.eval ctx e_core)) with
       | VModule { entries; partial = _ } -> (
           match find_field_last (fun (n, _, _) -> String.equal n name) (visible_module_fields entries) with
@@ -657,7 +778,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           in
           Ctx.unify ctx e_ty constraint_ty;
           (Dot (e_core, name), result_ty)
-      | _ -> raise (ElabError ApplyingNonFunction))
+      | _ -> raise (ElabError ApplyingNonFunction)))
   | Proj (e, i) ->
       let e_core, e_ty = ops.infer ctx e in
       (match Nbe.force ctx.metas e_ty with
@@ -948,9 +1069,14 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               rest
         | Syntax.OpenBinding (mod_expr, label) :: rest ->
             let mod_core, mod_ty = ops.infer ctx mod_expr in
-            let mod_value = Ctx.eval ctx mod_core in
-            let ctx, members = open_module_value ~label ctx mod_ty mod_value in
-            go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest
+            (match type_constructors ctx mod_core mod_ty with
+             | Some ctors ->
+                 let ctx, ctors = open_type_constructors ~label ctx ctors in
+                 go ~defer ctx (List.rev_append (List.map (fun (c, core, _) -> LetBind (c, Private, core)) ctors) acc_binds, acc_entries) rest
+             | None ->
+                 let mod_value = Ctx.eval ctx mod_core in
+                 let ctx, members = open_module_value ~label ctx mod_ty mod_value in
+                 go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest)
         | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive; _ } :: rest ->
             let name = Syntax.label key in
             let val_core, val_ty, val_val, sealed = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~key ~name ~recursive value in
@@ -962,6 +1088,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
+        | Syntax.RecGroupBinding { members; public } :: rest when Option.is_some (enum_group_decls members) ->
+            let ctx', results = elab_type_group ~ctors_private:true ops ctx ~members:(Option.get (enum_group_decls members)) ~public in
+            go ~defer ctx' (type_group_entries (acc_binds, acc_entries) results) rest
         | Syntax.RecGroupBinding { members; public } :: rest ->
             let kind = if public then Public else Private in
             let extend ctx (key, name, core, ty, finished) = extend_from_slots ctx (LetBind (name, kind, core)) [ `Entry (key, ty, finished) ] in
@@ -1016,14 +1145,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               rest
         | Syntax.TypeBinding { members; public } :: rest ->
             let ctx', results = elab_type_group ops ctx ~members ~public in
-            let acc =
-              List.fold_left
-                (fun (acc_binds, acc_entries) (bind, fields) ->
-                  let type_entries = List.map (fun (name, kind, ty) -> StructField (name, kind, ty)) fields in
-                  (bind :: acc_binds, List.rev_append type_entries acc_entries))
-                (acc_binds, acc_entries) results
-            in
-            go ~defer ctx' acc rest
+            go ~defer ctx' (type_group_entries (acc_binds, acc_entries) results) rest
       in
       let is_field = function Syntax.FieldBinding _ -> true | _ -> false in
       let rec split_after_last_field = function
@@ -1043,12 +1165,22 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       match Ctx.lookup_choice_opt ctx name { opens; fallback } with
       | Some (ix, ty) -> (Var ix, ty)
       | None -> raise (ElabError (UnboundVariable name)))
-  | Open (mod_expr, body, label) ->
+  | Open (mod_expr, body, label) -> (
       let mod_core, mod_ty = ops.infer ctx mod_expr in
-      let mod_value = Ctx.eval ctx mod_core in
-      let body_ctx, members = open_module_value ~label ctx mod_ty mod_value in
-      let body_core, body_ty = ops.infer body_ctx body in
-      (Open (mod_core, members, body_core), body_ty)
+      match type_constructors ctx mod_core mod_ty with
+      | Some ctors ->
+          let body_ctx, ctors = open_type_constructors ~label ctx ctors in
+          let body_core, body_ty = ops.infer body_ctx body in
+          let core, _ = List.fold_right (fun (_, core, ty) (acc, depth) -> (Let (Nbe.quote ctx.metas depth ty, core, acc), depth - 1)) ctors (body_core, ctx.lvl + List.length ctors - 1) in
+          (core, body_ty)
+      | None ->
+          let mod_value = Ctx.eval ctx mod_core in
+          let body_ctx, members = open_module_value ~label ctx mod_ty mod_value in
+          let body_core, body_ty = ops.infer body_ctx body in
+          (Open (mod_core, members, body_core), body_ty))
+  | Enum { name; ctors } ->
+      let name = Syntax.fresh_id (Option.value name ~default:"enum" ^ "#enum") in
+      ops.infer ctx (enum_type_def ~name ~params:[] ~ctors ~span:expr.span)
   | TypeDef { name = { name = key; _ }; params; ctors; body } ->
       let name = Syntax.label key in
       let params = Syntax.names params in
