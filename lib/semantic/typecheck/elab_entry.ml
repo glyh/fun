@@ -9,7 +9,7 @@ open Elab_resolve
 
 (** Build the initial elaboration context with built-in types ([I64],
     [Bool], [Unit], [Char], [Type]) and primitive operators. *)
-let init_ctx () : Ctx.t =
+let build_init_ctx () : Ctx.t =
   let ctx = Ctx.empty () in
   let add_type ctx name v = Ctx.define ctx name VU v in
   let ctx = add_type ctx Compiler_names.Type_name.i64 (VAtomTy Atom_ty.TI64) in
@@ -48,6 +48,11 @@ let init_ctx () : Ctx.t =
      on its own source plus what it imports and opens, so every import
      elaborates against this rather than against the import site. *)
   { ctx with base = Some ctx }
+
+(* The prelude is elaborated once: every context starts from the same base, so the
+   types it declares - and the macros compiled against them - are one set. *)
+let base_ctx = lazy (build_init_ctx ())
+let init_ctx () : Ctx.t = Lazy.force base_ctx
 
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
   Elab_stdlib.resolve ctx path
