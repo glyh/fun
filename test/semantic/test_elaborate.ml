@@ -840,6 +840,47 @@ let tuple_proj =
       (elab_fail "42.0");
   ]
 
+(* ADTs as values: [enum { … }], constructors as members of the type. *)
+let enums =
+  let option = "Option2 = fn(A : Type) { enum { Some2(A), None2 } }; " in
+  [
+    Alcotest.test_case "a constructor is a member of its enum" `Quick
+      (eval_i64 "{ Color = enum { Red, Green }; match (Color.Green) { Color.Red => 1, Color.Green => 2 } }" 2L);
+    Alcotest.test_case "open brings an enum's constructors into scope" `Quick
+      (eval_i64 "{ Color = enum { Red, Green }; open Color; match (Green) { Red => 1, Green => 2 } }" 2L);
+    Alcotest.test_case "an enum's constructors are not in scope unopened" `Quick
+      (elab_fail "{ Color = enum { Red, Green }; Red }");
+    Alcotest.test_case "a former's constructor is generic over its parameters" `Quick
+      (eval_i64 ("{ " ^ option ^ "match (Option2.Some2(5)) { Option2.Some2(n) => n, Option2.None2 => 0 } }") 5L);
+    Alcotest.test_case "an opened former's constructors match" `Quick
+      (eval_i64 ("{ " ^ option ^ "open Option2; match (Some2(7)) { Some2(n) => n, None2 => 0 } }") 7L);
+    Alcotest.test_case "Option2(I64) is one type however often it is written" `Quick
+      (elab_ok ("{ " ^ option ^ "f = fn(a : Option2(I64), b : Option2(I64)) { 1 }; f(Option2(I64).None2, Option2.Some2(1)) }"));
+    Alcotest.test_case "Option2(I64) is not Option2(Bool)" `Quick
+      (elab_fail ("{ " ^ option ^ "x : Option2(Bool) = Option2(I64).None2; 1 }"));
+    Alcotest.test_case "a rec enum refers to itself" `Quick
+      (eval_i64 "{ rec Tree = enum { Leaf, Node(Tree, Tree) }; match (Tree.Node(Tree.Leaf, Tree.Leaf)) { Tree.Node(_, _) => 1, Tree.Leaf => 0 } }" 1L);
+    Alcotest.test_case "a parameterised rec enum" `Quick
+      (eval_i64 "{ rec L = fn(A : Type) { enum { Nil2, Cons2(A, L(A)) } }; match (L.Cons2(4, L.Cons2(2, L.Nil2))) { L.Cons2(h, _) => h, L.Nil2 => 0 } }" 4L);
+    Alcotest.test_case "a module's mutually recursive enums" `Quick
+      (eval_i64
+         "{ M = module { pub rec A = enum { MkA(B), StopA } and B = enum { MkB(A), StopB } };
+            match (M.A.MkA(M.B.MkB(M.A.StopA))) { M.A.MkA(M.B.MkB(_)) => 1, _ => 0 } }" 1L);
+    Alcotest.test_case "an enum and a struct type do not share a rec group" `Quick
+      (elab_fail "{ M = module { pub rec A = enum { MkA(B) } and B = struct { a : A } }; 1 }");
+    Alcotest.test_case "an enum under a generative maker is named by its binder" `Quick
+      (eval_i64
+         "{ mk = fn(u : Unit) { module { table = ref(0); pub T = enum { Sym(I64) };
+                                        pub make = fn(n : I64) { table <- n; T.Sym(n) } } };
+            m1 = mk(()); f = fn(x : m1.T) { 1 }; f(m1.make(1)) }" 1L);
+    Alcotest.test_case "an enum under a generative maker is one type per evaluation" `Quick
+      (elab_fail
+         "{ mk = fn(u : Unit) { module { table = ref(0); pub T = enum { Sym(I64) };
+                                        pub make = fn(n : I64) { table <- n; T.Sym(n) } } };
+            m1 = mk(()); m2 = mk(());
+            f = fn(x : m2.T) { 1 }; f(m1.make(1)) }");
+  ]
+
 let adts =
   [
     Alcotest.test_case "constructor type" `Quick (fun () ->
@@ -2083,6 +2124,7 @@ let () =
       ("functors", functors);
       ("tuple_proj", tuple_proj);
       ("adts", adts);
+      ("enums", enums);
       ("match", match_tests);
       ("implicit_args", implicit_args);
       ("traits", traits);

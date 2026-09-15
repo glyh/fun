@@ -104,3 +104,28 @@ hole rules; `type` lexes as a keyword. Decided:
 - Type parameters become E11 captures (`Option = fn(A : Type) { enum … }`),
   reaching `VNominal.params`, `build_ctor`, refinement, unification, quoting and
   reflection — expect several green steps.
+
+## Step 1 implemented (2026-09-16, branch `adts-as-lets`)
+
+- **`enum { A, B(T), … }` is the type declaration its value names.** The elaborator
+  reads it as a block `TypeDef` whose body is the type, so there is one
+  nominal-declaration path; `type … = …` is unchanged compiler syntax. A bound
+  enum displays as its binder (`Syntax.Enum.name`, set by elaboration).
+- **Constructors are members of the type.** `T.C` in expressions and patterns;
+  `open T` binds them (block, module and struct opens; they are private slots in
+  a module). They are never in scope otherwise.
+- **A former's constructor is generic over its parameters**:
+  `Option.Some : [A : Type] -> A -> Option(A)` (any `e : (A : Type) -> … -> Type`
+  whose instances are a nominal).
+- **Parameters.** `Option = fn(A : Type) { enum { … } }` (non-`rec`) takes its
+  parameter as an E11 capture: `Option(I64)` is one type, `Option(Bool)` another.
+  `rec L = fn(A : Type) { enum { … L(A) … } }` names itself, so it takes the
+  parameter as the declaration's own (as `type L(A)` does) — the recursive
+  occurrence needs the arity, as `rec` structs do.
+- **`rec … and …` groups of enums** elaborate as one type group (module and
+  struct items). A block group of enums, and a group mixing enums with struct
+  types or functions, are errors.
+- **Found and fixed:** a parameterised block type's name evaluated to its unapplied
+  nominal at run time, not its former.
+- **Generative makers:** an enum inside an effectful maker's module is sealed at
+  the binder like a `type` member (`m1.T ≠ m2.T`).

@@ -562,8 +562,9 @@ What remains, in the recommended order:
   struct types or mutually recursive values (the nominal `type … and …` knot is not moved yet: that is
   adts-as-let-bindings).
 - [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
-  — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` deleted (maybe kept only as sugar: bind + open the constructors).
-  **Blocked on** nominal identity applicative by purity (E11).
+  — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` becomes a prelude macro.
+  **Step 1 implemented** (enums, constructor members, `Option.Some`, rec enum groups);
+  next the macro-system fixes, then the `type` macro and migration.
 Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 
 - [Declaration binders keep their written name](tickets/declaration-binders-keep-written-names.md)

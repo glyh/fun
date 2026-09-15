@@ -3,11 +3,22 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after applicative nominal identity, 2026-09-15.
+Last updated: after enum expressions, 2026-09-16.
 
 ---
 
 ## Completed
+
+### Enums: ADTs as values (2026-09-16)
+
+- `enum { Red, Some(A) }` is a type value; its constructors are members:
+  `Color.Red`, `open Color`, and patterns `Color.Red`. It elaborates as the block
+  type declaration it names (`TypeDef`), so `type … = …` shares its path.
+- `Option = fn(A : Type) { enum { Some(A), None } }`: `Option.Some` is generic over
+  the former's parameters; `Option(I64)` is one type (E11 captures).
+- `rec Tree = enum { Leaf, Node(Tree, Tree) }`, `rec L = fn(A : Type) { enum { … L(A) … } }`,
+  and a module's `rec A = enum { … } and B = enum { … }`. Block enum groups and
+  enum/struct mixes are errors.
 
 
 ### E11: captures from the enclosing scope; generative modules sealed (2026-09-16)
