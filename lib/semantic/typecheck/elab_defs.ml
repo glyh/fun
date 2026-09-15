@@ -74,7 +74,6 @@ let elaborate_impl_contribution ops ctx trait_path args fields =
     (fun (name, _) ->
       if Option.is_none (List.assoc_opt name fields) then raise (ElabError (MissingTraitField name)))
     expected_fields;
-  let impl_effects = List.map (fun (_, value) -> ops.collect_effects ctx value) fields in
   let field_cores =
     List.map
       (fun (name, value) ->
@@ -86,6 +85,7 @@ let elaborate_impl_contribution ops ctx trait_path args fields =
         (name, ops.check ctx value field_ty))
       fields
   in
+  let impl_effects = List.map (fun (_, value) -> ops.collect_effects ctx value) fields in
   let impl_core = Struct { con_fields = []; bindings = List.map (fun (name, value) -> LetBind (name, Public, value)) field_cores; partial = false } in
   { impl_effects;
     impl_dict_ty = expected_dict_ty;

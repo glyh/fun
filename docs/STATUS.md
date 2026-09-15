@@ -108,6 +108,15 @@ Last updated: after struct source-order scoping and macro signatures, 2026-09-15
   output added (`Elab_defs.shift_term`, which now widens inserted metas' masks).
   A rebuilt argument is new syntax and elaborates normally; an argument whose
   core holds an `open` placed under new binders elaborates again.
+- A typed call's effects are its output's: the elaborator records the output by
+  the call's node (`Elab_resolve.deferred_outputs`) and the effect pass reads it
+  there. Every effect read follows the elaboration it reads — a type is required
+  pure after it elaborates and before it is evaluated
+  (`Elab_type_expr.require_pure`), so a typed call works in a type position too.
+- `open` of a non-module is `NotAModule` in every form (expression, module item,
+  struct item, effect pass); an open's entries are its module type's public
+  fields and impls, and a value whose entries do not line up with its type is an
+  internal invariant failure, never a silently narrower open.
 - The elaborator's copied macro table is gone: it asks its macro runtime, so a
   typed macro works inside the unit that defines it and when imported
   ([macro-annotation-constraints-mean-nothing](wayfinder/tickets/macro-annotation-constraints-mean-nothing.md)).

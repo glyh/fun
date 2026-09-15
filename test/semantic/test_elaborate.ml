@@ -507,6 +507,14 @@ let structs =
       (elab_fail "self");
     Alcotest.test_case "self in let binding" `Quick
       (elab_fail "{ Box = struct { value: I64; pub bad = self.value }; Box.bad }");
+    Alcotest.test_case "opening a non-module is an error in every open form" `Quick (fun () ->
+      List.iter
+        (fun source ->
+          match elab source with
+          | exception Elaborate.ElabError NotAModule -> ()
+          | exception e -> Alcotest.fail (source ^ ": " ^ Printexc.to_string e)
+          | _ -> Alcotest.fail (source ^ ": expected NotAModule"))
+        [ "{ open 5; 1 }"; "(fn(x : I64) { open x; x })(1)"; "module { open 5; pub y = 1 }" ]);
     Alcotest.test_case "a field type sees an earlier open" `Quick
       (check_type_src "{ M = module { pub T = I64 }; R = struct { open M; f : T }; R{f = 1}.f }" "I64");
     Alcotest.test_case "a field type sees an earlier binding" `Quick

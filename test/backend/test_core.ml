@@ -1671,7 +1671,17 @@ let test_macro_signature_checks () =
          match (B) { RExpr(Bool) => a, _ => b }
        };
        first(40, True) + 2
-     }" ()
+     }" ();
+  (* A typed call's effects are its output's, read after it runs. *)
+  check_i64_macro "a typed call inside a lambda body its output adds" 5L
+    "{
+       macro inner(x : Expr(I64)) : Expr(I64) { x };
+       macro under(x : Expr(I64)) : Expr(I64) { quote((fn(z : I64) { $x })(0)) };
+       z = 5;
+       under(inner(z))
+     }" ();
+  check_i64_macro "a typed call in a type annotation" 3L
+    "{ macro ty(_) : Expr(Type) { quote(I64) }; (3 : ty(1)) }" ()
 
 (* A typed argument elaborates once, where the call is written: its placements in
    the output reuse that. [Elab_resolve.elaborated_counter] counts typed
