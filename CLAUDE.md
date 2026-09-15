@@ -64,7 +64,10 @@ core_tt_kernel → core_tt_syntax → core_tt_expand → core_tt_loader → core
 
 When adding a new nominal type for macros to inspect/construct:
 
-1. **Prelude**: define `pub type Foo = Ctor1(Tys) | Ctor2(Tys)` in `elab_prelude.ml`
+1. **Prelude**: in `Elab_prelude.stage1_source`'s `Syntax` module (stage 1 has no
+   `type` macro - that is defined in stage 2), declare
+   `pub rec Foo = enum { Ctor1(Tys), Ctor2(Tys) }; export Foo;` - add `open Foo;` only
+   where the stage-1 source uses the constructors bare, else qualify them (`Foo.Ctor1`)
 2. **Builders**: add `pub foo_build = fn(args...) { Ctor(args...) }` in the prelude
 3. **syntax_nominals**: add a `foo : value` field in `Macro_eval.syntax_nominals`
 4. **wrap/unwrap**: add `wrap_stx_foo` / `unwrap_stx_foo` in `macro_eval.ml`

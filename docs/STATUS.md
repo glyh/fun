@@ -3,11 +3,30 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after effect arrows, 2026-09-16.
+Last updated: after the staged prelude, 2026-09-16.
 
 ---
 
 ## Completed
+
+### Staged prelude; `type` is a std macro; `export` (2026-09-16)
+
+- The prelude elaborates once, in two stages: stage 1 declares `Bool`, `Option`,
+  `List` and `Syntax` as enums (no elaborator); stage 2 is a driver run against it
+  that re-exports it and defines the operators, `Eq` and `type`
+  (`Macro_driver.init_ctx`, `std_syntax`, `std_load_syntax`).
+- `type` is a std syntax form over the macro `type_decls` expanding to
+  `rec … = enum { … } [and …]; export …; open …`; the compiler's type declaration
+  is deleted. An `import "std"` delivers roles and compiled macros
+  (`Expand_ctx.unit_syntax`).
+- `export M` / `export M.{a, b}`: members, enum constructors, named impls, a unit's
+  roles and macros; clashes are errors.
+- Blocks apply declaration macro calls and read unread items; a block's
+  `rec … and …` enum group elaborates; type-case refinement skips names bound
+  before its target.
+- Known: in a recursive function, `match (l) { …, Cons(m, Nil) => …, Cons(m, rest) => … f(rest) }`
+  fails at run time with "match on non-constructor value" (pre-existing; the
+  prelude's macro avoids the shape).
 
 ### Effects on the arrow; `~>`; bound sets (2026-09-16)
 

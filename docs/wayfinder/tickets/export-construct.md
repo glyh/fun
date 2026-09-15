@@ -3,7 +3,9 @@ title: `export` — re-export a module's or enum's members
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-16
+resolution: Implemented. export M / export M.{a, b} re-exports members, an enum's constructors, named impls (an unnamed one is ExportUnnamedImpl), and a unit's roles and macros; clashes are errors, except a constructor sharing the name of the enum it is exported from.
 decided: 2026-09-16
 assignee:
 blocked_by:
@@ -47,3 +49,17 @@ trait resolution). An unnamed public impl in `M` is not exported: `export M` is
 an error naming it and asking for a name (never silently dropped) — consistent
 with impls required by a signature being named. The same impl reached through two
 paths counts once (identity).
+
+## Implemented (2026-09-16, branches `type-macro`, `staged-prelude`)
+
+- Named public impls re-export like members (`ImplBind` projected by name); an
+  unnamed one is `ExportUnnamedImpl "Trait"`. The same impl through two paths is
+  deduplicated as trait evidence (by conversion).
+- A unit's macros re-export like its roles (`Expand_ctx.macro_reexports`, added to
+  the driver's `macro_exports`).
+- An `export` is unpublished when a macro writes it for a declaration whose
+  visibility it cannot see (`ExportBinding.public = false`): nothing until `pub`
+  publishes it. A written `export` is public.
+- Decision taken while implementing `type`: an exported constructor may share the
+  name of the enum it is exported from (`pub type T = T(I64) | Y`); the path then
+  denotes the constructor (I3), as the compiler's `type` always allowed.

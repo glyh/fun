@@ -3,7 +3,9 @@ title: ADTs are declared by let bindings (`enum` expressions); `type` is deleted
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-16
+resolution: Implemented (branch staged-prelude). The prelude is staged - stage 1 declares its types as enums with no elaborator, stage 2 is a driver run against it that defines type as a std syntax form over the macro type_decls - and the compiler type declaration (TypeBinding, the TypeDeclaration role, type chains) is deleted.
 decided: 2026-09-15
 assignee:
 blocked_by:
@@ -205,3 +207,34 @@ available (stage 1 in scope); it defines the `type` macro and other macro-based
 prelude forms. `std` delivers stage 2's compiled procedural macros to user code
 like an imported unit (`visit_macros` no longer skips it). This also unblocks
 Stage 11's library-level `if` / `&&` macros.
+
+## Implemented (2026-09-16, branch `staged-prelude`)
+
+- **The prelude is staged.** Stage 1 (`Elab_prelude.stage1_source`: `Bool`, `if`,
+  `i64_to_bool`, `Option`, `List`, `Syntax`) declares its types as
+  `pub rec X = enum { … }; open X; export X` and expands with no elaborator.
+  Stage 2 (`stage2_source`) is a `Macro_driver.run_with` against stage 1 - its
+  `import "std"` is stage 1 - which does `Core = import "std"; export Core; open Core`,
+  the operators, `Eq`, and the `type` macro. `Macro_driver.init_ctx` builds the
+  base context once (every context starts from it, so the macros compiled against
+  the prelude's types and the types a program sees are one set).
+- **`type` is `pub syntax type : Decl { type $(r : List(TokenTree)) => { type_decls($r) } }`**
+  over the public macro `type_decls`, which reads the tokens: `and`-separated
+  members, `Name params… = alt | alt`, spaced (`Some A`) or parenthesised payloads,
+  and emits `rec N1 = … and N2 = …` (always `rec`), an unpublished `export` per
+  member (made real by `pub`), then `open N1; …`. `type X = struct { … }` is an
+  error naming the let forms.
+- **`std` delivers compiled macros:** `load_syntax` returns an
+  `Expand_ctx.unit_syntax` (roles, macros, and how to apply them); an
+  `import "std"` registers the macros under the unit's key. An imported syntax
+  form's replacement reaches its unit's macros by the unit's open.
+- **Supporting:** `export` can be unpublished; a block applies declaration macro
+  calls and reads unread items; emitted items and token captures lose the use-site
+  scope; block-level `rec … and …` enum groups; compiler-known nominals are read
+  through a parameterised type's former.
+- **Deleted:** `Syntax.TypeBinding`, `DeclType`, the `TypeDeclaration` role,
+  `parse_type_binding` / type chains, `rewrite`-era do-head type handling.
+- **Migrated tests:** unit sources declaring types open std (15); the grammar
+  round trip and a shape test use `enum`; a quoted `type` became `rec … enum` (a
+  quote cannot expand a declaration form); the record-type rejection test now
+  reads the macro's message; "chain in a scoped do head" is now accepted.

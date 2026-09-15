@@ -531,7 +531,7 @@ What remains, in the recommended order:
   — `{Log | e1, e2}` so `~>` can union several callbacks' effects.
 - [General set literals](tickets/general-set-literals.md)
   — later: `{a, b}` as one Set literal; rows and bounds pinned by position.
-- [`export`](tickets/export-construct.md)
+- [`export`](tickets/export-construct.md) (closed)
   — `export M` / `export M.{a, b}` re-exports members; `pub open` stays rejected.
 - [Effects on the arrow](tickets/effect-arrow-syntax.md)
   (closed & **implemented**) — Unison `A ->{E} B`, open `{E | e}`; `~>` params mint,
@@ -573,7 +573,7 @@ What remains, in the recommended order:
   binding mints the recursive record's identity; `rec … and …` groups hold
   struct types or mutually recursive values (the nominal `type … and …` knot is not moved yet: that is
   adts-as-let-bindings).
-- [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
+- [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md) (closed - staged prelude; `type` is a std macro)
   — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` becomes a prelude macro.
   **Steps 1 and 2 implemented** (enums, constructor members, `Option.Some`, rec enum
   groups; `pub` before forms, `List(TokenTree)` holes, `type` as an identifier);
