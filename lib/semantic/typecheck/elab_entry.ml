@@ -53,13 +53,15 @@ let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
 let reporting_budget f =
   try f () with Eval_budget.Exceeded { limit; call; demand; site } -> raise (ElabError (EvaluationBudgetExceeded { limit; call; demand; site }))
 
-let on_expr ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value =
-  let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
-  reporting_budget (fun () -> Elab_driver.infer ctx expr)
-
 let on_expr_effects ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value * Elab_effects.expr_effects =
   let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
   reporting_budget (fun () ->
       let core, ty = Elab_driver.infer ctx expr in
       (core, ty, Elab_driver.collect_effects ctx expr))
+
+(* A program's entry: what it leaves unhandled is an error, not a run-time crash. *)
+let on_expr ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value =
+  let core, ty, effects = on_expr_effects ?loader ctx expr in
+  reporting_budget (fun () -> Elab_effects.require_handled_at_entry ctx effects);
+  (core, ty)
 

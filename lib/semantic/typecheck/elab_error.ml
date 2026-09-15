@@ -16,7 +16,8 @@ type elab_error =
   | DuplicateEffectBranch of string
   | UnknownEffectOperation of string
   | EffectOperationPathExpected
-  | UnhandledEffects
+  | UnhandledEffects of string list
+      (** Effects left where nothing handles them, named. *)
   | NonExhaustive of string
   | InvalidRecursiveRecord of string
   | ImportRequiresLoader of string
@@ -63,7 +64,7 @@ let string_of_elab_error = function
   | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
   | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
   | EffectOperationPathExpected -> "EffectOperationPathExpected"
-  | UnhandledEffects -> "UnhandledEffects"
+  | UnhandledEffects names -> "UnhandledEffects \"" ^ String.concat ", " names ^ "\""
   | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
   | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
   | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""

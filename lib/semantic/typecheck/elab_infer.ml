@@ -509,6 +509,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                        See docs/wayfinder/tickets/base-context-shared-state.md. *)
                     let unit_ctx = Ctx.with_expander (Ctx.unit_base ctx) expand_ctx in
                     let core, ty = ops.infer unit_ctx imported in
+                    (* A unit's top-level bindings run when it loads: a program's top. *)
+                    Elab_effects.require_handled_at_entry unit_ctx (ops.collect_effects unit_ctx imported);
                     (core, Ctx.eval unit_ctx core, ty))
                 ~eval_and_apply:Nbe.apply_macro
                 ~syntax_nominals:(Elab_stdlib.syntax_nominals ctx)

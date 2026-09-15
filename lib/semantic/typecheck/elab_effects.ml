@@ -28,11 +28,14 @@ let union_expr_effects ctx lhs rhs =
 
 let union_many_expr_effects ctx effs = List.fold_left (union_expr_effects ctx) empty_expr_effects effs
 
+let unhandled ctx effects =
+  ElabError (UnhandledEffects (List.map (fun eff -> Debug.pp_value_short ctx.Ctx.metas eff.value) effects))
+
 let require_empty_effects ctx effects =
   match effects.effects, effects.tail with
   | [], None -> ()
   | [], Some tail -> Ctx.unify ctx tail.value (VEffectRow { effect_values = []; tail_value = None })
-  | _ :: _, _ -> raise (ElabError UnhandledEffects)
+  | effs, _ -> raise (unhandled ctx effs)
 
 let effect_row_values ctx row binder =
   Nbe.eval_effect_row_closure ctx.Ctx.metas row binder
@@ -74,7 +77,17 @@ let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value
   | leftovers, Some actual_tail, Some expected_tail ->
       Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = Some actual_tail.value })
   | [], Some actual_tail, None -> Ctx.unify ctx actual_tail.value (VEffectRow { effect_values = []; tail_value = None })
-  | _ :: _, _, None -> raise (ElabError UnhandledEffects)
+  | leftovers, _, None -> raise (unhandled ctx leftovers)
+
+(* The effects a program's entry may leave unhandled: those the handler the
+   runtime wraps around the entry discharges. The runtime handles none yet, so
+   an entry's residual row must be empty; a runtime-provided effect joins this
+   row rather than an exemption list. *)
+let runtime_handled_effects : effect_row_value = { effect_values = []; tail_value = None }
+
+(* A program's top - a unit's bindings, an entry expression - performs only
+   what the runtime handles. *)
+let require_handled_at_entry ctx effects = check_effect_subset ctx effects runtime_handled_effects
 
 let effect_row_of_expr_effects ctx (effects : expr_effects) : effect_row =
   { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects.effects;
