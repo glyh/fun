@@ -529,6 +529,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
+  — `fn(g : Unit ~> I64)` fails; annotations should use the expression grammar.
 - [A `List(I64)` parameter infers a wrong type](tickets/let-bound-lambda-list-param-wrong-type.md)
   — (closed) a NomRef took an applied instance (`Decls = List(Decl)`) for its template; `eval_nominal` now matches only the template.
 - [`expand_decls`](tickets/expand-decls-reader.md)
