@@ -2,7 +2,7 @@
 title: A resolved name can be forged, and context-less ids fall back to spelling
 parent: ../fun-design-map.md
 labels:
-  - wayfinder:grilling
+  - wayfinder:task
 status: open
 assignee:
 blocked_by:
@@ -48,3 +48,13 @@ base context?
 Mark "already resolved" structurally rather than by spelling, so no string a
 macro builds can equal a minted name. Delete the empty-scope macro-table and
 operator spelling fallbacks.
+
+## Grilled (2026-09-15): delete string-built ids
+
+`Syntax.new_id` is deleted, and so is every builder that makes an id from a
+string (`Syntax.var("x")`, `Syntax.lam("x", …)`, …). A macro gets a name only
+from `quote(…)` / `quote { … }` (the macro's site, hygienic: a name it binds is
+fresh) or from an `Id` parameter or hole (the user's site). With no
+string-built ids there is nothing for the `#` check or the empty-scope spelling
+fallbacks to serve: "already resolved" becomes structural and the fallbacks go.
+Migrate the tests and prelude builders that use strings.
