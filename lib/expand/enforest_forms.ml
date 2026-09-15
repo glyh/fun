@@ -56,7 +56,10 @@ let parse_effect_row_terms callbacks terms =
           (match drop_separators tail_terms with
            | [ wild ] when is_wildcard_term wild -> { Syntax.effects = effects; tail = None; inferred = true }
            | _ -> { Syntax.effects = effects; tail = Some (callbacks.parse_expr_terms tail_terms); inferred = false })
-      | None -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None; inferred = false })
+      | None -> (
+          match drop_separators terms with
+          | [ wild ] when is_wildcard_term wild -> { Syntax.effects = []; tail = None; inferred = true }
+          | _ -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None; inferred = false }))
 
 let parse_can_effect_row callbacks terms =
   match drop_separators terms with

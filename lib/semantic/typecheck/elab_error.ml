@@ -14,6 +14,7 @@ type elab_error =
   | MissingRecordField of string
   | DuplicateEffectOperation of string
   | ExpectedEffect
+  | UnsupportedRowUnion of int
   | DuplicateEffect
   | DuplicateEffectBranch of string
   | UnknownEffectOperation of string
@@ -68,6 +69,7 @@ let string_of_elab_error = function
   | MissingRecordField n -> "MissingRecordField \"" ^ n ^ "\""
   | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
   | ExpectedEffect -> "ExpectedEffect"
+  | UnsupportedRowUnion n -> Printf.sprintf "UnsupportedRowUnion %d: a row holds one row variable; a union of %d is not supported yet" n n
   | DuplicateEffect -> "DuplicateEffect"
   | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
   | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""

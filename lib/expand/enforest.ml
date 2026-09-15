@@ -545,16 +545,23 @@ and parse_postfix_infix env min_prec lhs terms =
   match terms with
   | term :: _ when is_separator term -> (lhs, terms)
   | term :: rest when token_kind ThinArrow term && (match min_prec with Top | ArrowRhs -> true | _ -> false) ->
+      (* [A ->{E} B]: a brace group adjacent to the arrow is its effect row. *)
+      let row, rest =
+        match rest with
+        | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest when spans_adjacent term.span span ->
+            (Some (parse_effect_row_terms env items), rest)
+        | _ -> (None, rest)
+      in
       let rhs, rest = parse_expr_prec env ArrowRhs rest in
       let span = span_between lhs.span rhs.span in
       let lhs =
         match lhs.kind with
         | Syntax.Annotated { inner = { kind = Syntax.Var name; _ }; typ } ->
             stx ~span
-              (Syntax.Arrow (Explicitness.Explicit, Some name, typ, None, rhs))
+              (Syntax.Arrow (Explicitness.Explicit, Some name, typ, row, rhs))
         | _ ->
             stx ~span
-              (Syntax.Arrow (Explicitness.Explicit, None, lhs, None, rhs))
+              (Syntax.Arrow (Explicitness.Explicit, None, lhs, row, rhs))
       in
       parse_postfix_infix env min_prec lhs rest
   | term :: rest
