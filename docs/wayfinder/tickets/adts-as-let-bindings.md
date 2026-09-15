@@ -25,7 +25,8 @@ rec Expr = enum { Lit(I64), Block(Stmt) }
 and Stmt = enum { Do(Expr) }
 ```
 
-(`enum { … }` is the working spelling; settle it when implementing.)
+**Spelling (grilled 2026-09-15):** `enum { A, B(T), … }` — constructors separated by
+commas, like every other bracket group; `|` stays union.
 
 ## Consequences, and what each needs
 
