@@ -419,18 +419,24 @@ let fill_provisional_macro ?signature ctx ~name ~value =
 (* Run one macro application, and the expansion of its output, as a call under
    the evaluation budget. An overrun or evaluation failure inside it is this
    application's error, at [site] when it came from a syntax operator. *)
-let macro_application ?site ctx ~name ~expand f =
+(* [nominals]: the reflection types the running macro was compiled against, so
+   what [expand_block] and [expand_decls] hand back has the types it expects. *)
+let macro_application ?site ctx ~name ~nominals ~expand ~expand_decls f =
   let error e = Expand_error.Error { error = e; site } in
   let expand v =
-    let nominals = ctx.syntax_nominals in
     match Macro_eval.unwrap_stx ?nominals v with
     | Some stx -> Macro_eval.wrap_stx ~nominals (expand stx)
     | None -> raise (error (NotSyntax { macro = "expand_block"; got = Macro_eval.value_tag v }))
   in
+  let expand_decls v =
+    match Macro_eval.unwrap_stx_decl ?nominals v with
+    | Some ds -> Macro_eval.wrap_capture ~nominals (CapDecls (expand_decls ds))
+    | None -> raise (error (NotDeclarations { macro = "expand_decls" }))
+  in
   let application = Eval_budget.{
     exceeded = (fun ~limit ~call -> error (BudgetExceeded { macro = name; limit; call }));
     failed = (fun message -> error (EvalFailed { macro = name; message }));
-    expand } in
+    expand; expand_decls } in
   Eval_budget.macro_application ctx.budget ~call:(Printf.sprintf "macro '%s'" name) ~application f
 
 let resolve (ctx : t) (id : Syntax.id) : Binding.binding_info option =

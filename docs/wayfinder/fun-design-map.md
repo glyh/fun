@@ -528,7 +528,7 @@ What remains, in the recommended order:
 ### Found by the domain-model audit (2026-09-15)
 
 - [`expand_decls`](tickets/expand-decls-reader.md)
-  — read a `List(Decl)` argument's items, parsed in order (counterpart of `expand_block`).
+  (closed) — read a `List(Decl)` argument's items, parsed in order (counterpart of `expand_block`).
 - [A let-bound signature cannot be a parameter type](tickets/named-signatures-as-parameter-types.md)
   — `Sig = sig { … }; fn(m : Sig)` fails; dependent signatures fail.
 - [`open` a module parameter](tickets/open-a-module-parameter.md)

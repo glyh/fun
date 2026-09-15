@@ -27,6 +27,8 @@ type 'value application = {
   failed : string -> exn;
   (* [expand_block]: expand a reflected block where the application runs (M9). *)
   expand : 'value -> 'value;
+  (* [expand_decls]: expand a reflected declaration list the same way. *)
+  expand_decls : 'value -> 'value;
 }
 
 (* [limit = None] while running a program. [application = None] outside any

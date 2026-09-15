@@ -418,11 +418,14 @@ and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : v
         | _ -> "panic"
       in
       fail mc msg
-  (* [expand_block(b)]: the running macro application expands [b] (M9). *)
-  | HPrim "expand_block" when List.length frames >= 2 -> (
+  (* [expand_block(b)] and [expand_decls(d)]: the running macro application
+     expands its argument (M9). On an open argument - the macro body being
+     checked - the call stays stuck, like any primitive. *)
+  | HPrim ("expand_block" | "expand_decls" as prim) when List.length frames >= 2 -> (
       match (mc.budget.application, List.nth frames 1) with
-      | Some app, FApp block -> Some (app.expand block)
-      | _ -> fail mc "expand_block runs only inside a macro application")
+      | _, FApp (VRigid _ | VFlex _ | VNeutral _) -> None
+      | Some app, FApp stx -> Some (if String.equal prim "expand_block" then app.expand stx else app.expand_decls stx)
+      | _ -> fail mc (prim ^ " runs only inside a macro application"))
   | HPrim name -> (
       let atoms =
         List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames

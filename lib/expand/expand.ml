@@ -816,7 +816,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
       | Some apply_fn ->
         let apply_fn = apply_fn ctx.Expand_ctx.budget in
         let site : Expand_error.site = { operator = operator.name; use_span; declaration_span } in
-        Expand_ctx.macro_application ~site ctx ~name:operator.name ~expand:(expand ctx) (fun () ->
+        run_application ~site ctx ~name:operator.name ~nominals:macro_nominals (fun () ->
           let app = application ctx in
           let operands = List.map app.receive operands in
           let result = match operands with
@@ -860,7 +860,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
    replacement with what the use captured, under the one budget. *)
 and instantiate : 'a. Expand_ctx.t -> instantiation -> (application -> (string * capture) list -> rule_replacement -> 'a) -> 'a =
   fun ctx inst k ->
-  Expand_ctx.macro_application ctx ~name:inst.form.name ~expand:(expand ctx) (fun () ->
+  run_application ctx ~name:inst.form.name ~nominals:ctx.Expand_ctx.syntax_nominals (fun () ->
     let app = application ?unit:inst.from_unit ctx in
     k app (List.map (fun (n, c) -> (n, app.receive_capture c)) inst.captures) inst.rule.replacement)
 
@@ -870,6 +870,14 @@ and instantiate : 'a. Expand_ctx.t -> instantiation -> (application -> (string *
 and compile_signature (ctx : Expand_ctx.t) elab name (s : Syntax.macro_signature) : Expand_ctx.signature =
   let type_ = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx s.signature) in
   { type_ = elab (in_definition_site_opens ctx name type_); binders = s.binders; params = s.params }
+
+(* A macro application under the budget, answering [expand_block] and
+   [expand_decls] where it runs: a declaration list expands as a definition
+   context of its own, so what it binds stays inside the result. *)
+and run_application : 'a. ?site:Expand_error.site -> Expand_ctx.t -> name:string -> nominals:Macro_eval.syntax_nominals option -> (unit -> 'a) -> 'a =
+  fun ?site ctx ~name ~nominals f ->
+  Expand_ctx.macro_application ?site ctx ~name ~nominals ~expand:(expand ctx)
+    ~expand_decls:(fun ds -> fst (expand_struct_bindings_with_scopes (Expand_ctx.copy ctx) ds)) f
 
 (** Run a resolved procedural-macro call: check kind compatibility against the
     current context, then either defer a type-aware macro to the elaborator
@@ -902,7 +910,7 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
       let site =
         match macro_args with CapExpr arg :: _ -> syntax_operator_site arg | _ -> None
       in
-      Expand_ctx.macro_application ?site ctx ~name:key ~expand:(expand ctx) (fun () ->
+      run_application ?site ctx ~name:key ~nominals:macro_nominals (fun () ->
         let app = application ctx in
         let result =
           List.fold_left (fun fn arg ->
@@ -1114,7 +1122,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
           check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Decl;
           check_argument_count ctx ~key args;
           let apply_fn = apply_fn ctx.Expand_ctx.budget in
-           Expand_ctx.macro_application ctx ~name:key ~expand:(expand ctx) (fun () ->
+           run_application ctx ~name:key ~nominals:macro_nominals (fun () ->
              let app = application ctx in
              let fn = List.fold_left (fun fn arg ->
                 apply_fn fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.receive_capture arg))) macro_fn args in

@@ -40,7 +40,7 @@ module Ctx = struct
 
 and macro_runtime = {
   run_macro : value -> value -> value;
-  macro_application : 'a. name:string -> (unit -> 'a) -> 'a;
+  macro_application : 'a. name:string -> nominals:Macro_eval.syntax_nominals option -> (unit -> 'a) -> 'a;
   expand : Syntax.t -> Syntax.t;
   application : unit -> Expand.application;
   (* The compiled macro a deferred call's head names. *)
@@ -55,7 +55,7 @@ and macro_runtime = {
     Option.map
       (fun eval_and_apply ->
         { run_macro = eval_and_apply ectx.Expand_ctx.budget;
-          macro_application = (fun ~name f -> Expand_ctx.macro_application ectx ~name ~expand:(Expand.expand ectx) f);
+          macro_application = (fun ~name ~nominals f -> Expand.run_application ectx ~name ~nominals f);
           expand = Expand.expand ectx;
           application = (fun () -> Expand.application ectx);
           lookup_macro = Expand_ctx.lookup_macro_entry ectx;
