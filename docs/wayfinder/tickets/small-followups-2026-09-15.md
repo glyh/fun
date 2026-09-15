@@ -59,7 +59,15 @@ blocked_by:
   type) is `ElabError (EvaluationFailed { message; site })`, converted at the one
   place every form passes through (`Elab_driver.at`).
 
-### Item 4 grilled (2026-09-15): `+` on traits is an ordinary operator
+### Item 4 grilled (2026-09-16, revises 2026-09-15): bounds are a set, `{Eq, Show}`
+
+A binder's trait bounds are written as a set with the same brace-and-comma
+notation as effect rows: `fn[T : {Eq, Show}](a : T, b : T)`; a single bound may
+stay bare (`[T : Eq]`). Order is irrelevant; a duplicate is an error. `+` is not
+used for bounds and stays arithmetic, so the spelling recognition in
+`elab_syntax_util.trait_bound_forms` is deleted, and `+` needs no trait dispatch.
+Migrate `Eq + Show` uses.
+
 
 `Eq + Show` stays, resolved like any `+`: the prelude gives traits an impl of the
 addition trait that combines bounds, so the elaborator no longer recognises the
