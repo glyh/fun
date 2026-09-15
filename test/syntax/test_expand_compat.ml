@@ -25,7 +25,7 @@ let token_spans () =
   | _ -> Alcotest.fail "unexpected token stream"
 
 let module_compat () =
-  match Shape.lower_expr (Parse_expand.parse_module "pub x = 1; pub type Option A = Some A | None") with
+  match Shape.lower_expr (Parse_expand.parse_module "pub x = 1; pub rec Option = fn(A : Type) { enum { Some(A), None } }") with
   | _ -> ()
 
 let nested_same_name_lets_preserve_resolved_identity () =

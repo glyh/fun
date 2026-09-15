@@ -50,9 +50,7 @@ let base_roles (tbl : Binding.t) =
   Binding.extend tbl ~name:"assignment" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"assignment"
     ~role:(Binding.role ~fixity:Syntax.PrefixOp ~order:assignment_order Syntax.OrderGroup);
   Binding.extend tbl ~name:"<-" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"<-"
-    ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef);
-  Binding.extend tbl ~name:"type" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"type"
-    ~role:(Binding.role ~fixity:Syntax.PrefixOp Syntax.TypeDeclaration)
+    ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef)
 
 (* Where an expression is read, which decides what may continue it. Precedence
    among operators is relative (brackets-decide-grouping): an operand continues
@@ -373,9 +371,9 @@ let split_by_top_level is_separator terms =
 
 let split_by_top_level_bar terms = split_by_top_level (token_kind Bar) terms
 
-(* [type A = … and B = …]: [and] separates the members of a type chain. It is
-   contextual, not a keyword - it only means this directly inside a [type]. *)
-let split_type_chain terms =
+(* [rec A = … and B = …]: [and] separates the members of a recursive group. It
+   is contextual, not a keyword. *)
+let split_and_chain terms =
   split_by_top_level (fun term -> match term.datum with Token { kind = Ident "and"; _ } -> true | _ -> false) terms
 
 (* Arms - match arms, effect branches, syntax rules - are [pattern => result],

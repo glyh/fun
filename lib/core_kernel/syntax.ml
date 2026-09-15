@@ -54,7 +54,6 @@ and struct_binding =
       (** [rec A = … and B = …]: every member sees every member. *)
   | MethodBinding of { name : id; params : param list; effects : effect_row option; body : t; public : bool }
       (** [method m(params) can row { body }]: pure unless [can] declares a row (E3). *)
-  | TypeBinding of { members : type_decl list; public : bool }
       (** [type A = … and B = …]: one binding per chain, its members mutually
           recursive; a single declaration is the one-member chain. *)
   | EffectBinding of {
@@ -146,7 +145,6 @@ and role_meaning =
   | Rules of { rules_kind : MacroAnnotation.t; rules : rule list }
       (** a syntax form: a macro whose rules match tokens and fill a quote (M9) *)
   | OrderGroup  (** an order group's name, [order] its declaration *)
-  | TypeDeclaration
       (** [type A = … and B = …]: the built-in type declaration, a base role so
           [type] is an ordinary identifier a user form may shadow *)
 
@@ -573,7 +571,6 @@ let publish (b : struct_binding) : struct_binding =
   | LetBinding r -> LetBinding { r with public = true }
   | RecGroupBinding r -> RecGroupBinding { r with public = true }
   | MethodBinding r -> MethodBinding { r with public = true }
-  | TypeBinding r -> TypeBinding { r with public = true }
   | EffectBinding r -> EffectBinding { r with public = true }
   | TraitBinding r -> TraitBinding { r with public = true }
   | ImplBinding r -> ImplBinding { r with public = true }

@@ -572,7 +572,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
         elab_rec_group ops ctx ~value_ctx:Ctx.clear_self_scope ~extend
           (List.map (fun ((n : Syntax.id), v) -> (n.name, v)) members)
       in
-      (* Last member first: the module fold prepends and reverses (as [TypeBinding]). *)
+      (* Last member first: the module fold prepends and reverses. *)
       ( ctx',
         List.rev_map (fun (_, name, core, _, _) -> LetBind (name, kind, core)) members,
         List.rev_map (fun (_, name, _, ty, _) -> ModuleField (name, kind, ty)) members )
@@ -607,12 +607,6 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       in
       let ctx', _evidence = install_impl_evidence ?impl_name:name ctx' c ~level in
       (ctx', [bind], [ModuleImpl (name, kind, c.impl_dict_ty, c.impl_value)])
-  | Syntax.TypeBinding { members; public } ->
-      (* The module fold prepends each binding's results and reverses at the
-         end, so a chain's binds and entries come back last member first. *)
-      let ctx', results = elab_type_group ops ctx ~members ~public in
-      (ctx', List.rev_map fst results,
-       List.rev_map (fun (name, kind, ty) -> ModuleField (name, kind, ty)) (List.concat_map snd results))
 
 (* Quoted syntax is its reflection value, built with the scopes it was written
    with. Each hole is checked against the reflection type its position gives it
@@ -1232,9 +1226,6 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               (bind :: acc_binds,
                StructImpl (name, kind, c.impl_dict_ty, c.impl_value) :: acc_entries)
               rest
-        | Syntax.TypeBinding { members; public } :: rest ->
-            let ctx', results = elab_type_group ops ctx ~members ~public in
-            go ~defer ctx' (type_group_entries (acc_binds, acc_entries) results) rest
       in
       let is_field = function Syntax.FieldBinding _ -> true | _ -> false in
       let rec split_after_last_field = function

@@ -22,7 +22,6 @@ and struct_binding =
   | LetBinding of { name : string; value : t; public : bool; recursive : bool }
   | RecGroupBinding of { members : (string * t) list; public : bool }
   | MethodBinding of { name : string; params : param list; body : t; public : bool }
-  | TypeBinding of { members : type_decl list; public : bool }
   | EffectBinding of {
       name : string;
       params : string list;
@@ -263,15 +262,6 @@ and lower_struct_binding = function
     LetBinding { name = lower_id name; value = lower_expr value; public; recursive }
   | Syntax.MethodBinding { name; params; body; public; _ } ->
     MethodBinding { name = lower_id name; params = List.map lower_param params; body = lower_expr body; public }
-  | Syntax.TypeBinding { members; public } ->
-    TypeBinding
-      { members =
-          List.map
-            (fun ({ name; params; ctors } : Syntax.type_decl) ->
-              { name = lower_id name; params = List.map lower_id params;
-                ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors })
-            members;
-        public }
   | Syntax.EffectBinding { name; params; ops; public } ->
     EffectBinding { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; public }
   | Syntax.TraitBinding { name; params; fields; public } ->

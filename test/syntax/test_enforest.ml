@@ -718,7 +718,6 @@ let brace_syntax_suite =
     Alcotest.test_case "match without parens rejected" `Quick (rejected_with "match (scrutinee)" parse "match x { _ => 1 }");
     Alcotest.test_case "match arm needs =>" `Quick (rejected_with "=>" parse "match (x) { _ -> 1 }");
     Alcotest.test_case "=> is reserved" `Quick (rejected_with "reserved" parse_module "infix (=>)");
-    Alcotest.test_case "record type needs struct" `Quick (rejected_with "struct {" parse_module "type P = {x: I64}");
     Alcotest.test_case "trailing ; discards" `Quick trailing_semicolon_discards;
     Alcotest.test_case "no trailing ; keeps value" `Quick no_trailing_semicolon_keeps_value;
     Alcotest.test_case "newline is whitespace" `Quick newline_is_whitespace;

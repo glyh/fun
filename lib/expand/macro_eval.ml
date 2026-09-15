@@ -261,7 +261,6 @@ and w_role ns (r : Syntax.role) =
     | CallMacro -> con ns.role_meaning "CallMacro" []
     | Rules { rules_kind; rules } -> con ns.role_meaning "Rules" [ w_macro_ann ns rules_kind; w_list ns (w_rule ns) rules ]
     | OrderGroup -> con ns.role_meaning "OrderGroup" []
-    | TypeDeclaration -> con ns.role_meaning "TypeDeclaration" []
   in
   con ns.role "MkRole"
     [ w_fixity ns r.fixity; w_option ns (w_order ns) r.order; meaning; w_span ns r.declared_at;
@@ -352,7 +351,6 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclRecGroup" [ ids (List.map fst members); w_list ns (w_expr ns) (List.map snd members); w_bool ns public ]
   | MethodBinding { name; params; effects; body; public } ->
       d "DeclMethod" [ w_id ns name; w_list ns (w_param ns) params; w_option ns (w_effect_row ns) effects; w_expr ns body; w_bool ns public ]
-  | TypeBinding { members; public } -> d "DeclType" [ w_list ns (w_type_decl ns) members; w_bool ns public ]
   | EffectBinding { name; params; ops; public } ->
       d "DeclEffect" [ w_id ns name; ids params; w_list ns (w_effect_op ns) ops; w_bool ns public ]
   | TraitBinding { name; params; fields; public } ->
@@ -678,7 +676,6 @@ and u_role ns v : Syntax.role option =
             let* rules = u_list ns (u_rule ns) rules in
             Some (Syntax.Rules { rules_kind; rules })
         | Some ("OrderGroup", []) -> Some Syntax.OrderGroup
-        | Some ("TypeDeclaration", []) -> Some Syntax.TypeDeclaration
         | _ -> None
       in
       let* declared_at = u_span ns declared_at in
@@ -882,10 +879,6 @@ and u_decl ns v : Syntax.struct_binding option =
           let* body = u_expr ns body in
           let* public = u_bool ns public in
           Some (Syntax.MethodBinding { name; params; effects; body; public })
-      | "DeclType", [ members; public ] ->
-          let* members = u_list ns (u_type_decl ns) members in
-          let* public = u_bool ns public in
-          Some (Syntax.TypeBinding { members; public })
       | "DeclEffect", [ name; params; ops; public ] ->
           let* name = u_id ns name in
           let* params = ids params in

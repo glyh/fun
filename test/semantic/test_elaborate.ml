@@ -1657,7 +1657,7 @@ let module_level_open =
          "{ M = import \"user\"; M.x }");
     Alcotest.test_case "module open exposes constructors" `Quick
       (check_import_type
-         [ ("color", "pub type Color = Red | Green");
+         [ ("color", "open (import \"std\");\npub type Color = Red | Green");
            ("user", "open (import \"color\");\npub v = Red") ]
          "{ M = import \"user\"; match (M.v) { Red => 1, Green => 2 } }"
          (AtomTy Atom_ty.TI64));
@@ -1695,15 +1695,15 @@ let imports =
          "{ W = import \"wrapper\"; W.x }");
     Alcotest.test_case "imported ADT match" `Quick
       (check_import_type
-         [ ("color", "pub type Color = Red | Green | Blue; pub default = Green") ]
+         [ ("color", "open (import \"std\");\npub type Color = Red | Green | Blue; pub default = Green") ]
          "{ C = import \"color\"; match (C.default) { C.Red => 1, C.Green => 2, C.Blue => 3 } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module exposes constructors" `Quick
-      (check_import_type [ ("color", "pub type Color = Red | Green") ]
+      (check_import_type [ ("color", "open (import \"std\");\npub type Color = Red | Green") ]
          "{ C = import \"color\"; open C; match (Red) { Red => 1, Green => 2 } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "open imported module exposes private constructors via match" `Quick
-      (check_import_type [ ("secret", "type Hidden = Wrap I64; pub value = Wrap(1)") ]
+      (check_import_type [ ("secret", "open (import \"std\");\ntype Hidden = Wrap I64; pub value = Wrap(1)") ]
          "{ S = import \"secret\"; open S; match (value) { Wrap(n) => n } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "repeated import" `Quick
@@ -1755,16 +1755,16 @@ let imports =
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported nested constructor pattern" `Quick
       (check_import_type
-         [ ("nested", "pub M = module { pub type T = X(I64) | Y }") ]
+         [ ("nested", "open (import \"std\");\npub M = module { pub type T = X(I64) | Y }") ]
          "{ N = import \"nested\"; match (N.M.X(7)) { N.M.X(n) => n, N.M.Y => 0 } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "imported module alias pattern" `Quick
-      (check_import_type [ ("color", "pub type Color = Red | Green") ]
+      (check_import_type [ ("color", "open (import \"std\");\npub type Color = Red | Green") ]
          "{ C = import \"color\"; Alias = C; match (C.Red) { Alias.Red => 1, Alias.Green => 2 } }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "wrong-nominal imported constructor pattern" `Quick
       (import_elab_fail
-         [ ("a", "pub type Color = Red"); ("b", "pub type Color = Red") ]
+         [ ("a", "open (import \"std\");\npub type Color = Red"); ("b", "open (import \"std\");\npub type Color = Red") ]
          "{ A = import \"a\"; B = import \"b\"; match (A.Red) { B.Red => 1, _ => 0 } }");
     Alcotest.test_case "imported public effect handler" `Quick
       (check_import_type [ ("effects", "pub effect Exc = sig { raise : I64 -> I64 }") ]
@@ -1810,7 +1810,7 @@ let imports =
            : Unit -> I64) }"
          (Pi { explicitness = Explicit; domain = AtomTy Atom_ty.TUnit; effects = empty_effect_row; codomain = AtomTy Atom_ty.TI64 }));
     Alcotest.test_case "imported private constructor hidden" `Quick
-      (import_elab_fail [ ("secret", "type Hidden = Wrap I64; pub value = Wrap(1)") ]
+      (import_elab_fail [ ("secret", "open (import \"std\");\ntype Hidden = Wrap I64; pub value = Wrap(1)") ]
          "{ S = import \"secret\"; match (S.value) { S.Wrap(n) => n } }");
     Alcotest.test_case "imported private member hidden through alias" `Quick
       (import_elab_fail [ ("m", "secret = 1; pub exposed = 2") ]

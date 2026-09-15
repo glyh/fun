@@ -80,7 +80,7 @@ and map_rule_default m (r : rule) : rule =
 and map_role m (role : role) : role =
   match role.meaning with
   | Rules { rules_kind; rules } -> { role with meaning = Rules { rules_kind; rules = List.map (m.rule m) rules } }
-  | ApplyValue | AssignRef | CallMacro | OrderGroup | TypeDeclaration -> role
+  | ApplyValue | AssignRef | CallMacro | OrderGroup -> role
 
 and map_capture m c =
   match m.capture c with
@@ -163,11 +163,6 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
      | RecGroupBinding { members; public } -> RecGroupBinding { members = List.map (fun (n, v) -> (on_id n, go v)) members; public }
      | MethodBinding { name; params; effects; body; public } ->
        MethodBinding { name = on_id name; params = List.map (map_param m) params; effects = Option.map (map_effect_row go) effects; body = go body; public }
-     | TypeBinding { members; public } ->
-       TypeBinding { members = List.map (fun (d : type_decl) ->
-                       { name = on_id d.name; params = List.map on_id d.params;
-                         ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) d.ctors }) members;
-                     public }
      | EffectBinding { name; params; ops; public } ->
        EffectBinding { name = on_id name; params = List.map on_id params;
                        ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; public }
@@ -222,8 +217,6 @@ let map_binders (f : Syntax.id -> Syntax.id) (binding : struct_binding) : struct
   | LetBinding b -> LetBinding { b with name = f b.name }
   | RecGroupBinding { members; public } -> RecGroupBinding { members = List.map (fun (n, v) -> (f n, v)) members; public }
   | MethodBinding b -> MethodBinding { b with name = f b.name }
-  | TypeBinding { members; public } ->
-    TypeBinding { members = List.map (fun (d : type_decl) -> { d with name = f d.name; ctors = List.map (fun (n, ps) -> (f n, ps)) d.ctors }) members; public }
   | EffectBinding b -> EffectBinding { b with name = f b.name }
   | TraitBinding b -> TraitBinding { b with name = f b.name }
   | ImplBinding b -> ImplBinding { b with name = Option.map f b.name }
@@ -568,7 +561,6 @@ let decl_over (binding : struct_binding) (body : t) : t =
   | RecGroupBinding { members; public = false } -> over (LetRecGroup { members; body })
   | SyntaxBinding { name; role; public = false } -> over (SyntaxDef { name; role; body })
   | MacroBinding { name; value; kind; output; public = false } -> over (MacroDef { name; value; body; kind; output })
-  | TypeBinding { members = [ { name; params; ctors } ]; public = false } -> over (TypeDef { name; params; ctors; body })
   | EffectBinding { name; params; ops; public = false } -> over (EffectDef { name; params; ops; body })
   | TraitBinding { name; params; fields; public = false } -> over (TraitDef { name; params; fields; body })
   | ImplBinding { name; trait; args; fields; public = false } -> over (ImplDef { name; trait; args; fields; body })
@@ -1109,38 +1101,6 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
     let effects = Option.map (map_effect_row (expand ctx)) effects in
     let params, body = expand_method_params_body ctx params body in
     ([MethodBinding { name; params; effects; body; public }], [[ scope ]])
-  | TypeBinding { members; public } ->
-    (* Every member name is introduced before any payload is expanded, so a
-       chain's members see each other; separate statements stay sequential. *)
-    let member_scopes, member_names = List.split (List.map (fun (m : type_decl) -> bind_declaration ctx m.name) members) in
-    let members = List.map2 (fun (m : type_decl) name -> { m with name }) members member_names in
-    let members, ctor_scopes =
-      List.split
-        (List.map2
-           (fun (m : type_decl) scope ->
-             let params, param_scopes = expand_id_params ctx [] m.params in
-             let ctors, ctor_scopes =
-               List.split
-                 (List.map
-                    (fun ((cname : Syntax.id), payload) ->
-                      (* The constructor is introduced *after* the type name by the same
-                         declaration, so it is bound under the type's scope rather than
-                         beside it. As siblings the two scope sets are incomparable, and
-                         [type T = T I64] - where a constructor shares its type's written
-                         name - resolves as an ambiguous binding instead of shadowing.
-                         Nesting makes the constructor strictly more specific, which is
-                         the same last-wins rule a dotted path and [open] already use. *)
-                      let ctor_scope, cname = bind_declaration ~base_scope:(Scope_set.union scope cname.scope) ctx cname in
-                      ((cname, payload), ctor_scope))
-                    m.ctors)
-             in
-             let payload_scopes = member_scopes @ param_scopes in
-             ( { name = m.name; params;
-                 ctors = List.map (fun (n, ps) -> (n, List.map (fun p -> expand ctx (add_scopes payload_scopes p)) ps)) ctors },
-               ctor_scopes ))
-           members member_scopes)
-    in
-    ([TypeBinding { members; public }], [member_scopes @ List.concat ctor_scopes])
   | EffectBinding { name; params; ops; public } ->
     let scope, name = bind_declaration ctx name in
     let params, param_scopes = expand_id_params ctx [] params in

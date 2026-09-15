@@ -1510,7 +1510,7 @@ let test_round_trip_is_identity () =
      after it (when every id carries scopes). *)
   let program =
     Enforest.parse_module
-      {|pub type A = MkA(B) | NoA and B = MkB(A) | NoB;
+      {|pub rec A = enum { MkA(B), NoA } and B = enum { MkB(A), NoB };
 pub P = struct {x: I64; y: A};
 pub effect Ask = sig { ask : Unit -> I64 };
 pub trait Show(T) = sig { show : T -> String };
@@ -1533,7 +1533,8 @@ open M|}
 
 let test_unit_level_type_chain () =
   match eval_decl_module
-    "pub type A = MkA(B) | NoA and B = MkB(A) | NoB;
+    "open (import \"std\");
+     pub type A = MkA(B) | NoA and B = MkB(A) | NoB;
      pub x = match (MkA(MkB(NoA))) { MkA(MkB(NoA)) => 1, _ => 0 }"
   with
   | VModule { entries; _ } ->
@@ -1792,7 +1793,7 @@ let test_macro_type_binders_are_explicit () =
   check_macro "wildcard" ~typed:false ~arity:1 "macro mk(_) : Expr(_) { Syntax.i64(1) }";
   Alcotest.(check bool) "qualified imported constraint" true
     (Syntax.MacroKind.has_type_binding
-       (exported_kind_with_modules [ ("types_mod", "pub type T = I64") ]
+       (exported_kind_with_modules [ ("types_mod", "open (import \"std\");\npub type T = I64") ]
           (std "M = import \"types_mod\";\nmacro mk(_) : Expr(M.T) { Syntax.i64(1) }\n") "mk"));
   check_i64_macro "expression-level constraint" 1L "{ macro mk(_) : Expr(I64) { Syntax.i64(1) }; mk(0) }" ();
   List.iter
@@ -3908,7 +3909,7 @@ let () =
                  13L "{ M = import \"user\"; M.r }");
             Alcotest.test_case "opened constructors usable in later bindings" `Quick
               (check_import_i64 "opened constructors usable in later bindings"
-                 [ ("color", "pub type Color = Red | Green");
+                 [ ("color", "open (import \"std\");\npub type Color = Red | Green");
                    ("user", "open (import \"color\");\npub v = Red") ]
                  1L "{ M = import \"user\"; match (M.v) { Green => 2, Red => 1 } }");
             Alcotest.test_case "inline module open" `Quick
@@ -3947,11 +3948,11 @@ let () =
                  "{ A = import \"m\"; B = import \"m\"; A.x + B.x }");
             Alcotest.test_case "imported ADT match" `Quick
               (check_import_i64 "imported ADT match"
-                 [ ("color", "pub type Color = Red | Green | Blue; pub default = Green") ] 2L
+                 [ ("color", "open (import \"std\");\npub type Color = Red | Green | Blue; pub default = Green") ] 2L
                  "{ C = import \"color\"; match (C.default) { C.Red => 1, C.Green => 2, C.Blue => 3 } }");
             Alcotest.test_case "open imported module exposes constructors" `Quick
               (check_import_i64 "open imported module exposes constructors"
-                 [ ("color", "pub type Color = Red | Green") ] 1L
+                 [ ("color", "open (import \"std\");\npub type Color = Red | Green") ] 1L
                  "{ C = import \"color\"; open C; match (Red) { Red => 1, Green => 2 } }");
             Alcotest.test_case "imported record field access" `Quick
               (check_import_i64 "imported record field access"
@@ -3967,11 +3968,11 @@ let () =
                  "{ S = import \"shapes\"; Alias = S; match (S.Point{x = 1; y = 2}) { Alias.Point {x; y} => x + y } }");
             Alcotest.test_case "imported nested constructor pattern" `Quick
               (check_import_i64 "imported nested constructor pattern"
-                 [ ("nested", "pub M = module { pub type T = X(I64) | Y }") ] 7L
+                 [ ("nested", "open (import \"std\");\npub M = module { pub type T = X(I64) | Y }") ] 7L
                  "{ N = import \"nested\"; match (N.M.X(7)) { N.M.X(n) => n, N.M.Y => 0 } }");
             Alcotest.test_case "imported module alias pattern" `Quick
               (check_import_i64 "imported module alias pattern"
-                 [ ("color", "pub type Color = Red | Green") ] 1L
+                 [ ("color", "open (import \"std\");\npub type Color = Red | Green") ] 1L
                  "{ C = import \"color\"; Alias = C; match (C.Red) { Alias.Red => 1, Alias.Green => 2 } }");
             Alcotest.test_case "imported public effect handler" `Quick
               (check_import_i64 "imported public effect handler"

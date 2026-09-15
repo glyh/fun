@@ -454,8 +454,6 @@ and parse_primary env terms =
           Enforest_forms.parse_quote (fun holes -> form_callbacks (eager_env ~holes env)) term.span rest
       | Token { kind = Ident name | Operator name; _ } -> (
           match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
-          | Some { meaning = Syntax.TypeDeclaration; _ } ->
-              error "a type declaration is not an expression; declare it in a block or module"
           | Some ({ meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } as role) ->
               let inst, rest =
                 Enforest_template.instantiate (template_callbacks env (Operand (name, role))) ~form:(id_of term name) ~kind:rules_kind
@@ -646,7 +644,7 @@ and parse_postfix_infix env min_prec lhs terms =
                 | Syntax.CallMacro -> syntax_operator_arg ~span ~use:term symbol role [ lhs; rhs ]
                 | Syntax.ApplyValue ->
                     ap ~span (ap ~span (var_of term symbol) Explicitness.Explicit lhs) Explicitness.Explicit rhs
-                | Syntax.OrderGroup | Syntax.TypeDeclaration -> error ("not an infix operator: " ^ symbol)
+                | Syntax.OrderGroup -> error ("not an infix operator: " ^ symbol)
               in
               parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
@@ -683,7 +681,7 @@ and parse_value_decl_after_prefix env ~recursive stmt =
           decl_value = value;
           decl_recursive = recursive;
         }
-  | name_term :: rest when Option.is_some (binding_name_term name_term) && not (is_type_head env name_term) -> (
+  | name_term :: rest when Option.is_some (binding_name_term name_term) -> (
       let name_id = Option.get (binding_name_term name_term) in
       match split_at_token Equals rest with
       | Some (before_eq, _, value_terms) ->
@@ -719,95 +717,6 @@ and parse_value_decl_after_prefix env ~recursive stmt =
               decl_recursive = recursive;
             }
       | None -> None)
-  | _ -> None
-
-(* The built-in type declaration: its head is [type] naming the base role
-   [TypeDeclaration], resolved by scope set like any role. *)
-and is_type_head env term =
-  match term.datum with
-  | Token { kind = Ident name; _ } -> (
-      match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
-      | Some { meaning = Syntax.TypeDeclaration; _ } -> true
-      | _ -> false)
-  | _ -> false
-
-and parse_type_binding env public stmt =
-  match drop_separators stmt with
-  | type_kw :: rest when is_type_head env type_kw -> (
-      match split_type_chain rest with
-      | [] | [ _ ] -> parse_type_decl env public stmt
-      | segments ->
-          let members =
-            List.map
-              (fun segment ->
-                match parse_type_decl env public (type_kw :: segment) with
-                | Some (Syntax.TypeBinding { members = [ member ]; _ }) -> member
-                | _ -> error "expected type declaration in and chain")
-              segments
-          in
-          let names = List.map (fun (m : Syntax.type_decl) -> m.name.name) members in
-          (match List.find_opt (fun n -> List.length (List.filter (String.equal n) names) > 1) names with
-           | Some dup -> error ("duplicate type in and chain: " ^ dup)
-           | None -> ());
-          Some (Syntax.TypeBinding { members; public }))
-  | _ -> None
-
-and parse_type_decl env public stmt =
-  match drop_separators stmt with
-  | type_kw :: ({ datum = Token { kind = Ident name; _ }; _ } as name_term) :: rest when is_type_head env type_kw -> (
-      match split_at_token Equals rest with
-      | Some
-          ( _,
-            _,
-            [ { datum = Token { kind = KwStruct; _ }; _ }; { datum = Group (Raw_syntax.Brace, _, _); _ } ] ) ->
-          error "a record type is a value: write X = struct { field : Type }, or rec X = struct { … } when it refers to itself"
-      | Some (_, _, [ { datum = Group (Raw_syntax.Brace, _, _); _ } ]) ->
-          error "record types are written struct { field: Type }"
-      | Some (param_terms, _, ctor_terms) ->
-          let params =
-            drop_separators param_terms
-            |> List.concat_map (function
-              | ({ datum = Token { kind = Ident p; _ }; _ } as term) -> [ id_of term p ]
-              | { datum = Group (Paren, items, _); _ } ->
-                  split_commas (drop_separators items)
-                  |> List.map (fun ts ->
-                      match drop_separators ts with
-                      | [ ({ datum = Token { kind = Ident p; _ }; _ } as term) ] ->
-                          id_of term p
-                      | _ -> error "expected type parameter in parens")
-              | _ -> error "expected type parameter")
-          in
-          let ctors =
-            split_by_top_level_bar ctor_terms
-            |> List.map (fun part ->
-                match drop_separators part with
-                | ({ datum = Token { kind = Ident cname; _ }; _ } as cname_term)
-                  :: payload_terms -> (
-                    match drop_separators payload_terms with
-                    | { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest
-                      when List.exists (token_kind Comma) items ->
-                        let rest = drop_separators rest in
-                        if rest <> [] then
-                          error "unexpected terms after constructor payload";
-                        let types =
-                          List.map
-                            (fun ts -> parse_all (parse_type_entry env) ts)
-                            (split_commas (drop_separators items))
-                        in
-                        (id_of cname_term cname, types)
-                    | _ ->
-                        let payload =
-                          match drop_separators payload_terms with
-                          | [] -> []
-                          | terms -> [ parse_type_terms env terms ]
-                        in
-                        (id_of cname_term cname, payload))
-                | _ -> error "expected constructor declaration")
-          in
-          Some
-            (Syntax.TypeBinding
-               { members = [ { name = id_of name_term name; params; ctors } ]; public })
-      | None -> error "type binding requires =")
   | _ -> None
 
 and parse_effect_binding env public stmt =
@@ -1201,13 +1110,7 @@ and parse_operator_decl env stmt =
 and scoped_binding_to_expr env span stmt body =
   let public, stmt = parse_public_prefix stmt in
   if public then error "pub is not supported inside do blocks";
-  match parse_type_binding env false stmt with
-  | Some (Syntax.TypeBinding { members = [ { name; params; ctors } ]; _ }) ->
-      stx ~span (Syntax.TypeDef { name; params; ctors; body })
-  | Some (Syntax.TypeBinding _) ->
-      error "and chains are not supported in a scoped do head; declare the chain as a do-body statement"
-  | Some _ -> error "unexpected non-type binding"
-  | None -> (
+  (
       match parse_effect_binding env false stmt with
       | Some (Syntax.EffectBinding { name; params; ops; _ }) ->
           stx ~span (Syntax.EffectDef { name; params; ops; body })
@@ -1392,7 +1295,7 @@ and parse_macro_call_binding env public stmt =
 and parse_rec_group env stmt =
   match drop_separators stmt with
   | { datum = Token { kind = KwRec; _ }; _ } :: rest -> (
-      match split_type_chain rest with
+      match split_and_chain rest with
       | [] | [ _ ] -> None
       | segments ->
           let members =
@@ -1480,7 +1383,6 @@ and parse_module_binding env stmt =
             parse_macro_binding env public;
             parse_macro_call_binding env public;
             parse_pattern_syn_binding env public;
-            parse_type_binding env public;
             parse_effect_binding env public;
             parse_trait_binding env public;
             parse_impl_binding env public;
@@ -1545,7 +1447,6 @@ and parse_struct_binding env stmt =
                   [
                     parse_open_binding env public;
                     parse_method_binding env public;
-                    parse_type_binding env public;
                     parse_effect_binding env public;
                     parse_trait_binding env public;
                     parse_impl_binding env public;
