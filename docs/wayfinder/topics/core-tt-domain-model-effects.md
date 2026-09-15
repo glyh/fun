@@ -59,17 +59,24 @@ unwritten case must be the safe one. Distance:
 
 ### E4 — the checker evaluates pure closed terms under a budget
 
-**Status: enforced, by the wrong criterion, and without the budget.** No
-termination check exists or is wanted; divergence is not an effect. What guards
-elaboration-time evaluation today is two conditions — `collect_effects` empty
-and the syntactic `compile_time_safe` — which is the right shape but the wrong
-test once E10 lands: refs contribute nothing to `collect_effects`, so purity is
-decided by a syntactic scan, not by the row. And there is no budget: `loop(0)`
-in a type position hangs the checker. The budget counts semantic steps (function
-calls, loop iterations) so it is stable across compiler versions, and exceeding
-it is an error naming the call — not a silent divergence. It is a separate guard
-from macro-expansion fuel with its own name. Distance:
-[checker-evaluation-budget](../tickets/checker-evaluation-budget.md).
+**Status: budget enforced; purity still by the wrong criterion.** No
+termination check exists or is wanted; divergence is not an effect. Each checker
+request to the evaluator spends from one budget, and exhaustion is an elaboration
+error naming the source call, the demand and the form being checked
+([checker-evaluation-budget](../tickets/checker-evaluation-budget.md),
+[budget-error-names-no-source-call](../tickets/budget-error-names-no-source-call.md),
+closed). The budget measures work — every call and every conversion or
+unification step — and macro expansion spends from the same budget (M5; there is
+no separate fuel). Recursive definitions unfold on open arguments under it; two
+applications of the same *pure* fixpoint to convertible arguments compare without
+unfolding (lazy delta, `VGlued`)
+([recursive-definitions-stuck-on-open-arguments](../tickets/recursive-definitions-stuck-on-open-arguments.md),
+closed). Running a program stays unbudgeted. Distance: which terms may be
+evaluated is still decided by `collect_effects` plus the syntactic
+`compile_time_safe` (`elab_effect_collect.ml`), not by the row, because refs
+contribute no effect ([refs-in-effect-rows](../tickets/refs-in-effect-rows.md));
+and a fixpoint counts as pure only with a written `can {}`, since a bare arrow's
+row is still open ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md)).
 
 ### E5 — handling is lexical, not dynamic
 
@@ -91,8 +98,10 @@ may be resumed after its branch returns (schedulers, async); resuming re-enters
 the handler scope. What may not happen is a closure whose row *names* a handled
 effect escaping the handler that handles it — the handler binds its effect like
 a type variable, and the escape check is the one existentials and `runST`-style
-brands need. No such check exists today. Distance: the same ticket's second
-half.
+brands need. No such check exists today: an escaping closure fails only at run
+time with "unhandled effect". Distance: the same ticket's second half; nothing
+checks a program's residual row is empty either
+([unhandled-effects-pass-the-checker](../tickets/unhandled-effects-pass-the-checker.md)).
 
 ### E7 — continuations are one-shot
 
@@ -138,27 +147,31 @@ Distance: [refs-in-effect-rows](../tickets/refs-in-effect-rows.md).
 variables = same type; generative only under a run-time effect, inferred from
 the row, never declared. Forced by dependent types (the checker re-evaluates
 `Set(I64, cmp).T` during conversion — a type minted per evaluation would not
-equal itself) and by the `SymbolTable` abstraction case. Today a nominal
-declared under a binder does not evaluate at all (`unbound constructor/type:
-T`); `nominal_id` is minted once per declaration at elaboration, so neither
+equal itself) and by the `SymbolTable` abstraction case. Today a nominal ADT
+declared under a binder does not evaluate at all (`mk(I64)(1)` → `unbound
+nominal type: T`; a structural record under a binder does evaluate);
+`nominal_id` is minted once per declaration at elaboration (`NominalId.fresh`), so neither
 applicative nor generative semantics is implemented. Distance:
 [nominal-identity-applicative-by-purity](../tickets/nominal-identity-applicative-by-purity.md),
-blocked on E10.
+blocked on E10. [adts-as-let-bindings](../tickets/adts-as-let-bindings.md) is
+blocked on this.
 
 ## Model decision vs today
 
+Checked against main on 2026-09-15 (probes in the effects audit).
+
 | model | implementation today |
 |---|---|
-| bare arrow is pure | omitted row = fresh meta tail — the opposite default |
-| checker evaluates under a budget | no budget; purity gated by `collect_effects` + syntactic `compile_time_safe` |
-| handling is lexical (tunnels) | dynamic — nearest enclosing handler catches |
-| handler-scope escape check | none |
+| bare arrow is pure | omitted row = fresh meta tail — the opposite default ([ticket](../tickets/bare-arrow-is-pure.md)) |
+| checker evaluates under a budget | enforced (work-measured, names the call); purity still gated by `collect_effects` + syntactic `compile_time_safe` |
+| handling is lexical (tunnels) | dynamic — nearest enclosing handler catches ([ticket](../tickets/handlers-tunnel-callback-effects.md)) |
+| handler-scope escape check | none; unhandled effects reach run time ([ticket](../tickets/unhandled-effects-pass-the-checker.md)) |
 | one-shot continuations | run-time `used` check — matches the model |
 | deep handlers, `resume` scoped | enforced, tested |
 | rows set-like, normalized | enforced |
-| effect identity = family + params | enforced |
-| mutation = three heap effects, branded refs, discharge | refs contribute no effect; invisible in types |
-| nominal applicative by purity | nominal under a binder does not evaluate |
+| effect identity = family + params | enforced (`runtime_value_equal` on id and params) |
+| mutation = three heap effects, branded refs, discharge | refs contribute no effect; invisible in types ([ticket](../tickets/refs-in-effect-rows.md)) |
+| nominal applicative by purity | nominal ADT under a binder does not evaluate ([ticket](../tickets/nominal-identity-applicative-by-purity.md)) |
 
 ## What the port's types should be named after
 
@@ -171,7 +184,7 @@ blocked on E10.
   not `can Ref`.
 - **Discharge** for dropping a non-escaping heap's effects at generalisation.
   Not `mask` — Koka's written `mask` is a different thing.
-- **Evaluation budget** counting calls and iterations — separate name, separate
-  counter from macro **fuel**.
+- **Evaluation budget** measuring work — one budget shared with macro
+  expansion (M5); *fuel* is its retired name.
 - Routing evidence for lexical handling, not a handler stack: the port's
   evaluator holds *which handler a row was bound to*, never "the current one".

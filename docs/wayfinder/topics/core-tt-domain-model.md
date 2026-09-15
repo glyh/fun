@@ -58,6 +58,9 @@ is exactly what happened, see D1 below.
 Half of this invariant *is* checked, late and narrowly: evaluating a meta walks
 `env` and `bds` in step and raises `bd mask length mismatch` when they differ.
 That check fires only if a meta is actually evaluated in the offending context.
+Since the slot list (I2), `extend_from_slots` zips payloads onto slots with
+`List.fold_left2`, which raises on a count mismatch while the context is built —
+earlier, but still an OCaml exception rather than a named check (2026-09-15).
 
 ### I2 — elaborator and evaluator widen a context identically per binding
 
@@ -98,14 +101,17 @@ members in `e`'s *type*, known when elaboration reaches the `open`; the members'
 values are run-time projections of one evaluation of `e`. Needing the module
 *value* is a defect: `open_module_value` (`elab_resolve.ml`) folds the type's
 entries against the evaluated value's entries and silently opens nothing when
-the value is not a `VModule` (`| _ -> ctx`).
+the value is not a `VModule` (`| _ -> ctx`). Distance:
+[module-open-width-depends-on-value](../tickets/module-open-width-depends-on-value.md).
 
 ### I3 — a dotted path denotes the last member of that name
 
-**Status: enforced by construction.**
+**Status: enforced for field lookups; two first-match lookups remain.**
 
 One helper, `Core.find_field_last`, is used by every field lookup in both
-libraries. Previously the rule was written out seven times as a bare
+libraries. Distance: `Elab_stdlib.resolve` and the named-impl lookups
+(`module_impl_type_opt` / `module_impl_value_opt`) still take the first match
+([dotted-paths-first-match](../tickets/dotted-paths-first-match.md)). Previously the rule was written out seven times as a bare
 first-match scan, and disagreed with `open` and with `do` bindings, both of
 which take the last. That disagreement is what made a constructor sharing its
 type's name unreachable through a path.
@@ -156,12 +162,21 @@ separate rules rather than one: they govern different namespaces.
 
 ### I4c — a name's syntactic role is decided a phase earlier, and is not shadowed
 
-**Status: known gap, documented in the source, deferred by ticket.**
+**Status: resolved by M7 (2026-09-14).** A role is a binder resolved by scope set
+(`Binding.find_role`, tokens carry scope sets); a role never mixes with another
+binder of its name — `RoleConflict` at the binder, `OpenSuppliesRole` at an open —
+and imported roles bind in the region of the open that brought them
+([template-heads-resolve-by-scope-set](../tickets/template-heads-resolve-by-scope-set.md),
+[role-visibility-gaps-after-m7](../tickets/role-visibility-gaps-after-m7.md), both
+closed). Precedence is an order group, itself a role
+([brackets-decide-grouping](../tickets/brackets-decide-grouping.md)). So
+`{ not = 5; not }` is a `RoleConflict`, not a parse error. What follows is the
+gap as found (history).
 
-The single-namespace rule does not survive the phase boundary. Whether a name is
-an operator or a syntax form is settled by the expander, **string-keyed and
-newest-wins**, because scope sets do not exist yet at enforestation. A later
-binding of the same name therefore cannot take the role away:
+The single-namespace rule did not survive the phase boundary. Whether a name is
+an operator or a syntax form was settled by the expander, **string-keyed and
+newest-wins**, because scope sets did not exist yet at enforestation. A later
+binding of the same name therefore could not take the role away:
 
 ```
 do not = 5; not end          -- parse error: `not` is still a prefix operator
@@ -169,22 +184,22 @@ do if = 5; if end            -- parse error: `if` is still prelude syntax
 do (+) = fn(a,b) -> 0; … end -- accepted: the parenthesised form rebinds the value
 ```
 
-`lib/expand/binding.ml` states this in a comment and defers scope-set-keyed
-operator resolution to the interleaving work. Recording it here because it is a
-real seam in the model, not an implementation detail: a name has a **syntactic
-role** as well as a context entry, and the two obey different resolution rules.
-
-This is the seam into the next pass (macro expansion and hygiene). The
-elaborator additionally carries both its own macro table and a mutable reference
-to the expander's context, which is the same coupling seen from the other side.
+The seam it recorded stays real in the model: a name has a **syntactic role** as
+well as a context entry. Since M7 both resolve by scope set. (The elaborator's
+own macro table and its reference to the expander's context, noted here as the
+same coupling seen from the other side, are gone: it holds a `macro_runtime`, see
+I4e.)
 
 ### I4d — macros resolve on a different axis from every other name
 
 **Status: decided and implemented.** The decision below is in the tree, with
 tests for the qualified call, for a bare import no longer injecting macros, for
 the `open` form, and for the import-order case that used to answer differently
-depending on which unit was imported first. The measurements that follow record
-the behaviour as it was.
+depending on which unit was imported first. **Everything below, up to the
+decision, is history** (the behaviour as it was); the table's "today" column is
+the pre-decision state and "after" is main. Distance: module-level macros are
+still keyed by their written name in the expander's macro table
+([declaration-binders-keep-written-names](../tickets/declaration-binders-keep-written-names.md)).
 
 Not merely "less strict". Measured, macros arrive by a form that delivers nothing
 else, and do not arrive by the form that delivers everything else:
@@ -223,7 +238,7 @@ import is elaborated. Hygiene holds within a unit and is absent between units.
 2. Macros arrive bare through `open`, like any other public name.
 3. Binding an import stops delivering macros as a side effect.
 
-|  | today | after |
+|  | before | after (main) |
 |---|---|---|
 | `M = import "m1"; answer(0)` | 1 | unbound |
 | `open (import "m1"); answer(0)` | unbound | 1 |
@@ -246,19 +261,21 @@ asserts the value form errors.
 
 ### I4e — the elaborator's expander handle is a capability, not a context
 
-**Status: fixed.** The importer-side mutation was deleted (see
-[base-context-shared-state](../tickets/base-context-shared-state.md)), so the
-field no longer survives as a last-writer-wins latch, and the field itself is now
-a `macro_runtime`: how to run a macro, and the expansion-depth budget to run it
-under. The elaborator no longer holds a reference to the expander at all.
+**Status: narrowed; still mutable.** The field is a `macro_runtime`
+(`Elab_ctx.Ctx.macro_runtime`): how to run a macro under the evaluation budget,
+expand, apply the one hygiene contract, look a macro up and check an open's roles.
+The elaborator holds no expander state beyond it. Distance: the field is still
+`mutable`, written by the macro driver and at `Import`; with no base context,
+`unit_base` returns the importer's own context and an import overwrites its
+handle ([elaborator-macro-runtime-is-mutable](../tickets/elaborator-macro-runtime-is-mutable.md)).
 
-`Elab_ctx.Ctx.expand_ctx` reads as "the expander's context", i.e. a namespace. It is
-read for exactly two things: `eval_and_apply`, which is how to run a macro, and
-`with_macro_fuel`, an expansion-depth budget. Neither consults the expander's
-binding table. It is a **capability handle**, not a namespace.
+History: `Elab_ctx.Ctx.expand_ctx` read as "the expander's context", i.e. a
+namespace, but was read for exactly two things: `eval_and_apply` and
+`with_macro_fuel` (since deleted, M5). It was a **capability handle**, not a
+namespace.
 
-It is also a *latch*: assigned by the macro driver and again by each `Import`,
-never restored, so the last writer wins for the rest of elaboration. That is
+It was also a *latch*: assigned by the macro driver and again by each `Import`,
+never restored, so the last writer won for the rest of elaboration. That was
 tolerable only because both readers want capabilities that are effectively the
 same everywhere — which is an argument for giving them their own field rather
 than reaching through a borrowed context.
@@ -329,11 +346,11 @@ A value carries its environment — a closure holds its own, a module value hold
 each member's. So moving a *value* between contexts is sound by construction, and
 that is exactly why first-class modules work at all.
 
-The import path does the other thing. `Elab_infer`'s `Import` case calls
-`load_elaborated`, which hands back `(term, value, type)` — and the case returns
-the **term**, discarding the value it just computed. A cached term spliced into a
-new anchor is the unsound move. The value beside it in the same cache entry
-would not have been.
+The import path did the other thing: `Elab_infer`'s `Import` case returned the
+cached **term**, discarding the value it had just computed. A cached term spliced
+into a new anchor is the unsound move. Today the case returns `Imported value`
+(`elab_infer.ml`, `Import`): the value is what crosses, and the cache is still
+keyed by path, which is sound because units elaborate against the base.
 
 `import "std"` is the same shape in miniature: it elaborates to a bare `Var`
 index into the importer's context, which is why a module writing its own
@@ -405,8 +422,7 @@ program in the suite does. A port would have copied it silently.
 - `Binding` for a module member, since that is what a user writes. Context slots
   are `entry`; the expander's hygiene records are not bindings at all.
 - `Slot` for what a binding contributes, as a list produced once and consumed by
-  both sides, with width as its length. Impls and traits should join it, which
-  the prototype leaves undone.
+  both sides, with width as its length. Impls and traits join it (2026-09-14).
 - `BaseAnchored` for the transport condition — every free index pointing into the
   base context every unit shares — rather than the closedness it is easily
   mistaken for.
