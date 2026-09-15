@@ -48,6 +48,8 @@ and effect_row = { effects : t list; tail : t option }
 
 and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }
+  | RecGroupBinding of { members : (id * t) list; public : bool }
+      (** [rec A = … and B = …]: every member sees every member. *)
   | MethodBinding of { name : id; params : param list; body : t; public : bool }
   | TypeBinding of { members : type_decl list; public : bool }
       (** [type A = … and B = …]: one binding per chain, its members mutually
@@ -178,6 +180,8 @@ and kind =
   | Ap of t * Explicitness.t * t
   | Lam of param * t
   | Let of { name : id; type_ : t option; value : t; body : t; recursive : bool }
+  | LetRecGroup of { members : (id * t) list; body : t }
+      (** A block's [rec A = … and B = …], scoped over [body]. *)
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list

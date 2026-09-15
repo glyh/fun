@@ -45,36 +45,69 @@ let rec struct_type_params (value : Syntax.t) =
       Option.map (fun params -> param :: params) (struct_type_params body)
   | _ -> None
 
-(* A recursive record: [rec Numbers = struct { head : I64; tail : Option(Numbers) }].
-   The binding mints an identity; its body sees the name as a recursive
-   occurrence of it (a function of the parameters to one), bound by a [Let] the
-   core keeps; the finished value is what an occurrence unfolds to. *)
-let elab_rec_struct (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name params value =
-  let id = fresh_record_id () in
-  let n = List.length params in
-  let occ_term = List.fold_right (fun _ acc -> Lam acc) params (RecOcc { id; name; args = List.init n (fun i -> Var (n - 1 - i)) }) in
-  let occ_ty =
-    List.fold_right
-      (fun (param : Syntax.param) acc ->
-        VPi { explicitness = expl_of_syntax param.explicitness; domain = VU;
-              effects = effect_row_closure ctx.Ctx.env empty_effect_row;
-              codomain = { env = ctx.Ctx.env; body = Nbe.quote ctx.Ctx.metas (ctx.Ctx.lvl + 1) acc } })
-      params VU
+(* A recursive group of struct types: [rec Numbers = struct { … }], or
+   [rec A = struct { b : Option(B) } and B = struct { a : Option(A) }].
+   Each binding mints an identity. Every member's body sees every member's name
+   as a recursive occurrence of it (a function of the parameters to one), bound
+   by [Let]s its core keeps; each finished value is what an occurrence unfolds
+   to. Members elaborate in order: [extend] adds a finished member to the
+   context the next one (and what follows the group) is elaborated in, and
+   [value_ctx] is the context a member's body starts from. *)
+let elab_rec_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend members =
+  let members =
+    List.map
+      (fun ((key : string), (value : Syntax.t)) ->
+        match struct_type_params value with
+        | Some params -> (key, Syntax.label key, params, value)
+        | None -> raise (ElabError (InvalidRecursiveRecord "a rec … and … group holds struct types only")))
+      members
   in
-  let body_ctx = Ctx.define value_ctx key occ_ty (Ctx.eval ctx occ_term) in
-  let (body_core, body_ty), effects = collecting body_ctx (fun body_ctx -> ops.infer body_ctx value) in
-  emit ctx effects;
-  let core = Let (Ctx.quote ctx occ_ty, occ_term, body_core) in
-  let finished = Ctx.eval ctx core in
-  finish_record id finished;
-  (core, body_ty, finished)
+  let occurrences =
+    List.map
+      (fun (_, name, params, _) ->
+        let id = fresh_record_id () in
+        let n = List.length params in
+        let term = List.fold_right (fun _ acc -> Lam acc) params (RecOcc { id; name; args = List.init n (fun i -> Var (n - 1 - i)) }) in
+        let ty =
+          List.fold_right
+            (fun (param : Syntax.param) acc ->
+              VPi { explicitness = expl_of_syntax param.explicitness; domain = VU;
+                    effects = effect_row_closure [] empty_effect_row;
+                    codomain = { env = []; body = Nbe.quote ctx.Ctx.metas 1 acc } })
+            params VU
+        in
+        (id, term, ty))
+      members
+  in
+  let wrap core = List.fold_right (fun (_, term, ty) acc -> Let (Nbe.quote ctx.Ctx.metas 0 ty, term, acc)) occurrences core in
+  let ctx, results =
+    List.fold_left
+      (fun (ctx, acc) ((key, name, _, value), (id, _, _)) ->
+        let body_ctx =
+          List.fold_left2
+            (fun body_ctx (key, _, _, _) (_, term, ty) -> Ctx.define body_ctx key ty (Nbe.eval ctx.Ctx.metas [] term))
+            (value_ctx ctx) members occurrences
+        in
+        let (body_core, body_ty), effects = collecting body_ctx (fun body_ctx -> ops.infer body_ctx value) in
+        emit ctx effects;
+        let core = wrap body_core in
+        let finished = Ctx.eval ctx core in
+        finish_record id finished;
+        let member = (key, name, core, body_ty, finished) in
+        (extend ctx member, member :: acc))
+      (ctx, []) (List.combine members occurrences)
+  in
+  (ctx, List.rev results)
 
 (* A module or struct member [name = value]: its core, its type, and the value
    the items after it see - evaluated when evaluating it performs nothing,
    otherwise opaque, for evaluating it here would run what it performs. *)
 let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~recursive value =
   match if recursive then struct_type_params value else None with
-  | Some params -> elab_rec_struct ops ctx ~value_ctx ~key ~name params value
+  | Some _ ->
+      let _, members = elab_rec_group ops ctx ~value_ctx:(fun _ -> value_ctx) ~extend:(fun ctx _ -> ctx) [ (key, value) ] in
+      let _, _, core, ty, finished = List.hd members in
+      (core, ty, finished)
   | None ->
   let rec_ty = Ctx.raw_meta ctx in
   let value_ctx = if recursive then Ctx.bind value_ctx key rec_ty else value_ctx in
@@ -91,8 +124,9 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~re
 let elab_rec_let (ops : Elab_ops.t) (ctx : Ctx.t) ~name ~type_ value =
   let annotation = Option.map (fun ty_expr -> let _, _, ty_val = ops.type_value_of_expr ctx ty_expr in ty_val) type_ in
   match struct_type_params value with
-  | Some params ->
-      let core, ty, finished = elab_rec_struct ops ctx ~value_ctx:ctx ~key:name ~name:(Syntax.label name) params value in
+  | Some _ ->
+      let _, members = elab_rec_group ops ctx ~value_ctx:Fun.id ~extend:(fun ctx _ -> ctx) [ (name, value) ] in
+      let _, _, core, ty, finished = List.hd members in
       Option.iter (Ctx.unify ctx ty) annotation;
       (Ctx.quote ctx ty, core, ty, finished)
   | None ->
@@ -292,6 +326,16 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let bind = LetBind (name, kind, val_core) in
       let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
       (ctx', [bind], [ModuleField (name, kind, val_ty)])
+  | Syntax.RecGroupBinding { members; public } ->
+      let kind = if public then Public else Private in
+      let extend ctx (key, name, core, ty, finished) = extend_from_slots ctx (LetBind (name, kind, core)) [ `Entry (key, ty, finished) ] in
+      let ctx', members =
+        elab_rec_group ops ctx ~value_ctx:Ctx.clear_self_scope ~extend
+          (List.map (fun ((n : Syntax.id), v) -> (n.name, v)) members)
+      in
+      ( ctx',
+        List.map (fun (_, name, core, _, _) -> LetBind (name, kind, core)) members,
+        List.map (fun (_, name, _, ty, _) -> ModuleField (name, kind, ty)) members )
   | Syntax.EffectBinding { name = { name = key; _ }; params; ops = eff_ops; public } ->
       let name = Syntax.label key in
       let params = Syntax.names params in
@@ -375,6 +419,18 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | Ap (f, Explicitness.Explicit, a) -> infer_ap ops ctx f a
   | Ap (f, Explicitness.Implicit, a) -> infer_ap_implicit ops ctx f a
+  | LetRecGroup { members; body } ->
+      let body_ctx, members =
+        elab_rec_group ops ctx ~value_ctx:Fun.id ~extend:(fun ctx (key, _, _, ty, finished) -> Ctx.define ctx key ty finished)
+          (List.map (fun ((n : Syntax.id), v) -> (n.name, v)) members)
+      in
+      let body_core, body_ty = ops.infer body_ctx body in
+      let core, _ =
+        List.fold_right
+          (fun (_, _, core, ty, _) (acc, depth) -> (Let (Nbe.quote ctx.metas depth ty, core, acc), depth - 1))
+          members (body_core, ctx.lvl + List.length members - 1)
+      in
+      (core, body_ty)
   | Let { name = { name; _ }; type_; value; body; recursive } ->
       if recursive then begin
         let ty_term, fix_core, rec_ty, fix_val = elab_rec_let ops ctx ~name ~type_ value in
@@ -701,6 +757,16 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
+        | Syntax.RecGroupBinding { members; public } :: rest ->
+            let kind = if public then Public else Private in
+            let extend ctx (key, name, core, ty, finished) = extend_from_slots ctx (LetBind (name, kind, core)) [ `Entry (key, ty, finished) ] in
+            let ctx', members =
+              elab_rec_group ops ctx ~value_ctx:Ctx.clear_self ~extend
+                (List.map (fun ((n : Syntax.id), v) -> (n.name, v)) members)
+            in
+            let binds = List.map (fun (_, name, core, _, _) -> LetBind (name, kind, core)) members in
+            let entries = if public then List.map (fun (_, name, _, ty, _) -> StructField (name, kind, ty)) members else [] in
+            go ~defer ctx' (List.rev_append binds acc_binds, List.rev_append entries acc_entries) rest
         | Syntax.MethodBinding { name = { name = key; _ }; params; body; public } :: rest ->
             let name = Syntax.label key in
             let method_core, method_ty = elaborate_method ctx params body in

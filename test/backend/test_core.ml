@@ -2036,7 +2036,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "one constructor per expression form" 39 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 40 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true

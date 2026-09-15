@@ -1339,6 +1339,9 @@ and parse_do_body_terms env span body_terms =
 
 (* One statement of a block, as the wrapper that scopes it over the rest. *)
 and do_statement env span stmt =
+  match parse_rec_group env stmt with
+  | Some members -> fun acc -> stx ~span (Syntax.LetRecGroup { members; body = acc })
+  | None ->
                 match parse_operator_decl env stmt with
                 | Some { role_name = name; role; macro_value } ->
                     fun acc ->
@@ -1468,7 +1471,35 @@ and parse_macro_call_binding env stmt =
          Syntax.MacroCallBinding { f; args }))
     env stmt
 
+(* [rec A = … and B = …]: a recursive group, its members in order. A lone [rec]
+   binding is not a group. [and] is contextual, as in a type chain. *)
+and parse_rec_group env stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwRec; _ }; _ } :: rest -> (
+      match split_type_chain rest with
+      | [] | [ _ ] -> None
+      | segments ->
+          let members =
+            List.map
+              (fun segment ->
+                match parse_value_decl_after_prefix env ~recursive:true segment with
+                | Some { decl_name; decl_type = Some typ; decl_value; _ } ->
+                    (decl_name, stx ~span:(syntax_span segment) (Syntax.Annotated { inner = decl_value; typ }))
+                | Some { decl_name; decl_type = None; decl_value; _ } -> (decl_name, decl_value)
+                | None -> error "expected name = value in a rec … and … group")
+              segments
+          in
+          let names = List.map (fun ((n : Syntax.id), _) -> n.name) members in
+          (match List.find_opt (fun n -> List.length (List.filter (String.equal n) names) > 1) names with
+           | Some dup -> error ("duplicate name in a rec … and … group: " ^ dup)
+           | None -> ());
+          Some members)
+  | _ -> None
+
 and parse_value_binding env public stmt =
+  match parse_rec_group env stmt with
+  | Some members -> Some (Syntax.RecGroupBinding { members; public })
+  | None ->
   match parse_value_decl_statement env stmt with
   | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
       let value =

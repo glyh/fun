@@ -202,6 +202,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Lam (p, body) -> e "RawLam" [ w_param ns p; x body ]
   | Let { name; type_; value; body; recursive } ->
       e "RawLet" [ w_id ns name; w_option ns x type_; x value; x body; w_bool ns recursive ]
+  | LetRecGroup { members; body } ->
+      e "RawLetRecGroup" [ ids (List.map fst members); w_list ns x (List.map snd members); x body ]
   | Annotated { inner; typ } -> e "RawAnnotated" [ x inner; x typ ]
   | Prod xs -> e "RawProd" [ w_list ns x xs ]
   | ProdTy xs -> e "RawProdTy" [ w_list ns x xs ]
@@ -338,6 +340,8 @@ and w_decl ns (b : Syntax.struct_binding) =
   match b with
   | LetBinding { name; value; public; recursive } ->
       d "DeclLet" [ w_id ns name; w_expr ns value; w_bool ns public; w_bool ns recursive ]
+  | RecGroupBinding { members; public } ->
+      d "DeclRecGroup" [ ids (List.map fst members); w_list ns (w_expr ns) (List.map snd members); w_bool ns public ]
   | MethodBinding { name; params; body; public } ->
       d "DeclMethod" [ w_id ns name; w_list ns (w_param ns) params; w_expr ns body; w_bool ns public ]
   | TypeBinding { members; public } -> d "DeclType" [ w_list ns (w_type_decl ns) members; w_bool ns public ]
@@ -532,6 +536,12 @@ let rec u_expr ns (v : value) : Syntax.t option =
       | "RawAp", [ f; ex; a ] ->
           let* f = x f in let* ex = u_explicitness ns ex in let* a = x a in mk (Ap (f, ex, a))
       | "RawLam", [ p; body ] -> let* p = u_param ns p in let* body = x body in mk (Lam (p, body))
+      | "RawLetRecGroup", [ names; values; body ] ->
+          let* names = ids names in
+          let* values = u_list ns x values in
+          let* body = x body in
+          if List.length names <> List.length values then None
+          else mk (LetRecGroup { members = List.combine names values; body })
       | "RawLet", [ name; ty; value; body; recursive ] ->
           let* name = u_id ns name in
           let* type_ = u_option ns x ty in
@@ -833,6 +843,12 @@ and u_decl ns v : Syntax.struct_binding option =
   | _ -> (
       let* name, args = payload ns.decl v in
       match name, args with
+      | "DeclRecGroup", [ names; values; public ] ->
+          let* names = u_list ns (u_id ns) names in
+          let* values = u_list ns (u_expr ns) values in
+          let* public = u_bool ns public in
+          if List.length names <> List.length values then None
+          else Some (Syntax.RecGroupBinding { members = List.combine names values; public })
       | "DeclLet", [ name; value; public; recursive ] ->
           let* name = u_id ns name in
           let* value = u_expr ns value in

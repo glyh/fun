@@ -129,6 +129,7 @@ pub Syntax = module {
     | RawAp(Option(Span), Expr, Explicitness, Expr)
     | RawLam(Option(Span), Param, Expr)
     | RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool)
+    | RawLetRecGroup(Option(Span), List(Id), List(Expr), Expr)
     | RawAnnotated(Option(Span), Expr, Expr)
     | RawProd(Option(Span), List(Expr))
     | RawProdTy(Option(Span), List(Expr))
@@ -194,6 +195,7 @@ pub Syntax = module {
   and PatField = MkPatField(String, Option(Pattern))
   and Decl =
     | DeclLet(Id, Expr, Bool, Bool)
+    | DeclRecGroup(List(Id), List(Expr), Bool)
     | DeclMethod(Id, List(Param), Expr, Bool)
     | DeclType(List(TypeDecl), Bool)
     | DeclEffect(Id, List(Id), List(EffectOp), Bool)

@@ -527,6 +527,25 @@ let structs =
               (String.equal msg "recursive occurrence Numbers vs recursive occurrence Scores")
         | exception e -> Alcotest.fail ("unexpected " ^ Printexc.to_string e)
         | _ -> Alcotest.fail "same-shape recursive records unified");
+    Alcotest.test_case "mutually recursive records hold each other" `Quick
+      (eval_i64
+         "{ rec A = struct { n : I64; b : Option(B) } and B = struct { m : I64; a : Option(A) }; \
+          a0 = A{ n = 1, b = None }; b1 = B{ m = 2, a = Some(a0) }; a2 = A{ n = 3, b = Some(b1) }; \
+          match (a2.b) { Some(b) => match (b.a) { Some(a) => a.n + b.m, None => 0 }, None => 0 } }"
+         3L);
+    Alcotest.test_case "a module's mutually recursive records" `Quick
+      (eval_i64
+         "{ M = module { pub rec A = struct { b : Option(B) } and B = struct { n : I64; a : Option(A) } }; \
+          (M.B{ n = 5, a = Some(M.A{ b = None }) }).n }"
+         5L);
+    Alcotest.test_case "a rec … and … group holds struct types only" `Quick
+      (elab_fail "{ rec A = struct { b : Option(B) } and B = fn(x : I64) { x }; 1 }");
+    Alcotest.test_case "a recursive record holds itself at run time" `Quick
+      (eval_i64
+         "{ rec Numbers = struct { head : I64; tail : Option(Numbers) }; \
+          l2 = Numbers{ head = 2, tail = Some(Numbers{ head = 40, tail = None }) }; \
+          match (l2.tail) { Some(x) => x.head + l2.head, None => 0 } }"
+         42L);
     Alcotest.test_case "same-shape plain records unify" `Quick
       (check_type "{ P = struct { x : I64 }; Q = struct { x : I64 }; q : Q = P{ x = 3 }; q.x }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "method uses self" `Quick
