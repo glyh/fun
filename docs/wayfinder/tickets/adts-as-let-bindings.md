@@ -104,3 +104,14 @@ hole rules; `type` lexes as a keyword. Decided:
 - Type parameters become E11 captures (`Option = fn(A : Type) { enum … }`),
   reaching `VNominal.params`, `build_ctor`, refinement, unification, quoting and
   reflection — expect several green steps.
+
+## Step 2 implemented (2026-09-16, branch `macro-pub-rest-hole`)
+
+- `pub` before a syntax form or declaration macro call makes all its returned
+  declarations public.
+- `$(rest : List(TokenTree))` — last hole of a `: Decl` rule — captures the rest
+  of the use unread; `(ts : List(TokenTree))` parameters take an argument's
+  tokens; `{ count($rest) }` in a replacement passes them on.
+- `type` lexes as an identifier; the built-in declaration is the base role
+  `TypeDeclaration` (shadowable by a user form).
+Step 3 (the prelude `type` macro and migration) remains.

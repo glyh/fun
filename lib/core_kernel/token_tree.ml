@@ -20,7 +20,6 @@ type token_kind =
   | KwMatch
   | KwWith
   | KwEffect
-  | KwType
   | KwModule
   | KwStruct
   | KwImpl
@@ -101,7 +100,7 @@ let group delimiter items span = { datum = Group (delimiter, items, span); span 
 let keyword_spellings =
   [ (KwLet, "let"); (KwFun, "fun"); (KwThen, "then"); (KwSig, "sig"); (KwFn, "fn"); (KwDo, "do");
     (KwEnd, "end"); (KwElse, "else"); (KwMatch, "match"); (KwWith, "with"); (KwEffect, "effect");
-    (KwType, "type"); (KwModule, "module"); (KwStruct, "struct"); (KwImpl, "impl"); (KwTrait, "trait");
+    (KwModule, "module"); (KwStruct, "struct"); (KwImpl, "impl"); (KwTrait, "trait");
     (KwPub, "pub"); (KwImport, "import"); (KwOpen, "open"); (KwMacro, "macro"); (KwPattern, "pattern");
     (KwSelf, "self"); (KwSelfType, "Self"); (KwRef, "ref"); (KwDeref, "deref"); (KwRec, "rec");
     (KwCan, "can"); (KwPerform, "perform"); (KwResume, "resume"); (KwMethod, "method"); (KwUnit, "Unit") ]

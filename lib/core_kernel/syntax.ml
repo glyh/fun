@@ -79,7 +79,8 @@ and struct_binding =
   | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option; output : t option }
       (** [output] is the [T] of a [: Expr(T)] annotation - the type its output
           promises; [None] for [: Expr(_)], [: Decl] or none. *)
-  | MacroCallBinding of { f : t; args : capture list }
+  | MacroCallBinding of { f : t; args : capture list; public : bool }
+      (** [pub] on a call makes every declaration it returns public. *)
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
   | FieldBinding of { name : string; type_ : t }
       (** A struct field [name : type_]. Its type sees the items written before
@@ -100,9 +101,10 @@ and struct_binding =
   | Items of Token_tree.t list
       (** Declarations not read yet: a definition context's remaining items,
           enforested one form at a time as expansion reaches them (M9). *)
-  | InstantiateBinding of instantiation
+  | InstantiateBinding of { inst : instantiation; public : bool }
       (** A declaration syntax form's use, filled and expanded like a macro
-          application (M9). *)
+          application (M9). [pub] on the use makes every declaration it returns
+          public. *)
 
 (** A syntactic role (M7): what a binder means to the enforester. *)
 and role = {
@@ -138,6 +140,9 @@ and role_meaning =
   | Rules of { rules_kind : MacroAnnotation.t; rules : rule list }
       (** a syntax form: a macro whose rules match tokens and fill a quote (M9) *)
   | OrderGroup  (** an order group's name, [order] its declaration *)
+  | TypeDeclaration
+      (** [type A = … and B = …]: the built-in type declaration, a base role so
+          [type] is an ordinary identifier a user form may shadow *)
 
 (** One rule: the tokens a use consumes and what each hole captures, and the
     replacement - quoted syntax parsed where the rule is written. *)
@@ -149,7 +154,7 @@ and rule_part =
   | PartHole of { hole : string; hole_kind : hole_kind; hole_span : Source_span.t }
 
 (** What a hole captures: the reflection types (M10). *)
-and hole_kind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern
+and hole_kind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern | HoleTokens
 
 and rule_replacement = ReplaceExpr of t | ReplaceDecls of struct_binding list
 
@@ -170,6 +175,9 @@ and capture =
   | CapPattern of pat
   | CapDecls of struct_binding list
   | CapDecl of struct_binding  (** a macro parameter [(d : Decl)]: exactly one declaration *)
+  | CapTokens of Token_tree.t list
+      (** [List(TokenTree)]: the rest of a declaration use (or a whole macro
+          argument) unread; the macro reads the tokens itself *)
 
 and t = {
   kind : kind;
@@ -391,7 +399,7 @@ let hole_kind_of_name = function
   | _ -> None
 
 let hole_kind_name = function
-  | HoleExpr -> "Expr" | HoleBlock -> "Block" | HoleId -> "Id" | HoleDecl -> "List(Decl)" | HoleOneDecl -> "Decl" | HolePattern -> "Pattern"
+  | HoleExpr -> "Expr" | HoleBlock -> "Block" | HoleId -> "Id" | HoleDecl -> "List(Decl)" | HoleOneDecl -> "Decl" | HolePattern -> "Pattern" | HoleTokens -> "List(TokenTree)"
 
 (* The id an identifier or operator token names. *)
 let token_id (tok : Token_tree.token) =
@@ -415,6 +423,11 @@ let macro_params (value : t) : hole_kind list * t =
     | Some { kind = Ap ({ kind = Var { name = "List"; _ }; _ }, Explicitness.Explicit, { kind = Var ({ name = "Decl"; _ } as written); span }); span = ty_span } ->
         let syntax = { written with name = Compiler_names.Module_name.syntax } in
         (HoleDecl, Some { kind = FieldAccess ({ kind = Var syntax; span }, "Decls"); span = ty_span })
+    (* [(ts : List(TokenTree))]: the argument's tokens, unread. *)
+    | Some ({ kind = Ap (list, Explicitness.Explicit, { kind = Var ({ name = "TokenTree"; _ } as written); span }); _ } as ty)
+      when (match list.kind with Var { name = "List"; _ } -> true | _ -> false) ->
+        let syntax = { written with name = Compiler_names.Module_name.syntax } in
+        (HoleTokens, Some { ty with kind = Ap (list, Explicitness.Explicit, { kind = FieldAccess ({ kind = Var syntax; span }, "TokenTree"); span }) })
     | Some ({ kind = Var ({ name; _ } as written); span } as ty) -> (
         match hole_kind_of_name name with
         | Some kind ->
@@ -533,3 +546,22 @@ let rec path_of_form (stx : t) : path option =
 (* A struct whose items are exactly these fields: a record declaration's body. *)
 let struct_of_fields (fields : (string * t) list) =
   Struct { bindings = List.map (fun (name, type_) -> FieldBinding { name; type_ }) fields }
+
+(* [pub] on a declaration macro's use: the declaration made public. A call or
+   form it returns carries it on to what that returns; a field, open or hole has
+   no publicity. *)
+let publish (b : struct_binding) : struct_binding =
+  match b with
+  | LetBinding r -> LetBinding { r with public = true }
+  | RecGroupBinding r -> RecGroupBinding { r with public = true }
+  | MethodBinding r -> MethodBinding { r with public = true }
+  | TypeBinding r -> TypeBinding { r with public = true }
+  | EffectBinding r -> EffectBinding { r with public = true }
+  | TraitBinding r -> TraitBinding { r with public = true }
+  | ImplBinding r -> ImplBinding { r with public = true }
+  | MacroBinding r -> MacroBinding { r with public = true }
+  | MacroCallBinding r -> MacroCallBinding { r with public = true }
+  | PatternSynBinding r -> PatternSynBinding { r with public = true }
+  | SyntaxBinding r -> SyntaxBinding { r with public = true }
+  | InstantiateBinding r -> InstantiateBinding { r with public = true }
+  | FieldBinding _ | OpenBinding _ | HoleBinding _ | Items _ -> b

@@ -50,7 +50,9 @@ let base_roles (tbl : Binding.t) =
   Binding.extend tbl ~name:"assignment" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"assignment"
     ~role:(Binding.role ~fixity:Syntax.PrefixOp ~order:assignment_order Syntax.OrderGroup);
   Binding.extend tbl ~name:"<-" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"<-"
-    ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef)
+    ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef);
+  Binding.extend tbl ~name:"type" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"type"
+    ~role:(Binding.role ~fixity:Syntax.PrefixOp Syntax.TypeDeclaration)
 
 (* Where an expression is read, which decides what may continue it. Precedence
    among operators is relative (brackets-decide-grouping): an operand continues
@@ -176,7 +178,6 @@ let token_text (term : Raw_syntax.t) =
   | Token { kind = KwRef; _ } -> Some "ref"
   | Token { kind = KwModule; _ } -> Some "module"
   | Token { kind = KwStruct; _ } -> Some "struct"
-  | Token { kind = KwType; _ } -> Some "type"
   | Token { kind = KwEffect; _ } -> Some "effect"
   | Token { kind = KwTrait; _ } -> Some "trait"
   | Token { kind = KwImpl; _ } -> Some "impl"
@@ -198,7 +199,6 @@ let keyword_name = function
   | KwMatch -> Some "match"
   | KwWith -> Some "with"
   | KwEffect -> Some "effect"
-  | KwType -> Some "type"
   | KwModule -> Some "module"
   | KwStruct -> Some "struct"
   | KwImpl -> Some "impl"
@@ -250,7 +250,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 
 let is_expr_start env term =
   match term.datum with
-  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwType | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
+  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwMacro | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
   | Token { kind = Operator s; scope; _ } -> Option.is_some (Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false

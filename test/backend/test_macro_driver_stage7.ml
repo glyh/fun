@@ -63,7 +63,7 @@ let test_decl_macro_exhausts_budget () =
   bind_macro ctx "gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VAtom Unit);
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
-  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = []; public = false } in
   expect_budget_exceeded ~call:"macro 'gen'" (fun () ->
       with_limit ctx 0 (fun () -> Expand.expand_struct_bindings ctx [ call ]))
 
