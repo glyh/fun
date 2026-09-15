@@ -383,9 +383,6 @@ and head =
   | HVar of lvl
   | HMeta of meta_id
   | HPrim of string
-  | HFix of string * closure
-      (** A fixpoint the checker would not unfold: its call mentions an unknown
-          variable, so evaluating it could diverge (see [Eval_budget]). *)
 and spine = value list
 
 and cont = { mutable used : bool; resume : value -> result }

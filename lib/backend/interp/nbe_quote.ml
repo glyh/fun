@@ -155,7 +155,6 @@ and quote_neutral ops (mc : MetaContext.t) (depth : lvl) (neu : neutral) : term 
     | HVar l -> Var (lvl_to_ix depth l)
     | HMeta id -> Meta id
     | HPrim name -> Prim name
-    | HFix (name, clo) -> quote ops mc depth (VFix { name; body = clo })
   in
   quote_frames ops mc depth head_term neu.frames
 
@@ -319,7 +318,6 @@ and conv_neutral ops (mc : MetaContext.t) (depth : lvl) (n1 : neutral) (n2 : neu
     | HVar l1, HVar l2 -> l1 = l2
     | HMeta id1, HMeta id2 -> id1 = id2
     | HPrim n1, HPrim n2 -> String.equal n1 n2
-    | HFix (name, c1), HFix (_, c2) -> conv ops mc depth (VFix { name; body = c1 }) (VFix { name; body = c2 })
     | _ -> false
   in
   heads_eq && conv_frames ops mc depth n1.frames n2.frames

@@ -105,7 +105,6 @@ let env_value_label (v : value) =
   | VNeutral { neutral = { head = HPrim n; _ }; _ } -> "VNeutral(HPrim " ^ n ^ ")"
   | VNeutral { neutral = { head = HVar lvl; _ }; _ } -> "VNeutral(HVar " ^ string_of_int lvl ^ ")"
   | VNeutral { neutral = { head = HMeta id; _ }; _ } -> "VNeutral(HMeta " ^ string_of_int id ^ ")"
-  | VNeutral { neutral = { head = HFix _; _ }; _ } -> "VNeutral(HFix)"
   | VRigid { lvl; _ } -> "VRigid(" ^ string_of_int lvl ^ ")"
   | VFlex { id; _ } -> "VFlex(" ^ string_of_int id ^ ")"
   | VEffectRowTy -> "VEffectRowTy"

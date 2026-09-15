@@ -1585,14 +1585,14 @@ let evaluation_budget =
           while reading the type at <unknown>:1:57-1:64 (the budget cannot yet be raised from source)");
     Alcotest.test_case "a divergent type is a budget error" `Quick
       (budget_exceeded "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(y : loop(0)) { 1 }; 2 }");
-    Alcotest.test_case "a call mentioning an unknown variable costs nothing" `Quick
-      (elab_ok "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(n : I64, y : loop(n)) { 1 }; 2 }");
-    Alcotest.test_case "a call passing a closure that captures an unknown variable costs nothing" `Quick
-      (elab_ok "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { n })) { 1 }; 2 }");
-    Alcotest.test_case "a call passing a closure that ignores the unknown variables still evaluates" `Quick
-      (budget_exceeded "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { z })) { 1 }; 2 }");
-    Alcotest.test_case "a stuck call is convertible with itself" `Quick
-      (elab_ok "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(n : I64, y : loop(n)) { (y : loop(n)) }; 2 }");
+    Alcotest.test_case "a recursive call on an unknown variable unfolds" `Quick
+      (elab_ok "{ rec double : I64 -> I64 = fn(n) { n + n }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(double(n))) { (y : F(n + n)) }; 2 }");
+    Alcotest.test_case "a divergent call on an unknown variable is a budget error" `Quick
+      (budget_exceeded "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(n : I64, y : loop(n)) { 1 }; 2 }");
+    Alcotest.test_case "a call passing a closure that captures an unknown variable unfolds too" `Quick
+      (budget_exceeded "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { n })) { 1 }; 2 }");
+    Alcotest.test_case "a recursive call through another on an unknown variable unfolds" `Quick
+      (elab_ok "{ rec inc : I64 -> I64 = fn(n) { n + 1 }; rec twice_inc : I64 -> I64 = fn(n) { inc(inc(n)) }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(twice_inc(n))) { (y : F(n + 1 + 1)) }; 2 }");
     Alcotest.test_case "a closed call still evaluates" `Quick
       (elab_ok "{ rec k : I64 -> Type = fn(n) { if (n == 0) { I64 } else { k(n - 1) } }; g = fn(y : k(3)) { y + 1 }; 2 }");
     Alcotest.test_case "running a program is not budgeted" `Quick (fun () ->

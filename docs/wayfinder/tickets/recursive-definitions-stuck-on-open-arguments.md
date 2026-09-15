@@ -61,3 +61,32 @@ g : (n : I64) -> Vec(fact(n)) -> I64            // error: evaluation budget exce
 - Considered and rejected: unfold once (needs the mutual-recursion rule);
   budget exhaustion leaves the call stuck (type equality would depend on the
   budget size).
+
+## Implemented (2026-09-15), one question open
+
+- `HFix`, `Nbe.closed`/`closure_closed`/`closure_slots` and
+  `Eval_budget.checking` are deleted: a fixpoint unfolds on any argument.
+- A unification is now one budget request (`Ctx.unify`/`try_unify`); before,
+  each closure evaluation inside it refilled the budget, so a divergent
+  conversion never ran out.
+- Tests: `double(n)` converts with `n + n`; a call through another recursive
+  definition unfolds; `loop(n)` in a parameter type and a closure capturing an
+  unknown variable are budget errors. (There is no value-level `rec … and …`,
+  so no mutual group rule is needed.)
+
+**Open — decide before closing:** recursion under a stuck branch is a budget
+error in principle but not in practice.
+
+```fun
+rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } };
+F = fn(m : I64) { if (m == 4) { I64 } else { Bool } };
+g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }   // conversion unfolds fact under the neutral if
+```
+
+Evaluating `fact(n)` stops at the neutral `if`, but converting it with itself
+opens both branches and unfolds `fact(n - 1)`, and so on. Each step costs
+O(depth) (list-indexed environments under growing binders): 32,768 unfoldings
+take ~15 s, so reaching the 1,000,000-call budget takes hours. Options: a much
+smaller checker budget; charge by work (e.g. depth) not calls; compare two
+identical neutral fixpoint applications without unfolding (syntactic equality
+first); or accept.
