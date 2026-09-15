@@ -151,3 +151,15 @@ captured continuation is a slice of the frame stack, which is how effect handler
 (deep, one-shot, tunneling hop counts) are implemented. The elaborator may still
 recurse natively over syntax (its depth is program-text depth, not run-time depth)
 — revisit only if deeply nested source hits it.
+
+## Decided (2026-09-16): conformance suite plus C# unit tests
+
+- **Shared conformance suite** for language behaviour: each test is a `.fun`
+  program plus an expected result (`.expect`: a value, or an error class and
+  message), under `tests/conformance/<area>/`. Both implementations have a small
+  runner; the port is complete when C# passes every file OCaml passes. Extract the
+  current Alcotest cases that are "source string → value/error" into it (scripted
+  where possible) before porting.
+- **C# unit tests (xUnit)** for implementation internals that are not observable
+  as a program's result — enforester/syntax shapes, reflection round trips, NbE
+  and unifier internals, budget accounting — mirroring the OCaml internal tests.
