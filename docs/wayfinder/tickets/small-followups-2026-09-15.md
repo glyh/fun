@@ -27,13 +27,13 @@ blocked_by:
    body is checked against it. Applies to `fn`, `method` and macro bodies alike.
 6. **`Tuple(0 - 1)` escapes the checker as `EvalError`**, as a `panic` in a type
    does: evaluation errors during checking should be elaboration errors.
-7. **Refs: error text shows the heap, not the ref** — `Mutate(?130)` instead of
+7. **Done 2026-09-15.** **Refs: error text shows the heap, not the ref** — `Mutate(?130)` instead of
    `Mutate(r)` (refs-effect-rows run).
-8. **Refs: discharge only at function boundaries and the entry**, not at any
+8. **Done 2026-09-15 (a `let`/block discharges too).** **Refs: discharge only at function boundaries and the entry**, not at any
    `let` / block whose result and captures don't mention the heap as grilled.
-9. **Refs: the alias check scans every older meta** per candidate heap
+9. **Done 2026-09-15 (one pass, `Elab_effects.local_heaps`).** **Refs: the alias check scans every older meta** per candidate heap
    (`ponytail:` marked) — quadratic.
-10. **`EffectRef` finds its family by name**, so a user `effect Mutate` could
+10. **Done 2026-09-15 (`EffectRef` carries the id).** **`EffectRef` finds its family by name**, so a user `effect Mutate` could
     shadow the built-in — M12 survivor; resolve the built-in family by identity.
 
 ## Done (2026-09-15, branch small-followups)
@@ -66,3 +66,12 @@ addition trait that combines bounds, so the elaborator no longer recognises the
 spelling `+`. Unlike `*` on types (rejected because `A * B * C` could not mean a
 flat tuple), combining bounds is associative and unambiguous once the operand
 types are known.
+
+### Item 4: not implemented — open question (effects-followups run, 2026-09-15)
+
+`+` is today the I64 primitive (`Nbe_prim` `"+"`, `infix (+) additive`), not a
+trait method. "An ordinary `+` via a prelude impl on traits" needs `+` to be
+trait-dispatched for every type (an `Add` trait with an `I64` impl, changing all
+arithmetic), and a value for `Eq + Show` (a bound set) that `[A : …]` reads.
+Decide: make `+` a trait method language-wide, or give bound sets another
+non-overloaded form. Spelling recognition in `trait_bound_forms` stays until then.

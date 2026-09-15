@@ -528,9 +528,11 @@ What remains, in the recommended order:
 ### Found by the domain-model audit (2026-09-15)
 
 - [Effects follow-ups from tunneling](tickets/effects-followups-tunneling.md)
-  — `resume` skips the value branch (bug), family-vs-instance routing, E6 via refs.
+  — `resume` value branch, instance routing, E6 via refs and the pure-branch
+  shape done; open: unsolved `can _` at generalisation, `can any` semantics.
 - [Small follow-ups](tickets/small-followups-2026-09-15.md)
-  — `self.a(2)` crash, method row scope, `$(d : Decl)` hole kind, `+` bound by spelling.
+  — refs items 7–10 done (error names the ref, let/block discharge, one-pass
+  alias check, `EffectRef` by id); open: `+` on traits needs `+` trait-dispatched.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)

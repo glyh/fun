@@ -10,6 +10,19 @@ Last updated: after applicative nominal identity, 2026-09-15.
 ## Completed
 
 
+### Effects follow-ups (2026-09-16)
+
+- **Tunneling by lexical handler and instance.** A call with an open row is
+  `Tunnel { named; handlers }`; a request whose effect instance (family and
+  parameters) its row does not name passes the handlers lexically enclosing the
+  call (`effect_request.skips`; each `EffectBranch` carries its handler id).
+- **E6 through outer references:** storing a closure that names a handled effect
+  into a reference not local to the match is `HandledEffectEscapes`; so is the
+  shape where another branch fixed the closure's row.
+- **Refs:** an unhandled `Mutate` names the reference (`effect Mutate(r)`); a
+  `let` or block with private mutation discharges its local heaps; local-heap
+  detection is one pass over older metas; `EffectRef` carries the effect's id.
+
 ### E11: captures from the enclosing scope; generative modules sealed (2026-09-16)
 
 - A nominal captures the variables its enclosing module or function body names
