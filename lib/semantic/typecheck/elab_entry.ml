@@ -33,7 +33,7 @@ let init_ctx () : Ctx.t =
   let family = VEffect { id = mutate_effect_id; name = mutate; params = []; operations = [] } in
   let ctx = Ctx.define ctx Compiler_names.Effect_name.mutate_family VU family in
   let mutate_ty = Ctx.eval ctx (pi Implicit U (pi Implicit U (pi Explicit (RefTy (Var 1, Var 0)) U))) in
-  let ctx = Ctx.define ctx mutate mutate_ty (Ctx.eval ctx (Lam (Lam (Lam (EffectRef (mutate, [ Var 2 ])))))) in
+  let ctx = Ctx.define ctx mutate mutate_ty (Ctx.eval ctx (Lam (Lam (Lam (EffectRef { id = mutate_effect_id; name = mutate; params = [ Var 2 ] }))))) in
   let ctx =
     NameMap.fold
       (fun name ty ctx ->

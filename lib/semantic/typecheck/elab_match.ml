@@ -220,7 +220,7 @@ let residual_effects ctx scrutinee_effects effect_branches =
     scrutinee_effects
     (handled_effects ctx scrutinee_effects effect_branches)
 
-let elaborate_effect_branch ops ctx ret_ty residual scrutinee_effects branch =
+let elaborate_effect_branch ops ~handler_ctx ctx ret_ty residual scrutinee_effects branch =
   let _effect_core, effect_value, input_ty, output_ty =
     resolve_effect_branch_operation ctx scrutinee_effects branch
   in
@@ -234,53 +234,84 @@ let elaborate_effect_branch ops ctx ret_ty residual scrutinee_effects branch =
   in
   let body_ctx, resume_entry = Ctx.bind_anonymous arg_ctx cont_ty in
   let body_core = ops.check { body_ctx with Ctx.resume_entry = Some resume_entry } branch.body ret_ty in
-  EffectBranch { eff = effect_value; op = branch.op; arg_pat = core_pat; body = body_core }
+  EffectBranch { handler = List.hd handler_ctx.Ctx.handler_scopes; eff = effect_value; op = branch.op; arg_pat = core_pat; body = body_core }
 
-(* The effect families a match's effect branches handle: the scope its scrutinee
-   and branch bodies elaborate in, for tunneling (E5). *)
-let handler_scope ctx (branches : Syntax.match_branch list) =
-  effect_branches_of branches
-  |> List.filter_map (fun branch ->
-         let _core, value, _input, _output = resolve_perform_operation ctx branch.op_path in
-         match Nbe.force ctx.Ctx.metas value with VEffect { id; _ } -> Some id | _ -> None)
-  |> List.sort_uniq compare
+let next_handler = ref 0
 
+(* A match with effect branches is a handler: its scrutinee and branch bodies
+   elaborate inside it, for tunneling (E5). *)
 let with_handler ctx branches =
-  match handler_scope ctx branches with
+  match effect_branches_of branches with
   | [] -> ctx
-  | scope -> { ctx with Ctx.handler_scopes = scope :: ctx.Ctx.handler_scopes }
+  | _ ->
+      incr next_handler;
+      { ctx with Ctx.handler_scopes = !next_handler :: ctx.Ctx.handler_scopes }
 
-(* E6: a match's result may not carry a function whose row names an effect
-   family the match handles - the closure would escape its handler. A saved
-   continuation is fine: its row is the residual, without the handled effects.
-   ponytail: looks through arrows, tuples, nominal parameters, refs and struct
-   fields of the result type only; an escape through an outer ref's type is not
-   checked. *)
-let check_handled_effects_do_not_escape ctx branches ret_ty =
-  match handler_scope ctx branches with
-  | [] -> ()
-  | ids ->
-      let metas = ctx.Ctx.metas in
-      let named v =
-        match Nbe.force metas v with
-        | VEffect { id; name; _ } when List.mem id ids -> Some name
-        | _ -> None
-      in
-      let rec escaping lvl ty =
-        match Nbe.force metas ty with
-        | VPi { domain; effects; codomain; _ } -> (
-            let x = VRigid { lvl; spine = [] } in
-            match List.find_map named (Nbe.eval_effect_row_closure metas effects x).effect_values with
+(* E6: no value carrying a function whose row names an effect instance a match
+   handles may leave the handler's scope - the closure would escape its
+   handler. It leaves through the match's result, or through a reference that
+   existed before the match (its heap is not local to it). A saved continuation
+   is fine: its row is the residual, without the handled effects. The guard is
+   taken where the match begins; the check runs on its elaborated branches, and
+   also names the escape when a branch's closure was already rejected for an
+   effect its row cannot show because another branch fixed that row. *)
+let escape_guard ctx =
+  let since = MetaContext.count ctx.Ctx.metas in
+  let stored_before = List.length ctx.Ctx.sink.stored in
+  let metas = ctx.Ctx.metas in
+  let named handled v =
+    match Nbe.force metas v with
+    | VEffect { name; _ } when List.exists (Ctx.conv ctx v) handled -> Some name
+    | _ -> None
+  in
+  let rec escaping handled lvl ty =
+    match Nbe.force metas ty with
+    | VPi { domain; effects; codomain; _ } -> (
+        let x = VRigid { lvl; spine = [] } in
+        match List.find_map (named handled) (Nbe.eval_effect_row_closure metas effects x).effect_values with
+        | Some _ as found -> found
+        | None -> (
+            match escaping handled lvl domain with
             | Some _ as found -> found
-            | None -> (
-                match escaping lvl domain with
-                | Some _ as found -> found
-                | None -> escaping (lvl + 1) (Nbe.closure_apply metas codomain x)))
-        | VProdTy tys -> List.find_map (escaping lvl) tys
-        | VNominal { captures; params; _ } -> List.find_map (escaping lvl) (captures @ params)
-        | VRefTy (_, elem) -> escaping lvl elem
-        | VStruct { entries; _ } ->
-            List.find_map (function StructField (_, _, t) -> escaping lvl t | StructImpl _ -> None) entries
-        | _ -> None
+            | None -> escaping handled (lvl + 1) (Nbe.closure_apply metas codomain x)))
+    | VProdTy tys -> List.find_map (escaping handled lvl) tys
+    | VNominal { captures; params; _ } -> List.find_map (escaping handled lvl) (captures @ params)
+    | VRefTy (_, elem) -> escaping handled lvl elem
+    | VStruct { entries; _ } ->
+        List.find_map (function StructField (_, _, t) -> escaping handled lvl t | StructImpl _ -> None) entries
+    | _ -> None
+  in
+  let escapes name = raise (ElabError (HandledEffectEscapes name)) in
+  let check handled ret_ty =
+    if handled <> [] then begin
+      Option.iter escapes (escaping handled ctx.Ctx.lvl ret_ty);
+      let stored = ctx.Ctx.sink.stored in
+      let fresh = List.filteri (fun i _ -> i < List.length stored - stored_before) stored in
+      let local = local_heaps ctx ~since in
+      List.iter
+        (fun (heap, ty) -> if Option.is_none (local heap) then Option.iter escapes (escaping handled ctx.Ctx.lvl ty))
+        fresh
+    end
+  in
+  (* Error translation, not dispatch: a branch closure rejected because another
+     branch fixed its row to one without a handled effect is that escape. *)
+  let within handled elaborate_branches =
+    try elaborate_branches ()
+    with ElabError (UnhandledEffects names) as err -> (
+      let handled_names =
+        List.map (fun v -> (Debug.pp_value_short metas v, v)) handled
       in
-      Option.iter (fun name -> raise (ElabError (HandledEffectEscapes name))) (escaping ctx.Ctx.lvl ret_ty)
+      match List.find_map (fun n -> List.assoc_opt n handled_names) names with
+      | Some v -> (match Nbe.force metas v with VEffect { name; _ } -> escapes name | _ -> raise err)
+      | None -> raise err)
+  in
+  (within, check)
+
+(* The effect instances a match's effect branches handle, resolved against what
+   its scrutinee performs. *)
+let handled_instances ctx scrutinee_effects effect_branches =
+  List.map
+    (fun branch ->
+      let _core, value, _input, _output = resolve_effect_branch_operation ctx scrutinee_effects branch in
+      value)
+    effect_branches

@@ -32,7 +32,7 @@ and pp_term (t : term) : string =
   | Meta id -> Printf.sprintf "Meta(%d)" id
   | InsertedMeta (id, _) -> Printf.sprintf "IMeta(%d)" id
   | NomRef { name; params = args; _ } -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
-  | EffectRef (name, args) -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
+  | EffectRef { name; params = args; _ } -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
   | TraitRef { trait_name; _ } -> Printf.sprintf "TraitRef(%s)" trait_name
   | TraitDictTy { trait_name; args; _ } ->
       Printf.sprintf "TraitDictTy(%s, [%s])" trait_name (String.concat "," (List.map pp_term args))
@@ -41,7 +41,7 @@ and pp_term (t : term) : string =
   | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
   | Perform { eff; op; arg } ->
       Printf.sprintf "Perform(%s.%s, %s)" (pp_term eff) op (pp_term arg)
-  | Tunnel (_, body) -> Printf.sprintf "Tunnel(%s)" (pp_term body)
+  | Tunnel { body; _ } -> Printf.sprintf "Tunnel(%s)" (pp_term body)
   | RefTy (h, a) -> Printf.sprintf "RefTy(%s, %s)" (pp_term h) (pp_term a)
   | RefNew e -> Printf.sprintf "RefNew(%s)" (pp_term e)
   | RefGet e -> Printf.sprintf "RefGet(%s)" (pp_term e)

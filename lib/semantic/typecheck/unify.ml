@@ -188,7 +188,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         NomRef { id = n.id; name = n.name; num_params = n.num_params;
                  captures = List.map (go d) n.captures; params = List.map (go d) n.params }
     | VEffect e ->
-        EffectRef (e.name, List.map (go d) e.params)
+        EffectRef { id = e.id; name = e.name; params = List.map (go d) e.params }
     | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }
     | VTraitDict dict ->
         TraitDictTy
