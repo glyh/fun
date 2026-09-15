@@ -122,3 +122,13 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
 - **`Decl` parameters** (merged, 09edfdb) questions: a `Decl` argument arrives as one unread
   `DeclItems` (no per-item inspection without an `expand_block`-like reader); a
   `$d` hole accepts only a list.
+
+## Grilled after implementation (2026-09-15)
+
+- **`<-` gets its own group, weakest, and does not chain.** `r <- x + 1` is
+  `r <- (x + 1)`; `a <- b <- c` is an error (it would store `Unit`). This needs a
+  non-associative option on groups, `assoc(none)`. Not implemented yet.
+- **A `Decl` hole that is not last takes one `{ … }` group** of declarations:
+  `with_decls { x = 1; y = 2 } in x + y` (already what the order-groups run built).
+- **`Std.additive`** (a group through a module path) is decided (groups are
+  ordinary binders); only the parsing is missing.
