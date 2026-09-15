@@ -87,6 +87,15 @@ let discharge_local_heaps ctx ~since ~(visible : term list) effects =
   let observable eff = match local_heap eff with Some m -> List.exists (mentions m) visible | None -> true in
   { effects with effects = List.filter observable effects.effects }
 
+(* [f] elaborates a binding form; heaps it allocated that its result (what
+   [visible_of] quotes) does not mention are dropped from what it performed, as at
+   a function boundary: a [let] or block with private mutation is pure. *)
+let discharging ctx ~visible_of f =
+  let since = MetaContext.count ctx.Ctx.metas in
+  let result, effects = collecting ctx f in
+  emit ctx (discharge_local_heaps ctx ~since ~visible:(visible_of result) effects);
+  result
+
 (* An effect as an error names it: [Mutate] on a heap names a reference in
    scope on that heap ([effect Mutate(r)]), not the hidden heap. *)
 let describe_effect ctx eff =

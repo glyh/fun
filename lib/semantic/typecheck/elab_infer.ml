@@ -496,6 +496,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       in
       (core, body_ty)
   | Let { name = { name; _ }; type_; value; body; recursive } ->
+      discharging ctx ~visible_of:(fun (_, body_ty) -> [ Nbe.quote ctx.metas (ctx.lvl + 1) body_ty ]) @@ fun ctx ->
       if recursive then begin
         let ty_term, fix_core, rec_ty, fix_val = elab_rec_let ops ctx ~name ~type_ value in
         let ctx' = Ctx.define ctx name rec_ty fix_val in

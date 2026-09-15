@@ -82,6 +82,7 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       let cores = List.map2 (ops.check ctx) elems tys in
       Prod cores
   | Let { name = { name; _ }; type_; value; body; recursive }, _ ->
+      discharging ctx ~visible_of:(fun _ -> [ Ctx.quote ctx expected ]) @@ fun ctx ->
       if recursive then begin
         let ty_term, fix_core, rec_ty, fix_val = Elab_infer.elab_rec_let ops ctx ~name ~type_ value in
         let ctx' = Ctx.define ctx name rec_ty fix_val in
