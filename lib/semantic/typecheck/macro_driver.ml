@@ -48,7 +48,7 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
     <- Some Nbe.apply_macro;
   (* Installed before any binding elaborates, so every open the unit elaborates
      is checked against the roles visible in its region (M7). *)
-  !elab_ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
+  elab_ctx := Elab_ctx.Ctx.with_expander !elab_ctx expand_ctx;
   (* Stage 8: driver-based import loading. Imported macros are compiled
      through [visit_macros] (a nested driver run); the elaboration context
      carries the loader so imports elaborated by the [after_binding] hook

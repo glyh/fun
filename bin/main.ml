@@ -25,8 +25,7 @@ let run source =
       ~open_prelude:true
       source
   in
-  let ctx = Elaborate.init_ctx () in
-  ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
+  let ctx = Elab_ctx.Ctx.with_expander (Elaborate.init_ctx ()) expand_ctx in
   let core, ty = Elaborate.on_expr ~loader ctx expr in
   let value = Elaborate.Ctx.run ctx core in
   Printf.printf "%s: %s\n"

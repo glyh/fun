@@ -586,33 +586,24 @@ let subterms (t : term) : (int option * term) list =
   ignore (map_subterms (fun under sub -> acc := (under, sub) :: !acc; sub) t);
   List.rev !acc
 
+(* A dotted path denotes the last member of its name (I3): every member lookup
+   takes the last match. *)
+let find_map_last f items =
+  List.fold_left (fun acc item -> match f item with Some _ as found -> found | None -> acc) None items
+
+let find_field_last p fields = find_map_last (fun field -> if p field then Some field else None) fields
+
 (* A named impl is also a member: [M.eq_C] denotes it. Anonymous impls are not
    reachable this way and stay available only through [open]. The type view of a
    module and its value view both carry (type, value) on an impl entry, so which
    one a lookup wants has to be said at the call site. *)
-let module_impl_type_opt entries name =
-  List.find_map
-    (function
-      | ModuleImpl (Some n, kind, ty, _) when String.equal n name -> Some (kind, ty)
-      | _ -> None)
+let module_impl_opt entries name =
+  find_map_last
+    (function ModuleImpl (Some n, kind, ty, v) when String.equal n name -> Some (kind, ty, v) | _ -> None)
     entries
 
-let module_impl_value_opt entries name =
-  List.find_map
-    (function
-      | ModuleImpl (Some n, kind, _, v) when String.equal n name -> Some (kind, v)
-      | _ -> None)
-    entries
-
-let struct_impl_type_opt entries name =
-  List.find_map
-    (function
-      | StructImpl (Some n, kind, ty, _) when String.equal n name -> Some (kind, ty)
-      | _ -> None)
-    entries
-
-let find_field_last p fields =
-  List.fold_left (fun acc field -> if p field then Some field else acc) None fields
+let module_impl_type_opt entries name = Option.map (fun (kind, ty, _) -> (kind, ty)) (module_impl_opt entries name)
+let module_impl_value_opt entries name = Option.map (fun (kind, _, v) -> (kind, v)) (module_impl_opt entries name)
 
 let module_entry_fields entries =
   List.filter_map (function ModuleField (name, kind, value) -> Some (name, kind, value) | ModuleImpl _ -> None) entries

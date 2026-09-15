@@ -29,7 +29,7 @@ module Ctx = struct
        run an application as a call under the evaluation budget, and how to expand its output. It never consults the
        expander's binding table, so it is handed these rather than a context.
        See docs/wayfinder/tickets/expander-handle-is-a-capability-not-a-context.md. *)
-    mutable macro_runtime : macro_runtime option;
+    macro_runtime : macro_runtime option;
     (* The base context this one grew out of: the atom types, the primitives and
        [stdlib] bound as a name. Set once, by [init_ctx]; every extension carries
        it forward, so an imported compilation unit can be elaborated against it
@@ -182,6 +182,10 @@ and macro_runtime = {
   let with_self_type (ctx : t) (ty : value) : t = { ctx with self_type = Some ty }
 
   let with_loader (ctx : t) (loader : Core_loader.t) : t = { ctx with loader = Some loader }
+
+  (* The context with [ectx]'s macro runtime (I4e): a new context, never an
+     update to one another holder shares. *)
+  let with_expander (ctx : t) (ectx : Expand_ctx.t) : t = { ctx with macro_runtime = macro_runtime_of_expander ectx }
 
 
   let add_trait_evidence (ctx : t) (evidence : trait_evidence) : t =

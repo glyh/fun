@@ -306,8 +306,8 @@ let infer_quote ops (ctx : Ctx.t) template_value holes =
       match List.sort_uniq compare kinds with
       | [ Quote_holes.Expr ] -> ns.Macro_eval.expr
       | [ Quote_holes.Pattern ] -> ns.pat
-      | [ Quote_holes.Decl ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Decls" ]
-      | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Id" ]
+      | [ Quote_holes.Decl ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.decls ]
+      | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.id ]
       | _ -> raise (ElabError (QuoteHoleKindConflict name))
     in
     (name, ops.check ctx hole expected)
@@ -532,8 +532,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                        and the evaluation budget out of [expand_ctx], and after an import
                        both would otherwise come from the last imported unit.
                        See docs/wayfinder/tickets/base-context-shared-state.md. *)
-                    let unit_ctx = Ctx.unit_base ctx in
-                    unit_ctx.macro_runtime <- Ctx.macro_runtime_of_expander expand_ctx;
+                    let unit_ctx = Ctx.with_expander (Ctx.unit_base ctx) expand_ctx in
                     let core, ty = ops.infer unit_ctx imported in
                     (core, Ctx.eval unit_ctx core, ty))
                 ~eval_and_apply:Nbe.apply_macro
@@ -1018,4 +1017,4 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | QuoteDecls { items; holes } ->
       let ns = Elab_stdlib.syntax_nominals ctx in
       ( infer_quote ops ctx (Macro_eval.wrap_stx_decl ~nominals:(Some ns) items) holes,
-        Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Decls" ] )
+        Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.decls ] )

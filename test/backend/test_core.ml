@@ -845,7 +845,7 @@ let eval_with_macros source =
   in
   let eval_and_apply = Nbe.apply_macro in
   let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
-  ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
+  let ctx = Elab_ctx.Ctx.with_expander ctx expand_ctx in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
@@ -860,7 +860,7 @@ let eval_decl_module source =
   in
   let eval_and_apply = Nbe.apply_macro in
   let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source in
-  ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
+  let ctx = Elab_ctx.Ctx.with_expander ctx expand_ctx in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
 
@@ -884,7 +884,7 @@ let eval_with_imported_macros modules source =
           source
       in
       let ctx = Elaborate.init_ctx () in
-      ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
+      let ctx = Elab_ctx.Ctx.with_expander ctx expand_ctx in
       let core, _ty = Elaborate.on_expr ~loader ctx expr in
       Elaborate.Ctx.eval ctx core)
 

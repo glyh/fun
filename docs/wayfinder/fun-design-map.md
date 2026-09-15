@@ -549,10 +549,11 @@ Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
   — I2: open width zips type and value entries; effect collection skips a
   non-module open silently.
 - [Dotted paths found by first match](tickets/dotted-paths-first-match.md)
-  — I3/M12: `Elab_stdlib.resolve` and named-impl lookup take the first member;
-  prelude nominal names are literals outside `Compiler_names`.
+  (closed) — every member lookup takes the last match (`Core.find_map_last`);
+  the prelude nominal names live in `Compiler_names`.
 - [The elaborator's macro runtime is mutable](tickets/elaborator-macro-runtime-is-mutable.md)
-  — I4e: with `base = None` an import overwrites the importer's handle.
+  (closed) — the field is immutable; a context gets a runtime by construction
+  (`Ctx.with_expander`), so an import cannot overwrite the importer's.
 - [An under-applied Decl macro is fed a dummy Unit](tickets/decl-macro-fed-dummy-unit.md)
   — M8: `force_val` fabricates arguments; arity is checked only for kinded calls.
 - [Refresh the domain-model docs' "today" sections](tickets/refresh-domain-model-today-sections.md)
