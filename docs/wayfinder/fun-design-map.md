@@ -527,6 +527,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Effects on the arrow](tickets/effect-arrow-syntax.md)
+  — Unison `A ->{E} B`; `~>` params mint, results collect; `can` and return `:` dropped.
 - [Effects follow-ups from tunneling](tickets/effects-followups-tunneling.md)
   — `resume` value branch, instance routing, E6 via refs and the pure-branch
   shape done; open: unsolved `can _` at generalisation, `can any` semantics.
