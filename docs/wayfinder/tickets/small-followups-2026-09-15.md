@@ -27,3 +27,11 @@ blocked_by:
    body is checked against it. Applies to `fn`, `method` and macro bodies alike.
 6. **`Tuple(0 - 1)` escapes the checker as `EvalError`**, as a `panic` in a type
    does: evaluation errors during checking should be elaboration errors.
+7. **Refs: error text shows the heap, not the ref** — `Mutate(?130)` instead of
+   `Mutate(r)` (refs-effect-rows run).
+8. **Refs: discharge only at function boundaries and the entry**, not at any
+   `let` / block whose result and captures don't mention the heap as grilled.
+9. **Refs: the alias check scans every older meta** per candidate heap
+   (`ponytail:` marked) — quadratic.
+10. **`EffectRef` finds its family by name**, so a user `effect Mutate` could
+    shadow the built-in — M12 survivor; resolve the built-in family by identity.
