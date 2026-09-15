@@ -126,3 +126,18 @@ stays open.**
 Full unification is untouched and should stay that way until the assertion
 actually fires. The `panic` variant question and the `elab_common` combinator
 move both still stand as written.
+
+## Grilled (2026-09-15): overflow is an error; one declaration per primitive
+
+1. **Integer overflow is a run-time error**, like division by zero: `+`, `-`, `*`,
+   `/`, `%` on `I64` that overflow (including `min_int / -1`) fail with an
+   evaluation error naming the operation. During type checking the same failure
+   is an elaboration error (small-followups item 6). The port writes checked
+   arithmetic explicitly rather than inheriting the host's behaviour.
+2. **One declaration per primitive**: name, type, reducer and failure behaviour in
+   one record, e.g. `{ name = "+"; type = I64 -> I64 -> I64; compute = add;
+   fails = Overflow }`. The reducer is a variant (atom reducer | special, as
+   `panic` | type-only), decided up front. Move `pure_effects`, `^->`, `^->>` to
+   the kernel so the type sits beside the reducer; the prelude source refers to
+   primitives through the table; the `prims_without_reducer` list and the
+   duplicated `atom_ty_of_atom` go.
