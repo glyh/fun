@@ -3,7 +3,9 @@ title: Nominal identity is applicative by purity
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-16
+resolution: Implemented. Captures from the enclosing module or function body; a private stamp slot per module (fresh per evaluation of a module that performs something); generative nominals sealed at their binder by declaration identity, with escape checks at the binder's scope, the module's type and unnamed field access; type-case compares nominal instances by captures and stamp; rec struct occurrences carry captures and unfold per instance.
 assignee:
 blocked_by:
   - refs-in-effect-rows.md
@@ -188,19 +190,20 @@ what that body uses.
   an unbound effectful module whose type mentions a declared type is
   `GenerativeTypeEscapes` (checked at field access).
 
-## Still open
+## Finished (2026-09-16, branch e11-finish)
 
-- **Run-time stamps are not built, and would not be observable yet:** type-case
-  patterns match a nominal head by id only (`CPatNominalHead`, `nbe.ml`), so
-  captures - applicative ones too - never distinguish instances at run time. A
-  stamp also needs one evaluation per binding: `TypeBind`'s nominal term is
-  evaluated once per constructor slot, so a `ref` stamp there would give each
-  constructor a different nominal. Needs: captures in nominal-head patterns, and a
-  stamp slot in `binding_slots`.
-- **`rec` struct identities under a binder** are still one per elaboration: a
-  `RecOcc` compares by id and args, and the finished record value is stored at
-  elaboration (over the binder's rigid variables). Needs captures on `RecOcc` and
-  finished records as terms.
-- Sealing recognises a declared nominal by its member label (`ponytail:`); an
-  escape through anything but field access (passing the unbound module to a
-  function, returning it) is not checked.
+- **Stamps.** Every module's first slot is a private stamp (`Compiler_names.Module_name.stamp`),
+  captured by its nominals: `()` at check time and for a pure module, `ref(())`
+  at run time for a module whose evaluation performs something. One slot, so
+  every constructor reads the same stamp.
+- **Type-case by instance.** `CPatNominalHead` carries its written head term,
+  read in the match's scope; a type matches only the same declaration over
+  run-time-equal captures (a cell by identity). A sealed head (`st1.Symbol`)
+  names its declaration through `Ctx.sealed`.
+- **Sealing by identity.** A generative module records the nominal ids declared
+  while it elaborated (`Core.generative_nominals`); sealing rewrites exactly
+  those. A sealed type may not leave the let binder's scope, the enclosing
+  module's type, or an unnamed module's field access.
+- **`rec` structs under a binder.** `RecOcc` carries captures (the enclosing
+  scope rule); the finished record is kept as its body term and declaring
+  environment and unfolds per instance with the occurrence's captures.

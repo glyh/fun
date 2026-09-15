@@ -29,6 +29,10 @@ blocked_by:
 
 # Port `core_tt` to .NET (F#/C#)
 
+**Blockers (2026-09-16): none open.** Every ticket in `blocked_by` is closed; E11
+(nominal identity) was the last. What remains before starting is the stability
+signal below and the two decisions taken at port start.
+
 ## Question
 
 Keep the `core_tt` language model, reimplement the compiler and runtime on .NET,

@@ -598,10 +598,9 @@ distance from an E-invariant in the topic doc.
   `Mutate(r)` over a hidden heap (`Ref(A)` takes it implicitly); local heaps
   discharged at function boundaries; top-level refs through the runtime heap.
 - [Nominal identity is applicative by purity](tickets/nominal-identity-applicative-by-purity.md)
-  — **applicative half and sealing implemented** (captures from the enclosing
-  module; effectful modules sealed at their binder, `st1.Symbol ≠ st2.Symbol`).
-  Still open: run-time stamps (type-case matches nominal heads by id only) and
-  `rec` struct identities under a binder.
+  (closed & **implemented**) — captures from the enclosing scope; generative
+  modules sealed at their binder by identity, with run-time stamps type-case
+  separates; `rec` structs under a binder are instances. The last port blocker.
 - [A bare arrow is pure](tickets/bare-arrow-is-pure.md) (closed & **implemented**) — `A -> B` is pure;
   `A -> B can _` / `A ~> B` infers the row. `~>` is read by the expression grammar only (type annotations use the hardcoded type grammar).
 - [The checker evaluates under a budget](tickets/checker-evaluation-budget.md)
