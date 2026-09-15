@@ -154,7 +154,7 @@ and rule_part =
   | PartHole of { hole : string; hole_kind : hole_kind; hole_span : Source_span.t }
 
 (** What a hole captures: the reflection types (M10). *)
-and hole_kind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern
+and hole_kind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern | HoleTokens
 
 and rule_replacement = ReplaceExpr of t | ReplaceDecls of struct_binding list
 
@@ -175,6 +175,9 @@ and capture =
   | CapPattern of pat
   | CapDecls of struct_binding list
   | CapDecl of struct_binding  (** a macro parameter [(d : Decl)]: exactly one declaration *)
+  | CapTokens of Token_tree.t list
+      (** [List(TokenTree)]: the rest of a declaration use (or a whole macro
+          argument) unread; the macro reads the tokens itself *)
 
 and t = {
   kind : kind;
@@ -396,7 +399,7 @@ let hole_kind_of_name = function
   | _ -> None
 
 let hole_kind_name = function
-  | HoleExpr -> "Expr" | HoleBlock -> "Block" | HoleId -> "Id" | HoleDecl -> "List(Decl)" | HoleOneDecl -> "Decl" | HolePattern -> "Pattern"
+  | HoleExpr -> "Expr" | HoleBlock -> "Block" | HoleId -> "Id" | HoleDecl -> "List(Decl)" | HoleOneDecl -> "Decl" | HolePattern -> "Pattern" | HoleTokens -> "List(TokenTree)"
 
 (* The id an identifier or operator token names. *)
 let token_id (tok : Token_tree.token) =
@@ -420,6 +423,11 @@ let macro_params (value : t) : hole_kind list * t =
     | Some { kind = Ap ({ kind = Var { name = "List"; _ }; _ }, Explicitness.Explicit, { kind = Var ({ name = "Decl"; _ } as written); span }); span = ty_span } ->
         let syntax = { written with name = Compiler_names.Module_name.syntax } in
         (HoleDecl, Some { kind = FieldAccess ({ kind = Var syntax; span }, "Decls"); span = ty_span })
+    (* [(ts : List(TokenTree))]: the argument's tokens, unread. *)
+    | Some ({ kind = Ap (list, Explicitness.Explicit, { kind = Var ({ name = "TokenTree"; _ } as written); span }); _ } as ty)
+      when (match list.kind with Var { name = "List"; _ } -> true | _ -> false) ->
+        let syntax = { written with name = Compiler_names.Module_name.syntax } in
+        (HoleTokens, Some { ty with kind = Ap (list, Explicitness.Explicit, { kind = FieldAccess ({ kind = Var syntax; span }, "TokenTree"); span }) })
     | Some ({ kind = Var ({ name; _ } as written); span } as ty) -> (
         match hole_kind_of_name name with
         | Some kind ->

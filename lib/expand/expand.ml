@@ -39,6 +39,9 @@ type mapper = {
   (* The rule an instantiation names: left alone except by filling, since a
      rule with holes to fill can only be one the same quoted syntax declared. *)
   used_rule : mapper -> rule -> rule;
+  (* A capture replaced whole, before its parts are mapped: filling puts a
+     captured argument where a hole stands for a macro's whole argument. *)
+  capture : capture -> capture option;
 }
 
 let token_id = Syntax.token_id
@@ -79,8 +82,14 @@ and map_role m (role : role) : role =
   | Rules { rules_kind; rules } -> { role with meaning = Rules { rules_kind; rules = List.map (m.rule m) rules } }
   | ApplyValue | AssignRef | CallMacro | OrderGroup | TypeDeclaration -> role
 
-and map_capture m = function
+and map_capture m c =
+  match m.capture c with
+  | Some c -> c
+  | None -> map_capture_parts m c
+
+and map_capture_parts m = function
   | CapExpr e -> CapExpr (map_forms_with m e)
+  | CapTokens ts -> CapTokens (map_terms m ts)
   | CapBlock ts -> CapBlock (map_terms m ts)
   | CapId tok -> CapId (m.token { tok with scope = (m.id (token_id tok)).scope })
   | CapPattern p -> CapPattern (go_pat m p)
@@ -194,7 +203,7 @@ and go_pat m k =
      | PatBind id -> PatBind (m.id id))
 
 let mapper ?(form = Fun.id) id =
-  { id; form; binding = Fun.id; pat = Fun.id; token = Fun.id; rule = map_rule_default; used_rule = (fun _ r -> r) }
+  { id; form; binding = Fun.id; pat = Fun.id; token = Fun.id; rule = map_rule_default; used_rule = (fun _ r -> r); capture = (fun _ -> None) }
 
 (** Apply [on_id] to every identifier, and [on_form] to every form, bottom-up. *)
 let map_forms on_id on_form stx = map_forms_with (mapper ~form:on_form on_id) stx
@@ -257,7 +266,7 @@ let rec fill (captures : (string * capture) list) : mapper =
         | Some (CapExpr e) -> e
         | Some (CapBlock ts) -> { stx with kind = Block ts }
         | Some (CapId _) | None -> stx
-        | Some (CapPattern _ | CapDecls _ | CapDecl _) -> unfit "an expression" name)
+        | Some (CapPattern _ | CapDecls _ | CapDecl _ | CapTokens _) -> unfit "an expression" name)
     | Module { bindings } -> { stx with kind = Module { bindings = splice_decl_holes captures bindings } }
     | Struct { bindings } -> { stx with kind = Struct { bindings = splice_decl_holes captures bindings } }
     | Block [ { datum = Token { kind = Ident name; _ }; _ } ] -> (
@@ -295,7 +304,13 @@ let rec fill (captures : (string * capture) list) : mapper =
     ignore m;
     map_rule_default (fill captures) r
   in
-  { id; form; binding; pat; token; rule; used_rule = rule }
+  (* A hole written as a macro's whole argument takes the captured tokens. *)
+  let capture = function
+    | CapExpr { kind = Var { name; _ }; _ } | CapTokens [ { datum = Token { kind = Ident name; _ }; _ } ] -> (
+        match find name with Some (CapTokens _ as c) -> Some c | _ -> None)
+    | _ -> None
+  in
+  { id; form; binding; pat; token; rule; used_rule = rule; capture }
 
 and pattern_hole_names parts =
   List.concat_map

@@ -3180,6 +3180,15 @@ let test_type_is_shadowable () =
   check_i64_macro "a user syntax form shadows type" 7L
     "{ syntax type : Decl { type $(n : Id) => { $n = 7 } }; type x; x }" ()
 
+(* A [List(TokenTree)] hole takes the rest of a declaration use unread, and a
+   macro parameter of that kind its argument's tokens; the macro reads them. *)
+let test_token_list_hole () =
+  check_i64_macro "the rest of a use and a whole argument, as tokens" 1010L
+    "{   M = module {     macro count(ts : List(TokenTree)) : List(Decl) { rec len = fn(l : List(Syntax.TokenTree)) : I64 { match (l) { Nil => 0, Cons(_, t) => 1 + len(t) } }; e = Syntax.i64(len(ts)); quote { pub n = $e } };     syntax tally : Decl { tally $(r : List(TokenTree)) => { count($r) } };     tally A B = X | Y and C = Z   };   N = module {     macro count(ts : List(TokenTree)) : List(Decl) { rec len = fn(l : List(Syntax.TokenTree)) : I64 { match (l) { Nil => 0, Cons(_, t) => 1 + len(t) } }; e = Syntax.i64(len(ts)); quote { pub n = $e } };     count(A B = X | Y and C = Z)   };   M.n * 100 + N.n }" ();
+  match eval_with_macros "{ syntax bad : Decl { bad $(r : List(TokenTree)) done => { x = 1 } }; 0 }" with
+  | exception Enforest_util.Error _ -> ()
+  | _ -> Alcotest.fail "a List(TokenTree) hole before the rule's end was accepted"
+
 let test_m9_param_id () =
   check_i64_macro "an Id parameter names the use site's binder" 5L
     "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 5; same(x) }" ()
@@ -4173,6 +4182,7 @@ let () =
           Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
           Alcotest.test_case "type is shadowable" `Quick test_type_is_shadowable;
           Alcotest.test_case "pub form uses export" `Quick test_pub_form_uses;
+          Alcotest.test_case "List(TokenTree) holes" `Quick test_token_list_hole;
           Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
           Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
           Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;

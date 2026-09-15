@@ -46,6 +46,8 @@ and macro_call_args env (head : Syntax.t) items =
              | HoleOneDecl, [ { datum = Group (Raw_syntax.Brace, ts, _); _ } ]
                when List.length (List.filter (fun s -> drop_separators s <> []) (split_statements ts)) = 1 ->
                  Syntax.CapDecl (Syntax.Items ts)
+             (* The argument's tokens, unread: the macro reads them itself. *)
+             | HoleTokens, _ -> Syntax.CapTokens (drop_separators part)
              | (HoleId | HoleBlock | HolePattern | HoleDecl | HoleOneDecl), _ ->
                  Expand_error.raise_at (ArgumentKind { macro; kind; span = syntax_span part }))
            kinds parts)
@@ -1064,6 +1066,7 @@ and parse_syntax_template_decl env (head_id : Syntax.id) kind order body_terms r
       ~parse_replacement:(fun holes terms -> parse_replacement env kind holes terms)
       body_terms
   in
+  Enforest_template.check_token_holes ~kind rules;
   declare_role env head_id
     (Binding.role ~declared_at:head_id.span ~fixity:Syntax.PrefixOp ?order
        (Syntax.Rules { rules_kind = kind; rules }))
