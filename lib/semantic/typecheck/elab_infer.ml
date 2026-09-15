@@ -211,7 +211,8 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
          extension to the evaluator. *)
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
-      (open_module_value ~label ctx mod_ty mod_value, [OpenBind mod_core], [])
+      let ctx, members = open_module_value ~label ctx mod_ty mod_value in
+      (ctx, [OpenBind (mod_core, members)], [])
   | Syntax.LetBinding { name = { name; _ }; value; public; recursive } ->
       let rec_ty = Ctx.raw_meta ctx in
       let value_ctx = Ctx.clear_self_scope ctx in
@@ -294,23 +295,6 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
 (* Quoted syntax is its reflection value, built with the scopes it was written
    with. Each hole is checked against the reflection type its position gives it
    (M10); one hole in two kinds of position is an error, not a coercion. *)
-let infer_quote ops (ctx : Ctx.t) template_value holes =
-  let ns = Elab_stdlib.syntax_nominals ctx in
-  let occurrences = Quote_holes.occurrences template_value in
-  let hole_core (name, hole) =
-    let kinds = List.filter_map (fun (n, k) -> if String.equal n name then Some k else None) occurrences in
-    let expected =
-      match List.sort_uniq compare kinds with
-      | [ Quote_holes.Expr ] -> ns.Macro_eval.expr
-      | [ Quote_holes.Pattern ] -> ns.pat
-      | [ Quote_holes.Decl ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.decls ]
-      | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.id ]
-      | _ -> raise (ElabError (QuoteHoleKindConflict name))
-    in
-    (name, ops.check ctx hole expected)
-  in
-  Quote { template = template_value; holes = List.map hole_core holes }
-
 let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   match expr.kind with
   | Atom (I64 n) -> (Atom (I64 n), VAtomTy Atom_ty.TI64)
@@ -673,8 +657,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         | Syntax.OpenBinding (mod_expr, label) :: rest ->
             let mod_core, mod_ty = ops.infer ctx mod_expr in
             let mod_value = Ctx.eval ctx mod_core in
-            go ~defer (open_module_value ~label ctx mod_ty mod_value)
-              (OpenBind mod_core :: acc_binds, acc_entries) rest
+            let ctx, members = open_module_value ~label ctx mod_ty mod_value in
+            go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest
         | Syntax.LetBinding { name = { name; _ }; value; public; recursive; _ } :: rest ->
             let rec_ty = Ctx.raw_meta ctx in
             let value_ctx = Ctx.clear_self ctx in
@@ -797,8 +781,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | Open (mod_expr, body, label) ->
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
-      let body_core, body_ty = ops.infer (open_module_value ~label ctx mod_ty mod_value) body in
-      (Open (mod_core, body_core), body_ty)
+      let body_ctx, members = open_module_value ~label ctx mod_ty mod_value in
+      let body_core, body_ty = ops.infer body_ctx body in
+      (Open (mod_core, members, body_core), body_ty)
   | RecordTypeDef { name = { name; _ }; params; fields; body } ->
       let params = Syntax.names params in
       check_duplicate_names (List.map fst fields);
@@ -998,8 +983,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | None -> failwith "Elab_infer: an elaborated macro argument outlived its application")
   | Quote { template; holes } ->
       let ns = Elab_stdlib.syntax_nominals ctx in
-      (infer_quote ops ctx (Macro_eval.wrap_stx ~nominals:(Some ns) template) holes, ns.expr)
+      (quote_core ~check:ops.check ctx (Macro_eval.wrap_stx ~nominals:(Some ns) template) holes, ns.expr)
   | QuoteDecls { items; holes } ->
       let ns = Elab_stdlib.syntax_nominals ctx in
-      ( infer_quote ops ctx (Macro_eval.wrap_stx_decl ~nominals:(Some ns) items) holes,
+      ( quote_core ~check:ops.check ctx (Macro_eval.wrap_stx_decl ~nominals:(Some ns) items) holes,
         Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.decls ] )

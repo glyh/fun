@@ -12,6 +12,11 @@ type struct_field_kind = Field | Public | Private | Method | PrivateMethod
 
 type explicitness = Implicit | Explicit
 
+(** What an [open] binds, in order: decided by the opened module's type (its
+    public entries), never by its value - a field by name, an impl by its
+    position among the public impls. *)
+type open_member = OpenField of string | OpenImpl of int
+
 type effect_row = { effects : term list; tail : term option }
 
 and term =
@@ -46,7 +51,7 @@ and term =
       bindings : struct_binding_term list;
       partial : bool;
     }
-  | Open of term * term            (* open S in body — evaluator extends env with module-view fields *)
+  | Open of term * open_member list * term  (* open S in body — the evaluator pushes each member of S *)
   | Prim of string (* evaluated as VNeutral with HPrim head — no VPrim needed *)
   | NomRef of { id : nominal_id; name : string; params : term list }
       (** Applied nominal type reference. [eval] scans the environment for
@@ -199,12 +204,12 @@ and struct_binding_term =
           See docs/wayfinder/topics/impl-visibility.md. *)
   | PatternSynBind of string * struct_field_kind * value
       (** name, kind, VPatternSyn value. *)
-  | OpenBind of term
+  | OpenBind of term * open_member list
       (** [open <module-term>] inside a binding list — the binding-list
           counterpart of the expression form [Open]. Contributes no field; it
-          extends the runtime scope with the opened module's public values (in
-          entry order) so the de Bruijn indices of the *subsequent* bindings,
-          which the elaborator resolved against the opened context, line up. *)
+          extends the runtime scope with the members its type opens (in entry
+          order) so the de Bruijn indices of the *subsequent* bindings, which
+          the elaborator resolved against the opened context, line up. *)
 
 and module_entry =
   | ModuleField of string * struct_field_kind * value
@@ -441,8 +446,8 @@ let validate_module_fields fields =
    *source* rather than the payload: what the term already holds, what has to be
    evaluated, and what each side fills in for itself.
 
-   [OpenBind] has no slot list: its contribution is the public-entry count of a
-   module that has to be evaluated first, so it is not recoverable from the term.
+   [OpenBind] has no slot list: its members are projections of a module that has
+   to be evaluated first; their count is the term's member list.
    See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
 type slot_source =
   | SlotDef of term  (** evaluate this term in the scope so far *)
@@ -502,7 +507,7 @@ let rec pat_binder_count = function
 (** Rebuild a term with [f under sub] applied to each immediate subterm [sub],
     where [under] is how many environment entries the evaluator has pushed
     between the term and that subterm: [Some n], or [None] when the count is
-    known only by evaluating (an [open]'s body, bindings after an [OpenBind]).
+    known only by evaluating.
     This is the one statement of each form's binder count; [Nbe.eval] is what it
     restates, and every de Bruijn traversal reads it instead of its own copy.
     [Var] and the leaves are returned unchanged. *)
@@ -516,10 +521,14 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
         match b with
         | LetBind (name, kind, def) -> LetBind (name, kind, g def)
         | ImplBind (name, kind, def, ty) -> ImplBind (name, kind, g def, ty)
-        | OpenBind def -> OpenBind (g def)
+        | OpenBind (def, members) -> OpenBind (g def, members)
         | TypeBind _ | EffectBind _ | PatternSynBind _ -> b
       in
-      let width = Option.map List.length (binding_slots b) in
+      let width =
+        match b with
+        | OpenBind (_, members) -> Some (List.length members)
+        | _ -> Option.map List.length (binding_slots b)
+      in
       ((match (under, width) with Some u, Some w -> Some (u + w) | _ -> None), b' :: acc)
     in
     List.rev (snd (List.fold_left step (Some 0, []) bs))
@@ -553,7 +562,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | TraitDictTy d ->
       TraitDictTy { d with args = List.map (at 0) d.args; fields = List.map (fun (n, v) -> (n, at 0 v)) d.fields }
   | Ctor c -> Ctor { c with spine = List.map (at 0) c.spine; nominal_spine = List.map (at 0) c.nominal_spine }
-  | Open (s, body) -> Open (at 0 s, f None body)
+  | Open (s, members, body) -> Open (at 0 s, members, at (List.length members) body)
   | Module { bindings = bs } -> Module { bindings = bindings bs }
   | Struct s ->
       Struct { s with con_fields = List.map (fun (n, ty) -> (n, at 0 ty)) s.con_fields; bindings = bindings s.bindings }

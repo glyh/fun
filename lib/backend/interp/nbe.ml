@@ -19,14 +19,18 @@ let prim_table = Nbe_prim.prim_table
    up at runtime. ([Method] is unreachable in a module: module bindings are only
    ever [Public]/[Private]. It is matched here so the filter also reads correctly
    for any module-shaped value quoted from elsewhere.) *)
-let push_opened_values env entries =
+(* The members an [open] binds, pushed in order: each a projection of the opened
+   module, so a module parameter (a neutral) opens as well as a module does. *)
+let push_open_members mc env (module_value : value) (members : open_member list) =
   List.fold_left
-    (fun e entry ->
-      match entry with
-      | ModuleField (_, k, v) when k = Public || k = Method -> v :: e
-      | ModuleImpl (_, k, _, v) when k = Public -> v :: e
-      | _ -> e)
-    env entries
+    (fun e member ->
+      match member, module_value with
+      | OpenField name, _ -> dot_value mc module_value name :: e
+      | OpenImpl i, VModule { entries; _ } -> (
+          let impls = List.filter_map (function ModuleImpl (_, Public, _, v) -> Some v | _ -> None) entries in
+          match List.nth_opt impls i with Some v -> v :: e | None -> fail mc "open of a missing impl")
+      | OpenImpl _, _ -> fail mc "open of an impl of a non-module")
+    env members
 
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
@@ -58,13 +62,7 @@ and eval_bindings :
  fun mc env bindings ~field ~impl ->
   let rec go env acc = function
     | [] -> (env, List.rev acc)
-    | OpenBind def :: rest -> (
-        (* An open's contribution is not recoverable from the term: it is the
-           public entries of a module that has to be evaluated first. *)
-        match eval mc env def with
-        | VModule { entries; partial = _ } ->
-            go (push_opened_values env entries) acc rest
-        | _ -> fail mc "open of non-module")
+    | OpenBind (def, members) :: rest -> go (push_open_members mc env (eval mc env def) members) acc rest
     | b :: rest ->
         let slots =
           match Core.binding_slots b with
@@ -288,12 +286,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Dot (e, name) ->
       bind_result (eval_result mc env e) (fun value ->
           Done (dot_value mc value name))
-  | Open (s, body) ->
-      bind_result (eval_result mc env s) (fun vs ->
-          match vs with
-          | VModule { entries; partial = _ } ->
-              eval_result mc (push_opened_values env entries) body
-          | _ -> fail mc "open of non-module")
+  | Open (s, members, body) ->
+      bind_result (eval_result mc env s) (fun vs -> eval_result mc (push_open_members mc env vs members) body)
   | Fix (name, pure, body) -> Done (VFix { name; pure; body = { env; body } })
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in

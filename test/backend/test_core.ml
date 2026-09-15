@@ -1255,7 +1255,7 @@ pub answer = 42" ]
    | _ -> Alcotest.fail "expected 42"
 
 let test_decl_macro_two_calls () =
-  let _ = eval_decl_module "open (import \"std\");macro m1(_) : Decl { Nil };macro m2(_) : Decl { Nil };m2(0)"
+  let _ = eval_decl_module "open (import \"std\");macro m1(_) : List(Decl) { Nil };macro m2(_) : List(Decl) { Nil };m2(0)"
   in
   ()
 
@@ -1438,7 +1438,7 @@ let test_quote_declarations () =
   check_i64_macro "quote { } splices an expression hole into a declaration" 42L
     "{ macro define(v) : Decl { quote { pub answer = $v; } }; M = module { define(21 + 21) }; M.answer }" ();
   check_i64_macro "quote { } splices a declaration hole" 6L
-    "{ macro wrap(v) : Decl { d = Cons(Syntax.decl_let(Syntax.new_id(\"answer\"), v, True), Nil); quote { $d; pub other = 1; } };
+    "{ macro wrap(v) : List(Decl) { d = Cons(Syntax.decl_let(Syntax.new_id(\"answer\"), v, True), Nil); quote { $d; pub other = 1; } };
        M = module { wrap(5) }; M.answer + M.other }" ()
 
 let test_type_aware_output_is_expanded () =
@@ -1544,7 +1544,7 @@ let test_driver_macro_exports_default () =
 
 (** Stage 3: [macro_exports] includes a Decl-kind macro. *)
 let test_driver_macro_exports_decl () =
-  let output = run_driver "open (import \"std\");\nmacro gen(_) : Decl { Nil }\n" in
+  let output = run_driver "open (import \"std\");\nmacro gen(_) : List(Decl) { Nil }\n" in
   let names = List.map (fun (e : Macro_driver.macro_export) -> e.name) output.macro_exports in
   Alcotest.(check (list string)) "macro_exports contains gen" ["gen"] names;
   Alcotest.(check string) "macro export kind is Decl"
@@ -2945,7 +2945,7 @@ let test_m9_quote_nested_rule_holes () =
   check_i64_macro "a quote's inner rule binds its own holes, the macro's fill the rest" 21L
     "{
        M = module {
-         macro make_adder(base) : Decl {
+         macro make_adder(base) : List(Decl) {
            quote { syntax add_base { add_base $x => $x + $base }; pub result = add_base 1 + add_base 10; }
          };
          make_adder(5)
@@ -2957,7 +2957,7 @@ let test_m9_quote_token_position_hole () =
   check_i64_macro "a quote fills a hole naming generated syntax" 42L
     "{
        M = module {
-         macro make(n) : Decl {
+         macro make(n) : List(Decl) {
            match (n) { Syntax.Var(name) => quote { syntax $name { $name $x => $x * 2 }; }, _ => quote { } }
          };
          make(double);
@@ -3031,7 +3031,7 @@ let test_m9_param_decl () =
   check_i64_macro "a Decl parameter spliced into a quote" 33L
     "{
        M = module {
-         macro with_extra(d : Decl) : Decl { quote { $d; pub extra = 22; } };
+         macro with_extra(d : Decl) : List(Decl) { quote { $d; pub extra = 22; } };
          with_extra({ pub x = 1; pub y = 10 })
        };
        M.x + M.y + M.extra
@@ -3039,7 +3039,7 @@ let test_m9_param_decl () =
   check_i64_macro "a Decl parameter spliced twice" 2L
     "{
        M = module {
-         macro twice_decls(d : Decl) : Decl { quote { $d; $d } };
+         macro twice_decls(d : Decl) : List(Decl) { quote { $d; $d } };
          twice_decls({ pub x = 1; pub y = 2 })
        };
        M.y
@@ -3056,13 +3056,13 @@ let test_m9_param_decl () =
 let test_m9_param_decl_kind_mismatch () =
   expect_expand_error "a Decl argument that is not a brace group"
     (function Expand_error.ArgumentKind { kind = HoleDecl; _ } -> true | _ -> false)
-    "{ M = module { macro m(d : Decl) : Decl { quote { $d } }; m(x) }; 0 }"
+    "{ M = module { macro m(d : Decl) : List(Decl) { quote { $d } }; m(x) }; 0 }"
 
 let kinded_unit =
   ("kinds", "open (import \"std\");
              pub macro same(n : Id) { Syntax.RawVar(None, n) };
              pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
-             pub macro with_extra(d : Decl) : Decl { quote { $d; pub extra = 22; } }")
+             pub macro with_extra(d : Decl) : List(Decl) { quote { $d; pub extra = 22; } }")
 
 let test_m9_param_imported () =
   check_operator "an imported macro's Id parameter, dotted" 5L [ kinded_unit ]
@@ -3093,6 +3093,27 @@ let test_m8_argument_count () =
     "{ M = module { macro four() : Decl { Syntax.decl_let(Syntax.new_id(\"four\"), Syntax.i64(4), False) }; four(); pub r = 1 }; M.r + 3 }" ();
   check_i64_macro "a macro's result applied to a further argument" 5L
     "{ macro ident(_) { Syntax.lam(\"y\", Syntax.var(\"y\")) }; ident(0)(5) }" ()
+
+(* A Decl macro's output type: [: Decl] is one declaration, [: List(Decl)] any
+   number; its body is checked against it where the macro is defined. *)
+let test_decl_macro_output_type () =
+  check_i64_macro "a : Decl macro returns one quoted declaration" 1L
+    "{ M = module { macro one() : Decl { quote { pub a = 1 } }; one() }; M.a }" ();
+  check_i64_macro "a : List(Decl) macro returns several" 3L
+    "{ M = module { macro two() : List(Decl) { quote { pub a = 1; pub b = 2 } }; two() }; M.a + M.b }" ();
+  check_i64_macro "both splice at calls in one module" 4L
+    "{ M = module {
+         macro one() : Decl { quote { pub c = 1 } };
+         macro two() : List(Decl) { quote { pub a = 1; pub b = 2 } };
+         one(); two()
+       }; M.a + M.b + M.c }" ();
+  expect_elab_error "a : Decl quote holding two declarations"
+    (function Elab_error.QuoteNotOneDecl 2 -> true | _ -> false)
+    "{ macro two() : Decl { quote { a = 1; b = 2 } }; 0 }";
+  match eval_with_macros "{ macro none() : Decl { Nil }; 0 }" with
+  | exception Unify.UnifyError (Unify.NominalMismatch _) -> ()
+  | exception e -> Alcotest.fail ("a : Decl macro returning a list: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "a : Decl macro returning a list: expected a type error at the definition"
 
 let test_m8_imported_argument_count () =
   match eval_with_imported_macros [ kinded_unit ] "{ M = module { open (import \"kinds\"); seven(y, z); pub r = 1 }; M.r }" with
@@ -3852,5 +3873,6 @@ let () =
           Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;
           Alcotest.test_case "a macro is given exactly its arguments" `Quick test_m8_argument_count;
           Alcotest.test_case "an imported macro's argument count" `Quick test_m8_imported_argument_count;
+          Alcotest.test_case "a Decl macro's output type" `Quick test_decl_macro_output_type;
         ] );
     ]

@@ -130,6 +130,14 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       let effect_branches' = List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches in
       check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
+  (* [quote { … }] where one [Decl] is expected - a [: Decl] macro's body - is
+     that one declaration; anywhere else it is the list of its items. *)
+  | QuoteDecls { items; holes }, _ when Ctx.conv ctx expected (Elab_stdlib.syntax_nominals ctx).decl -> (
+      match items with
+      | [ item ] when not (match item with Syntax.HoleBinding _ -> true | _ -> false) ->
+          let ns = Elab_stdlib.syntax_nominals ctx in
+          quote_core ~check:ops.check ctx (Macro_eval.w_decl ns item) holes
+      | _ -> raise (ElabError (QuoteNotOneDecl (List.length items))))
   | MacroCall ({ kind = Var { name; _ }; _ }, args), _ ->
       fst (apply_typed_macro ~check:ops.check ctx ~call:expr ~name args ~expected:(Some expected))
   | _ ->

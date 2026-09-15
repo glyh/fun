@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after struct source-order scoping and macro signatures, 2026-09-15.
+Last updated: after Decl macro output types and opening module parameters, 2026-09-15.
 
 ---
 
@@ -88,6 +88,20 @@ Last updated: after struct source-order scoping and macro signatures, 2026-09-15
 - No dependent fields: a field is not a binder, so `struct { n : Type; v : n }`
   leaves `n` unbound. A struct does not see its own name (`C` binds after
   `C = struct { … }`); `C.k` inside it is unbound.
+
+### Decl macro output types; opening a module parameter (2026-09-15)
+- `: Decl` is one declaration, `: List(Decl)` any number: the annotation is the
+  type the body is checked against where the macro is defined
+  (`Syntax.macro_compiled` wraps the body in `Annotated`, `Decl` written as
+  `Syntax.Decl` at the annotation's scopes). `quote { … }` checked against
+  `Syntax.Decl` must hold exactly one non-hole item (`QuoteNotOneDecl`);
+  anywhere else it is the list. The `VU` instantiation workaround is gone.
+- `open` binds what the module's **type** lists (I2): `Core.Open`/`OpenBind`
+  carry the members (`OpenField name`, `OpenImpl i`), and the evaluator pushes
+  each as a projection of the module value. A module parameter (a neutral) opens
+  by projection; a module with more members than its signature opens only the
+  signature's. A parameter's impl has no name to project, so opening one is
+  still `NotAModule`.
 
 ### Macro signatures (2026-09-15)
 - A macro's type binders, `(x : Expr(T))` parameters and `: Expr(T)` output are
