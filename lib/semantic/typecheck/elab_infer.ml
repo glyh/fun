@@ -158,8 +158,8 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~re
   emit ctx effects;
   (if recursive then Ctx.unify ctx rec_ty val_ty);
   let val_core = if recursive then fix_one name (Ctx.pure_call ctx rec_ty) val_core else val_core in
-  let val_val = if is_empty_expr_effects effects then Ctx.eval ctx val_core else VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
-  (val_core, val_ty, val_val)
+  if is_empty_expr_effects effects then (val_core, val_ty, Ctx.eval ctx val_core)
+  else (val_core, seal_generative ctx val_ty, VRigid { lvl = ctx.Ctx.lvl; spine = [] })
 
 (* A block's [rec name : type_ = value]: its type's term, its core, and the type
    and value the body sees. A struct type is a recursive record; anything else
@@ -570,12 +570,15 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
     when Option.is_some (trait_of_form_opt ctx head) ->
       resolve_trait_method ctx (Option.get (trait_of_form_opt ctx head)) name
   | FieldAccess (e, name) ->
-      let e_core, e_ty = ops.infer ctx e in
+      let (e_core, e_ty), head_effects = collecting ctx (fun ctx -> ops.infer ctx e) in
+      emit ctx head_effects;
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
       (match Nbe.force_shape ctx.metas (Nbe.module_type_of ctx.metas e_ty (Ctx.eval ctx e_core)) with
       | VModule { entries; partial = _ } -> (
           match find_field_last (fun (n, _, _) -> String.equal n name) (visible_module_fields entries) with
-          | Some (_, _, field_ty) -> (Dot (e_core, name), Nbe.force ctx.metas field_ty)
+          | Some (_, _, field_ty) ->
+              check_generative_escape ctx ~head_effects e_ty field_ty;
+              (Dot (e_core, name), Nbe.force ctx.metas field_ty)
           (* A named impl is a member: [M.eq_C] has the trait dictionary type,
              which is what makes it usable in evidence position. *)
           | None -> (

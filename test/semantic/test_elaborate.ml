@@ -101,6 +101,16 @@ let elab_ok source () =
   let _core, _ty = elab source in
   ()
 
+(* E11: a generative maker (its module keeps a reference alive), two tables
+   made from it, then [rest]. *)
+let symbol_table rest =
+  "{ SymbolTable = fn(u : Unit) { module {
+       table = ref(0);
+       pub type Symbol = Sym(I64);
+       pub intern = fn(s : I64) { table <- deref(table) + s; Sym(deref(table)) };
+       pub name = fn(x : Symbol) { match (x) { Sym(n) => n } } } };
+     st1 = SymbolTable(()); st2 = SymbolTable(()); " ^ rest ^ " }"
+
 let eval_i64 source expected () =
   let ctx = Elaborate.init_ctx () in
   let core, _ = Elaborate.on_expr ctx (parse_expr source) in
@@ -409,6 +419,14 @@ let structs =
             less = fn(a : I64, b : I64) { a < b }; greater = fn(a : I64, b : I64) { a > b };
             up = Set(I64, less); down = Set(I64, greater);
             up.union(up.single(1), down.single(2)) }");
+    Alcotest.test_case "a generative module's types are named by its binder" `Quick
+      (eval_i64 (symbol_table "g = fn(x : st1.Symbol) { st1.name(x) }; g(st1.intern(5)) + st1.name(st1.intern(1))") 11L);
+    Alcotest.test_case "two generative evaluations are different types" `Quick
+      (elab_fail (symbol_table "g2 = fn(x : st2.Symbol) { 1 }; g2(st1.intern(5))"));
+    Alcotest.test_case "a symbol from one table is not another's" `Quick
+      (elab_fail (symbol_table "st2.name(st1.intern(5))"));
+    Alcotest.test_case "an unnamed generative module's type may not escape" `Quick
+      (elab_fail (symbol_table "SymbolTable(()).intern(5)"));
     Alcotest.test_case "a module type reads a later member's variables at its own depth" `Quick
       (eval_i64 "{ mk = fn(X : Type) { module { pub y = True; pub f = fn(x : X) { x } } }; mk(I64).f(7) }" 7L);
     (* A [type] member inside a [struct] used to push one context entry too many

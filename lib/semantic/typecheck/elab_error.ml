@@ -20,6 +20,7 @@ type elab_error =
   | EffectOperationPathExpected
   | UnhandledEffects of string list
   | HandledEffectEscapes of string
+  | GenerativeTypeEscapes of string
       (** Effects left where nothing handles them, named. *)
   | NonExhaustive of string
   | InvalidRecursiveRecord of string
@@ -73,6 +74,7 @@ let string_of_elab_error = function
   | EffectOperationPathExpected -> "EffectOperationPathExpected"
   | UnhandledEffects names -> "UnhandledEffects \"" ^ String.concat ", " names ^ "\""
   | HandledEffectEscapes name -> "HandledEffectEscapes \"" ^ name ^ "\""
+  | GenerativeTypeEscapes name -> "GenerativeTypeEscapes \"" ^ name ^ "\""
   | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
   | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
   | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
