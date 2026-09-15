@@ -35,7 +35,7 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
      ```
    - A condition before a group is parenthesised: `while (x < n) { … }`.
    - Nesting is owned by braces: `when (True) { if (False) { 1 } else { 2 } } else { 0 }`.
-2. **Arms are Rust-style; `|` is only union.** Match arms, effect branches and
+2. **Arms are Rust-style; `|` is only union.** (**Implemented** 2026-09-15, branch `rust-arms`: one structural splitter, `Enforest_util.split_match_branches`; prelude and tests migrated.) Match arms, effect branches and
    syntax-form rules drop the leading `|`:
    ```fun
    match (n) {
@@ -92,6 +92,6 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
 - **The `capture-extents` branch** (one-pass captures, `try_prefixes` deleted)
   currently implements a split rule for bounded holes; rebase it onto this
   decision rather than merge as is.
-- **`m9-decl-params` branch** questions: a `Decl` argument arrives as one unread
+- **`Decl` parameters** (merged, 09edfdb) questions: a `Decl` argument arrives as one unread
   `DeclItems` (no per-item inspection without an `expand_block`-like reader); a
   `$d` hole accepts only a list.

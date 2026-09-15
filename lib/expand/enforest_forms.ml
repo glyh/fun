@@ -15,7 +15,7 @@ let parse_group_arg callbacks items =
   | [] -> unit ()
   | _ -> callbacks.parse_expr_terms items
 
-(* [match (scrutinee) { | pattern => result | effect E.op x => result }]. *)
+(* [match (scrutinee) { pattern => result, effect E.op x => result }]. *)
 let parse_match callbacks start_span terms =
   match drop_separators terms with
   | ({ datum = Group (Raw_syntax.Paren, _, _); _ } as scrut) :: { datum = Group (Raw_syntax.Brace, arms, span); _ } :: rest ->
@@ -37,7 +37,7 @@ let parse_match callbacks start_span terms =
       in
       if branches = [] then error "match requires at least one arm";
       (stx ~span:(span_between start_span span) (Syntax.Match (scrut, branches)), rest)
-  | _ -> error "match is written match (scrutinee) { | pattern => result }"
+  | _ -> error "match is written match (scrutinee) { pattern => result, … }"
 
 let parse_effect_row_terms callbacks terms =
   match drop_separators terms with

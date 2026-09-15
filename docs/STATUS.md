@@ -59,9 +59,9 @@ Last updated: after M9 run 3 (M9 complete), 2026-09-15.
 ### Brace surface syntax (2026-09-14)
 - Bodies are brace groups: `fn(x) { … }`, `method m() { … }`, `macro m(x) : K { … }`,
   `infix (op) p Assoc ($a, $b) { … }`, blocks `{ … }`, `module { … }`,
-  `sig { … }`, `struct { … }`, `multi { … }`, `syntax head { | rule => replacement }`.
+  `sig { … }`, `struct { … }`, `multi { … }`, `syntax head { rule => replacement, … }`.
 - `if (c) { t } else { e }` (a prelude template, `if ($c) $t else $e`) and
-  `match (v) { | pattern => result | effect E.op x => result }`.
+  `match (v) { pattern => result, effect E.op x => result }` (Rust-style arms: a `{ … }` result ends its arm, any other ends at `,`; `|` is pattern union).
 - `->` is only the function-type arrow; `=>` separates a pattern from its result
   and is reserved (`infix (=>)` is an error).
 - Record types are `type P = struct { x: I64 }`; construction, record patterns and
@@ -106,7 +106,7 @@ Last updated: after M9 run 3 (M9 complete), 2026-09-15.
 - Hole kinds are reflection types: `$(x : Expr | Block | Id | Decl | Pattern)`,
   a bare `$v` is `Expr`; `binder`/`ident` are gone (`Id` binds or refers by
   position). A `Pattern` capture splices a use-site pattern.
-- `syntax head : Decl { | pat => { items } }`; a syntax form is used only in its
+- `syntax head : Decl { pat => { items } }`; a syntax form is used only in its
   kind's position. `multi` is deleted.
 - `quote { items }` quotes declarations; a lone `$d` item is a `Decl` hole.
 - The expansion position is the site's: a `Decl` macro works inside an
@@ -198,7 +198,7 @@ Last updated: after M9 run 3 (M9 complete), 2026-09-15.
   syntax shadows syntax lexically and a template's replacement sees roles as of
   its definition. Template intro scopes go on replacement tokens: syntax a
   template names itself is invisible to user code, and a hole may name a
-  generated declaration (`syntax $n { | $n $x => … }`, `infix ($op) …`). A role
+  generated declaration (`syntax $n { $n $x => … }`, `infix ($op) …`). A role
   never mixes with another binder of its name: syntax declarations survive as
   `SyntaxBinding` / `SyntaxDef`, imported roles are seeded into the expander,
   and the binder funnel raises `RoleConflict` in either order (application-written

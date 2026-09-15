@@ -70,18 +70,18 @@ let syntax_primitive_names = []
 let stdlib_source =
   {|
 pub type Bool = False | True;
-pub syntax if { | if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t | False => $e } };
-pub infix (&&) 4 Left ($a, $b) { match ($a) { True => $b | False => False } };
-pub infix (||) 3 Left ($a, $b) { match ($a) { True => True | False => $b } };
-pub i64_to_bool = fn(n) { match (n) { 0 => False | _ => True } };
-pub not = fn(b) { match (b) { True => False | False => True } };
+pub syntax if { if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t, False => $e } };
+pub infix (&&) 4 Left ($a, $b) { match ($a) { True => $b, False => False } };
+pub infix (||) 3 Left ($a, $b) { match ($a) { True => True, False => $b } };
+pub i64_to_bool = fn(n) { match (n) { 0 => False, _ => True } };
+pub not = fn(b) { match (b) { True => False, False => True } };
 pub (<) = fn(x, y) { i64_to_bool(lt_i64(x, y)) };
 pub (>) = fn(x, y) { i64_to_bool(gt_i64(x, y)) };
 pub (<=) = fn(x, y) { i64_to_bool(le_i64(x, y)) };
 pub (>=) = fn(x, y) { i64_to_bool(ge_i64(x, y)) };
 pub trait Eq(A) = sig { eq : A -> A -> Bool };
 pub impl Eq(I64) = module { fn eq(x, y) { i64_to_bool(eq_i64(x, y)) } };
-pub impl Eq(Bool) = module { fn eq(x, y) { match (x) { True => y | False => not(y) } } };
+pub impl Eq(Bool) = module { fn eq(x, y) { match (x) { True => y, False => not(y) } } };
 pub impl Eq(Char) = module { fn eq(x, y) { i64_to_bool(eq_char(x, y)) } };
 pub impl Eq(Unit) = module { fn eq(x, y) { i64_to_bool(eq_unit(x, y)) } };
 pub impl Eq(String) = module { fn eq(x, y) { i64_to_bool(eq_string(x, y)) } };
@@ -233,10 +233,10 @@ pub Syntax = module {
   pub char = fn(c) { atom_val(CharAtom(c)) };
   pub unit = fn(_) { atom_val(UnitAtom) };
   pub seq = fn(a, b) { RawLet(None, new_id("_"), None, a, b, False) };
-  pub tokens = fn(b : Expr) { match (b) { | RawBlock(_, ts) => ts | _ => panic[List(TokenTree)]("tokens: not a block") } };
+  pub tokens = fn(b : Expr) { match (b) { RawBlock(_, ts) => ts, _ => panic[List(TokenTree)]("tokens: not a block") } };
   pub expand_block = fn(b : Expr) { expand_block[Expr](b) };
-  pub id_name = fn(stx) { match (stx) { | RawVar(_, id) => id.name | _ => panic[String]("expected identifier") } };
-  pub id_eq = fn(a, b) { match (a) { | RawVar(_, ida) => match (b) { | RawVar(_, idb) => i64_to_bool(eq_string(ida.name, idb.name)) | _ => panic[Bool]("expected identifier") } | _ => panic[Bool]("expected identifier") } }
+  pub id_name = fn(stx) { match (stx) { RawVar(_, id) => id.name, _ => panic[String]("expected identifier") } };
+  pub id_eq = fn(a, b) { match (a) { RawVar(_, ida) => match (b) { RawVar(_, idb) => i64_to_bool(eq_string(ida.name, idb.name)), _ => panic[Bool]("expected identifier") }, _ => panic[Bool]("expected identifier") } }
 
 }
 |}
