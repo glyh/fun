@@ -221,7 +221,7 @@ as the frontier reaches them.
   Concrete input: elaborator errors carry **no source location at all**. `Elab_error`
   has no span fields. Since delete-surface-ir the elaborator reads `Syntax.t`, so
   every form it sees has a span; attaching them to errors is the remaining work.
-- **`Self` names two things** — the record-recursion placeholder
+- ~~**`Self` names two things**~~ — decided 2026-09-15: `Self` is the struct being defined; the recursion placeholder is an unwritable "recursive occurrence" (see mutually-recursive-record-types). — the record-recursion placeholder
   (`VSelfType args`, set by record declarations) and the partial struct type seen
   by struct method bodies (`elab_infer.ml`, `Struct` case). Both share
   `ctx.self_type`. Giving the record one an identity

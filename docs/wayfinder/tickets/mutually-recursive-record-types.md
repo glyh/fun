@@ -163,5 +163,9 @@ n : Numbers = s   // error: Scores is not Numbers
 
 Iso- and equi-recursive μ-types were considered and rejected. Mutual chains
 reuse the nominal three-phase knot (register every id, elaborate, finish).
-Still open: whether method-body `Self` gets its own word (fog item "`Self`
-names two things").
+**Naming (grilled 2026-09-15):** `Self` is only the struct being defined
+(method bodies, items). The recursion placeholder is a separate internal concept,
+never written: users write the declared name (`rec Numbers = struct { tail :
+Option(Numbers) }`); internally and in errors it is a "recursive occurrence"
+("`Numbers` refers to itself here"). Never call it a "self type" (that term
+means other things in Cedille, Scala and OOP literature).
