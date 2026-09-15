@@ -137,6 +137,11 @@ and term =
       (** Effect family definition. The [id] is allocated during elaboration so
           repeated evaluation of the same declaration remains applicative. *)
   | Perform of { eff : term; op : string; arg : term }
+  | Tunnel of (int * int) list * term
+      (** An application whose latent row does not name the effect families
+          listed: a request of such a family coming out of it skips that many
+          handlers, the ones lexically enclosing the call in its function body
+          (tunneling, E5). Pairs are (effect id, handler count). *)
       (** Effect operation invocation. Handlers/runtime bubbling are not implemented yet. *)
   | RefTy of term * term
       (** [Ref(h, A)]: a reference into the hidden heap [h] holding an [A]. The
@@ -422,6 +427,8 @@ and effect_request = {
   eff : value;
   op : string;
   arg : value;
+  hops : int;
+    (** How many matching handlers this request still skips (tunneling). *)
   k : value -> result;
 }
 
@@ -593,6 +600,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | Proj (a, i) -> Proj (at 0 a, i)
   | Dot (a, field) -> Dot (at 0 a, field)
   | Perform p -> Perform { p with eff = at 0 p.eff; arg = at 0 p.arg }
+  | Tunnel (skips, body) -> Tunnel (skips, at 0 body)
   | Quote q -> Quote { q with holes = List.map (fun (n, h) -> (n, at 0 h)) q.holes }
   | RecordConstruct { typ; fields } ->
       RecordConstruct { typ = at 0 typ; fields = List.map (fun (n, v) -> (n, at 0 v)) fields }

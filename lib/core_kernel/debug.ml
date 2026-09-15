@@ -41,6 +41,7 @@ and pp_term (t : term) : string =
   | EffectDef { name; body; _ } -> Printf.sprintf "EffectDef(%s, %s)" name (pp_term body)
   | Perform { eff; op; arg } ->
       Printf.sprintf "Perform(%s.%s, %s)" (pp_term eff) op (pp_term arg)
+  | Tunnel (_, body) -> Printf.sprintf "Tunnel(%s)" (pp_term body)
   | RefTy (h, a) -> Printf.sprintf "RefTy(%s, %s)" (pp_term h) (pp_term a)
   | RefNew e -> Printf.sprintf "RefNew(%s)" (pp_term e)
   | RefGet e -> Printf.sprintf "RefGet(%s)" (pp_term e)

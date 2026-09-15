@@ -47,6 +47,11 @@ module Ctx = struct
        [None] only in the half-built context [init_ctx] is itself assembling. *)
     base : t option;
     sink : effect_sink;
+    (* The effect families each handler lexically enclosing this point handles,
+       innermost first, within the current function body (a lambda body starts
+       with none). A call whose row does not name one of them tunnels past
+       these handlers (E5). *)
+    handler_scopes : int list list;
   }
 
 and macro_runtime = {
@@ -90,6 +95,7 @@ and macro_runtime = {
       macro_runtime = None;
       base = None;
       sink = { performed = { effects = []; tail = None } };
+      handler_scopes = [];
     }
 
   (* The context an imported compilation unit is elaborated against: this

@@ -741,7 +741,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         let self_ty = partial_self () in
         let ctx = Ctx.with_self_type ctx self_ty in
         let self_ctx, self_entry = Ctx.bind_anonymous ctx self_ty in
-        let self_ctx = { self_ctx with Ctx.self_entry = Some self_entry } in
+        let self_ctx = { self_ctx with Ctx.self_entry = Some self_entry ; handler_scopes = [] } in
         let (body_core, body_ty), row = elaborate_method_params self_ctx effects params body in
         let body_ty_term = Ctx.quote self_ctx body_ty in
         let method_ty =
@@ -1031,7 +1031,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let body_core, body_ty = ops.infer body_ctx body in
       (Let (Ctx.quote ctx impl_ty, impl_core, body_core), body_ty)
   | Match (scrutinee, branches) ->
-      let (scrut_core, scrut_ty), scrutinee_effects = collecting ctx (fun ctx -> ops.infer ctx scrutinee) in
+      let hctx = with_handler ctx branches in
+      let (scrut_core, scrut_ty), scrutinee_effects = collecting hctx (fun ctx -> ops.infer ctx scrutinee) in
       let value_branches = value_branches_of branches in
       let effect_branches = effect_branches_of branches in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
@@ -1039,7 +1040,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       let (value_branches', effect_branches'), body_effects =
-        collecting ctx (fun ctx ->
+        collecting hctx (fun ctx ->
           ( List.map (fun (pat, body) ->
               let branch_ctx = refine_branch_context ctx refinement_target pat in
               let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
@@ -1049,6 +1050,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             List.map (elaborate_effect_branch ops ctx ret_ty residual scrutinee_effects) effect_branches ))
       in
       emit_residual ctx ~residual_of:(fun effects -> residual_effects ctx effects effect_branches) scrutinee_effects body_effects;
+      check_handled_effects_do_not_escape ctx branches ret_ty;
       let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)

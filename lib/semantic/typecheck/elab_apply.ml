@@ -9,19 +9,42 @@ open Elab_resolve
 open Elab_refine
 open Elab_ops
 
-(* Applying a function performs its latent row, instantiated at the argument.
+(* Tunneling (E5): a call whose row has an open tail may perform, through that
+   tail, an effect family a handler lexically enclosing the call handles without
+   the row naming it. Such a request belongs to the caller's caller, so it
+   skips every one of those handlers. A family the row names is the call's own,
+   handled by the nearest. ponytail: per effect family, not per instance, and an
+   unsolved meta tail counts as open. *)
+let tunnel ctx (row : effect_row_value) =
+  match row.tail_value with
+  | None -> Fun.id
+  | Some _ ->
+      let family v = match Nbe.force ctx.Ctx.metas v with VEffect { id; _ } -> Some id | _ -> None in
+      let named = List.filter_map family row.effect_values in
+      let skips =
+        List.sort_uniq compare (List.concat ctx.Ctx.handler_scopes)
+        |> List.filter_map (fun id ->
+               if List.mem id named then None
+               else Some (id, List.length (List.filter (List.mem id) ctx.Ctx.handler_scopes)))
+      in
+      if skips = [] then Fun.id else fun core -> Tunnel (skips, core)
+
+(* Applying a function performs its latent row, instantiated at the argument,
+   and tunnels what its open tail performs (the returned wrapper for the call).
    The argument is evaluated only when the row mentions it: evaluating it at
    check time would run what it performs. *)
 let emit_latent ctx (latent : effect_row_closure) arg_core =
   match latent.effects, latent.tail with
-  | [], None -> ()
+  | [], None -> Fun.id
   | _ ->
       let terms = latent.effects @ Option.to_list latent.tail in
       let arg =
         if List.exists (term_mentions_var 0) terms then Ctx.eval ctx arg_core
         else VRigid { lvl = ctx.Ctx.lvl; spine = [] }
       in
-      emit ctx (expr_effects_of_row_values ctx (effect_row_values ctx latent arg))
+      let row = effect_row_values ctx latent arg in
+      emit ctx (expr_effects_of_row_values ctx row);
+      tunnel ctx row
 
 (** Application inference.
     Loops to insert fresh metas for implicit VPi domains before consuming
@@ -80,19 +103,19 @@ let infer_ap ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * value =
   match f_ty with
   | VPi { explicitness = Explicit; domain = a_ty; effects; codomain = b_clo } ->
       let a_core = ops.check ctx a a_ty in
-      emit_latent ctx effects a_core;
+      let tunnel = emit_latent ctx effects a_core in
       let ret_ty =
         if term_mentions_var 0 b_clo.body then
           let a_val = Ctx.eval ctx a_core in
           Nbe.closure_apply ctx.metas b_clo a_val
         else Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] })
       in
-      (Ap (f_core, Explicit, a_core), Nbe.force ctx.metas ret_ty)
+      (tunnel (Ap (f_core, Explicit, a_core)), Nbe.force ctx.metas ret_ty)
   | _ -> (
       match pending_trait_dicts f_ty [] with
       | Some (pending, VPi { explicitness = Explicit; domain = a_ty; effects; codomain = b_clo }) ->
           let a_core = ops.check ctx a a_ty in
-          emit_latent ctx effects a_core;
+          let tunnel = emit_latent ctx effects a_core in
           let f_core = apply_pending_trait_dicts pending f_core in
           let ret_ty =
             if term_mentions_var 0 b_clo.body then
@@ -100,7 +123,7 @@ let infer_ap ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * value =
               Nbe.closure_apply ctx.metas b_clo a_val
             else Nbe.closure_apply ctx.metas b_clo (VRigid { lvl = ctx.lvl; spine = [] })
           in
-          (Ap (f_core, Explicit, a_core), Nbe.force ctx.metas ret_ty)
+          (tunnel (Ap (f_core, Explicit, a_core)), Nbe.force ctx.metas ret_ty)
       | _ -> (
           match f_ty with
           | VFlex _ | VRigid _ | VNeutral _ ->
@@ -133,10 +156,10 @@ let infer_ap_implicit ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * v
   match f_ty with
   | VPi { explicitness = Implicit; domain = a_ty; effects; codomain = b_clo } ->
       let a_core = ops.check ctx a a_ty in
-      emit_latent ctx effects a_core;
+      let tunnel = emit_latent ctx effects a_core in
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
-      (Ap (f_core, Implicit, a_core), Nbe.force ctx.metas ret_ty)
+      (tunnel (Ap (f_core, Implicit, a_core)), Nbe.force ctx.metas ret_ty)
   | VPi { explicitness = Explicit; _ } ->
       raise (ElabError ApplyingNonFunction)
   | VFlex _ | VRigid _ | VNeutral _ ->
@@ -165,6 +188,7 @@ let infer_ap_implicit ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * v
 (** Lambda inference. *)
 let infer_lam ops (ctx : Ctx.t) (param : Syntax.param) (body : Syntax.t) :
     term * value =
+  let ctx = { ctx with Ctx.handler_scopes = [] } in
   let a_ty =
     match param.type_ with
     | Some ty_expr ->
