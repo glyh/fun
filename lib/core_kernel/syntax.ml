@@ -200,6 +200,9 @@ and kind =
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
+  | TraitBoundSet of t list
+      (** [[A : {Eq, Show}]]: the traits a binder must implement - only as an
+          implicit binder's bound *)
   | Arrow of Explicitness.t * id option * t * effect_row option * t
   | FieldAccess of t * string
   | Proj of t * int
@@ -533,8 +536,7 @@ let macro_compiled ~output (ann : MacroAnnotation.t option) (value : t) : t * ma
 let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
 
 (* The name a bare-name form was written with, whether expansion resolved it to
-   a binder or left it an open choice. Only for sugar matched as written - the
-   [+] of a trait bound [A : Eq + Show] - never for a lookup. *)
+   a binder or left it an open choice. Never for a lookup. *)
 let written_name (stx : t) =
   match stx.kind with
   | Var id -> Some id.name

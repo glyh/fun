@@ -1505,6 +1505,13 @@ let effects =
           (fn(_) { wrap(f)() } : Unit -> I64 can State(I64)) }");
     (* [~>] (effect-arrow-syntax): a parameter's [~>] mints a row variable the
        function is polymorphic in; a result's collects its parameters'. *)
+    Alcotest.test_case "a bound set requires every trait" `Quick
+      (eval_i64
+         "{ trait Show(A) = sig { show : A -> I64 }; impl Show(I64) = module { fn show(x) { x * 10 } }; \
+          both : [A : {Eq, Show}] -> A -> A -> I64 = fn[A : Type](x, y) { match (Eq.eq(x, y)) { True => Show.show(x), False => 0 } }; \
+          both(4, 4) }" 40L);
+    Alcotest.test_case "a bound set names a trait once" `Quick
+      (elab_fail "{ same : [A : {Eq, Eq}] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; 1 }");
     Alcotest.test_case "~> in a parameter is effect-polymorphic" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; \

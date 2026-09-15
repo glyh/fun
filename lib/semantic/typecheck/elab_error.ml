@@ -31,6 +31,7 @@ type elab_error =
   | UnknownTrait of string
   | UnknownTraitMethod of string
   | DuplicateTraitField of string
+  | DuplicateTraitBound of string
   | MissingTraitField of string
   | AmbiguousTraitImplementation of string
   | MissingTraitImplementation of string
@@ -87,6 +88,7 @@ let string_of_elab_error = function
   | UnknownTrait n -> "UnknownTrait \"" ^ n ^ "\""
   | UnknownTraitMethod n -> "UnknownTraitMethod \"" ^ n ^ "\""
   | DuplicateTraitField n -> "DuplicateTraitField \"" ^ n ^ "\""
+  | DuplicateTraitBound n -> "DuplicateTraitBound \"" ^ n ^ "\""
   | MissingTraitField n -> "MissingTraitField \"" ^ n ^ "\""
   | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""
   | MissingTraitImplementation n -> "MissingTraitImplementation \"" ^ n ^ "\""

@@ -66,6 +66,7 @@ and t =
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
+  | TraitBoundSet of t list
   | Arrow of Explicitness.t * string option * t * effect_row option * t
   | FieldAccess of t * string
   | Proj of t * int
@@ -147,7 +148,7 @@ and pat =
 
 (* The name a bare-name form was written with, whether expansion resolved it to
    a binder or left it an open choice. For the lookups still keyed by spelling:
-   traits, and the trait-bound sugar [A : Eq + Show]. *)
+   traits. *)
 let written_name = function
   | Var n -> Some n
   | OpenChoice { name; _ } -> Some name
@@ -205,6 +206,7 @@ and lower_expr (stx : Syntax.t) : t =
     Annotated { inner = lower_expr inner; typ = lower_expr typ }
   | Syntax.Prod xs -> Prod (List.map lower_expr xs)
   | Syntax.ProdTy xs -> ProdTy (List.map lower_expr xs)
+  | Syntax.TraitBoundSet xs -> TraitBoundSet (List.map lower_expr xs)
   | Syntax.Arrow (expl, name, dom, eff, cod) ->
     Arrow (expl, Option.map lower_id name, lower_expr dom,
                    Option.map lower_effect_row eff,

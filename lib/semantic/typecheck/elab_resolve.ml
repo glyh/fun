@@ -178,11 +178,25 @@ let lookup_trait ctx (p : Syntax.path) =
 (* A form naming a trait - [Eq], [M.Eq] - as the trait it names, if it does. *)
 let trait_of_form_opt ctx (form : Syntax.t) = Option.bind (Syntax.path_of_form form) (trait_of_path_opt ctx)
 
-(* The traits of a bound sugar [A : Eq + Show], when every summand names one. *)
+(* The traits of a bound [A : {Eq, Show}] (or [A : Eq]), when every form names
+   one; a trait named twice is an error. *)
 let trait_bounds_opt ctx (expr : Syntax.t) =
-  List.fold_right
-    (fun form acc -> Option.bind acc (fun infos -> Option.map (fun i -> i :: infos) (trait_of_form_opt ctx form)))
-    (Elab_syntax_util.trait_bound_forms expr) (Some [])
+  let infos =
+    List.fold_right
+      (fun form acc -> Option.bind acc (fun infos -> Option.map (fun i -> i :: infos) (trait_of_form_opt ctx form)))
+      (Elab_syntax_util.trait_bound_forms expr) (Some [])
+  in
+  Option.iter
+    (fun infos ->
+      let rec dup = function
+        | [] -> ()
+        | (i : trait_info) :: rest ->
+            if List.exists (fun (j : trait_info) -> j.trait_id = i.trait_id) rest then raise (ElabError (DuplicateTraitBound i.trait_name));
+            dup rest
+      in
+      dup infos)
+    infos;
+  infos
 
 let eval_trait_fields ctx trait_info args =
   List.map

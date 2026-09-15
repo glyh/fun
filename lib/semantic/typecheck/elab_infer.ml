@@ -647,6 +647,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let cores = List.map fst cores_tys in
       let tys = List.map snd cores_tys in
       (Prod cores, VProdTy tys)
+  (* Reached only when a bound set does not name traits (a bound is read by
+     the implicit arrow, [trait_bounds_opt]). *)
+  | TraitBoundSet _ -> raise (ElabError (UnknownTrait "a {…} bound lists traits"))
   | ProdTy elems ->
       let core_elems =
         List.map

@@ -71,6 +71,7 @@ pub Syntax = module {
     | RawAnnotated(Option(Span), Expr, Expr)
     | RawProd(Option(Span), List(Expr))
     | RawProdTy(Option(Span), List(Expr))
+    | RawTraitBoundSet(Option(Span), List(Expr))
     | RawArrow(Option(Span), Explicitness, Option(Id), Expr, Option(EffectRow), Expr)
     | RawFieldAccess(Option(Span), Expr, String)
     | RawProj(Option(Span), Expr, I64)

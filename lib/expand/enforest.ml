@@ -114,6 +114,11 @@ and parse_param_item env explicitness terms =
       param ~type_:(unit_type ()) Explicitness.Explicit "_"
   | [ ({ datum = Token { kind = Ident name; _ }; _ } as term) ] ->
       param_id explicitness (id_of term name)
+  (* [[A : {Eq, Show}]]: an implicit binder's bound set. *)
+  | ({ datum = Token { kind = Ident name; _ }; _ } as term) :: colon :: [ { datum = Group (Raw_syntax.Brace, items, span); _ } ]
+    when token_kind Colon colon && explicitness = Explicitness.Implicit ->
+      let bounds = List.map (fun ts -> parse_all (fun ts -> parse_expr_prec env Top ts) ts) (split_commas (drop_separators items)) in
+      param_id ~type_:(stx ~span (Syntax.TraitBoundSet bounds)) explicitness (id_of term name)
   | ({ datum = Token { kind = Ident name; _ }; _ } as term) :: colon :: typ_terms
     when token_kind Colon colon ->
       param_id ~type_:(parse_type_terms env typ_terms) explicitness (id_of term name)

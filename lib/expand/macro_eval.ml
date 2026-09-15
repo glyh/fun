@@ -208,6 +208,7 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Annotated { inner; typ } -> e "RawAnnotated" [ x inner; x typ ]
   | Prod xs -> e "RawProd" [ w_list ns x xs ]
   | ProdTy xs -> e "RawProdTy" [ w_list ns x xs ]
+  | TraitBoundSet xs -> e "RawTraitBoundSet" [ w_list ns x xs ]
   | Arrow (ex, name, dom, row, cod) ->
       e "RawArrow" [ w_explicitness ns ex; w_option ns (w_id ns) name; x dom; w_option ns (w_effect_row ns) row; x cod ]
   | FieldAccess (r, f) -> e "RawFieldAccess" [ x r; w_string f ]
@@ -563,6 +564,7 @@ let rec u_expr ns (v : value) : Syntax.t option =
       | "RawAnnotated", [ inner; typ ] -> let* inner = x inner in let* typ = x typ in mk (Annotated { inner; typ })
       | "RawProd", [ xs ] -> let* xs = u_list ns x xs in mk (Prod xs)
       | "RawProdTy", [ xs ] -> let* xs = u_list ns x xs in mk (ProdTy xs)
+      | "RawTraitBoundSet", [ xs ] -> let* xs = u_list ns x xs in mk (TraitBoundSet xs)
       | "RawArrow", [ ex; name; dom; row; cod ] ->
           let* ex = u_explicitness ns ex in
           let* name = u_option ns (u_id ns) name in
