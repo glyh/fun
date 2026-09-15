@@ -141,3 +141,13 @@ The port is written in **C#** (user decision), not F#. Variants become sealed
 record hierarchies matched with `switch` patterns; keep the domain-model names
 (the port's types are named after the domain model docs). Still decided at port
 start: the evaluator does not recurse on the native stack per object-level call.
+
+## Decided (2026-09-16): the evaluator is an explicit machine
+
+The C# evaluator is a loop over a heap-allocated stack of frames (a CEK-style
+machine), not native recursion per object-level call and not trampolined CPS.
+Depth is bounded by memory (and the budget), never by the 1 MB CLR stack; a
+captured continuation is a slice of the frame stack, which is how effect handlers
+(deep, one-shot, tunneling hop counts) are implemented. The elaborator may still
+recurse natively over syntax (its depth is program-text depth, not run-time depth)
+— revisit only if deeply nested source hits it.
