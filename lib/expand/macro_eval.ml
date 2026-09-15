@@ -259,6 +259,7 @@ and w_role ns (r : Syntax.role) =
     | CallMacro -> con ns.role_meaning "CallMacro" []
     | Rules { rules_kind; rules } -> con ns.role_meaning "Rules" [ w_macro_ann ns rules_kind; w_list ns (w_rule ns) rules ]
     | OrderGroup -> con ns.role_meaning "OrderGroup" []
+    | TypeDeclaration -> con ns.role_meaning "TypeDeclaration" []
   in
   con ns.role "MkRole"
     [ w_fixity ns r.fixity; w_option ns (w_order ns) r.order; meaning; w_span ns r.declared_at;
@@ -666,6 +667,7 @@ and u_role ns v : Syntax.role option =
             let* rules = u_list ns (u_rule ns) rules in
             Some (Syntax.Rules { rules_kind; rules })
         | Some ("OrderGroup", []) -> Some Syntax.OrderGroup
+        | Some ("TypeDeclaration", []) -> Some Syntax.TypeDeclaration
         | _ -> None
       in
       let* declared_at = u_span ns declared_at in

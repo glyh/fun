@@ -77,7 +77,7 @@ and map_rule_default m (r : rule) : rule =
 and map_role m (role : role) : role =
   match role.meaning with
   | Rules { rules_kind; rules } -> { role with meaning = Rules { rules_kind; rules = List.map (m.rule m) rules } }
-  | ApplyValue | AssignRef | CallMacro | OrderGroup -> role
+  | ApplyValue | AssignRef | CallMacro | OrderGroup | TypeDeclaration -> role
 
 and map_capture m = function
   | CapExpr e -> CapExpr (map_forms_with m e)

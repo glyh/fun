@@ -138,6 +138,9 @@ and role_meaning =
   | Rules of { rules_kind : MacroAnnotation.t; rules : rule list }
       (** a syntax form: a macro whose rules match tokens and fill a quote (M9) *)
   | OrderGroup  (** an order group's name, [order] its declaration *)
+  | TypeDeclaration
+      (** [type A = … and B = …]: the built-in type declaration, a base role so
+          [type] is an ordinary identifier a user form may shadow *)
 
 (** One rule: the tokens a use consumes and what each hole captures, and the
     replacement - quoted syntax parsed where the rule is written. *)

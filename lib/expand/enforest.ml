@@ -409,10 +409,6 @@ and parse_primary env terms =
           error
             "macro ... in syntax is not supported; use macro declarations in \
              do blocks or modules"
-      | Token { kind = KwType; _ } ->
-          error
-            "type ... in syntax is not supported; use do blocks and type \
-             declarations"
       | Token { kind = KwTrait; _ } ->
           error
             "trait ... in syntax is not supported; use do blocks and trait \
@@ -439,6 +435,8 @@ and parse_primary env terms =
           Enforest_forms.parse_quote (fun holes -> form_callbacks (eager_env ~holes env)) term.span rest
       | Token { kind = Ident name | Operator name; _ } -> (
           match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
+          | Some { meaning = Syntax.TypeDeclaration; _ } ->
+              error "a type declaration is not an expression; declare it in a block or module"
           | Some ({ meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } as role) ->
               let inst, rest =
                 Enforest_template.instantiate (template_callbacks env (Operand (name, role))) ~form:(id_of term name) ~kind:rules_kind
@@ -629,7 +627,7 @@ and parse_postfix_infix env min_prec lhs terms =
                 | Syntax.CallMacro -> syntax_operator_arg ~span ~use:term symbol role [ lhs; rhs ]
                 | Syntax.ApplyValue ->
                     ap ~span (ap ~span (var_of term symbol) Explicitness.Explicit lhs) Explicitness.Explicit rhs
-                | Syntax.OrderGroup -> error ("an order group is not an operator: " ^ symbol)
+                | Syntax.OrderGroup | Syntax.TypeDeclaration -> error ("not an infix operator: " ^ symbol)
               in
               parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
@@ -666,7 +664,7 @@ and parse_value_decl_after_prefix env ~recursive stmt =
           decl_value = value;
           decl_recursive = recursive;
         }
-  | name_term :: rest when Option.is_some (binding_name_term name_term) -> (
+  | name_term :: rest when Option.is_some (binding_name_term name_term) && not (is_type_head env name_term) -> (
       let name_id = Option.get (binding_name_term name_term) in
       match split_at_token Equals rest with
       | Some (before_eq, _, value_terms) ->
@@ -704,9 +702,19 @@ and parse_value_decl_after_prefix env ~recursive stmt =
       | None -> None)
   | _ -> None
 
+(* The built-in type declaration: its head is [type] naming the base role
+   [TypeDeclaration], resolved by scope set like any role. *)
+and is_type_head env term =
+  match term.datum with
+  | Token { kind = Ident name; _ } -> (
+      match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
+      | Some { meaning = Syntax.TypeDeclaration; _ } -> true
+      | _ -> false)
+  | _ -> false
+
 and parse_type_binding env public stmt =
   match drop_separators stmt with
-  | ({ datum = Token { kind = KwType; _ }; _ } as type_kw) :: rest -> (
+  | type_kw :: rest when is_type_head env type_kw -> (
       match split_type_chain rest with
       | [] | [ _ ] -> parse_type_decl env public stmt
       | segments ->
@@ -727,9 +735,7 @@ and parse_type_binding env public stmt =
 
 and parse_type_decl env public stmt =
   match drop_separators stmt with
-  | { datum = Token { kind = KwType; _ }; _ }
-    :: ({ datum = Token { kind = Ident name; _ }; _ } as name_term)
-    :: rest -> (
+  | type_kw :: ({ datum = Token { kind = Ident name; _ }; _ } as name_term) :: rest when is_type_head env type_kw -> (
       match split_at_token Equals rest with
       | Some
           ( _,

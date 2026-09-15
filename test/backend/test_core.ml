@@ -3174,6 +3174,12 @@ let test_resolved_names_cannot_be_forged () =
     (function Expand_error.NotSyntax _ -> true | _ -> false)
     "{ x = 5; macro steal(n : Id) { Syntax.RawVar(None, Syntax.Id{name = \"x#0\"; span = None; scope = n.scope}) }; steal(y) }"
 
+(* [type] is an ordinary identifier naming a base role: a user form of the
+   name shadows it by scope set. *)
+let test_type_is_shadowable () =
+  check_i64_macro "a user syntax form shadows type" 7L
+    "{ syntax type : Decl { type $(n : Id) => { $n = 7 } }; type x; x }" ()
+
 let test_m9_param_id () =
   check_i64_macro "an Id parameter names the use site's binder" 5L
     "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 5; same(x) }" ()
@@ -4146,6 +4152,7 @@ let () =
           Alcotest.test_case "filling equals the quote" `Quick test_m9_filling_equals_quote;
           Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
           Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
+          Alcotest.test_case "type is shadowable" `Quick test_type_is_shadowable;
           Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
           Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
           Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;

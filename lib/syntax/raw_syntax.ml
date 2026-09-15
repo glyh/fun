@@ -21,7 +21,6 @@ let keyword = function
   | "match" -> Some KwMatch
   | "with" -> Some KwWith
   | "effect" -> Some KwEffect
-  | "type" -> Some KwType
   | "module" -> Some KwModule
   | "struct" -> Some KwStruct
   | "impl" -> Some KwImpl
@@ -174,7 +173,6 @@ let read ?file source =
     | KwMatch -> "match"
     | KwWith -> "with"
     | KwEffect -> "effect"
-    | KwType -> "type"
     | KwModule -> "module"
     | KwStruct -> "struct"
     | KwImpl -> "impl"
