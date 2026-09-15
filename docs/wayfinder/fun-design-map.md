@@ -344,11 +344,7 @@ every defect below is an invariant with no name in the source.
   division-by-zero leak it turned up. Open only for the unification question,
   which should wait until that check actually fires.
 - [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
-  — settle the rule before the struct elaborator is written a second time.
-  **Researched:** the split lives in enforest, expand *and* elaborate. With an
-  outer name in scope it misbinds silently rather than erroring. The two-phase
-  order is load-bearing for `self` seeing later fields. Recommended: source-order
-  scoping with deferred method bodies. Awaiting grilling.
+  — grilled 2026-09-15: source-order scoping (fields see earlier opens and bindings), method bodies deferred until all fields exist, no dependent fields, a struct does not see its own name.
 - [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
   (closed) — the written-name fallback now serves only context-less
   (string-built) ids, so a source-written call resolves by scope set alone and a

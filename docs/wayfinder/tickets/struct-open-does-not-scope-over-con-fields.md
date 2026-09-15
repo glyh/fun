@@ -147,3 +147,24 @@ Interactions to carry into grilling:
 
 _Unresolved._ The rule is a grilling decision between (A) and (B), with (B)
 recommended.
+
+## Grilled (2026-09-15): source order, deferred method bodies
+
+1. **(B) Source order.** A field's type sees every `open` and binding written
+   before it, as in `module`. Method bodies are checked after all fields, so a
+   method sees every field, including later ones. A field type that depends on a
+   method is a cycle error.
+   ```fun
+   R = struct {
+     open M;
+     f : T;                      // T from M
+     pub method get() { self.g } // sees g, declared later
+     g : I64
+   }
+   ```
+2. **No dependent fields for now.** A field type may not mention another field
+   (`struct { n : Type; v : n }` is an error). Dependent records would be their
+   own ticket.
+3. **A struct does not see its own name.** `C` binds after `C = struct { … }`,
+   as any binding does; the body uses bare names and `self`. `C.k` inside `C`
+   is an error that suggests `k`.
