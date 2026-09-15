@@ -764,13 +764,20 @@ end
     two separately-defined types with the same name are distinct. *)
 module NominalId : sig
   val fresh : unit -> nominal_id
+  (* The id [fresh] mints next: ids from here on are declared after this point. *)
+  val next : unit -> nominal_id
 end = struct
   let counter = ref 0
   let fresh () =
     let id = !counter in
     incr counter;
     id
+  let next () = !counter
 end
+
+(* Nominals declared by a module whose evaluation performs something (E11):
+   each evaluation is a new instance, named by the binder it is sealed at. *)
+let generative_nominals : (nominal_id, unit) Hashtbl.t = Hashtbl.create 16
 
 (* A nominal's declaration: each constructor's payload types, as terms over the
    type params (innermost, the last param at index 0) and then the declaration's

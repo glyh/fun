@@ -29,6 +29,10 @@ module Module_name = struct
      context, so a context that opens a unit itself - the macro-body context
      opening [std] - answers choices naming it. *)
   let unit_open_label path = "unit:" ^ path
+
+  (* A module's stamp member (E11): private, and unwritable - [#] begins a
+     comment, so no source name spells it. *)
+  let stamp = "#stamp"
 end
 
 module Syntax_name = struct

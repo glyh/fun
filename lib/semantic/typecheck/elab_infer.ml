@@ -510,6 +510,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         let ty_term = Ctx.quote ctx gen_val_ty in
         let ctx' = let_body_ctx ctx name gen_val_ty gen_val_core value_effects in
         let body_core, body_ty = ops.infer ctx' body in
+        if not (is_empty_expr_effects value_effects) && Option.is_some (mentions_generative ctx.metas ctx.lvl gen_val_ty) then
+          check_sealed_stays ctx.metas ~inner:ctx.lvl ~depth:ctx'.Ctx.lvl ~name:(Syntax.label name) body_ty;
         (Let (ty_term, gen_val_core, body_core), body_ty)
       end
   | Lam (param, body) -> infer_lam ops ctx param body
@@ -577,7 +579,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | VModule { entries; partial = _ } -> (
           match find_field_last (fun (n, _, _) -> String.equal n name) (visible_module_fields entries) with
           | Some (_, _, field_ty) ->
-              check_generative_escape ctx ~head_effects e_ty field_ty;
+              check_generative_escape ctx ~head_effects field_ty;
               (Dot (e_core, name), Nbe.force ctx.metas field_ty)
           (* A named impl is a member: [M.eq_C] has the trait dictionary type,
              which is what makes it usable in evidence position. *)
@@ -723,17 +725,36 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | Sig { bindings } -> Elab_type_expr.infer_signature ops ctx bindings
   | Module { bindings } ->
+      (* The module's stamp (E11): its first, private slot. Every nominal the
+         module declares captures it. At check time it is [()]; at run time a
+         module whose evaluation performs something allocates a fresh one, so
+         each evaluation's types are distinct instances - one slot, read by
+         every constructor alike. *)
+      let stamp_ty = VAtomTy Atom_ty.TUnit in
+      let stamp_bind def = LetBind (Compiler_names.Module_name.stamp, Private, def) in
       let binding_ctx =
         Ctx.enclosing_scope (Ctx.clear_self_scope ctx) (fun m -> List.iter (fun b -> ignore (Expand.go_struct_binding m b)) bindings)
       in
-      let _end_ctx, core_bindings, entries =
-        List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
-          let ctx', b, e = elab_module_binding ops ctx b in
-          (ctx', b @ acc_binds, e @ acc_entries))
-        (binding_ctx, [], []) bindings
+      let binding_ctx =
+        let stamped = extend_from_slots binding_ctx (stamp_bind (Atom Atom.Unit)) [ `Entry (Compiler_names.Module_name.stamp, stamp_ty, VAtom Atom.Unit) ] in
+        { stamped with Ctx.scope_captures = List.sort_uniq compare (binding_ctx.Ctx.lvl :: binding_ctx.Ctx.scope_captures) }
       in
-      let core_bindings = List.rev core_bindings in
-      let entries = List.rev entries in
+      let first_declared = NominalId.next () in
+      let (end_ctx, core_bindings, entries), performed =
+        collecting binding_ctx (fun binding_ctx ->
+          List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
+            let ctx', b, e = elab_module_binding ops ctx b in
+            (ctx', b @ acc_binds, e @ acc_entries))
+          (binding_ctx, [], []) bindings)
+      in
+      emit ctx performed;
+      let generative = not (is_empty_expr_effects performed) in
+      if generative then
+        for id = first_declared to NominalId.next () - 1 do Hashtbl.replace generative_nominals id () done;
+      check_sealed_members_stay ctx ~inner:binding_ctx.Ctx.lvl end_ctx entries;
+      let stamp = if generative then RefNew (Atom Atom.Unit) else Atom Atom.Unit in
+      let core_bindings = stamp_bind stamp :: List.rev core_bindings in
+      let entries = ModuleField (Compiler_names.Module_name.stamp, Private, stamp_ty) :: List.rev entries in
       let fields = module_entry_fields entries in
       validate_module_fields fields;
       (Module { bindings = core_bindings; signature = false }, VModule { entries; partial = false })

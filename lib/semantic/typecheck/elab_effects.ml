@@ -175,52 +175,62 @@ let effect_row_closure_of_expr_effects ctx effects =
    of the binder, so [st1 = SymbolTable(())] gives
    [st1.intern : I64 -> st1.Symbol], shared with no other evaluation. The type is
    read one level deeper, where the binder is. *)
-let generative_members mc depth ty =
-  match Nbe.force mc ty with
-  | VModule { entries; _ } ->
-      let rec type_former = function Pi { codomain; _ } -> type_former codomain | U -> true | _ -> false in
-      List.filter_map
-        (function ModuleField (name, _, member_ty) when type_former (Nbe.quote mc depth member_ty) -> Some name | _ -> None)
-        entries
-  | _ -> []
-
-(* [t] with each reference to one of [members] rewritten by [f], under [cutoff]
-   binders. *)
-let rec map_member_refs members f cutoff t =
+(* [t] with each reference to a generative nominal rewritten by [f], under
+   [cutoff] binders. *)
+let rec map_generative_refs f cutoff t =
   match t with
-  | NomRef { name; params; _ } when List.mem name members -> f cutoff name params
+  | NomRef { id; name; params; _ } when Hashtbl.mem generative_nominals id -> f cutoff name params
   | _ ->
       map_subterms
         (fun under sub ->
           match under with
-          | Some u -> map_member_refs members f (cutoff + u) sub
-          | None -> failwith "map_member_refs: subterm under a binder count known only by evaluation (an open)")
+          | Some u -> map_generative_refs f (cutoff + u) sub
+          | None -> failwith "map_generative_refs: subterm under a binder count known only by evaluation (an open)")
         t
 
-(* ponytail: a declared nominal is recognised by its member label, so a member
-   aliasing an outer type of the same name is sealed too; carry the declaring
-   module's identity on the nominal if that rejects real code. *)
+let mentions_generative mc depth ty =
+  let found = ref None in
+  ignore (map_generative_refs (fun _ name params -> found := Some name; NomRef { id = 0; name; num_params = 0; captures = []; params }) 0 (Nbe.quote mc depth ty));
+  !found
+
+(* E11: a module whose evaluation performs something is generative - each
+   evaluation is a new type - and its binder names it. In the binder's type, each
+   nominal such a module declares becomes that member of the binder, so
+   [st1 = SymbolTable(())] gives [st1.intern : I64 -> st1.Symbol], shared with no
+   other evaluation. The type is read one level deeper, where the binder is. *)
 let seal_generative (ctx : Ctx.t) (ty : value) : value =
   let mc = ctx.Ctx.metas and depth = ctx.Ctx.lvl + 1 in
-  match generative_members mc depth ty with
-  | [] -> ty
-  | members ->
+  match mentions_generative mc depth ty with
+  | None -> ty
+  | Some _ ->
       let rec seal cutoff name params =
-        List.fold_left (fun acc p -> Ap (acc, Explicit, map_member_refs members seal cutoff p)) (Dot (Var cutoff, name)) params
+        List.fold_left (fun acc p -> Ap (acc, Explicit, map_generative_refs seal cutoff p)) (Dot (Var cutoff, name)) params
       in
-      Nbe.eval mc (VRigid { lvl = ctx.Ctx.lvl; spine = [] } :: ctx.Ctx.env) (map_member_refs members seal 0 (Nbe.quote mc depth ty))
+      Nbe.eval mc (VRigid { lvl = ctx.Ctx.lvl; spine = [] } :: ctx.Ctx.env) (map_generative_refs seal 0 (Nbe.quote mc depth ty))
 
 (* A member of a generative module no binder names: its type may not mention a
    type the module declares, for that type would escape the expression. *)
-let check_generative_escape (ctx : Ctx.t) ~head_effects module_ty member_ty =
+let check_generative_escape (ctx : Ctx.t) ~head_effects member_ty =
   if not (is_empty_expr_effects head_effects) then
-    let mc = ctx.Ctx.metas in
-    match generative_members mc ctx.Ctx.lvl module_ty with
-    | [] -> ()
-    | members ->
-        ignore
-          (map_member_refs members (fun _ name _ -> raise (ElabError (GenerativeTypeEscapes name))) 0
-             (Nbe.quote mc ctx.Ctx.lvl member_ty))
+    Option.iter (fun name -> raise (ElabError (GenerativeTypeEscapes name))) (mentions_generative ctx.Ctx.metas ctx.Ctx.lvl member_ty)
+
+(* A sealed binder's types may not leave its scope: [ty], read at [depth], names
+   no entry at a level from [inner] up to [depth]. *)
+let check_sealed_stays mc ~inner ~depth ~name ty =
+  let rec go cutoff t =
+    match t with
+    | Var ix when ix >= cutoff && depth - 1 - (ix - cutoff) >= inner -> raise (ElabError (GenerativeTypeEscapes name))
+    | _ -> List.iter (fun (under, sub) -> match under with Some u -> go (cutoff + u) sub | None -> ()) (subterms t)
+  in
+  go 0 (Nbe.quote mc depth ty)
+
+(* A generative module's members, sealed inside it, may not reach its type. *)
+let check_sealed_members_stay (_ctx : Ctx.t) ~inner (end_ctx : Ctx.t) entries =
+  List.iter
+    (function
+      | ModuleField (name, _, ty) -> check_sealed_stays end_ctx.Ctx.metas ~inner ~depth:end_ctx.Ctx.lvl ~name ty
+      | ModuleImpl _ -> ())
+    entries
 
 let let_body_ctx ctx name ty core value_effects =
   if is_empty_expr_effects value_effects then Ctx.define ctx name ty (Ctx.eval ctx core)

@@ -436,6 +436,17 @@ let structs =
       (elab_fail (symbol_table "st2.name(st1.intern(5))"));
     Alcotest.test_case "an unnamed generative module's type may not escape" `Quick
       (elab_fail (symbol_table "SymbolTable(()).intern(5)"));
+    Alcotest.test_case "a sealed type may not leave its binder's scope" `Quick
+      (elab_fail (symbol_table "st1.intern(5)"));
+    Alcotest.test_case "a sealed member's type may not reach its module's type" `Quick
+      (elab_fail (symbol_table "M = module { t = SymbolTable(()); pub f = t.intern }; 1"));
+    Alcotest.test_case "an outer type a generative module names is not sealed" `Quick
+      (eval_i64
+         "{ type Symbol = Sym(I64);
+            mk = fn(u : Unit) { module { table = ref(0); pub T = Symbol; pub wrap = fn(n : I64) { table <- n; Sym(n) } } };
+            m = mk(());
+            f = fn(s : Symbol) { match (s) { Sym(n) => n } };
+            f(m.wrap(4)) }" 4L);
     Alcotest.test_case "a module type reads a later member's variables at its own depth" `Quick
       (eval_i64 "{ mk = fn(X : Type) { module { pub y = True; pub f = fn(x : X) { x } } }; mk(I64).f(7) }" 7L);
     (* A [type] member inside a [struct] used to push one context entry too many
