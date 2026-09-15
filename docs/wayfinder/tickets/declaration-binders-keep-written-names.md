@@ -2,7 +2,7 @@
 title: Declaration binders keep their written name as their resolved name
 parent: ../fun-design-map.md
 labels:
-  - wayfinder:grilling
+  - wayfinder:task
 status: open
 assignee:
 blocked_by:
@@ -44,3 +44,17 @@ with the member label kept separately (as struct fields already are)?
 
 Mint `name#n` for every declaration binder, carry the written label only where
 it is a member label, and key the elaborator's macro table by resolved name.
+
+## Grilled (2026-09-15): every declaration binder is fresh
+
+Every binder gets a minted resolved name: types, constructors, effects, traits,
+module items and macros, as `let` and parameters already do. A module item also
+keeps its written label, used only for member access (`M.x`), as struct fields
+do. The elaborator never finds a binder by its written spelling; its macro table
+is keyed by resolved name.
+
+```fun
+type Tmp = Yes | No;
+macro with_tmp(e) : Expr { quote({ type Tmp = A | B; $e }) };
+with_tmp(Tmp.Yes)   // the user's Tmp, not the macro's
+```
