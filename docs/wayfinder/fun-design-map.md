@@ -529,6 +529,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
+  — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
   — `fn(g : Unit ~> I64)` fails; annotations should use the expression grammar.
 - [A `List(I64)` parameter infers a wrong type](tickets/let-bound-lambda-list-param-wrong-type.md)
