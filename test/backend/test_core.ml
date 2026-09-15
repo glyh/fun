@@ -2188,7 +2188,13 @@ let test_order_groups () =
     "{ infix (<>) ($a, $b) { $a * $b }; 1 + 2 <> 3 }" ();
   check_i64_macro "a non-associative group's members apply once" 3L
     "{ order once : assoc(none); infix (<+>) once ($a, $b) { $a + $b }; 1 <+> 2 }" ();
-  check_i64_macro "<- is weaker than arithmetic" 3L "{ r = ref(0); _ = r <- 1 + 2; deref(r) }" ()
+  check_i64_macro "<- is weaker than arithmetic" 3L "{ r = ref(0); _ = r <- 1 + 2; deref(r) }" ();
+  check_i64_macro "a group unrelated to the prelude's meets <-" 5L
+    "{ order mine; infix (<>) mine ($a, $b) { $a; $b }; r = ref(0); _ = r <- 1 <> 5; deref(r) }" ();
+  check_i64_macro "a stated relation to a weakest group overrides" 1L
+    "{ order mine : weaker_than(assignment); infix (<>) mine ($a, $b) { $a; $b }; r = ref(0); _ = r <- 1 <> 5; deref(r) }" ();
+  check_i64_macro "a prelude group through an import binder" 14L
+    "{ Std = import \"std\"; order tight : stronger_than(Std.multiplicative); infix (<~>) tight ($a, $b) { $a + $b }; 2 * 3 <~> 4 }" ()
 
 let test_order_group_errors () =
   let rejects label fragment source =
@@ -2208,7 +2214,11 @@ let test_order_group_errors () =
   rejects "a non-associative group does not chain" "do not chain"
     "{ order once : assoc(none); infix (<+>) once ($a, $b) { $a + $b }; 1 <+> 2 <+> 3 }";
   rejects "<- does not chain" "`<-` and `<-` do not chain"
-    "{ a = ref(0); b = ref(0); _ = a <- b <- 1; 0 }"
+    "{ a = ref(0); b = ref(0); _ = a <- b <- 1; 0 }";
+  rejects "two weakest groups" "have no declared order"
+    "{ order w1 : weakest; order w2 : weakest; infix (<+>) w1 ($x, $y) { $x }; infix (<*>) w2 ($x, $y) { $x }; 1 <+> 2 <*> 3 }";
+  rejects "a cycle through a weakest group" "cyclic"
+    "{ order g; order m : stronger_than(g) weaker_than(assignment); 1 }"
 
 let test_order_group_imported () =
   let ops = ("ops", "open (import \"std\");\npub order tight : stronger_than(multiplicative);\npub infix (<~>) tight ($a, $b) { $a + $b }") in

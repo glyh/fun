@@ -126,6 +126,8 @@ and order = {
   group : string;
   group_name : string;
   group_assoc : assoc;
+  weakest : bool;
+      (** [weakest]: weaker than every group that states no relation to it *)
   stronger_than : order list;
   weaker_than : order list;
 }
@@ -346,7 +348,8 @@ let attaches (role : role) = role.meaning = ApplyValue
 type relation = Stronger | Weaker | Same | Unrelated
 
 (** How group [a] relates to group [b]: the transitive closure of the relations
-    the two declarations, and the declarations they name, state. *)
+    the two declarations, and the declarations they name, state. A stated relation
+    wins; otherwise a [weakest] group is weaker than one that is not. *)
 let order_relation (a : order) (b : order) : relation =
   let rec collect seen (o : order) =
     if List.exists (fun (s : order) -> String.equal s.group o.group) seen then seen
@@ -369,6 +372,8 @@ let order_relation (a : order) (b : order) : relation =
   if String.equal a.group b.group then Same
   else if reaches [] a.group b.group then Stronger
   else if reaches [] b.group a.group then Weaker
+  else if a.weakest && not b.weakest then Weaker
+  else if b.weakest && not a.weakest then Stronger
   else Unrelated
 
 (* An id a hole is written as in quoted syntax: [$x] ([$] cannot begin a source

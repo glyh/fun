@@ -264,7 +264,7 @@ and w_role ns (r : Syntax.role) =
 
 and w_order ns (o : Syntax.order) =
   con ns.order "MkOrder"
-    [ w_string o.group; w_string o.group_name; w_assoc ns o.group_assoc;
+    [ w_string o.group; w_string o.group_name; w_assoc ns o.group_assoc; w_bool ns o.weakest;
       w_list ns (w_order ns) o.stronger_than; w_list ns (w_order ns) o.weaker_than ]
 
 and w_rule ns (r : Syntax.rule) =
@@ -670,13 +670,14 @@ and u_role ns v : Syntax.role option =
 
 and u_order ns v : Syntax.order option =
   match payload ns.order v with
-  | Some ("MkOrder", [ group; group_name; assoc; stronger; weaker ]) ->
+  | Some ("MkOrder", [ group; group_name; assoc; weakest; stronger; weaker ]) ->
       let* group = u_string group in
       let* group_name = u_string group_name in
       let* group_assoc = u_assoc ns assoc in
+      let* weakest = u_bool ns weakest in
       let* stronger_than = u_list ns (u_order ns) stronger in
       let* weaker_than = u_list ns (u_order ns) weaker in
-      Some { Syntax.group; group_name; group_assoc; stronger_than; weaker_than }
+      Some { Syntax.group; group_name; group_assoc; weakest; stronger_than; weaker_than }
   | _ -> None
 
 and u_rule ns v : Syntax.rule option =

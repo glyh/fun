@@ -510,7 +510,7 @@ What remains, in the recommended order:
   hole never ends at a bare keyword; Rust-style arms (`A | B => e,`), `|` only
   union; relative precedence in named, transitive order groups; a non-trailing
   hole is one term. Grilled and implemented 2026-09-15 (arms; order groups and
-  hole extents on `order-groups`, with `capture-extents` merged in; `assoc(none)`, `<-` group and dotted group references on `order-group-leftovers`). Open: tail-
+  hole extents on `order-groups`, with `capture-extents` merged in; `assoc(none)`, `<-` group and dotted group references on `order-group-leftovers`; `weakest` groups on `weakest-group`). Open: tail-
   returning forms, dotted group references.
 - [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
   (closed) — an import's roles bind in the region of the open or binder that

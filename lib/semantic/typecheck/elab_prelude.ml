@@ -70,7 +70,7 @@ let stdlib_source =
   {|
 pub type Bool = False | True;
 pub syntax if { if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t, False => $e } };
-pub order disjunction : stronger_than(assignment);
+pub order disjunction;
 pub order conjunction : stronger_than(disjunction);
 pub order comparison : stronger_than(conjunction);
 pub order additive : stronger_than(comparison);
@@ -164,7 +164,7 @@ pub Syntax = module {
   and TokenKind = IdentTok(String) | OperatorTok(String) | IntTok(I64) | CharTok(Char) | StringTok(String) | UnitTok | KeywordTok(String) | PunctTok(String)
   and Delim = ParenDelim | BracketDelim | BraceDelim
   and Role = MkRole(Fixity, Option(Order), RoleMeaning, Option(Span), Option(String))
-  and Order = MkOrder(String, String, Assoc, List(Order), List(Order))
+  and Order = MkOrder(String, String, Assoc, Bool, List(Order), List(Order))
   and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule)) | OrderGroup
   and Rule = MkRule(List(RulePart), Replacement, Option(Span))
   and RulePart = PartToken(TokenTree) | PartGroup(Delim, List(RulePart), Option(Span)) | PartHole(String, HoleKind, Option(Span))

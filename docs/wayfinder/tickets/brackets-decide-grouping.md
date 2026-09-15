@@ -149,10 +149,19 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   special case (e.g. a group may declare `weaker_than(all)`, or `assignment` is
   the bottom every group is implicitly above).
 - **`Std = import "std"` in the test helper fails with `OpenSuppliesRole "not"`**
+  (**fixed** 2026-09-15: `Expand_ctx.bind` noted a unit's own roles, bound by an
+  import binder, against that same unit's open; it now skips them, as
+  `enter_open` already did)
   — likely pre-existing (an import binder of the prelude conflicting with the
   already-open prelude's roles). Investigate.
 
 ### Grilled (2026-09-15): `<-` is the default bottom, overridable
+
+**Implemented** 2026-09-15 (branch `weakest-group`): `Syntax.order` carries
+`weakest` (clause `weakest`, reflected in `MkOrder`); `order_relation` uses it
+only when no stated relation connects the two groups; the base `assignment`
+group is `weakest`, and the prelude's `disjunction` no longer names it. Two
+`weakest` groups meeting are "no declared order".
 
 `assignment` (the `<-` group) is implicitly weaker than every group that does not
 state its relation to it, so `r <- a <> b` works for any user group `mine`. A
