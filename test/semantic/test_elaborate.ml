@@ -1276,7 +1276,7 @@ let effects =
           match (perform Ask.prompt(Request{value = 1; extra = 2})) { x => x, effect Ask.prompt Request{missing} => missing } }");
     Alcotest.test_case "multi-operation handler remains effectful when partial" `Quick
       (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S; put : S -> Unit }; (fn(_) { match (perform State.get ()) { x => x, effect State.get () => 0 } } : Unit -> I64) }");
+         "{ effect State(S) = sig { get : Unit -> S; put : S -> Unit }; (fn(_) { match (perform State.get ()) { x => x, effect State.get () => 0 } } : Unit -> I64 can {}) }");
     Alcotest.test_case "duplicate effect branch rejected" `Quick
       (elab_fail
          "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n, effect Exc.raise n => n } }");
@@ -1313,7 +1313,7 @@ let effects =
               x => x, \
             effect StateI64.get () => resume(1) \
             } } \
-           : Unit -> I64) }");
+           : Unit -> I64 can {}) }");
     Alcotest.test_case "handler branch can perform handled effect" `Quick
       (elab_ok
          "{ effect Ping = sig { hit : I64 -> I64 }; \

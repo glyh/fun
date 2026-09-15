@@ -3,11 +3,26 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after fresh declaration binders and unforgeable resolved names, 2026-09-15.
+Last updated: after one-pass effects and the top-level unhandled-effect check, 2026-09-15.
 
 ---
 
 ## Completed
+
+### One-pass effects; unhandled effects at the top are errors (2026-09-15)
+
+- Effects are computed while inferring and checking, not by a second walk:
+  each context carries a sink `perform` and a latent row at an application emit
+  into; a lambda body, a type, a handled scrutinee and a unit elaborate in a
+  fresh one. `elab_effect_collect.ml` (`collect_effects`, `compile_time_safe`)
+  and the deferred-output table are deleted.
+- A handler discharges what it handles from its scrutinee and its branch bodies
+  (deep). A let or module/struct member whose value performs is opaque at check
+  time.
+- An entry expression and an imported unit's top-level bindings are checked
+  against the row the runtime handles (none yet): an unhandled effect is
+  `UnhandledEffects` naming it
+  ([unhandled-effects-pass-the-checker](wayfinder/tickets/unhandled-effects-pass-the-checker.md)).
 
 ### Fresh declaration binders, no string-built ids (2026-09-15)
 

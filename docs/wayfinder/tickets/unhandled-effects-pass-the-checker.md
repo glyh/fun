@@ -3,7 +3,9 @@ title: Unhandled effects pass the checker
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented on one-pass effects. A program's entry (an entry expression, an imported unit's top-level bindings) is checked against the row the runtime handles, empty today; an effect left there is UnhandledEffects naming it. Effects are computed during inference; the second walk is deleted.
 assignee:
 blocked_by:
 ---
@@ -51,3 +53,28 @@ warning mode.
 Effects the runtime provides later (printing, the E10 heap effects) are allowed
 at the top because the program entry is elaborated inside a runtime-provided
 handler for them — the same mechanism a user handler uses, not an exemption list.
+
+## Implemented (2026-09-15, branch `one-pass-effects`)
+
+- **One pass.** `infer`/`check` record what a form performs in a sink the
+  context carries (`Ctx.sink`, `Elab_effects.emit` / `collecting`): `perform` and
+  a function's latent row at an application emit (the argument is evaluated for
+  the row only when the row mentions it). A lambda body, a type, a handled
+  scrutinee and an imported unit elaborate in a fresh sink. The `collect_effects`
+  walk, `compile_time_safe` and `deferred_outputs` are deleted: the walk was a
+  second elaborator (block-local types unbound, handled effects in branch bodies
+  counted, typed macro arguments elaborated again).
+- **Handlers are deep in the checker too:** a match's residual is its
+  scrutinee's and its branch bodies' effects less those it handles (the
+  continuation's row stays the scrutinee's residual).
+- **Entry.** `Elab_entry.on_expr` and loading a unit check the residual against
+  `Elab_effects.runtime_handled_effects` (empty) — the seam a runtime handler
+  fills.
+- **Lets.** A let, module or struct member whose value performs is not evaluated
+  at check time: the items after it see it opaque.
+- The escaping-closure example is now caught statically, as a top-level
+  unhandled effect where it is called; the scope check itself (E6) stays with
+  [handlers-tunnel-callback-effects](handlers-tunnel-callback-effects.md).
+- Two tests changed their annotation to `can {}`: they relied on a check-mode
+  match requiring an empty residual, which a bare arrow's open row (E3 not built)
+  does not.

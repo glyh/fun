@@ -6,16 +6,13 @@ module Ctx = Elab_ctx.Ctx
 
 open Elab_ops
 
-(* A type is evaluated at check time, so it must be pure (E4). Its effects are
-   read after it elaborates: a typed macro call in it has run by then, and its
-   effects are its output's. *)
-let require_pure ops ctx (expr : Syntax.t) = Elab_effects.require_empty_effects ctx (ops.collect_effects ctx expr)
+(* A type is evaluated at check time, so it must be pure (E4). *)
+let infer_pure ops ctx (expr : Syntax.t) = Elab_effects.pure ctx (fun ctx -> ops.infer ctx expr)
 
 (** Bidirectional type inference: given an expanded expression, produce a
     core term and its type. *)
 let type_value_of_expr ops ctx (expr : Syntax.t) =
-  let core, ty = ops.infer ctx expr in
-  require_pure ops ctx expr;
+  let core, ty = infer_pure ops ctx expr in
   let value = Ctx.eval ctx core in
   (* A module is never a type: only a signature value ([sig { … }]) is. *)
   (match Nbe.force ctx.Ctx.metas value with
@@ -31,8 +28,7 @@ let infer_signature ops ctx bindings =
     | [] -> List.rev acc
     | Syntax.LetBinding { name = { name = key; _ }; value; _ } :: rest ->
         let name = Syntax.label key in
-        let value_core, value_ty = ops.infer ctx value in
-        require_pure ops ctx value;
+        let value_core, value_ty = infer_pure ops ctx value in
         let value_val = Ctx.eval ctx value_core in
         check_type_like ctx value_ty value_val;
         go (Ctx.define ctx key VU value_val) ((name, Public, value_val) :: acc) rest
@@ -49,8 +45,7 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
       let entries =
         List.map
           (fun eff_expr ->
-            let eff_core, eff_ty = ops.infer ctx eff_expr in
-            require_pure ops ctx eff_expr;
+            let eff_core, eff_ty = infer_pure ops ctx eff_expr in
             Ctx.unify ctx eff_ty VU;
             let eff_value = Ctx.eval ctx eff_core in
             match Nbe.force ctx.metas eff_value with
@@ -69,8 +64,7 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
       let tail =
         Option.map
           (fun tail_expr ->
-            let tail_core, tail_ty = ops.infer ctx tail_expr in
-            require_pure ops ctx tail_expr;
+            let tail_core, tail_ty = infer_pure ops ctx tail_expr in
             Ctx.unify ctx tail_ty VEffectRowTy;
             tail_core)
           row.tail

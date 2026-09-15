@@ -9,6 +9,20 @@ open Elab_resolve
 open Elab_refine
 open Elab_ops
 
+(* Applying a function performs its latent row, instantiated at the argument.
+   The argument is evaluated only when the row mentions it: evaluating it at
+   check time would run what it performs. *)
+let emit_latent ctx (latent : effect_row_closure) arg_core =
+  match latent.effects, latent.tail with
+  | [], None -> ()
+  | _ ->
+      let terms = latent.effects @ Option.to_list latent.tail in
+      let arg =
+        if List.exists (term_mentions_var 0) terms then Ctx.eval ctx arg_core
+        else VRigid { lvl = ctx.Ctx.lvl; spine = [] }
+      in
+      emit ctx (expr_effects_of_row_values ctx (effect_row_values ctx latent arg))
+
 (** Application inference.
     Loops to insert fresh metas for implicit VPi domains before consuming
     the user's explicit argument. *)
@@ -64,8 +78,9 @@ let infer_ap ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * value =
       core pending
   in
   match f_ty with
-  | VPi { explicitness = Explicit; domain = a_ty; codomain = b_clo; _ } ->
+  | VPi { explicitness = Explicit; domain = a_ty; effects; codomain = b_clo } ->
       let a_core = ops.check ctx a a_ty in
+      emit_latent ctx effects a_core;
       let ret_ty =
         if term_mentions_var 0 b_clo.body then
           let a_val = Ctx.eval ctx a_core in
@@ -75,8 +90,9 @@ let infer_ap ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * value =
       (Ap (f_core, Explicit, a_core), Nbe.force ctx.metas ret_ty)
   | _ -> (
       match pending_trait_dicts f_ty [] with
-      | Some (pending, VPi { explicitness = Explicit; domain = a_ty; codomain = b_clo; _ }) ->
+      | Some (pending, VPi { explicitness = Explicit; domain = a_ty; effects; codomain = b_clo }) ->
           let a_core = ops.check ctx a a_ty in
+          emit_latent ctx effects a_core;
           let f_core = apply_pending_trait_dicts pending f_core in
           let ret_ty =
             if term_mentions_var 0 b_clo.body then
@@ -115,8 +131,9 @@ let infer_ap_implicit ops (ctx : Ctx.t) (f : Syntax.t) (a : Syntax.t) : term * v
   let f_core, f_ty = ops.infer ctx f in
   let f_ty = Nbe.force ctx.metas f_ty in
   match f_ty with
-  | VPi { explicitness = Implicit; domain = a_ty; codomain = b_clo; _ } ->
+  | VPi { explicitness = Implicit; domain = a_ty; effects; codomain = b_clo } ->
       let a_core = ops.check ctx a a_ty in
+      emit_latent ctx effects a_core;
       let a_val = Ctx.eval ctx a_core in
       let ret_ty = Nbe.closure_apply ctx.metas b_clo a_val in
       (Ap (f_core, Implicit, a_core), Nbe.force ctx.metas ret_ty)
@@ -157,8 +174,7 @@ let infer_lam ops (ctx : Ctx.t) (param : Syntax.param) (body : Syntax.t) :
         Ctx.raw_meta ctx
   in
   let ctx' = Ctx.bind ctx param.name.name a_ty in
-  let body_core, body_ty = ops.infer ctx' body in
-  let body_effects = ops.collect_effects ctx' body in
+  let (body_core, body_ty), body_effects = collecting ctx' (fun ctx' -> ops.infer ctx' body) in
   let body_ty_term = Ctx.quote ctx' body_ty in
   let pi_ty = VPi { explicitness = expl_of_syntax param.explicitness; domain = a_ty; effects = effect_row_closure ctx.env (effect_row_of_expr_effects ctx' body_effects); codomain = { env = ctx.env; body = body_ty_term } } in
   (Lam body_core, pi_ty)

@@ -11,7 +11,6 @@ open Elab_refine
 open Elab_patterns
 open Elab_match
 open Elab_generalize
-open Elab_effect_collect
 open Elab_ops
 
 (** Bidirectional checking: verify [expr] against an [expected] type. *)
@@ -44,29 +43,28 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       in
       let b_ty = Nbe.closure_apply ctx.metas b_clo binder in
       let body_ctx, body_expected, inserted = insert_hidden_dicts ctx' b_ty 0 in
-      let body_core = ops.check body_ctx body body_expected in
-      let body_effects = ops.collect_effects body_ctx body in
+      let body_core, body_effects = collecting body_ctx (fun body_ctx -> ops.check body_ctx body body_expected) in
       check_effect_subset body_ctx body_effects (effect_row_values ctx effects binder);
       Lam (List.fold_left (fun acc _ -> Lam acc) body_core (List.init inserted Fun.id))
   | Match (scrutinee, branches), VPi _ ->
-      let scrut_core = ops.check ctx scrutinee VU in
-      let scrutinee_effects = ops.collect_effects ctx scrutinee in
+      let scrut_core, scrutinee_effects = collecting ctx (fun ctx -> ops.check ctx scrutinee VU) in
       let effect_branches = effect_branches_of branches in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
-      require_empty_effects ctx residual;
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let value_branches = value_branches_of branches in
-      let value_branches' =
-        List.map
-          (fun (pat, body) ->
-            let branch_ctx = refine_branch_context ctx refinement_target pat in
-            let core_pat, ctx' = elaborate_pat branch_ctx pat VU in
-            let refined_expected = refine_branch_expected ctx refinement_target pat expected in
-            let body_core = ops.check ctx' body refined_expected in
-            ValueBranch (core_pat, body_core))
-          value_branches
+      let (value_branches', effect_branches'), body_effects =
+        collecting ctx (fun ctx ->
+          ( List.map
+              (fun (pat, body) ->
+                let branch_ctx = refine_branch_context ctx refinement_target pat in
+                let core_pat, ctx' = elaborate_pat branch_ctx pat VU in
+                let refined_expected = refine_branch_expected ctx refinement_target pat expected in
+                let body_core = ops.check ctx' body refined_expected in
+                ValueBranch (core_pat, body_core))
+              value_branches,
+            List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches ))
       in
-      let effect_branches' = List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches in
+      emit_residual ctx ~residual_of:(fun effects -> residual_effects ctx effects effect_branches) scrutinee_effects body_effects;
       check_match_exhaustive ctx VU (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
   | Prod elems, VProdTy tys ->
@@ -92,42 +90,41 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
         let body_core = ops.check ctx' body expected in
         Let (ty_term, fix_core, body_core)
       end else begin
-        let val_core, val_ty =
-          match type_ with
-          | Some ty_expr ->
-              let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx ty_expr in
-              let core = ops.check ctx value ty_val in
-              (core, ty_val)
-          | None -> ops.infer ctx value
+        let (val_core, val_ty), value_effects =
+          collecting ctx (fun ctx ->
+            match type_ with
+            | Some ty_expr ->
+                let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx ty_expr in
+                let core = ops.check ctx value ty_val in
+                (core, ty_val)
+            | None -> ops.infer ctx value)
         in
+        emit ctx value_effects;
         let gen_val_core, gen_val_ty = generalize ctx val_core val_ty in
         let ty_term = Ctx.quote ctx gen_val_ty in
-        let ctx' =
-          if is_empty_expr_effects (ops.collect_effects ctx value) && compile_time_safe value then Ctx.define ctx name gen_val_ty (Ctx.eval ctx gen_val_core)
-          else Ctx.bind ctx name gen_val_ty
-        in
+        let ctx' = let_body_ctx ctx name gen_val_ty gen_val_core value_effects in
         let body_core = ops.check ctx' body expected in
         Let (ty_term, gen_val_core, body_core)
       end
   | Match (scrutinee, branches), _ ->
-      let scrut_core, scrut_ty = ops.infer ctx scrutinee in
+      let (scrut_core, scrut_ty), scrutinee_effects = collecting ctx (fun ctx -> ops.infer ctx scrutinee) in
       let value_branches = value_branches_of branches in
       let effect_branches = effect_branches_of branches in
       let scrut_ty = maybe_refine_match_scrutinee_ty ctx scrut_ty value_branches in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
-      let scrutinee_effects = ops.collect_effects ctx scrutinee in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
-      require_empty_effects ctx residual;
-      let value_branches' =
-        List.map (fun (pat, body) ->
-          let branch_ctx = refine_branch_context ctx refinement_target pat in
-          let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
-          let refined_expected = refine_branch_expected ctx refinement_target pat expected in
-          let body_core = ops.check ctx' body refined_expected in
-          ValueBranch (core_pat, body_core))
-          value_branches
+      let (value_branches', effect_branches'), body_effects =
+        collecting ctx (fun ctx ->
+          ( List.map (fun (pat, body) ->
+              let branch_ctx = refine_branch_context ctx refinement_target pat in
+              let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
+              let refined_expected = refine_branch_expected ctx refinement_target pat expected in
+              let body_core = ops.check ctx' body refined_expected in
+              ValueBranch (core_pat, body_core))
+              value_branches,
+            List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches ))
       in
-      let effect_branches' = List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches in
+      emit_residual ctx ~residual_of:(fun effects -> residual_effects ctx effects effect_branches) scrutinee_effects body_effects;
       check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
   (* [quote { … }] where one [Decl] is expected - a [: Decl] macro's body - is
@@ -139,7 +136,7 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
           quote_core ~check:ops.check ctx (Macro_eval.w_decl ns item) holes
       | _ -> raise (ElabError (QuoteNotOneDecl (List.length items))))
   | MacroCall ({ kind = Var { name; _ }; _ }, args), _ ->
-      fst (apply_typed_macro ~check:ops.check ctx ~call:expr ~name args ~expected:(Some expected))
+      fst (apply_typed_macro ~check:ops.check ctx ~name args ~expected:(Some expected))
   | _ ->
       let core, inferred = ops.infer ctx expr in
       let rec wrap_implicits core ty =

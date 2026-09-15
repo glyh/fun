@@ -419,6 +419,36 @@ let test_eval_unhandled_perform () =
   | exception Nbe.EvalError msg -> Alcotest.fail ("unexpected perform error: " ^ msg)
   | _ -> Alcotest.fail "expected unhandled perform error"
 
+(* A program's top performs only what the runtime handles - nothing yet - so an
+   effect left unhandled there is an elaboration error, not a run-time crash. *)
+let expect_unhandled label names run =
+  match run () with
+  | exception Elaborate.ElabError (UnhandledEffects got) when got = names -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+  | _ -> Alcotest.fail (label ^ ": expected an unhandled-effect error")
+
+let test_top_unhandled_perform () =
+  expect_unhandled "a top-level perform" [ "effect Exc" ] (fun () ->
+      eval_source "{ effect Exc = sig { raise : I64 -> I64 }; perform Exc.raise(1) }")
+
+let test_top_escaping_closure () =
+  expect_unhandled "a closure escaping its handler, called at the top" [ "effect Exc" ] (fun () ->
+      eval_source
+        "{ effect Exc = sig { raise : I64 -> I64 };
+           g = match (0) { x => fn(u : Unit) { perform Exc.raise(x) }, effect Exc.raise n => fn(u : Unit) { n } };
+           g(()) }")
+
+let test_top_handled_and_latent () =
+  check_i64 "a handled perform and an uncalled effectful function" 2L
+    "{ effect Exc = sig { raise : I64 -> I64 };
+       f = fn(u : Unit) { perform Exc.raise(1) };
+       match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } }" ()
+
+let test_top_unhandled_in_imported_unit () =
+  with_modules [ ("noisy", "effect Exc = sig { raise : I64 -> I64 };\npub v = perform Exc.raise(1)") ] (fun loader ->
+      expect_unhandled "an imported unit's top-level perform" [ "effect Exc" ] (fun () ->
+          eval_source_with_loader loader "{ M = import \"noisy\"; 0 }"))
+
 let test_eval_match_binds_a_closure () =
   check_i64 "a variable pattern binds a closure scrutinee" 1L
     "{ h = match (fn(u : Unit) { 1 }) { x => x }; h(()) }" ();
@@ -3369,6 +3399,10 @@ let () =
             (check_i64 "rec not" 0L
                "{ rec f : Bool -> I64 = fn(x) { if (x) { 0 } else { f(not x) } }; f(False) }");
           Alcotest.test_case "unhandled perform" `Quick test_eval_unhandled_perform;
+          Alcotest.test_case "unhandled effect at the top is an error" `Quick test_top_unhandled_perform;
+          Alcotest.test_case "an escaping closure called at the top is an error" `Quick test_top_escaping_closure;
+          Alcotest.test_case "handled and latent effects pass the top" `Quick test_top_handled_and_latent;
+          Alcotest.test_case "an imported unit's unhandled effect is an error" `Quick test_top_unhandled_in_imported_unit;
           Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
           Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;

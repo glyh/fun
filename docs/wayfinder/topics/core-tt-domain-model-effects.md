@@ -71,10 +71,10 @@ no separate fuel). Recursive definitions unfold on open arguments under it; two
 applications of the same *pure* fixpoint to convertible arguments compare without
 unfolding (lazy delta, `VGlued`)
 ([recursive-definitions-stuck-on-open-arguments](../tickets/recursive-definitions-stuck-on-open-arguments.md),
-closed). Running a program stays unbudgeted. Distance: which terms may be
-evaluated is still decided by `collect_effects` plus the syntactic
-`compile_time_safe` (`elab_effect_collect.ml`), not by the row, because refs
-contribute no effect ([refs-in-effect-rows](../tickets/refs-in-effect-rows.md));
+closed). Running a program stays unbudgeted. Effects are computed in
+the one inference pass, and a let is evaluated at check time only when its value
+performs nothing. Distance: refs contribute no effect, so a ref-using value still
+counts as pure ([refs-in-effect-rows](../tickets/refs-in-effect-rows.md));
 and a fixpoint counts as pure only with a written `can {}`, since a bare arrow's
 row is still open ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md)).
 
@@ -99,9 +99,11 @@ the handler scope. What may not happen is a closure whose row *names* a handled
 effect escaping the handler that handles it — the handler binds its effect like
 a type variable, and the escape check is the one existentials and `runST`-style
 brands need. No such check exists today: an escaping closure fails only at run
-time with "unhandled effect". Distance: the same ticket's second half; nothing
-checks a program's residual row is empty either
-([unhandled-effects-pass-the-checker](../tickets/unhandled-effects-pass-the-checker.md)).
+time with "unhandled effect". Distance: the same ticket's second half. A
+program's residual row is checked empty at its entry
+([unhandled-effects-pass-the-checker](../tickets/unhandled-effects-pass-the-checker.md),
+closed), so an escaping closure called at the top is an elaboration error; one
+that escapes and is never called at the top is not yet caught.
 
 ### E7 — continuations are one-shot
 
@@ -163,9 +165,9 @@ Checked against main on 2026-09-15 (probes in the effects audit).
 | model | implementation today |
 |---|---|
 | bare arrow is pure | omitted row = fresh meta tail — the opposite default ([ticket](../tickets/bare-arrow-is-pure.md)) |
-| checker evaluates under a budget | enforced (work-measured, names the call); purity still gated by `collect_effects` + syntactic `compile_time_safe` |
+| checker evaluates under a budget | enforced (work-measured, names the call); purity is the one-pass row, refs excepted |
 | handling is lexical (tunnels) | dynamic — nearest enclosing handler catches ([ticket](../tickets/handlers-tunnel-callback-effects.md)) |
-| handler-scope escape check | none; unhandled effects reach run time ([ticket](../tickets/unhandled-effects-pass-the-checker.md)) |
+| handler-scope escape check | none; an effect unhandled at a program's entry is an elaboration error |
 | one-shot continuations | run-time `used` check — matches the model |
 | deep handlers, `resume` scoped | enforced, tested |
 | rows set-like, normalized | enforced |
