@@ -16,19 +16,22 @@ let rec parse_args env terms =
           parse_all (fun ts -> parse_expr_prec env Top ts) part)
         parts
 
-(* A call's arguments read as the kinds of the macro its head names, when any
-   is not an [Expr] (M9); [None] otherwise, and the call is an application. *)
+(* A call's arguments, exactly as written, read as the kinds of the macro its
+   head names (M8, M9); [None] when the head names no macro the reader knows,
+   and the call is an application. An empty [()] is the one [()] argument an
+   empty parameter list declares, as for a function. *)
 and macro_call_args env (head : Syntax.t) items =
   match env.macro_params head with
-  | Some kinds when List.exists (fun k -> k <> Syntax.HoleExpr) kinds ->
+  | Some kinds ->
       let macro = match head.kind with Syntax.Var id -> id.name | FieldAccess (_, f) -> f | _ -> "_" in
-      let parts = match drop_separators items with [] -> [] | items -> split_commas items in
+      let parts = match drop_separators items with [] -> [ [] ] | items -> split_commas items in
       if List.length parts <> List.length kinds then
         Expand_error.raise_at (ArgumentCount { macro; expected = List.length kinds; got = List.length parts });
       Some
         (List.map2
            (fun kind part ->
              match (kind : Syntax.hole_kind), drop_separators part with
+             | HoleExpr, [] when drop_separators items = [] -> Syntax.CapExpr (unit ())
              | HoleExpr, _ -> Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env Top ts) part)
              | HoleId, [ { datum = Token ({ kind = Ident _ | Operator _; _ } as tok); _ } ] -> Syntax.CapId tok
              | HoleBlock, [ ({ datum = Group (Raw_syntax.Brace, ts, _); _ } as group) ] ->

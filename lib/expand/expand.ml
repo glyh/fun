@@ -384,14 +384,15 @@ let rec flatten_ap (stx : t) (acc : (Explicitness.t * t) list) :
   | Ap (f, e, a) -> flatten_ap f ((e, a) :: acc)
   | _ -> (stx, acc)
 
-(** Number of parameters a compiled macro transformer accepts, i.e. how many
-    curried arguments belong to one macro call. Counts the leading [Lam]s of
-    the closure body (the same heuristic as the operator-macro path). *)
-let macro_arity (v : Core.value) : int =
-  let rec count = function Core.Lam body -> 1 + count body | _ -> 0 in
-  match v with
-  | Core.VLam { body = { body; _ } } -> 1 + count body
-  | _ -> 0
+(* M8: a macro runs only on the arguments it declares - one per explicit
+   parameter, [m()] passing the [()] its empty parameter list declares. *)
+let macro_arity (ctx : Expand_ctx.t) key =
+  List.length (Option.value ~default:[] (Expand_ctx.lookup_macro_params ctx key))
+
+let check_argument_count (ctx : Expand_ctx.t) ~key args =
+  let expected = macro_arity ctx key in
+  if List.length args <> expected then
+    Expand_error.raise_at (ArgumentCount { macro = key; expected; got = List.length args })
 
 (** Resolve an application/head identifier through the unified binding table
     and decide whether it names a macro. Returns [None] when the name
@@ -629,9 +630,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
        and re-apply any remaining spine arguments as an ordinary application
        around the macro's result. *)
     let expand_macro_head ~key ~macro_entry ~head_id =
-      let arity = macro_arity macro_entry.Expand_ctx.value in
-      let n = List.length spine in
-      let take = if arity <= 0 || arity > n then n else arity in
+      let take = macro_arity ctx key in
       let rec split k xs =
         if k <= 0 then ([], xs)
         else match xs with
@@ -893,13 +892,11 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
   (* An application form is an expression: a call in item position is a
      [MacroCallBinding]. *)
   check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Expr;
+  check_argument_count ctx ~key macro_args;
   match macro_entry.Expand_ctx.signature with
-  | Some signature ->
+  | Some _ ->
     (* Its signature promises types: the call waits for the elaborator, its
        arguments travelling as syntax objects, marked [Stx]. *)
-    if List.length macro_args <> List.length signature.params then
-      Expand_error.raise_at
-        (ArgumentCount { macro = key; expected = List.length signature.params; got = List.length macro_args });
     let wrap_stx = function CapExpr arg -> CapExpr { arg with kind = Syntax.Stx arg } | c -> c in
     { stx with kind = MacroCall (head, List.map wrap_stx macro_args) }
   | None -> begin match ctx.Expand_ctx.eval_and_apply with
@@ -1125,20 +1122,19 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
           let macro_kind = match Expand_ctx.lookup_macro_kind ctx key with
             | Some k -> k | None -> Syntax.MacroKind.default in
           check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Decl;
+          check_argument_count ctx ~key args;
           let apply_fn = apply_fn ctx.Expand_ctx.budget in
            Expand_ctx.macro_application ctx ~name:key ~expand:(expand ctx) (fun () ->
              let app = application ctx in
              let fn = List.fold_left (fun fn arg ->
                 apply_fn fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.receive_capture arg))) macro_fn args in
-             let rec force_val v =
-               match v with
-               | Core.VLam _ | Core.VFlex _ ->
-                   let dummy = Core.VStx (Core.StxExpr { Syntax.kind = Atom (Atom.Unit); span = Source_span.synthetic }) in
-                   force_val (apply_fn v dummy)
-               | _ -> v
-             in
-             let fn = force_val fn in
-             let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn in
+             (* Every argument is given (M8). What is still a function is an
+                output left polymorphic - [{ Nil }] is [{A} -> List(A)], since
+                a Decl macro's body has no declared output type to insert its
+                implicit against - so it is instantiated, with a type, never
+                with syntax the macro was not given. *)
+             let rec instantiate v = match v with Core.VLam _ -> instantiate (apply_fn v Core.VU) | _ -> v in
+             let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals (instantiate fn) in
              (match result with
              | Some bindings ->
                  (* Stage 6: recursively process generated bindings through

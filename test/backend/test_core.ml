@@ -1730,7 +1730,7 @@ let test_generated_macro_binding_reentered () =
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_macro ]));
-  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
+  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
   let _surface_bindings = Expand.expand_struct_bindings ctx [ call ] in
   Alcotest.(check bool) "generated macro registered" true
@@ -1767,7 +1767,7 @@ let test_generated_multi_binding_scope_threading () =
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_x; generated_y ]));
-  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
+  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
   let expanded_bindings = Expand.expand_struct_bindings ctx [ call ] in
   let find_let name binds =
@@ -3064,6 +3064,32 @@ let test_m9_param_imported () =
   check_operator "an imported macro's Decl parameter" 33L [ kinded_unit ]
     "{ M = module { open (import \"kinds\"); with_extra({ pub x = 1; pub y = 10 }) }; M.x + M.y + M.extra }"
 
+(* M8: every macro application is given exactly the arguments its macro
+   declares - a Decl macro is never run on syntax it was not given. *)
+let count_error expected got = function
+  | Expand_error.ArgumentCount { expected = e; got = g; _ } -> e = expected && g = got
+  | _ -> false
+
+let test_m8_argument_count () =
+  expect_expand_error "a Decl macro given too few arguments" (count_error 2 1)
+    "{ M = module { macro two(a, b) : Decl { Syntax.decl_let(Syntax.new_id(\"x\"), a, False) }; two(1); pub r = 1 }; M.r }";
+  expect_expand_error "a Decl macro given too many arguments" (count_error 2 3)
+    "{ M = module { macro two(a, b) : Decl { Syntax.decl_let(Syntax.new_id(\"x\"), a, False) }; two(1, 2, 3); pub r = 1 }; M.r }";
+  expect_expand_error "an Expr macro given too many arguments" (count_error 1 2)
+    "{ macro one(a) { a }; one(1, 2) }";
+  expect_expand_error "an Expr macro given too few arguments" (count_error 2 1)
+    "{ macro two(a, b) { a }; two(1) }";
+  check_i64_macro "a Decl macro with an empty parameter list" 4L
+    "{ M = module { macro four() : Decl { Syntax.decl_let(Syntax.new_id(\"four\"), Syntax.i64(4), False) }; four(); pub r = 1 }; M.r + 3 }" ();
+  check_i64_macro "a macro's result applied to a further argument" 5L
+    "{ macro ident(_) { Syntax.lam(\"y\", Syntax.var(\"y\")) }; ident(0)(5) }" ()
+
+let test_m8_imported_argument_count () =
+  match eval_with_imported_macros [ kinded_unit ] "{ M = module { open (import \"kinds\"); seven(y, z); pub r = 1 }; M.r }" with
+  | exception Expand_error.Error { error; _ } when count_error 1 2 error -> ()
+  | exception e -> Alcotest.fail (Printexc.to_string e)
+  | _ -> Alcotest.fail "expected an argument count error"
+
 (* Names and shape only: a binder expanded again gets a fresh scope, which
    resolution of an already-resolved name never consults. *)
 let erase_scopes stx = Expand.map_ids (fun id -> { id with Syntax.scope = Scope_set.empty }) stx
@@ -3814,5 +3840,7 @@ let () =
           Alcotest.test_case "a Decl parameter" `Quick test_m9_param_decl;
           Alcotest.test_case "a Decl argument of the wrong kind" `Quick test_m9_param_decl_kind_mismatch;
           Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;
+          Alcotest.test_case "a macro is given exactly its arguments" `Quick test_m8_argument_count;
+          Alcotest.test_case "an imported macro's argument count" `Quick test_m8_imported_argument_count;
         ] );
     ]

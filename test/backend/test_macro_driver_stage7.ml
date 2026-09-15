@@ -26,7 +26,7 @@ let ready_expr_macro_ctx () =
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ _ _ ->
     VStx (StxExpr (stx (Syntax.Atom (I64 1L)))));
   Expand_ctx.register_macro ctx ~name:"mk" ~value:(VAtom Unit);
-  Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default;
+  Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default ~params:[ Syntax.HoleExpr ];
   ctx
 
 let test_expression_macro_exhausts_budget () =
@@ -54,7 +54,7 @@ let test_decl_macro_exhausts_budget () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ _ _ -> VStx (StxDecls []));
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VAtom Unit);
-  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl;
+  Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
   expect_budget_exceeded ~call:"macro 'gen'" (fun () ->
       with_limit ctx 0 (fun () -> Expand.expand_struct_bindings ctx [ call ]))
@@ -76,7 +76,7 @@ let doubling_macro_ctx () =
   Binding.extend ctx.Expand_ctx.binding_table ~name:"mk" ~scope:Scope_set.empty ~kind:Binding.Macro
     ~resolved_name:"mk";
   Expand_ctx.register_macro ctx ~name:"mk" ~value:(VAtom Unit);
-  Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default;
+  Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default ~params:[ Syntax.HoleExpr ];
   (ctx, call)
 
 let test_breadth_within_budget () =
@@ -95,7 +95,7 @@ let test_macro_body_spends_from_the_expansion () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.eval_and_apply <- Some Nbe.apply_macro;
   Expand_ctx.register_macro ctx ~name:"mk" ~value:(VLam { body = { env = []; body = Var 0 } });
-  Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default;
+  Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default ~params:[ Syntax.HoleExpr ];
   ignore (with_limit ctx 2 (fun () -> Expand.expand ctx (expr_call "mk")));
   match with_limit ctx 1 (fun () -> Expand.expand ctx (expr_call "mk")) with
   | exception Expand_error.Error { error = BudgetExceeded { macro; call; _ }; _ } ->
