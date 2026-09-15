@@ -34,10 +34,7 @@ let rec compile_time_safe (expr : Syntax.t) : bool =
   | Syntax.FieldAccess (e, _) | Syntax.Proj (e, _) -> compile_time_safe e
   | Syntax.RecordConstruct { typ; fields } ->
       compile_time_safe typ && List.for_all (fun (_, value) -> compile_time_safe value) fields
-  | Syntax.Struct { con_fields; bindings } ->
-      List.for_all (fun (_, ty) -> compile_time_safe ty) con_fields
-      && List.for_all compile_time_safe_struct_binding bindings
-  | Syntax.Module { bindings } -> List.for_all compile_time_safe_struct_binding bindings
+  | Syntax.Struct { bindings } | Syntax.Module { bindings } -> List.for_all compile_time_safe_struct_binding bindings
   | Syntax.Open (m, body, _) -> compile_time_safe m && compile_time_safe body
   | Syntax.OpenChoice _ -> true
   | Syntax.RecordTypeDef { fields; body; _ } ->
@@ -70,6 +67,7 @@ and compile_time_safe_struct_binding = function
   | Syntax.MacroBinding _ | Syntax.SyntaxBinding _ | Syntax.HoleBinding _ | Syntax.Items _ | Syntax.InstantiateBinding _ -> true
   | Syntax.MacroCallBinding _ -> true
   | Syntax.PatternSynBinding _ -> true
+  | Syntax.FieldBinding { type_; _ } -> compile_time_safe type_
   | Syntax.OpenBinding (m, _) -> compile_time_safe m
 
 let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =

@@ -81,6 +81,9 @@ and struct_binding =
   | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option }
   | MacroCallBinding of { f : t; args : capture list }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
+  | FieldBinding of { name : string; type_ : t }
+      (** A struct field [name : type_]. Its type sees the items written before
+          it; a method sees every field. Only in a [Struct]. *)
   | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level — the binding-list
           counterpart of the expression-level [Open]. Scopes over the subsequent
@@ -185,10 +188,8 @@ and kind =
   | FieldAccess of t * string
   | Proj of t * int
   | RecordConstruct of { typ : t; fields : (string * t) list }
-  | Struct of {
-      con_fields : (string * t) list;
-      bindings : struct_binding list;
-    }
+  | Struct of { bindings : struct_binding list }
+      (** A struct's items in source order: a [FieldBinding] is one of its fields. *)
   | Module of { bindings : struct_binding list }
   | Import of { path : string; scope : Scope_set.t }
       (** [import "path"]. [scope] is where it is written, the scope set the
@@ -424,3 +425,7 @@ let rec path_of_form (stx : t) : path option =
   | OpenChoice { name; opens; fallback } -> Some { head = name; members = []; head_choice = Some { opens; fallback } }
   | FieldAccess (e, member) -> Option.map (fun p -> { p with members = p.members @ [ member ] }) (path_of_form e)
   | _ -> None
+
+(* A struct whose items are exactly these fields: a record declaration's body. *)
+let struct_of_fields (fields : (string * t) list) =
+  Struct { bindings = List.map (fun (name, type_) -> FieldBinding { name; type_ }) fields }
