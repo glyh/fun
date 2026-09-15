@@ -3,7 +3,7 @@ title: A Decl macro's output is typed — `Decl` or `List(Decl)`
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: closed
+status: open
 closed_date: 2026-09-15
 resolution: Implemented. `: Decl` / `: List(Decl)` is the type the body is checked against at the definition (`Syntax.macro_compiled`); `quote { … }` against `Syntax.Decl` must hold one non-hole item (`QuoteNotOneDecl`); the `VU` workaround is deleted.
 decided: 2026-09-15
@@ -35,3 +35,11 @@ macro many() : List(Decl) { quote { a = 1; b = 2 } }    // any number (= Syntax.
 - Both splice at a call in item position; a `$d` hole keeps taking `List(Decl)`
   (a `Decl` value is not silently wrapped).
 - Remove the `VU` instantiation workaround once the body is checked.
+
+## Follow-up grilled (2026-09-15): parameters match outputs
+
+A parameter's kind means what the same type means as an output:
+`(d : Decl)` takes exactly one declaration; `(d : List(Decl))` takes a `{ … }`
+group of any number. Today `(d : Decl)` takes a group (a list) — change it, and
+migrate tests using `(d : Decl)` for groups to `List(Decl)`. How a single-`Decl`
+argument is written: a `{ … }` group holding exactly one item (error otherwise).
