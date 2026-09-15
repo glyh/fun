@@ -1355,6 +1355,20 @@ let effects =
           f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
           app = fn(g : Callback) { g() }; \
           (fn(_) { app(f) } : Unit -> I64 can State(I64)) }");
+    (* Annotations are read with the expression grammar, so a user type
+       operator works in every annotation position. *)
+    Alcotest.test_case "~> in every annotation position" `Quick
+      (elab_ok
+         "{ effect State(S) = sig { get : Unit -> S }; \
+          f : Unit ~> I64 = fn(_) { perform State.get () }; \
+          app = fn(g : Unit ~> I64) { g() }; \
+          twice : (Unit ~> I64) -> Unit ~> I64 = fn(g) { fn(_) { g() + g() } }; \
+          S = sig { cb : Unit ~> I64 }; \
+          R = struct { cb : Unit ~> I64 }; \
+          ((1, 2) : Tuple(2, I64, I64)); \
+          (fn(_) { app(twice(f)) } : Unit -> I64 can State(I64)) }");
+    Alcotest.test_case "* is not a product type" `Quick
+      (elab_fail "{ p : I64 * Bool = (1, True); 1 }");
     Alcotest.test_case "a bare arrow rejects an effectful callback" `Quick
       (elab_fail
          "{ effect State(S) = sig { get : Unit -> S }; \

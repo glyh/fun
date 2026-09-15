@@ -3,7 +3,9 @@ title: Annotation types use a separate grammar that ignores user operators
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. Tuple(n, T1, …, Tn) is a built-in reducing to the flat product type, its arity computed by tuple_arity(n); A * B types migrated (6 sources). parse_type_entry reads with the expression grammar; parse_type_arrow … parse_type_postfix and the parser type-keyword list are deleted. ~> works in every annotation position.
 assignee:
 blocked_by:
 ---
@@ -51,3 +53,21 @@ pair of types vs the pair type — the same problem `sig` vs `module` had). So:
   way: give bounds a non-overloaded form or a trait-resolved `+` — not decided;
   keep it out of this change unless it blocks deleting the type grammar (then stop
   and ask).
+
+## Implemented (2026-09-15)
+
+- `Tuple` is a primitive typed `(n : I64) -> tuple_arity(n)`; `tuple_arity(n)`
+  reduces to `Type` at 0 and `Type -> tuple_arity(n - 1)` above, and fails on a
+  negative `n`. `Tuple(n, T1..Tn)` reduces to `VProdTy` once all `n` components
+  are applied; under-applied it is a type function (`Tuple(2, I64) : Type -> Type`).
+- A negative count is an evaluation error that escapes the checker as
+  `EvalError` (a `panic` in a type does too) — not wrapped into an elaboration
+  error yet.
+- `I64 * Bool` as a type fails as an ordinary unification error
+  (`CannotUnify(atom type I64 vs Type)`); a message suggesting `Tuple(2, …)`
+  would need to recognise `*` by spelling, so it is not given.
+- `Syntax.ProdTy` is no longer produced by the parser (still reflected).
+- The `Eq + Show` bound sugar did not block: `+` parses to the same application
+  in both grammars.
+- Not in scope, still unsupported: a function return annotation
+  `fn(n : I64) : T { … }` (fails on main too).

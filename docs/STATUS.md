@@ -9,6 +9,16 @@ Last updated: after methods follow the arrow rule, 2026-09-15.
 
 ## Completed
 
+### Tuple types; one grammar for types (2026-09-15)
+
+- Tuple types are `Tuple(n, T1, …, Tn)`: a built-in whose type is
+  `(n : I64) -> tuple_arity(n)`, the arity computed from `n` (a negative `n` is an
+  evaluation error). It reduces to the flat product type; projections are
+  unchanged. `*` is only multiplication: `I64 * Bool` as a type is rejected.
+- Annotation types (bindings, parameters, fields, signature members, `e : T`) are
+  read with the expression grammar; the separate type grammar is deleted. A user
+  type operator such as the prelude's `~>` works in every annotation position.
+
 ### Methods follow the arrow rule (2026-09-15)
 
 - A method is pure unless it declares a row: `pub method bump() can {Log} { … }`,

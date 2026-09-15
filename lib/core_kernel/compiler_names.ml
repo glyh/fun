@@ -11,14 +11,10 @@ module Type_name = struct
   let type_ = "Type"
   let effect_row = "EffectRow"
   let ref_ = "Ref"
-  let ref_keyword = "ref"
   (* [Tuple(n, T1, …, Tn)]: the flat product type; [tuple_arity n] is the type
      of its remaining arguments (n types, then [Type]). *)
   let tuple = "Tuple"
   let tuple_arity = "tuple_arity"
-
-  let builtin_atoms = [ i64; bool; unit; char; string; absurd ]
-  let parser_type_keywords = ref_keyword :: effect_row :: type_ :: builtin_atoms
 end
 
 module Module_name = struct
