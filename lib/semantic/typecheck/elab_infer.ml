@@ -37,6 +37,19 @@ let extend_from_slots (ctx : Ctx.t) (bind : Core.struct_binding_term) payloads =
       | `Anonymous (ty, value) -> fst (Ctx.define_anonymous ctx ty value))
     ctx slots payloads
 
+(* A module or struct member [name = value]: its core, its type, and the value
+   the items after it see - evaluated when evaluating it performs nothing,
+   otherwise opaque, for evaluating it here would run what it performs. *)
+let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~name ~recursive value =
+  let rec_ty = Ctx.raw_meta ctx in
+  let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
+  let (val_core, val_ty), effects = collecting value_ctx (fun value_ctx -> ops.infer value_ctx value) in
+  emit ctx effects;
+  (if recursive then Ctx.unify ctx rec_ty val_ty);
+  let val_core = if recursive then Fix (name, Ctx.pure_call ctx rec_ty, val_core) else val_core in
+  let val_val = if is_empty_expr_effects effects then Ctx.eval ctx val_core else VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
+  (val_core, val_ty, val_val)
+
 (* THE nominal-type binding elaboration, in one place.
 
    [type T(p...) = C1(..) | C2(..)] as a module or struct member. Three things
@@ -214,13 +227,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let ctx, members = open_module_value ~label ctx mod_ty mod_value in
       (ctx, [OpenBind (mod_core, members)], [])
   | Syntax.LetBinding { name = { name; _ }; value; public; recursive } ->
-      let rec_ty = Ctx.raw_meta ctx in
-      let value_ctx = Ctx.clear_self_scope ctx in
-      let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
-      let val_core, val_ty = ops.infer value_ctx value in
-      (if recursive then Ctx.unify ctx rec_ty val_ty);
-      let val_core = if recursive then Fix (name, Ctx.pure_call ctx rec_ty, val_core) else val_core in
-      let val_val = Ctx.eval ctx val_core in
+      let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~name ~recursive value in
       let kind = if public then Public else Private in
       let bind = LetBind (name, kind, val_core) in
       let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
@@ -662,13 +669,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let ctx, members = open_module_value ~label ctx mod_ty mod_value in
             go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest
         | Syntax.LetBinding { name = { name; _ }; value; public; recursive; _ } :: rest ->
-            let rec_ty = Ctx.raw_meta ctx in
-            let value_ctx = Ctx.clear_self ctx in
-            let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
-            let val_core, val_ty = ops.infer value_ctx value in
-            (if recursive then Ctx.unify ctx rec_ty val_ty);
-            let val_core = if recursive then Fix (name, Ctx.pure_call ctx rec_ty, val_core) else val_core in
-            let val_val = Ctx.eval ctx val_core in
+            let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~name ~recursive value in
             let kind = if public then Public else Private in
             let bind = LetBind (name, kind, val_core) in
             let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
