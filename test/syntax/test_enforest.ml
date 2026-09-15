@@ -413,15 +413,20 @@ let fn_with_arrow_type () =
          Ap (Var "f", Explicit, Atom (Atom.I64 1L))) -> ()
   | _ -> Alcotest.fail "expected arrow type in fn param"
 
-let fn_with_product_type () =
-  match parse "fn(f : I64 * Bool -> Bool) { f(1, True) }" with
+let fn_with_tuple_type () =
+  match parse "fn(f : Tuple(2, I64, Bool) -> Bool) { f(1, True) }" with
   | Lam
       ( { name = "f";
-          type_ = Some (Arrow (Explicit, None, ProdTy [Var "I64"; Var "Bool"], None, Var "Bool"));
+          type_ =
+            Some
+              (Arrow
+                 ( Explicit, None,
+                   Ap (Ap (Ap (Var "Tuple", Explicit, Atom (Atom.I64 2L)), Explicit, Var "I64"), Explicit, Var "Bool"),
+                   None, Var "Bool" ));
           _ },
         Ap (Ap (Var "f", Explicit, Atom (Atom.I64 1L)), Explicit, Var "True") ) ->
       ()
-  | _ -> Alcotest.fail "expected product type in fn param"
+  | _ -> Alcotest.fail "expected a Tuple type in fn param"
 
 let match_constructor_payload () =
   match parse "match (x) { Some(y) => y, None => 0 }" with
@@ -772,7 +777,7 @@ let suites =
         Alcotest.test_case "module macro not runtime field" `Quick module_macro_not_runtime_field;
         Alcotest.test_case "fn with type application" `Quick fn_with_type_application;
         Alcotest.test_case "fn with arrow type" `Quick fn_with_arrow_type;
-        Alcotest.test_case "fn with product type" `Quick fn_with_product_type;
+        Alcotest.test_case "fn with tuple type" `Quick fn_with_tuple_type;
         Alcotest.test_case "match constructor payload" `Quick match_constructor_payload;
         Alcotest.test_case "match record pattern shorthand" `Quick match_record_pattern_shorthand;
         Alcotest.test_case "match record pattern renamed partial" `Quick match_record_pattern_renamed_partial;

@@ -192,10 +192,24 @@ let annotations =
 let tuples =
   [
     Alcotest.test_case "pair" `Quick
-      (check_type_of "(1, True)" "((0, False) : I64 * Bool)");
+      (check_type_of "(1, True)" "((0, False) : Tuple(2, I64, Bool))");
     Alcotest.test_case "triple" `Quick
       (check_type "(1, 2, 3)"
          (ProdTy [ AtomTy Atom_ty.TI64; AtomTy Atom_ty.TI64; AtomTy Atom_ty.TI64 ]));
+    (* [Tuple(n, …)]: flat, its arity computed from [n]. *)
+    Alcotest.test_case "Tuple annotation and projection" `Quick
+      (check_type_src "{ p : Tuple(3, I64, Bool, String) = (1, True, \"a\"); p.2 }" "String");
+    Alcotest.test_case "Tuple is flat" `Quick
+      (check_type_of "(1, True, \"a\")" "((0, False, \"b\") : Tuple(3, I64, Bool, String))");
+    (* ponytail: the checker lets an evaluation error escape as [EvalError]
+       (a [panic] in a type does too); wrap once checker errors carry sites. *)
+    Alcotest.test_case "Tuple with a negative count" `Quick (fun () ->
+        match elab "{ T = Tuple(0 - 1); 1 }" with
+        | exception Nbe_error.EvalError msg ->
+            Alcotest.(check string) "message" "Tuple: the number of components is negative" msg
+        | _ -> Alcotest.fail "expected a negative Tuple count to be rejected");
+    Alcotest.test_case "Tuple under-applied is a type function" `Quick
+      (check_type_src "Tuple(2, I64)" "Type -> Type");
   ]
 
 let operators =
@@ -1385,7 +1399,7 @@ let effects =
          "{ effect Exc = sig { raise : I64 -> I64 }; (match (perform Exc.raise(1)) { x => x, effect Exc.raise n => True } : I64) }");
     Alcotest.test_case "tuple effect branch payload checked" `Quick
       (elab_fail
-         "{ effect Console = sig { log : I64 * I64 -> I64 }; \
+         "{ effect Console = sig { log : Tuple(2, I64, I64) -> I64 }; \
           match (perform Console.log((1, 2))) { x => x, effect Console.log(only) => only } }");
     Alcotest.test_case "record effect branch payload checked" `Quick
       (elab_fail

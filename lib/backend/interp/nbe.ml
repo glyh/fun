@@ -433,6 +433,25 @@ and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : v
       | _, FApp (VRigid _ | VFlex _ | VNeutral _) -> None
       | Some app, FApp stx -> Some (if String.equal prim "expand_block" then app.expand stx else app.expand_decls stx)
       | _ -> fail mc (prim ^ " runs only inside a macro application"))
+  (* [tuple_arity(n)]: [Type] after no more arguments, else [Type -> tuple_arity(n - 1)]. *)
+  | HPrim name when String.equal name Compiler_names.Type_name.tuple_arity -> (
+      match frames with
+      | [ FApp (VAtom (I64 n)) ] when n < 0L -> fail mc "Tuple: the number of components is negative"
+      | [ FApp (VAtom (I64 0L)) ] -> Some VU
+      | [ FApp (VAtom (I64 n)) ] ->
+          Some
+            (VPi
+               { explicitness = Explicit; domain = VU; effects = effect_row_closure [] empty_effect_row;
+                 codomain = { env = [ VAtom (I64 (Int64.pred n)) ]; body = Ap (Prim name, Explicit, Var 1) } })
+      | _ -> None)
+  (* [Tuple(n, T1, …, Tn)]: the flat product of its [n] component types. *)
+  | HPrim name when String.equal name Compiler_names.Type_name.tuple -> (
+      match frames with
+      | FApp (VAtom (I64 n)) :: components -> (
+          let types = List.filter_map (function FApp v -> Some v | _ -> None) components in
+          if List.length types = List.length components && Int64.equal n (Int64.of_int (List.length types))
+          then Some (VProdTy types) else None)
+      | _ -> None)
   | HPrim name -> (
       let atoms =
         List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames

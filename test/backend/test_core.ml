@@ -580,12 +580,12 @@ let test_eval_state_handler_sequences_operations () =
 
 let test_eval_handler_tuple_payload_pattern () =
   check_i64 "handler tuple payload pattern" 42L
-    "{ effect Console = sig { log : I64 * I64 -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level + message } }"
+    "{ effect Console = sig { log : Tuple(2, I64, I64) -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level + message } }"
     ()
 
 let test_eval_handler_tuple_payload_binding_order () =
   check_i64 "handler tuple payload binding order" 38L
-    "{ effect Console = sig { log : I64 * I64 -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level - message } }"
+    "{ effect Console = sig { log : Tuple(2, I64, I64) -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level - message } }"
     ()
 
 let test_eval_handler_record_payload_pattern () =
@@ -3536,11 +3536,11 @@ let () =
                     sum(Cons(1, Cons(2, Cons(3, Nil)))) }");
              Alcotest.test_case "constructor comma payload distinct from tuple" `Quick
                (check_i64 "constructor comma payload distinct from tuple" 6L
-                  "{ type Tuple(a, b, c) = T(a, b * c); \
+                  "{ type Triple(a, b, c) = T(a, Tuple(2, b, c)); \
                    match (T(1, (2, 3))) { T(x, yz) => x + yz.0 + yz.1 } }");
              Alcotest.test_case "constructor tuple payload remains single arg" `Quick
                (check_i64 "constructor tuple payload remains single arg" 1L
-                  "{ type Pair = P(I64 * Bool); \
+                  "{ type Pair = P(Tuple(2, I64, Bool)); \
                    match (P((1, True))) { P(pair) => pair.0 } }");
            Alcotest.test_case "qualified constructor pattern" `Quick
              (check_i64 "qualified constructor pattern" 2L

@@ -35,13 +35,17 @@ let prims =
     (* [expand_block[Syntax.Expr]]: typed in the prelude's [Syntax] module. *)
     ("expand_block", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = Var 0 ^->> Var 1 } });
     ("expand_decls", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = Var 0 ^->> Var 1 } });
+    (* [Tuple : (n : I64) -> tuple_arity(n)]: its arity is computed from [n]. *)
+    (Compiler_names.Type_name.tuple,
+     VPi { explicitness = Explicit; domain = VAtomTy Atom_ty.TI64; effects = pure_effects;
+           codomain = { env = []; body = Ap (Prim Compiler_names.Type_name.tuple_arity, Explicit, Var 0) } });
   ]
   |> NameMap.of_list
 
 (* Primitives that carry a type but deliberately have no entry in
    [Nbe_prim.prim_table]. [panic] is special-cased inside [Nbe.try_prim_reduce]
    because it needs the frame list and raises rather than returning an atom. *)
-let prims_without_reducer = [ "panic"; "expand_block"; "expand_decls" ]
+let prims_without_reducer = [ "panic"; "expand_block"; "expand_decls"; Compiler_names.Type_name.tuple ]
 
 (* The one desync that is silent, and so the only one worth a check.
    A name in [prims] but missing from [Nbe_prim.prim_table] type-checks fine and
