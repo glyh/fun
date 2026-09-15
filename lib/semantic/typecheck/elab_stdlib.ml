@@ -19,7 +19,17 @@ let resolve (ctx : Ctx.t) (path : string list) : value =
       | None -> raise (ElabError (UnboundVariable field_name)))
     stdlib_value path
 
+(* A compiler-known type's nominal, unapplied: a parameterised type's name is its
+   former ([fn(A : Type) { enum { … } }]), applied here to placeholders until the
+   nominal appears. *)
+let rec unapplied_nominal (ctx : Ctx.t) (v : value) : value =
+  match Nbe.force ctx.metas v with
+  | VNominal n -> VNominal { n with params = [] }
+  | VLam _ as former -> unapplied_nominal ctx (Nbe.apply ctx.metas former VU)
+  | other -> other
+
 let syntax_nominals ctx : Macro_eval.syntax_nominals =
+  let resolve ctx path = unapplied_nominal ctx (resolve ctx path) in
   { Macro_eval.expr = resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.expr ];
     explicitness = resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.explicitness ];
     atom_val = resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.atom_val ];

@@ -163,9 +163,12 @@ let refinement_target_of_scrutinee ctx scrut_core =
 
 let refine_context_type_var ctx target replacement =
   let substitute = value_substituter ctx.Ctx.metas target replacement in
+  (* A name bound before [target] has a type over the scope it was bound in, which
+     [target] is not part of. *)
+  let refine (entry : name_entry) = if entry.level < target then entry else { entry with ty = substitute entry.ty } in
   {
     ctx with
-    Ctx.name_table = NameMap.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.name_table;
+    Ctx.name_table = NameMap.map refine ctx.Ctx.name_table;
     self_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.self_entry;
     resume_entry = Option.map (fun entry -> { entry with ty = substitute entry.ty }) ctx.Ctx.resume_entry;
   }
