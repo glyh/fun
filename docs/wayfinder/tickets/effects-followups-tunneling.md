@@ -24,7 +24,9 @@ blocked_by:
 3. **The E6 escape check covers only a match's result type**: a closure stored in
    a ref declared outside the handler escapes unchecked. Extend the check to every
    way a value leaves the handler's scope (refs' heaps, captured outer bindings).
-4. **An unsolved meta row tail counts as open**, so the call tunnels; decide
-   whether an unsolved tail at a call is an error or defaults closed.
+4. **An unsolved meta row tail counts as open**, so the call tunnels. **Grilled
+   2026-09-15: an error** — an effect row still unsolved where it decides routing
+   (or at generalisation) asks for an annotation: "can't infer the effects of `g`;
+   write `can {…}` or `can {}`". No default.
 5. **Wrong error in one E6 shape**: when the other branch returns a pure closure,
    the rejection is `UnhandledEffects`, not `HandledEffectEscapes`.
