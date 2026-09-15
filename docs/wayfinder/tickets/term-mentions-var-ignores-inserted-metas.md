@@ -3,7 +3,9 @@ title: term_mentions_var treats an inserted meta as mentioning nothing
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Fixed at the shared function. `term_mentions_var` now counts an `InsertedMeta` as mentioning a slot its mask marks `Bound`, as `Nbe.closure_slots` does. Its one caller, dependent application (`Elab_apply`), used to apply a codomain closure whose body is only an inserted meta to an out-of-scope rigid, so `f : (A : Type) -> Endo(0)` gave `f(I64)` the type `#57 -> #57`. Test: binder_counts "an inserted meta in a codomain mentions its binder".
 assignee:
 blocked_by:
 ---

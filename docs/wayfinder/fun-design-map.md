@@ -504,7 +504,8 @@ What remains, in the recommended order:
 - [Each core-term traversal counts binders on its own](tickets/core-traversals-count-binders-separately.md)
   (closed) — live in generalization's closedness check; every traversal now reads `Core.map_subterms`.
 - [term_mentions_var ignores inserted metas](tickets/term-mentions-var-ignores-inserted-metas.md)
-  — an inserted meta reads every bound slot but counts as mentioning none.
+  (closed) — it now mentions each slot its mask binds; dependent application no
+  longer applies such a codomain to an out-of-scope variable.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
   — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
 
