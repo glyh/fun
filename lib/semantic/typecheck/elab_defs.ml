@@ -173,6 +173,12 @@ let reject_unknown_binder_count where =
 let rec shift_term amount cutoff term =
   match term with
   | Var ix when ix >= cutoff -> Var (ix + amount)
+  (* An inserted meta is applied to the Bound slots of its mask, which spans the
+     whole context: the inserted slots join it as Defined, since a meta made
+     without them does not read them. *)
+  | InsertedMeta (id, bds) ->
+      InsertedMeta (id, List.filteri (fun i _ -> i < cutoff) bds @ List.init amount (fun _ -> Defined)
+                        @ List.filteri (fun i _ -> i >= cutoff) bds)
   | _ ->
       map_subterms
         (fun under sub ->
@@ -180,6 +186,10 @@ let rec shift_term amount cutoff term =
           | Some n -> shift_term amount (cutoff + n) sub
           | None -> reject_unknown_binder_count "shift_term")
         term
+
+(* Whether [shift_term] can rewrite [term]: no subterm sits under a binder count
+   only evaluation reveals. *)
+let rec shiftable term = List.for_all (fun (under, sub) -> Option.is_some under && shiftable sub) (subterms term)
 
 (** Build a constructor's VLam chain + VPi type from type params and payloads.
     Payload closures have bodies whose de Bruijn indices 0..num_params-1

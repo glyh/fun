@@ -86,7 +86,7 @@ and go_kind m (k : kind) : kind =
   let go = map_forms_with m and on_id = m.id in
   match k with
   | Var id -> Var (on_id id)
-  | Atom _ -> k
+  | Atom _ | Elaborated _ -> k
   | Stx s -> Stx (go s)
   | Quote { template; holes } -> Quote { template = go template; holes = List.map (fun (n, h) -> (n, go h)) holes }
   | QuoteDecls { items; holes } ->
@@ -562,7 +562,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     | Right { opens; fallback } -> { stx with kind = OpenChoice { name = id; opens; fallback } }
     end
   | OpenChoice _ -> stx
-  | Atom _ | Self | SelfType | Stx _ -> stx
+  | Atom _ | Self | SelfType | Stx _ | Elaborated _ -> stx
   | Quote { template; holes } ->
     (* The template is data: nothing in it is resolved or renamed here. *)
     let prune (id : Syntax.id) = { id with scope = Expand_ctx.prune_to_definition_site ctx id.scope } in

@@ -49,6 +49,12 @@ let resolve_path_value ctx p =
 let resolve_path_value_opt ctx p =
   Result.to_option (Result.map (fun (_, value, ty) -> (value, ty)) (resolve_path_result ctx p))
 
+(* Typed macro arguments already elaborated, by [Syntax.Elaborated]'s [arg]: the
+   core, its type, and the context level it was elaborated at. An entry lives for
+   one typed macro application. *)
+let elaborated_args : (int, term * value * lvl) Hashtbl.t = Hashtbl.create 8
+let elaborated_counter = ref 0
+
 (** A call to a macro whose signature promises types (macro-annotation
     decisions, 2026-09-15). The macro applies like a function over types: its
     type binders, and an output that promises nothing, become metas; each
@@ -82,17 +88,24 @@ let apply_typed_macro ~check (ctx : Ctx.t) ~name (args : Syntax.capture list) ~(
   (* A plain argument is syntax the macro reads; a typed one elaborates too. *)
   let arg_syntax = function Syntax.CapExpr { kind = Syntax.Stx stx; _ } -> Syntax.CapExpr stx | c -> c in
   let args = List.map arg_syntax args in
+  (* Each typed argument elaborates here, once: where the output places it
+     unchanged, it becomes [Syntax.Elaborated] naming this result. *)
+  let elaborated = ref [] in
   let result_ty =
     List.fold_left2
       (fun ty (param, typed) arg ->
         match typed, arg, Nbe.force ctx.Ctx.metas ty with
         | false, _, _ -> ty
         | true, Syntax.CapExpr stx, VPi { explicitness = Explicit; domain; codomain; _ } ->
+            let form = runtime.Ctx.expand stx in
             let core =
-              try check ctx (runtime.Ctx.expand stx) domain
+              try check ctx form domain
               with Unify.UnifyError _ as e ->
                 raise (ElabError (MacroArgumentType { macro; param; promised = show domain; reason = Printexc.to_string e }))
             in
+            incr elaborated_counter;
+            Hashtbl.replace elaborated_args !elaborated_counter (core, domain, ctx.Ctx.lvl);
+            elaborated := (!elaborated_counter, stx, form) :: !elaborated;
             Nbe.closure_apply ctx.Ctx.metas codomain (Ctx.eval ctx core)
         | true, _, _ -> failwith "Elab_resolve.apply_typed_macro: a typed parameter's argument is an Expr in the signature's order")
       ty signature.params args
@@ -124,12 +137,26 @@ let apply_typed_macro ~check (ctx : Ctx.t) ~name (args : Syntax.capture list) ~(
     in
     match Macro_eval.unwrap_stx ?nominals fn with
     | Some expanded ->
-        let output = runtime.expand (app.emit expanded) in
+        (* An argument as the output holds it when the macro placed it unchanged. *)
+        let placed =
+          List.map
+            (fun (arg, stx, form) ->
+              match app.Expand.receive_capture (Syntax.CapExpr stx) with
+              | Syntax.CapExpr received -> (app.emit received, Syntax.Elaborated { arg; form })
+              | _ -> failwith "Elab_resolve.apply_typed_macro: receiving an expression gave another capture")
+            !elaborated
+        in
+        (* ponytail: bottom-up structural match - an argument nested inside another
+           argument's placement is reused there and the outer one elaborates again;
+           match top-down if that case matters. *)
+        let mark (f : Syntax.t) = match List.assoc_opt f placed with Some kind -> { f with kind } | None -> f in
+        let output = runtime.expand (Expand.map_forms Fun.id mark (app.emit expanded)) in
         let core =
           try check ctx output promised
           with Unify.UnifyError _ as e ->
             raise (ElabError (MacroOutputType { macro; promised = show promised; reason = Printexc.to_string e }))
         in
+        List.iter (fun (arg, _, _) -> Hashtbl.remove elaborated_args arg) !elaborated;
         (core, promised)
     | None -> raise (ElabError (MacroDidNotReturnSyntax name)))
 

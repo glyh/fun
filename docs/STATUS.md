@@ -102,6 +102,12 @@ Last updated: after struct source-order scoping and macro signatures, 2026-09-15
   `default`"), the macro runs with them, and its output is checked at the promised
   type ("macro `n` promises Expr(I64) …"). Any number of binders. A macro that
   promises no type still runs during expansion.
+- A typed argument elaborates once, at the call. Where the output places it
+  unchanged it becomes `Syntax.Elaborated` (internal, reflected as the argument
+  itself), and elaborating that reuses the core, weakened past the binders the
+  output added (`Elab_defs.shift_term`, which now widens inserted metas' masks).
+  A rebuilt argument is new syntax and elaborates normally; an argument whose
+  core holds an `open` placed under new binders elaborates again.
 - The elaborator's copied macro table is gone: it asks its macro runtime, so a
   typed macro works inside the unit that defines it and when imported
   ([macro-annotation-constraints-mean-nothing](wayfinder/tickets/macro-annotation-constraints-mean-nothing.md)).

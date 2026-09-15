@@ -190,6 +190,7 @@ and lower_capture = function
 and lower_expr (stx : Syntax.t) : t =
   match stx.kind with
   | Syntax.Stx s -> StxExpr s
+  | Syntax.Elaborated { form; _ } -> lower_expr form
   | Syntax.Quote { template; holes } ->
     Quote { template; holes = List.map (fun (n, h) -> (n, lower_expr h)) holes }
   | Syntax.QuoteDecls { items; holes } ->

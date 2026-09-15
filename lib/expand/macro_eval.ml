@@ -228,6 +228,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | RefSet (l, r) -> e "RawRefSet" [ x l; x r ]
   | Match (scrut, branches) -> e "RawMatch" [ x scrut; w_list ns (w_branch ns) branches ]
   | Stx inner -> e "RawStx" [ x inner ]
+  (* Internal: a macro sees the argument, not the elaborator's note that it is done. *)
+  | Elaborated { form; _ } -> x form
   | Quote { template; holes } -> e "RawQuote" [ x template; w_quote_holes ns holes ]
   | QuoteDecls { items; holes } -> e "RawQuoteDecls" [ w_list ns (w_decl ns) items; w_quote_holes ns holes ]
   | MacroDef { name; value; body; kind; output } ->

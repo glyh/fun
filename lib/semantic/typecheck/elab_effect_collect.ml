@@ -17,6 +17,7 @@ let rec compile_time_safe (expr : Syntax.t) : bool =
   | Syntax.RefNew _ | Syntax.RefGet _ | Syntax.RefSet _ -> false
   | Syntax.Atom _ | Syntax.Var _ | Syntax.Self | Syntax.SelfType | Syntax.Stx _ | Syntax.Import _ -> true
   | Syntax.Quote { holes; _ } | Syntax.QuoteDecls { holes; _ } -> List.for_all (fun (_, h) -> compile_time_safe h) holes
+  | Syntax.Elaborated { form; _ } -> compile_time_safe form
   | Syntax.Ap (f, _, a) -> compile_time_safe f && compile_time_safe a
   | Syntax.Lam (_, body) -> compile_time_safe body
   | Syntax.Let { type_; value; body; _ } ->
@@ -260,5 +261,6 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
       in
       union_many_expr_effects ctx (residual :: value_branch_effects @ effect_branch_effects)
   | Atom _ | Var _ | OpenChoice _ | Self | SelfType | Stx _ | Import _ -> empty_expr_effects
+  | Elaborated { form; _ } -> ops.collect_effects ctx form
   | Quote { holes; _ } | QuoteDecls { holes; _ } -> union_many_expr_effects ctx (List.map (fun (_, h) -> ops.collect_effects ctx h) holes)
   | MacroDef _ | SyntaxDef _ | MacroCall _ | SyntaxOperatorUse _ | Block _ | Instantiate _ -> failwith "macro-only syntax should not reach elaboration"

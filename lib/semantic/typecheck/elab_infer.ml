@@ -1002,6 +1002,16 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | MacroDef _ | SyntaxDef _ | SyntaxOperatorUse _ | Block _ | Instantiate _ ->
       failwith "macro-only syntax should not reach elaboration"
   | Stx _ -> failwith "stx-only syntax should not reach elaboration"
+  (* A typed macro argument, elaborated where the call was written: the output
+     places it under at most the binders it added there, so its core is weakened
+     past them. An argument whose core holds an [open] cannot be, and elaborates
+     again from its expanded form. *)
+  | Elaborated { arg; form } -> (
+      match Hashtbl.find_opt elaborated_args arg with
+      | Some (core, ty, at_lvl) when ctx.lvl >= at_lvl && (ctx.lvl = at_lvl || shiftable core) ->
+          (shift_term (ctx.lvl - at_lvl) 0 core, ty)
+      | Some _ -> ops.infer ctx form
+      | None -> failwith "Elab_infer: an elaborated macro argument outlived its application")
   | Quote { template; holes } ->
       let ns = Elab_stdlib.syntax_nominals ctx in
       (infer_quote ops ctx (Macro_eval.wrap_stx ~nominals:(Some ns) template) holes, ns.expr)

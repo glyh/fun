@@ -247,6 +247,13 @@ and kind =
           at a time as expansion reaches them (M9). *)
   | Instantiate of instantiation
   | Stx of t  (* opaque syntax wrapper *)
+  | Elaborated of { arg : int; form : t }
+      (** A typed macro argument placed by the macro's output where the call's
+          elaborator already elaborated it: [arg] names that result, [form] is
+          the argument as expanded at the call. Internal - written only after the
+          macro returns - so expansion leaves it alone, and a macro handed it
+          (a nested call in the output) receives [form]: plain syntax, which
+          elaborates again. *)
   | Quote of { template : t; holes : (string * t) list }
       (** [quote(…)]: syntax written literally in a macro body. Each hole [$x]
           stands in [template] as an id spelled ["$x"] - [$] cannot begin a

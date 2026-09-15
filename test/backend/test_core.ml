@@ -1673,6 +1673,31 @@ let test_macro_signature_checks () =
        first(40, True) + 2
      }" ()
 
+(* A typed argument elaborates once, where the call is written: its placements in
+   the output reuse that. [Elab_resolve.elaborated_counter] counts typed
+   arguments elaborated, so a nested typed call re-elaborated per placement would
+   count again. *)
+let test_typed_arguments_elaborate_once () =
+  let prelude =
+    "macro inner(y : Expr(I64)) : Expr(I64) { y };
+     macro twice(x : Expr(I64)) : Expr(I64) { quote($x + $x) };
+     macro under(x : Expr(I64)) : Expr(I64) { quote((fn(y : I64) { $x + y })(1)) };
+     macro at_alias(x : Expr(I64)) : Expr(I64) { quote(($x : (fn(t : Type) { t })(I64))) };
+     macro rebuild(x : Expr(I64)) : Expr(I64) { match (x) { Syntax.Atom(v) => Syntax.atom_val(v), _ => x } };"
+  in
+  let once label expected body =
+    let before = !Elab_resolve.elaborated_counter in
+    check_i64_macro label expected ("{ " ^ prelude ^ " z = 41; " ^ body ^ " }") ();
+    Alcotest.(check int) (label ^ ": typed arguments elaborated") 2 (!Elab_resolve.elaborated_counter - before)
+  in
+  once "a duplicated placement" 42L "twice(inner(21))";
+  (* ponytail: a typed call inside a lambda body the output adds fails effect
+     collection (a deferred [MacroCall] there, as before this change), so this
+     placement proves the weakening with a plain argument. *)
+  check_i64_macro "a placement under a binder the output adds" 42L ("{ " ^ prelude ^ " z = 41; under(z) }") ();
+  once "a placement at a convertible type" 41L "at_alias(inner(z))";
+  check_i64_macro "a rebuilt argument elaborates as new syntax" 7L ("{ " ^ prelude ^ " rebuild(7) }") ()
+
 let test_imported_macro_signature () =
   let modules =
     [ ("typed", "open (import \"std\");\npub macro twice(x : Expr(I64)) : Expr(I64) { quote($x + $x) }") ]
@@ -3645,6 +3670,7 @@ let () =
           Alcotest.test_case "imported private macro not registered" `Quick test_visit_macros_private_not_registered;
           Alcotest.test_case "macro type binders are explicit" `Quick test_macro_type_binders_are_explicit;
           Alcotest.test_case "a macro signature checks" `Quick test_macro_signature_checks;
+          Alcotest.test_case "typed arguments elaborate once" `Quick test_typed_arguments_elaborate_once;
           Alcotest.test_case "an imported macro's signature" `Quick test_imported_macro_signature;
           Alcotest.test_case "generated macro binding re-entered" `Quick test_generated_macro_binding_reentered;
           Alcotest.test_case "generated multi-binding scope threading" `Quick test_generated_multi_binding_scope_threading;
