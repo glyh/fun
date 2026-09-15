@@ -3,7 +3,9 @@ title: A Decl macro's output is typed — `Decl` or `List(Decl)`
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. `: Decl` / `: List(Decl)` is the type the body is checked against at the definition (`Syntax.macro_compiled`); `quote { … }` against `Syntax.Decl` must hold one non-hole item (`QuoteNotOneDecl`); the `VU` workaround is deleted.
 decided: 2026-09-15
 assignee:
 blocked_by:

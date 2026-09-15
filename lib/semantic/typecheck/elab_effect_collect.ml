@@ -210,7 +210,7 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
       let mod_value = Ctx.eval ctx mod_core in
       union_many_expr_effects ctx
         [ ops.collect_effects ctx mod_expr;
-          ops.collect_effects (open_module_value ~label ctx mod_ty mod_value) body ]
+          ops.collect_effects (fst (open_module_value ~label ctx mod_ty mod_value)) body ]
   | Syntax.RecordTypeDef { fields; body; _ } ->
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects ctx body ])
   | Syntax.TypeDef { ctors; body; _ } ->

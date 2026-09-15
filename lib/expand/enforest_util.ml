@@ -130,6 +130,12 @@ let id_of (term : Raw_syntax.t) name = Syntax.fresh_id ~span:term.span ~scope:(t
 
 let var_of (term : Raw_syntax.t) name = stx ~span:term.span (Syntax.Var (id_of term name))
 
+(* [Decl] in a macro annotation: the prelude's [Syntax.Decl], its head written at
+   the annotation token's scopes (as a parameter kind's type is). *)
+let syntax_decl_type (decl : Raw_syntax.t) =
+  stx ~span:decl.span
+    (Syntax.FieldAccess (var_of decl Compiler_names.Module_name.syntax, Compiler_names.Syntax_name.decl))
+
 let syntax_operator_arg ~span ~(use : Raw_syntax.t) name (role : Syntax.role) operands =
   stx ~span
     (Syntax.SyntaxOperatorUse

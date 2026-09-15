@@ -339,25 +339,37 @@ let add_opened_impl ctx impl_ty impl_value =
    impl, the slot list [Nbe.push_opened_values] pushes (I2). The value only
    supplies each member's payload, entry for entry; a value whose entries do not
    line up with its type is a broken invariant, not a smaller open. *)
+(* An open binds what the module's type lists (I2): its public fields and impls,
+   in entry order. Each member's value is the module value's entry when the
+   module is known, and its projection when it is a parameter (a neutral). The
+   member list is the term's, so the evaluator pushes the same entries. *)
 let open_module_value ~label ctx module_ty module_value =
   let broken () = failwith "Elab_resolve.open_module_value: a module value's entries do not match its type" in
-  match (Nbe.force ctx.Ctx.metas module_ty, Nbe.force ctx.Ctx.metas module_value) with
-  | VModule { entries = type_entries; partial = _ }, VModule { entries = value_entries; partial = _ } ->
-      if List.compare_lengths type_entries value_entries <> 0 then broken ();
+  match Nbe.force ctx.Ctx.metas module_ty with
+  | VModule { entries = type_entries; partial = _ } ->
+      let known = match Nbe.force ctx.Ctx.metas module_value with VModule { entries; _ } -> Some entries | _ -> None in
+      (match known with Some es when List.compare_lengths es type_entries <> 0 -> broken () | _ -> ());
+      let value_at i = Option.map (fun es -> List.nth es i) known in
       let members = ref NameMap.empty in
-      let ctx =
-      List.fold_left2
-        (fun c type_entry value_entry ->
-          match type_entry, value_entry with
-          | ModuleField (fname, Public, field_ty), ModuleField (vname, Public, value) when String.equal fname vname ->
-              members := NameMap.add fname { level = c.Ctx.lvl; ty = field_ty } !members;
-              add_opened_field c fname field_ty value
-          | ModuleImpl (_, Public, impl_ty, _), ModuleImpl (_, Public, _, impl_value) ->
-              add_opened_impl c impl_ty impl_value
-          | ModuleField (_, Private, _), ModuleField (_, Private, _)
-          | ModuleImpl (_, Private, _, _), ModuleImpl (_, Private, _, _) -> c
-          | _ -> broken ())
-        ctx type_entries value_entries
+      let ctx, rev_opened, _ =
+        List.fold_left
+          (fun (c, opened, (i, impl_ix)) type_entry ->
+            match type_entry, value_at i with
+            | ModuleField (fname, Public, field_ty), (Some (ModuleField (_, Public, _)) | None as v) ->
+                let value =
+                  match v with
+                  | Some (ModuleField (_, _, value)) -> value
+                  | _ -> Nbe_support.dot_value ctx.Ctx.metas module_value fname
+                in
+                members := NameMap.add fname { level = c.Ctx.lvl; ty = field_ty } !members;
+                (add_opened_field c fname field_ty value, OpenField fname :: opened, (i + 1, impl_ix))
+            | ModuleImpl (_, Public, impl_ty, _), Some (ModuleImpl (_, Public, _, impl_value)) ->
+                (add_opened_impl c impl_ty impl_value, OpenImpl impl_ix :: opened, (i + 1, impl_ix + 1))
+            (* A parameter's impl has no name to project it by. *)
+            | ModuleImpl (_, Public, _, _), None -> raise (ElabError NotAModule)
+            | (ModuleField (_, Private, _) | ModuleImpl (_, Private, _, _)), _ -> (c, opened, (i + 1, impl_ix))
+            | _ -> broken ())
+          (ctx, [], (0, 0)) type_entries
       in
       (match ctx.Ctx.macro_runtime with
        | Some runtime -> (
@@ -365,7 +377,7 @@ let open_module_value ~label ctx module_ty module_value =
            | Some name -> raise (ElabError (OpenSuppliesRole name))
            | None -> ())
        | None -> ());
-      { ctx with Ctx.opened = (label, !members) :: ctx.Ctx.opened }
+      ({ ctx with Ctx.opened = (label, !members) :: ctx.Ctx.opened }, List.rev rev_opened)
   | _ -> raise (ElabError NotAModule)
 
 let resolve_trait_method ctx trait_info method_name =
@@ -474,3 +486,22 @@ let rec insert_implicit_args ctx core ty =
             (Ap (core, Implicit, arg_core))
             (Nbe.closure_apply ctx.Ctx.metas codomain arg_value))
   | _ -> (core, ty)
+
+(* A quote's core: its template, and each hole checked at the kind its position
+   gives it (M10). *)
+let quote_core ~check (ctx : Ctx.t) template_value holes =
+  let ns = Elab_stdlib.syntax_nominals ctx in
+  let occurrences = Quote_holes.occurrences template_value in
+  let hole_core (name, hole) =
+    let kinds = List.filter_map (fun (n, k) -> if String.equal n name then Some k else None) occurrences in
+    let expected =
+      match List.sort_uniq compare kinds with
+      | [ Quote_holes.Expr ] -> ns.Macro_eval.expr
+      | [ Quote_holes.Pattern ] -> ns.pat
+      | [ Quote_holes.Decl ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.decls ]
+      | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; Compiler_names.Syntax_name.id ]
+      | _ -> raise (ElabError (QuoteHoleKindConflict name))
+    in
+    (name, check ctx hole expected)
+  in
+  Quote { template = template_value; holes = List.map hole_core holes }

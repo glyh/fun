@@ -463,6 +463,22 @@ let macro_kind ~output (ann : MacroAnnotation.t option) (value : t) : MacroKind.
   | _ when Option.is_some (macro_signature ~output value) -> MacroKind.TypedExpr
   | _ -> MacroKind.Expr
 
+(** A macro's value as it is compiled, and its signature. A [: Decl] macro's
+    [output] is the type its body returns - [Syntax.Decl] for one declaration,
+    [List(Syntax.Decl)] for any number - so its body is checked against it where
+    the macro is defined; it has no signature, and runs during expansion. *)
+let macro_compiled ~output (ann : MacroAnnotation.t option) (value : t) : t * macro_signature option =
+  match ann, output with
+  | Some MacroAnnotation.Decl, Some typ ->
+      let rec annotate (stx : t) =
+        match stx.kind with
+        | Lam (p, body) -> { stx with kind = Lam (p, annotate body) }
+        | _ -> { stx with kind = Annotated { inner = stx; typ } }
+      in
+      (annotate value, None)
+  | Some MacroAnnotation.Decl, None -> (value, None)
+  | _ -> (value, macro_signature ~output value)
+
 let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
 
 (* The name a bare-name form was written with, whether expansion resolved it to

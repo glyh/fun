@@ -325,10 +325,20 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
               let t, t_rest = parse_expr_prec env Top items in
               ensure_no_rest "macro annotation" t_rest;
               (Some Syntax.MacroAnnotation.Expr, Some t, rest))
-      | { datum = Token { kind = Colon; _ }; _ } :: { datum = Token { kind = Ident "Decl"; _ }; _ } :: rest ->
-          (Some Syntax.MacroAnnotation.Decl, None, rest)
+      (* [: Decl] returns one declaration, [: List(Decl)] any number: the type its
+         body is checked against, [Decl] written as the prelude's [Syntax.Decl]
+         at the annotation's own scopes. *)
+      | { datum = Token { kind = Colon; _ }; _ } :: ({ datum = Token { kind = Ident "Decl"; _ }; _ } as decl) :: rest ->
+          (Some Syntax.MacroAnnotation.Decl, Some (syntax_decl_type decl), rest)
+      | { datum = Token { kind = Colon; _ }; _ }
+        :: ({ datum = Token { kind = Ident "List"; _ }; _ } as list)
+        :: { datum = Group (Raw_syntax.Paren, items, _); span } :: rest
+        when (match drop_separators items with [ { datum = Token { kind = Ident "Decl"; _ }; _ } ] -> true | _ -> false) ->
+          let decl = List.hd (drop_separators items) in
+          let list_ty = stx ~span:list.span (Syntax.Var (id_of list "List")) in
+          (Some Syntax.MacroAnnotation.Decl, Some (stx ~span (Syntax.Ap (list_ty, Explicitness.Explicit, syntax_decl_type decl))), rest)
       | { datum = Token { kind = Colon; _ }; _ } :: _ ->
-          error "a macro annotation is : Expr(T), : Expr(_) or : Decl"
+          error "a macro annotation is : Expr(T), : Expr(_), : Decl or : List(Decl)"
       | rest -> (None, None, rest)
   in
   (* A macro's type binders are solved before it runs, each handed to it as the

@@ -32,6 +32,9 @@ type elab_error =
   | MacroArgumentType of { macro : string; param : string; promised : string; reason : string }
   | MacroOutputType of { macro : string; promised : string; reason : string }
   | QuoteHoleKindConflict of string
+  | QuoteNotOneDecl of int
+      (** A [quote { … }] where one [Decl] is expected holds another number of
+          items, or its one item is a declaration hole (which splices a list). *)
   | EvaluationBudgetExceeded of { limit : int; call : string; demand : string; site : Eval_budget.site option }
   | OpenSuppliesRole of string
       (** M7: an open supplies a member named like a syntax form, operator or
@@ -77,6 +80,8 @@ let string_of_elab_error = function
   | MacroOutputType { macro; promised; reason } ->
       Printf.sprintf "MacroOutputType \"macro `%s` promises Expr(%s), its output does not have that type: %s\"" macro promised reason
   | QuoteHoleKindConflict n -> "QuoteHoleKindConflict \"" ^ n ^ "\""
+  | QuoteNotOneDecl n ->
+      Printf.sprintf "QuoteNotOneDecl \"a Decl is one declaration, this quote holds %d; annotate the macro : List(Decl)\"" n
   | EvaluationBudgetExceeded { limit; call; demand; site } ->
       "EvaluationBudgetExceeded \"" ^ Eval_budget.message ~limit ~call ~demand ~site ^ "\""
   | OpenSuppliesRole n -> "OpenSuppliesRole \"" ^ n ^ "\""
