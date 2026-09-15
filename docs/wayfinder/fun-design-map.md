@@ -552,8 +552,8 @@ What remains, in the recommended order:
   every effect read follows the elaboration it reads.
 - [Records are declared only by let bindings](tickets/records-only-let-bindings.md)
   (closed & **implemented**) — `type X = struct { … }` deleted; a `rec` struct
-  binding mints the recursive record's identity; `rec … and …` groups exist for
-  struct types (the nominal `type … and …` knot is not moved yet: that is
+  binding mints the recursive record's identity; `rec … and …` groups hold
+  struct types or mutually recursive values (the nominal `type … and …` knot is not moved yet: that is
   adts-as-let-bindings).
 - [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
   — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` deleted (maybe kept only as sugar: bind + open the constructors).

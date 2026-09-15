@@ -53,13 +53,16 @@ let rec struct_type_params (value : Syntax.t) =
    to. Members elaborate in order: [extend] adds a finished member to the
    context the next one (and what follows the group) is elaborated in, and
    [value_ctx] is the context a member's body starts from. *)
-let elab_rec_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend members =
+let rec elab_rec_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend members =
+  match List.partition (fun (_, value) -> Option.is_some (struct_type_params value)) members with
+  | _, [] -> elab_struct_group ops ctx ~value_ctx ~extend members
+  | [], _ -> elab_fixpoint_group ops ctx ~value_ctx ~extend members
+  | _ -> raise (ElabError (InvalidRecursiveRecord "a rec … and … group holds struct types or functions, not both"))
+
+and elab_struct_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend members =
   let members =
     List.map
-      (fun ((key : string), (value : Syntax.t)) ->
-        match struct_type_params value with
-        | Some params -> (key, Syntax.label key, params, value)
-        | None -> raise (ElabError (InvalidRecursiveRecord "a rec … and … group holds struct types only")))
+      (fun ((key : string), (value : Syntax.t)) -> (key, Syntax.label key, Option.get (struct_type_params value), value))
       members
   in
   let occurrences =
@@ -96,6 +99,46 @@ let elab_rec_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend members =
         let member = (key, name, core, body_ty, finished) in
         (extend ctx member, member :: acc))
       (ctx, []) (List.combine members occurrences)
+  in
+  (ctx, List.rev results)
+
+(* A recursive group of values: [rec even : I64 -> Bool = fn(n) { … odd(n - 1) … }
+   and odd : I64 -> Bool = fn(n) { … }]. Every body is checked once, seeing every
+   member at its annotated type (or a meta); each member is its index into one
+   [Fix] group over those bodies. The group's terms are built at the context the
+   group starts in, and member [i] follows the [i] members before it. *)
+and elab_fixpoint_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend members =
+  let members =
+    List.map
+      (fun ((key : string), (value : Syntax.t)) ->
+        let body, ty =
+          match value.kind with
+          | Syntax.Annotated { inner; typ } -> let _, _, ty = ops.type_value_of_expr ctx typ in (inner, ty)
+          | _ -> (value, Ctx.raw_meta ctx)
+        in
+        (key, Syntax.label key, body, ty))
+      members
+  in
+  let body_ctx = List.fold_left (fun c (key, _, _, ty) -> Ctx.bind c key ty) (value_ctx ctx) members in
+  let bodies =
+    List.map
+      (fun (_, _, body, ty) ->
+        let core, effects = collecting body_ctx (fun body_ctx -> ops.check body_ctx body ty) in
+        emit ctx effects;
+        core)
+      members
+  in
+  let group =
+    List.map2 (fun (_, name, _, ty) body -> { fix_name = name; fix_pure = Ctx.pure_call ctx ty; fix_body = body }) members bodies
+  in
+  let start = ctx in
+  let ctx, results =
+    List.fold_left
+      (fun (ctx, acc) (index, (key, name, _, ty)) ->
+        let fix = Fix { members = group; index } in
+        let member = (key, name, shift_term index 0 fix, ty, Ctx.eval start fix) in
+        (extend ctx member, member :: acc))
+      (ctx, []) (List.mapi (fun i m -> (i, m)) members)
   in
   (ctx, List.rev results)
 
@@ -333,9 +376,10 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
         elab_rec_group ops ctx ~value_ctx:Ctx.clear_self_scope ~extend
           (List.map (fun ((n : Syntax.id), v) -> (n.name, v)) members)
       in
+      (* Last member first: the module fold prepends and reverses (as [TypeBinding]). *)
       ( ctx',
-        List.map (fun (_, name, core, _, _) -> LetBind (name, kind, core)) members,
-        List.map (fun (_, name, _, ty, _) -> ModuleField (name, kind, ty)) members )
+        List.rev_map (fun (_, name, core, _, _) -> LetBind (name, kind, core)) members,
+        List.rev_map (fun (_, name, _, ty, _) -> ModuleField (name, kind, ty)) members )
   | Syntax.EffectBinding { name = { name = key; _ }; params; ops = eff_ops; public } ->
       let name = Syntax.label key in
       let params = Syntax.names params in
