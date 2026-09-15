@@ -507,6 +507,30 @@ let structs =
       (elab_fail "self");
     Alcotest.test_case "self in let binding" `Quick
       (elab_fail "{ Box = struct { value: I64; pub bad = self.value }; Box.bad }");
+    Alcotest.test_case "a field type sees an earlier open" `Quick
+      (check_type_src "{ M = module { pub T = I64 }; R = struct { open M; f : T }; R{f = 1}.f }" "I64");
+    Alcotest.test_case "a field type sees an earlier binding" `Quick
+      (check_type_src "{ R = struct { pub T = I64; f : T }; R{f = 1}.f }" "I64");
+    Alcotest.test_case "an earlier open shadows an outer name in a field type" `Quick
+      (check_type_src "{ T = Bool; M = module { pub T = I64 }; R = struct { open M; f : T }; R{f = 1}.f }" "I64");
+    Alcotest.test_case "one name means one thing in a struct" `Quick
+      (check_type_src "{ T = I64; M = module { pub T = Bool }; R = struct { open M; f : T; pub g : T = True }; R{f = False}.f }" "Bool");
+    Alcotest.test_case "a field type does not see a later binding" `Quick
+      (elab_fail "{ R = struct { f : T; pub T = I64 }; R{f = 1}.f }");
+    Alcotest.test_case "a field type does not see another field" `Quick
+      (elab_fail "{ R = struct { n : Type; v : n }; 0 }");
+    Alcotest.test_case "a method sees a later field" `Quick
+      (check_type_src "{ C = struct { a : I64; pub method get() { self.b }; b : I64 }; C.get(C{a = 1; b = 9}) }" "I64");
+    Alcotest.test_case "a field type mentioning an earlier method is a cycle" `Quick
+      (fun () ->
+        match elab "{ C = struct { a : I64; pub method get() { self.a }; b : get; }; 0 }" with
+        | exception Elaborate.ElabError (FieldTypeMentionsMethod { field = "b"; _ }) -> ()
+        | exception e -> Alcotest.fail (Printexc.to_string e)
+        | _ -> Alcotest.fail "expected a field/method cycle error");
+    Alcotest.test_case "a struct does not see its own name" `Quick
+      (elab_fail "{ C = struct { pub k = 1; pub method get() { self.value + C.k }; value : I64 }; 0 }");
+    Alcotest.test_case "an outer binding of the struct's name is still visible" `Quick
+      (check_type_src "{ C = 1; C = struct { pub k = C }; C.k }" "I64");
     Alcotest.test_case "record construction missing field" `Quick
       (elab_fail "{ Point = struct { x: I64; y: I64; }; Point{x = 1} }");
     Alcotest.test_case "record construction unknown field" `Quick

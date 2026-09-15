@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after order groups and structural hole extents, 2026-09-15.
+Last updated: after struct source-order scoping, 2026-09-15.
 
 ---
 
@@ -74,6 +74,20 @@ Last updated: after order groups and structural hole extents, 2026-09-15.
 - A template hole ending a group now extends its capture to the whole group.
 - Prelude and every test source migrated mechanically
   ([surface-syntax-braces](wayfinder/tickets/surface-syntax-braces.md)).
+
+### Struct items in source order (2026-09-15)
+
+- A struct's items are one source-ordered list: a field is an item
+  (`Syntax.FieldBinding`, reflected `DeclField`; `RawStruct` carries only items).
+- A field's type sees the opens and bindings written before it, as a module's
+  items do; a later binding is not visible. Its type leaves the struct as a
+  value, quoted at the struct's own level.
+- A method is checked after the last field, so `self` has every field. A field
+  type mentioning an earlier method is `FieldTypeMentionsMethod` (a cycle).
+- `Self` in an item other than a field or method is the fields written so far.
+- No dependent fields: a field is not a binder, so `struct { n : Type; v : n }`
+  leaves `n` unbound. A struct does not see its own name (`C` binds after
+  `C = struct { … }`); `C.k` inside it is unbound.
 
 ### Order groups and structural hole extents (2026-09-15)
 - Precedence is relative: `order g : stronger_than(a) weaker_than(b) assoc(right)`

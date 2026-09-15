@@ -53,12 +53,11 @@ and struct_binding =
   | PatternSynBinding of { name : string; params : string list; rhs : pat; public : bool }
   | SyntaxBinding of { name : string; attaches : bool }
   | HoleBinding of string
+  | FieldBinding of { name : string; type_ : t }
   | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level. Brings the module's
-          public fields into scope for the *subsequent* bindings only (statement
-          order), and contributes no field of its own. In a [Struct] it scopes
-          over later bindings but not over [con_fields]: record field types are
-          elaborated as a group before the binding list. *)
+          public fields into scope for the *subsequent* items only (statement
+          order, a struct's fields included), and contributes no field of its own. *)
 
 and t =
   | Atom of Atom.t
@@ -75,10 +74,7 @@ and t =
   | FieldAccess of t * string
   | Proj of t * int
   | RecordConstruct of { typ : t; fields : (string * t) list }
-  | Struct of {
-      con_fields : (string * t) list;
-      bindings : struct_binding list;
-    }
+  | Struct of { bindings : struct_binding list }
   | Module of { bindings : struct_binding list }
   | Import of string
   | Open of t * t * string
@@ -222,9 +218,7 @@ and lower_expr (stx : Syntax.t) : t =
   | Syntax.Proj (e, n) -> Proj (lower_expr e, n)
   | Syntax.RecordConstruct { typ; fields } ->
     RecordConstruct { typ = lower_expr typ; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields }
-  | Syntax.Struct { con_fields; bindings } ->
-    Struct { con_fields = List.map (fun (n, e) -> (n, lower_expr e)) con_fields;
-                     bindings = List.map lower_struct_binding bindings }
+  | Syntax.Struct { bindings } -> Struct { bindings = List.map lower_struct_binding bindings }
   | Syntax.Module { bindings } ->
     Module { bindings = List.map lower_struct_binding bindings }
   | Syntax.Import { path; _ } -> Import path
@@ -297,6 +291,7 @@ and lower_struct_binding = function
     PatternSynBinding { name = lower_id name;
                                 params = List.map lower_id params;
                                 rhs = lower_pat rhs; public }
+  | Syntax.FieldBinding { name; type_ } -> FieldBinding { name; type_ = lower_expr type_ }
   | Syntax.OpenBinding (m, label) -> OpenBinding (lower_expr m, label)
   | Syntax.SyntaxBinding { name; role; _ } -> SyntaxBinding { name = lower_id name; attaches = Syntax.attaches role }
   | Syntax.Items _ | Syntax.InstantiateBinding _ -> invalid_arg "lower_struct_binding: unexpanded syntax"

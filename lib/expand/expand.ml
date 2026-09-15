@@ -106,9 +106,7 @@ and go_kind m (k : kind) : kind =
   | Proj (e, n) -> Proj (go e, n)
   | RecordConstruct { typ; fields } ->
     RecordConstruct { typ = go typ; fields = List.map (fun (n, e) -> (n, go e)) fields }
-  | Struct { con_fields; bindings } ->
-    Struct { con_fields = List.map (fun (n, e) -> (n, go e)) con_fields;
-             bindings = List.map (go_struct_binding m) bindings }
+  | Struct { bindings } -> Struct { bindings = List.map (go_struct_binding m) bindings }
   | Module { bindings } -> Module { bindings = List.map (go_struct_binding m) bindings }
   | Import { path; scope } -> Import { path; scope = (on_id (Syntax.fresh_id ~scope "")).scope }
   | Open (md, body, label) -> Open (go md, go body, label)
@@ -162,6 +160,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
      | MacroCallBinding { f; args } -> MacroCallBinding { f = go f; args = List.map (map_capture m) args }
      | PatternSynBinding { name; params; rhs; public } ->
        PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat m rhs; public }
+     | FieldBinding { name; type_ } -> FieldBinding { name; type_ = go type_ }
      | OpenBinding (md, label) -> OpenBinding (go md, label)
      | SyntaxBinding { name; role; public } -> SyntaxBinding { name = on_id name; role = map_role m role; public }
      | HoleBinding id -> HoleBinding (on_id id)
@@ -211,7 +210,7 @@ let map_binders (f : Syntax.id -> Syntax.id) (binding : struct_binding) : struct
   | MacroBinding b -> MacroBinding { b with name = f b.name }
   | PatternSynBinding b -> PatternSynBinding { b with name = f b.name }
   | SyntaxBinding b -> SyntaxBinding { b with name = f b.name }
-  | MacroCallBinding _ | OpenBinding _ | HoleBinding _ | Items _ | InstantiateBinding _ -> binding
+  | MacroCallBinding _ | OpenBinding _ | FieldBinding _ | HoleBinding _ | Items _ | InstantiateBinding _ -> binding
 
 (** Add a scope mark to every identifier's scope set - and every unread token's. *)
 let add_scope (s : Scope_set.t) (stx : t) : t = map_ids (add_id_scope s) stx
@@ -250,7 +249,7 @@ let rec fill (captures : (string * capture) list) : mapper =
         | Some (CapId _) | None -> stx
         | Some (CapPattern _ | CapDecls _) -> unfit "an expression" name)
     | Module { bindings } -> { stx with kind = Module { bindings = splice_decl_holes captures bindings } }
-    | Struct { con_fields; bindings } -> { stx with kind = Struct { con_fields; bindings = splice_decl_holes captures bindings } }
+    | Struct { bindings } -> { stx with kind = Struct { bindings = splice_decl_holes captures bindings } }
     | Block [ { datum = Token { kind = Ident name; _ }; _ } ] -> (
         match find name with
         | Some (CapBlock ts) -> { stx with kind = Block ts }
@@ -681,9 +680,8 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | Proj (e, n) -> { stx with kind = Proj (expand ctx e, n) }
   | RecordConstruct { typ; fields } ->
     { stx with kind = RecordConstruct { typ = expand ctx typ; fields = List.map (fun (n, e) -> (n, expand ctx e)) fields } }
-  | Struct { con_fields; bindings } ->
-    { stx with kind = Struct { con_fields = List.map (fun (n, e) -> (n, expand ctx e)) con_fields;
-                               bindings = expand_struct_bindings ~in_struct:true ctx bindings } }
+  | Struct { bindings } ->
+    { stx with kind = Struct { bindings = expand_struct_bindings ~in_struct:true ctx bindings } }
   | Module { bindings } ->
     { stx with kind = Module { bindings = expand_struct_bindings ctx bindings } }
   | Open (m, body, _) ->
@@ -1058,6 +1056,8 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
         let filled = splice_decl_holes captures (List.map (go_struct_binding (fill captures)) ds) in
         expand_struct_bindings_with_scopes ~in_struct ctx (List.map app.emit_binding filled)
       | ReplaceExpr _ -> Expand_error.raise_at (NotDeclarations { macro = inst.form.name }))
+  | FieldBinding _ when not in_struct -> Enforest_util.error "a field [name : type] belongs in a struct"
+  | FieldBinding { name; type_ } -> ([ FieldBinding { name; type_ = expand ctx type_ } ], [ [] ])
   | OpenBinding (m, _) ->
     (* An open binds no name of its own. Its scope marks the later bindings as
        inside it, so a name there can resolve to an open choice. *)

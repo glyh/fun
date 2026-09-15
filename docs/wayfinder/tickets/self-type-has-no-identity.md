@@ -42,3 +42,7 @@ record declaration and compared by `id`. Under option 4 (reject recursive
 records) this ticket closes along with the feature.
 
 Add the probe above as a regression test that expects rejection.
+
+## Decided (2026-09-15)
+
+Identity at the knot, per [mutually-recursive-record-types](mutually-recursive-record-types.md): `Self` carries the recursive declaration's id and unfolds on demand. Implement the three tickets together.

@@ -370,15 +370,14 @@ let struct_expr () =
   x : I64;
   pub y = 2
 }" with
-  | Struct { con_fields = [ ("x", Var "I64") ]; bindings = [ LetBinding { name = "y"; value = Atom (Atom.I64 2L); public = true ; _} ] } -> ()
+  | Struct { bindings = [ FieldBinding { name = "x"; type_ = Var "I64" }; LetBinding { name = "y"; value = Atom (Atom.I64 2L); public = true ; _} ] } -> ()
   | _ -> Alcotest.fail "expected redesigned struct expression"
 
 let struct_method_syntax () =
   match parse "struct { value: I64; pub method get() { self.value } }" with
   | Struct
       {
-        con_fields = [ ("value", Var "I64") ];
-        bindings = [ MethodBinding { name = "get"; params = []; body = FieldAccess (Self, "value"); public = true } ];
+        bindings = [ FieldBinding { name = "value"; type_ = Var "I64" }; MethodBinding { name = "get"; params = []; body = FieldAccess (Self, "value"); public = true } ];
       } ->
       ()
   | _ -> Alcotest.fail "expected method keyword with parenthesized empty params"
@@ -387,7 +386,6 @@ let struct_fn_sugar_is_value_binding () =
   match parse "struct { pub fn id(x : I64) { x } }" with
   | Struct
       {
-        con_fields = [];
         bindings = [ LetBinding { name = "id"; value = Lam ({ name = "x"; type_ = Some (Var "I64"); _ }, Var "x"); public = true; _ } ];
       } ->
       ()

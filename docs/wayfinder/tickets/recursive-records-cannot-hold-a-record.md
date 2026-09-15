@@ -43,3 +43,7 @@ until that lands (option 4). Don't fix this without
 while it still has no identity turns that bug into a live soundness hole.
 
 Add the probes above as regression tests.
+
+## Decided (2026-09-15)
+
+Identity at the knot, per [mutually-recursive-record-types](mutually-recursive-record-types.md): `Self` carries the recursive declaration's id and unfolds on demand. Implement the three tickets together.

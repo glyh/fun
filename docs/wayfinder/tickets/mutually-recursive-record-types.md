@@ -148,5 +148,20 @@ Defects spun out:
 
 ## Resolution
 
-_Unresolved._ Research above; the knot mechanism is now a grilling decision
-between options 1 and 4.
+**Grilled 2026-09-15: option 1, identity at the knot (Go-style).** A recursive
+record declaration mints an identity; `Self` carries it (`{ id; args }`) and is
+unfolded on demand at field access, construction and unification against a
+struct. Non-recursive records stay structural. Two recursive records with the
+same shape are different types:
+
+```fun
+type Numbers = struct { head : I64; tail : Option(Numbers) }
+type Scores  = struct { head : I64; tail : Option(Scores) }
+s : Scores = Scores{ head = 99, tail = None }
+n : Numbers = s   // error: Scores is not Numbers
+```
+
+Iso- and equi-recursive μ-types were considered and rejected. Mutual chains
+reuse the nominal three-phase knot (register every id, elaborate, finish).
+Still open: whether method-body `Self` gets its own word (fog item "`Self`
+names two things").

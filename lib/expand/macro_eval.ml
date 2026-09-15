@@ -204,7 +204,7 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | FieldAccess (r, f) -> e "RawFieldAccess" [ x r; w_string f ]
   | Proj (r, i) -> e "RawProj" [ x r; w_i64 i ]
   | RecordConstruct { typ; fields } -> e "RawRecordConstruct" [ x typ; w_fields ns fields ]
-  | Struct { con_fields; bindings } -> e "RawStruct" [ w_fields ns con_fields; w_list ns (w_decl ns) bindings ]
+  | Struct { bindings } -> e "RawStruct" [ w_list ns (w_decl ns) bindings ]
   | Module { bindings } -> e "RawModule" [ w_list ns (w_decl ns) bindings ]
   | Import { path; scope } -> e "RawImport" [ w_string path; VAtom (Scopes scope) ]
   | Open (m, body, label) -> e "RawOpen" [ x m; x body; w_string label ]
@@ -347,6 +347,7 @@ and w_decl ns (b : Syntax.struct_binding) =
   | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_captured ns) args ]
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
+  | FieldBinding { name; type_ } -> d "DeclField" [ w_string name; w_expr ns type_ ]
   | OpenBinding (m, label) -> d "DeclOpen" [ w_expr ns m; w_string label ]
   | HoleBinding id -> d "DeclHole" [ w_id ns id ]
   | SyntaxBinding { name; role; public } -> d "DeclSyntax" [ w_id ns name; w_role ns role; w_bool ns public ]
@@ -545,10 +546,7 @@ let rec u_expr ns (v : value) : Syntax.t option =
       | "RawProj", [ r; i ] -> let* r = x r in let* i = u_int i in mk (Proj (r, i))
       | "RawRecordConstruct", [ typ; fields ] ->
           let* typ = x typ in let* fields = u_fields ns fields in mk (RecordConstruct { typ; fields })
-      | "RawStruct", [ con_fields; bindings ] ->
-          let* con_fields = u_fields ns con_fields in
-          let* bindings = u_list ns (u_decl ns) bindings in
-          mk (Struct { con_fields; bindings })
+      | "RawStruct", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Struct { bindings })
       | "RawModule", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Module { bindings })
       | "RawImport", [ path; VAtom (Scopes scope) ] -> let* path = u_string path in mk (Import { path; scope })
       | "RawOpen", [ m; body; label ] ->
@@ -888,6 +886,7 @@ and u_decl ns v : Syntax.struct_binding option =
           let* rhs = u_pat ns rhs in
           let* public = u_bool ns public in
           Some (Syntax.PatternSynBinding { name; params; rhs; public })
+      | "DeclField", [ name; type_ ] -> let* name = u_string name in let* type_ = u_expr ns type_ in Some (Syntax.FieldBinding { name; type_ })
       | "DeclOpen", [ m; label ] -> let* m = u_expr ns m in let* label = u_string label in Some (Syntax.OpenBinding (m, label))
       | "DeclHole", [ id ] -> let* id = u_id ns id in Some (Syntax.HoleBinding id)
       | "DeclSyntax", [ name; role; public ] ->
