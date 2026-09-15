@@ -118,7 +118,7 @@ let w_span ns (span : Source_span.t) : value =
               ("end_col", w_option ns w_i64 span.end_col) ]))
 
 let w_id ns (id : Syntax.id) =
-  record [ ("name", w_string id.name); ("span", w_span ns id.span); ("scope", VAtom (Scopes id.scope)) ]
+  record [ ("name", w_string id.name); ("span", w_span ns id.span); ("scope", VAtom (Scopes (id.scope, Syntax.certificate id.name))) ]
 
 let w_explicitness ns = function
   | Explicitness.Explicit -> con ns.explicitness "Explicit" []
@@ -130,7 +130,7 @@ let w_atom ns (a : Atom.t) =
   | Char c -> con ns.atom_val "CharAtom" [ VAtom (Char c) ]
   | String s -> con ns.atom_val "StringAtom" [ VAtom (String s) ]
   | Unit -> con ns.atom_val "UnitAtom" []
-  | Scopes s -> con ns.atom_val "ScopesAtom" [ VAtom (Scopes s) ]
+  | Scopes _ as s -> con ns.atom_val "ScopesAtom" [ VAtom s ]
 
 let atom_ty_names =
   [ (Atom_ty.TI64, "TyI64"); (TUnit, "TyUnit"); (TChar, "TyChar"); (TString, "TyString");
@@ -173,7 +173,9 @@ let w_token_kind ns (k : Token_tree.token_kind) =
 (* A token tree, each token with its scope set (M9). *)
 let rec w_token_tree ns (t : Token_tree.t) =
   match t.datum with
-  | Token tok -> con ns.token_tree "Tok" [ w_span ns t.span; w_token_kind ns tok.kind; VAtom (Scopes tok.scope) ]
+  | Token tok ->
+      let cert = match tok.kind with Ident name -> Syntax.certificate name | _ -> None in
+      con ns.token_tree "Tok" [ w_span ns t.span; w_token_kind ns tok.kind; VAtom (Scopes (tok.scope, cert)) ]
   | Group (d, items, span) -> con ns.token_tree "TokGroup" [ w_span ns span; w_delim ns d; w_list ns (w_token_tree ns) items ]
 
 let w_tokens ns ts = w_list ns (w_token_tree ns) ts
@@ -210,7 +212,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | RecordConstruct { typ; fields } -> e "RawRecordConstruct" [ x typ; w_fields ns fields ]
   | Struct { bindings } -> e "RawStruct" [ w_list ns (w_decl ns) bindings ]
   | Module { bindings } -> e "RawModule" [ w_list ns (w_decl ns) bindings ]
-  | Import { path; scope } -> e "RawImport" [ w_string path; VAtom (Scopes scope) ]
+  | Sig { bindings } -> e "RawSig" [ w_list ns (w_decl ns) bindings ]
+  | Import { path; scope } -> e "RawImport" [ w_string path; VAtom (Scopes (scope, None)) ]
   | Open (m, body, label) -> e "RawOpen" [ x m; x body; w_string label ]
   | OpenChoice { name; opens; fallback } ->
       e "RawOpenChoice" [ w_id ns name; w_list ns w_string opens; w_option ns w_string fallback ]
@@ -262,7 +265,7 @@ and w_role ns (r : Syntax.role) =
 
 and w_order ns (o : Syntax.order) =
   con ns.order "MkOrder"
-    [ w_string o.group; w_string o.group_name; w_assoc ns o.group_assoc;
+    [ w_string o.group; w_string o.group_name; w_assoc ns o.group_assoc; w_bool ns o.weakest;
       w_list ns (w_order ns) o.stronger_than; w_list ns (w_order ns) o.weaker_than ]
 
 and w_rule ns (r : Syntax.rule) =
@@ -419,8 +422,8 @@ let u_span ns v : Source_span.t option =
 let u_id ns v : Syntax.id option =
   let* name = let* n = u_field "name" v in u_string n in
   let* span = let* s = u_field "span" v in u_span ns s in
-  let* scope = match u_field "scope" v with Some (VAtom (Scopes s)) -> Some s | _ -> None in
-  Some { Syntax.name; span; scope }
+  let* scope, cert = match u_field "scope" v with Some (VAtom (Scopes (s, c))) -> Some (s, c) | _ -> None in
+  if Syntax.certified name cert then Some { Syntax.name; span; scope } else None
 
 let u_explicitness ns v =
   match payload ns.explicitness v with
@@ -434,7 +437,7 @@ let u_atom ns v : Atom.t option =
   | Some ("CharAtom", [ VAtom (Char c) ]) -> Some (Char c)
   | Some ("StringAtom", [ VAtom (String s) ]) -> Some (String s)
   | Some ("UnitAtom", []) -> Some Unit
-  | Some ("ScopesAtom", [ VAtom (Scopes s) ]) -> Some (Scopes s)
+  | Some ("ScopesAtom", [ VAtom (Scopes _ as s) ]) -> Some s
   | _ -> None
 
 let u_atom_ty ns v =
@@ -486,9 +489,10 @@ let u_token_kind ns v : Token_tree.token_kind option =
 
 let rec u_token_tree ns v : Token_tree.t option =
   match payload ns.token_tree v with
-  | Some ("Tok", [ span; kind; VAtom (Scopes scope) ]) ->
+  | Some ("Tok", [ span; kind; VAtom (Scopes (scope, cert)) ]) ->
       let* span = u_span ns span in
       let* kind = u_token_kind ns kind in
+      let* () = match kind with Ident name when not (Syntax.certified name cert) -> None | _ -> Some () in
       Some { Token_tree.datum = Token { kind; span; scope }; span }
   | Some ("TokGroup", [ span; d; items ]) ->
       let* span = u_span ns span in
@@ -555,7 +559,8 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* typ = x typ in let* fields = u_fields ns fields in mk (RecordConstruct { typ; fields })
       | "RawStruct", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Struct { bindings })
       | "RawModule", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Module { bindings })
-      | "RawImport", [ path; VAtom (Scopes scope) ] -> let* path = u_string path in mk (Import { path; scope })
+      | "RawSig", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Sig { bindings })
+      | "RawImport", [ path; VAtom (Scopes (scope, _)) ] -> let* path = u_string path in mk (Import { path; scope })
       | "RawOpen", [ m; body; label ] ->
           let* m = x m in let* body = x body in let* label = u_string label in mk (Open (m, body, label))
       | "RawOpenChoice", [ name; opens; fallback ] ->
@@ -667,13 +672,14 @@ and u_role ns v : Syntax.role option =
 
 and u_order ns v : Syntax.order option =
   match payload ns.order v with
-  | Some ("MkOrder", [ group; group_name; assoc; stronger; weaker ]) ->
+  | Some ("MkOrder", [ group; group_name; assoc; weakest; stronger; weaker ]) ->
       let* group = u_string group in
       let* group_name = u_string group_name in
       let* group_assoc = u_assoc ns assoc in
+      let* weakest = u_bool ns weakest in
       let* stronger_than = u_list ns (u_order ns) stronger in
       let* weaker_than = u_list ns (u_order ns) weaker in
-      Some { Syntax.group; group_name; group_assoc; stronger_than; weaker_than }
+      Some { Syntax.group; group_name; group_assoc; weakest; stronger_than; weaker_than }
   | _ -> None
 
 and u_rule ns v : Syntax.rule option =

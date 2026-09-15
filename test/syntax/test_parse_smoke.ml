@@ -18,12 +18,12 @@ let dotted_field_shape () =
 
 let module_signature_sugar_shape () =
   match parse_expr "sig { x : I64; y : Bool }" with
-  | Module { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = true; _ }; LetBinding { name = "y"; value = Var "Bool"; public = true; _ } ] } -> ()
-  | _ -> Alcotest.fail "expected signature sugar as public type module"
+  | Sig { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = true; _ }; LetBinding { name = "y"; value = Var "Bool"; public = true; _ } ] } -> ()
+  | _ -> Alcotest.fail "expected a signature value"
 
 let module_signature_param_shape () =
   match parse_expr "fn(m : sig { x : I64 }) { m.x }" with
-  | Lam ({ name = "m"; type_ = Some (Module { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = true; _ } ] }); _ }, FieldAccess (Var "m", "x")) -> ()
+  | Lam ({ name = "m"; type_ = Some (Sig { bindings = [ LetBinding { name = "x"; value = Var "I64"; public = true; _ } ] }); _ }, FieldAccess (Var "m", "x")) -> ()
   | _ -> Alcotest.fail "expected module signature parameter"
 
 let neq_still_parses_shape () =

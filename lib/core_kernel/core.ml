@@ -45,7 +45,10 @@ and term =
   | Proj of term * int             (* positional tuple projection: e.0 *)
   | Dot of term * string           (* named member/field access: e.field *)
   | RecordConstruct of { typ : term; fields : (string * term) list }
-  | Module of { bindings : struct_binding_term list }
+  | Module of { bindings : struct_binding_term list; signature : bool }
+      (** [signature]: a [sig { … }] value, whose members are types; it evaluates to
+          a [VModule] with [partial = true]. A signature is its own kind of value,
+          never a module. *)
   | Struct of {
       con_fields : (string * term) list;
       bindings : struct_binding_term list;
@@ -563,7 +566,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
       TraitDictTy { d with args = List.map (at 0) d.args; fields = List.map (fun (n, v) -> (n, at 0 v)) d.fields }
   | Ctor c -> Ctor { c with spine = List.map (at 0) c.spine; nominal_spine = List.map (at 0) c.nominal_spine }
   | Open (s, members, body) -> Open (at 0 s, members, at (List.length members) body)
-  | Module { bindings = bs } -> Module { bindings = bindings bs }
+  | Module { bindings = bs; signature } -> Module { bindings = bindings bs; signature }
   | Struct s ->
       Struct { s with con_fields = List.map (fun (n, ty) -> (n, at 0 ty)) s.con_fields; bindings = bindings s.bindings }
   | Match (scrut, branches) ->

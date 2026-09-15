@@ -109,7 +109,7 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
           | Some k -> k
           | None -> Syntax.MacroKind.default
         in
-        { name; kind; entry;
+        { name = Syntax.label name; kind; entry;
           params = Option.value ~default:[] (Expand_ctx.lookup_macro_params expand_ctx name);
           public = List.mem name public_macro_names }
         :: acc)

@@ -18,6 +18,12 @@ let expect_budget_exceeded ~call f =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected an evaluation budget error"
 
+(* A macro bound in the scope-aware table as well as registered: a head
+   resolves by scope set alone (M12), so a name nothing binds is not a macro.
+   Bound with an empty scope set, so a synthetic call's head finds it. *)
+let bind_macro ctx name =
+  Binding.extend ctx.Expand_ctx.binding_table ~name ~scope:Scope_set.empty ~kind:Binding.Macro ~resolved_name:name
+
 let expr_call name =
   stx (Syntax.MacroCall (stx (Syntax.Var (id name)), [ Syntax.CapExpr (stx (Syntax.Atom (I64 0L))) ]))
 
@@ -25,6 +31,7 @@ let ready_expr_macro_ctx () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ _ _ ->
     VStx (StxExpr (stx (Syntax.Atom (I64 1L)))));
+  bind_macro ctx "mk";
   Expand_ctx.register_macro ctx ~name:"mk" ~value:(VAtom Unit);
   Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default ~params:[ Syntax.HoleExpr ];
   ctx
@@ -53,6 +60,7 @@ let test_budget_shared_across_copy () =
 let test_decl_macro_exhausts_budget () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ _ _ -> VStx (StxDecls []));
+  bind_macro ctx "gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VAtom Unit);
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
@@ -94,6 +102,7 @@ let test_breadth_blowup_exceeds_budget () =
 let test_macro_body_spends_from_the_expansion () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.eval_and_apply <- Some Nbe.apply_macro;
+  bind_macro ctx "mk";
   Expand_ctx.register_macro ctx ~name:"mk" ~value:(VLam { body = { env = []; body = Var 0 } });
   Expand_ctx.register_macro_kind ctx ~name:"mk" ~kind:Syntax.MacroKind.default ~params:[ Syntax.HoleExpr ];
   ignore (with_limit ctx 2 (fun () -> Expand.expand ctx (expr_call "mk")));
@@ -110,6 +119,11 @@ let test_driver_provisional_filled_and_cleared () =
   Alcotest.(check bool) "no pending marker remains" false
     (Expand_ctx.is_provisional_macro output.expand_ctx "mk")
 
+(* A macro binder's resolved name is fresh (M12), so its table entries are
+   found by the label the declaration was written with. *)
+let labelled table label =
+  Hashtbl.fold (fun k _ acc -> if String.equal (Syntax.label k) label then k :: acc else acc) table []
+
 let test_provisional_rollback_restores_previous_macro () =
   let ctx = Expand_ctx.create () in
   let calls = ref 0 in
@@ -120,17 +134,14 @@ let test_provisional_rollback_restores_previous_macro () =
     Syntax.MacroBinding { name = id "mk"; value; public = false; kind = None; output = None }
   in
   ignore (Expand.expand_struct_bindings ctx [ macro_binding (stx (Syntax.Atom (I64 1L))) ]);
-  let previous_kind = Expand_ctx.lookup_macro_kind ctx "mk" in
+  let previous = labelled ctx.Expand_ctx.macro_table "mk" in
   (match Expand.expand_struct_bindings ctx [ macro_binding (stx (Syntax.Atom (I64 2L))) ] with
    | exception Failure msg when String.equal msg "compile boom" -> ()
    | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
    | _ -> Alcotest.fail "expected compile failure");
-  Alcotest.(check bool) "ready macro restored" true
-    (Option.is_some (Expand_ctx.lookup_macro_entry ctx "mk"));
-  Alcotest.(check bool) "kind restored" true
-    (Expand_ctx.lookup_macro_kind ctx "mk" = previous_kind);
-  Alcotest.(check bool) "pending marker cleared" false
-    (Expand_ctx.is_provisional_macro ctx "mk")
+  Alcotest.(check (list string)) "only the ready macro remains" previous (labelled ctx.Expand_ctx.macro_table "mk");
+  Alcotest.(check (list string)) "its kind remains" previous (labelled ctx.Expand_ctx.macro_kind_table "mk");
+  Alcotest.(check (list string)) "pending marker cleared" [] (labelled ctx.Expand_ctx.provisional_macros "mk")
 
 let test_provisional_rollback_removes_fresh_failure () =
   let ctx = Expand_ctx.create () in
@@ -148,12 +159,9 @@ let test_provisional_rollback_removes_fresh_failure () =
    | exception Failure msg when String.equal msg "compile boom" -> ()
    | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
    | _ -> Alcotest.fail "expected compile failure");
-  Alcotest.(check bool) "no ready macro remains" false
-    (Option.is_some (Expand_ctx.lookup_macro_entry ctx "fresh"));
-  Alcotest.(check bool) "no kind remains" false
-    (Option.is_some (Expand_ctx.lookup_macro_kind ctx "fresh"));
-  Alcotest.(check bool) "no pending marker remains" false
-    (Expand_ctx.is_provisional_macro ctx "fresh")
+  Alcotest.(check (list string)) "no ready macro remains" [] (labelled ctx.Expand_ctx.macro_table "fresh");
+  Alcotest.(check (list string)) "no kind remains" [] (labelled ctx.Expand_ctx.macro_kind_table "fresh");
+  Alcotest.(check (list string)) "no pending marker remains" [] (labelled ctx.Expand_ctx.provisional_macros "fresh")
 
 let () =
   Alcotest.run "macro_driver_stage7"

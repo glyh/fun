@@ -203,7 +203,7 @@ let resolved_name_counter = ref 0
    contain (it begins a comment), so no written name can ever equal one - by
    construction, not by the counter's freshness. The counter is global, so a name
    minted by one expander is never re-minted by another. *)
-let is_resolved_name name = String.contains name '#'
+let is_resolved_name = Syntax.is_resolved_name
 
 (* A name already resolved is final: expanding expanded syntax again leaves it
    alone, which is what makes expansion idempotent (M9). *)
@@ -241,8 +241,17 @@ let bind (ctx : t) ?role ?(span = Source_span.synthetic) ~name ~base_scope ~kind
   let attaches = match role with Some r -> Syntax.attaches r | None -> false in
   let group = match role with Some r -> r.Syntax.meaning = Syntax.OrderGroup | None -> false in
   check_role_mixing ctx ~name ~occurrence:base_scope ~kind ~attaches ~group ~span;
+  (* A unit's own role is not noted against that unit's open, as in [enter_open]:
+     the open supplies the role's own declaration, not a name mixing with it. *)
+  let own_unit label =
+    match role with
+    | Some { Syntax.from_unit = Some path; _ } -> String.equal label (Compiler_names.Module_name.unit_open_label path)
+    | _ -> false
+  in
   if kind <> Binding.Value && not group then
-    List.iter (fun (o, label) -> if Scope_set.contains base_scope o then note_open_role ctx label name) ctx.opens;
+    List.iter
+      (fun (o, label) -> if Scope_set.contains base_scope o && not (own_unit label) then note_open_role ctx label name)
+      ctx.opens;
   Binding.extend ?role ctx.binding_table ~name ~scope:(Scope_set.union base_scope scope) ~kind ~resolved_name
 
 let extend_at (ctx : t) ?span ~name ~base_scope ~resolved_name () =

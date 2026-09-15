@@ -140,7 +140,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VProdTy elems -> ProdTy (List.map (go d) elems)
     | VRefTy a -> RefTy (go d a)
     | VRef _ -> raise (UnifyError (CannotUnify "cannot quote ref during unification"))
-    | VModule { entries; partial = _ } ->
+    | VModule { entries; partial } ->
         let fields = module_entry_fields entries in
         let bindings =
           List.map
@@ -155,7 +155,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
               | ModuleImpl (name, kind, ty, value) -> ImplBind (name, kind, go d value, ty))
             entries
         in
-        Module { bindings }
+        Module { bindings; signature = partial }
     | VStruct { entries; partial } ->
         let con_fields =
           List.filter_map

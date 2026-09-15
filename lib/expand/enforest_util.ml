@@ -40,11 +40,11 @@ type env = {
 }
 
 (* The compiler-known base roles, always in scope: [<-], ref assignment, and
-   its order group [assignment] - weaker than every prelude group (the prelude
-   declares [disjunction] stronger than it) and non-associative, so
+   its order group [assignment] - [weakest] (weaker than every group that states
+   no relation to it) and non-associative, so
    [r <- x + 1] is [r <- (x + 1)] and [a <- b <- c] is an error. *)
 let assignment_order =
-  { Syntax.group = "assignment@base"; group_name = "assignment"; group_assoc = Syntax.NonAssoc; stronger_than = []; weaker_than = [] }
+  { Syntax.group = "assignment@base"; group_name = "assignment"; group_assoc = Syntax.NonAssoc; weakest = true; stronger_than = []; weaker_than = [] }
 
 let base_roles (tbl : Binding.t) =
   Binding.extend tbl ~name:"assignment" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"assignment"

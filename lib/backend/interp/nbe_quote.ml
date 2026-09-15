@@ -85,7 +85,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   (* A deferred call quotes as the call, not its unfolding. *)
   | VGlued { name; fix; arg; _ } ->
       Ap (quote ops mc depth (VFix { name; pure = true; body = fix }), Explicit, quote ops mc depth arg)
-  | VModule { entries; partial = _ } ->
+  | VModule { entries; partial } ->
       let fields = module_entry_fields entries in
       let bindings =
         List.map
@@ -103,7 +103,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
                 ImplBind (name, kind, quote ops mc depth value, ty))
           entries
       in
-      Module { bindings }
+      Module { bindings; signature = partial }
   | VStruct { entries; partial } ->
       let con_fields =
         List.filter_map

@@ -40,9 +40,9 @@ let extend_from_slots (ctx : Ctx.t) (bind : Core.struct_binding_term) payloads =
 (* A module or struct member [name = value]: its core, its type, and the value
    the items after it see - evaluated when evaluating it performs nothing,
    otherwise opaque, for evaluating it here would run what it performs. *)
-let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~name ~recursive value =
+let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~recursive value =
   let rec_ty = Ctx.raw_meta ctx in
-  let value_ctx = if recursive then Ctx.bind value_ctx name rec_ty else value_ctx in
+  let value_ctx = if recursive then Ctx.bind value_ctx key rec_ty else value_ctx in
   let (val_core, val_ty), effects = collecting value_ctx (fun value_ctx -> ops.infer value_ctx value) in
   emit ctx effects;
   (if recursive then Ctx.unify ctx rec_ty val_ty);
@@ -68,15 +68,22 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~name ~recursi
 
    See docs/wayfinder/tickets/env-width-contract-is-unnamed.md. *)
 (* A type declaration's names as the elaborator's context keys them. *)
-type type_member = { member_name : string; member_params : string list; member_ctors : (string * Syntax.t list) list }
+type type_member = {
+  member_key : string;  (* the context's key: the binder's resolved name *)
+  member_name : string;  (* the label the type and its constructors carry *)
+  member_params : string list;
+  member_ctors : (string * Syntax.t list) list;
+  member_ctor_keys : string list;
+}
 
 let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_decl list) ~public
     : Ctx.t * (Core.struct_binding_term * (string * struct_field_kind * value) list) list =
   let members =
     List.map
       (fun (m : Syntax.type_decl) ->
-        { member_name = m.name.name; member_params = Syntax.names m.params;
-          member_ctors = List.map (fun ((c : Syntax.id), payloads) -> (c.name, payloads)) m.ctors })
+        { member_key = m.name.name; member_name = Syntax.label m.name.name; member_params = Syntax.names m.params;
+          member_ctors = List.map (fun ((c : Syntax.id), payloads) -> (Syntax.label c.name, payloads)) m.ctors;
+          member_ctor_keys = List.map (fun ((c : Syntax.id), _) -> c.name) m.ctors })
       members
   in
   let param_ctx_of (m : type_member) =
@@ -123,14 +130,14 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
           List.fold_left
             (fun gctx ((other : type_member), other_id, other_placeholder, _, _, other_ty) ->
               let num_params = List.length other.member_params in
-              if num_params = 0 then Ctx.define gctx other.member_name VU other_placeholder
+              if num_params = 0 then Ctx.define gctx other.member_key VU other_placeholder
               else
                 let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) other.member_params in
                 let type_core_term =
                   List.fold_right (fun _ acc -> Lam acc) other.member_params (NomRef { id = other_id; name = other.member_name; params = type_var_terms })
                 in
                 let type_val = Nbe.eval param_ctx.Ctx.metas (other_placeholder :: param_ctx.Ctx.env) type_core_term in
-                Ctx.define gctx other.member_name other_ty type_val)
+                Ctx.define gctx other.member_key other_ty type_val)
             param_ctx registered
         in
         let elaborated_ctors =
@@ -178,9 +185,9 @@ let elab_type_group (ops : Elab_ops.t) (ctx : Ctx.t) ~(members : Syntax.type_dec
           extend_from_slots ctx bind
             (List.map (fun p -> `Param p) m.member_params
             @ List.map2
-                (fun (cname, ctor_value) (_, ctor_ty) -> `Entry (cname, ctor_ty, ctor_value))
-                ctor_values ctor_types
-            @ [ `Entry (m.member_name, nominal_ty, nominal) ])
+                (fun key ((_, ctor_value), (_, ctor_ty)) -> `Entry (key, ctor_ty, ctor_value))
+                m.member_ctor_keys (List.combine ctor_values ctor_types)
+            @ [ `Entry (m.member_key, nominal_ty, nominal) ])
         in
         let fields = (m.member_name, kind, nominal_ty) :: List.map (fun (c, ty) -> (c, kind, ty)) ctor_types in
         (ctx', (bind, fields) :: acc))
@@ -201,7 +208,8 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
   | Syntax.MacroBinding _ | Syntax.SyntaxBinding _ -> (ctx, [], [])
   | Syntax.MacroCallBinding _ -> (ctx, [], [])
   | Syntax.HoleBinding _ | Syntax.Items _ | Syntax.InstantiateBinding _ -> failwith "unexpanded declarations should not reach elaboration"
-  | Syntax.PatternSynBinding { name = { name; _ }; params; rhs; public } ->
+  | Syntax.PatternSynBinding { name = { name = key; _ }; params; rhs; public } ->
+      let name = Syntax.label key in
       let params = Syntax.names params in
       let scrutinee_ty =
         match rhs with
@@ -215,7 +223,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
       let kind = if public then Public else Private in
       let bind = PatternSynBind (name, kind, syn_val) in
-      let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, syn_val) ] in
+      let ctx' = extend_from_slots ctx bind [ `Entry (key, VU, syn_val) ] in
       (ctx', [bind], [ModuleField (name, kind, VU)])
   | Syntax.OpenBinding (mod_expr, label) ->
       (* Module-level [open]: the opened module's public fields are in scope for
@@ -226,29 +234,32 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let mod_value = Ctx.eval ctx mod_core in
       let ctx, members = open_module_value ~label ctx mod_ty mod_value in
       (ctx, [OpenBind (mod_core, members)], [])
-  | Syntax.LetBinding { name = { name; _ }; value; public; recursive } ->
-      let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~name ~recursive value in
+  | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive } ->
+      let name = Syntax.label key in
+      let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~key ~name ~recursive value in
       let kind = if public then Public else Private in
       let bind = LetBind (name, kind, val_core) in
-      let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
+      let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
       (ctx', [bind], [ModuleField (name, kind, val_ty)])
-  | Syntax.EffectBinding { name = { name; _ }; params; ops = eff_ops; public } ->
+  | Syntax.EffectBinding { name = { name = key; _ }; params; ops = eff_ops; public } ->
+      let name = Syntax.label key in
       let params = Syntax.names params in
       let _effect_id, eff, eff_ty, _elaborated_ops =
         elaborate_eff_family ops ctx name params eff_ops
       in
       let kind = if public then Public else Private in
       let bind = EffectBind (name, kind, eff) in
-      let ctx' = extend_from_slots ctx bind [ `Entry (name, eff_ty, eff) ] in
+      let ctx' = extend_from_slots ctx bind [ `Entry (key, eff_ty, eff) ] in
       (ctx', [bind], [ModuleField (name, kind, eff_ty)])
-  | Syntax.TraitBinding { name = { name; _ }; params; fields; public } ->
+  | Syntax.TraitBinding { name = { name = key; _ }; params; fields; public } ->
+      let name = Syntax.label key in
       let params = Syntax.names params in
       let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
       let kind = if public then Public else Private in
       let bind =
         LetBind (name, kind, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name })
       in
-      let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, trait_ty) ] in
+      let ctx' = extend_from_slots ctx bind [ `Entry (key, VU, trait_ty) ] in
       (ctx', [bind], [ModuleField (name, kind, VU)])
   | Syntax.ImplBinding { name; trait; args; fields; public } ->
       let name = Option.map (fun (i : Syntax.id) -> i.name) name in
@@ -261,12 +272,13 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       in
       let ctx', _evidence = install_impl_evidence ?impl_name:name ctx' c ~level in
       (ctx', [bind], [ModuleImpl (name, kind, c.impl_dict_ty, c.impl_value)])
-  | Syntax.RecordTypeBinding { name = { name; _ }; params; fields; public } ->
+  | Syntax.RecordTypeBinding { name = { name = key; _ }; params; fields; public } ->
+      let name = Syntax.label key in
       let params = Syntax.names params in
       check_duplicate_names (List.map fst fields);
       let rewritten_fields =
         List.map
-          (fun (field, ty) -> (field, rewrite_record_self_refs name params ty))
+          (fun (field, ty) -> (field, rewrite_record_self_refs key params ty))
           fields
       in
       let rec elaborate_params ctx param_values = function
@@ -290,7 +302,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let val_val = Ctx.eval ctx val_core in
       let kind = if public then Public else Private in
       let bind = LetBind (name, kind, val_core) in
-      let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
+      let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
       (ctx', [bind], [ModuleField (name, kind, val_ty)])
   | Syntax.TypeBinding { members; public } ->
       (* The module fold prepends each binding's results and reverses at the
@@ -308,7 +320,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | Atom Unit -> (Atom Unit, VAtomTy Atom_ty.TUnit)
   | Atom (Char c) -> (Atom (Char c), VAtomTy Atom_ty.TChar)
   | Atom (String s) -> (Atom (String s), VAtomTy Atom_ty.TString)
-  | Atom (Scopes s) -> (Atom (Scopes s), VAtomTy Atom_ty.TScopes)
+  | Atom (Scopes _ as s) -> (Atom s, VAtomTy Atom_ty.TScopes)
   | Var { name; _ } ->
       let ix, ty = Ctx.lookup ctx name in
       let core = Var ix in
@@ -552,6 +564,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           in
           (RecordConstruct { typ = typ_core; fields = field_cores }, record_ty)
       | _ -> raise (ElabError ApplyingNonFunction))
+  | Sig { bindings } -> Elab_type_expr.infer_signature ops ctx bindings
   | Module { bindings } ->
       let binding_ctx = Ctx.clear_self_scope ctx in
       let _end_ctx, core_bindings, entries =
@@ -564,7 +577,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let entries = List.rev entries in
       let fields = module_entry_fields entries in
       validate_module_fields fields;
-      (Module { bindings = core_bindings }, VModule { entries; partial = false })
+      (Module { bindings = core_bindings; signature = false }, VModule { entries; partial = false })
   | Struct { bindings } ->
       (* Items elaborate in source order (as a module's do): a field's type sees
          the items written before it, and leaves as a value, quoted at the
@@ -644,7 +657,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         | (Syntax.MacroBinding _ | Syntax.SyntaxBinding _) :: rest -> go ~defer ctx (acc_binds, acc_entries) rest
         | (Syntax.HoleBinding _ | Syntax.Items _ | Syntax.InstantiateBinding _) :: _ -> failwith "unexpanded declarations should not reach elaboration"
         | Syntax.MacroCallBinding _ :: rest -> go ~defer ctx (acc_binds, acc_entries) rest
-        | Syntax.PatternSynBinding { name = { name; _ }; params; rhs; public } :: rest ->
+        | Syntax.PatternSynBinding { name = { name = key; _ }; params; rhs; public } :: rest ->
+            let name = Syntax.label key in
             let params = Syntax.names params in
             let scrutinee_ty =
               match rhs with
@@ -658,7 +672,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let syn_val = VPatternSyn { name; params; rhs = core_rhs; scrutinee_ty } in
             let kind = if public then Public else Private in
             let bind = PatternSynBind (name, kind, syn_val) in
-            let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, syn_val) ] in
+            let ctx' = extend_from_slots ctx bind [ `Entry (key, VU, syn_val) ] in
             go ~defer ctx'
                (bind :: acc_binds,
                 StructField (name, kind, VU) :: acc_entries)
@@ -668,35 +682,38 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let mod_value = Ctx.eval ctx mod_core in
             let ctx, members = open_module_value ~label ctx mod_ty mod_value in
             go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest
-        | Syntax.LetBinding { name = { name; _ }; value; public; recursive; _ } :: rest ->
-            let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~name ~recursive value in
+        | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive; _ } :: rest ->
+            let name = Syntax.label key in
+            let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~key ~name ~recursive value in
             let kind = if public then Public else Private in
             let bind = LetBind (name, kind, val_core) in
-            let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
+            let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
             go ~defer ctx'
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
-        | Syntax.MethodBinding { name = { name; _ }; params; body; public } :: rest ->
+        | Syntax.MethodBinding { name = { name = key; _ }; params; body; public } :: rest ->
+            let name = Syntax.label key in
             let method_core, method_ty = elaborate_method ctx params body in
             let method_val = Ctx.eval ctx method_core in
             let kind = if public then Method else PrivateMethod in
             let bind = LetBind (name, kind, method_core) in
-            let ctx' = extend_from_slots ctx bind [ `Entry (name, method_ty, method_val) ] in
+            let ctx' = extend_from_slots ctx bind [ `Entry (key, method_ty, method_val) ] in
             let entries = if public then [ StructField (name, kind, method_ty) ] else [] in
             go ~defer ctx'
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
-        | Syntax.EffectBinding { name = { name; _ }; params; ops = eff_ops; public } :: rest ->
+        | Syntax.EffectBinding { name = { name = key; _ }; params; ops = eff_ops; public } :: rest ->
+            let name = Syntax.label key in
             let params = Syntax.names params in
             let _effect_id, eff, eff_ty, _elaborated_ops =
               elaborate_eff_family ops ctx name params eff_ops
             in
             let kind = if public then Public else Private in
             let bind = EffectBind (name, kind, eff) in
-            let ctx' = extend_from_slots ctx bind [ `Entry (name, eff_ty, eff) ] in
+            let ctx' = extend_from_slots ctx bind [ `Entry (key, eff_ty, eff) ] in
             let entries = if public then [ StructField (name, kind, eff_ty) ] else [] in
             go ~defer ctx'
               (bind :: acc_binds,
@@ -718,12 +735,13 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               (bind :: acc_binds,
                StructImpl (name, kind, c.impl_dict_ty, c.impl_value) :: acc_entries)
               rest
-        | Syntax.RecordTypeBinding { name = { name; _ }; params; fields; public } :: rest ->
+        | Syntax.RecordTypeBinding { name = { name = key; _ }; params; fields; public } :: rest ->
+            let name = Syntax.label key in
             let params = Syntax.names params in
             check_duplicate_names (List.map fst fields);
             let rewritten_fields =
               List.map
-                (fun (field, ty) -> (field, rewrite_record_self_refs name params ty))
+                (fun (field, ty) -> (field, rewrite_record_self_refs key params ty))
                 fields
             in
             let rec elaborate_params ctx param_values = function
@@ -747,7 +765,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let val_val = Ctx.eval ctx val_core in
             let kind = if public then Public else Private in
             let bind = LetBind (name, kind, val_core) in
-            let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
+            let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
             go ~defer ctx'
               (bind :: acc_binds,
@@ -787,12 +805,12 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let body_ctx, members = open_module_value ~label ctx mod_ty mod_value in
       let body_core, body_ty = ops.infer body_ctx body in
       (Open (mod_core, members, body_core), body_ty)
-  | RecordTypeDef { name = { name; _ }; params; fields; body } ->
+  | RecordTypeDef { name = { name = key; _ }; params; fields; body } ->
       let params = Syntax.names params in
       check_duplicate_names (List.map fst fields);
       let rewritten_fields =
         List.map
-          (fun (field, ty) -> (field, rewrite_record_self_refs name params ty))
+          (fun (field, ty) -> (field, rewrite_record_self_refs key params ty))
           fields
       in
       let rec elaborate_params ctx param_values = function
@@ -815,12 +833,14 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let val_core, val_ty = elaborate_params ctx [] params in
       let val_val = Ctx.eval ctx val_core in
       let ty_term = Ctx.quote ctx val_ty in
-      let ctx' = Ctx.define ctx name val_ty val_val in
+      let ctx' = Ctx.define ctx key val_ty val_val in
       let body_core, body_ty = ops.infer ctx' body in
       (Let (ty_term, val_core, body_core), body_ty)
-  | TypeDef { name = { name; _ }; params; ctors; body } ->
+  | TypeDef { name = { name = key; _ }; params; ctors; body } ->
+      let name = Syntax.label key in
       let params = Syntax.names params in
-      let ctors = List.map (fun ((c : Syntax.id), payloads) -> (c.name, payloads)) ctors in
+      let ctor_keys = List.map (fun ((c : Syntax.id), _) -> c.name) ctors in
+      let ctors = List.map (fun ((c : Syntax.id), payloads) -> (Syntax.label c.name, payloads)) ctors in
       let num_params = List.length params in
       (* Bind type params as rigid variables (locally abstract types) *)
       let param_ctx =
@@ -832,7 +852,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let nominal_id = NominalId.fresh () in
       let nominal_placeholder = VNominal { id = nominal_id; name; num_params = 0; params = []; constructors = [] } in
       let recursive_param_ctx =
-        if num_params = 0 then Ctx.define param_ctx name VU nominal_placeholder
+        if num_params = 0 then Ctx.define param_ctx key VU nominal_placeholder
         else
           let type_var_terms = List.mapi (fun i _ -> Var (num_params - 1 - i)) params in
           let type_body_term = NomRef { id = nominal_id; name; params = type_var_terms } in
@@ -847,7 +867,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                       codomain = { env = nominal_placeholder :: param_ctx.env; body = Nbe.quote param_ctx.metas depth acc } })
               params VU
           in
-          Ctx.define param_ctx name type_ty type_val
+          Ctx.define param_ctx key type_ty type_val
       in
       let elaborated_ctors =
         List.map
@@ -870,7 +890,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
          For nullary types, just bind with VU as before. *)
       let body_ctx =
         if num_params = 0 then
-          Ctx.define param_ctx name VU nominal
+          Ctx.define param_ctx key VU nominal
         else begin
           (* Push VNominal first so NomRef evaluation can find it by id *)
           let body_ctx = { param_ctx with
@@ -893,17 +913,17 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                       codomain = { env = body_ctx.env; body = Nbe.quote body_ctx.metas depth acc } })
               params VU
           in
-          Ctx.define body_ctx name type_ty type_val
+          Ctx.define body_ctx key type_ty type_val
         end
       in
       let env = nominal :: body_ctx.env in
       let body_ctx =
         List.fold_left2
-          (fun ctx (cname, _payload_surface) payload_clos ->
+          (fun ctx (key, (cname, _payload_surface)) payload_clos ->
             let ctor_val, ctor_ty =
               build_ctor body_ctx.metas env name cname num_params payload_clos in
-            Ctx.define ctx cname ctor_ty ctor_val)
-          body_ctx ctors (List.map snd elaborated_ctors)
+            Ctx.define ctx key ctor_ty ctor_val)
+          body_ctx (List.combine ctor_keys ctors) (List.map snd elaborated_ctors)
       in
       let body_core, body_ty = ops.infer body_ctx body in
       let ctor_payload_terms =
@@ -922,20 +942,22 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       in
       (NominalDef { id = nominal_id; name; num_params; ctors = ctor_payload_terms; body = body_core },
        body_ty)
-  | EffectDef { name = { name; _ }; params; ops = eff_ops; body } ->
+  | EffectDef { name = { name = key; _ }; params; ops = eff_ops; body } ->
+      let name = Syntax.label key in
       let params = Syntax.names params in
       let num_params = List.length params in
       let effect_id, eff, eff_ty, elaborated_ops =
         elaborate_eff_family ops ctx name params eff_ops
       in
-      let body_ctx = Ctx.define ctx name eff_ty eff in
+      let body_ctx = Ctx.define ctx key eff_ty eff in
       let body_core, body_ty = ops.infer body_ctx body in
       (EffectDef { id = effect_id; name; num_params; ops = elaborated_ops; body = body_core },
        body_ty)
-  | TraitDef { name = { name; _ }; params; fields; body } ->
+  | TraitDef { name = { name = key; _ }; params; fields; body } ->
+      let name = Syntax.label key in
       let params = Syntax.names params in
       let trait_info, trait_ty = elaborate_trait ops ctx name params fields in
-      let body_ctx = Ctx.define ctx name VU trait_ty in
+      let body_ctx = Ctx.define ctx key VU trait_ty in
       let body_core, body_ty = ops.infer body_ctx body in
       (Let (U, TraitRef { trait_id = trait_info.trait_id; trait_name = trait_info.trait_name }, body_core), body_ty)
   | ImplDef { name; trait; args; fields; body } ->

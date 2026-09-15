@@ -4,6 +4,8 @@ type elab_error =
   | TupleLengthMismatch
   | NotANominalType
   | NotAModule
+  | NotASignature of string option
+      (** a module used as a type: only a signature value ([sig { … }]) is one *)
   | UnknownConstructor of string
   | PatternArityMismatch
   | PatternBindingMismatch
@@ -52,6 +54,7 @@ let string_of_elab_error = function
   | TupleLengthMismatch -> "TupleLengthMismatch"
   | NotANominalType -> "NotANominalType"
   | NotAModule -> "NotAModule"
+  | NotASignature name -> "NotASignature " ^ (match name with Some n -> "\"" ^ n ^ "\" (a module, not a sig { … })" | None -> "(a module, not a sig { … })")
   | UnknownConstructor n -> "UnknownConstructor \"" ^ n ^ "\""
   | PatternArityMismatch -> "PatternArityMismatch"
   | PatternBindingMismatch -> "PatternBindingMismatch"

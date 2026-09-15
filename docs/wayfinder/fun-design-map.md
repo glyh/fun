@@ -510,7 +510,7 @@ What remains, in the recommended order:
   hole never ends at a bare keyword; Rust-style arms (`A | B => e,`), `|` only
   union; relative precedence in named, transitive order groups; a non-trailing
   hole is one term. Grilled and implemented 2026-09-15 (arms; order groups and
-  hole extents on `order-groups`, with `capture-extents` merged in; `assoc(none)`, `<-` group and dotted group references on `order-group-leftovers`). Open: tail-
+  hole extents on `order-groups`, with `capture-extents` merged in; `assoc(none)`, `<-` group and dotted group references on `order-group-leftovers`; `weakest` groups on `weakest-group`). Open: tail-
   returning forms, dotted group references.
 - [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
   (closed) — an import's roles bind in the region of the open or binder that
@@ -530,7 +530,7 @@ What remains, in the recommended order:
 - [`expand_decls`](tickets/expand-decls-reader.md)
   — read a `List(Decl)` argument's items, parsed in order (counterpart of `expand_block`).
 - [A let-bound signature cannot be a parameter type](tickets/named-signatures-as-parameter-types.md)
-  — `Sig = sig { … }; fn(m : Sig)` fails; dependent signatures fail.
+  — let-bound and imported signatures fixed: `sig { … }` is its own value, a module is never a type; dependent signatures and anonymous impls in signatures need design.
 - [`open` a module parameter](tickets/open-a-module-parameter.md)
   (closed) — `Open`/`OpenBind` carry the members the type lists; each is pushed as a projection.
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
@@ -554,12 +554,11 @@ What remains, in the recommended order:
 Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 
 - [Declaration binders keep their written name](tickets/declaration-binders-keep-written-names.md)
-  — M12/S5: types, constructors, traits, effects and module items resolve under
-  their spelling; the elaborator's macro table is string-keyed. Grill: which
-  binders get fresh names.
+  (closed) — every declaration binder is fresh (`Expand.bind_declaration`); a
+  declaration exports its label (`Syntax.label`).
 - [A resolved name can be forged](tickets/resolved-names-forgeable.md)
-  — M11/M12: any `#` name is trusted as resolved (`new_id("x#5")`); empty-scope
-  and operator macro heads fall back to spelling. Grill: does `new_id` stay.
+  (closed) — string-built ids are deleted; a reflected resolved name needs the
+  certificate its scopes carry; the spelling fallbacks are gone.
 - [Opening a module needs its value](tickets/module-open-width-depends-on-value.md)
   (closed) — I2: an open's entries come from its module type, a misaligned value
   is an invariant failure, and a non-module open is `NotAModule` everywhere.

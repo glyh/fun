@@ -495,7 +495,7 @@ and parse_sig_expr env start_span terms =
               }
         | _ -> error "expected signature field name : type")
   in
-  (stx ~span:(span_between start_span span) (Syntax.Module { bindings }), rest)
+  (stx ~span:(span_between start_span span) (Syntax.Sig { bindings }), rest)
 
 and parse_struct_expr env start_span terms =
   let body_terms, rest, span = brace_body "struct" terms in
@@ -1143,7 +1143,7 @@ and take_order_ref terms =
   | ({ datum = Token { kind = Ident _; _ }; _ } as t) :: rest -> go [ t ] rest
   | rest -> ([], rest)
 
-(* [order name : stronger_than(g, …), weaker_than(g, …), assoc(left|right|none)]:
+(* [order name : stronger_than(g, …), weaker_than(g, …), weakest, assoc(left|right|none)]:
    precedence is relative, and a group is related only by declarations. The
    order is transitive; a declaration that would make it cyclic is an error. *)
 and parse_order_decl env name_term name clauses =
@@ -1156,21 +1156,22 @@ and parse_order_decl env name_term name clauses =
       (split_commas items)
   in
   (* Clauses follow each other: a [,] would end the declaration's statement. *)
-  let rec read_clauses (s, w, a) = function
-    | [] -> (s, w, a)
+  let rec read_clauses (s, w, a, k) = function
+    | [] -> (s, w, a, k)
+    | { datum = Token { kind = Ident "weakest"; _ }; _ } :: rest -> read_clauses (s, w, a, true) rest
     | { datum = Token { kind = Ident "stronger_than"; _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
-        read_clauses (s @ groups items, w, a) rest
+        read_clauses (s @ groups items, w, a, k) rest
     | { datum = Token { kind = Ident "weaker_than"; _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest ->
-        read_clauses (s, w @ groups items, a) rest
+        read_clauses (s, w @ groups items, a, k) rest
     | { datum = Token { kind = Ident "assoc"; _ }; _ } :: { datum = Group (Raw_syntax.Paren, items, _); _ } :: rest -> (
         match drop_separators items with
-        | [ { datum = Token { kind = Ident "left"; _ }; _ } ] -> read_clauses (s, w, Syntax.LeftAssoc) rest
-        | [ { datum = Token { kind = Ident "right"; _ }; _ } ] -> read_clauses (s, w, Syntax.RightAssoc) rest
-        | [ { datum = Token { kind = Ident "none"; _ }; _ } ] -> read_clauses (s, w, Syntax.NonAssoc) rest
+        | [ { datum = Token { kind = Ident "left"; _ }; _ } ] -> read_clauses (s, w, Syntax.LeftAssoc, k) rest
+        | [ { datum = Token { kind = Ident "right"; _ }; _ } ] -> read_clauses (s, w, Syntax.RightAssoc, k) rest
+        | [ { datum = Token { kind = Ident "none"; _ }; _ } ] -> read_clauses (s, w, Syntax.NonAssoc, k) rest
         | _ -> error "assoc is written assoc(left), assoc(right) or assoc(none)")
-    | _ -> error "an order clause is stronger_than(…), weaker_than(…) or assoc(left|right|none)"
+    | _ -> error "an order clause is stronger_than(…), weaker_than(…), weakest or assoc(left|right|none)"
   in
-  let stronger_than, weaker_than, group_assoc = read_clauses ([], [], Syntax.LeftAssoc) (drop_separators clauses) in
+  let stronger_than, weaker_than, group_assoc, weakest = read_clauses ([], [], Syntax.LeftAssoc, false) (drop_separators clauses) in
   List.iter
     (fun (st : Syntax.order) ->
       List.iter
@@ -1183,7 +1184,7 @@ and parse_order_decl env name_term name clauses =
           | Weaker | Unrelated -> ())
         weaker_than)
     stronger_than;
-  let order = { Syntax.group = fresh_order_group name; group_name = name; group_assoc; stronger_than; weaker_than } in
+  let order = { Syntax.group = fresh_order_group name; group_name = name; group_assoc; weakest; stronger_than; weaker_than } in
   declare_role env (id_of name_term name)
     (Binding.role ~declared_at:name_term.span ~fixity:Syntax.PrefixOp ~order Syntax.OrderGroup)
 

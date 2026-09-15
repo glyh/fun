@@ -76,6 +76,7 @@ and t =
   | RecordConstruct of { typ : t; fields : (string * t) list }
   | Struct of { bindings : struct_binding list }
   | Module of { bindings : struct_binding list }
+  | Sig of { bindings : struct_binding list }
   | Import of string
   | Open of t * t * string
   | OpenChoice of { name : string; opens : string list; fallback : string option }
@@ -222,6 +223,8 @@ and lower_expr (stx : Syntax.t) : t =
   | Syntax.Struct { bindings } -> Struct { bindings = List.map lower_struct_binding bindings }
   | Syntax.Module { bindings } ->
     Module { bindings = List.map lower_struct_binding bindings }
+  | Syntax.Sig { bindings } ->
+    Sig { bindings = List.map lower_struct_binding bindings }
   | Syntax.Import { path; _ } -> Import path
   | Syntax.Open (m, body, label) -> Open (lower_expr m, lower_expr body, label)
   | Syntax.OpenChoice { name; opens; fallback } -> OpenChoice { name = name.name; opens; fallback }

@@ -227,13 +227,13 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       sequence_values mc env elems (fun values -> Done (VProd values))
   | ProdTy elems ->
       sequence_values mc env elems (fun values -> Done (VProdTy values))
-  | Module { bindings } ->
+  | Module { bindings; signature } ->
       let _env, entries =
         eval_bindings mc env bindings
           ~field:(fun name kind v -> ModuleField (name, kind, v))
           ~impl:(fun name kind ty v -> ModuleImpl (name, kind, ty, v))
       in
-      Done (VModule { entries; partial = false })
+      Done (VModule { entries; partial = signature })
   | Struct { con_fields; bindings; partial } ->
       (* con_fields: all at same scope, no sequential dependency *)
       let con_entries =

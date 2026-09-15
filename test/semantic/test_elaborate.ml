@@ -411,11 +411,11 @@ let structs =
          "{ Point = struct { x: I64; }; (fn(p) { p.x })(Point{x = 42}) }");
     Alcotest.test_case "module signature argument" `Quick
       (check_type
-         "(fn(m : module { x = I64 }) { m.x })(module { pub x = 1 })"
+         "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 1 })"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "module signature allows extra fields" `Quick
       (check_type
-         "(fn(m : module { x = I64 }) { m.x })(module { pub x = 1; pub y = True })"
+         "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 1; pub y = True })"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "signature sugar argument" `Quick
       (check_type
@@ -431,16 +431,16 @@ let structs =
       (eval_i64 "(fn(m : sig { T : Type; v : I64 }) { open m; (v : I64) })(module { pub T = Bool; pub v = 3 })" 3L);
     Alcotest.test_case "module signature missing field rejected" `Quick
       (elab_fail
-         "(fn(m : module { x = I64 }) { m.x })(module { pub y = 1 })");
+         "(fn(m : sig { x : I64 }) { m.x })(module { pub y = 1 })");
     Alcotest.test_case "module signature wrong field type rejected" `Quick
       (elab_fail
-         "(fn(m : module { x = I64 }) { m.x })(module { pub x = True })");
+         "(fn(m : sig { x : I64 }) { m.x })(module { pub x = True })");
     Alcotest.test_case "module signature private field rejected" `Quick
       (elab_fail
-         "(fn(m : module { x = I64 }) { m.x })(module { x = 1 })");
+         "(fn(m : sig { x : I64 }) { m.x })(module { x = 1 })");
     Alcotest.test_case "record struct does not satisfy module signature" `Quick
       (elab_fail
-         "{ Point = struct { x: I64; }; (fn(m : module { x = I64 }) { m.x })(Point) }");
+         "{ Point = struct { x: I64; }; (fn(m : sig { x : I64 }) { m.x })(Point) }");
     Alcotest.test_case "private used by pub" `Quick
       (check_type
          "{ S = module { helper = 42; pub x = helper }; S.x }"
@@ -566,21 +566,21 @@ let functors =
   [
     Alcotest.test_case "identity functor" `Quick
       (check_type
-         "{ Double = fn(M : module { x = I64 }) { module { pub doubled = M.x + M.x } }; (Double(module { pub x = 21 })).doubled }"
+         "{ Double = fn(M : sig { x : I64 }) { module { pub doubled = M.x + M.x } }; (Double(module { pub x = 21 })).doubled }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "functor pass through" `Quick
       (elab_ok
-         "{ F = fn(M : module { x = I64 }) { module { pub y = M.x } }; A = module { pub x = 1 }; B = F(A); B.y }");
+         "{ F = fn(M : sig { x : I64 }) { module { pub y = M.x } }; A = module { pub x = 1 }; B = F(A); B.y }");
     Alcotest.test_case "functor with private helper" `Quick
       (check_type
-         "{ F = fn(M : module { x = I64 }) { module { tmp = M.x; pub y = tmp + 1 } }; (F(module { pub x = 1 })).y }"
+         "{ F = fn(M : sig { x : I64 }) { module { tmp = M.x; pub y = tmp + 1 } }; (F(module { pub x = 1 })).y }"
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "compose functors" `Quick
       (elab_ok
-         "{ F = fn(M : module { x = I64 }) { module { pub a = M.x } }; G = fn(N : module { a = I64 }) { module { pub b = N.a } }; (G(F(module { pub x = 1 }))).b }");
+         "{ F = fn(M : sig { x : I64 }) { module { pub a = M.x } }; G = fn(N : sig { a : I64 }) { module { pub b = N.a } }; (G(F(module { pub x = 1 }))).b }");
     Alcotest.test_case "higher order functor" `Quick
       (elab_ok
-         "{ Apply = fn(F, M : module { x = I64 }) { F(M) }; Apply(fn(M : module { x = I64 }) { module { pub z = M.x } })(module { pub x = 1 }) }");
+         "{ Apply = fn(F, M : sig { x : I64 }) { F(M) }; Apply(fn(M : sig { x : I64 }) { module { pub z = M.x } })(module { pub x = 1 }) }");
   ]
 
 let tuple_proj =
