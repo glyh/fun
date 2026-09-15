@@ -193,9 +193,9 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             fields = List.map (fun (name, value) -> (name, go d value)) dict.fields }
     | VSelfType args -> SelfTypeRef (List.map (go d) args)
     | VCon { name; spine; nominal } -> Nbe_quote.con_term (go d) name spine nominal
-    | VFix { body = clo; _ } ->
+    | VFix { name; body = clo } ->
         let var = VRigid { lvl = d; spine = [] } in
-        Fix (go (d + 1) (Nbe.closure_apply mc clo var))
+        Fix (name, go (d + 1) (Nbe.closure_apply mc clo var))
     | VCont _ -> raise (UnifyError (CannotUnify "cannot quote continuation during unification"))
     | VStx _ -> raise (UnifyError (CannotUnify "cannot quote syntax value during unification"))
     | VPatternSyn _ -> raise (UnifyError (CannotUnify "cannot quote pattern synonym during unification"))
@@ -217,7 +217,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             raise (UnifyError OccursCheck) (* same occurs check, via neutral *)
           else Meta id
       | HPrim name -> Prim name
-      | HFix clo -> go d (VFix { body = clo })
+      | HFix (name, clo) -> go d (VFix { name; body = clo })
     in
     go_frames d head neu.frames
   and go_frames (d : lvl) (head : term) (frames : frame list) : term =
@@ -548,7 +548,7 @@ and unify_neutral (mc : MetaContext.t) (env : env) (depth : lvl) (n1 : neutral) 
   | HVar l1, HVar l2 when l1 = l2 -> ()
   | HMeta id1, HMeta id2 when id1 = id2 -> ()
   | HPrim n1, HPrim n2 when String.equal n1 n2 -> ()
-  | HFix c1, HFix c2 -> unify mc env depth (VFix { body = c1 }) (VFix { body = c2 })
+  | HFix (name, c1), HFix (_, c2) -> unify mc env depth (VFix { name; body = c1 }) (VFix { name; body = c2 })
   | _ ->
       raise (UnifyError NeutralHeadMismatch));
   unify_frames mc env depth n1.frames n2.frames

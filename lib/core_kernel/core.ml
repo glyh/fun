@@ -33,7 +33,7 @@ and term =
   | AtomTy of Atom_ty.t
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
-  | Fix of term
+  | Fix of string * term (* a recursive binding; the name is its binder, for errors only *)
   | Proj of term * int             (* positional tuple projection: e.0 *)
   | Dot of term * string           (* named member/field access: e.field *)
   | RecordConstruct of { typ : term; fields : (string * term) list }
@@ -271,7 +271,7 @@ and value =
   | VAtomTy of Atom_ty.t
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)
-  | VFix of { body : closure }
+  | VFix of { name : string; body : closure }
   | VModule of {
       entries : module_entry list;
       partial : bool;
@@ -383,7 +383,7 @@ and head =
   | HVar of lvl
   | HMeta of meta_id
   | HPrim of string
-  | HFix of closure
+  | HFix of string * closure
       (** A fixpoint the checker would not unfold: its call mentions an unknown
           variable, so evaluating it could diverge (see [Eval_budget]). *)
 and spine = value list
@@ -525,7 +525,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | Imported _ ->
       t
   | Lam body -> Lam (at 1 body)
-  | Fix body -> Fix (at 1 body)
+  | Fix (name, body) -> Fix (name, at 1 body)
   | Ap (fn, expl, arg) -> Ap (at 0 fn, expl, at 0 arg)
   | Let (ty, def, body) -> Let (at 0 ty, at 0 def, at 1 body)
   | Pi { explicitness; domain; effects; codomain } ->

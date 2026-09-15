@@ -3,7 +3,9 @@ title: A budget error names a core term, not the call or the conversion
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. The overrun names the fixpoint it was calling (Fix/VFix/HFix carry their binder's name, for errors only), the outermost checker request that demanded the evaluation (a conversion, a unification, an evaluation, …), and the innermost source form the elaborator was at, with its span. The site is a field of the evaluation budget set by the elaborator's infer/check/type entries — the general elaborator-error span project can reuse it.
 assignee:
 blocked_by:
 ---

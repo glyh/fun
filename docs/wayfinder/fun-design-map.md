@@ -486,7 +486,8 @@ What remains, in the recommended order:
 - [The closed-term rule does not look inside closures](tickets/stuck-rule-ignores-closure-environments.md)
   (closed) — a closure is closed when the slots its body reads are; an `open` in the body is conservatively not.
 - [A budget error names a core term](tickets/budget-error-names-no-source-call.md)
-  — no call name, no demanding conversion; pairs with error spans.
+  (closed) — names the fixpoint, the demanding request and the form's span:
+  `calling loop, in an evaluation while reading the type at <file>:1:57-1:64`.
 - [Deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
   — pre-existing and quadratic: OCaml 5 minor GCs rescan the whole native stack. Architectural (the evaluator recurses natively per object-language call).
 - [A qualified constructor nested in a pattern argument is unknown](tickets/nested-qualified-constructor-pattern.md)
