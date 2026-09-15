@@ -527,6 +527,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Effects follow-ups from tunneling](tickets/effects-followups-tunneling.md)
+  — `resume` skips the value branch (bug), family-vs-instance routing, E6 via refs.
 - [Small follow-ups](tickets/small-followups-2026-09-15.md)
   — `self.a(2)` crash, method row scope, `$(d : Decl)` hole kind, `+` bound by spelling.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
