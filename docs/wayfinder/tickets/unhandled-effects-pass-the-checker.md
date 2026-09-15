@@ -41,3 +41,13 @@ ticket is the top-level check that would at least report it statically.
 ## Found by
 
 The effects domain-model audit (2026-09-15).
+
+## Grilled (2026-09-15): an error, runtime effects via a real handler
+
+An effect left unhandled at the top of a program (a unit's top-level bindings, the
+REPL / entry expression) is an **elaboration error** naming the effect. No
+warning mode.
+
+Effects the runtime provides later (printing, the E10 heap effects) are allowed
+at the top because the program entry is elaborated inside a runtime-provided
+handler for them — the same mechanism a user handler uses, not an exemption list.

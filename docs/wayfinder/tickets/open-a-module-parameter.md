@@ -3,7 +3,9 @@ title: `open` a module parameter — names from its signature
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. `Core.Open`/`OpenBind` carry the members the type lists (`OpenField`, `OpenImpl`); elaborator and evaluator push each as a projection, so a neutral module opens and extra members of the value are not opened. Opening a parameter whose type has an impl is still `NotAModule`.
 decided: 2026-09-15
 assignee:
 blocked_by:

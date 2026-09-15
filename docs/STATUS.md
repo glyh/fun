@@ -102,6 +102,20 @@ Last updated: after fresh declaration binders and unforgeable resolved names, 20
   leaves `n` unbound. A struct does not see its own name (`C` binds after
   `C = struct { … }`); `C.k` inside it is unbound.
 
+### Decl macro output types; opening a module parameter (2026-09-15)
+- `: Decl` is one declaration, `: List(Decl)` any number: the annotation is the
+  type the body is checked against where the macro is defined
+  (`Syntax.macro_compiled` wraps the body in `Annotated`, `Decl` written as
+  `Syntax.Decl` at the annotation's scopes). `quote { … }` checked against
+  `Syntax.Decl` must hold exactly one non-hole item (`QuoteNotOneDecl`);
+  anywhere else it is the list. The `VU` instantiation workaround is gone.
+- `open` binds what the module's **type** lists (I2): `Core.Open`/`OpenBind`
+  carry the members (`OpenField name`, `OpenImpl i`), and the evaluator pushes
+  each as a projection of the module value. A module parameter (a neutral) opens
+  by projection; a module with more members than its signature opens only the
+  signature's. A parameter's impl has no name to project, so opening one is
+  still `NotAModule`.
+
 ### Macro signatures (2026-09-15)
 - A macro's type binders, `(x : Expr(T))` parameters and `: Expr(T)` output are
   its **signature**, a pi type elaborated where the macro is defined
@@ -143,6 +157,11 @@ Last updated: after fresh declaration binders and unforgeable resolved names, 20
   order never mix ("no declared order; parenthesise"); a form or operator in no
   group is weaker than every grouped one. The prelude's operators are in
   `disjunction < conjunction < comparison < additive < multiplicative < negation`.
+- `assoc(none)`: members of a non-associative group do not chain ("do not chain;
+  parenthesise"). `<-` is in the compiler-known group `assignment`, below
+  `disjunction` and `assoc(none)`: `r <- x + 1` is `r <- (x + 1)`, `a <- b <- c`
+  is an error. A group may be named through a unit: `stronger_than(O.g)`,
+  `infix (op) O.g`, where `O` denotes an imported unit.
 - A syntax form's hole extent is structural: the hole ending a use reads the
   form's operand at its order; a hole before `,`/`;` reads to it; any other hole
   is one term (a token or one bracket group). Captures are one parse per hole

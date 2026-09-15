@@ -90,9 +90,6 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   unconsumed tail) — not now; ticket as an escape hatch when a case needs it.
 - **Parse "as if after operator `op`"** (Rhombus `AfterPrefixParsed`) for a hole —
   not decided; no known case needs it.
-- **A dotted group reference** (`stronger_than(Std.additive)`, `infix (op) M.g`):
-  a group is reached bare, through `open` or an import's binder; the dotted
-  spelling is not read yet.
 
 ## Implementation notes (branch `order-groups`, 2026-09-15)
 
@@ -123,7 +120,17 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   `DeclItems` (no per-item inspection without an `expand_block`-like reader); a
   `$d` hole accepts only a list.
 
-## Grilled after implementation (2026-09-15)
+## Grilled after implementation (2026-09-15) — implemented (branch `order-group-leftovers`)
+
+- `assoc(none)` is `Syntax.NonAssoc`, reflected as `NonAssoc`. `<-` and a
+  compiler-known group `assignment` (`assoc(none)`) are base roles; the prelude
+  declares `disjunction : stronger_than(assignment)`, so `assignment` is below
+  every prelude group. An operator in a group unrelated to the prelude's still
+  meets `<-` with "no declared order".
+- A dotted group reference reads the group among the roles the unit the path's
+  prefix denotes exports (`Expand.unit_path_of`, the same resolution macro
+  members use), handed to the enforester as `unit_roles`. A path through an
+  inline `module { … }` (not a unit) is "unknown order group".
 
 - **`<-` gets its own group, weakest, and does not chain.** `r <- x + 1` is
   `r <- (x + 1)`; `a <- b <- c` is an error (it would store `Unit`). This needs a
@@ -132,3 +139,24 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   `with_decls { x = 1; y = 2 } in x + y` (already what the order-groups run built).
 - **`Std.additive`** (a group through a module path) is decided (groups are
   ordinary binders); only the parsing is missing.
+
+## Found by the order-group leftovers run (2026-09-15)
+
+- **`<-` is not weaker than a user group unrelated to the prelude's order.**
+  `assignment` sits below `disjunction` only, so a group with no relation to the
+  prelude groups cannot meet `<-` ("no declared order"). The grilled rule says
+  `<-` is weaker than every group — decide how that is expressed without a
+  special case (e.g. a group may declare `weaker_than(all)`, or `assignment` is
+  the bottom every group is implicitly above).
+- **`Std = import "std"` in the test helper fails with `OpenSuppliesRole "not"`**
+  — likely pre-existing (an import binder of the prelude conflicting with the
+  already-open prelude's roles). Investigate.
+
+### Grilled (2026-09-15): `<-` is the default bottom, overridable
+
+`assignment` (the `<-` group) is implicitly weaker than every group that does not
+state its relation to it, so `r <- a <> b` works for any user group `mine`. A
+group may override by declaring a relation to `assignment` explicitly
+(`order mine : weaker_than(assignment)`); the explicit declaration wins. Express
+it as a general property a group declaration can carry (e.g. `order assignment :
+weakest assoc(none)`), not as a check for the name `<-`.

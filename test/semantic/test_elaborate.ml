@@ -101,6 +101,13 @@ let elab_ok source () =
   let _core, _ty = elab source in
   ()
 
+let eval_i64 source expected () =
+  let ctx = Elaborate.init_ctx () in
+  let core, _ = Elaborate.on_expr ctx (parse_expr source) in
+  match Elaborate.Ctx.eval ctx core with
+  | VAtom (I64 n) -> Alcotest.(check int64) source expected n
+  | _ -> Alcotest.fail ("expected an I64: " ^ source)
+
 let elab_fail source () =
   match elab source with
   | exception Elaborate.ElabError _ -> ()
@@ -414,6 +421,14 @@ let structs =
       (check_type
          "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 1 })"
          (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "open a module parameter" `Quick
+      (eval_i64 "(fn(m : sig { x : I64 }) { open m; x + 1 })(module { pub x = 41 })" 42L);
+    Alcotest.test_case "open a module parameter with more members than its signature" `Quick
+      (eval_i64 "(fn(m : sig { x : I64 }) { open m; x + 1 })(module { pub y = 5; pub x = 41 })" 42L);
+    Alcotest.test_case "open a module parameter in a nested lambda" `Quick
+      (eval_i64 "(fn(m : sig { x : I64 }) { fn(u : I64) { open m; x + u } })(module { pub x = 41 })(1)" 42L);
+    Alcotest.test_case "open a module parameter whose signature has a type member" `Quick
+      (eval_i64 "(fn(m : sig { T : Type; v : I64 }) { open m; (v : I64) })(module { pub T = Bool; pub v = 3 })" 3L);
     Alcotest.test_case "module signature missing field rejected" `Quick
       (elab_fail
          "(fn(m : module { x = I64 }) { m.x })(module { pub y = 1 })");
@@ -1535,13 +1550,6 @@ let let_rec =
          "{ rec f : I64 -> Bool = fn(n) { if (n == 0) { True } else { f(n - 1) } }; f(3) }"
          "Bool");
   ]
-
-let eval_i64 source expected () =
-  let ctx = Elaborate.init_ctx () in
-  let core, _ = Elaborate.on_expr ctx (parse_expr source) in
-  match Elaborate.Ctx.eval ctx core with
-  | VAtom (I64 n) -> Alcotest.(check int64) source expected n
-  | _ -> Alcotest.fail ("expected an I64: " ^ source)
 
 let rejected source () =
   match elab source with

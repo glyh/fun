@@ -221,7 +221,7 @@ as the frontier reaches them.
   Concrete input: elaborator errors carry **no source location at all**. `Elab_error`
   has no span fields. Since delete-surface-ir the elaborator reads `Syntax.t`, so
   every form it sees has a span; attaching them to errors is the remaining work.
-- **`Self` names two things** — the record-recursion placeholder
+- ~~**`Self` names two things**~~ — decided 2026-09-15: `Self` is the struct being defined; the recursion placeholder is an unwritable "recursive occurrence" (see mutually-recursive-record-types). — the record-recursion placeholder
   (`VSelfType args`, set by record declarations) and the partial struct type seen
   by struct method bodies (`elab_infer.ml`, `Struct` case). Both share
   `ctx.self_type`. Giving the record one an identity
@@ -510,7 +510,7 @@ What remains, in the recommended order:
   hole never ends at a bare keyword; Rust-style arms (`A | B => e,`), `|` only
   union; relative precedence in named, transitive order groups; a non-trailing
   hole is one term. Grilled and implemented 2026-09-15 (arms; order groups and
-  hole extents on `order-groups`, with `capture-extents` merged in). Open: tail-
+  hole extents on `order-groups`, with `capture-extents` merged in; `assoc(none)`, `<-` group and dotted group references on `order-group-leftovers`). Open: tail-
   returning forms, dotted group references.
 - [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
   (closed) — an import's roles bind in the region of the open or binder that
@@ -527,16 +527,21 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [`expand_decls`](tickets/expand-decls-reader.md)
+  — read a `List(Decl)` argument's items, parsed in order (counterpart of `expand_block`).
+- [A let-bound signature cannot be a parameter type](tickets/named-signatures-as-parameter-types.md)
+  — `Sig = sig { … }; fn(m : Sig)` fails; dependent signatures fail.
 - [`open` a module parameter](tickets/open-a-module-parameter.md)
-  — names come from the signature; each is a member projection of the parameter.
+  (closed) — `Open`/`OpenBind` carry the members the type lists; each is pushed as a projection.
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
-  — `: Decl` returns one, `: List(Decl)` many; `quote { … }` checks against it.
+  (closed) — `: Decl` is one, `: List(Decl)` many, checked at the definition.
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
   — a top-level `perform` or a closure escaping its handler fails only at run time.
 - [The unhandled-effect error says handlers are not implemented](tickets/unhandled-effect-message-is-stale.md)
-  — stale run-time message.
+  (closed) — the error names the operation with no handler in scope.
 - [A match on a closure crashes the evaluator](tickets/match-on-a-closure-crashes-the-evaluator.md)
-  — `match (fn(u) { 1 }) { x => x }` fails with "if condition is not a boolean".
+  (closed) — only a value with an unknown head makes a match stuck; every other
+  value, a closure included, goes through the decision tree.
 - [Effect collection rejects a deferred typed macro call](tickets/effect-collection-rejects-deferred-macro-calls.md)
   (closed) — a typed call's effects are read from the output it produced, and
   every effect read follows the elaboration it reads.

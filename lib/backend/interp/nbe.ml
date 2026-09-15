@@ -19,14 +19,18 @@ let prim_table = Nbe_prim.prim_table
    up at runtime. ([Method] is unreachable in a module: module bindings are only
    ever [Public]/[Private]. It is matched here so the filter also reads correctly
    for any module-shaped value quoted from elsewhere.) *)
-let push_opened_values env entries =
+(* The members an [open] binds, pushed in order: each a projection of the opened
+   module, so a module parameter (a neutral) opens as well as a module does. *)
+let push_open_members mc env (module_value : value) (members : open_member list) =
   List.fold_left
-    (fun e entry ->
-      match entry with
-      | ModuleField (_, k, v) when k = Public || k = Method -> v :: e
-      | ModuleImpl (_, k, _, v) when k = Public -> v :: e
-      | _ -> e)
-    env entries
+    (fun e member ->
+      match member, module_value with
+      | OpenField name, _ -> dot_value mc module_value name :: e
+      | OpenImpl i, VModule { entries; _ } -> (
+          let impls = List.filter_map (function ModuleImpl (_, Public, _, v) -> Some v | _ -> None) entries in
+          match List.nth_opt impls i with Some v -> v :: e | None -> fail mc "open of a missing impl")
+      | OpenImpl _, _ -> fail mc "open of an impl of a non-module")
+    env members
 
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
@@ -58,13 +62,7 @@ and eval_bindings :
  fun mc env bindings ~field ~impl ->
   let rec go env acc = function
     | [] -> (env, List.rev acc)
-    | OpenBind def :: rest -> (
-        (* An open's contribution is not recoverable from the term: it is the
-           public entries of a module that has to be evaluated first. *)
-        match eval mc env def with
-        | VModule { entries; partial = _ } ->
-            go (push_opened_values env entries) acc rest
-        | _ -> fail mc "open of non-module")
+    | OpenBind (def, members) :: rest -> go (push_open_members mc env (eval mc env def) members) acc rest
     | b :: rest ->
         let slots =
           match Core.binding_slots b with
@@ -288,12 +286,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
   | Dot (e, name) ->
       bind_result (eval_result mc env e) (fun value ->
           Done (dot_value mc value name))
-  | Open (s, body) ->
-      bind_result (eval_result mc env s) (fun vs ->
-          match vs with
-          | VModule { entries; partial = _ } ->
-              eval_result mc (push_opened_values env entries) body
-          | _ -> fail mc "open of non-module")
+  | Open (s, members, body) ->
+      bind_result (eval_result mc env s) (fun vs -> eval_result mc (push_open_members mc env vs members) body)
   | Fix (name, pure, body) -> Done (VFix { name; pure; body = { env; body } })
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in
@@ -526,17 +520,10 @@ and normalize_effect_row_value (mc : MetaContext.t) (row : effect_row_value) : e
         tail_value = tail_row.tail_value }
   | tail_value -> { row with tail_value }
 
-(* Extract the head and existing frames from a stuck value *)
-and stuck_head_frames (mc : MetaContext.t) (v : value) : head * frame list =
-  match v with
-  | VNeutral { neutral = neu; _ } -> (neu.head, neu.frames)
-  | VFlex { id; spine = sp } ->
-      let frames = List.map (fun v -> FApp v) sp in
-      (HMeta id, frames)
-  | VRigid { lvl = l; spine = sp } ->
-      let frames = List.map (fun v -> FApp v) sp in
-      (HVar l, frames)
-  | _ -> fail mc "if condition is not a boolean or stuck term"
+(* A match on a value with an unknown head: the match waits as its last frame. *)
+and stuck_match env head frames branches : result =
+  let branches = List.map (fun (p, body) -> (p, { env; body })) branches in
+  Done (VNeutral { ty = VU; neutral = { head; frames = frames @ [ FMatch branches ] } })
 
 and eval_meta (mc : MetaContext.t) (id : meta_id) : value =
   match MetaContext.lookup mc id with
@@ -759,33 +746,17 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
   then eval_match_direct_result mc env scrutinee branches
   else
     match scrutinee with
-    | VCon _ ->
+    (* Only a value whose head is unknown makes the match stuck. Every other
+       value - constructors, atoms, types, products, records, closures - is
+       matched by the decision tree; a shape no pattern inspects has the
+       [Unknown] domain, so a variable or wildcard binds it. *)
+    | VNeutral { neutral; _ } -> stuck_match env neutral.head neutral.frames branches
+    | VFlex { id; spine } -> stuck_match env (HMeta id) (List.map (fun v -> FApp v) spine) branches
+    | VRigid { lvl; spine } -> stuck_match env (HVar lvl) (List.map (fun v -> FApp v) spine) branches
+    | _ ->
         let domain_of_occurrence occ =
           match resolve_occurrence_opt mc scrutinee occ with
-          | Some (VCon { nominal; _ }) ->
-              Core_match_compile.Nominal (nominal_constructors mc nominal)
-          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-          | Some (VProd elems) -> Product (List.length elems)
-          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record
-                (List.filter_map
-                   (fun (n, k, _) -> if k = Field then Some n else None)
-                   (struct_entry_fields entries))
-          | _ -> Unknown
-        in
-        let pats = List.map fst branches in
-        let dt =
-          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
-        in
-        eval_decision_tree_result mc env scrutinee branches dt
-    | VAtom atom ->
-        let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
-        let pats = List.map fst branches in
-        let dt = Core_match_compile.compile ~domain pats in
-        eval_decision_tree_result mc env scrutinee branches dt
-    | VAtomTy _ | VNominal _ ->
-        let domain_of_occurrence occ =
-          match resolve_occurrence_opt mc scrutinee occ with
+          | Some (VCon { nominal; _ }) -> Core_match_compile.Nominal (nominal_constructors mc nominal)
           | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
           | Some (VAtomTy _) | Some (VNominal _) -> Type
           | Some (VProd elems) -> Product (List.length elems)
@@ -796,139 +767,8 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
                    (struct_entry_fields entries))
           | _ -> Unknown
         in
-        let pats = List.map fst branches in
-        let dt =
-          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
-        in
+        let dt = Core_match_compile.compile_with_domains ~domain_of_occurrence (List.map fst branches) in
         eval_decision_tree_result mc env scrutinee branches dt
-    | VProd _ | VRecord _ ->
-        let domain_of_occurrence occ =
-          match resolve_occurrence_opt mc scrutinee occ with
-          | Some (VCon { nominal; _ }) ->
-              Core_match_compile.Nominal (nominal_constructors mc nominal)
-          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-          | Some (VProd elems) -> Product (List.length elems)
-          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record
-                (List.filter_map
-                   (fun (n, k, _) -> if k = Field then Some n else None)
-                   (struct_entry_fields entries))
-          | _ -> Unknown
-        in
-        let pats = List.map fst branches in
-        let dt =
-          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
-        in
-        eval_decision_tree_result mc env scrutinee branches dt
-    | _ ->
-        let head, base_frames = stuck_head_frames mc scrutinee in
-        Done
-          (VNeutral
-             {
-               ty = VU;
-               neutral =
-                 {
-                   head;
-                   frames =
-                     base_frames
-                     @ [
-                         FMatch
-                           (List.map
-                              (fun (p, body) -> (p, { env; body }))
-                              branches);
-                       ];
-                 };
-             })
-
-and eval_match (mc : MetaContext.t) (env : env) (scrutinee : value)
-    (branches : (core_pat * term) list) : value =
-  let scrutinee = force mc scrutinee in
-  if List.exists (fun (pat, _) -> core_pat_contains_struct_type pat) branches
-  then
-    match branches with
-    | [] -> fail mc "non-exhaustive match at runtime"
-    | _ -> eval_match_direct mc env scrutinee branches
-  else
-    match scrutinee with
-    | VCon _ ->
-        let domain_of_occurrence occ =
-          match resolve_occurrence_opt mc scrutinee occ with
-          | Some (VCon { nominal; _ }) ->
-              Core_match_compile.Nominal (nominal_constructors mc nominal)
-          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-          | Some (VProd elems) -> Product (List.length elems)
-          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record
-                (List.filter_map
-                   (fun (n, k, _) -> if k = Field then Some n else None)
-                   (struct_entry_fields entries))
-          | _ -> Unknown
-        in
-        let pats = List.map fst branches in
-        let dt =
-          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
-        in
-        eval_decision_tree mc env scrutinee branches dt
-    | VAtom atom ->
-        let domain = Core_match_compile.Atom (atom_ty_of_atom atom) in
-        let pats = List.map fst branches in
-        let dt = Core_match_compile.compile ~domain pats in
-        eval_decision_tree mc env scrutinee branches dt
-    | VAtomTy _ | VNominal _ ->
-        let domain_of_occurrence occ =
-          match resolve_occurrence_opt mc scrutinee occ with
-          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-          | Some (VAtomTy _) | Some (VNominal _) -> Type
-          | Some (VProd elems) -> Product (List.length elems)
-          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record
-                (List.filter_map
-                   (fun (n, k, _) -> if k = Field then Some n else None)
-                   (struct_entry_fields entries))
-          | _ -> Unknown
-        in
-        let pats = List.map fst branches in
-        let dt =
-          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
-        in
-        eval_decision_tree mc env scrutinee branches dt
-    | VProd _ | VRecord _ ->
-        let domain_of_occurrence occ =
-          match resolve_occurrence_opt mc scrutinee occ with
-          | Some (VCon { nominal; _ }) ->
-              Core_match_compile.Nominal (nominal_constructors mc nominal)
-          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
-          | Some (VProd elems) -> Product (List.length elems)
-          | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
-              Record
-                (List.filter_map
-                   (fun (n, k, _) -> if k = Field then Some n else None)
-                   (struct_entry_fields entries))
-          | _ -> Unknown
-        in
-        let pats = List.map fst branches in
-        let dt =
-          Core_match_compile.compile_with_domains ~domain_of_occurrence pats
-        in
-        eval_decision_tree mc env scrutinee branches dt
-    | _ ->
-        let head, base_frames = stuck_head_frames mc scrutinee in
-        VNeutral
-          {
-            ty = VU;
-            neutral =
-              {
-                head;
-                frames =
-                  base_frames
-                  @ [
-                      FMatch
-                        (List.map
-                           (fun (p, body) -> (p, { env; body }))
-                           branches);
-                    ];
-              };
-          }
 
 and eval_match_direct (mc : MetaContext.t) (env : env) (scrutinee : value)
     (branches : (core_pat * term) list) : value =
@@ -952,10 +792,6 @@ and nominal_constructors (mc : MetaContext.t) (nom : value) :
         (fun (name, payloads) -> (name, ntp, List.length payloads))
         (Core.nominal_constructors id constructors)
   | _ -> fail mc "match scrutinee type is not a nominal"
-
-and eval_decision_tree (mc : MetaContext.t) (env : env) (root : value)
-    (branches : (core_pat * term) list) (dt : Core_decision_tree.t) : value =
-  result_value mc (eval_decision_tree_result mc env root branches dt)
 
 and eval_decision_tree_result (mc : MetaContext.t) (env : env) (root : value)
     (branches : (core_pat * term) list) (dt : Core_decision_tree.t) : result =

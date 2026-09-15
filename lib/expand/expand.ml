@@ -486,9 +486,15 @@ let macro_params_of (ctx : Expand_ctx.t) (head : t) =
   in
   Option.bind key (Expand_ctx.lookup_macro_params ctx)
 
+(* The roles the unit [m] denotes exports, when it denotes one. *)
+let unit_roles_of (ctx : Expand_ctx.t) (m : t) =
+  match unit_path_of ctx m, ctx.Expand_ctx.load_syntax with
+  | Some path, Some load -> load path
+  | _ -> []
+
 (* The reader of the forms expansion reaches, with the roles bound here. *)
 let lazy_env (ctx : Expand_ctx.t) =
-  Enforest_util.lazy_env ~macro_params:(macro_params_of ctx) ctx.Expand_ctx.binding_table
+  Enforest_util.lazy_env ~macro_params:(macro_params_of ctx) ~unit_roles:(unit_roles_of ctx) ctx.Expand_ctx.binding_table
 
 let expand_capture expand = function
   | CapExpr e -> CapExpr (expand e)
@@ -744,7 +750,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let resolved_kind = Syntax.macro_kind ~output kind value in
-      let signature = Syntax.macro_signature ~output value in
+      let value, signature = Syntax.macro_compiled ~output kind value in
       let params, value = Syntax.macro_params value in
       let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
       let macro_fn = elab (in_definition_site_opens ctx name value) in
@@ -1064,7 +1070,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
       let resolved_kind = Syntax.macro_kind ~output kind value in
-      let signature = Syntax.macro_signature ~output value in
+      let value, signature = Syntax.macro_compiled ~output kind value in
       let params, value = Syntax.macro_params value in
       (* Stage 7: introduce name scope and register provisional macro BEFORE
          expansion/elaboration so the macro's own name is known during its
@@ -1112,13 +1118,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
              let app = application ctx in
              let fn = List.fold_left (fun fn arg ->
                 apply_fn fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.receive_capture arg))) macro_fn args in
-             (* Every argument is given (M8). What is still a function is an
-                output left polymorphic - [{ Nil }] is [{A} -> List(A)], since
-                a Decl macro's body has no declared output type to insert its
-                implicit against - so it is instantiated, with a type, never
-                with syntax the macro was not given. *)
-             let rec instantiate v = match v with Core.VLam _ -> instantiate (apply_fn v Core.VU) | _ -> v in
-             let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals (instantiate fn) in
+             let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn in
              (match result with
              | Some bindings ->
                  (* Stage 6: recursively process generated bindings through

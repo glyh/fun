@@ -70,9 +70,7 @@ let dot_value (mc : MetaContext.t) (value : value) (name : string) : value =
 let unhandled_effect_error mc eff op =
   match eff with
   | VEffect e ->
-      fail mc
-        ("unhandled effect " ^ e.name ^ "." ^ op
-       ^ "; handlers are not implemented")
+      fail mc ("unhandled effect " ^ e.name ^ "." ^ op ^ ": no handler for it is in scope")
   | _ -> fail mc "perform target is not an effect"
 
 let result_value mc = function
