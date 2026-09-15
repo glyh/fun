@@ -41,7 +41,6 @@ let elaborate_trait ops ctx name params fields =
    rather than receiving a context someone else extended.
    See docs/wayfinder/tickets/bring-impls-and-traits-into-the-slot-list.md. *)
 type impl_contribution = {
-  impl_effects : Elab_effects.expr_effects list;
   impl_dict_ty : value;
   impl_core : term;
   impl_value : value;
@@ -85,9 +84,8 @@ let elaborate_impl_contribution ops ctx trait_path args fields =
         (name, ops.check ctx value field_ty))
       fields
   in
-  let impl_effects = List.map (fun (_, value) -> ops.collect_effects ctx value) fields in
   let impl_core = Struct { con_fields = []; bindings = List.map (fun (name, value) -> LetBind (name, Public, value)) field_cores; partial = false } in
-  { impl_effects;
+  {
     impl_dict_ty = expected_dict_ty;
     impl_core;
     impl_value = Ctx.eval ctx impl_core;
@@ -122,7 +120,7 @@ let elaborate_impl ?impl_name ops ctx trait_path args fields =
   let c = elaborate_impl_contribution ops ctx trait_path args fields in
   let ctx', entry = Ctx.define_anonymous ctx c.impl_dict_ty c.impl_value in
   let ctx', evidence = install_impl_evidence ?impl_name ctx' c ~level:entry.level in
-  (ctx', c.impl_effects, evidence, c.impl_dict_ty, c.impl_core)
+  (ctx', evidence, c.impl_dict_ty, c.impl_core)
 
 
 let elaborate_eff_family ops (ctx : Ctx.t) (name : string) (params : string list)

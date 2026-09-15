@@ -56,8 +56,8 @@ let reporting_budget f =
 let on_expr_effects ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value * Elab_effects.expr_effects =
   let ctx = match loader with Some loader -> Ctx.with_loader ctx loader | None -> ctx in
   reporting_budget (fun () ->
-      let core, ty = Elab_driver.infer ctx expr in
-      (core, ty, Elab_driver.collect_effects ctx expr))
+      let (core, ty), effects = Elab_effects.collecting ctx (fun ctx -> Elab_driver.infer ctx expr) in
+      (core, ty, effects))
 
 (* A program's entry: what it leaves unhandled is an error, not a run-time crash. *)
 let on_expr ?loader (ctx : Ctx.t) (expr : Syntax.t) : term * value =
