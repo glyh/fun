@@ -11,6 +11,7 @@ let value_tag (v : value) =
   | VProd _ -> "VProd"
   | VProdTy _ -> "VProdTy"
   | VModule _ -> "VModule"
+  | VSig _ -> "VSig"
   | VStruct _ -> "VStruct"
   | VRecord _ -> "VRecord"
   | VNominal n -> "VNominal(" ^ n.name ^ ")"

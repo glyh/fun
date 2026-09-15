@@ -85,40 +85,41 @@ Modules cannot define methods and cannot refer to `self` or `Self`.
 
 ## Module signatures
 
-A module signature is written as a module whose public requirements store member types:
+A signature is its own kind of value, written `sig { … }`; a module is never a
+type (`fn(m : module { … })` is `NotASignature`). A signature lists public
+requirements; extra public members on the argument are allowed, and a private
+binding does not satisfy a requirement.
 
 ```fun
-module pub x = I64; pub y = Bool end
+get_x = fn(m : sig { x : I64; y : Bool }) { m.x };
+get_x(module { pub x = 1; pub y = True })
 ```
 
-In a type position, this is interpreted as a partial module type requiring public members `x : I64` and `y : Bool`. Extra public members are allowed on the concrete module argument.
+A signature is a **telescope** over the module it describes: a later member's
+type may mention an earlier member, read through the module. For a parameter the
+earlier member stays abstract; for an argument it is the argument's own member.
 
 ```fun
-do
-  get_x : (module pub x = I64 end) -> I64 = fn(m) -> m.x
-  get_x(module pub x = 1; pub y = true end)
-end
+Stack = sig { T : Type; empty : T; size : T -> I64 };
+count = fn(s : Stack) { s.size(s.empty) };        // s.empty : s.T
+count(module { pub T = I64; pub empty = 7; pub size = fn(x : I64) { x + 1 } })
 ```
 
-The `sig ... end` form is sugar for the same module-storing-types shape:
+An impl a signature requires is **named** (`eq_T : impl Eq(T)`); an anonymous
+`impl` in a `sig` is a parse error. The module must provide a public impl of
+that name and type; the parameter reaches it as `s.eq_T`, and `open s` brings it
+into trait resolution.
 
 ```fun
-sig x : I64; y : Bool end
+Ordered = sig { T : Type; eq_T : impl Eq(T) };
+same = fn(s : Ordered, a : s.T, b : s.T) { open s; Eq.eq(a, b) };
 ```
 
-For example:
-
-```fun
-(fn(m : sig x : I64 end) -> m.x)(module pub x = 1 end)
-```
-
-A module signature only matches public module members. A private binding does not satisfy a public requirement:
-
-```fun
-(fn(m : module pub x = I64 end) -> m.x)(module x = 1 end)
-```
-
-That program is rejected because `x` is private in the argument module.
+Representation: `Core.Sig body`, where `body` is a `Module { signature = true }`
+under one binder (the described module); it evaluates to `VSig` (a closure).
+`Nbe.module_type_of` instantiates it with a module value, giving the member
+types as a `VModule { partial = true }`. Two signatures are compared under one
+fresh module; `s1.T` and `s2.T` of two parameters are distinct.
 
 Unannotated field access remains record-oriented for unknown receivers. Passing modules through functions requires an explicit module signature when the function accesses module members:
 

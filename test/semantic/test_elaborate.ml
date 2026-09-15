@@ -429,6 +429,44 @@ let structs =
       (eval_i64 "(fn(m : sig { x : I64 }) { fn(u : I64) { open m; x + u } })(module { pub x = 41 })(1)" 42L);
     Alcotest.test_case "open a module parameter whose signature has a type member" `Quick
       (eval_i64 "(fn(m : sig { T : Type; v : I64 }) { open m; (v : I64) })(module { pub T = Bool; pub v = 3 })" 3L);
+    (* A signature is a telescope: a later member reads an earlier one through
+       the module it describes. *)
+    Alcotest.test_case "dependent signature" `Quick
+      (eval_i64
+         "{ Stack = sig { T : Type; empty : T; size : T -> I64 }; \
+            IntStack = module { pub T = I64; pub empty = 7; pub size = fn(x : I64) { x + 1 } }; \
+            count = fn(s : Stack) { s.size(s.empty) }; count(IntStack) }" 8L);
+    Alcotest.test_case "dependent signature rejects a mismatched member" `Quick
+      (elab_fail
+         "{ Stack = sig { T : Type; empty : T }; Bad = module { pub T = I64; pub empty = True }; \
+            count = fn(s : Stack) { 1 }; count(Bad) }");
+    Alcotest.test_case "a signature's type member stays abstract" `Quick
+      (elab_fail "{ Stack = sig { T : Type; empty : T }; f = fn(s : Stack) { (s.empty : I64) }; 1 }");
+    Alcotest.test_case "a signature's named impl arrives through open" `Quick
+      (check_type_src
+         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; Ordered = sig { T : Type; eq_T : impl Eq(T) }; \
+            same = fn(s : Ordered, a : s.T, b : s.T) { open s; Eq.eq(a, b) }; \
+            M = module { pub T = I64; pub impl eq_T : Eq(I64) = module { eq = fn(x, y) { x == y } } }; \
+            same(M, 1, 1) }"
+         "Bool");
+    Alcotest.test_case "a signature's named impl is a member" `Quick
+      (check_type_src
+         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; Ordered = sig { T : Type; eq_T : impl Eq(T) }; \
+            eqv : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; \
+            same = fn(s : Ordered, a : s.T, b : s.T) { eqv[s.T, s.eq_T](a, b) }; \
+            M = module { pub T = I64; pub impl eq_T : Eq(I64) = module { eq = fn(x, y) { x == y } } }; \
+            same(M, 1, 2) }"
+         "Bool");
+    Alcotest.test_case "a signature's required impl must be provided" `Quick
+      (elab_fail
+         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; Ordered = sig { T : Type; eq_T : impl Eq(T) }; \
+            same = fn(s : Ordered) { 1 }; same(module { pub T = I64 }) }");
+    Alcotest.test_case "an impl in a signature must be named" `Quick
+      (fun () ->
+        match elab "{ trait Eq(A) = sig { eq : A -> A -> Bool }; S = sig { T : Type; impl Eq(T) }; 1 }" with
+        | exception Enforest_util.Error msg ->
+            Alcotest.(check bool) "names the form" true (String.ends_with ~suffix:"an impl in a signature must be named: write name : impl Trait(Type)" msg)
+        | _ -> Alcotest.fail "an anonymous impl in a sig was accepted");
     Alcotest.test_case "module signature missing field rejected" `Quick
       (elab_fail
          "(fn(m : sig { x : I64 }) { m.x })(module { pub y = 1 })");

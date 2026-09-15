@@ -3,7 +3,9 @@ title: A let-bound signature cannot be a parameter type; dependent signatures fa
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented (branch named-signatures, then dependent-signatures). A signature is its own value; it is a telescope (Core.Sig under a binder for the described module, VSig closure, Nbe.module_type_of instantiates it with the module), so s.empty : s.T; impls a signature requires are named (name : impl Trait(T)), provided under that name, reachable as s.name and through open.
 assignee:
 blocked_by:
 ---
@@ -85,3 +87,19 @@ and `open s` also brings it into trait resolution.
 Ordered = sig { T : Type; ord_T : impl Ord(T) };
 max_of = fn(s : Ordered, a : s.T, b : s.T) { open s; if (a > b) { a } else { b } };
 ```
+
+## (2) and (3) implemented (2026-09-15, branch `dependent-signatures`)
+
+- **Telescope.** `infer_signature` binds the described module (`sig#self`) and
+  defines each member as its projection, so a later member's type quotes as
+  `self.T`. The term is `Core.Sig (Module { signature = true })`; it evaluates to
+  `VSig` (a closure). `Nbe.module_type_of ty module` instantiates it: at field
+  access and `open` with the receiver's value (a parameter stays abstract), and
+  when an argument is checked against a signature, with the argument's value.
+  Two signatures unify under one fresh module.
+- **Named impls.** A sig item `name : impl Trait(Arg)` parses to an
+  `ImplBinding` with no fields; its member promises the dictionary type
+  (`impl_dict_type`, shared with impl declarations). Matching a module to a
+  signature requires a public impl of that name and type. An `open` of a
+  parameter pushes the impl's projection. `impl Trait(Arg)` without a name in a
+  `sig` is a parse error naming the form.

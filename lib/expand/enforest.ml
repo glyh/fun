@@ -483,6 +483,14 @@ and parse_sig_expr env start_span terms =
     split_statements body_terms
     |> List.map (fun stmt ->
         match drop_separators stmt with
+        (* [ord_T : impl Ord(T)]: a named impl the module must provide. *)
+        | ({ datum = Token { kind = Ident name; _ }; _ } as name_term)
+          :: colon :: { datum = Token { kind = KwImpl; _ }; _ } :: trait_terms
+          when token_kind Colon colon ->
+            let trait, args = parse_impl_trait env trait_terms in
+            Syntax.ImplBinding { name = Some (id_of name_term name); trait; args; fields = []; public = true }
+        | { datum = Token { kind = KwImpl; _ }; _ } :: _ ->
+            error "an impl in a signature must be named: write name : impl Trait(Type)"
         | ({ datum = Token { kind = Ident name; _ }; _ } as name_term)
           :: colon :: typ_terms
           when token_kind Colon colon ->
@@ -958,20 +966,7 @@ and parse_impl_binding env public stmt =
                 | _ -> error "impl name must be a single identifier")
             | None -> (None, trait_terms)
           in
-          let trait, arg_terms = path_from_terms trait_terms in
-          let args =
-            match drop_separators arg_terms with
-            | [ { datum = Group (Raw_syntax.Paren, items, _); _ } ] -> (
-                let items = drop_separators items in
-                if items = [] then error "impl argument list cannot be empty";
-                match List.map (parse_type_terms env) (split_commas items) with
-                | [ arg ] -> [ arg ]
-                | _ ->
-                    error "impl declaration accepts exactly one trait argument")
-            | [] ->
-                error "impl declaration requires a parenthesized trait argument"
-            | _ -> error "impl trait argument must be written as (Type)"
-          in
+          let trait, args = parse_impl_trait env trait_terms in
           let field_terms, after_module, _ = brace_body "module" module_rest in
           ensure_no_rest "impl binding" after_module;
           let fields =
@@ -986,6 +981,22 @@ and parse_impl_binding env public stmt =
             (Syntax.ImplBinding { name; trait; args; fields; public })
       | Some _ | None -> error "impl binding requires = module { … }")
   | _ -> None
+
+(* [Trait(Arg)] after [impl]: the trait's path and its one argument. *)
+and parse_impl_trait env trait_terms =
+  let trait, arg_terms = path_from_terms trait_terms in
+  let args =
+    match drop_separators arg_terms with
+    | [ { datum = Group (Raw_syntax.Paren, items, _); _ } ] -> (
+        let items = drop_separators items in
+        if items = [] then error "impl argument list cannot be empty";
+        match List.map (parse_type_terms env) (split_commas items) with
+        | [ arg ] -> [ arg ]
+        | _ -> error "impl declaration accepts exactly one trait argument")
+    | [] -> error "impl declaration requires a parenthesized trait argument"
+    | _ -> error "impl trait argument must be written as (Type)"
+  in
+  (trait, args)
 
 and parse_open_statement env stmt =
   match drop_separators stmt with

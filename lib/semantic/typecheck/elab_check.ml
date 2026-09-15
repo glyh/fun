@@ -140,6 +140,10 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       let core, inferred = wrap_implicits core inferred in
       if Ctx.conv ctx expected VU then
         check_type_like ctx inferred (Ctx.eval ctx core)
-      else
-        Ctx.unify ctx expected inferred;
+      else begin
+        (* Against a signature, the member types are the ones it gives this
+           module: [empty : T] means the module's own [T]. *)
+        let expected = match expected with VSig _ -> Nbe.module_type_of ctx.metas expected (Ctx.eval ctx core) | _ -> expected in
+        Ctx.unify ctx expected inferred
+      end;
       core

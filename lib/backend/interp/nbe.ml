@@ -233,7 +233,14 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           ~field:(fun name kind v -> ModuleField (name, kind, v))
           ~impl:(fun name kind ty v -> ModuleImpl (name, kind, ty, v))
       in
+      (* A signature's impl member evaluates its term to the dictionary type
+         (see [Core.Sig]); the entry carries it as both type and payload. *)
+      let entries =
+        if signature then List.map (function ModuleImpl (n, k, _, ty) -> ModuleImpl (n, k, ty, ty) | e -> e) entries
+        else entries
+      in
       Done (VModule { entries; partial = signature })
+  | Sig body -> Done (VSig { env; body })
   | Struct { con_fields; bindings; partial } ->
       (* con_fields: all at same scope, no sequential dependency *)
       let con_entries =
@@ -909,6 +916,12 @@ let force mc v =
 let force_shape mc v =
   match force mc v with
   | VRecOcc _ as occ -> (match request ~demand:"unfolding a recursive type" mc (fun () -> Nbe_quote.unfold_rec quote_ops mc occ) with VRecOcc _ as v -> v | v -> force mc v)
+  | v -> v
+(* A module's type as its member types: a signature instantiated with the module
+   it describes ([module_value]), so a member reads earlier ones through it. *)
+let module_type_of mc ty module_value =
+  match force_shape mc ty with
+  | VSig clo -> force mc (closure_apply mc clo module_value)
   | v -> v
 let quote mc depth value = request ~demand:"a normalisation" mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
 let conv mc depth lhs rhs = request ~demand:"a conversion" mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)

@@ -538,7 +538,7 @@ What remains, in the recommended order:
 - [`expand_decls`](tickets/expand-decls-reader.md)
   (closed) — read a `List(Decl)` argument's items, parsed in order (counterpart of `expand_block`).
 - [A let-bound signature cannot be a parameter type](tickets/named-signatures-as-parameter-types.md)
-  — let-bound and imported signatures fixed: `sig { … }` is its own value, a module is never a type; dependent signatures and anonymous impls in signatures need design.
+  (closed) — `sig { … }` is its own value, a module is never a type; signatures are telescopes (`s.empty : s.T`); impls a signature requires are named.
 - [`open` a module parameter](tickets/open-a-module-parameter.md)
   (closed) — `Open`/`OpenBind` carry the members the type lists; each is pushed as a projection.
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)

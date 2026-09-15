@@ -166,8 +166,15 @@ Last updated: after a bare arrow is pure, 2026-09-15.
   carry the members (`OpenField name`, `OpenImpl i`), and the evaluator pushes
   each as a projection of the module value. A module parameter (a neutral) opens
   by projection; a module with more members than its signature opens only the
-  signature's. A parameter's impl has no name to project, so opening one is
-  still `NotAModule`.
+  signature's. A signature names every impl it requires, so a parameter's impl
+  opens by projection too.
+- Signatures are telescopes (2026-09-15): `sig { T : Type; empty : T }` reads
+  `empty : self.T`, so a parameter `s : Stack` has `s.empty : s.T` (abstract) and
+  an argument is checked against the member types its own `T` gives
+  (`Core.Sig` → `VSig` closure, `Nbe.module_type_of`). An impl a signature
+  requires is named, `eq_T : impl Eq(T)`: provided under that name, reached as
+  `s.eq_T`, brought into trait resolution by `open s`; an anonymous `impl` in a
+  `sig` is a parse error.
 
 ### Macro signatures (2026-09-15)
 - A macro's type binders, `(x : Expr(T))` parameters and `: Expr(T)` output are

@@ -49,20 +49,25 @@ type impl_contribution = {
   impl_args : value list;
 }
 
-let elaborate_impl_contribution ops ctx trait_path args fields =
+(* The dictionary type [Trait(Args)] denotes: what an impl of it must provide,
+   and the type a signature's impl member promises. *)
+let impl_dict_type ops ctx trait_path args =
   let trait_info = lookup_trait ctx trait_path in
-  let trait_name = trait_info.trait_name in
-  let arg_cores =
+  let arg_values =
     List.map
       (fun arg ->
         let arg_core, arg_ty = ops.infer ctx arg in
-        check_type_like ctx arg_ty (Ctx.eval ctx arg_core);
-        arg_core)
+        let arg_value = Ctx.eval ctx arg_core in
+        check_type_like ctx arg_ty arg_value;
+        arg_value)
       args
   in
-  let arg_values = List.map (Ctx.eval ctx) arg_cores in
-  let expected_fields = eval_trait_fields ctx trait_info arg_values in
-  let expected_dict_ty = trait_dict_ty ~trait_id:trait_info.trait_id trait_name arg_values expected_fields in
+  let fields = eval_trait_fields ctx trait_info arg_values in
+  (trait_info, arg_values, fields, trait_dict_ty ~trait_id:trait_info.trait_id trait_info.trait_name arg_values fields)
+
+let elaborate_impl_contribution ops ctx trait_path args fields =
+  let trait_info, arg_values, expected_fields, expected_dict_ty = impl_dict_type ops ctx trait_path args in
+  let trait_name = trait_info.trait_name in
   check_duplicate_names (List.map fst fields);
   List.iter
     (fun (name, _) ->

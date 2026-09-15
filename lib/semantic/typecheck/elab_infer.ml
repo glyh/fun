@@ -514,7 +514,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | FieldAccess (e, name) ->
       let e_core, e_ty = ops.infer ctx e in
       let e_core, e_ty = insert_implicit_args ctx e_core e_ty in
-      (match Nbe.force_shape ctx.metas e_ty with
+      (match Nbe.force_shape ctx.metas (Nbe.module_type_of ctx.metas e_ty (Ctx.eval ctx e_core)) with
       | VModule { entries; partial = _ } -> (
           match find_field_last (fun (n, _, _) -> String.equal n name) (visible_module_fields entries) with
           | Some (_, _, field_ty) -> (Dot (e_core, name), Nbe.force ctx.metas field_ty)

@@ -39,7 +39,7 @@ let find_record_field fields name =
 
 let rec is_type_like_value ctx value =
   match Nbe.force ctx.Ctx.metas value with
-  | VU | VEffectRowTy | VAtomTy _ | VPi _ | VProdTy _ | VNominal _ | VEffect _ | VTraitDict _ | VRefTy _ -> true
+  | VU | VEffectRowTy | VAtomTy _ | VPi _ | VProdTy _ | VNominal _ | VEffect _ | VTraitDict _ | VRefTy _ | VSig _ -> true
   | VModule { entries; partial = true } ->
       let fields = module_entry_fields entries in
       validate_module_fields fields;

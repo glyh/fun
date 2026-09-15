@@ -87,6 +87,7 @@ let value_substituter (mc : MetaContext.t) (target : lvl) (replacement : value) 
         let domain' = sub domain and effects' = row_closure effects and codomain' = closure codomain in
         if domain' == domain && effects' == effects && codomain' == codomain then v
         else VPi { pi with domain = domain'; effects = effects'; codomain = codomain' }
+    | VSig clo as v -> let clo' = closure clo in if clo' == clo then v else VSig clo'
     | VProd elems as v -> let elems' = subs elems in if elems' == elems then v else VProd elems'
     | VProdTy elems as v -> let elems' = subs elems in if elems' == elems then v else VProdTy elems'
     | VEffectRow row as v ->

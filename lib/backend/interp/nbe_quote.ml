@@ -110,11 +110,17 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
                 | Method, _ | PrivateMethod, _ | Field, _ ->
                     validate_module_fields fields;
                     failwith "unreachable")
+            (* A signature's impl member is its dictionary type, carried as a
+               term so it may read [self] (see [Sig]). *)
+            | ModuleImpl (name, kind, ty, _) when partial -> ImplBind (name, kind, quote ops mc depth ty, VU)
             | ModuleImpl (name, kind, ty, value) ->
                 ImplBind (name, kind, quote ops mc depth value, ty))
           entries
       in
       Module { bindings; signature = partial }
+  | VSig clo ->
+      let var = VRigid { lvl = depth; spine = [] } in
+      Sig (quote ops mc (depth + 1) (ops.closure_apply mc clo var))
   | VStruct { entries; partial } ->
       let con_fields =
         List.filter_map
@@ -247,6 +253,9 @@ let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : 
   | VFix { body = clo1; _ }, VFix { body = clo2; _ } ->
       let var = VRigid { lvl = depth; spine = [] } in
       conv ops mc (depth + 1) (ops.closure_apply mc clo1 var) (ops.closure_apply mc clo2 var)
+  | VSig clo1, VSig clo2 ->
+      let var = VRigid { lvl = depth; spine = [] } in
+      conv ops mc (depth + 1) (ops.closure_apply mc clo1 var) (ops.closure_apply mc clo2 var)
   | ( VModule { entries = es1; partial = p1 }, VModule { entries = es2; partial = p2 } ) ->
       let fs1 = module_entry_fields es1 in
       let fs2 = module_entry_fields es2 in
@@ -269,6 +278,15 @@ let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : 
           else (vs2, vs1)
         in
         List.for_all (fun field -> conv_field field available) required
+        && (let sig_entries, module_entries = if p1 then (es1, es2) else (es2, es1) in
+            List.for_all
+              (function
+                | ModuleImpl (Some name, Public, ty, _) -> (
+                    match module_impl_type_opt module_entries name with
+                    | Some (Public, other_ty) -> conv ops mc depth ty other_ty
+                    | _ -> false)
+                | _ -> true)
+              sig_entries)
   | ( VStruct { entries = es1; partial = p1 }, VStruct { entries = es2; partial = p2 } ) ->
       let fs1 = struct_entry_fields es1 in
       let fs2 = struct_entry_fields es2 in

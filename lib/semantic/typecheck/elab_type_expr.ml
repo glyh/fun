@@ -1,6 +1,7 @@
 open Core
 include Elab_error
 open Elab_validate
+open Elab_defs
 
 module Ctx = Elab_ctx.Ctx
 
@@ -21,23 +22,35 @@ let type_value_of_expr ops ctx (expr : Syntax.t) =
   check_type_like ctx ty value;
   (core, ty, value)
 
-(* [sig { x : I64; … }]: a signature value, its own kind of value, distinct from
-   a module. Each member is a type, seen by the members after it. *)
+(* [sig { T : Type; empty : T; ord_T : impl Ord(T) }]: a signature value, its own
+   kind of value, distinct from a module. It is a telescope over the module it
+   describes: elaborated under a binder for that module ([self]), each member is
+   seen by the members after it as [self.name], so a later type reads an earlier
+   member abstractly ([empty : self.T]). An impl member is named and promises the
+   dictionary type of its trait. *)
 let infer_signature ops ctx bindings =
+  let ctx = Ctx.clear_self_scope ctx in
+  let self_level = ctx.Ctx.lvl in
+  let self = VRigid { lvl = self_level; spine = [] } in
+  let ctx = Ctx.bind ctx "sig#self" VU in
+  let member ctx key ty = Ctx.define ctx key ty (Nbe_support.dot_value ctx.Ctx.metas self (Syntax.label key)) in
   let rec go ctx acc = function
     | [] -> List.rev acc
     | Syntax.LetBinding { name = { name = key; _ }; value; _ } :: rest ->
-        let name = Syntax.label key in
         let value_core, value_ty = infer_pure ops ctx value in
         let value_val = Ctx.eval ctx value_core in
         check_type_like ctx value_ty value_val;
-        go (Ctx.define ctx key VU value_val) ((name, Public, value_val) :: acc) rest
+        let binding = LetBind (Syntax.label key, Public, Ctx.quote ctx value_val) in
+        go (member ctx key value_val) ((Syntax.label key, binding) :: acc) rest
+    | Syntax.ImplBinding { name = Some { name = key; _ }; trait; args; fields = []; _ } :: rest ->
+        let _, _, _, dict_ty = impl_dict_type ops ctx trait args in
+        let binding = ImplBind (Some (Syntax.label key), Public, Ctx.quote ctx dict_ty, VU) in
+        go (member ctx key dict_ty) ((Syntax.label key, binding) :: acc) rest
     | _ -> raise (ElabError ApplyingNonFunction)
   in
-  let fields = go (Ctx.clear_self_scope ctx) [] bindings in
-  check_duplicate_names (List.map (fun (name, _, _) -> name) fields);
-  validate_module_fields fields;
-  (Module { bindings = List.map (fun (name, _, value) -> LetBind (name, Public, Ctx.quote ctx value)) fields; signature = true }, VU)
+  let members = go ctx [] bindings in
+  check_duplicate_names (List.map fst members);
+  (Sig (Module { bindings = List.map snd members; signature = true }), VU)
 
 let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_row = function
   (* A bare arrow is pure (E3). *)

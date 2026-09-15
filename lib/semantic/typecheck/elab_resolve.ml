@@ -334,7 +334,7 @@ let add_opened_impl ctx impl_ty impl_value =
    member list is the term's, so the evaluator pushes the same entries. *)
 let open_module_value ~label ctx module_ty module_value =
   let broken () = failwith "Elab_resolve.open_module_value: a module value's entries do not match its type" in
-  match Nbe.force ctx.Ctx.metas module_ty with
+  match Nbe.module_type_of ctx.Ctx.metas module_ty module_value with
   | VModule { entries = type_entries; partial = _ } ->
       let known = match Nbe.force ctx.Ctx.metas module_value with VModule { entries; _ } -> Some entries | _ -> None in
       (match known with Some es when List.compare_lengths es type_entries <> 0 -> broken () | _ -> ());
@@ -354,8 +354,11 @@ let open_module_value ~label ctx module_ty module_value =
                 (add_opened_field c fname field_ty value, OpenField fname :: opened, (i + 1, impl_ix))
             | ModuleImpl (_, Public, impl_ty, _), Some (ModuleImpl (_, Public, _, impl_value)) ->
                 (add_opened_impl c impl_ty impl_value, OpenImpl impl_ix :: opened, (i + 1, impl_ix + 1))
-            (* A parameter's impl has no name to project it by. *)
-            | ModuleImpl (_, Public, _, _), None -> raise (ElabError NotAModule)
+            (* A parameter's impl is named (a signature names every impl it
+               requires): its projection is the dictionary. *)
+            | ModuleImpl (Some iname, Public, impl_ty, _), None ->
+                (add_opened_impl c impl_ty (Nbe_support.dot_value ctx.Ctx.metas module_value iname), OpenImpl impl_ix :: opened, (i + 1, impl_ix + 1))
+            | ModuleImpl (None, Public, _, _), None -> broken ()
             | (ModuleField (_, Private, _) | ModuleImpl (_, Private, _, _)), _ -> (c, opened, (i + 1, impl_ix))
             | _ -> broken ())
           (ctx, [], (0, 0)) type_entries

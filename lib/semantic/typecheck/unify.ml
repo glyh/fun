@@ -152,10 +152,14 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
                   | Method | PrivateMethod | Field ->
                       validate_module_fields fields;
                       failwith "unreachable")
+              | ModuleImpl (name, kind, ty, _) when partial -> ImplBind (name, kind, go d ty, VU)
               | ModuleImpl (name, kind, ty, value) -> ImplBind (name, kind, go d value, ty))
             entries
         in
         Module { bindings; signature = partial }
+    | VSig clo ->
+        let var = VRigid { lvl = d; spine = [] } in
+        Sig (go (d + 1) (Nbe.closure_apply mc clo var))
     | VStruct { entries; partial } ->
         let con_fields =
           List.filter_map
@@ -272,6 +276,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             Option.iter occurs_check row.tail_value;
             occurs_check (Nbe.closure_apply mc clo var)
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
+        | VSig clo -> occurs_check (Nbe.closure_apply mc clo (VRigid { lvl = 0; spine = [] }))
         | VEffectRow row ->
             List.iter occurs_check row.effect_values;
             Option.iter occurs_check row.tail_value
@@ -350,6 +355,7 @@ let value_form = function
   | VRefTy _ -> "ref type"
   | VRef _ -> "ref cell"
   | VModule _ -> "module value"
+  | VSig _ -> "signature"
   | VStruct _ -> "struct type"
   | VTrait t -> "trait " ^ t.trait_name
   | VTraitDict d -> "trait dictionary " ^ d.trait_name
@@ -406,6 +412,10 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
         raise (UnifyError TupleLengthMismatch);
       List.iter2 (unify mc env depth) elems1 elems2
   | VRefTy a1, VRefTy a2 -> unify mc env depth a1 a2
+  (* Two signatures describe the same module when they agree on one. *)
+  | VSig clo1, VSig clo2 ->
+      let var = VRigid { lvl = depth; spine = [] } in
+      unify mc env (depth + 1) (Nbe.closure_apply mc clo1 var) (Nbe.closure_apply mc clo2 var)
   | VModule { entries = es1; partial = p1 }, VModule { entries = es2; partial = p2 } ->
       let fs1 = module_entry_fields es1 in
       let fs2 = module_entry_fields es2 in
@@ -424,7 +434,17 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
         List.iter (fun field -> unify_field field vs2) vs1
       end else
         let required, available = if p1 && not p2 then vs1, vs2 else if p2 && not p1 then vs2, vs1 else if List.length vs1 <= List.length vs2 then vs1, vs2 else vs2, vs1 in
-        List.iter (fun field -> unify_field field available) required
+        List.iter (fun field -> unify_field field available) required;
+        (* A signature's named impls must be provided under their name. *)
+        let sig_entries, module_entries = if p1 then es1, es2 else es2, es1 in
+        List.iter
+          (function
+            | ModuleImpl (Some name, Public, ty, _) -> (
+                match module_impl_type_opt module_entries name with
+                | Some (Public, other_ty) -> unify mc env depth ty other_ty
+                | _ -> raise (UnifyError StructFieldMismatch))
+            | _ -> ())
+          sig_entries
   | VStruct { entries = es1; partial = p1 }, VStruct { entries = es2; partial = p2 } ->
       let fs1 = struct_entry_fields es1 in
       let fs2 = struct_entry_fields es2 in

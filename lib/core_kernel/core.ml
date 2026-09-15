@@ -49,6 +49,12 @@ and term =
       (** [signature]: a [sig { … }] value, whose members are types; it evaluates to
           a [VModule] with [partial = true]. A signature is its own kind of value,
           never a module. *)
+  | Sig of term
+      (** A signature: a telescope over the module it describes. The body is a
+          [Module { signature = true }] under one binder, the described module
+          ([self]), so a member's type reads an earlier member as [self.T]. It
+          evaluates to a [VSig] closure; instantiating it with a module (a
+          parameter, or the argument checked against it) gives the member types. *)
   | Struct of {
       con_fields : (string * term) list;
       bindings : struct_binding_term list;
@@ -288,6 +294,9 @@ and value =
       (** A pure fixpoint applied to [arg] under the checker, unfolded only when
           inspected ([force]): conversion compares two calls of the same
           fixpoint by their arguments first (lazy delta). *)
+  | VSig of closure
+      (** A signature value (see [Sig]): apply to the described module to get
+          its member types as a [VModule] with [partial = true]. *)
   | VModule of {
       entries : module_entry list;
       partial : bool;
@@ -569,6 +578,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | Ctor c -> Ctor { c with spine = List.map (at 0) c.spine; nominal_spine = List.map (at 0) c.nominal_spine }
   | Open (s, members, body) -> Open (at 0 s, members, at (List.length members) body)
   | Module { bindings = bs; signature } -> Module { bindings = bindings bs; signature }
+  | Sig body -> Sig (at 1 body)
   | Struct s ->
       Struct { s with con_fields = List.map (fun (n, ty) -> (n, at 0 ty)) s.con_fields; bindings = bindings s.bindings }
   | Match (scrut, branches) ->
