@@ -58,3 +58,11 @@ blocked_by:
 - **6.** An evaluation error while checking a form (`Tuple(0 - 1)`, `panic` in a
   type) is `ElabError (EvaluationFailed { message; site })`, converted at the one
   place every form passes through (`Elab_driver.at`).
+
+### Item 4 grilled (2026-09-15): `+` on traits is an ordinary operator
+
+`Eq + Show` stays, resolved like any `+`: the prelude gives traits an impl of the
+addition trait that combines bounds, so the elaborator no longer recognises the
+spelling `+`. Unlike `*` on types (rejected because `A * B * C` could not mean a
+flat tuple), combining bounds is associative and unambiguous once the operand
+types are known.

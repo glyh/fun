@@ -30,3 +30,7 @@ blocked_by:
    write `can {…}` or `can {}`". No default.
 5. **Wrong error in one E6 shape**: when the other branch returns a pure closure,
    the rejection is `UnhandledEffects`, not `HandledEffectEscapes`.
+   **Also decided:** an explicit annotation for "may perform any effect",
+   spelled `can any` (user's suggestion) — an open row the checker does not try to
+   infer, distinct from `can _` (infer) and `can {}` (pure). An unsolved `_` is an
+   error; `can any` is the deliberate way to say "anything".
