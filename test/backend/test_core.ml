@@ -1245,6 +1245,11 @@ let test_export_unit_macros () =
     [ answers_42; ("re", "I = import \"inner\";\nexport I") ]
     "{ open (import \"re\"); answer(0) }"
 
+let test_imported_form_calls_unit_macro () =
+  macro_in_unit "an imported syntax form calls its unit's macro" 5L
+    [ ("forms", "open (import \"std\");\npub macro gen(ts : List(TokenTree)) : List(Decl) { Cons(Syntax.Decl.DeclItems(ts), Nil) };\npub syntax mytype : Decl { mytype $(r : List(TokenTree)) => { gen($r) } }") ]
+    "{ M = module { open (import \"forms\"); mytype pub x = 5 }; M.x }"
+
 let test_imported_macro_not_runtime_field () =
   match
     eval_with_imported_macros
@@ -4069,6 +4074,7 @@ let () =
           Alcotest.test_case "unit calls imported macro via open" `Quick test_unit_calls_imported_macro_via_open;
           Alcotest.test_case "macro through re-exported member" `Quick test_macro_through_reexported_member;
           Alcotest.test_case "export a unit macros" `Quick test_export_unit_macros;
+          Alcotest.test_case "imported form calls unit macro" `Quick test_imported_form_calls_unit_macro;
           Alcotest.test_case "bare import does not inject macros" `Quick test_bare_import_does_not_inject_macros;
           Alcotest.test_case "open delivers macros bare" `Quick test_open_delivers_macros_bare;
           Alcotest.test_case "open bound import delivers macros bare" `Quick test_open_bound_import_delivers_macros_bare;

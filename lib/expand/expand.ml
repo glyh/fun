@@ -437,9 +437,15 @@ let macro_head_key (ctx : Expand_ctx.t) (id : Syntax.id) :
         ( resolved_name,
           Expand_ctx.lookup_macro_entry ctx resolved_name,
           Expand_ctx.is_provisional_macro ctx resolved_name )
-  (* An id resolves by scope set alone (M12): there is no id built from a
-     string to fall back for, so an unbound name is not a macro. *)
-  | None -> None
+  (* An id no binder took, introduced by a syntax form imported from a unit,
+     may name that unit's macro - as it may name its values (open choice). *)
+  | None ->
+      List.find_map
+        (fun s ->
+          Option.bind (Hashtbl.find_opt ctx.Expand_ctx.intro_scope_units s) (fun path ->
+              let key = Expand_ctx.unit_macro_key ~path ~name:id.name in
+              Option.map (fun entry -> (key, Some entry, false)) (Expand_ctx.lookup_macro_entry ctx key)))
+        id.scope
 
 (* The unit a module expression denotes, when it denotes one: [import "m"]
    directly, or a name bound to one. Macros are members of a unit, so this is
