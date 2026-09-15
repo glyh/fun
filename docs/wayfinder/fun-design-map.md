@@ -527,6 +527,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [General set literals](tickets/general-set-literals.md)
+  — later: `{a, b}` as one Set literal; rows and bounds pinned by position.
 - [`export`](tickets/export-construct.md)
   — `export M` / `export M.{a, b}` re-exports members; `pub open` stays rejected.
 - [Effects on the arrow](tickets/effect-arrow-syntax.md)

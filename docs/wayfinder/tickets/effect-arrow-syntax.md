@@ -71,3 +71,8 @@ each case has one spelling. Methods and `Mutate(r)` rows follow (`->{Mutate(r)}`
 Parser (arrow + brace group, `~>` desugaring with polarity), elaborator (row
 variables, union, body inference for result `~>`), reflection, prelude, every
 effectful signature and return annotation in tests and docs.
+
+**Open rows (2026-09-16):** a row with a tail is written `A ->{Log, Exc | e} B`
+(`|` then the row variable), as `{E | r}` rows were. Rows and bound sets are
+dedicated syntax in their positions for now; generalising to one set literal is
+[general-set-literals](general-set-literals.md).
