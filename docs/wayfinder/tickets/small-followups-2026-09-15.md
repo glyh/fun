@@ -3,7 +3,7 @@ title: Small follow-ups from the 2026-09-15 runs
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: open  # items 2 and 4 remain
 assignee:
 blocked_by:
 ---
@@ -25,3 +25,22 @@ blocked_by:
    tuple-types run). Either support them or decide they are not syntax.
 6. **`Tuple(0 - 1)` escapes the checker as `EvalError`**, as a `panic` in a type
    does: evaluation errors during checking should be elaboration errors.
+
+## Done (2026-09-15, branch small-followups)
+
+- **1.** Root cause: a method's `self` type was the fields as an *open* partial
+  struct, so `self.a` / `self.anything` added a field constraint and passed the
+  checker. A method is elaborated after every field, so `self`'s type is now
+  closed (fields only): a method name or unknown name on `self` is an
+  elaboration error; call a method as `a(self)`. Struct type unification
+  compares fields only when one side has no methods (methods are not in the value).
+- **3.** `$(d : Decl)` takes exactly one declaration, `$(d : List(Decl))` any
+  number (a brace group or the items up to the hole's extent), as the parameter
+  kinds; `Decl` names one declaration everywhere (`Syntax.hole_kind_of_name`).
+- **5.** `fn(x) : T { … }` and `method m() : T can {E} { … }` check the body
+  against `T` (order as an arrow type `A -> T can {E}`). The result type ends at
+  the first top-level `{ … }` or `can`, so a type holding braces is parenthesised.
+  Macro `: Expr(T)` / `: Decl` annotations are unchanged.
+- **6.** An evaluation error while checking a form (`Tuple(0 - 1)`, `panic` in a
+  type) is `ElabError (EvaluationFailed { message; site })`, converted at the one
+  place every form passes through (`Elab_driver.at`).

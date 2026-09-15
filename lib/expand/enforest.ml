@@ -201,9 +201,34 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
             implicit_params
           @ explicit_params
   in
+  (* [fn(x) : T { … }]: the result type, the body checked against it. A macro's
+     [:] is its annotation, above. *)
+  let result_type, rest = if kind_annotation then (None, rest) else parse_result_type env rest in
   let body, rest, span = parse_body env "fn parameters" rest in
   let span = span_between start_span span in
-  (params, kind, output, body, rest, span)
+  (params, kind, output, annotate_result result_type body, rest, span)
+
+(* An optional [: T] before a body. Brackets decide grouping: the type ends at
+   the first top-level [{ … }] or [can], so a type holding braces is
+   parenthesised ([: (struct { x : I64 })]). *)
+and parse_result_type env terms =
+  match drop_separators terms with
+  | colon :: rest when token_kind Colon colon ->
+      let ends term = token_kind KwCan term || (match term.datum with Group (Raw_syntax.Brace, _, _) -> true | _ -> false) in
+      let rec split acc = function
+        | term :: _ as rest when ends term -> (List.rev acc, rest)
+        | term :: rest -> split (term :: acc) rest
+        | [] -> (List.rev acc, [])
+      in
+      let type_terms, rest = split [] rest in
+      if drop_separators type_terms = [] then error "expected a result type after :";
+      (Some (parse_all (fun ts -> parse_expr_prec env Top ts) type_terms), rest)
+  | _ -> (None, terms)
+
+and annotate_result result_type (body : Syntax.t) =
+  match result_type with
+  | Some typ -> stx ~span:body.span (Syntax.Annotated { inner = body; typ })
+  | None -> body
 
 (* A body is a brace group, parsed as a block. *)
 and parse_body env what terms =
@@ -240,6 +265,8 @@ and parse_method_binding env public stmt =
           require_adjacent_span name_term.span params_group.span
             "method parameter list";
           let params = parse_method_params env items in
+          (* [: T] then [can row], in the order of an arrow type [A -> T can {E}]. *)
+          let result_type, rest = parse_result_type env rest in
           (* [can row]: a method is pure unless it declares a row (E3). *)
           let effects, rest =
             match drop_separators rest with
@@ -249,6 +276,7 @@ and parse_method_binding env public stmt =
             | rest -> (None, rest)
           in
           let body, rest, _ = parse_body env "method parameters" rest in
+          let body = annotate_result result_type body in
           ensure_no_rest "method declaration" rest;
           Some
             (Syntax.MethodBinding

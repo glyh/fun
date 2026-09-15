@@ -674,6 +674,14 @@ let structs =
       (elab_fail "{ R = struct { n : Type; v : n }; 0 }");
     Alcotest.test_case "a method sees a later field" `Quick
       (check_type_src "{ C = struct { a : I64; pub method get() { self.b }; b : I64 }; C.get(C{a = 1; b = 9}) }" "I64");
+    Alcotest.test_case "a result type annotation checks the body" `Quick
+      (fun () ->
+        eval_i64 "{ f = fn(n : I64) : I64 { n + n }; f(2) }" 4L ();
+        eval_i64 "{ rec fact = fn(n : I64) : I64 { if (n == 0) { 1 } else { n * fact(n - 1) } }; fact(5) }" 120L ();
+        eval_i64 "{ add = fn(a : I64) : I64 -> I64 { fn(b : I64) : I64 { a + b } }; add(1)(2) }" 3L ();
+        eval_i64 "{ C = struct { v : I64; pub method get() : I64 { self.v } }; C.get(C{v = 7}) }" 7L ();
+        elab_ok "{ effect Exc = sig { raise : I64 -> I64 }; C = struct { v : I64; pub method bump() : I64 can {Exc} { perform Exc.raise(1) } }; C.bump }" ();
+        elab_fail "{ f = fn(n : I64) : Bool { n }; 1 }" ());
     Alcotest.test_case "self holds only fields: a method or unknown name is an error" `Quick
       (fun () ->
         elab_fail "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { self.a(2) } }; C.b(C{v = 1}) }" ();
