@@ -3,7 +3,9 @@ title: Any function returning a nominal type is accepted as a pattern-head type
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Intended. Types are values: a function reducing to a nominal is as good as its name in a pattern head (an alias). No code change.
 assignee:
 blocked_by:
 ---
@@ -37,3 +39,9 @@ reduction.
 ## Found by
 
 The path-heads implementation (2026-09-14).
+
+## Grilled (2026-09-15): intended
+
+Aliases work. `Seq = fn(A : Type) { List(A) }` makes `Seq.Cons(h, t)` a valid
+pattern head, because a type-level function that reduces to a nominal is as good
+as its name (types are values). The reduction runs under the checker budget.

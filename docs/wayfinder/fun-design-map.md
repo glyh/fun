@@ -479,7 +479,7 @@ What remains, in the recommended order:
 - [Recursive definitions stuck on open arguments](tickets/recursive-definitions-stuck-on-open-arguments.md)
   — grilled 2026-09-15: recursive calls unfold on open arguments under the checker budget; exhaustion is an error (`HFix` stuck rule goes).
 - [Pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md)
-  — any function reducing to a nominal works as a pattern-head type. Grill.
+  — (closed) intended: a function reducing to a nominal works as an alias in a pattern head.
 - [Elaborator matches `EffectRow` and `stx_` by spelling](tickets/elaborator-matches-names-by-spelling.md)
   — (closed) both dispatches deleted; a type named `EffectRow` now means itself.
 - [The closed-term rule does not look inside closures](tickets/stuck-rule-ignores-closure-environments.md)
