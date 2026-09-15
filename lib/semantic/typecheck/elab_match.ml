@@ -11,7 +11,7 @@ open Elab_patterns
 open Elab_ops
 
 let match_domain_of_ty ctx ty =
-  match Nbe.force ctx.Ctx.metas ty with
+  match Nbe.force_shape ctx.Ctx.metas ty with
   | VNominal { id; params; constructors; _ } ->
       let ntp = List.length params in
       Core_match_compile.Nominal
@@ -44,7 +44,7 @@ let rec type_at_occurrence ctx ty (occ : Core_decision_tree.occurrence) =
   | OField { parent; name } -> (
       match type_at_occurrence ctx ty parent with
       | Some parent_ty -> (
-          match Nbe.force ctx.Ctx.metas parent_ty with
+          match Nbe.force_shape ctx.Ctx.metas parent_ty with
           | VStruct { entries; _ } ->
               visible_record_fields (struct_entry_fields entries)
               |> fun fields -> find_record_field fields name

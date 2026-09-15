@@ -74,18 +74,7 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       Prod cores
   | Let { name = { name; _ }; type_; value; body; recursive }, _ ->
       if recursive then begin
-        let rec_ty =
-          match type_ with
-          | Some ty_expr ->
-              let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx ty_expr in
-              ty_val
-          | None -> Ctx.raw_meta ctx
-        in
-        let ctx_with_self = Ctx.bind ctx name rec_ty in
-        let val_core = ops.check ctx_with_self value rec_ty in
-        let fix_core = Fix (name, Ctx.pure_call ctx rec_ty, val_core) in
-        let fix_val = Ctx.eval ctx fix_core in
-        let ty_term = Ctx.quote ctx rec_ty in
+        let ty_term, fix_core, rec_ty, fix_val = Elab_infer.elab_rec_let ops ctx ~name ~type_ value in
         let ctx' = Ctx.define ctx name rec_ty fix_val in
         let body_core = ops.check ctx' body expected in
         Let (ty_term, fix_core, body_core)

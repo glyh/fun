@@ -26,7 +26,7 @@ let value_tag (v : value) =
   | VFlex _ -> "VFlex"
   | VFix _ -> "VFix"
   | VGlued _ -> "VGlued"
-  | VSelfType _ -> "VSelfType"
+  | VRecOcc _ -> "VRecOcc"
   | VEffectRowTy -> "VEffectRowTy"
   | VEffectRow _ -> "VEffectRow"
   | VPatternSyn _ -> "VPatternSyn"
@@ -202,6 +202,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Lam (p, body) -> e "RawLam" [ w_param ns p; x body ]
   | Let { name; type_; value; body; recursive } ->
       e "RawLet" [ w_id ns name; w_option ns x type_; x value; x body; w_bool ns recursive ]
+  | LetRecGroup { members; body } ->
+      e "RawLetRecGroup" [ ids (List.map fst members); w_list ns x (List.map snd members); x body ]
   | Annotated { inner; typ } -> e "RawAnnotated" [ x inner; x typ ]
   | Prod xs -> e "RawProd" [ w_list ns x xs ]
   | ProdTy xs -> e "RawProdTy" [ w_list ns x xs ]
@@ -217,8 +219,6 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Open (m, body, label) -> e "RawOpen" [ x m; x body; w_string label ]
   | OpenChoice { name; opens; fallback } ->
       e "RawOpenChoice" [ w_id ns name; w_list ns w_string opens; w_option ns w_string fallback ]
-  | RecordTypeDef { name; params; fields; body } ->
-      e "RawRecordTypeDef" [ w_id ns name; ids params; w_fields ns fields; x body ]
   | TypeDef { name; params; ctors; body } ->
       e "RawTypeDef" [ w_type_decl ns { name; params; ctors }; x body ]
   | EffectDef { name; params; ops; body } ->
@@ -340,11 +340,11 @@ and w_decl ns (b : Syntax.struct_binding) =
   match b with
   | LetBinding { name; value; public; recursive } ->
       d "DeclLet" [ w_id ns name; w_expr ns value; w_bool ns public; w_bool ns recursive ]
+  | RecGroupBinding { members; public } ->
+      d "DeclRecGroup" [ ids (List.map fst members); w_list ns (w_expr ns) (List.map snd members); w_bool ns public ]
   | MethodBinding { name; params; body; public } ->
       d "DeclMethod" [ w_id ns name; w_list ns (w_param ns) params; w_expr ns body; w_bool ns public ]
   | TypeBinding { members; public } -> d "DeclType" [ w_list ns (w_type_decl ns) members; w_bool ns public ]
-  | RecordTypeBinding { name; params; fields; public } ->
-      d "DeclRecordType" [ w_id ns name; ids params; w_fields ns fields; w_bool ns public ]
   | EffectBinding { name; params; ops; public } ->
       d "DeclEffect" [ w_id ns name; ids params; w_list ns (w_effect_op ns) ops; w_bool ns public ]
   | TraitBinding { name; params; fields; public } ->
@@ -536,6 +536,12 @@ let rec u_expr ns (v : value) : Syntax.t option =
       | "RawAp", [ f; ex; a ] ->
           let* f = x f in let* ex = u_explicitness ns ex in let* a = x a in mk (Ap (f, ex, a))
       | "RawLam", [ p; body ] -> let* p = u_param ns p in let* body = x body in mk (Lam (p, body))
+      | "RawLetRecGroup", [ names; values; body ] ->
+          let* names = ids names in
+          let* values = u_list ns x values in
+          let* body = x body in
+          if List.length names <> List.length values then None
+          else mk (LetRecGroup { members = List.combine names values; body })
       | "RawLet", [ name; ty; value; body; recursive ] ->
           let* name = u_id ns name in
           let* type_ = u_option ns x ty in
@@ -568,12 +574,6 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* opens = u_list ns u_string opens in
           let* fallback = u_option ns u_string fallback in
           mk (OpenChoice { name; opens; fallback })
-      | "RawRecordTypeDef", [ name; params; fields; body ] ->
-          let* name = u_id ns name in
-          let* params = ids params in
-          let* fields = u_fields ns fields in
-          let* body = x body in
-          mk (RecordTypeDef { name; params; fields; body })
       | "RawTypeDef", [ decl; body ] ->
           let* { name; params; ctors } = u_type_decl ns decl in
           let* body = x body in
@@ -843,6 +843,12 @@ and u_decl ns v : Syntax.struct_binding option =
   | _ -> (
       let* name, args = payload ns.decl v in
       match name, args with
+      | "DeclRecGroup", [ names; values; public ] ->
+          let* names = u_list ns (u_id ns) names in
+          let* values = u_list ns (u_expr ns) values in
+          let* public = u_bool ns public in
+          if List.length names <> List.length values then None
+          else Some (Syntax.RecGroupBinding { members = List.combine names values; public })
       | "DeclLet", [ name; value; public; recursive ] ->
           let* name = u_id ns name in
           let* value = u_expr ns value in
@@ -859,12 +865,6 @@ and u_decl ns v : Syntax.struct_binding option =
           let* members = u_list ns (u_type_decl ns) members in
           let* public = u_bool ns public in
           Some (Syntax.TypeBinding { members; public })
-      | "DeclRecordType", [ name; params; fields; public ] ->
-          let* name = u_id ns name in
-          let* params = ids params in
-          let* fields = u_fields ns fields in
-          let* public = u_bool ns public in
-          Some (Syntax.RecordTypeBinding { name; params; fields; public })
       | "DeclEffect", [ name; params; ops; public ] ->
           let* name = u_id ns name in
           let* params = ids params in

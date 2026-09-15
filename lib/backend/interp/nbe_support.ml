@@ -95,7 +95,7 @@ let env_value_label (v : value) =
   | VEffect e -> "VEffect(" ^ e.name ^ ")"
   | VTrait t -> "VTrait(" ^ t.trait_name ^ ")"
   | VTraitDict _ -> "VTraitDict"
-  | VSelfType _ -> "VSelfType"
+  | VRecOcc _ -> "VRecOcc"
   | VRefTy _ -> "VRefTy"
   | VRef _ -> "VRef"
   | VCon { name; _ } -> "VCon(" ^ name ^ ")"

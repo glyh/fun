@@ -48,16 +48,12 @@ and effect_row = { effects : t list; tail : t option }
 
 and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }
+  | RecGroupBinding of { members : (id * t) list; public : bool }
+      (** [rec A = … and B = …]: every member sees every member. *)
   | MethodBinding of { name : id; params : param list; body : t; public : bool }
   | TypeBinding of { members : type_decl list; public : bool }
       (** [type A = … and B = …]: one binding per chain, its members mutually
           recursive; a single declaration is the one-member chain. *)
-  | RecordTypeBinding of {
-      name : id;
-      params : id list;
-      fields : (string * t) list;
-      public : bool;
-    }
   | EffectBinding of {
       name : id;
       params : id list;
@@ -184,6 +180,8 @@ and kind =
   | Ap of t * Explicitness.t * t
   | Lam of param * t
   | Let of { name : id; type_ : t option; value : t; body : t; recursive : bool }
+  | LetRecGroup of { members : (id * t) list; body : t }
+      (** A block's [rec A = … and B = …], scoped over [body]. *)
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
@@ -210,12 +208,6 @@ and kind =
           are the candidate opens' labels, innermost first; [fallback] is the
           resolved name of the binder they shadow, if any. With no opens and no
           binder it names only the base context. *)
-  | RecordTypeDef of {
-      name : id;
-      params : id list;
-      fields : (string * t) list;
-      body : t;
-    }
   | TypeDef of {
       name : id;
       params : id list;

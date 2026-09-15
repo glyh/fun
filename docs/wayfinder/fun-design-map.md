@@ -359,12 +359,14 @@ every defect below is an invariant with no name in the source.
   Nested patterns through recursive positions (broken for every recursive type,
   `List` included) now read a placeholder's constructors by nominal id.
 - [Mutually-recursive record type declarations](tickets/mutually-recursive-record-types.md)
-  — grilled 2026-09-15: identity at the knot (Go-style); a recursive record mints an id, `Self` carries it and unfolds on demand; same-shape recursive records are distinct. Implement with the two tickets below.
+  (closed & **implemented**) — identity at the knot (Go-style): a `rec` struct
+  binding mints an identity, its body sees a recursive occurrence that unfolds on
+  demand and compares by identity; same-shape recursive records are distinct.
+  `rec A = … and B = …` groups hold struct types.
 - [Recursive records cannot hold a record](tickets/recursive-records-cannot-hold-a-record.md)
-  — `Som(l)` in a recursive field fails; `Self` is never unfolded. Direction
-  depends on the knot decision.
+  (closed) — an occurrence unfolds where a shape is needed, so `Some(l1)` fits.
 - [Self type has no identity, so unrelated recursive records unify](tickets/self-type-has-no-identity.md)
-  — latent soundness hole; becomes live if the bug above is fixed alone.
+  (closed) — occurrences compare by identity.
 - [Mutual type chains in scoped do-heads](tickets/type-def-chains-in-scoped-do-heads.md)
   — deferred remainder of the nominal ticket: `and` chains rejected in scoped
   `do type … ; body` heads until expression-position group knots are designed.
@@ -549,8 +551,10 @@ What remains, in the recommended order:
   (closed) — a typed call's effects are read from the output it produced, and
   every effect read follows the elaboration it reads.
 - [Records are declared only by let bindings](tickets/records-only-let-bindings.md)
-  — `type X = struct { … }` deleted; a `rec` struct binding mints the recursive
-  record's identity; needs value-level `rec … and …`.
+  (closed & **implemented**) — `type X = struct { … }` deleted; a `rec` struct
+  binding mints the recursive record's identity; `rec … and …` groups exist for
+  struct types (the nominal `type … and …` knot is not moved yet: that is
+  adts-as-let-bindings).
 - [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
   — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` deleted (maybe kept only as sugar: bind + open the constructors).
   **Blocked on** nominal identity applicative by purity (E11).

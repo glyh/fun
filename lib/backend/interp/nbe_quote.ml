@@ -8,6 +8,17 @@ type ops = {
   apply : MetaContext.t -> value -> value -> value;
 }
 
+(* A recursive occurrence as its struct type: the finished value its identity
+   was recorded with, applied to its arguments. An occurrence whose binding has
+   not finished (inside its own body) stays as it is. *)
+let unfold_rec ops mc (v : value) : value =
+  match v with
+  | VRecOcc { id; args; _ } -> (
+      match Hashtbl.find_opt finished_records id with
+      | Some f -> List.fold_left (ops.apply mc) f args
+      | None -> v)
+  | _ -> v
+
 (* A constructor value quotes to the [Ctor] term that built it, carrying its
    nominal: evaluating it never looks the constructor up by name. *)
 let con_term (quote : value -> term) name spine nominal =
@@ -140,7 +151,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           trait_name = d.trait_name;
           args = List.map (quote ops mc depth) d.args;
           fields = List.map (fun (name, value) -> (name, quote ops mc depth value)) d.fields }
-  | VSelfType args -> SelfTypeRef (List.map (quote ops mc depth) args)
+  | VRecOcc r -> RecOcc { id = r.id; name = r.name; args = List.map (quote ops mc depth) r.args }
   | VRefTy a -> RefTy (quote ops mc depth a)
   | VStx (StxExpr stx) -> Stx stx
   | VStx _ -> Nbe_support.fail mc "cannot quote non-expression syntax object"
@@ -304,12 +315,18 @@ let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : 
       && List.for_all2
            (fun (n1, v1) (n2, v2) -> String.equal n1 n2 && conv ops mc depth v1 v2)
            d1.fields d2.fields
-  | VSelfType args1, VSelfType args2 ->
-      List.length args1 = List.length args2 && List.for_all2 (conv ops mc depth) args1 args2
+  (* Occurrences are equal by identity; an occurrence meets anything else as
+     its unfolding. *)
+  | VRecOcc r1, VRecOcc r2 ->
+      r1.id = r2.id && List.length r1.args = List.length r2.args && List.for_all2 (conv ops mc depth) r1.args r2.args
   | VCon c1, VCon c2 ->
       String.equal c1.name c2.name
       && List.length c1.spine = List.length c2.spine
       && List.for_all2 (conv ops mc depth) c1.spine c2.spine
+  | (VRecOcc _ as occ), other | other, (VRecOcc _ as occ) -> (
+      match unfold_rec ops mc occ with
+      | VRecOcc _ -> false
+      | unfolded -> conv ops mc depth unfolded other)
   | _ -> false
 
 and conv_spine ops (mc : MetaContext.t) (depth : lvl) (sp1 : spine) (sp2 : spine) : bool =

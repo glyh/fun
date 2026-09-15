@@ -3,11 +3,33 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after one-pass effects and the top-level unhandled-effect check, 2026-09-15.
+Last updated: after recursive records by identity, 2026-09-15.
 
 ---
 
 ## Completed
+
+### Recursive records by identity; records only as let bindings (2026-09-15)
+
+- A record type is a value: `P = struct { x : I64 }`, or with parameters
+  `Pair = fn[A : Type, B : Type] { struct { fst : A; snd : B } }`.
+  `type X = struct { … }` is a parse error naming these forms.
+- `rec Numbers = struct { head : I64; tail : Option(Numbers) }` (under any
+  parameters) mints a record identity. The body sees `Numbers` as a recursive
+  occurrence (`Core.RecOcc` / `VRecOcc`, replacing `SelfTypeRef` / `VSelfType`),
+  bound by a core `Let`; the finished value is recorded under the identity
+  (`Core.finish_record`). An occurrence unfolds on demand (`Nbe.force_shape` at
+  field access, record patterns and match domains); conversion and unification
+  compare two occurrences by identity and unfold one against anything else. Two
+  same-shape recursive records are distinct; plain records stay structural.
+- `rec A = struct { … } and B = struct { … }` is a recursive group
+  (`RecGroupBinding` / `LetRecGroup`, reflected `DeclRecGroup` /
+  `RawLetRecGroup`); one knot (`elab_rec_group`) serves a lone `rec` struct and a
+  group. A group holds struct types only.
+- `rewrite_record_self_refs` (matched by spelling) is deleted. `Self` means only
+  the struct being defined. A struct's fields are checked for duplicates.
+- Limit: the identity is minted once at elaboration, so a `rec` struct under a
+  binder shares one identity across evaluations until E11 lands.
 
 ### One-pass effects; unhandled effects at the top are errors (2026-09-15)
 

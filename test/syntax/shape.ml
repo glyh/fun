@@ -20,14 +20,9 @@ and effect_row = { effects : t list; tail : t option }
 
 and struct_binding =
   | LetBinding of { name : string; value : t; public : bool; recursive : bool }
+  | RecGroupBinding of { members : (string * t) list; public : bool }
   | MethodBinding of { name : string; params : param list; body : t; public : bool }
   | TypeBinding of { members : type_decl list; public : bool }
-  | RecordTypeBinding of {
-      name : string;
-      params : string list;
-      fields : (string * t) list;
-      public : bool;
-    }
   | EffectBinding of {
       name : string;
       params : string list;
@@ -67,6 +62,7 @@ and t =
   | Ap of t * Explicitness.t * t
   | Lam of param * t
   | Let of { name : string; type_ : t option; value : t; body : t; recursive : bool }
+  | LetRecGroup of { members : (string * t) list; body : t }
   | Annotated of { inner : t; typ : t }
   | Prod of t list
   | ProdTy of t list
@@ -80,12 +76,6 @@ and t =
   | Import of string
   | Open of t * t * string
   | OpenChoice of { name : string; opens : string list; fallback : string option }
-  | RecordTypeDef of {
-      name : string;
-      params : string list;
-      fields : (string * t) list;
-      body : t;
-    }
   | TypeDef of {
       name : string;
       params : string list;
@@ -202,6 +192,8 @@ and lower_expr (stx : Syntax.t) : t =
   | Syntax.SelfType -> SelfType
   | Syntax.Ap (f, e, a) -> Ap (lower_expr f, e, lower_expr a)
   | Syntax.Lam (p, body) -> Lam (lower_param p, lower_expr body)
+  | Syntax.LetRecGroup { members; body } ->
+    LetRecGroup { members = List.map (fun (n, v) -> (lower_id n, lower_expr v)) members; body = lower_expr body }
   | Syntax.Let { name; type_; value; body; recursive } ->
     Let { name = lower_id name;
                   type_ = Option.map lower_expr type_;
@@ -228,8 +220,6 @@ and lower_expr (stx : Syntax.t) : t =
   | Syntax.Import { path; _ } -> Import path
   | Syntax.Open (m, body, label) -> Open (lower_expr m, lower_expr body, label)
   | Syntax.OpenChoice { name; opens; fallback } -> OpenChoice { name = name.name; opens; fallback }
-  | Syntax.RecordTypeDef { name; params; fields; body } ->
-    RecordTypeDef { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; body = lower_expr body }
   | Syntax.TypeDef { name; params; ctors; body } ->
     TypeDef { name = lower_id name; params = List.map lower_id params; ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors; body = lower_expr body }
   | Syntax.EffectDef { name; params; ops; body } ->
@@ -263,6 +253,8 @@ and lower_expr (stx : Syntax.t) : t =
     SyntaxOperatorUse { operator = lower_id operator; fixity; operands = List.map lower_expr operands; declaration_span; use_span }
 
 and lower_struct_binding = function
+  | Syntax.RecGroupBinding { members; public } ->
+    RecGroupBinding { members = List.map (fun (n, v) -> (lower_id n, lower_expr v)) members; public }
   | Syntax.LetBinding { name; value; public; recursive } ->
     LetBinding { name = lower_id name; value = lower_expr value; public; recursive }
   | Syntax.MethodBinding { name; params; body; public } ->
@@ -276,8 +268,6 @@ and lower_struct_binding = function
                 ctors = List.map (fun (n, ps) -> (lower_id n, List.map lower_expr ps)) ctors })
             members;
         public }
-  | Syntax.RecordTypeBinding { name; params; fields; public } ->
-    RecordTypeBinding { name = lower_id name; params = List.map lower_id params; fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.EffectBinding { name; params; ops; public } ->
     EffectBinding { name = lower_id name; params = List.map lower_id params; ops = List.map lower_effect_op ops; public }
   | Syntax.TraitBinding { name; params; fields; public } ->

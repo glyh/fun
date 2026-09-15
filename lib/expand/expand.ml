@@ -105,6 +105,8 @@ and go_kind m (k : kind) : kind =
   | Lam (p, body) -> Lam (map_param m p, go body)
   | Let { name; type_; value; body; recursive } ->
     Let { name = on_id name; type_ = Option.map go type_; value = go value; body = go body; recursive }
+  | LetRecGroup { members; body } ->
+    LetRecGroup { members = List.map (fun (n, v) -> (on_id n, go v)) members; body = go body }
   | Annotated { inner; typ } -> Annotated { inner = go inner; typ = go typ }
   | Prod xs -> Prod (List.map go xs)
   | ProdTy xs -> ProdTy (List.map go xs)
@@ -120,8 +122,6 @@ and go_kind m (k : kind) : kind =
   | Import { path; scope } -> Import { path; scope = (on_id (Syntax.fresh_id ~scope "")).scope }
   | Open (md, body, label) -> Open (go md, go body, label)
   | OpenChoice c -> OpenChoice { c with name = on_id c.name }
-  | RecordTypeDef { name; params; fields; body } ->
-    RecordTypeDef { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; body = go body }
   | TypeDef { name; params; ctors; body } ->
     TypeDef { name = on_id name; params = List.map on_id params; ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) ctors; body = go body }
   | EffectDef { name; params; ops; body } ->
@@ -149,6 +149,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
   m.binding
     (match binding with
      | LetBinding { name; value; public; recursive } -> LetBinding { name = on_id name; value = go value; public; recursive }
+     | RecGroupBinding { members; public } -> RecGroupBinding { members = List.map (fun (n, v) -> (on_id n, go v)) members; public }
      | MethodBinding { name; params; body; public } ->
        MethodBinding { name = on_id name; params = List.map (map_param m) params; body = go body; public }
      | TypeBinding { members; public } ->
@@ -156,8 +157,6 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
                        { name = on_id d.name; params = List.map on_id d.params;
                          ctors = List.map (fun (n, ps) -> (on_id n, List.map go ps)) d.ctors }) members;
                      public }
-     | RecordTypeBinding { name; params; fields; public } ->
-       RecordTypeBinding { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
      | EffectBinding { name; params; ops; public } ->
        EffectBinding { name = on_id name; params = List.map on_id params;
                        ops = List.map (fun op -> { op with input = go op.input; output = go op.output }) ops; public }
@@ -209,10 +208,10 @@ let map_pat_ids on_id pat = go_pat (mapper on_id) pat
 let map_binders (f : Syntax.id -> Syntax.id) (binding : struct_binding) : struct_binding =
   match binding with
   | LetBinding b -> LetBinding { b with name = f b.name }
+  | RecGroupBinding { members; public } -> RecGroupBinding { members = List.map (fun (n, v) -> (f n, v)) members; public }
   | MethodBinding b -> MethodBinding { b with name = f b.name }
   | TypeBinding { members; public } ->
     TypeBinding { members = List.map (fun (d : type_decl) -> { d with name = f d.name; ctors = List.map (fun (n, ps) -> (f n, ps)) d.ctors }) members; public }
-  | RecordTypeBinding b -> RecordTypeBinding { b with name = f b.name }
   | EffectBinding b -> EffectBinding { b with name = f b.name }
   | TraitBinding b -> TraitBinding { b with name = f b.name }
   | ImplBinding b -> ImplBinding { b with name = Option.map f b.name }
@@ -531,10 +530,10 @@ let decl_over (binding : struct_binding) (body : t) : t =
   let over kind = { kind; span = body.span } in
   match binding with
   | LetBinding { name; value; recursive; public = false } -> over (Let { name; type_ = None; value; body; recursive })
+  | RecGroupBinding { members; public = false } -> over (LetRecGroup { members; body })
   | SyntaxBinding { name; role; public = false } -> over (SyntaxDef { name; role; body })
   | MacroBinding { name; value; kind; output; public = false } -> over (MacroDef { name; value; body; kind; output })
   | TypeBinding { members = [ { name; params; ctors } ]; public = false } -> over (TypeDef { name; params; ctors; body })
-  | RecordTypeBinding { name; params; fields; public = false } -> over (RecordTypeDef { name; params; fields; body })
   | EffectBinding { name; params; ops; public = false } -> over (EffectDef { name; params; ops; body })
   | TraitBinding { name; params; fields; public = false } -> over (TraitDef { name; params; fields; body })
   | ImplBinding { name; trait; args; fields; public = false } -> over (ImplDef { name; trait; args; fields; body })
@@ -615,6 +614,17 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let body = expand ctx (add_scope scope body) in
     let param = { param with name = bind_id scope resolved_name param.name; type_ = Option.map (expand ctx) param.type_ } in
     { stx with kind = Lam (param, body) }
+  | LetRecGroup { members; body } ->
+    let bound =
+      List.map
+        (fun ((n : Syntax.id), _) -> Expand_ctx.extend_at_fresh ctx ~span:n.span ~name:(id_name n) ~base_scope:n.scope ())
+        members
+    in
+    let scopes = List.map fst bound in
+    let members =
+      List.map2 (fun (n, v) (scope, resolved_name) -> (bind_id scope resolved_name n, expand ctx (add_scopes scopes v))) members bound
+    in
+    { stx with kind = LetRecGroup { members; body = expand ctx (add_scopes scopes body) } }
   | Let { name; type_; value; body; recursive } ->
     let binding_name = id_name name in
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:binding_name ~base_scope:name.scope () in
@@ -701,10 +711,6 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     import_roles ctx ~base_scope:(member_scope m) ~scope:open_scope m';
     let scopes = open_scope :: open_unit_macro_scopes ctx m in
     { stx with kind = Open (m', expand ctx (add_scopes scopes body), label) }
-  | RecordTypeDef { name; params; fields; body } ->
-    let scope, name = bind_declaration ctx name in
-    let params, param_scopes = expand_id_params ctx [] params in
-    { stx with kind = RecordTypeDef { name; params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; body = expand ctx (add_scope scope body) } }
   | TypeDef { name; params; ctors; body } ->
     let scope, name = bind_declaration ctx name in
     let params, param_scopes = expand_id_params ctx [] params in
@@ -977,6 +983,11 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
    | MacroBinding { public = true; _ } when in_struct -> Enforest_util.error "pub macro is not supported inside structs"
    | _ -> ());
   match binding with
+  | RecGroupBinding { members; public } ->
+    let bound = List.map (fun (n, _) -> bind_declaration ctx n) members in
+    let scopes = List.map fst bound in
+    let members = List.map2 (fun (_, v) (_, name) -> (name, expand ctx (add_scopes scopes v))) members bound in
+    ([RecGroupBinding { members; public }], [ scopes ])
   | LetBinding { name; value; public; recursive } ->
     let written = name in
     let scope, name = bind_declaration ctx name in
@@ -1027,12 +1038,6 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
            members member_scopes)
     in
     ([TypeBinding { members; public }], [member_scopes @ List.concat ctor_scopes])
-  | RecordTypeBinding { name; params; fields; public } ->
-    let scope, name = bind_declaration ctx name in
-    let params, param_scopes = expand_id_params ctx [] params in
-    ([RecordTypeBinding { name;
-                          params; fields = List.map (fun (n, e) -> (n, expand ctx (add_scopes param_scopes e))) fields; public }],
-     [[ scope ]])
   | EffectBinding { name; params; ops; public } ->
     let scope, name = bind_declaration ctx name in
     let params, param_scopes = expand_id_params ctx [] params in

@@ -759,17 +759,17 @@ let struct_type_classify_source call =
 
 let test_eval_type_case_struct_field_i64 () =
   check_i64 "type-case struct field I64" 1L
-    (struct_type_classify_source "type Point = struct {x: I64; y: Bool}; classify(Point)")
+    (struct_type_classify_source "Point = struct {x: I64; y: Bool}; classify(Point)")
     ()
 
 let test_eval_type_case_struct_field_bool () =
   check_i64 "type-case struct field Bool" 2L
-    (struct_type_classify_source "type Point = struct {x: Bool}; classify(Point)")
+    (struct_type_classify_source "Point = struct {x: Bool}; classify(Point)")
     ()
 
 let test_eval_type_case_struct_field_binder () =
   check_i64 "type-case struct field binder" 3L
-    (struct_type_classify_source "type Point = struct {y: String; z: I64}; classify(Point)")
+    (struct_type_classify_source "Point = struct {y: String; z: I64}; classify(Point)")
     ()
 
 let test_eval_type_case_struct_field_fallback () =
@@ -777,7 +777,7 @@ let test_eval_type_case_struct_field_fallback () =
 
 let test_eval_type_case_struct_closed_rejects_extra () =
   check_i64 "type-case struct closed rejects extra" 2L
-    "{ type Point = struct {x: I64; y: Bool};
+    "{ Point = struct {x: I64; y: Bool};
      match (Point) { struct { x: I64 } => 1,
      struct { x: I64; _ } => 2,
      _ => 3
@@ -1415,7 +1415,7 @@ let test_round_trip_is_identity () =
   let program =
     Enforest.parse_module
       {|pub type A = MkA(B) | NoA and B = MkB(A) | NoB;
-pub type P = struct {x: I64; y: A};
+pub P = struct {x: I64; y: A};
 pub effect Ask = sig { ask : Unit -> I64 };
 pub trait Show(T) = sig { show : T -> String };
 pub impl Show(I64) = module { fn show(x) { "n" } };
@@ -3585,17 +3585,17 @@ let () =
                 "{ Pair = fn[A : Type, B : Type] { struct { fst: A; snd: B; } }; (Pair[I64, Bool]{fst = 1; snd = True}).snd }");
           Alcotest.test_case "record type declaration" `Quick
             (check_i64 "record type declaration" 2L
-               "{ type Point = struct {x: I64; y: I64}; (Point{x = 1; y = 2}).y }");
+               "{ Point = struct {x: I64; y: I64}; (Point{x = 1; y = 2}).y }");
           Alcotest.test_case "record construction field order" `Quick
             (check_i64 "record construction field order" 30L
-               "{ type Point = struct {x: I64; y: I64}; \
+               "{ Point = struct {x: I64; y: I64}; \
                 p = Point{y = 20; x = 10}; p.x + p.y }");
           Alcotest.test_case "parameterized record type declaration" `Quick
             (check_bool "parameterized record type declaration" true
-               "{ type Pair A B = struct {fst: A; snd: B}; (Pair{fst = 1; snd = True}).snd }");
+               "{ Pair = fn[A : Type, B : Type] { struct {fst: A; snd: B} }; (Pair{fst = 1; snd = True}).snd }");
            Alcotest.test_case "polymorphic record multiple instantiations" `Quick
              (check_i64 "polymorphic record multiple instantiations" 13L
-                "{ type Pair A B = struct {fst: A; snd: B}; \
+                "{ Pair = fn[A : Type, B : Type] { struct {fst: A; snd: B} }; \
                  p1 = Pair{fst = 10; snd = 20}; \
                  p2 = Pair{fst = True; snd = 3}; \
                  if (p2.fst) { p1.fst + p2.snd } else { 0 } }");
@@ -3634,11 +3634,11 @@ let () =
                 match (Point{x = 1; y = 2}) { Point {y; x} => x + y } }");
           Alcotest.test_case "record pattern renamed field" `Quick
             (check_i64 "record pattern renamed field" 30L
-               "{ type Point = struct {x: I64; y: I64}; \
+               "{ Point = struct {x: I64; y: I64}; \
                 match (Point{x = 10; y = 20}) { Point {x = wow; y} => wow + y } }");
           Alcotest.test_case "record pattern partial" `Quick
             (check_i64 "record pattern partial" 3L
-               "{ type Point = struct {x: I64; y: I64}; \
+               "{ Point = struct {x: I64; y: I64}; \
                 match (Point{x = 3; y = 4}) { Point {x; _} => x } }");
           Alcotest.test_case "record pattern literal dispatch" `Quick
             (check_i64 "record pattern literal dispatch" 4L
@@ -3728,15 +3728,15 @@ let () =
                  "{ C = import \"color\"; open C; match (Red) { Red => 1, Green => 2 } }");
             Alcotest.test_case "imported record field access" `Quick
               (check_import_i64 "imported record field access"
-                 [ ("shapes", "pub type Point = struct {x: I64; y: I64}") ] 1L
+                 [ ("shapes", "pub Point = struct {x: I64; y: I64}") ] 1L
                  "{ S = import \"shapes\"; (S.Point{x = 1; y = 2}).x }");
             Alcotest.test_case "imported record pattern" `Quick
               (check_import_i64 "imported record pattern"
-                 [ ("shapes", "pub type Point = struct {x: I64; y: I64}") ] 3L
+                 [ ("shapes", "pub Point = struct {x: I64; y: I64}") ] 3L
                  "{ S = import \"shapes\"; match (S.Point{x = 1; y = 2}) { S.Point {x; y} => x + y } }");
             Alcotest.test_case "imported record pattern alias" `Quick
               (check_import_i64 "imported record pattern alias"
-                 [ ("shapes", "pub type Point = struct {x: I64; y: I64}") ] 3L
+                 [ ("shapes", "pub Point = struct {x: I64; y: I64}") ] 3L
                  "{ S = import \"shapes\"; Alias = S; match (S.Point{x = 1; y = 2}) { Alias.Point {x; y} => x + y } }");
             Alcotest.test_case "imported nested constructor pattern" `Quick
               (check_import_i64 "imported nested constructor pattern"

@@ -153,7 +153,8 @@ equal itself) and by the `SymbolTable` abstraction case. Today a nominal ADT
 declared under a binder does not evaluate at all (`mk(I64)(1)` → `unbound
 nominal type: T`; a structural record under a binder does evaluate);
 `nominal_id` is minted once per declaration at elaboration (`NominalId.fresh`), so neither
-applicative nor generative semantics is implemented. Distance:
+applicative nor generative semantics is implemented. A recursive record's identity (`fresh_record_id`, minted by its
+`rec` binding) has the same limit. Distance:
 [nominal-identity-applicative-by-purity](../tickets/nominal-identity-applicative-by-purity.md),
 blocked on E10. [adts-as-let-bindings](../tickets/adts-as-let-bindings.md) is
 blocked on this.

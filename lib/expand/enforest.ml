@@ -829,7 +829,6 @@ and parse_type_binding env public stmt =
               (fun segment ->
                 match parse_type_decl env public (type_kw :: segment) with
                 | Some (Syntax.TypeBinding { members = [ member ]; _ }) -> member
-                | Some (Syntax.RecordTypeBinding _) -> error "record types cannot be part of an and chain"
                 | _ -> error "expected type declaration in and chain")
               segments
           in
@@ -847,35 +846,10 @@ and parse_type_decl env public stmt =
     :: rest -> (
       match split_at_token Equals rest with
       | Some
-          ( param_terms,
+          ( _,
             _,
-            [ { datum = Token { kind = KwStruct; _ }; _ }; { datum = Group (Raw_syntax.Brace, field_terms, _); _ } ] ) ->
-          let params =
-            drop_separators param_terms
-            |> List.concat_map (function
-              | ({ datum = Token { kind = Ident p; _ }; _ } as term) -> [ id_of term p ]
-              | { datum = Group (Paren, items, _); _ } ->
-                  split_commas (drop_separators items)
-                  |> List.map (fun ts ->
-                      match drop_separators ts with
-                      | [ ({ datum = Token { kind = Ident p; _ }; _ } as term) ] ->
-                          id_of term p
-                      | _ -> error "expected type parameter in parens")
-              | _ -> error "expected type parameter")
-          in
-          let fields =
-            split_statements field_terms
-            |> List.map (fun field ->
-                match drop_separators field with
-                | { datum = Token { kind = Ident fname; _ }; _ }
-                  :: colon :: typ_terms
-                  when token_kind Colon colon ->
-                    (fname, parse_type_terms env typ_terms)
-                | _ -> error "expected record type field")
-          in
-          Some
-            (Syntax.RecordTypeBinding
-               { name = id_of name_term name; params; fields; public })
+            [ { datum = Token { kind = KwStruct; _ }; _ }; { datum = Group (Raw_syntax.Brace, _, _); _ } ] ) ->
+          error "a record type is a value: write X = struct { field : Type }, or rec X = struct { … } when it refers to itself"
       | Some (_, _, [ { datum = Group (Raw_syntax.Brace, _, _); _ } ]) ->
           error "record types are written struct { field: Type }"
       | Some (param_terms, _, ctor_terms) ->
@@ -1316,8 +1290,6 @@ and scoped_binding_to_expr env span stmt body =
       stx ~span (Syntax.TypeDef { name; params; ctors; body })
   | Some (Syntax.TypeBinding _) ->
       error "and chains are not supported in a scoped do head; declare the chain as a do-body statement"
-  | Some (Syntax.RecordTypeBinding { name; params; fields; _ }) ->
-      stx ~span (Syntax.RecordTypeDef { name; params; fields; body })
   | Some _ -> error "unexpected non-type binding"
   | None -> (
       match parse_effect_binding env false stmt with
@@ -1367,6 +1339,9 @@ and parse_do_body_terms env span body_terms =
 
 (* One statement of a block, as the wrapper that scopes it over the rest. *)
 and do_statement env span stmt =
+  match parse_rec_group env stmt with
+  | Some members -> fun acc -> stx ~span (Syntax.LetRecGroup { members; body = acc })
+  | None ->
                 match parse_operator_decl env stmt with
                 | Some { role_name = name; role; macro_value } ->
                     fun acc ->
@@ -1496,7 +1471,35 @@ and parse_macro_call_binding env stmt =
          Syntax.MacroCallBinding { f; args }))
     env stmt
 
+(* [rec A = … and B = …]: a recursive group, its members in order. A lone [rec]
+   binding is not a group. [and] is contextual, as in a type chain. *)
+and parse_rec_group env stmt =
+  match drop_separators stmt with
+  | { datum = Token { kind = KwRec; _ }; _ } :: rest -> (
+      match split_type_chain rest with
+      | [] | [ _ ] -> None
+      | segments ->
+          let members =
+            List.map
+              (fun segment ->
+                match parse_value_decl_after_prefix env ~recursive:true segment with
+                | Some { decl_name; decl_type = Some typ; decl_value; _ } ->
+                    (decl_name, stx ~span:(syntax_span segment) (Syntax.Annotated { inner = decl_value; typ }))
+                | Some { decl_name; decl_type = None; decl_value; _ } -> (decl_name, decl_value)
+                | None -> error "expected name = value in a rec … and … group")
+              segments
+          in
+          let names = List.map (fun ((n : Syntax.id), _) -> n.name) members in
+          (match List.find_opt (fun n -> List.length (List.filter (String.equal n) names) > 1) names with
+           | Some dup -> error ("duplicate name in a rec … and … group: " ^ dup)
+           | None -> ());
+          Some members)
+  | _ -> None
+
 and parse_value_binding env public stmt =
+  match parse_rec_group env stmt with
+  | Some members -> Some (Syntax.RecGroupBinding { members; public })
+  | None ->
   match parse_value_decl_statement env stmt with
   | Some { decl_name = name; decl_type; decl_value; decl_recursive } ->
       let value =

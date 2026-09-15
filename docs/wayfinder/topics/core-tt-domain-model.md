@@ -421,6 +421,10 @@ program in the suite does. A port would have copied it silently.
   hygiene one and has no synonym.
 - `Binding` for a module member, since that is what a user writes. Context slots
   are `entry`; the expander's hygiene records are not bindings at all.
+- `RecursiveOccurrence` for a `rec` struct type's reference to itself, compared by
+  the identity its binding mints and unfolded on demand. Never "self type": that
+  term means other things in Cedille, Scala and OOP literature, and `Self` names
+  the struct being defined.
 - `Slot` for what a binding contributes, as a list produced once and consumed by
   both sides, with width as its length. Impls and traits join it (2026-09-14).
 - `BaseAnchored` for the transport condition — every free index pointing into the

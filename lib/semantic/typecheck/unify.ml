@@ -191,7 +191,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             trait_name = dict.trait_name;
             args = List.map (go d) dict.args;
             fields = List.map (fun (name, value) -> (name, go d value)) dict.fields }
-    | VSelfType args -> SelfTypeRef (List.map (go d) args)
+    | VRecOcc r -> RecOcc { id = r.id; name = r.name; args = List.map (go d) r.args }
     | VCon { name; spine; nominal } -> Nbe_quote.con_term (go d) name spine nominal
     | VFix { name; pure; body = clo } ->
         let var = VRigid { lvl = d; spine = [] } in
@@ -299,7 +299,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VTraitDict d ->
             List.iter occurs_check d.args;
             List.iter (fun (_, value) -> occurs_check value) d.fields
-        | VSelfType args -> List.iter occurs_check args
+        | VRecOcc r -> List.iter occurs_check r.args
         | VCon { spine; nominal; _ } -> List.iter occurs_check spine; occurs_check nominal
         | VNeutral { neutral = { frames; _ }; _ } ->
             List.iter (fun f -> match f with
@@ -353,7 +353,7 @@ let value_form = function
   | VStruct _ -> "struct type"
   | VTrait t -> "trait " ^ t.trait_name
   | VTraitDict d -> "trait dictionary " ^ d.trait_name
-  | VSelfType _ -> "Self"
+  | VRecOcc r -> "recursive occurrence of " ^ r.name
   | VRecord _ -> "record value"
   | VNominal n -> "nominal type " ^ n.name
   | VEffect e -> "effect " ^ e.name
@@ -481,9 +481,12 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
           if not (String.equal n1 n2) then raise (UnifyError StructFieldMismatch);
           unify mc env depth v1 v2)
         d1.fields d2.fields
-  | VSelfType args1, VSelfType args2 ->
-      if List.length args1 <> List.length args2 then raise (UnifyError TupleLengthMismatch);
-      List.iter2 (unify mc env depth) args1 args2
+  (* Occurrences are equal by identity; an occurrence meets anything else as
+     its unfolding. *)
+  | VRecOcc r1, VRecOcc r2 ->
+      if r1.id <> r2.id then raise (UnifyError (CannotUnify ("recursive occurrence " ^ r1.name ^ " vs recursive occurrence " ^ r2.name)));
+      if List.length r1.args <> List.length r2.args then raise (UnifyError TupleLengthMismatch);
+      List.iter2 (unify mc env depth) r1.args r2.args
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } when l1 = l2 ->
       unify_spine mc env depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } when id1 = id2 ->
@@ -499,6 +502,10 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       unify mc env (depth + 1)
         (Nbe.closure_apply mc clo1 var)
         (Nbe.closure_apply mc clo2 var)
+  | (VRecOcc _ as occ), other | other, (VRecOcc _ as occ) -> (
+      match Nbe.force_shape mc occ with
+      | VRecOcc _ -> raise (UnifyError (CannotUnify (value_form v1 ^ " vs " ^ value_form v2)))
+      | unfolded -> unify mc env depth unfolded other)
   | _ ->
       raise
         (UnifyError (CannotUnify (value_form v1 ^ " vs " ^ value_form v2)))
