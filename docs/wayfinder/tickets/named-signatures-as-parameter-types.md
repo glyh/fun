@@ -61,3 +61,16 @@ signature value, distinct from a module. A module whose members are all types is
   `NotAModule`: the impl has no name to project. Decide how an anonymous impl in
   a signature is reached (e.g. by trait resolution against the parameter, not by
   projection) before implementing.
+
+## Grilled (2026-09-15): dependent signatures supported
+
+A signature is a telescope: a later member's type may mention an earlier member.
+For a parameter `s : Stack`, member types are read through the parameter
+(`s.empty : s.T`); what `T` is becomes known only when a module is passed.
+
+```fun
+Stack = sig { T : Type; empty : T; size : T -> I64 };
+IntStack = module { pub T = List(I64); pub empty = Nil; pub size = length };
+count = fn(s : Stack) { s.size(s.empty) }   // s.empty : s.T
+count(IntStack)
+```
