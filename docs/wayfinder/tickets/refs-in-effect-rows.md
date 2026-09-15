@@ -88,3 +88,16 @@ run this during type checking", but it is no longer where purity is decided.
 - **One surface effect, `Mutate(r)`,** covers allocation, reading and writing a
   ref's heap. A later split (`Mutate(r)` = `{Read(r), Write(r)}`) stays
   compatible; add it only when concurrency or `const`-style contracts need it.
+
+## Grilled (2026-09-15), part 3: top-level refs, discharge, heap grouping
+
+- **Top-level refs are allowed.** The program entry is elaborated inside a
+  runtime-provided heap handler (the `runtime_handled_effects` seam of the
+  top-level unhandled-effect check), so `Counter = module { pub count = ref(0) }`
+  works; functions touching `count` still declare `Mutate(count)` (or `can _`).
+- **Discharge site:** a ref's heap effect is dropped at any `let`, function or
+  block whose result type and captured variables do not mention that heap.
+- **Heap grouping:** every `ref(…)` starts its own hidden heap; heaps merge only
+  when unification forces it (e.g. two refs stored in one list).
+- Surface `Ref(A)` keeps one argument, so `Ref(I64)` and existing annotations
+  stay valid.
