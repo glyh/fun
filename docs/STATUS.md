@@ -41,11 +41,19 @@ Last updated: after a bare arrow is pure, 2026-09-15.
 - `rec A = struct { … } and B = struct { … }` is a recursive group
   (`RecGroupBinding` / `LetRecGroup`, reflected `DeclRecGroup` /
   `RawLetRecGroup`); one knot (`elab_rec_group`) serves a lone `rec` struct and a
-  group. A group holds struct types only.
+  group. A group holds struct types or values, not both.
 - `rewrite_record_self_refs` (matched by spelling) is deleted. `Self` means only
   the struct being defined. A struct's fields are checked for duplicates.
 - Limit: the identity is minted once at elaboration, so a `rec` struct under a
   binder shares one identity across evaluations until E11 lands.
+- `rec even : I64 -> Bool = fn(n) { … odd(n - 1) … } and odd : … = …` is a group of
+  mutually recursive values (2026-09-15). A fixpoint is a member of a recursive
+  group: `Core.Fix { members; index }`, `VFix` over a `fix_closure`; a single
+  `rec` is a group of one. Every body is checked once seeing every member at its
+  annotated type (or a meta); each member keeps its own name and purity, so
+  check-time unfolding under the budget and the pure-call lazy delta work per
+  member. A module's group bindings are emitted in member order (the group
+  used to come out reversed).
 
 ### One-pass effects; unhandled effects at the top are errors (2026-09-15)
 
