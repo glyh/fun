@@ -477,8 +477,7 @@ What remains, in the recommended order:
 ### Found by the budget and path-heads run (2026-09-14)
 
 - [Recursive definitions stuck on open arguments](tickets/recursive-definitions-stuck-on-open-arguments.md)
-  — `double(n)` no longer converts with `n + n`; is that the intended reading of
-  "only closed terms evaluate"? Grill.
+  — grilled 2026-09-15: recursive calls unfold on open arguments under the checker budget; exhaustion is an error (`HFix` stuck rule goes).
 - [Pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md)
   — any function reducing to a nominal works as a pattern-head type. Grill.
 - [Elaborator matches `EffectRow` and `stx_` by spelling](tickets/elaborator-matches-names-by-spelling.md)

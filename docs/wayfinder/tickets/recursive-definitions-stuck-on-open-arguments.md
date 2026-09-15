@@ -2,7 +2,7 @@
 title: Recursive definitions no longer unfold on open arguments at check time
 parent: ../fun-design-map.md
 labels:
-  - wayfinder:grilling
+  - wayfinder:task
 status: open
 assignee:
 blocked_by:
@@ -39,3 +39,25 @@ Is this the intended reading of the decision? Alternatives:
 ## Found by
 
 The checker-budget implementation (2026-09-14).
+
+## Grilled (2026-09-15): unfold under the budget
+
+**A recursive definition unfolds on open arguments like any other call, under
+the checker's evaluation budget; exhausting the budget is an error.** Same
+budget and same error as the rest of type checking (and macro expansion, M5).
+
+```fun
+rec double = fn(n) { n + n };
+f : (n : I64) -> Vec(double(n)) -> Vec(n + n)   // ok: double(n) unfolds to n + n
+g : (n : I64) -> Vec(fact(n)) -> I64            // error: evaluation budget exceeded, calling fact
+```
+
+- No "stuck on recursion" rule, so no rule for what counts as recursion in a
+  mutual `rec … and …` group.
+- A type mentioning a recursive call on an open argument that does not reduce
+  (`fact(n)`, `loop(n)`) is a budget error, not a stuck term. This reverses the
+  closed [checker-evaluation-budget](checker-evaluation-budget.md) ticket's
+  `fn(n : I64, y : loop(n))` example (stuck, via `HFix`).
+- Considered and rejected: unfold once (needs the mutual-recursion rule);
+  budget exhaustion leaves the call stuck (type equality would depend on the
+  budget size).
