@@ -178,7 +178,10 @@ let rec w_token_tree ns (t : Token_tree.t) =
 
 let w_tokens ns ts = w_list ns (w_token_tree ns) ts
 
-let w_assoc ns = function Syntax.LeftAssoc -> con ns.assoc "Left" [] | RightAssoc -> con ns.assoc "Right" []
+let w_assoc ns = function
+  | Syntax.LeftAssoc -> con ns.assoc "Left" []
+  | RightAssoc -> con ns.assoc "Right" []
+  | NonAssoc -> con ns.assoc "NonAssoc" []
 
 let w_hole_kind ns (k : Syntax.hole_kind) =
   con ns.hole_kind
@@ -500,6 +503,7 @@ let u_assoc ns v =
   match payload ns.assoc v with
   | Some ("Left", []) -> Some Syntax.LeftAssoc
   | Some ("Right", []) -> Some Syntax.RightAssoc
+  | Some ("NonAssoc", []) -> Some Syntax.NonAssoc
   | _ -> None
 
 let u_hole_kind ns v : Syntax.hole_kind option =

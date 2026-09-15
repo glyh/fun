@@ -2160,7 +2160,10 @@ let test_order_groups () =
   check_i64_macro "a group related to the prelude's" 14L
     "{ order tight : stronger_than(multiplicative); infix (<~>) tight ($a, $b) { $a + $b }; 2 * 3 <~> 4 }" ();
   check_i64_macro "an ungrouped operator is weaker than a grouped one" 9L
-    "{ infix (<>) ($a, $b) { $a * $b }; 1 + 2 <> 3 }" ()
+    "{ infix (<>) ($a, $b) { $a * $b }; 1 + 2 <> 3 }" ();
+  check_i64_macro "a non-associative group's members apply once" 3L
+    "{ order once : assoc(none); infix (<+>) once ($a, $b) { $a + $b }; 1 <+> 2 }" ();
+  check_i64_macro "<- is weaker than arithmetic" 3L "{ r = ref(0); _ = r <- 1 + 2; deref(r) }" ()
 
 let test_order_group_errors () =
   let rejects label fragment source =
@@ -2176,7 +2179,11 @@ let test_order_group_errors () =
   rejects "a cyclic order" "cyclic"
     "{ order a; order b : stronger_than(a); order c : stronger_than(b) weaker_than(a); 1 }";
   rejects "numeric precedence" "numeric precedence was removed" "{ infix (<+>) 10 ($x, $y) { $x }; 1 }";
-  rejects "an unknown group" "unknown order group: nowhere" "{ infix (<+>) nowhere ($x, $y) { $x }; 1 }"
+  rejects "an unknown group" "unknown order group: nowhere" "{ infix (<+>) nowhere ($x, $y) { $x }; 1 }";
+  rejects "a non-associative group does not chain" "do not chain"
+    "{ order once : assoc(none); infix (<+>) once ($a, $b) { $a + $b }; 1 <+> 2 <+> 3 }";
+  rejects "<- does not chain" "`<-` and `<-` do not chain"
+    "{ a = ref(0); b = ref(0); _ = a <- b <- 1; 0 }"
 
 let test_order_group_imported () =
   let ops = ("ops", "open (import \"std\");\npub order tight : stronger_than(multiplicative);\npub infix (<~>) tight ($a, $b) { $a + $b }") in
@@ -2187,7 +2194,15 @@ let test_order_group_imported () =
   in
   expect "an opened group relates to a new one" 14L
     "{ open (import \"ops\"); order tighter : stronger_than(tight); infix (<~~>) tighter ($a, $b) { $a * $b }; 2 <~> 3 <~~> 4 }";
-  expect "a bound import's operator keeps its order" 14L "{ O = import \"ops\"; 2 * 3 <~> 4 }"
+  expect "a bound import's operator keeps its order" 14L "{ O = import \"ops\"; 2 * 3 <~> 4 }";
+  expect "a group named through an import binder" 14L
+    "{ O = import \"ops\"; order tighter : stronger_than(O.tight); infix (<~~>) tighter ($a, $b) { $a * $b }; 2 <~> 3 <~~> 4 }";
+  expect "an operator joins a group named through an import binder" 14L
+    "{ O = import \"ops\"; infix (<+~>) O.tight ($a, $b) { $a + $b }; 2 * 3 <+~> 4 }";
+  match eval_with_imported_macros [ ops ] "{ O = import \"ops\"; order g : stronger_than(O.nowhere); 1 }" with
+  | exception Enforest_util.Error msg when string_contains msg "unknown order group: O.nowhere" -> ()
+  | exception e -> Alcotest.fail ("unknown dotted group: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "unknown dotted group: expected an error"
 
 let test_syntax_template_when_match () =
   check_i64_macro "when False falls back" 0L

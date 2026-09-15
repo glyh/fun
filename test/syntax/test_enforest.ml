@@ -634,7 +634,7 @@ let old_syntax_declaration_rejected () =
 
 let operator_infix_bad_assoc_rejected () =
   match parse_module "order g : assoc(middle); infix (~) g (stx) { stx }" with
-  | exception Enforest.Error "assoc is written assoc(left) or assoc(right)" -> ()
+  | exception Enforest.Error "assoc is written assoc(left), assoc(right) or assoc(none)" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected invalid order associativity to be rejected"
 

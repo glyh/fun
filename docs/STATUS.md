@@ -130,6 +130,11 @@ Last updated: after struct source-order scoping and macro signatures, 2026-09-15
   order never mix ("no declared order; parenthesise"); a form or operator in no
   group is weaker than every grouped one. The prelude's operators are in
   `disjunction < conjunction < comparison < additive < multiplicative < negation`.
+- `assoc(none)`: members of a non-associative group do not chain ("do not chain;
+  parenthesise"). `<-` is in the compiler-known group `assignment`, below
+  `disjunction` and `assoc(none)`: `r <- x + 1` is `r <- (x + 1)`, `a <- b <- c`
+  is an error. A group may be named through a unit: `stronger_than(O.g)`,
+  `infix (op) O.g`, where `O` denotes an imported unit.
 - A syntax form's hole extent is structural: the hole ending a use reads the
   form's operand at its order; a hole before `,`/`;` reads to it; any other hole
   is one term (a token or one bracket group). Captures are one parse per hole

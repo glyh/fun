@@ -486,9 +486,15 @@ let macro_params_of (ctx : Expand_ctx.t) (head : t) =
   in
   Option.bind key (Expand_ctx.lookup_macro_params ctx)
 
+(* The roles the unit [m] denotes exports, when it denotes one. *)
+let unit_roles_of (ctx : Expand_ctx.t) (m : t) =
+  match unit_path_of ctx m, ctx.Expand_ctx.load_syntax with
+  | Some path, Some load -> load path
+  | _ -> []
+
 (* The reader of the forms expansion reaches, with the roles bound here. *)
 let lazy_env (ctx : Expand_ctx.t) =
-  Enforest_util.lazy_env ~macro_params:(macro_params_of ctx) ctx.Expand_ctx.binding_table
+  Enforest_util.lazy_env ~macro_params:(macro_params_of ctx) ~unit_roles:(unit_roles_of ctx) ctx.Expand_ctx.binding_table
 
 let expand_capture expand = function
   | CapExpr e -> CapExpr (expand e)
