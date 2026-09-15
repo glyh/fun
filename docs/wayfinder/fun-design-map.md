@@ -532,7 +532,9 @@ What remains, in the recommended order:
 - [`export`](tickets/export-construct.md)
   — `export M` / `export M.{a, b}` re-exports members; `pub open` stays rejected.
 - [Effects on the arrow](tickets/effect-arrow-syntax.md)
-  — Unison `A ->{E} B`; `~>` params mint, results collect; `can` dropped; pure definitions keep `: T`.
+  (closed & **implemented**) — Unison `A ->{E} B`, open `{E | e}`; `~>` params mint,
+  results collect; `can` deleted; pure definitions keep `: T`; bounds `[A : {Eq, Show}]`.
+  Limit: a result uniting two row variables needs multi-tail rows (E2).
 - [Effects follow-ups from tunneling](tickets/effects-followups-tunneling.md)
   — `resume` value branch, instance routing, E6 via refs and the pure-branch
   shape done; open: unsolved `can _` at generalisation, `can any` semantics.

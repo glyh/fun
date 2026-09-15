@@ -3,7 +3,9 @@ title: Effects on the arrow (Unison style); `~>` for effect polymorphism
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-16
+resolution: Implemented (branch effect-arrows). Rows sit on arrows (`A ->{E} B`, open `{E | e}`, `->{_}` inferred and an error when nothing solves it); `~>` mints row variables in parameter positions and collects them in result positions (a definition's result also infers what its body performs); `can` is deleted; definitions keep `: T` when pure and take `->{E} T` / `~> T` when effectful. Limit: a row holds one row variable (E2), so a result collecting two parameters' variables is `UnsupportedRowUnion`. Trait bounds are a set `[A : {Eq, Show}]`.
 decided: 2026-09-16
 assignee:
 blocked_by:
@@ -76,3 +78,38 @@ effectful signature and return annotation in tests and docs.
 (`|` then the row variable), as `{E | r}` rows were. Rows and bound sets are
 dedicated syntax in their positions for now; generalising to one set literal is
 [general-set-literals](general-set-literals.md).
+
+## Implemented (2026-09-16, branch `effect-arrows`)
+
+- **Rows on arrows.** `->` followed by an adjacent `{ … }` is the arrow's row
+  (`Enforest.parse_postfix_infix`). `->{e}` alone is the tail `e`; beside effects
+  the variable is written after a bar, `->{Log | e}` (`{Log, e}` is
+  `RowVariableAmongEffects`).
+- **`~>`** is a base role (`Syntax.PolyArrow`), read like `->`, whose row is marked
+  `polymorphic`. `Elab_poly_arrows` rewrites a signature by polarity before it
+  elaborates: a type's root is a result position (minted variables become leading
+  implicit `EffectRow` binders), a lambda's parameter types are parameter
+  positions (minted variables become leading implicit parameters). Check mode
+  binds an implicit `EffectRow` parameter a term does not bind itself. A `~>`
+  anywhere else is `PolyArrowOutsideSignature`.
+- **Definitions.** `fn(x : A) ->{E} T { … }` / `~> T` annotate the function with
+  its arrow type (every parameter typed); `fn(…) -> T { … }` is an error naming
+  `: T`. Methods take `->{E} T`.
+- **`->{_}`** is a meta abstracted over the row variables in scope only
+  (`Ctx.fresh_row_meta`), recorded in `MetaContext.written_rows`; checked against
+  a body it is exactly what the body performs, and one still unsolved at a
+  program's entry is `UnsolvedEffectRow`.
+- **Fixed on the way:** row unification only accepted a left row whose effects the
+  right row named (`{Exc}` against `{| ?m}` failed); leftovers now go to the other
+  side's tail from both sides. A method's row known before its body is unified
+  with the row the body solved.
+- **Limit (E2):** a row holds one tail, so `f : (A ~> B) -> (C ~> D) ~> E` —
+  a result uniting two row variables — is `UnsupportedRowUnion`. Uniting them
+  needs multi-tail rows, which E2 ("a row is a set with an optional tail") rules
+  out: a decision, not an implementation gap. Rank 1: variables minted under a
+  higher-order parameter are bound at the root (`ponytail:`).
+- **Trait bounds** are a set, `[A : {Eq, Show}]` (`Syntax.TraitBoundSet`); a
+  trait named twice is `DuplicateTraitBound`; the `+` spelling recognition is
+  deleted. Bounds are still read only on an implicit arrow (`[A : …] -> …`); a
+  bound on a lambda's implicit parameter (`fn[T : Eq]`) was not supported before
+  and is not now.

@@ -59,7 +59,7 @@ blocked_by:
   type) is `ElabError (EvaluationFailed { message; site })`, converted at the one
   place every form passes through (`Elab_driver.at`).
 
-### Item 4 grilled (2026-09-16, revises 2026-09-15): bounds are a set, `{Eq, Show}`
+### Item 4 grilled (2026-09-16, revises 2026-09-15): bounds are a set, `{Eq, Show}` — **done** (branch effect-arrows)
 
 A binder's trait bounds are written as a set with the same brace-and-comma
 notation as effect rows: `fn[T : {Eq, Show}](a : T, b : T)`; a single bound may
