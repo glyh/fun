@@ -195,3 +195,13 @@ directly, then a second prelude stage expanded with an elaborator defines
 `type`, and `std` delivers its compiled macros like an imported unit; (b) keep
 `type` compiler-built (reverses "type is a macro"); (c) a small core splice rule
 so a template can place a captured `Pattern` union into `enum { … }`.
+
+## Grilled (2026-09-16): stage the prelude
+
+Option (a). **Stage 1** declares the core types directly with `enum` (`List`,
+`Option`, `TokenTree`, the `Syntax` nominals, …) and is expanded without an
+elaborator as today. **Stage 2** is expanded and elaborated with the elaborator
+available (stage 1 in scope); it defines the `type` macro and other macro-based
+prelude forms. `std` delivers stage 2's compiled procedural macros to user code
+like an imported unit (`visit_macros` no longer skips it). This also unblocks
+Stage 11's library-level `if` / `&&` macros.
