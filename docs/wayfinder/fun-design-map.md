@@ -534,8 +534,8 @@ What remains, in the recommended order:
 - [A match on a closure crashes the evaluator](tickets/match-on-a-closure-crashes-the-evaluator.md)
   — `match (fn(u) { 1 }) { x => x }` fails with "if condition is not a boolean".
 - [Effect collection rejects a deferred typed macro call](tickets/effect-collection-rejects-deferred-macro-calls.md)
-  — a typed macro call left for the elaborator aborts effect collection
-  ("macro-only syntax should not reach elaboration").
+  (closed) — a typed call's effects are read from the output it produced, and
+  every effect read follows the elaboration it reads.
 - [Records are declared only by let bindings](tickets/records-only-let-bindings.md)
   — `type X = struct { … }` deleted; a `rec` struct binding mints the recursive
   record's identity; needs value-level `rec … and …`.
@@ -552,8 +552,8 @@ Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
   — M11/M12: any `#` name is trusted as resolved (`new_id("x#5")`); empty-scope
   and operator macro heads fall back to spelling. Grill: does `new_id` stay.
 - [Opening a module needs its value](tickets/module-open-width-depends-on-value.md)
-  — I2: open width zips type and value entries; effect collection skips a
-  non-module open silently.
+  (closed) — I2: an open's entries come from its module type, a misaligned value
+  is an invariant failure, and a non-module open is `NotAModule` everywhere.
 - [Dotted paths found by first match](tickets/dotted-paths-first-match.md)
   (closed) — every member lookup takes the last match (`Core.find_map_last`);
   the prelude nominal names live in `Compiler_names`.

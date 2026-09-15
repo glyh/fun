@@ -211,10 +211,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
          extension to the evaluator. *)
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
-      (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
-       | VModule _, VModule _ ->
-           (open_module_value ~label ctx mod_ty mod_value, [OpenBind mod_core], [])
-       | _ -> raise (ElabError NotAModule))
+      (open_module_value ~label ctx mod_ty mod_value, [OpenBind mod_core], [])
   | Syntax.LetBinding { name = { name; _ }; value; public; recursive } ->
       let rec_ty = Ctx.raw_meta ctx in
       let value_ctx = Ctx.clear_self_scope ctx in
@@ -390,7 +387,6 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       end
   | Lam (param, body) -> infer_lam ops ctx param body
   | Annotated { inner; typ } ->
-      require_empty_effects ctx (ops.collect_effects ctx typ);
       let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx typ in
       let core = ops.check ctx inner ty_val in
       (core, ty_val)
@@ -403,8 +399,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let core_elems =
         List.map
           (fun elem ->
-            require_empty_effects ctx (ops.collect_effects ctx elem);
             let elem_core, elem_ty = ops.infer ctx elem in
+            require_empty_effects ctx (ops.collect_effects ctx elem);
             check_type_like ctx elem_ty (Ctx.eval ctx elem_core);
             elem_core)
           elems
@@ -415,10 +411,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | Some trait_infos ->
           let type_ctx = Ctx.bind ctx name VU in
           let dict_ctx, dict_layers = bind_trait_bound_dicts ctx name trait_infos in
-          Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects type_ctx (ops.collect_effects type_ctx eff)) row.effects; Option.iter (fun tail -> require_empty_effects type_ctx (ops.collect_effects type_ctx tail)) row.tail) effects;
           let effects = Elab_type_expr.elaborate_effect_row ops type_ctx effects in
-          require_empty_effects dict_ctx (ops.collect_effects dict_ctx b);
           let b_core, b_ty = ops.infer dict_ctx b in
+          require_empty_effects dict_ctx (ops.collect_effects dict_ctx b);
           check_type_like dict_ctx b_ty (Ctx.eval dict_ctx b_core);
           let core =
             Pi
@@ -433,23 +428,19 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           in
           (core, VU)
       | _ ->
-          require_empty_effects ctx (ops.collect_effects ctx a);
           let a_core, _a_ty, a_val = ops.type_value_of_expr ctx a in
           let ctx' = Ctx.bind ctx name a_val in
-          Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (ops.collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (ops.collect_effects ctx' tail)) row.tail) effects;
           let effects = Elab_type_expr.elaborate_effect_row ops ctx' effects in
-          require_empty_effects ctx' (ops.collect_effects ctx' b);
           let b_core, b_ty = ops.infer ctx' b in
+          require_empty_effects ctx' (ops.collect_effects ctx' b);
           check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
           (Pi { explicitness = Implicit; domain = a_core; effects; codomain = b_core }, VU))
   | Arrow (expl, name, a, effects, b) ->
-      require_empty_effects ctx (ops.collect_effects ctx a);
       let a_core, _a_ty, a_val = ops.type_value_of_expr ctx a in
       let ctx' = Ctx.bind ctx (Option.fold ~none:"_" ~some:(fun (i : Syntax.id) -> i.name) name) a_val in
-      Option.iter (fun (row : Syntax.effect_row) -> List.iter (fun eff -> require_empty_effects ctx' (ops.collect_effects ctx' eff)) row.effects; Option.iter (fun tail -> require_empty_effects ctx' (ops.collect_effects ctx' tail)) row.tail) effects;
       let effects = Elab_type_expr.elaborate_effect_row ops ctx' effects in
-      require_empty_effects ctx' (ops.collect_effects ctx' b);
       let b_core, b_ty = ops.infer ctx' b in
+      require_empty_effects ctx' (ops.collect_effects ctx' b);
       check_type_like ctx' b_ty (Ctx.eval ctx' b_core);
       (Pi { explicitness = expl_of_syntax expl; domain = a_core; effects; codomain = b_core }, VU)
   | FieldAccess (head, name)
@@ -682,11 +673,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         | Syntax.OpenBinding (mod_expr, label) :: rest ->
             let mod_core, mod_ty = ops.infer ctx mod_expr in
             let mod_value = Ctx.eval ctx mod_core in
-            (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
-             | VModule _, VModule _ ->
-                 go ~defer (open_module_value ~label ctx mod_ty mod_value)
-                   (OpenBind mod_core :: acc_binds, acc_entries) rest
-             | _ -> raise (ElabError NotAModule))
+            go ~defer (open_module_value ~label ctx mod_ty mod_value)
+              (OpenBind mod_core :: acc_binds, acc_entries) rest
         | Syntax.LetBinding { name = { name; _ }; value; public; recursive; _ } :: rest ->
             let rec_ty = Ctx.raw_meta ctx in
             let value_ctx = Ctx.clear_self ctx in
@@ -809,11 +797,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
   | Open (mod_expr, body, label) ->
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
-      (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
-      | VModule _, VModule _ ->
-          let body_core, body_ty = ops.infer (open_module_value ~label ctx mod_ty mod_value) body in
-          (Open (mod_core, body_core), body_ty)
-      | _ -> raise (ElabError NotAModule))
+      let body_core, body_ty = ops.infer (open_module_value ~label ctx mod_ty mod_value) body in
+      (Open (mod_core, body_core), body_ty)
   | RecordTypeDef { name = { name; _ }; params; fields; body } ->
       let params = Syntax.names params in
       check_duplicate_names (List.map fst fields);
@@ -996,7 +981,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let macro_name = match f.kind with Var n -> Some n.name | _ -> None in
       (match macro_name with
        | Some name ->
-           apply_typed_macro ~check:ops.check ctx ~name args ~expected:None
+           apply_typed_macro ~check:ops.check ctx ~call:expr ~name args ~expected:None
        | None -> failwith "macro-only syntax should not reach elaboration")
   | MacroDef _ | SyntaxDef _ | SyntaxOperatorUse _ | Block _ | Instantiate _ ->
       failwith "macro-only syntax should not reach elaboration"

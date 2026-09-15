@@ -12,6 +12,14 @@ open Elab_defs
 open Elab_generalize
 open Elab_ops
 
+(* A deferred typed macro call is read through the output it produced: its
+   effects are its output's. Elaboration runs the call before this pass reads
+   it, so a missing output is a broken invariant. *)
+let deferred_output (call : Syntax.t) =
+  match Call_outputs.find_opt deferred_outputs call with
+  | Some output -> output
+  | None -> failwith "Elab_effect_collect: a typed macro call read before it elaborated"
+
 let rec compile_time_safe (expr : Syntax.t) : bool =
   match expr.kind with
   | Syntax.RefNew _ | Syntax.RefGet _ | Syntax.RefSet _ -> false
@@ -49,7 +57,8 @@ let rec compile_time_safe (expr : Syntax.t) : bool =
   | Syntax.ImplDef { args; fields; body; _ } ->
       List.for_all compile_time_safe args && List.for_all (fun (_, value) -> compile_time_safe value) fields && compile_time_safe body
   | Syntax.Perform _ | Syntax.Resume _ | Syntax.Match _ -> false
-  | Syntax.MacroDef _ | Syntax.SyntaxDef _ | Syntax.MacroCall _ | Syntax.SyntaxOperatorUse _ | Syntax.Block _ | Syntax.Instantiate _ ->
+  | Syntax.MacroCall _ -> compile_time_safe (deferred_output expr)
+  | Syntax.MacroDef _ | Syntax.SyntaxDef _ | Syntax.SyntaxOperatorUse _ | Syntax.Block _ | Syntax.Instantiate _ ->
       failwith "macro-only syntax should not reach elaboration"
 
 and compile_time_safe_struct_binding = function
@@ -199,12 +208,9 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
   | Syntax.Open (mod_expr, body, label) ->
       let mod_core, mod_ty = ops.infer ctx mod_expr in
       let mod_value = Ctx.eval ctx mod_core in
-      (match (Nbe.force ctx.Ctx.metas mod_ty, Nbe.force ctx.Ctx.metas mod_value) with
-       | VModule _, VModule _ ->
-           union_many_expr_effects ctx
-             [ ops.collect_effects ctx mod_expr;
-               ops.collect_effects (open_module_value ~label ctx mod_ty mod_value) body ]
-       | _ -> ops.collect_effects ctx body)
+      union_many_expr_effects ctx
+        [ ops.collect_effects ctx mod_expr;
+          ops.collect_effects (open_module_value ~label ctx mod_ty mod_value) body ]
   | Syntax.RecordTypeDef { fields; body; _ } ->
       union_many_expr_effects ctx (List.map (fun (_, ty) -> ops.collect_effects ctx ty) fields @ [ ops.collect_effects ctx body ])
   | Syntax.TypeDef { ctors; body; _ } ->
@@ -263,4 +269,5 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
   | Atom _ | Var _ | OpenChoice _ | Self | SelfType | Stx _ | Import _ -> empty_expr_effects
   | Elaborated { form; _ } -> ops.collect_effects ctx form
   | Quote { holes; _ } | QuoteDecls { holes; _ } -> union_many_expr_effects ctx (List.map (fun (_, h) -> ops.collect_effects ctx h) holes)
-  | MacroDef _ | SyntaxDef _ | MacroCall _ | SyntaxOperatorUse _ | Block _ | Instantiate _ -> failwith "macro-only syntax should not reach elaboration"
+  | MacroCall _ -> ops.collect_effects ctx (deferred_output expr)
+  | MacroDef _ | SyntaxDef _ | SyntaxOperatorUse _ | Block _ | Instantiate _ -> failwith "macro-only syntax should not reach elaboration"

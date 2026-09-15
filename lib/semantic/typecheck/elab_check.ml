@@ -49,11 +49,11 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       check_effect_subset body_ctx body_effects (effect_row_values ctx effects binder);
       Lam (List.fold_left (fun acc _ -> Lam acc) body_core (List.init inserted Fun.id))
   | Match (scrutinee, branches), VPi _ ->
+      let scrut_core = ops.check ctx scrutinee VU in
       let scrutinee_effects = ops.collect_effects ctx scrutinee in
       let effect_branches = effect_branches_of branches in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
       require_empty_effects ctx residual;
-      let scrut_core = ops.check ctx scrutinee VU in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let value_branches = value_branches_of branches in
       let value_branches' =
@@ -131,7 +131,7 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
   | MacroCall ({ kind = Var { name; _ }; _ }, args), _ ->
-      fst (apply_typed_macro ~check:ops.check ctx ~name args ~expected:(Some expected))
+      fst (apply_typed_macro ~check:ops.check ctx ~call:expr ~name args ~expected:(Some expected))
   | _ ->
       let core, inferred = ops.infer ctx expr in
       let rec wrap_implicits core ty =

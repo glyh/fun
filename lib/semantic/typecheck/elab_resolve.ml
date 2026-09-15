@@ -55,6 +55,18 @@ let resolve_path_value_opt ctx p =
 let elaborated_args : (int, term * value * lvl) Hashtbl.t = Hashtbl.create 8
 let elaborated_counter = ref 0
 
+(* The output each deferred typed macro call produced, by the call's own node.
+   The effect pass walks syntax after elaboration has run the call, and a call's
+   effects are its output's. Keyed by identity, not structure: two equal calls
+   may run at different expected types and produce different outputs. *)
+module Call_outputs = Ephemeron.K1.Make (struct
+  type t = Syntax.t
+  let equal = ( == )
+  let hash = Hashtbl.hash
+end)
+
+let deferred_outputs : Syntax.t Call_outputs.t = Call_outputs.create 8
+
 (** A call to a macro whose signature promises types (macro-annotation
     decisions, 2026-09-15). The macro applies like a function over types: its
     type binders, and an output that promises nothing, become metas; each
@@ -64,7 +76,7 @@ let elaborated_counter = ref 0
     like every macro's output (M6) and checked at the type it promised. The run
     and the output's expansion are one call under the evaluation budget (M5).
     [check] elaborates a form at a type; returns the output's core and type. *)
-let apply_typed_macro ~check (ctx : Ctx.t) ~name (args : Syntax.capture list) ~(expected : value option) =
+let apply_typed_macro ~check (ctx : Ctx.t) ~(call : Syntax.t) ~name (args : Syntax.capture list) ~(expected : value option) =
   (* Expansion defers only a call whose macro has a signature, and only with a
      runtime to hand it back to. *)
   let runtime, entry, signature =
@@ -151,6 +163,7 @@ let apply_typed_macro ~check (ctx : Ctx.t) ~name (args : Syntax.capture list) ~(
            match top-down if that case matters. *)
         let mark (f : Syntax.t) = match List.assoc_opt f placed with Some kind -> { f with kind } | None -> f in
         let output = runtime.expand (Expand.map_forms Fun.id mark (app.emit expanded)) in
+        Call_outputs.replace deferred_outputs call output;
         let core =
           try check ctx output promised
           with Unify.UnifyError _ as e ->
@@ -321,9 +334,16 @@ let add_opened_impl ctx impl_ty impl_value =
         Ctx.add_trait_evidence ctx evidence
     | None -> ctx
 
+(* [open M]: the members an open brings into scope, and how many context entries
+   it adds, are read off the module's type - one per public field, one per public
+   impl, the slot list [Nbe.push_opened_values] pushes (I2). The value only
+   supplies each member's payload, entry for entry; a value whose entries do not
+   line up with its type is a broken invariant, not a smaller open. *)
 let open_module_value ~label ctx module_ty module_value =
+  let broken () = failwith "Elab_resolve.open_module_value: a module value's entries do not match its type" in
   match (Nbe.force ctx.Ctx.metas module_ty, Nbe.force ctx.Ctx.metas module_value) with
   | VModule { entries = type_entries; partial = _ }, VModule { entries = value_entries; partial = _ } ->
+      if List.compare_lengths type_entries value_entries <> 0 then broken ();
       let members = ref NameMap.empty in
       let ctx =
       List.fold_left2
@@ -336,7 +356,7 @@ let open_module_value ~label ctx module_ty module_value =
               add_opened_impl c impl_ty impl_value
           | ModuleField (_, Private, _), ModuleField (_, Private, _)
           | ModuleImpl (_, Private, _, _), ModuleImpl (_, Private, _, _) -> c
-          | _ -> c)
+          | _ -> broken ())
         ctx type_entries value_entries
       in
       (match ctx.Ctx.macro_runtime with
@@ -346,7 +366,7 @@ let open_module_value ~label ctx module_ty module_value =
            | None -> ())
        | None -> ());
       { ctx with Ctx.opened = (label, !members) :: ctx.Ctx.opened }
-  | _ -> ctx
+  | _ -> raise (ElabError NotAModule)
 
 let resolve_trait_method ctx trait_info method_name =
   match List.find_opt (fun evidence -> evidence.evidence_trait_id = trait_info.trait_id) ctx.Ctx.trait_evidence with
