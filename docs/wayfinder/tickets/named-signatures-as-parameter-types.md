@@ -74,3 +74,14 @@ IntStack = module { pub T = List(I64); pub empty = Nil; pub size = length };
 count = fn(s : Stack) { s.size(s.empty) }   // s.empty : s.T
 count(IntStack)
 ```
+
+## Grilled (2026-09-15): impls in signatures are named
+
+An impl required by a signature must be named; an anonymous `impl` in a `sig` is
+an error naming the required form. The name is a member: `s.ord_T` reaches it,
+and `open s` also brings it into trait resolution.
+
+```fun
+Ordered = sig { T : Type; ord_T : impl Ord(T) };
+max_of = fn(s : Ordered, a : s.T, b : s.T) { open s; if (a > b) { a } else { b } };
+```
