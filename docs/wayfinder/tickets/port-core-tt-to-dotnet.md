@@ -81,7 +81,7 @@ so each is cheaper to settle in the prototype than to re-port:
   [a bare arrow is pure](bare-arrow-is-pure.md),
   [refs in effect rows](refs-in-effect-rows.md),
   [nominal identity by purity](nominal-identity-applicative-by-purity.md),
-  [handlers tunnel callback effects](handlers-tunnel-callback-effects.md).
+  [handlers tunnel callback effects](handlers-tunnel-callback-effects.md) (closed 2026-09-15).
 - **The known soundness hole and the knot it depends on** —
   [`Self` has no identity](self-type-has-no-identity.md) (unrelated recursive
   records unify), [recursive records cannot hold a record](recursive-records-cannot-hold-a-record.md),

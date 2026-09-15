@@ -3,11 +3,26 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after refs in effect rows, 2026-09-15.
+Last updated: after handler tunneling, 2026-09-15.
 
 ---
 
 ## Completed
+
+### Handlers tunnel callback effects (2026-09-15)
+
+- Handling is lexical (E5): a call whose latent row has an open tail is wrapped
+  in `Core.Tunnel`; a request of an effect family the row does not name, which a
+  handler lexically enclosing the call in the same function body handles, skips
+  those handlers (`effect_request.hops`, decremented by each handler of that
+  family). A lambda or method body starts with no enclosing handlers
+  (`Ctx.handler_scopes`). `find(user, 1)` answers 999.
+- A handled effect may not escape (E6): a match whose result type carries a
+  function whose row names a family it handles is `HandledEffectEscapes`. A saved
+  continuation may outlive its handler (its row is the residual).
+- Not covered: per-instance (vs per-family) routing; an escape through an outer
+  ref's type; `resume` returns the scrutinee value without re-running the value
+  branch (pre-existing).
 
 ### Refs in effect rows (2026-09-15)
 

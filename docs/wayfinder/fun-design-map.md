@@ -609,6 +609,6 @@ distance from an E-invariant in the topic doc.
   applied to an open argument stays stuck (`HFix`). Running a program is
   unbudgeted. `loop(0)` in a type is now a budget error, not a hang.
 - [Handlers tunnel callback effects](tickets/handlers-tunnel-callback-effects.md)
-  — lexical handling: a callback's effects pass handlers in code polymorphic
-  over its row, and an effectful closure may not escape its handler's scope.
-  Today a library's internal handler swallows the user's raise.
+  (closed) — a call with an open row tail tunnels past the handlers enclosing it
+  in its function body (`Core.Tunnel`); a match's result may not carry a closure
+  whose row names an effect it handles (`HandledEffectEscapes`).

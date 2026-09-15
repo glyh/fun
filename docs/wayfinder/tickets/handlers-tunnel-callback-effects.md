@@ -3,7 +3,9 @@ title: Handlers tunnel callback effects
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. A call whose row has an open tail is wrapped in Core.Tunnel; a request of an effect family the row does not name skips the handlers lexically enclosing the call in its function body that handle that family (effect_request.hops). A match whose result type carries a closure whose row names a family it handles is HandledEffectEscapes. Granularity is the effect family; an escape through an outer ref is not checked.
 assignee:
 blocked_by:
 ---
