@@ -134,3 +134,10 @@ implementation defects the port redesigns rather than transliterates.
 ## Resolution
 
 _Unresolved._
+
+## Decided (2026-09-16): C#
+
+The port is written in **C#** (user decision), not F#. Variants become sealed
+record hierarchies matched with `switch` patterns; keep the domain-model names
+(the port's types are named after the domain model docs). Still decided at port
+start: the evaluator does not recurse on the native stack per object-level call.

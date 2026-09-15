@@ -203,7 +203,7 @@ as the frontier reaches them.
 
 - ~~**CLR / C# rewrite shape**~~ — promoted out of fog to
   [port `core_tt` to .NET (F#/C#)](tickets/port-core-tt-to-dotnet.md), now with an
-  explicit blocking set. F#-vs-C# is an open question inside that ticket.
+  explicit blocking set. Language: C# (decided 2026-09-16).
 - **Formalized core semantics as cross-rewrite truth** — proposal to write
   `Core.term` / `Core.value` / `eval` (and optionally elaboration) as a Lean 4 (or
   Coq) spec used as an AI-checked structural-correspondence reference across the
