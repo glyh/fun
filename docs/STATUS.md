@@ -188,7 +188,9 @@ Last updated: after fresh declaration binders and unforgeable resolved names, 20
   generates is usable by the next form. Quoted syntax is read where written.
 - A unit's syntax exports come from expanding it.
 - `Syntax.tokens(b)` reads a block's token tree; `Syntax.expand_block(b)` expands
-  one inside a macro; expansion is idempotent. Resolved names are `x#n`.
+  one inside a macro; `Syntax.expand_decls(d)` does the same for a `Decl`
+  argument's items, in order (2026-09-15); expansion is idempotent. Resolved
+  names are `x#n`.
 - A `: Decl` form works as a block statement; binders a macro returns into a
   definition context lose the use-site scope.
 - Test changes: units that define forms open `std` themselves (a replacement is

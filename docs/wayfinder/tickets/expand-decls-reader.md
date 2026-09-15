@@ -3,7 +3,9 @@ title: `expand_decls` — read a Decl argument's items, parsed in order
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. `Syntax.expand_decls(d)` expands a Decl argument form by form in a copy of the running context and returns the expanded declarations; answered by the running macro application like `expand_block`, under its budget.
 decided: 2026-09-15
 assignee:
 blocked_by:
@@ -38,3 +40,21 @@ The result may be placed back into output; expansion is idempotent (M9).
 Tests: count the items of a group; a group whose later item uses syntax an
 earlier item declares; placing `expand_decls(d)` back into `quote { … }`;
 budget exhaustion inside it names the macro.
+
+## Implemented (2026-09-15)
+
+- `expand_decls` is a primitive answered by the running macro application
+  (`Eval_budget.application.expand_decls`), wrapped as `Syntax.expand_decls :
+  Decls -> Decls`. The items expand with `expand_struct_bindings_with_scopes` in
+  a copy of the context, so what they bind stays inside the result.
+- Both expand primitives wrap and unwrap with the running macro's own reflection
+  types (`~nominals` on `Expand.run_application`), not the expander's.
+- Both stay stuck on an open argument (a macro body being checked) instead of
+  failing "runs only inside a macro application".
+
+Found, not fixed (pre-existing on main): applying a let-bound lambda whose
+parameter has a parameterised nominal type infers a wrong result type —
+`{ f = fn(d : List(I64)) { d }; g = fn(d : List(I64)) { x : List(I64) = f(d); x }; 1 }`
+fails with `NominalMismatch(List, List)` (the result prints as `List(Decl, I64)`).
+The prelude wrapper is annotated (`expand_decls : Decls -> Decls = fn(d) …`) to
+avoid it.

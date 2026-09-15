@@ -3146,6 +3146,49 @@ let test_m9_param_decl_kind_mismatch () =
     (function Expand_error.ArgumentKind { kind = HoleDecl; _ } -> true | _ -> false)
     "{ M = module { macro m(d : Decl) : List(Decl) { quote { $d } }; m(x) }; 0 }"
 
+(* [expand_decls(d)]: a Decl argument's items, expanded form by form - an item
+   reads with the syntax earlier items declared - and placeable back into output. *)
+let test_expand_decls () =
+  check_i64_macro "expand_decls reads the items, so a macro can count them" 3L
+    "{
+       macro count(d : Decl) {
+         match (Syntax.expand_decls(d)) { Cons(_, Cons(_, Cons(_, Nil))) => Syntax.i64(3), _ => Syntax.i64(0) }
+       };
+       count({ a = 1; b = 2; c = 3 })
+     }" ();
+  check_i64_macro "a later item reads with syntax an earlier item declares" 2L
+    "{
+       M = module {
+         macro keep(d : Decl) : List(Decl) { Syntax.expand_decls(d) };
+         keep({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 })
+       };
+       M.y
+     }" ();
+  check_i64_macro "expanded items placed back into a quote" 7L
+    "{
+       M = module {
+         macro wrap(d : Decl) : List(Decl) { e = Syntax.expand_decls(d); quote { $e; pub z = 5; } };
+         wrap({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 })
+       };
+       M.y + M.z
+     }" ()
+
+let test_expand_decls_budget () =
+  match
+    eval_with_macros
+      ("{ macro spin(_) " ^ diverging_body
+     ^ "; macro keep(d : Decl) : List(Decl) { Syntax.expand_decls(d) }; M = module { keep({ pub x = spin(0) }) }; 0 }")
+  with
+  | exception Expand_error.Error { error = BudgetExceeded { macro; _ }; _ } ->
+      Alcotest.(check bool) "names the macro" true (string_contains macro "spin")
+  | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "expected an expansion budget error"
+
+let test_expand_decls_imported () =
+  check_operator "an imported macro reads its Decl argument" 2L
+    [ ("readers", "open (import \"std\");\npub macro keep(d : Decl) : List(Decl) { Syntax.expand_decls(d) }") ]
+    "{ M = module { open (import \"readers\"); keep({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 }) }; M.y }"
+
 let kinded_unit =
   ("kinds", "open (import \"std\");
              pub macro same(n : Id) { Syntax.RawVar(None, n) };
@@ -3964,6 +4007,9 @@ let () =
           Alcotest.test_case "resolved names cannot be forged" `Quick test_resolved_names_cannot_be_forged;
           Alcotest.test_case "a Decl parameter" `Quick test_m9_param_decl;
           Alcotest.test_case "a Decl argument of the wrong kind" `Quick test_m9_param_decl_kind_mismatch;
+          Alcotest.test_case "expand_decls" `Quick test_expand_decls;
+          Alcotest.test_case "expand_decls budget" `Quick test_expand_decls_budget;
+          Alcotest.test_case "expand_decls imported" `Quick test_expand_decls_imported;
           Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;
           Alcotest.test_case "a macro is given exactly its arguments" `Quick test_m8_argument_count;
           Alcotest.test_case "an imported macro's argument count" `Quick test_m8_imported_argument_count;

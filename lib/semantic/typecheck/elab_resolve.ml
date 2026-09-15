@@ -139,7 +139,7 @@ let apply_typed_macro ~check (ctx : Ctx.t) ~(call : Syntax.t) ~name (args : Synt
     | None -> ty
   in
   let promised = Nbe.force ctx.Ctx.metas result_ty in
-  runtime.Ctx.macro_application ~name (fun () ->
+  runtime.Ctx.macro_application ~name ~nominals (fun () ->
     let app = runtime.application () in
     let fn = List.fold_left (fun fn ty -> runtime.run_macro fn (reflect ty)) entry.Expand_ctx.value binders in
     let fn =
