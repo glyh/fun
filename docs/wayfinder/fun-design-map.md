@@ -360,9 +360,7 @@ every defect below is an invariant with no name in the source.
   Nested patterns through recursive positions (broken for every recursive type,
   `List` included) now read a placeholder's constructors by nominal id.
 - [Mutually-recursive record type declarations](tickets/mutually-recursive-record-types.md)
-  — deferred remainder of the nominal ticket. **Researched:** self-recursive records
-  do not work either, and `Self` has no identity. Recommended knot: give the
-  recursive record an identity and unfold on demand (Go-style). Awaiting grilling.
+  — grilled 2026-09-15: identity at the knot (Go-style); a recursive record mints an id, `Self` carries it and unfolds on demand; same-shape recursive records are distinct. Implement with the two tickets below.
 - [Recursive records cannot hold a record](tickets/recursive-records-cannot-hold-a-record.md)
   — `Som(l)` in a recursive field fails; `Self` is never unfolded. Direction
   depends on the knot decision.
