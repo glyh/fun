@@ -25,7 +25,8 @@ let con_term (quote : value -> term) name spine nominal =
   match nominal with
   | VNominal n ->
       Ctor { name; spine = List.map quote spine; nominal_name = n.name;
-             nominal_spine = List.map quote n.params; nominal_value = nominal }
+             nominal_spine = List.map quote n.params;
+             nominal = nominal_template ~id:n.id ~name:n.name ~num_params:n.num_params (List.map quote n.captures) }
   | _ -> raise (Nbe_error.EvalError ("constructor " ^ name ^ " has no nominal"))
 
 let lvl_to_ix (depth : lvl) (l : lvl) : ix = depth - l - 1
@@ -106,9 +107,13 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VGlued { fix; arg; _ } -> Ap (quote ops mc depth (VFix fix), Explicit, quote ops mc depth arg)
   | VModule { entries; partial } ->
       let fields = module_entry_fields entries in
+      (* Evaluating the [Module] pushes one entry per binding, so the [i]th
+         binding's term is read [i] entries further in. *)
       let bindings =
-        List.map
-          (function
+        List.mapi
+          (fun i entry ->
+            let depth = depth + i in
+            match entry with
             | ModuleField (n, k, v) -> (
                 match (k, ops.force mc v) with
                 | Public, VEffect _ -> EffectBind (n, Public, v)
@@ -156,7 +161,8 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
         { typ = quote ops mc depth typ;
           fields = List.map (fun (name, value) -> (name, quote ops mc depth value)) fields }
   | VNominal n ->
-      NomRef { id = n.id; name = n.name; params = List.map (quote ops mc depth) n.params }
+      NomRef { id = n.id; name = n.name; num_params = n.num_params;
+               captures = List.map (quote ops mc depth) n.captures; params = List.map (quote ops mc depth) n.params }
   | VEffect e -> EffectRef (e.name, List.map (quote ops mc depth) e.params)
   | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }
   | VTraitDict d ->
@@ -328,6 +334,8 @@ let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : 
            r1.fields r2.fields
   | VNominal n1, VNominal n2 ->
       n1.id = n2.id
+      && List.length n1.captures = List.length n2.captures
+      && List.for_all2 (conv ops mc depth) n1.captures n2.captures
       && List.length n1.params = List.length n2.params
       && List.for_all2 (conv ops mc depth) n1.params n2.params
   | VEffect e1, VEffect e2 ->

@@ -185,7 +185,8 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
           { typ = go d typ;
             fields = List.map (fun (name, value) -> (name, go d value)) fields }
     | VNominal n ->
-        NomRef { id = n.id; name = n.name; params = List.map (go d) n.params }
+        NomRef { id = n.id; name = n.name; num_params = n.num_params;
+                 captures = List.map (go d) n.captures; params = List.map (go d) n.params }
     | VEffect e ->
         EffectRef (e.name, List.map (go d) e.params)
     | VTrait t -> TraitRef { trait_id = t.trait_id; trait_name = t.trait_name }
@@ -300,7 +301,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VRecord { typ; fields } ->
             occurs_check typ;
             List.iter (fun (_, v) -> occurs_check v) fields
-        | VNominal n -> List.iter occurs_check n.params
+        | VNominal n -> List.iter occurs_check (n.captures @ n.params)
         | VEffect e -> List.iter occurs_check e.params
         | VTraitDict d ->
             List.iter occurs_check d.args;
@@ -483,8 +484,13 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
   | VNominal n1, VNominal n2 ->
       if n1.id <> n2.id then
         raise (UnifyError (NominalMismatch (n1.name, n2.name)));
-      if List.length n1.params <> List.length n2.params then
+      if List.length n1.captures <> List.length n2.captures
+         || List.length n1.params <> List.length n2.params then
         raise (UnifyError (NominalMismatch (n1.name, n2.name)));
+      (* Captures are the declaration's free variables: a disagreement there
+         is two different types, reported as such. *)
+      (try List.iter2 (unify mc env depth) n1.captures n2.captures
+       with UnifyError _ -> raise (UnifyError (NominalMismatch (n1.name, n2.name))));
       List.iter2 (unify mc env depth) n1.params n2.params
   | VEffect e1, VEffect e2 ->
       if e1.id <> e2.id then

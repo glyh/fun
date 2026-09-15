@@ -11,10 +11,10 @@ open Elab_ops
 
 let match_domain_of_ty ctx ty =
   match Nbe.force_shape ctx.Ctx.metas ty with
-  | VNominal { id; params; constructors; _ } ->
+  | VNominal { id; params; captures; _ } ->
       let ntp = List.length params in
       Core_match_compile.Nominal
-        (List.map (fun (name, payloads) -> (name, ntp, List.length payloads)) (nominal_constructors id constructors))
+        (List.map (fun (name, payloads) -> (name, ntp, List.length payloads)) (nominal_constructors id captures))
   | VAtomTy atom_ty -> Atom atom_ty
   | VU -> Type
   | VProdTy tys -> Product (List.length tys)
@@ -29,11 +29,11 @@ let rec type_at_occurrence ctx ty (occ : Core_decision_tree.occurrence) =
       | Some parent_ty -> (
           match Nbe.force ctx.Ctx.metas parent_ty with
           | VProdTy tys -> List.nth_opt tys index
-          | VNominal { id; params; constructors; _ } ->
+          | VNominal { id; params; captures; _ } ->
               let num_type_params = List.length params in
               let payload_index = index - num_type_params in
               if payload_index >= 0 then
-                nominal_constructors id constructors
+                nominal_constructors id captures
                 |> List.find_map (fun (_, payloads) -> List.nth_opt payloads payload_index)
                 |> Option.map (fun payload_clo ->
                      Nbe.eval ctx.Ctx.metas (List.rev params @ payload_clo.env) payload_clo.body)
@@ -276,7 +276,8 @@ let check_handled_effects_do_not_escape ctx branches ret_ty =
                 match escaping lvl domain with
                 | Some _ as found -> found
                 | None -> escaping (lvl + 1) (Nbe.closure_apply metas codomain x)))
-        | VProdTy tys | VNominal { params = tys; _ } -> List.find_map (escaping lvl) tys
+        | VProdTy tys -> List.find_map (escaping lvl) tys
+        | VNominal { captures; params; _ } -> List.find_map (escaping lvl) (captures @ params)
         | VRefTy (_, elem) -> escaping lvl elem
         | VStruct { entries; _ } ->
             List.find_map (function StructField (_, _, t) -> escaping lvl t | StructImpl _ -> None) entries

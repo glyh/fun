@@ -124,7 +124,9 @@ let value_substituter (mc : MetaContext.t) (target : lvl) (replacement : value) 
     | VRecord { typ; fields = fs } as v ->
         let typ' = sub typ and fs' = fields fs in
         if typ' == typ && fs' == fs then v else VRecord { typ = typ'; fields = fs' }
-    | VNominal n as v -> let params = subs n.params in if params == n.params then v else VNominal { n with params }
+    | VNominal n as v ->
+        let captures = subs n.captures and params = subs n.params in
+        if captures == n.captures && params == n.params then v else VNominal { n with captures; params }
     | VEffect e as v -> let params = subs e.params in if params == e.params then v else VEffect { e with params }
     | VTraitDict d as v ->
         let args = subs d.args and fs = fields d.fields in
@@ -184,13 +186,13 @@ let close_recursive_payload_group members =
     match collect_apps [] term with
     | Var ix, args
       when (match member_at cutoff ix with Some (_, _, n) -> List.length args = n | None -> false) ->
-        let id, name, _ = Option.get (member_at cutoff ix) in
-        NomRef { id; name; params = List.map (go cutoff) args }
+        let id, name, num_params = Option.get (member_at cutoff ix) in
+        NomRef { id; name; num_params; captures = []; params = List.map (go cutoff) args }
     | _ -> (
         match term with
         | Var ix when Option.is_some (member_at cutoff ix) ->
             let id, name, num_params = Option.get (member_at cutoff ix) in
-            NomRef { id; name; params = List.init num_params (fun i -> Var (num_params - 1 - i)) }
+            NomRef { id; name; num_params; captures = []; params = List.init num_params (fun i -> Var (num_params - 1 - i)) }
         | Var ix when ix >= cutoff + width -> Var (ix - width)
         | Var ix -> Var ix
         | _ ->
@@ -203,6 +205,62 @@ let close_recursive_payload_group members =
   in
   go 0
 
+
+(* A nominal declaration's own free variables (E11): the variables of the
+   declaring scope its payloads mention, as levels there, in order. Each payload
+   is a term over its member's [num_params] params, then that scope (whose level
+   is [scope_lvl]); it is rewritten over the params, then the captures in this
+   order, and a reference to a member of the declaration ([group_ids], still
+   without captures) gets them. Payloads are normal forms (no inserted metas). *)
+let capture_payloads ~group_ids ~scope_lvl (members : (int * term list) list) : int list * term list list =
+  let found = ref [] in
+  let rec collect n cutoff t =
+    match t with
+    | Var ix when ix >= cutoff + n ->
+        let lvl = scope_lvl - 1 - (ix - cutoff - n) in
+        if not (List.mem lvl !found) then found := lvl :: !found
+    | _ ->
+        List.iter
+          (fun (under, sub) ->
+            match under with
+            | Some u -> collect n (cutoff + u) sub
+            | None -> Elab_defs.reject_unknown_binder_count "capture_payloads")
+          (subterms t)
+  in
+  List.iter (fun (n, payloads) -> List.iter (collect n 0) payloads) members;
+  let levels = List.sort compare !found in
+  let pos lvl = let rec go i = function [] -> assert false | l :: _ when l = lvl -> i | _ :: r -> go (i + 1) r in go 0 levels in
+  let rec rewrite n cutoff t =
+    match t with
+    | Var ix when ix >= cutoff + n -> Var (cutoff + n + pos (scope_lvl - 1 - (ix - cutoff - n)))
+    | NomRef r when r.captures = [] && List.mem r.id group_ids ->
+        NomRef { r with captures = List.mapi (fun i _ -> Var (cutoff + n + i)) levels;
+                        params = List.map (rewrite n cutoff) r.params }
+    | _ ->
+        map_subterms
+          (fun under sub ->
+            match under with
+            | Some u -> rewrite n (cutoff + u) sub
+            | None -> Elab_defs.reject_unknown_binder_count "capture_payloads")
+          t
+  in
+  (levels, List.map (fun (n, payloads) -> List.map (rewrite n 0) payloads) members)
+
+(* The captures, as terms in a scope at level [lvl], and as values of [env] there. *)
+let capture_terms ~lvl levels = List.map (fun l -> Var (lvl - 1 - l)) levels
+let capture_values (env : env) ~lvl levels = List.map (fun l -> List.nth env (lvl - 1 - l)) levels
+
+(* A nominal's type former, [fn(params) { NomRef }], as a term at depth [depth]. *)
+let nominal_former_term mc ~depth (nominal : value) =
+  match nominal with
+  | VNominal n ->
+      let body =
+        NomRef { id = n.id; name = n.name; num_params = n.num_params;
+                 captures = List.map (Nbe.quote mc (depth + n.num_params)) n.captures;
+                 params = List.init n.num_params (fun i -> Var (n.num_params - 1 - i)) }
+      in
+      List.fold_right (fun _ acc -> Lam acc) (List.init n.num_params Fun.id) body
+  | _ -> invalid_arg "nominal_former_term"
 
 let close_recursive_payload_term nominal_id nominal_name num_params =
   close_recursive_payload_group [ (nominal_id, nominal_name, num_params) ]

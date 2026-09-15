@@ -328,8 +328,8 @@ let test_unify_mismatch () =
 
 let test_unify_nominal_params () =
   let mc = mc () in
-  let nom1 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy Atom_ty.TI64 ]; constructors = [] } in
-  let nom2 = VNominal { id = 99; num_params = 1; name = "Option"; params = [ VAtomTy Atom_ty.TChar ]; constructors = [] } in
+  let nom1 = VNominal { id = 99; num_params = 1; name = "Option"; captures = []; params = [ VAtomTy Atom_ty.TI64 ] } in
+  let nom2 = VNominal { id = 99; num_params = 1; name = "Option"; captures = []; params = [ VAtomTy Atom_ty.TChar ] } in
   match unify mc [] 0 nom1 nom2 with
   | exception UnifyError _ -> ()
   | () -> Alcotest.fail "expected unify error for different nominal params"
@@ -2105,7 +2105,8 @@ let test_syntax_class_types_accessible () =
 let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
-  | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
+  | VNominal { name = "Expr"; num_params = 0; id; captures; _ } ->
+      let constructors = Core.nominal_constructors id captures in
       Alcotest.(check int) "one constructor per expression form" 40 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);

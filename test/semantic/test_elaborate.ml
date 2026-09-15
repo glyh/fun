@@ -375,6 +375,32 @@ let structs =
   [
     Alcotest.test_case "empty module" `Quick
       (elab_ok "module { }");
+    (* E11: a nominal's identity is its declaration and its own captures. *)
+    Alcotest.test_case "a type declared under a binder evaluates" `Quick
+      (eval_i64 "{ mk = fn(u : Unit) { module { pub type T = A | B } }; m1 = mk(()); f = fn(x : m1.T) { 1 }; f(m1.A) }" 1L);
+    Alcotest.test_case "a block type under a binder evaluates" `Quick
+      (eval_i64 "{ mk = fn(X : Type) { type T = A(X) | B; fn(x : X) { match (A(x)) { A(n) => n, B => x } } }; mk(I64)(3) }" 3L);
+    Alcotest.test_case "the same maker over the same argument shares its type" `Quick
+      (eval_i64
+         "{ less = fn(a : I64, b : I64) { a < b };
+            Set = fn(Elem : Type, cmp : I64 -> I64 -> Bool) { module {
+              pub type T = Leaf | Node(T, Elem, T);
+              pub single = fn(x : Elem) { Node(Leaf, x, Leaf) };
+              pub union = fn(a : T, b : T) { a };
+              pub size = fn(t : T) { match (t) { Leaf => 0, Node(_, _, _) => 1 } } } };
+            a = Set(I64, less); b = Set(I64, less);
+            a.size(a.union(a.single(1), b.single(2))) }" 1L);
+    Alcotest.test_case "different captured values are different types" `Quick
+      (elab_fail "{ mk = fn(X : Type) { module { pub type T = A(X) | B } }; f = fn(t : mk(I64).T) { 1 }; f(mk(Bool).B) }");
+    Alcotest.test_case "a captured value, compared by conversion" `Quick
+      (elab_fail
+         "{ F = fn(n : I64) { if (n == 0) { I64 } else { Bool } };
+            mk = fn(n : I64) { module { pub type T = A(F(n)) | B } };
+            f = fn(t : mk(0).T) { 1 }; f(mk(1).B) }");
+    Alcotest.test_case "a variable the declaration does not mention does not split it" `Quick
+      (eval_i64 "{ mk = fn(X : Type, junk : I64) { module { pub type T = A(X) | B } }; f = fn(t : mk(I64, 1).T) { 1 }; f(mk(I64, 2).B) }" 1L);
+    Alcotest.test_case "a module type reads a later member's variables at its own depth" `Quick
+      (eval_i64 "{ mk = fn(X : Type) { module { pub y = True; pub f = fn(x : X) { x } } }; mk(I64).f(7) }" 7L);
     (* A [type] member inside a [struct] used to push one context entry too many
        (two, when parameterised), so every member after it resolved to the wrong
        de Bruijn index. See env-width-contract-is-unnamed. *)

@@ -93,3 +93,53 @@ behaviour is implemented.
 - Rossberg, *1ML with Special Effects*
 - OCaml manual, *Generative functors*
 - Agda manual, *Module system* (module parameters become datatype parameters)
+
+## Implemented: the applicative half (2026-09-15, branch applicative-nominals)
+
+- `VNominal` carries `captures`: the values of the declaration's own free
+  variables (the variables its payload types mention), compared by conversion
+  with the params. `NomRef { id; name; num_params; captures; params }` builds the
+  nominal directly - the environment scan for the template by id is deleted.
+  Constructors are read from the declaration (`Core.nominal_decls`) over an
+  instance's captures.
+- `TypeBind` and `NominalDef` carry capture terms and build the nominal and its
+  constructors in the scope they are evaluated in, so a type declared under a
+  binder evaluates (`mk(())`, `mk(I64)(3)`).
+- Works: `Set(I64, less)` twice shares `T`; `mk(I64).T` vs `mk(Bool).T` and
+  `mk(0).T` vs `mk(1).T` (a value capture, by conversion) differ; a parameter
+  the declaration does not mention does not split the type.
+- Fixed on the way: quoting a module value quoted every binding at one depth,
+  though evaluating the `Module` pushes one entry per binding, so a later
+  member's type read an earlier member instead of an outer variable.
+
+## Open: the generative half — how an effectful maker hides its nominal
+
+Generativity does **not** fall out of opacity. The maker's result type still
+names the nominal concretely, so a generative module cannot be used with its own
+type:
+
+```fun
+SymbolTable = fn(u : Unit) { module {
+  table = ref(0);
+  pub type Symbol = Sym(I64);
+  pub intern = fn(s : I64) { table <- deref(table) + s; Sym(deref(table)) } } };
+st1 = SymbolTable(()); st2 = SymbolTable(());
+g = fn(x : st1.Symbol) { 1 }; g(st1.intern(5))   // rejected today: st1 is opaque
+                                                  // (effectful let), so st1.Symbol is
+                                                  // neutral, but intern returns the
+                                                  // concrete Symbol of the maker's type
+g2 = fn(x : st2.Symbol) { 1 }; g2(st1.intern(5)) // rejected - for the same wrong reason
+```
+
+Needed: when the maker performs a run-time effect, its result type abstracts the
+nominal - the module type becomes a dependent signature over the result
+(`sig { Symbol : Type; intern : I64 -> Symbol }`, `self.Symbol`), so
+`st1.intern(5) : st1.Symbol`. Undecided: (1) where the maker's purity is read
+(the lambda's inferred row at its boundary, after refs discharge?) and which rows
+count (an open `can _` row: conservative generative), (2) whether sealing happens
+at the lambda (its codomain) or at the effectful `let`, (3) the run-time side
+(a fresh stamp capture per evaluation, so type-case also separates instances).
+
+Also not done: a `rec` struct type under a binder still mints one identity per
+elaboration (`fresh_record_id`, `ponytail:`); the same captures representation
+applies uniformly (`RecOcc` + captures, `finished_records` as terms).
