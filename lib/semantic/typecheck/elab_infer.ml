@@ -592,8 +592,19 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | Ap (f, Explicitness.Explicit, a) -> infer_ap ops ctx f a
   | Ap (f, Explicitness.Implicit, a) -> infer_ap_implicit ops ctx f a
-  | LetRecGroup { members; _ } when Option.is_some (enum_group_decls members) ->
-      raise (ElabError (InvalidRecursiveRecord "mutually recursive enums are declared as module items"))
+  | LetRecGroup { members; body } when Option.is_some (enum_group_decls members) ->
+      (* The same knot as a module's group; each binding's slots become [Let]s,
+         pushed in the order the context was extended. *)
+      let body_ctx, results = elab_type_group ~ctors_private:true ops ctx ~members:(Option.get (enum_group_decls members)) ~public:false in
+      let body_core, body_ty = ops.infer body_ctx body in
+      let slot_def (sl : Core.slot) =
+        match sl.sl_source with
+        | SlotDef t -> t
+        | SlotPlaceholder -> AtomTy Atom_ty.TUnit
+        | SlotValue _ -> invalid_arg "a type group pushes no values"
+      in
+      let slots = List.concat_map (fun (bind, _) -> Option.get (Core.binding_slots bind)) results in
+      (List.fold_right (fun sl acc -> Let (U, slot_def sl, acc)) slots body_core, body_ty)
   | LetRecGroup { members; body } ->
       let body_ctx, members =
         elab_rec_group ops ctx ~value_ctx:Fun.id ~extend:(fun ctx (key, _, _, ty, finished) -> Ctx.define ctx key ty finished)
