@@ -208,6 +208,7 @@ let keyword_name = function
   | KwPub -> Some "pub"
   | KwImport -> Some "import"
   | KwOpen -> Some "open"
+  | KwExport -> Some "export"
   | KwMacro -> Some "macro"
   | KwSelf -> Some "self"
   | KwSelfType -> Some "Self"

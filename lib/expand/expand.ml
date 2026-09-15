@@ -181,6 +181,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
        PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat m rhs; public }
      | FieldBinding { name; type_ } -> FieldBinding { name; type_ = go type_ }
      | OpenBinding (md, label) -> OpenBinding (go md, label)
+     | ExportBinding { m = md; names } -> ExportBinding { m = go md; names }
      | SyntaxBinding { name; role; public } -> SyntaxBinding { name = on_id name; role = map_role m role; public }
      | HoleBinding id -> HoleBinding (on_id id)
      | Items terms -> Items (map_terms m terms)
@@ -229,7 +230,7 @@ let map_binders (f : Syntax.id -> Syntax.id) (binding : struct_binding) : struct
   | MacroBinding b -> MacroBinding { b with name = f b.name }
   | PatternSynBinding b -> PatternSynBinding { b with name = f b.name }
   | SyntaxBinding b -> SyntaxBinding { b with name = f b.name }
-  | MacroCallBinding _ | OpenBinding _ | FieldBinding _ | HoleBinding _ | Items _ | InstantiateBinding _ -> binding
+  | MacroCallBinding _ | OpenBinding _ | ExportBinding _ | FieldBinding _ | HoleBinding _ | Items _ | InstantiateBinding _ -> binding
 
 (** Add a scope mark to every identifier's scope set - and every unread token's. *)
 let add_scope (s : Scope_set.t) (stx : t) : t = map_ids (add_id_scope s) stx
@@ -1097,6 +1098,16 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
       | ReplaceExpr _ -> Expand_error.raise_at (NotDeclarations { macro = inst.form.name }))
   | FieldBinding _ when not in_struct -> Enforest_util.error "a field [name : type] belongs in a struct"
   | FieldBinding { name; type_ } -> ([ FieldBinding { name; type_ = expand ctx type_ } ], [ [] ])
+  | ExportBinding _ when in_struct -> Enforest_util.error "export is a module item"
+  | ExportBinding { m; names } ->
+    (* A unit's public roles are exported with its values: they join this
+       unit's syntax exports. *)
+    (match unit_path_of ctx m, ctx.Expand_ctx.load_syntax with
+     | Some path, Some load ->
+         let selected (n, _) = match names with None -> true | Some ns -> List.mem n ns in
+         ctx.Expand_ctx.syntax_exports <- ctx.Expand_ctx.syntax_exports @ List.filter selected (Binding.from_unit path (load path))
+     | _ -> ());
+    ([ ExportBinding { m = expand ctx m; names } ], [ [] ])
   | OpenBinding (m, _) ->
     (* An open binds no name of its own. Its scope marks the later bindings as
        inside it, so a name there can resolve to an open choice. *)

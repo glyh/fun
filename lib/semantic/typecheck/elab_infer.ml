@@ -130,6 +130,19 @@ let open_type_constructors ~label (ctx : Ctx.t) ctors =
   in
   ({ ctx with Ctx.opened = (label, members) :: ctx.Ctx.opened }, List.mapi (fun i (cname, core, ty) -> (cname, shift_term i 0 core, ty)) ctors)
 
+(* The public members of a module, for [export]: each a projection of the module
+   at [ctx], with its type. Impls have no projection to re-export. *)
+let module_exports (ctx : Ctx.t) m_core m_ty =
+  match Nbe.module_type_of ctx.Ctx.metas m_ty (Ctx.eval ctx m_core) with
+  | VModule { entries; _ } ->
+      List.filter_map
+        (function
+          | ModuleField (name, Public, ty) -> Some (name, Dot (m_core, name), ty)
+          | ModuleImpl (_, Public, _, _) -> raise (ElabError ExportImpls)
+          | _ -> None)
+        entries
+  | _ -> raise (ElabError NotAModule)
+
 (* A recursive group of struct types: [rec Numbers = struct { … }], or
    [rec A = struct { b : Option(B) } and B = struct { a : Option(A) }].
    Each binding mints an identity. Every member's body sees every member's name
@@ -437,6 +450,19 @@ let type_group_entries (acc_binds, acc_entries) results =
       (bind :: acc_binds, List.rev_append (List.map (fun (name, kind, ty) -> StructField (name, kind, ty)) fields) acc_entries))
     (acc_binds, acc_entries) results
 
+(* An exported name may not also be another public member of the module - one of
+   its own or another export's. [exported] holds the names exported so far,
+   [seen] every public name so far. *)
+let check_export_clash ~exported ~seen (b : Syntax.struct_binding) entries =
+  let names = List.filter_map (function ModuleField (n, Public, _) -> Some n | _ -> None) entries in
+  let is_export = match b with Syntax.ExportBinding _ -> true | _ -> false in
+  List.iter
+    (fun n ->
+      if Hashtbl.mem exported n || (is_export && Hashtbl.mem seen n) then raise (ElabError (ExportClash n));
+      if is_export then Hashtbl.replace exported n ();
+      Hashtbl.replace seen n ())
+    names
+
 (** Stage 7: per-binding module elaboration. Processes a single
     [Syntax.struct_binding] and returns the updated elaboration context,
     the resulting [Core.struct_binding_term] list, and the [Core.module_entry]
@@ -467,6 +493,31 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let bind = PatternSynBind (name, kind, syn_val) in
       let ctx' = extend_from_slots ctx bind [ `Entry (key, VU, syn_val) ] in
       (ctx', [bind], [ModuleField (name, kind, VU)])
+  | Syntax.ExportBinding { m; names } ->
+      (* Every member leaves as a public entry of this module, bound under a key
+         nothing spells: an export opens nothing here. *)
+      let m_core, m_ty = ops.infer ctx m in
+      let members = match type_constructors ctx m_core m_ty with Some ctors -> ctors | None -> module_exports ctx m_core m_ty in
+      let members =
+        match names with
+        | None -> members
+        | Some names ->
+            List.map
+              (fun n -> match List.find_opt (fun (c, _, _) -> String.equal c n) members with
+                 | Some member -> member
+                 | None -> raise (ElabError (ExportUnknownMember n)))
+              names
+      in
+      let ctx0 = ctx in
+      let ctx, binds, entries, _ =
+        List.fold_left
+          (fun (c, binds, entries, i) (name, core, ty) ->
+            let bind = LetBind (name, Public, shift_term i 0 core) in
+            (extend_from_slots c bind [ `Entry (name ^ "#export", ty, Ctx.eval ctx0 core) ],
+             bind :: binds, ModuleField (name, Public, ty) :: entries, i + 1))
+          (ctx, [], [], 0) members
+      in
+      (ctx, binds, entries)
   | Syntax.OpenBinding (mod_expr, label) ->
       (* Module-level [open]: the opened module's public fields are in scope for
          the bindings that *follow* (the caller folds this ctx forward), and the
@@ -881,9 +932,11 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let first_declared = NominalId.next () in
       let (end_ctx, core_bindings, entries), performed =
         collecting binding_ctx (fun binding_ctx ->
+          let exported = Hashtbl.create 8 and seen = Hashtbl.create 16 in
           List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
-            let ctx', b, e = elab_module_binding ops ctx b in
-            (ctx', b @ acc_binds, e @ acc_entries))
+            let ctx', binds, e = elab_module_binding ops ctx b in
+            check_export_clash ~exported ~seen b e;
+            (ctx', binds @ acc_binds, e @ acc_entries))
           (binding_ctx, [], []) bindings)
       in
       emit ctx performed;
@@ -1080,6 +1133,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                (bind :: acc_binds,
                 StructField (name, kind, VU) :: acc_entries)
               rest
+        | Syntax.ExportBinding _ :: _ -> invalid_arg "export is expanded only as a module item"
         | Syntax.OpenBinding (mod_expr, label) :: rest ->
             let mod_core, mod_ty = ops.infer ctx mod_expr in
             (match type_constructors ctx mod_core mod_ty with
