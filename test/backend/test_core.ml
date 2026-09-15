@@ -119,6 +119,13 @@ let test_eval_signature_sugar_argument () =
     "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 42 })"
     ()
 
+(* A signature is a value: a let-bound one reads as a type exactly as the inline
+   form does, and so does any module whose public members are all types. *)
+let test_eval_let_bound_signature () =
+  check_i64 "let-bound sig" 42L "{ Sig = sig { x : I64 }; f = fn(m : Sig) { m.x + 1 }; f(module { pub x = 41 }) }" ();
+  check_i64 "let-bound module of types" 42L
+    "{ M = module { pub x = I64 }; f = fn(m : M) { m.x }; f(module { pub x = 42 }) }" ()
+
 let test_eval_module_signature_functor () =
   check_i64 "module signature functor" 42L
     "{ F = fn(M : module { pub x = I64 }) { module { pub doubled = M.x + M.x } }; F(module { pub x = 21 }).doubled }"
@@ -894,6 +901,16 @@ let eval_with_imported_macros modules source =
       let ctx = Elab_ctx.Ctx.with_expander ctx expand_ctx in
       let core, _ty = Elaborate.on_expr ~loader ctx expr in
       Elaborate.Ctx.eval ctx core)
+
+let test_eval_imported_signature () =
+  match
+    eval_with_imported_macros
+      [ ("sigs", "pub Sig = sig { x : I64 }") ]
+      "{ S = import \"sigs\"; f = fn(m : S.Sig) { m.x }; f(module { pub x = 42 }) }"
+  with
+  | VAtom (I64 n) -> Alcotest.(check int64) "imported sig" 42L n
+  | v -> Alcotest.fail (Printf.sprintf "imported sig: %s" (Debug.pp_value_short (MetaContext.create ()) v))
+  | exception e -> Alcotest.fail (Printf.sprintf "imported sig: %s" (Printexc.to_string e))
 
 let string_contains text needle =
   let needle_len = String.length needle in
@@ -3218,6 +3235,8 @@ let () =
           Alcotest.test_case "module signature argument" `Quick test_eval_module_signature_argument;
           Alcotest.test_case "module signature extra field" `Quick test_eval_module_signature_extra_field;
           Alcotest.test_case "signature sugar argument" `Quick test_eval_signature_sugar_argument;
+          Alcotest.test_case "let-bound signature" `Quick test_eval_let_bound_signature;
+          Alcotest.test_case "imported signature" `Quick test_eval_imported_signature;
           Alcotest.test_case "module signature functor" `Quick test_eval_module_signature_functor;
           Alcotest.test_case "ref read initial" `Quick test_ref_read_initial;
           Alcotest.test_case "ref write read" `Quick test_ref_write_read;

@@ -528,7 +528,7 @@ What remains, in the recommended order:
 ### Found by the domain-model audit (2026-09-15)
 
 - [A let-bound signature cannot be a parameter type](tickets/named-signatures-as-parameter-types.md)
-  — `Sig = sig { … }; fn(m : Sig)` fails; dependent signatures fail.
+  — let-bound signatures fixed (a module of types is a signature wherever written); dependent signatures and anonymous impls in signatures need design.
 - [`open` a module parameter](tickets/open-a-module-parameter.md)
   (closed) — `Open`/`OpenBind` carry the members the type lists; each is pushed as a projection.
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
