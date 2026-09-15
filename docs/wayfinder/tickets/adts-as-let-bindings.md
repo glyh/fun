@@ -140,3 +140,10 @@ hole rules; `type` lexes as a keyword. Decided:
 - `type` lexes as an identifier; the built-in declaration is the base role
   `TypeDeclaration` (shadowable by a user form).
 Step 3 (the prelude `type` macro and migration) remains.
+
+## Grilled (2026-09-16): `enum` stays a keyword
+
+`enum` is a lexer keyword, like `struct`, `module` and `sig` (user decision), not a
+scope-resolved built-in role. `type` remains an ordinary identifier because it is
+a prelude macro (step 3), not a core form. Rule of thumb: core structural forms
+that produce a primitive node are keywords; library-level forms are roles.
