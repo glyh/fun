@@ -490,14 +490,6 @@ let macro_params_of (ctx : Expand_ctx.t) (head : t) =
 let lazy_env (ctx : Expand_ctx.t) =
   Enforest_util.lazy_env ~macro_params:(macro_params_of ctx) ctx.Expand_ctx.binding_table
 
-(* A macro's parameter kinds, and its value with each kind annotation made its
-   type; a kind no parameter can take yet is the definition's error. *)
-let macro_params ~(name : Syntax.id) value =
-  let params, value = Syntax.macro_params value in
-  if List.mem Syntax.HoleDecl params then
-    Expand_error.raise_at (ParameterKind { macro = name.name; kind = HoleDecl });
-  (params, value)
-
 let expand_capture expand = function
   | CapExpr e -> CapExpr (expand e)
   | c -> c
@@ -762,7 +754,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | MacroDef { name; value; body; kind; _ } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
-      let params, value = macro_params ~name value in
+      let params, value = Syntax.macro_params value in
       let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
       let macro_fn = elab (in_definition_site_opens ctx name value) in
       let resolved_kind = Syntax.macro_kind kind value in
@@ -1076,7 +1068,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
    | MacroBinding { name; value; public; kind } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
-      let params, value = macro_params ~name value in
+      let params, value = Syntax.macro_params value in
       let resolved_kind = Syntax.macro_kind kind value in
       let binding_name = id_name name in
       (* Stage 7: introduce name scope and register provisional macro BEFORE

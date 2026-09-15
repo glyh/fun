@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after M7, M9 run 2 and the M9 performance fix, 2026-09-14.
+Last updated: after M9 run 3 (M9 complete), 2026-09-15.
 
 ---
 
@@ -75,6 +75,17 @@ Last updated: after M7, M9 run 2 and the M9 performance fix, 2026-09-14.
 - Prelude and every test source migrated mechanically
   ([surface-syntax-braces](wayfinder/tickets/surface-syntax-braces.md)).
 
+### Macro model M9, run 3 — M9 complete (2026-09-15)
+- A macro parameter takes a kind: `macro m(n : Id, p : Pattern, b : Block, d : Decl)`.
+  A call's arguments are read as the kinds of the macro its head resolves to,
+  local or imported (the loader's caches carry the kinds); a `Decl` argument is a
+  brace group of items, unread until spliced, and its value is `Decls`. A wrong
+  kind or count is an `Expand_error`.
+- A declaration hole `$d` in `quote { … }` takes `Decls` and splices them.
+- A `$n` identifier token in `quote { … }` (a generated rule's head) is an `Id`
+  hole.
+- An import's roles bind in the region of the open or binder that imported it.
+
 ### Macro model M9, run 2 (2026-09-14)
 - A syntax form is a macro: its rules are reflected data on its role, and a use
   is filled through `Expand.application` (`Instantiate`). The region rule and
@@ -87,7 +98,6 @@ Last updated: after M7, M9 run 2 and the M9 performance fix, 2026-09-14.
   one inside a macro; expansion is idempotent. Resolved names are `x#n`.
 - A `: Decl` form works as a block statement; binders a macro returns into a
   definition context lose the use-site scope.
-- Not yet: procedural macro parameter kinds (`(n : Id)`).
 - Test changes: units that define forms open `std` themselves (a replacement is
   read at its definition); import cycles are reported by the syntax load that
   reaches them first; the circular-syntax tests use real import cycles.
@@ -196,8 +206,8 @@ Last updated: after M7, M9 run 2 and the M9 performance fix, 2026-09-14.
   visible role's name is `OpenSuppliesRole`
   ([template-heads-resolve-by-scope-set](wayfinder/tickets/template-heads-resolve-by-scope-set.md)).
   Enforestation still precedes expansion; the expander-driven loop rides on M9.
-- Still open from the macro model: M9 (templates desugar to macros). See the
-  design map's "Macro model distances still open".
+- M9 (templates desugar to macros) is complete; see "Macro model M9, run 3".
+  The macro model's remaining distances are in the design map.
 
 ### Macro system — Stages 0–10
 - Stages 0 through 10 are complete: substrate, hygiene, expansion, phase-aware imports,

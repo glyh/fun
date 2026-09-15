@@ -1450,7 +1450,7 @@ let test_quote_declarations () =
   check_i64_macro "quote { } splices an expression hole into a declaration" 42L
     "{ macro define(v) : Decl { quote { pub answer = $v; } }; M = module { define(21 + 21) }; M.answer }" ();
   check_i64_macro "quote { } splices a declaration hole" 6L
-    "{ macro wrap(v) : Decl { d = Syntax.decl_let(Syntax.new_id(\"answer\"), v, True); quote { $d; pub other = 1; } };
+    "{ macro wrap(v) : Decl { d = Cons(Syntax.decl_let(Syntax.new_id(\"answer\"), v, True), Nil); quote { $d; pub other = 1; } };
        M = module { wrap(5) }; M.answer + M.other }" ()
 
 let test_type_aware_output_is_expanded () =
@@ -2885,15 +2885,44 @@ let test_m9_param_kind_mismatch () =
     (function Expand_error.ArgumentCount { expected = 1; got = 2; _ } -> true | _ -> false)
     "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 1; same(x, x) }"
 
-let test_m9_param_decl_rejected () =
-  expect_expand_error "a Decl parameter"
-    (function Expand_error.ParameterKind { kind = HoleDecl; _ } -> true | _ -> false)
-    "{ macro m(d : Decl) { Syntax.i64(1) }; 0 }"
+(* A Decl parameter's argument is a brace group of items; its value is the
+   Decls it holds, spliced by a declaration hole as [quote { … }] builds. *)
+let test_m9_param_decl () =
+  check_i64_macro "a Decl parameter spliced into a quote" 33L
+    "{
+       M = module {
+         macro with_extra(d : Decl) : Decl { quote { $d; pub extra = 22; } };
+         with_extra({ pub x = 1; pub y = 10 })
+       };
+       M.x + M.y + M.extra
+     }" ();
+  check_i64_macro "a Decl parameter spliced twice" 2L
+    "{
+       M = module {
+         macro twice_decls(d : Decl) : Decl { quote { $d; $d } };
+         twice_decls({ pub x = 1; pub y = 2 })
+       };
+       M.y
+     }" ();
+  (* Like a syntax form's Decl capture, the items stay unread until spliced. *)
+  check_i64_macro "a Decl parameter's items arrive unread" 1L
+    "{
+       macro unread(d : Decl) {
+         match (d) { | Cons(Syntax.DeclItems(_), Nil) => Syntax.i64(1) | _ => Syntax.i64(0) }
+       };
+       unread({ a = 1; b = 2 })
+     }" ()
+
+let test_m9_param_decl_kind_mismatch () =
+  expect_expand_error "a Decl argument that is not a brace group"
+    (function Expand_error.ArgumentKind { kind = HoleDecl; _ } -> true | _ -> false)
+    "{ M = module { macro m(d : Decl) : Decl { quote { $d } }; m(x) }; 0 }"
 
 let kinded_unit =
   ("kinds", "open (import \"std\");
              pub macro same(n : Id) { Syntax.RawVar(None, n) };
-             pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) }")
+             pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
+             pub macro with_extra(d : Decl) : Decl { quote { $d; pub extra = 22; } }")
 
 let test_m9_param_imported () =
   check_operator "an imported macro's Id parameter, dotted" 5L [ kinded_unit ]
@@ -2901,7 +2930,9 @@ let test_m9_param_imported () =
   check_operator "an imported macro's Id parameter, opened" 5L [ kinded_unit ]
     "{ open (import \"kinds\"); x = 5; same(x) }";
   check_operator "an imported Decl macro's Id parameter" 7L [ kinded_unit ]
-    "{ M = module { open (import \"kinds\"); seven(y); pub r = y }; M.r }"
+    "{ M = module { open (import \"kinds\"); seven(y); pub r = y }; M.r }";
+  check_operator "an imported macro's Decl parameter" 33L [ kinded_unit ]
+    "{ M = module { open (import \"kinds\"); with_extra({ pub x = 1; pub y = 10 }) }; M.x + M.y + M.extra }"
 
 (* Names and shape only: a binder expanded again gets a fresh scope, which
    resolution of an already-resolved name never consults. *)
@@ -3642,7 +3673,8 @@ let () =
           Alcotest.test_case "a Block parameter" `Quick test_m9_param_block;
           Alcotest.test_case "a type-aware macro's Id parameter" `Quick test_m9_param_type_aware;
           Alcotest.test_case "an argument of the wrong kind" `Quick test_m9_param_kind_mismatch;
-          Alcotest.test_case "a Decl parameter is rejected" `Quick test_m9_param_decl_rejected;
+          Alcotest.test_case "a Decl parameter" `Quick test_m9_param_decl;
+          Alcotest.test_case "a Decl argument of the wrong kind" `Quick test_m9_param_decl_kind_mismatch;
           Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;
         ] );
     ]
