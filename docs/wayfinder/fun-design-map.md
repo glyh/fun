@@ -527,6 +527,12 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
+  — a top-level `perform` or a closure escaping its handler fails only at run time.
+- [The unhandled-effect error says handlers are not implemented](tickets/unhandled-effect-message-is-stale.md)
+  — stale run-time message.
+- [A match on a closure crashes the evaluator](tickets/match-on-a-closure-crashes-the-evaluator.md)
+  — `match (fn(u) { 1 }) { x => x }` fails with "if condition is not a boolean".
 - [Effect collection rejects a deferred typed macro call](tickets/effect-collection-rejects-deferred-macro-calls.md)
   — a typed macro call left for the elaborator aborts effect collection
   ("macro-only syntax should not reach elaboration").
@@ -556,7 +562,7 @@ Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 - [An under-applied Decl macro is fed a dummy Unit](tickets/decl-macro-fed-dummy-unit.md)
   — M8: `force_val` fabricates arguments; arity is checked only for kinded calls.
 - [Refresh the domain-model docs' "today" sections](tickets/refresh-domain-model-today-sections.md)
-  — stale descriptive prose in the core, macro and surface topics.
+  (closed) — all four topics refreshed against main; distances name their tickets.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
 

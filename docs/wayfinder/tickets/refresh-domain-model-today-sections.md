@@ -3,7 +3,9 @@ title: Refresh the domain-model docs' "today" sections
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: The "today" and "Model decision vs today" sections of all four domain-model topics were checked against main and rewritten; history is marked as history and every remaining distance names its open ticket. The struct-open ticket's stale line references are left as-is (that ticket is closed).
 assignee:
 blocked_by:
 ---
