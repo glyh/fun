@@ -634,7 +634,7 @@ and find_effect_branch mc branches eff op arg =
       if String.equal op branch_op && runtime_value_equal mc eff branch_eff then
         Option.map
           (fun bindings -> (bindings, body))
-          (match_core_pat mc arg_pat arg)
+          (match_core_pat mc body.env arg_pat arg)
       else None)
     branches
 
@@ -644,7 +644,9 @@ and same_effect_family mc lhs rhs =
   | _ -> false
 
 and runtime_value_equal mc lhs rhs =
+  lhs == rhs ||
   match (force mc lhs, force mc rhs) with
+  | VRef a, VRef b -> a == b
   | VEffect e1, VEffect e2 ->
       e1.id = e2.id
       && List.length e1.params = List.length e2.params
@@ -689,7 +691,7 @@ and struct_type_fields fields =
     (fun (name, kind, ty) -> if kind = Field then Some (name, ty) else None)
     fields
 
-and match_core_pat mc pat value =
+and match_core_pat mc env pat value =
   match (pat, force mc value) with
   | CPatWild, _ -> Some []
   | CPatBind, v -> Some [ v ]
@@ -697,17 +699,17 @@ and match_core_pat mc pat value =
   | CPatType expected, VAtomTy actual when Atom_ty.equal expected actual ->
       Some []
   | CPatProd pats, VProd values when List.length pats = List.length values ->
-      match_core_pats mc pats values
-  | CPatSyn { rhs; _ }, v -> match_core_pat mc rhs v
+      match_core_pats mc env pats values
+  | CPatSyn { rhs; _ }, v -> match_core_pat mc env rhs v
   | CPatCon (name, num_type_params, sub_pats), VCon { name = actual; spine; _ }
     when String.equal name actual ->
       let payload = List.drop num_type_params spine in
       if List.length sub_pats = List.length payload then
-        match_core_pats mc sub_pats payload
+        match_core_pats mc env sub_pats payload
       else None
-  | CPatNominalHead { id; param_pats; _ }, VNominal n when n.id = id ->
+  | CPatNominalHead { id; head; param_pats; _ }, VNominal n when n.id = id && same_instance mc env head n.id n.captures n.params ->
       if List.length param_pats = List.length n.params then
-        match_core_pats mc param_pats n.params
+        match_core_pats mc env param_pats n.params
       else None
   | CPatRecord { fields; _ }, VRecord { fields = values; _ } ->
       let rec go acc = function
@@ -715,7 +717,7 @@ and match_core_pat mc pat value =
         | (name, pat) :: rest -> (
             match List.assoc_opt name values with
             | Some value -> (
-                match match_core_pat mc pat value with
+                match match_core_pat mc env pat value with
                 | Some bindings -> go (List.rev_append bindings acc) rest
                 | None -> None)
             | None -> None)
@@ -734,24 +736,38 @@ and match_core_pat mc pat value =
           | (name, pat) :: rest -> (
               match List.assoc_opt name struct_fields with
               | Some field_ty -> (
-                  match match_core_pat mc pat field_ty with
+                  match match_core_pat mc env pat field_ty with
                   | Some bindings -> go (List.rev_append bindings acc) rest
                   | None -> None)
               | None -> None)
         in
         go [] fields
   | CPatOr (lhs, rhs), v -> (
-      match match_core_pat mc lhs v with
+      match match_core_pat mc env lhs v with
       | Some _ as matched -> matched
-      | None -> match_core_pat mc rhs v)
+      | None -> match_core_pat mc env rhs v)
   | _ -> None
 
-and match_core_pats mc pats values =
+(* A written nominal head, read in the match's scope, is the same instance as
+   [n]: its declaration evaluated over the same captures (E11). A type former is
+   applied to [n]'s params first. *)
+and same_instance mc env head id captures params =
+  match head with
+  | None -> true
+  | Some term -> (
+      let written = force mc (eval mc env term) in
+      let written = match written with VNominal _ -> written | _ -> force mc (List.fold_left (apply mc) written params) in
+      match written with
+      | VNominal h ->
+          h.id = id && List.length h.captures = List.length captures && List.for_all2 (runtime_value_equal mc) h.captures captures
+      | _ -> false)
+
+and match_core_pats mc env pats values =
   let rec go acc pats values =
     match (pats, values) with
     | [], [] -> Some (List.rev acc)
     | pat :: pats, value :: values -> (
-        match match_core_pat mc pat value with
+        match match_core_pat mc env pat value with
         | Some bindings -> go (List.rev_append bindings acc) pats values
         | None -> None)
     | _ -> None
@@ -804,7 +820,7 @@ and eval_match_direct_result (mc : MetaContext.t) (env : env)
   match branches with
   | [] -> fail mc "non-exhaustive match at runtime"
   | (pat, body) :: rest -> (
-      match match_core_pat mc pat scrutinee with
+      match match_core_pat mc env pat scrutinee with
       | Some bindings -> eval_result mc (List.rev_append bindings env) body
       | None -> eval_match_direct_result mc env scrutinee rest)
 

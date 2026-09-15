@@ -200,11 +200,14 @@ and core_pat =
       (** Struct type pattern for type-case. Field subpatterns match field types. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
-  | CPatNominalHead of { id : nominal_id; name : string; num_params : int; param_pats : core_pat list }
+  | CPatNominalHead of { id : nominal_id; name : string; num_params : int; head : term option; param_pats : core_pat list }
       (** Nominal type-head pattern for type-case. [id] is the unique nominal identity
           for switch comparison, [name] is the nominal type name,
           [num_params] is how many type params the nominal has, [param_pats] are
-          type-level sub-patterns matched against the nominal's parameter values. *)
+          type-level sub-patterns matched against the nominal's parameter values.
+          [head] is the written head, read in the match's scope: at run time a
+          type matches it only if it is that instance (E11) - the same captures,
+          and for a generative declaration the same evaluation. *)
   | CPatBind
       (** Variable binding — matches anything, binds the matched value.
           No name needed — binding is by de Bruijn index. *)
@@ -576,6 +579,18 @@ let rec pat_binder_count = function
   | CPatRecord { fields; _ } | CPatStructType { fields; _ } ->
       List.fold_left (fun n (_, p) -> n + pat_binder_count p) 0 fields
 
+(* A pattern with [f] applied to each nominal head's term - read in the match's
+   scope, whatever binders the pattern around it adds. *)
+let rec map_pat_heads f = function
+  | CPatNominalHead h -> CPatNominalHead { h with head = Option.map f h.head; param_pats = List.map (map_pat_heads f) h.param_pats }
+  | CPatSyn s -> CPatSyn { s with sub_pats = List.map (map_pat_heads f) s.sub_pats; rhs = map_pat_heads f s.rhs }
+  | CPatOr (l, r) -> CPatOr (map_pat_heads f l, map_pat_heads f r)
+  | CPatProd ps -> CPatProd (List.map (map_pat_heads f) ps)
+  | CPatCon (n, k, ps) -> CPatCon (n, k, List.map (map_pat_heads f) ps)
+  | CPatRecord r -> CPatRecord { r with fields = List.map (fun (n, p) -> (n, map_pat_heads f p)) r.fields }
+  | CPatStructType r -> CPatStructType { r with fields = List.map (fun (n, p) -> (n, map_pat_heads f p)) r.fields }
+  | (CPatWild | CPatBind | CPatAtom _ | CPatType _) as p -> p
+
 (* A single [rec]: a recursive group of one. *)
 let fix_one name pure body = Fix { members = [ { fix_name = name; fix_pure = pure; fix_body = body } ]; index = 0 }
 
@@ -655,10 +670,10 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
       Struct { s with con_fields = List.map (fun (n, ty) -> (n, at 0 ty)) s.con_fields; bindings = bindings s.bindings }
   | Match (scrut, branches) ->
       let branch = function
-        | ValueBranch (pat, body) -> ValueBranch (pat, at (pat_binder_count pat) body)
+        | ValueBranch (pat, body) -> ValueBranch (map_pat_heads (at 0) pat, at (pat_binder_count pat) body)
         | EffectBranch e ->
             (* the continuation, then the argument pattern's binders *)
-            EffectBranch { e with body = at (1 + pat_binder_count e.arg_pat) e.body }
+            EffectBranch { e with arg_pat = map_pat_heads (at 0) e.arg_pat; body = at (1 + pat_binder_count e.arg_pat) e.body }
       in
       Match (at 0 scrut, List.map branch branches)
   | NominalDef d ->

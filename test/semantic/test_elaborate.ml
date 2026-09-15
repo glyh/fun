@@ -419,6 +419,15 @@ let structs =
             less = fn(a : I64, b : I64) { a < b }; greater = fn(a : I64, b : I64) { a > b };
             up = Set(I64, less); down = Set(I64, greater);
             up.union(up.single(1), down.single(2)) }");
+    Alcotest.test_case "type-case compares nominal instances by their captures" `Quick
+      (eval_i64
+         "{ Set = fn(Elem : Type, cmp : Elem -> Elem -> Bool) { module {
+              pub type T = Leaf | Node(T, Elem, T);
+              pub lt = fn(x : Elem, y : Elem) : Bool { cmp(x, y) } } };
+            less = fn(a : I64, b : I64) { a < b }; greater = fn(a : I64, b : I64) { a > b };
+            a = Set(I64, less); b = Set(I64, less); c = Set(I64, greater);
+            f = fn(t : Type) { match (t) { a.T => 1, _ => 0 } };
+            f(b.T) * 10 + f(c.T) }" 10L);
     Alcotest.test_case "a generative module's types are named by its binder" `Quick
       (eval_i64 (symbol_table "g = fn(x : st1.Symbol) { st1.name(x) }; g(st1.intern(5)) + st1.name(st1.intern(1))") 11L);
     Alcotest.test_case "two generative evaluations are different types" `Quick
