@@ -40,7 +40,7 @@ let generalize (ctx : Ctx.t) (val_core : term) (val_ty : value) : term * value =
           let var = VRigid { lvl = ctx.lvl; spine = [] } in
           List.iter (fun eff -> collect (Nbe.eval ctx.metas (var :: effects.env) eff)) effects.effects;
           collect (Nbe.closure_apply ctx.metas codomain var)
-      | VRefTy a -> collect a
+      | VRefTy (h, a) -> collect h; collect a
       | VU | VAtom _ | VAtomTy _ | VTrait _ | VTraitDict _ | VRigid _ | VProd _ | VProdTy _ | VCont _ | VRef _ -> ()
       | _ -> ()
     in

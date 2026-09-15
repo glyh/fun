@@ -138,7 +138,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VAtomTy t -> AtomTy t
     | VProd elems -> Prod (List.map (go d) elems)
     | VProdTy elems -> ProdTy (List.map (go d) elems)
-    | VRefTy a -> RefTy (go d a)
+    | VRefTy (h, a) -> RefTy (go d h, go d a)
     | VRef _ -> raise (UnifyError (CannotUnify "cannot quote ref during unification"))
     | VModule { entries; partial } ->
         let fields = module_entry_fields entries in
@@ -281,7 +281,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
         | VEffectRow row ->
             List.iter occurs_check row.effect_values;
             Option.iter occurs_check row.tail_value
-        | VRefTy a -> occurs_check a
+        | VRefTy (h, a) -> occurs_check h; occurs_check a
         | VRef _ -> raise (UnifyError (CannotUnify "cannot unify ref cell"))
         | VModule { entries; partial = _ } ->
             List.iter
@@ -412,7 +412,7 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
       if List.length elems1 <> List.length elems2 then
         raise (UnifyError TupleLengthMismatch);
       List.iter2 (unify mc env depth) elems1 elems2
-  | VRefTy a1, VRefTy a2 -> unify mc env depth a1 a2
+  | VRefTy (h1, a1), VRefTy (h2, a2) -> unify mc env depth h1 h2; unify mc env depth a1 a2
   (* Two signatures describe the same module when they agree on one. *)
   | VSig clo1, VSig clo2 ->
       let var = VRigid { lvl = depth; spine = [] } in

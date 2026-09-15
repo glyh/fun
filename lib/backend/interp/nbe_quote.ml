@@ -166,7 +166,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           args = List.map (quote ops mc depth) d.args;
           fields = List.map (fun (name, value) -> (name, quote ops mc depth value)) d.fields }
   | VRecOcc r -> RecOcc { id = r.id; name = r.name; args = List.map (quote ops mc depth) r.args }
-  | VRefTy a -> RefTy (quote ops mc depth a)
+  | VRefTy (h, a) -> RefTy (quote ops mc depth h, quote ops mc depth a)
   | VStx (StxExpr stx) -> Stx stx
   | VStx _ -> Nbe_support.fail mc "cannot quote non-expression syntax object"
   | VRef _ -> Nbe_support.fail mc "cannot quote ref"
@@ -252,7 +252,7 @@ let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : 
       conv ops mc (depth + 1) (ops.closure_apply mc clo var) (ops.apply mc v var)
   | VProd elems1, VProd elems2 | VProdTy elems1, VProdTy elems2 ->
       List.length elems1 = List.length elems2 && List.for_all2 (conv ops mc depth) elems1 elems2
-  | VRefTy a1, VRefTy a2 -> conv ops mc depth a1 a2
+  | VRefTy (h1, a1), VRefTy (h2, a2) -> conv ops mc depth h1 h2 && conv ops mc depth a1 a2
   | VRigid { lvl = l1; spine = sp1 }, VRigid { lvl = l2; spine = sp2 } ->
       l1 = l2 && conv_spine ops mc depth sp1 sp2
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } ->
