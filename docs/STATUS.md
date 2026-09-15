@@ -21,6 +21,33 @@ Last updated: after enum expressions, 2026-09-16.
   enum/struct mixes are errors.
 
 
+### Effects follow-ups (2026-09-16)
+
+- **Tunneling by lexical handler and instance.** A call with an open row is
+  `Tunnel { named; handlers }`; a request whose effect instance (family and
+  parameters) its row does not name passes the handlers lexically enclosing the
+  call (`effect_request.skips`; each `EffectBranch` carries its handler id).
+- **E6 through outer references:** storing a closure that names a handled effect
+  into a reference not local to the match is `HandledEffectEscapes`; so is the
+  shape where another branch fixed the closure's row.
+- **Refs:** an unhandled `Mutate` names the reference (`effect Mutate(r)`); a
+  `let` or block with private mutation discharges its local heaps; local-heap
+  detection is one pass over older metas; `EffectRef` carries the effect's id.
+
+### Macro-system fixes for a `type` macro (2026-09-16)
+
+- **`pub` before a declaration syntax form or macro call** makes every
+  declaration it returns public (read items included). `InstantiateBinding` and
+  `MacroCallBinding` carry `public`, reflected both ways (`Syntax.publish`).
+- **`List(TokenTree)` holes and parameters:** a `: Decl` form's last hole of that
+  kind takes the rest of the use as unread token trees (`CapTokens`); a macro
+  parameter of that kind takes its argument's tokens. A hole written as a
+  macro's whole argument in a replacement takes the captured tokens. Anywhere
+  else (not last, not `: Decl`) is an error at the definition.
+- **`type` is an ordinary identifier.** The built-in type declaration is the base
+  role `TypeDeclaration`, resolved by scope set, so a user form named `type`
+  shadows it.
+
 ### E11: captures from the enclosing scope; generative modules sealed (2026-09-16)
 
 - A nominal captures the variables its enclosing module or function body names

@@ -60,12 +60,18 @@ let parse_hole = function
       | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident kind; _ }; _ } ]
         when token_kind Colon colon ->
           Some (Syntax.PartHole { hole = name; hole_kind = parse_hole_kind kind; hole_span = span }, rest)
-      (* [$(d : List(Decl))]: any number of declarations, as the parameter kind. *)
+      (* [$(d : List(Decl))] any number of declarations, [$(r : List(TokenTree))] the
+         rest of the use unread - as the parameter kinds. *)
       | [ { datum = Token { kind = Ident name; _ }; _ }; colon; { datum = Token { kind = Ident "List"; _ }; _ };
           { datum = Group (Raw_syntax.Paren, arg, _); _ } ]
-        when token_kind Colon colon
-             && (match drop_separators arg with [ { datum = Token { kind = Ident "Decl"; _ }; _ } ] -> true | _ -> false) ->
-          Some (Syntax.PartHole { hole = name; hole_kind = Syntax.HoleDecl; hole_span = span }, rest)
+        when token_kind Colon colon -> (
+          let kind =
+            match drop_separators arg with
+            | [ { datum = Token { kind = Ident "Decl"; _ }; _ } ] -> Syntax.HoleDecl
+            | [ { datum = Token { kind = Ident "TokenTree"; _ }; _ } ] -> Syntax.HoleTokens
+            | _ -> error "a list hole is $(name : List(Decl)) or $(name : List(TokenTree))"
+          in
+          Some (Syntax.PartHole { hole = name; hole_kind = kind; hole_span = span }, rest))
       | _ -> error "expected template hole annotation $(name : Kind)")
   | ({ datum = Token _; span } as term) :: rest when Option.is_some (hole_ident term) ->
       Some (Syntax.PartHole { hole = Option.get (hole_ident term); hole_kind = Syntax.HoleExpr; hole_span = span }, rest)
@@ -273,6 +279,11 @@ and match_parts ?(whole = false) callbacks captures pattern input =
                   ensure_no_rest "pattern hole" after;
                   (Syntax.CapPattern p, List.tl ts))
                 with_capture input)
+      | Syntax.HoleTokens -> (
+          (* The rest of the use, unread; the rules allow it only last. *)
+          match rest with
+          | [] -> with_capture (Syntax.CapTokens (drop_separators input)) []
+          | _ -> None)
       | Syntax.HoleDecl | HoleOneDecl -> (
           (* Declarations, captured unread: they are read where they are spliced.
              A [Decl] hole takes exactly one item, a [List(Decl)] any number. *)
@@ -303,3 +314,22 @@ let instantiate callbacks ~(form : Syntax.id) ~kind ~position ~from_unit (rules 
   match match_rules callbacks rules terms with
   | Some (rule, captures, rest) -> ({ Syntax.form; rule; captures; from_unit }, rest)
   | None -> error ("no matching branch for syntax " ^ form.name)
+
+(* A [List(TokenTree)] hole takes the rest of a declaration use: it is the last
+   part of a [: Decl] form's rule, outside any group. *)
+let check_token_holes ~(kind : Syntax.MacroAnnotation.t) (rules : Syntax.rule list) =
+  let rec inside = function
+    | Syntax.PartHole { hole_kind = Syntax.HoleTokens; hole; _ } -> Some hole
+    | PartGroup (_, parts, _) -> List.find_map inside parts
+    | PartHole _ | PartToken _ -> None
+  in
+  List.iter
+    (fun (r : Syntax.rule) ->
+      let before_last = match List.rev r.pattern with _ :: rev -> List.rev rev | [] -> [] in
+      let last_group = match List.rev r.pattern with (Syntax.PartGroup _ as g) :: _ -> [ g ] | _ -> [] in
+      match List.find_map inside (before_last @ last_group) with
+      | Some hole -> error ("the List(TokenTree) hole " ^ hole ^ " takes the rest of the use: it must be the rule's last part")
+      | None ->
+          if kind <> Syntax.MacroAnnotation.Decl && List.exists (fun p -> inside p <> None) r.pattern then
+            error "a List(TokenTree) hole takes the rest of a declaration: the form must be : Decl")
+    rules

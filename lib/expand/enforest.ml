@@ -46,6 +46,8 @@ and macro_call_args env (head : Syntax.t) items =
              | HoleOneDecl, [ { datum = Group (Raw_syntax.Brace, ts, _); _ } ]
                when List.length (List.filter (fun s -> drop_separators s <> []) (split_statements ts)) = 1 ->
                  Syntax.CapDecl (Syntax.Items ts)
+             (* The argument's tokens, unread: the macro reads them itself. *)
+             | HoleTokens, _ -> Syntax.CapTokens (drop_separators part)
              | (HoleId | HoleBlock | HolePattern | HoleDecl | HoleOneDecl), _ ->
                  Expand_error.raise_at (ArgumentKind { macro; kind; span = syntax_span part }))
            kinds parts)
@@ -425,10 +427,6 @@ and parse_primary env terms =
           error
             "macro ... in syntax is not supported; use macro declarations in \
              do blocks or modules"
-      | Token { kind = KwType; _ } ->
-          error
-            "type ... in syntax is not supported; use do blocks and type \
-             declarations"
       | Token { kind = KwTrait; _ } ->
           error
             "trait ... in syntax is not supported; use do blocks and trait \
@@ -456,6 +454,8 @@ and parse_primary env terms =
           Enforest_forms.parse_quote (fun holes -> form_callbacks (eager_env ~holes env)) term.span rest
       | Token { kind = Ident name | Operator name; _ } -> (
           match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
+          | Some { meaning = Syntax.TypeDeclaration; _ } ->
+              error "a type declaration is not an expression; declare it in a block or module"
           | Some ({ meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } as role) ->
               let inst, rest =
                 Enforest_template.instantiate (template_callbacks env (Operand (name, role))) ~form:(id_of term name) ~kind:rules_kind
@@ -646,7 +646,7 @@ and parse_postfix_infix env min_prec lhs terms =
                 | Syntax.CallMacro -> syntax_operator_arg ~span ~use:term symbol role [ lhs; rhs ]
                 | Syntax.ApplyValue ->
                     ap ~span (ap ~span (var_of term symbol) Explicitness.Explicit lhs) Explicitness.Explicit rhs
-                | Syntax.OrderGroup -> error ("an order group is not an operator: " ^ symbol)
+                | Syntax.OrderGroup | Syntax.TypeDeclaration -> error ("not an infix operator: " ^ symbol)
               in
               parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
@@ -683,7 +683,7 @@ and parse_value_decl_after_prefix env ~recursive stmt =
           decl_value = value;
           decl_recursive = recursive;
         }
-  | name_term :: rest when Option.is_some (binding_name_term name_term) -> (
+  | name_term :: rest when Option.is_some (binding_name_term name_term) && not (is_type_head env name_term) -> (
       let name_id = Option.get (binding_name_term name_term) in
       match split_at_token Equals rest with
       | Some (before_eq, _, value_terms) ->
@@ -721,9 +721,19 @@ and parse_value_decl_after_prefix env ~recursive stmt =
       | None -> None)
   | _ -> None
 
+(* The built-in type declaration: its head is [type] naming the base role
+   [TypeDeclaration], resolved by scope set like any role. *)
+and is_type_head env term =
+  match term.datum with
+  | Token { kind = Ident name; _ } -> (
+      match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
+      | Some { meaning = Syntax.TypeDeclaration; _ } -> true
+      | _ -> false)
+  | _ -> false
+
 and parse_type_binding env public stmt =
   match drop_separators stmt with
-  | ({ datum = Token { kind = KwType; _ }; _ } as type_kw) :: rest -> (
+  | type_kw :: rest when is_type_head env type_kw -> (
       match split_type_chain rest with
       | [] | [ _ ] -> parse_type_decl env public stmt
       | segments ->
@@ -744,9 +754,7 @@ and parse_type_binding env public stmt =
 
 and parse_type_decl env public stmt =
   match drop_separators stmt with
-  | { datum = Token { kind = KwType; _ }; _ }
-    :: ({ datum = Token { kind = Ident name; _ }; _ } as name_term)
-    :: rest -> (
+  | type_kw :: ({ datum = Token { kind = Ident name; _ }; _ } as name_term) :: rest when is_type_head env type_kw -> (
       match split_at_token Equals rest with
       | Some
           ( _,
@@ -1075,6 +1083,7 @@ and parse_syntax_template_decl env (head_id : Syntax.id) kind order body_terms r
       ~parse_replacement:(fun holes terms -> parse_replacement env kind holes terms)
       body_terms
   in
+  Enforest_template.check_token_holes ~kind rules;
   declare_role env head_id
     (Binding.role ~declared_at:head_id.span ~fixity:Syntax.PrefixOp ?order
        (Syntax.Rules { rules_kind = kind; rules }))
@@ -1086,8 +1095,9 @@ and template_callbacks env trailing =
     parse_pat_prefix = Enforest_pat.parse_pat_prefix;
     eager = env.eager }
 
-(* A syntax form used where a declaration goes. *)
-and parse_decl_template_use env stmt =
+(* A syntax form used where a declaration goes; [public] when written after
+   [pub], which makes every declaration it returns public. *)
+and parse_decl_template_use ?(public = false) env stmt =
   match drop_separators stmt with
   | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: _ -> (
       match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
@@ -1097,7 +1107,7 @@ and parse_decl_template_use env stmt =
               ~position:Syntax.MacroAnnotation.Decl ~from_unit rules stmt
           in
           ensure_no_rest "declaration syntax template use" rest;
-          Some (Syntax.InstantiateBinding inst)
+          Some (Syntax.InstantiateBinding { inst; public })
       | _ -> None)
   | _ -> None
 
@@ -1353,7 +1363,7 @@ match Parse_spec.parse header _env stmt with
       | _ -> error "expected '=' after pattern synonym parameters")
   | None -> None
 
-and parse_macro_call_binding env stmt =
+and parse_macro_call_binding env public stmt =
   (* A bare application statement [f(args)] at declaration position is a
      (decl-)macro invocation: the head is resolved to a macro by the expander,
      which reclassifies it into the internal [MacroCallBinding]. There is no
@@ -1374,7 +1384,7 @@ and parse_macro_call_binding env stmt =
            | None, [] -> [ Syntax.CapExpr (unit ~span:Source_span.synthetic ()) ]
            | None, _ -> List.map (fun a -> Syntax.CapExpr a) (parse_args env items)
          in
-         Syntax.MacroCallBinding { f; args }))
+         Syntax.MacroCallBinding { f; args; public }))
     env stmt
 
 (* [rec A = … and B = …]: a recursive group, its members in order. A lone [rec]
@@ -1446,7 +1456,7 @@ and parse_module_binding env stmt =
           [
             parse_open_binding env public;
             parse_macro_binding env public;
-            parse_macro_call_binding env;
+            parse_macro_call_binding env public;
             parse_pattern_syn_binding env public;
             parse_type_binding env public;
             parse_effect_binding env public;
@@ -1473,7 +1483,8 @@ and parse_module_statement env stmt =
       [ Syntax.HoleBinding (id_of term name) ]
   | [] -> []
   | _ -> (
-      match parse_decl_template_use env stmt with
+      let public, unprefixed = parse_public_prefix stmt in
+      match parse_decl_template_use ~public env unprefixed with
       | Some binding -> [ binding ]
       | None -> parse_module_binding env stmt)
 
@@ -1502,7 +1513,7 @@ and parse_struct_binding env stmt =
       | Some _ when public -> error "pub macro is not supported inside structs"
       | Some binding -> Some [ binding ]
       | None -> (
-          match parse_macro_call_binding env stmt with
+          match parse_macro_call_binding env public stmt with
           | Some _ when public ->
               error "pub macro call is not supported inside structs"
           | Some binding -> Some [ binding ]
@@ -1570,7 +1581,7 @@ let parse_block_decl_form env terms =
       match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
       | Some { meaning = Syntax.Rules { rules_kind = Syntax.MacroAnnotation.Decl; _ }; _ } -> (
           match parse_decl_template_use env stmt with
-          | Some (Syntax.InstantiateBinding inst) -> Some (inst, rest)
+          | Some (Syntax.InstantiateBinding { inst; _ }) -> Some (inst, rest)
           | _ -> None)
       | _ -> None)
   | _ -> None

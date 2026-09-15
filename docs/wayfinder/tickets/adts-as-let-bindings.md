@@ -129,3 +129,14 @@ hole rules; `type` lexes as a keyword. Decided:
   nominal at run time, not its former.
 - **Generative makers:** an enum inside an effectful maker's module is sealed at
   the binder like a `type` member (`m1.T ≠ m2.T`).
+
+## Step 2 implemented (2026-09-16, branch `macro-pub-rest-hole`)
+
+- `pub` before a syntax form or declaration macro call makes all its returned
+  declarations public.
+- `$(rest : List(TokenTree))` — last hole of a `: Decl` rule — captures the rest
+  of the use unread; `(ts : List(TokenTree))` parameters take an argument's
+  tokens; `{ count($rest) }` in a replacement passes them on.
+- `type` lexes as an identifier; the built-in declaration is the base role
+  `TypeDeclaration` (shadowable by a user form).
+Step 3 (the prelude `type` macro and migration) remains.

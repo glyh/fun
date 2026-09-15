@@ -108,13 +108,13 @@ pub Syntax = module {
   and Delim = ParenDelim | BracketDelim | BraceDelim
   and Role = MkRole(Fixity, Option(Order), RoleMeaning, Option(Span), Option(String))
   and Order = MkOrder(String, String, Assoc, Bool, List(Order), List(Order))
-  and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule)) | OrderGroup
+  and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule)) | OrderGroup | TypeDeclaration
   and Rule = MkRule(List(RulePart), Replacement, Option(Span))
   and RulePart = PartToken(TokenTree) | PartGroup(Delim, List(RulePart), Option(Span)) | PartHole(String, HoleKind, Option(Span))
-  and HoleKind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern
+  and HoleKind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern | HoleTokens
   and Replacement = ReplaceExpr(Expr) | ReplaceDecls(List(Decl))
   and Capture = MkCapture(String, Captured)
-  and Captured = CapExpr(Expr) | CapBlock(List(TokenTree)) | CapId(TokenTree) | CapPattern(Pattern) | CapDecls(List(Decl)) | CapDecl(Decl)
+  and Captured = CapExpr(Expr) | CapBlock(List(TokenTree)) | CapId(TokenTree) | CapPattern(Pattern) | CapDecls(List(Decl)) | CapDecl(Decl) | CapTokens(List(TokenTree))
   and Field = MkField(String, Expr)
   and QuoteHole = MkQuoteHole(String, Expr)
   and Param = MkParam(Id, Option(Expr), List(Path), Explicitness)
@@ -143,14 +143,14 @@ pub Syntax = module {
     | DeclTrait(Id, List(Id), List(Field), Bool)
     | DeclImpl(Option(Id), Path, List(Expr), List(Field), Bool)
     | DeclMacro(Id, Expr, Bool, Option(MacroAnn), Option(Expr))
-    | DeclMacroCall(Expr, List(Captured))
+    | DeclMacroCall(Expr, List(Captured), Bool)
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
     | DeclField(String, Expr)
     | DeclOpen(Expr, String)
     | DeclHole(Id)
     | DeclSyntax(Id, Role, Bool)
     | DeclItems(List(TokenTree))
-    | DeclInstantiate(Id, Rule, List(Capture), Option(String));
+    | DeclInstantiate(Id, Rule, List(Capture), Option(String), Bool);
   pub pattern Var(name) = RawVar(_, name);
   pub pattern Ap(f, a) = RawAp(_, f, _, a);
   pub pattern Lam(name, body) = RawLam(_, name, body);

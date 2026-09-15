@@ -432,11 +432,16 @@ let test_top_unhandled_perform () =
       eval_source "{ effect Exc = sig { raise : I64 -> I64 }; perform Exc.raise(1) }")
 
 let test_top_escaping_closure () =
-  expect_unhandled "a closure escaping its handler, called at the top" [ "effect Exc" ] (fun () ->
-      eval_source
-        "{ effect Exc = sig { raise : I64 -> I64 };
-           g = match (0) { x => fn(u : Unit) { perform Exc.raise(x) }, effect Exc.raise n => fn(u : Unit) { n } };
-           g(()) }")
+  (* The other branch's pure closure fixes the result row; the escape is still named (E6). *)
+  match
+    eval_source
+      "{ effect Exc = sig { raise : I64 -> I64 };
+         g = match (0) { x => fn(u : Unit) { perform Exc.raise(x) }, effect Exc.raise n => fn(u : Unit) { n } };
+         g(()) }"
+  with
+  | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
+  | exception e -> Alcotest.fail (Printexc.to_string e)
+  | _ -> Alcotest.fail "expected HandledEffectEscapes"
 
 (* Tunneling (E5): a handler handles what its own code performs; what a
    row-polymorphic callback performs passes it. *)
@@ -449,6 +454,8 @@ let test_handlers_tunnel () =
     (tunnel_find "match (match (pred(x)) { v => v, effect Exc.raise n => 1 }) { v => v, effect Exc.raise n => 2 }") ();
   check_i64 "a closure made under one handler and called under another" 999L
     (tunnel_find "g = match (0) { _ => fn(y : I64) { pred(y) }, effect Exc.raise n => fn(y : I64) { pred(0) } }; match (g(x)) { v => v, effect Exc.raise n => 2 }") ();
+  check_i64 "a parameterised effect instance tunnels" 999L
+    "{ effect E(A) = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 -> I64 can {| r}) -> I64 -> I64 can {| r} = fn[r : EffectRow](pred, x) { match (pred(x)) { v => v, effect E.raise n => 0 } }; user : I64 -> I64 can {E(I64)} = fn(x) { perform E.raise(x) }; match (find(user, 1)) { v => v, effect E.raise n => 999 } }" ();
   check_i64 "a call whose row names the effect is handled locally" 6L
     "{ effect Exc = sig { raise : I64 -> I64 }; helper : Unit -> I64 can {Exc} = fn(_) { perform Exc.raise(5) }; match (helper(())) { v => v, effect Exc.raise n => n + 1 } }" ()
 
@@ -457,6 +464,12 @@ let test_handled_effect_escape () =
    | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
    | exception e -> Alcotest.fail (Printexc.to_string e)
    | _ -> Alcotest.fail "expected HandledEffectEscapes");
+  (match eval_source "{ effect Exc = sig { raise : I64 -> I64 }; q : Ref(Unit -> I64 can {Exc}) = ref(fn(u) { perform Exc.raise(0) }); _ = match (0) { x => { q <- fn(u : Unit) { perform Exc.raise(x) }; 1 }, effect Exc.raise n => 2 }; 5 }" with
+   | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
+   | exception e -> Alcotest.fail (Printexc.to_string e)
+   | _ -> Alcotest.fail "expected HandledEffectEscapes through an outer ref");
+  check_i64 "a local ref may hold a handled closure" 1L
+    "{ effect Exc = sig { raise : I64 -> I64 }; match (0) { x => { q = ref(fn(u : Unit) { perform Exc.raise(x) }); 1 }, effect Exc.raise n => 2 } }" ();
   check_i64 "a saved continuation may outlive its handler" 5L
     "{ effect Async = sig { pause : Unit -> Unit }; q = ref(fn(u : Unit) { 0 }); _ = match (perform Async.pause(())) { v => 1, effect Async.pause _ => { q <- fn(u : Unit) { resume(()) }; 2 } }; 5 }" ()
 
@@ -509,7 +522,7 @@ let test_eval_match_binds_a_closure () =
     ()
 
 let test_debug_perform () =
-  let text = Debug.pp_term (Perform { eff = EffectRef ("State", [ AtomTy Atom_ty.TI64 ]); op = "get"; arg = Atom Unit }) in
+  let text = Debug.pp_term (Perform { eff = EffectRef { id = 0; name = "State"; params = [ AtomTy Atom_ty.TI64 ] }; op = "get"; arg = Atom Unit }) in
   if not (String.contains text 'g') then Alcotest.fail ("expected perform debug output, got " ^ text)
 
 let test_eval_handler_ignores_continuation () =
@@ -1885,7 +1898,7 @@ let test_generated_macro_binding_reentered () =
   Binding.extend ctx.Expand_ctx.binding_table ~name:"gen" ~scope:Scope_set.empty ~kind:Binding.Macro ~resolved_name:"gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_macro ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
-  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = []; public = false } in
   let _surface_bindings = Expand.expand_struct_bindings ctx [ call ] in
   Alcotest.(check bool) "generated macro registered" true
     (Hashtbl.fold (fun k _ acc -> acc || String.equal (Syntax.label k) "answer") ctx.Expand_ctx.macro_table false);
@@ -1924,7 +1937,7 @@ let test_generated_multi_binding_scope_threading () =
   Binding.extend ctx.Expand_ctx.binding_table ~name:"gen" ~scope:Scope_set.empty ~kind:Binding.Macro ~resolved_name:"gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_x; generated_y ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
-  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = []; public = false } in
   let expanded_bindings = Expand.expand_struct_bindings ctx [ call ] in
   let find_let name binds =
     List.find_opt (function Syntax.LetBinding b -> Syntax.label b.name.name = name | _ -> false) binds
@@ -3174,6 +3187,21 @@ let test_resolved_names_cannot_be_forged () =
     (function Expand_error.NotSyntax _ -> true | _ -> false)
     "{ x = 5; macro steal(n : Id) { Syntax.RawVar(None, Syntax.Id{name = \"x#0\"; span = None; scope = n.scope}) }; steal(y) }"
 
+(* [type] is an ordinary identifier naming a base role: a user form of the
+   name shadows it by scope set. *)
+let test_type_is_shadowable () =
+  check_i64_macro "a user syntax form shadows type" 7L
+    "{ syntax type : Decl { type $(n : Id) => { $n = 7 } }; type x; x }" ()
+
+(* A [List(TokenTree)] hole takes the rest of a declaration use unread, and a
+   macro parameter of that kind its argument's tokens; the macro reads them. *)
+let test_token_list_hole () =
+  check_i64_macro "the rest of a use and a whole argument, as tokens" 1010L
+    "{   M = module {     macro count(ts : List(TokenTree)) : List(Decl) { rec len = fn(l : List(Syntax.TokenTree)) : I64 { match (l) { Nil => 0, Cons(_, t) => 1 + len(t) } }; e = Syntax.i64(len(ts)); quote { pub n = $e } };     syntax tally : Decl { tally $(r : List(TokenTree)) => { count($r) } };     tally A B = X | Y and C = Z   };   N = module {     macro count(ts : List(TokenTree)) : List(Decl) { rec len = fn(l : List(Syntax.TokenTree)) : I64 { match (l) { Nil => 0, Cons(_, t) => 1 + len(t) } }; e = Syntax.i64(len(ts)); quote { pub n = $e } };     count(A B = X | Y and C = Z)   };   M.n * 100 + N.n }" ();
+  match eval_with_macros "{ syntax bad : Decl { bad $(r : List(TokenTree)) done => { x = 1 } }; 0 }" with
+  | exception Enforest_util.Error _ -> ()
+  | _ -> Alcotest.fail "a List(TokenTree) hole before the rule's end was accepted"
+
 let test_m9_param_id () =
   check_i64_macro "an Id parameter names the use site's binder" 5L
     "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 5; same(x) }" ()
@@ -3323,6 +3351,25 @@ let kinded_unit =
              pub macro same(n : Id) { Syntax.RawVar(None, n) };
              pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
              pub macro with_extra(d : List(Decl)) : List(Decl) { quote { $d; pub extra = 22; } }")
+
+(* [pub] before a declaration syntax form or a declaration macro call makes every
+   declaration it returns public. *)
+let pub_forms_unit =
+  ("pubforms", "open (import \"std\");
+                syntax make : Decl { make $(n : Id) => { $n = 41 } };
+                pub make answer;
+                macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
+                pub seven(sev);
+                make hidden")
+
+let test_pub_form_uses () =
+  check_operator "a pub syntax form's declaration is exported" 42L [ pub_forms_unit ]
+    "{ M = import \"pubforms\"; M.answer + 1 }";
+  check_operator "a pub macro call's declaration is exported" 7L [ pub_forms_unit ]
+    "{ M = import \"pubforms\"; M.sev }";
+  match eval_with_imported_macros [ pub_forms_unit ] "{ M = import \"pubforms\"; M.hidden }" with
+  | exception _ -> ()
+  | _ -> Alcotest.fail "a form used without pub exported its declaration"
 
 let test_m9_param_imported () =
   check_operator "an imported macro's Id parameter, dotted" 5L [ kinded_unit ]
@@ -4146,6 +4193,9 @@ let () =
           Alcotest.test_case "filling equals the quote" `Quick test_m9_filling_equals_quote;
           Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
           Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
+          Alcotest.test_case "type is shadowable" `Quick test_type_is_shadowable;
+          Alcotest.test_case "pub form uses export" `Quick test_pub_form_uses;
+          Alcotest.test_case "List(TokenTree) holes" `Quick test_token_list_hole;
           Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
           Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
           Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;

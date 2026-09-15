@@ -188,7 +188,7 @@ let w_assoc ns = function
 
 let w_hole_kind ns (k : Syntax.hole_kind) =
   con ns.hole_kind
-    (match k with HoleExpr -> "HoleExpr" | HoleBlock -> "HoleBlock" | HoleId -> "HoleId" | HoleDecl -> "HoleDecl" | HoleOneDecl -> "HoleOneDecl" | HolePattern -> "HolePattern")
+    (match k with HoleExpr -> "HoleExpr" | HoleBlock -> "HoleBlock" | HoleId -> "HoleId" | HoleDecl -> "HoleDecl" | HoleOneDecl -> "HoleOneDecl" | HolePattern -> "HolePattern" | HoleTokens -> "HoleTokens")
     []
 
 let rec w_expr ns (stx : Syntax.t) : value =
@@ -261,6 +261,7 @@ and w_role ns (r : Syntax.role) =
     | CallMacro -> con ns.role_meaning "CallMacro" []
     | Rules { rules_kind; rules } -> con ns.role_meaning "Rules" [ w_macro_ann ns rules_kind; w_list ns (w_rule ns) rules ]
     | OrderGroup -> con ns.role_meaning "OrderGroup" []
+    | TypeDeclaration -> con ns.role_meaning "TypeDeclaration" []
   in
   con ns.role "MkRole"
     [ w_fixity ns r.fixity; w_option ns (w_order ns) r.order; meaning; w_span ns r.declared_at;
@@ -292,6 +293,7 @@ and w_captured ns = function
   | CapPattern p -> con ns.captured "CapPattern" [ w_pat ns p ]
   | CapDecls ds -> con ns.captured "CapDecls" [ w_list ns (w_decl ns) ds ]
   | CapDecl d -> con ns.captured "CapDecl" [ w_decl ns d ]
+  | CapTokens ts -> con ns.captured "CapTokens" [ w_tokens ns ts ]
 
 and w_captures ns captures =
   w_list ns (fun (n, c) -> con ns.capture "MkCapture" [ w_string n; w_captured ns c ]) captures
@@ -359,7 +361,7 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclImpl" [ w_option ns (w_id ns) name; w_path ns trait; w_list ns (w_expr ns) args; w_fields ns fields; w_bool ns public ]
   | MacroBinding { name; value; public; kind; output } ->
       d "DeclMacro" [ w_id ns name; w_expr ns value; w_bool ns public; w_option ns (w_macro_ann ns) kind; w_option ns (w_expr ns) output ]
-  | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_captured ns) args ]
+  | MacroCallBinding { f; args; public } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_captured ns) args; w_bool ns public ]
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
   | FieldBinding { name; type_ } -> d "DeclField" [ w_string name; w_expr ns type_ ]
@@ -367,8 +369,8 @@ and w_decl ns (b : Syntax.struct_binding) =
   | HoleBinding id -> d "DeclHole" [ w_id ns id ]
   | SyntaxBinding { name; role; public } -> d "DeclSyntax" [ w_id ns name; w_role ns role; w_bool ns public ]
   | Items ts -> d "DeclItems" [ w_tokens ns ts ]
-  | InstantiateBinding { form; rule; captures; from_unit } ->
-      d "DeclInstantiate" [ w_id ns form; w_rule ns rule; w_captures ns captures; w_option ns w_string from_unit ]
+  | InstantiateBinding { inst = { form; rule; captures; from_unit }; public } ->
+      d "DeclInstantiate" [ w_id ns form; w_rule ns rule; w_captures ns captures; w_option ns w_string from_unit; w_bool ns public ]
 
 (* ---- reading values back ---- *)
 
@@ -523,6 +525,7 @@ let u_hole_kind ns v : Syntax.hole_kind option =
   | Some ("HoleId", []) -> Some HoleId
   | Some ("HoleDecl", []) -> Some HoleDecl
   | Some ("HoleOneDecl", []) -> Some HoleOneDecl
+  | Some ("HoleTokens", []) -> Some HoleTokens
   | Some ("HolePattern", []) -> Some HolePattern
   | _ -> None
 
@@ -674,6 +677,7 @@ and u_role ns v : Syntax.role option =
             let* rules = u_list ns (u_rule ns) rules in
             Some (Syntax.Rules { rules_kind; rules })
         | Some ("OrderGroup", []) -> Some Syntax.OrderGroup
+        | Some ("TypeDeclaration", []) -> Some Syntax.TypeDeclaration
         | _ -> None
       in
       let* declared_at = u_span ns declared_at in
@@ -731,6 +735,7 @@ and u_captured ns c : Syntax.capture option =
   | Some ("CapPattern", [ p ]) -> let* p = u_pat ns p in Some (Syntax.CapPattern p)
   | Some ("CapDecls", [ ds ]) -> let* ds = u_list ns (u_decl ns) ds in Some (Syntax.CapDecls ds)
   | Some ("CapDecl", [ d ]) -> let* d = u_decl ns d in Some (Syntax.CapDecl d)
+  | Some ("CapTokens", [ ts ]) -> let* ts = u_tokens ns ts in Some (Syntax.CapTokens ts)
   | _ -> None
 
 and u_captures ns v =
@@ -906,10 +911,11 @@ and u_decl ns v : Syntax.struct_binding option =
           let* kind = u_option ns (u_macro_ann ns) kind in
           let* output = u_option ns (u_expr ns) output in
           Some (Syntax.MacroBinding { name; value; public; kind; output })
-      | "DeclMacroCall", [ f; args ] ->
+      | "DeclMacroCall", [ f; args; public ] ->
           let* f = u_expr ns f in
           let* args = u_list ns (u_captured ns) args in
-          Some (Syntax.MacroCallBinding { f; args })
+          let* public = u_bool ns public in
+          Some (Syntax.MacroCallBinding { f; args; public })
       | "DeclPatternSyn", [ name; params; rhs; public ] ->
           let* name = u_id ns name in
           let* params = ids params in
@@ -925,12 +931,13 @@ and u_decl ns v : Syntax.struct_binding option =
           let* public = u_bool ns public in
           Some (Syntax.SyntaxBinding { name; role; public })
       | "DeclItems", [ ts ] -> let* ts = u_tokens ns ts in Some (Syntax.Items ts)
-      | "DeclInstantiate", [ form; rule; captures; from_unit ] ->
+      | "DeclInstantiate", [ form; rule; captures; from_unit; public ] ->
           let* form = u_id ns form in
           let* rule = u_rule ns rule in
           let* captures = u_captures ns captures in
           let* from_unit = u_option ns u_string from_unit in
-          Some (Syntax.InstantiateBinding { form; rule; captures; from_unit })
+          let* public = u_bool ns public in
+          Some (Syntax.InstantiateBinding { inst = { form; rule; captures; from_unit }; public })
       | _ -> None)
 
 (* ---- the interface the expander and elaborator use ---- *)
@@ -952,6 +959,8 @@ let wrap_capture ~nominals (c : Syntax.capture) : value =
   | None, CapDecls ds -> VStx (StxDecls ds)
   | Some ns, CapDecl d -> w_decl ns d
   | None, CapDecl d -> VStx (StxDecls [ d ])
+  | Some ns, CapTokens ts -> w_tokens ns ts
+  | None, CapTokens ts -> wrap_stx ~nominals (Syntax.synth (Block ts))
 
 let unwrap_stx ?nominals (v : value) : Syntax.t option =
   match nominals, v with

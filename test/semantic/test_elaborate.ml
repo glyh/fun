@@ -1876,6 +1876,19 @@ let ref_effects =
       (mutates_unhandled "{ r = ref(0); f : Unit -> Unit can {} = fn(_) { r <- 2 }; 1 }");
     Alcotest.test_case "a module-level reference works at the top" `Quick
       (eval_i64 "{ Counter = module { pub count = ref(0); pub tick : Unit -> Unit can {Mutate(count)} = fn(_) { count <- deref(count) + 1 } }; _ = Counter.tick(()); deref(Counter.count) }" 1L);
+    Alcotest.test_case "a block with private mutation is pure" `Quick
+      (elab_ok "{ p : Tuple({ acc = ref(1); acc <- 2; deref(acc) }, I64, I64) = (1, 2); p }");
+    Alcotest.test_case "a block returning its reference keeps the effect" `Quick
+      (mutates_unhandled "{ f : Unit -> Ref(I64) can {} = fn(_) { { r = ref(1); r } }; 1 }");
+    Alcotest.test_case "an unhandled Mutate names the reference" `Quick
+      (fun () ->
+        match elab "{ r = ref(0); f : Unit -> Unit can {} = fn(_) { r <- 2 }; 1 }" with
+        | exception Elaborate.ElabError (Elaborate.UnhandledEffects effs) ->
+            Alcotest.(check (list string)) "names r" [ "effect Mutate(r)" ] effs
+        | exception e -> Alcotest.fail (Printexc.to_string e)
+        | _ -> Alcotest.fail "expected an unhandled Mutate");
+    Alcotest.test_case "a user effect named Mutate does not shadow the built-in" `Quick
+      (eval_i64 "{ effect Mutate = sig { op : I64 -> I64 }; sum_to : I64 -> I64 = fn(n) { acc = ref(0); acc <- n; deref(acc) }; r = ref(1); r <- 4; deref(r) + sum_to(1) }" 5L);
     Alcotest.test_case "a module function touching its reference declares it" `Quick
       (mutates_unhandled "{ Counter = module { pub count = ref(0); pub tick : Unit -> Unit = fn(_) { count <- deref(count) + 1 } }; 1 }");
   ]

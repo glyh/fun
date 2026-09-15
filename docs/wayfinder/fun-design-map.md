@@ -528,9 +528,11 @@ What remains, in the recommended order:
 ### Found by the domain-model audit (2026-09-15)
 
 - [Effects follow-ups from tunneling](tickets/effects-followups-tunneling.md)
-  — `resume` skips the value branch (bug), family-vs-instance routing, E6 via refs.
+  — `resume` value branch, instance routing, E6 via refs and the pure-branch
+  shape done; open: unsolved `can _` at generalisation, `can any` semantics.
 - [Small follow-ups](tickets/small-followups-2026-09-15.md)
-  — `self.a(2)` crash, method row scope, `$(d : Decl)` hole kind, `+` bound by spelling.
+  — refs items 7–10 done (error names the ref, let/block discharge, one-pass
+  alias check, `EffectRef` by id); open: `+` on traits needs `+` trait-dispatched.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
@@ -563,8 +565,9 @@ What remains, in the recommended order:
   adts-as-let-bindings).
 - [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
   — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` becomes a prelude macro.
-  **Step 1 implemented** (enums, constructor members, `Option.Some`, rec enum groups);
-  next the macro-system fixes, then the `type` macro and migration.
+  **Steps 1 and 2 implemented** (enums, constructor members, `Option.Some`, rec enum
+  groups; `pub` before forms, `List(TokenTree)` holes, `type` as an identifier);
+  step 3, the `type` macro and migration, remains.
 Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 
 - [Declaration binders keep their written name](tickets/declaration-binders-keep-written-names.md)

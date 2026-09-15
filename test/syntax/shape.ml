@@ -177,7 +177,7 @@ and lower_effect_op (op : Syntax.effect_op) : effect_op =
 
 and lower_capture = function
   | Syntax.CapExpr e -> lower_expr e
-  | CapBlock _ | CapId _ | CapPattern _ | CapDecls _ | CapDecl _ -> invalid_arg "lower_capture: an argument not read as an Expr"
+  | CapBlock _ | CapId _ | CapPattern _ | CapDecls _ | CapDecl _ | CapTokens _ -> invalid_arg "lower_capture: an argument not read as an Expr"
 
 and lower_expr (stx : Syntax.t) : t =
   match stx.kind with
@@ -282,7 +282,7 @@ and lower_struct_binding = function
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.MacroBinding { name; value; public; kind; output = _ } ->
     MacroBinding { name = lower_id name; value = lower_expr value; public; kind }
-  | Syntax.MacroCallBinding { f; args } ->
+  | Syntax.MacroCallBinding { f; args; public = _ } ->
     MacroCallBinding { f = lower_expr f; args = List.map lower_capture args }
   | Syntax.PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = lower_id name;

@@ -39,6 +39,9 @@ type mapper = {
   (* The rule an instantiation names: left alone except by filling, since a
      rule with holes to fill can only be one the same quoted syntax declared. *)
   used_rule : mapper -> rule -> rule;
+  (* A capture replaced whole, before its parts are mapped: filling puts a
+     captured argument where a hole stands for a macro's whole argument. *)
+  capture : capture -> capture option;
 }
 
 let token_id = Syntax.token_id
@@ -77,10 +80,16 @@ and map_rule_default m (r : rule) : rule =
 and map_role m (role : role) : role =
   match role.meaning with
   | Rules { rules_kind; rules } -> { role with meaning = Rules { rules_kind; rules = List.map (m.rule m) rules } }
-  | ApplyValue | AssignRef | CallMacro | OrderGroup -> role
+  | ApplyValue | AssignRef | CallMacro | OrderGroup | TypeDeclaration -> role
 
-and map_capture m = function
+and map_capture m c =
+  match m.capture c with
+  | Some c -> c
+  | None -> map_capture_parts m c
+
+and map_capture_parts m = function
   | CapExpr e -> CapExpr (map_forms_with m e)
+  | CapTokens ts -> CapTokens (map_terms m ts)
   | CapBlock ts -> CapBlock (map_terms m ts)
   | CapId tok -> CapId (m.token { tok with scope = (m.id (token_id tok)).scope })
   | CapPattern p -> CapPattern (go_pat m p)
@@ -167,7 +176,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
      | ImplBinding { name; trait; args; fields; public } ->
        ImplBinding { name; trait = map_path m trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
      | MacroBinding { name; value; public; kind; output } -> MacroBinding { name = on_id name; value = go value; public; kind; output = Option.map go output }
-     | MacroCallBinding { f; args } -> MacroCallBinding { f = go f; args = List.map (map_capture m) args }
+     | MacroCallBinding { f; args; public } -> MacroCallBinding { f = go f; args = List.map (map_capture m) args; public }
      | PatternSynBinding { name; params; rhs; public } ->
        PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat m rhs; public }
      | FieldBinding { name; type_ } -> FieldBinding { name; type_ = go type_ }
@@ -175,7 +184,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
      | SyntaxBinding { name; role; public } -> SyntaxBinding { name = on_id name; role = map_role m role; public }
      | HoleBinding id -> HoleBinding (on_id id)
      | Items terms -> Items (map_terms m terms)
-     | InstantiateBinding inst -> InstantiateBinding (map_instantiation m inst))
+     | InstantiateBinding { inst; public } -> InstantiateBinding { inst = map_instantiation m inst; public })
 
 and go_match_branch m = function
   | ValueBranch (p, body) -> ValueBranch (go_pat m p, map_forms_with m body)
@@ -195,7 +204,7 @@ and go_pat m k =
      | PatBind id -> PatBind (m.id id))
 
 let mapper ?(form = Fun.id) id =
-  { id; form; binding = Fun.id; pat = Fun.id; token = Fun.id; rule = map_rule_default; used_rule = (fun _ r -> r) }
+  { id; form; binding = Fun.id; pat = Fun.id; token = Fun.id; rule = map_rule_default; used_rule = (fun _ r -> r); capture = (fun _ -> None) }
 
 (** Apply [on_id] to every identifier, and [on_form] to every form, bottom-up. *)
 let map_forms on_id on_form stx = map_forms_with (mapper ~form:on_form on_id) stx
@@ -258,7 +267,7 @@ let rec fill (captures : (string * capture) list) : mapper =
         | Some (CapExpr e) -> e
         | Some (CapBlock ts) -> { stx with kind = Block ts }
         | Some (CapId _) | None -> stx
-        | Some (CapPattern _ | CapDecls _ | CapDecl _) -> unfit "an expression" name)
+        | Some (CapPattern _ | CapDecls _ | CapDecl _ | CapTokens _) -> unfit "an expression" name)
     | Module { bindings } -> { stx with kind = Module { bindings = splice_decl_holes captures bindings } }
     | Struct { bindings } -> { stx with kind = Struct { bindings = splice_decl_holes captures bindings } }
     | Block [ { datum = Token { kind = Ident name; _ }; _ } ] -> (
@@ -296,7 +305,13 @@ let rec fill (captures : (string * capture) list) : mapper =
     ignore m;
     map_rule_default (fill captures) r
   in
-  { id; form; binding; pat; token; rule; used_rule = rule }
+  (* A hole written as a macro's whole argument takes the captured tokens. *)
+  let capture = function
+    | CapExpr { kind = Var { name; _ }; _ } | CapTokens [ { datum = Token { kind = Ident name; _ }; _ } ] -> (
+        match find name with Some (CapTokens _ as c) -> Some c | _ -> None)
+    | _ -> None
+  in
+  { id; form; binding; pat; token; rule; used_rule = rule; capture }
 
 and pattern_hole_names parts =
   List.concat_map
@@ -938,7 +953,7 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
   end
 
-and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) ?(in_struct = false) (ctx : Expand_ctx.t) bindings =
+and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) ?(in_struct = false) ?(publish = false) (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc all_scopes = function
     | [] -> (List.rev acc, all_scopes)
     | Items terms :: rest -> (
@@ -951,7 +966,8 @@ and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) ?(in_struc
       let after = if Enforest_util.drop_separators after = [] then [] else [ Items after ] in
       go active_scopes acc all_scopes (head @ after @ rest))
     | binding :: rest ->
-      let binding = add_struct_binding_scopes active_scopes binding in
+      (* A [pub] use's declarations are public, read ones included. *)
+      let binding = add_struct_binding_scopes active_scopes (if publish then Syntax.publish binding else binding) in
       let expanded_bindings, introduced_scopes_list = expand_struct_binding ~in_struct ctx binding in
       let acc =
         List.fold_left (fun acc b -> b :: acc) acc expanded_bindings
@@ -1073,11 +1089,11 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
     if public then ctx.Expand_ctx.syntax_exports <- ctx.Expand_ctx.syntax_exports @ [ (name.name, role) ];
     ([], [ [ scope ] ])
   | Items _ -> assert false
-  | InstantiateBinding inst ->
+  | InstantiateBinding { inst; public } ->
     instantiate ctx inst (fun app captures -> function
       | ReplaceDecls ds ->
         let filled = splice_decl_holes captures (List.map (go_struct_binding (fill captures)) ds) in
-        expand_struct_bindings_with_scopes ~in_struct ctx (List.map app.emit_binding filled)
+        expand_struct_bindings_with_scopes ~in_struct ~publish:public ctx (List.map app.emit_binding filled)
       | ReplaceExpr _ -> Expand_error.raise_at (NotDeclarations { macro = inst.form.name }))
   | FieldBinding _ when not in_struct -> Enforest_util.error "a field [name : type] belongs in a struct"
   | FieldBinding { name; type_ } -> ([ FieldBinding { name; type_ = expand ctx type_ } ], [ [] ])
@@ -1116,7 +1132,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
     | None ->
       ([MacroBinding { name; value = expand ctx value; public; kind; output }], [[]])
     end
-  | MacroCallBinding { f; args } ->
+  | MacroCallBinding { f; args; public } ->
     let head_macro =
       match f.kind, macro_member_key ctx f with
       | FieldAccess _, Some (key, entry) -> Some (key, Some entry, false)
@@ -1147,15 +1163,15 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
                     the shared binding-list loop so generated MacroBinding
                     annotations are resolved, macros are compiled/registered,
                     and sibling-generated scopes thread in source order. *)
-                 expand_struct_bindings_with_scopes ~in_struct ctx (List.map app.emit_binding bindings)
+                 expand_struct_bindings_with_scopes ~in_struct ~publish:public ctx (List.map app.emit_binding bindings)
              | None -> Expand_error.raise_at (NotDeclarations { macro = key })))
         | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
         end
       | Some (key, None, true) ->
         Expand_error.raise_at (ExpandedDuringDefinition { macro = key })
-      | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args }], [[]])
+      | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args; public }], [[]])
       end
-    | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args }], [[]])
+    | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args; public }], [[]])
     end
 
 and expand_match_branch ctx = function

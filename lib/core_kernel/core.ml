@@ -69,7 +69,8 @@ and term =
           the same declaration over convertible captures is the same type. [eval]
           builds the [VNominal] directly, never looking the declaration up in an
           environment ([name] is for display), and applies [params]. *)
-  | EffectRef of string * term list
+  | EffectRef of { id : int; name : string; params : term list }
+      (** An effect by identity (its declaration's id); [name] is for printing. *)
       (** Applied effect family reference. [eval] scans the environment for a
           [VEffect] template with this name, evaluates the param terms, and
           returns [VEffect] with those params. *)
@@ -142,11 +143,12 @@ and term =
       (** Effect family definition. The [id] is allocated during elaboration so
           repeated evaluation of the same declaration remains applicative. *)
   | Perform of { eff : term; op : string; arg : term }
-  | Tunnel of (int * int) list * term
-      (** An application whose latent row does not name the effect families
-          listed: a request of such a family coming out of it skips that many
-          handlers, the ones lexically enclosing the call in its function body
-          (tunneling, E5). Pairs are (effect id, handler count). *)
+  | Tunnel of { named : term list; handlers : int list; body : term }
+      (** An application whose latent row has an open tail (tunneling, E5): a
+          request coming out of it whose effect instance is none of [named] (the
+          instances the row names, family and parameters, E1) belongs to the
+          caller's caller, so it skips [handlers] - the handlers lexically
+          enclosing the call in its function body. *)
       (** Effect operation invocation. Handlers/runtime bubbling are not implemented yet. *)
   | RefTy of term * term
       (** [Ref(h, A)]: a reference into the hidden heap [h] holding an [A]. The
@@ -172,6 +174,7 @@ and term =
 and match_branch =
   | ValueBranch of core_pat * term
   | EffectBranch of {
+      handler : int;  (** the lexical handler (match) this branch belongs to *)
       eff : value;
       op : string;
       arg_pat : core_pat;
@@ -436,8 +439,8 @@ and effect_request = {
   eff : value;
   op : string;
   arg : value;
-  hops : int;
-    (** How many matching handlers this request still skips (tunneling). *)
+  skips : int list;
+    (** The lexical handlers this request passes without being handled (tunneling). *)
   k : value -> result;
 }
 
@@ -650,7 +653,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | ProdTy ts -> ProdTy (List.map (at 0) ts)
   | RecOcc r -> RecOcc { r with captures = List.map (at 0) r.captures; args = List.map (at 0) r.args }
   | NomRef n -> NomRef { n with captures = List.map (at 0) n.captures; params = List.map (at 0) n.params }
-  | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
+  | EffectRef e -> EffectRef { e with params = List.map (at 0) e.params }
   | RefTy (h, a) -> RefTy (at 0 h, at 0 a)
   | RefNew a -> RefNew (at 0 a)
   | RefGet a -> RefGet (at 0 a)
@@ -658,7 +661,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | Proj (a, i) -> Proj (at 0 a, i)
   | Dot (a, field) -> Dot (at 0 a, field)
   | Perform p -> Perform { p with eff = at 0 p.eff; arg = at 0 p.arg }
-  | Tunnel (skips, body) -> Tunnel (skips, at 0 body)
+  | Tunnel t -> Tunnel { t with named = List.map (at 0) t.named; body = at 0 t.body }
   | Quote q -> Quote { q with holes = List.map (fun (n, h) -> (n, at 0 h)) q.holes }
   | RecordConstruct { typ; fields } ->
       RecordConstruct { typ = at 0 typ; fields = List.map (fun (n, v) -> (n, at 0 v)) fields }

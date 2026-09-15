@@ -10,7 +10,9 @@ type expr_effects = { effects : expr_effect list; tail : expr_effect option }
    check emit into it as they go, in the one pass. The contexts a form derives
    share it; a fresh one starts where effects stop flowing outward - a lambda's
    body (they become its latent row), a type, a handled scrutinee, a unit. *)
-type effect_sink = { mutable performed : expr_effects }
+(* What a form performed, and what it stored into references: (heap, stored
+   value's type). A store is a way a value leaves a handler's scope (E6). *)
+type effect_sink = { mutable performed : expr_effects; mutable stored : (value * value) list }
 
 (* A SCOPE: one ordered sequence of entries, viewed through several columns that
    must stay the same length, [lvl]. [env] is the column the evaluator receives -
@@ -50,11 +52,11 @@ module Ctx = struct
        [None] only in the half-built context [init_ctx] is itself assembling. *)
     base : t option;
     sink : effect_sink;
-    (* The effect families each handler lexically enclosing this point handles,
+    (* The handlers (matches with effect branches) lexically enclosing this point,
        innermost first, within the current function body (a lambda body starts
        with none). A call whose row does not name one of them tunnels past
        these handlers (E5). *)
-    handler_scopes : int list list;
+    handler_scopes : int list;
     (* The levels the enclosing module or function body names (E11): a nominal
        declared in it captures them, so it is the same type exactly when they
        are the same. *)
@@ -106,7 +108,7 @@ and macro_runtime = {
       loader = None;
       macro_runtime = None;
       base = None;
-      sink = { performed = { effects = []; tail = None } };
+      sink = { performed = { effects = []; tail = None }; stored = [] };
       handler_scopes = [];
       scope_captures = [];
       sealed = [];
