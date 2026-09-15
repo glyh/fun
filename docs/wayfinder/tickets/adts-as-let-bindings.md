@@ -168,3 +168,30 @@ output plus that one narrow `pub open` case.
   is an error.
 - `pub type Option A = Some(A) | None` expands to
   `pub rec Option = fn(A : Type) { enum { Some(A), None } }; open Option; export Option`.
+
+## Step 3 blocked (2026-09-16): the prelude cannot define a procedural macro
+
+Found by the type-macro run. Block-level `rec … and …` enum groups are done
+(`48e36ae`) and `export` exists (`1dc107f`); the `type` macro itself is blocked:
+
+- **The prelude is expanded without an elaborator** (`Elab_prelude.parsed_stdlib
+  = Parse_expand.parse_module stdlib_source`, no callbacks), and a `macro`
+  definition compiles only when `Expand_ctx.elaborate` is set
+  (`expand.ml`, `MacroBinding` → `None` branch keeps it uncompiled).
+- **`std` delivers roles, never procedural macros**: `std_load_syntax` returns
+  `syntax_exports`; `Macro_driver.visit_macros` skips the reserved `std` path.
+- **Bootstrapping**: the macro body needs `List`, `TokenTree` and the `Syntax`
+  nominals, which the prelude itself declares with `type`.
+- A template-only `type` form cannot turn `C1(T) | C2` into `enum { C1(T), C2 }`
+  (a replacement is parsed syntax, not tokens).
+
+Mechanics verified: a `: Decl` form with a `List(TokenTree)` hole returning
+`DeclItems(tokens)` works; macro-written tokens can carry definition-site scopes
+from `quote(Type)`; always emitting `rec` works for non-recursive parameterised
+enums, so recursion detection is unnecessary.
+
+**Needs a decision:** (a) stage the prelude: core types declared with `enum`
+directly, then a second prelude stage expanded with an elaborator defines
+`type`, and `std` delivers its compiled macros like an imported unit; (b) keep
+`type` compiler-built (reverses "type is a macro"); (c) a small core splice rule
+so a template can place a captured `Pattern` union into `enum { … }`.
