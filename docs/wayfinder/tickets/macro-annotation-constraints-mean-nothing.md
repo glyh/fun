@@ -2,7 +2,7 @@
 title: What a macro annotation constraint means, and how many type binders a macro has
 parent: ../fun-design-map.md
 labels:
-  - wayfinder:grilling
+  - wayfinder:task
 status: open
 assignee:
 blocked_by:
@@ -43,3 +43,23 @@ retired `: Expr(A)` / `: A` binder form.
 ## Found by
 
 The explicit type-binders implementation (2026-09-14).
+
+## Grilled (2026-09-15)
+
+1. **A constraint checks the output.** `macro n(x) : Expr(I64)` elaborates the
+   macro's output against `I64` at the call; a mismatch is an error naming the
+   macro ("macro `n` promises Expr(I64), its output has type String"). `T` must
+   be a type, checked at the definition.
+2. **Any number of type binders.** `macro pair[A, B](a : Expr(A), b : Expr(B)) : Expr((A, B))`,
+   like a function's implicit parameters.
+3. **Parameters are typed the same way.** `(x : Expr(I64))` means syntax that
+   elaborates at `I64`; the argument is checked when it elaborates
+   ("argument x of `twice` expects Expr(I64), got String"). A plain `Expr` is
+   untyped.
+4. **Binders are solved before the macro runs**, from the call's expected type
+   and its typed arguments; the macro runs with them; then the output is
+   checked. A binder unsolved when the macro must run is an error at the call
+   ("cannot infer A for `default`").
+
+Question 3 above (the `_ = T` device) follows from these: the annotation is the
+output's type, so the device should go.
