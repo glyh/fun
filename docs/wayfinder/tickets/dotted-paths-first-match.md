@@ -3,7 +3,9 @@ title: Dotted paths and compiler-known names are found by first match on a spell
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Every member lookup takes the last match through one helper, `Core.find_map_last` (`find_field_last` and the named-impl lookups use it; `Elab_stdlib.resolve` reads fields with `find_field_last`; the unused `struct_impl_type_opt` is deleted). The prelude nominal names `Elab_stdlib.syntax_nominals` and the quote-hole types read are in `Compiler_names` (`Syntax_name`, `Type_name.option`/`list`). Test: a module with two named impls `eq_I` resolves `M.eq_I` to the last in both the type and value views.
 assignee:
 blocked_by:
 ---

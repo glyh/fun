@@ -1584,6 +1584,17 @@ let open_choices =
       (eval_i64 "{ M = module { pub z = 5 }; y = 1; open M; y }" 1L);
     Alcotest.test_case "a type named EffectRow is an ordinary name" `Quick
       (eval_i64 "{ M = module { pub type A = MkA(EffectRow) and EffectRow = MkE(I64) }; f = fn(a : M.A) { 1 }; f(M.MkA(M.MkE(3))) }" 1L);
+    (* I3: a dotted path denotes the last member of its name - for a named impl
+       too, in both the type view (the elaborator) and the value view (the
+       evaluator). *)
+    Alcotest.test_case "a named impl path denotes the last impl of that name" `Quick
+      (eval_i64
+         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
+          M = module { pub impl eq_I : Eq(Bool) = module { eq = fn(x, y) { True } }; \
+                       pub impl eq_I : Eq(I64) = module { eq = fn(x, y) { False } } }; \
+          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; \
+          if (same[I64, M.eq_I](1, 1)) { 1 } else { 2 } }"
+         2L);
   ]
 
 (* The checker evaluates under a budget: a divergent evaluation it performs is

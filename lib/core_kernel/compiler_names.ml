@@ -1,4 +1,6 @@
 module Type_name = struct
+  let option = "Option"
+  let list = "List"
   let i64 = "I64"
   let bool = "Bool"
   let unit = "Unit"
@@ -31,6 +33,40 @@ end
 
 module Syntax_name = struct
   let r = "R"
+
+  (* The prelude's [Syntax] types macros read and build (reflection nominals). *)
+  let expr = "Expr"
+  let explicitness = "Explicitness"
+  let atom_val = "AtomVal"
+  let decl = "Decl"
+  let decls = "Decls"
+  let id = "Id"
+  let pattern = "Pattern"
+  let field = "Field"
+  let param = "Param"
+  let effect_row = "EffectRow"
+  let effect_op = "EffectOp"
+  let type_decl = "TypeDecl"
+  let ctor = "Ctor"
+  let branch = "Branch"
+  let pat_field = "PatField"
+  let atom_ty = "AtomTy"
+  let fixity = "Fixity"
+  let macro_ann = "MacroAnn"
+  let quote_hole = "QuoteHole"
+  let token_tree = "TokenTree"
+  let token_kind = "TokenKind"
+  let delim = "Delim"
+  let assoc = "Assoc"
+  let role = "Role"
+  let role_meaning = "RoleMeaning"
+  let order = "Order"
+  let rule = "Rule"
+  let rule_part = "RulePart"
+  let hole_kind = "HoleKind"
+  let replacement = "Replacement"
+  let capture = "Capture"
+  let captured = "Captured"
 end
 
 module Constructor_name = struct

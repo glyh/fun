@@ -3,7 +3,9 @@ title: The elaborator's macro runtime is still a mutable field
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: `Ctx.macro_runtime` is immutable. A context gets a runtime by construction (`Ctx.with_expander ctx ectx`) at every former write site (macro driver, import, `bin/main.ml`, test helpers); the import site builds `with_expander (unit_base ctx) expand_ctx`, a new record, so even when `unit_base` returns the importer's own context (`base = None`) the importer's handle is untouched. No dedicated test - the overwrite is no longer expressible, and a `base = None` context cannot import (import needs the prelude's syntax nominals).
 assignee:
 blocked_by:
 ---
