@@ -176,7 +176,7 @@ and lower_effect_op (op : Syntax.effect_op) : effect_op =
 
 and lower_capture = function
   | Syntax.CapExpr e -> lower_expr e
-  | CapBlock _ | CapId _ | CapPattern _ | CapDecls _ -> invalid_arg "lower_capture: an argument not read as an Expr"
+  | CapBlock _ | CapId _ | CapPattern _ | CapDecls _ | CapDecl _ -> invalid_arg "lower_capture: an argument not read as an Expr"
 
 and lower_expr (stx : Syntax.t) : t =
   match stx.kind with

@@ -542,7 +542,7 @@ What remains, in the recommended order:
 - [`open` a module parameter](tickets/open-a-module-parameter.md)
   (closed) — `Open`/`OpenBind` carry the members the type lists; each is pushed as a projection.
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
-  (closed) — `: Decl` is one, `: List(Decl)` many, checked at the definition.
+  (closed) — `: Decl` is one, `: List(Decl)` many, checked at the definition; a parameter means the same (`(d : Decl)` one, `(d : List(Decl))` a group).
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
   (closed) — effects are computed in one pass during inference; an effect left
   unhandled at a program's entry or a unit's top is an elaboration error.

@@ -148,7 +148,7 @@ and rule_part =
   | PartHole of { hole : string; hole_kind : hole_kind; hole_span : Source_span.t }
 
 (** What a hole captures: the reflection types (M10). *)
-and hole_kind = HoleExpr | HoleBlock | HoleId | HoleDecl | HolePattern
+and hole_kind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern
 
 and rule_replacement = ReplaceExpr of t | ReplaceDecls of struct_binding list
 
@@ -168,6 +168,7 @@ and capture =
   | CapId of Token_tree.token
   | CapPattern of pat
   | CapDecls of struct_binding list
+  | CapDecl of struct_binding  (** a macro parameter [(d : Decl)]: exactly one declaration *)
 
 and t = {
   kind : kind;
@@ -389,7 +390,7 @@ let hole_kind_of_name = function
   | _ -> None
 
 let hole_kind_name = function
-  | HoleExpr -> "Expr" | HoleBlock -> "Block" | HoleId -> "Id" | HoleDecl -> "Decl" | HolePattern -> "Pattern"
+  | HoleExpr -> "Expr" | HoleBlock -> "Block" | HoleId -> "Id" | HoleDecl -> "List(Decl)" | HoleOneDecl -> "Decl" | HolePattern -> "Pattern"
 
 (* The id an identifier or operator token names. *)
 let token_id (tok : Token_tree.token) =
@@ -409,10 +410,15 @@ let macro_params (value : t) : hole_kind list * t =
         (* [(x : Expr(T))]: an [Expr] whose type the macro's signature promises. *)
         let syntax = { written with name = Compiler_names.Module_name.syntax } in
         (HoleExpr, Some { kind = FieldAccess ({ kind = Var syntax; span }, "Expr"); span = ty_span })
+    (* [(d : List(Decl))]: a brace group of any number of declarations. *)
+    | Some { kind = Ap ({ kind = Var { name = "List"; _ }; _ }, Explicitness.Explicit, { kind = Var ({ name = "Decl"; _ } as written); span }); span = ty_span } ->
+        let syntax = { written with name = Compiler_names.Module_name.syntax } in
+        (HoleDecl, Some { kind = FieldAccess ({ kind = Var syntax; span }, "Decls"); span = ty_span })
     | Some ({ kind = Var ({ name; _ } as written); span } as ty) -> (
-        match hole_kind_of_name name with
+        (* As a parameter, [Decl] is exactly one declaration, as it is as an output. *)
+        match (match hole_kind_of_name name with Some HoleDecl -> Some HoleOneDecl | k -> k) with
         | Some kind ->
-            let type_name = match kind with HoleBlock -> "Expr" | HoleDecl -> "Decls" | k -> hole_kind_name k in
+            let type_name = match kind with HoleBlock -> "Expr" | k -> hole_kind_name k in
             let syntax = { written with name = Compiler_names.Module_name.syntax } in
             (kind, Some { ty with kind = FieldAccess ({ kind = Var syntax; span }, type_name) })
         | None -> (HoleExpr, p.type_))
