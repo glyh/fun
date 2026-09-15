@@ -290,7 +290,18 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
             | _ -> fail mc "projection of non-product"))
   | Dot (e, name) ->
       bind_result (eval_result mc env e) (fun value ->
-          Done (dot_value mc value name))
+          match value with
+          (* [v.m] on a record with no field [m]: a method of its type, applied to it. *)
+          | VRecord { typ; fields } when not (List.mem_assoc name fields) ->
+              let typ = match typ with
+                | VRecOcc { id; args; _ } -> (
+                    match Hashtbl.find_opt Core.finished_records id with
+                    | Some f -> List.fold_left (apply mc) f args
+                    | None -> typ)
+                | _ -> typ
+              in
+              apply_result mc (dot_value mc typ name) value
+          | _ -> Done (dot_value mc value name))
   | Open (s, members, body) ->
       bind_result (eval_result mc env s) (fun vs -> eval_result mc (push_open_members mc env vs members) body)
   | Fix { members; index } -> Done (VFix { fix_members = members; fix_env = env; fix_index = index })

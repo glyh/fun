@@ -581,16 +581,48 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               | None -> raise (ElabError (UnboundVariable name)))
           | _ -> (
               let record_fields = visible_record_fields fields in
-              match find_record_field record_fields name with
-              | Some (_, field_ty) -> (Dot (e_core, name), Nbe.force ctx.metas field_ty)
-              | None when partial ->
+              let is_self = match ctx.Ctx.self_entry, e_core with
+                | Some _, Var ix -> fst (Ctx.lookup_self ctx) = ix
+                | _ -> false
+              in
+              let method_ty =
+                match find_field_last (fun (n, k, _) -> String.equal n name && k = Method) fields with
+                | Some _ as m -> m
+                | None when is_self ->
+                    Option.map (fun ty -> (name, Method, ty)) (List.assoc_opt name ctx.Ctx.self_methods)
+                | None -> None
+              in
+              match find_record_field record_fields name, method_ty with
+              | Some (_, field_ty), _ -> (Dot (e_core, name), Nbe.force ctx.metas field_ty)
+              (* [v.m]: a method call - the method applied to the value. *)
+              | None, Some (_, _, method_ty) -> (
+                  match Nbe.force ctx.metas method_ty with
+                  | VPi { domain; effects; codomain; _ } -> (
+                      Ctx.unify ctx e_ty domain;
+                      let e_value = Ctx.eval ctx e_core in
+                      let row = effect_row_values ctx effects e_value in
+                      match Nbe.force ctx.metas (Nbe.closure_apply ctx.metas codomain e_value) with
+                      | VPi _ as rest ->
+                          emit ctx (expr_effects_of_row_values ctx row);
+                          (Dot (e_core, name), rest)
+                      (* [method m()] declares no parameters, as [fn()]: [v.m] is a
+                         function of [()], and [v.m()] runs it. *)
+                      | result ->
+                          let quote v = Nbe.quote ctx.metas (ctx.lvl + 1) v in
+                          let arrow_row : effect_row = { effects = List.map quote row.effect_values; tail = Option.map quote row.tail_value } in
+                          ( Lam (Dot (shift_term 1 0 e_core, name)),
+                            VPi { explicitness = Explicit; domain = VAtomTy Atom_ty.TUnit;
+                                  effects = effect_row_closure ctx.env arrow_row;
+                                  codomain = { env = ctx.env; body = quote result } } ))
+                  | _ -> raise (ElabError ApplyingNonFunction))
+              | None, None when partial && not is_self ->
                   let result_ty = Ctx.raw_meta ctx in
                   let constraint_ty =
                     VStruct { entries = entries @ [ StructField (name, Field, result_ty) ]; partial = true }
                   in
                   Ctx.unify ctx e_ty constraint_ty;
                   (Dot (e_core, name), result_ty)
-              | None -> raise (ElabError (UnboundVariable name))))
+              | None, None -> raise (ElabError (UnboundVariable name))))
       | VRecord { typ; _ } -> (
           match Nbe.force_shape ctx.metas typ with
           | VStruct { entries; _ } -> (
@@ -737,13 +769,81 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             in
             ((Lam body_core, method_ty), row)
       in
-      (* A method is elaborated once every field is known, so [self]'s type is
-         closed: a name that is not a field is an error, not a new field. *)
-      let elaborate_method ctx params effects body =
-        let self_ty = match partial_self () with VStruct s -> VStruct { s with partial = false } | ty -> ty in
+      (* Every method's type, known before any method body: its parameter and
+         result annotations, else metas the method's own body solves, and its
+         declared row. So [self.m] can call a method written later. The self
+         parameter is the fields (a partial struct: any struct holding them). *)
+      let method_types = ref None in
+      (* A method's type against the type it was known at: parameters and result.
+         ponytail: rows are not compared - a declared row is the same syntax both
+         times; a [can _] method called through [self] before its body is checked
+         performs its pre-body row (an unsolved tail). Compare rows once row
+         metas can be shared across the two elaborations. *)
+      let unify_method_types (ctx : Ctx.t) actual promised =
+        let rec go depth actual promised =
+          match Nbe.force ctx.metas actual, Nbe.force ctx.metas promised with
+          | VPi a, VPi p ->
+              Unify.unify ctx.metas ctx.env depth a.domain p.domain;
+              let var = VRigid { lvl = depth; spine = [] } in
+              go (depth + 1) (Nbe.closure_apply ctx.metas a.codomain var) (Nbe.closure_apply ctx.metas p.codomain var)
+          | a, p -> Unify.unify ctx.metas ctx.env depth a p
+        in
+        Eval_budget.request ~demand:"a unification" ctx.metas.budget (fun () -> go ctx.lvl actual promised)
+      in
+      let method_type ctx params effects body =
+        let result = match body.Syntax.kind with Syntax.Annotated { typ; _ } -> Some typ | _ -> None in
+        let rec go ctx = function
+          | [] ->
+              let ret = match result with
+                | Some typ -> let _, _, v = ops.type_value_of_expr ctx typ in v
+                | None -> Ctx.raw_meta ctx
+              in
+              (ret, Elab_type_expr.elaborate_effect_row ops ctx effects)
+          | (param : Syntax.param) :: rest ->
+              let a_ty = match param.type_ with
+                | Some t -> let _, _, v = ops.type_value_of_expr ctx t in v
+                | None -> Ctx.raw_meta ctx
+              in
+              let ctx' = Ctx.bind ctx param.name.name a_ty in
+              let body_ty, row = go ctx' rest in
+              (VPi { explicitness = expl_of_syntax param.explicitness; domain = a_ty;
+                     effects = effect_row_closure ctx.env (innermost_row rest row);
+                     codomain = { env = ctx.env; body = Ctx.quote ctx' body_ty } }, row)
+        in
+        let self_ty = partial_self () in
+        let self_ctx, _ = Ctx.bind_anonymous (Ctx.with_self_type ctx self_ty) self_ty in
+        let body_ty, row = go self_ctx params in
+        VPi { explicitness = Explicit; domain = self_ty;
+              effects = effect_row_closure ctx.env (innermost_row params row);
+              codomain = { env = ctx.env; body = Ctx.quote self_ctx body_ty } }
+      in
+      (* ponytail: method types are read where the first method is elaborated, so a
+         method's annotation cannot name an item written after that point. *)
+      let method_types_in ctx =
+        match !method_types with
+        | Some tys -> tys
+        | None ->
+            let tys =
+              List.filter_map
+                (function
+                  | Syntax.MethodBinding { name; params; effects; body; public } ->
+                      Some (Syntax.label name.name, (if public then Method else PrivateMethod), method_type ctx params effects body)
+                  | _ -> None)
+                bindings
+            in
+            method_types := Some tys;
+            tys
+      in
+      (* Inside a method, [self] is the struct being defined: its fields and every
+         method, so [self.m(…)] is a method call. *)
+      let elaborate_method ctx name params effects body =
+        let self_ty = partial_self () in
+        let tys = method_types_in ctx in
         let ctx = Ctx.with_self_type ctx self_ty in
         let self_ctx, self_entry = Ctx.bind_anonymous ctx self_ty in
-        let self_ctx = { self_ctx with Ctx.self_entry = Some self_entry } in
+        let self_ctx =
+          { self_ctx with Ctx.self_entry = Some self_entry; self_methods = List.map (fun (n, _, ty) -> (n, ty)) tys }
+        in
         let (body_core, body_ty), row = elaborate_method_params self_ctx effects params body in
         let body_ty_term = Ctx.quote self_ctx body_ty in
         let method_ty =
@@ -754,6 +854,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             codomain = { env = ctx.env; body = body_ty_term };
           }
         in
+        (match List.find_opt (fun (n, _, _) -> String.equal n name) tys with
+         | Some (_, _, promised) -> unify_method_types ctx method_ty promised
+         | None -> ());
         (Lam body_core, method_ty)
       in
       (* [Self] in an item other than a field is the fields written so far; a
@@ -827,7 +930,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             go ~defer ctx' (List.rev_append binds acc_binds, List.rev_append entries acc_entries) rest
         | Syntax.MethodBinding { name = { name = key; _ }; params; effects; body; public } :: rest ->
             let name = Syntax.label key in
-            let method_core, method_ty = elaborate_method ctx params effects body in
+            let method_core, method_ty = elaborate_method ctx name params effects body in
             let method_val = Ctx.eval ctx method_core in
             let kind = if public then Method else PrivateMethod in
             let bind = LetBind (name, kind, method_core) in

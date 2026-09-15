@@ -682,11 +682,15 @@ let structs =
         eval_i64 "{ C = struct { v : I64; pub method get() : I64 { self.v } }; C.get(C{v = 7}) }" 7L ();
         elab_ok "{ effect Exc = sig { raise : I64 -> I64 }; C = struct { v : I64; pub method bump() : I64 can {Exc} { perform Exc.raise(1) } }; C.bump }" ();
         elab_fail "{ f = fn(n : I64) : Bool { n }; 1 }" ());
-    Alcotest.test_case "self holds only fields: a method or unknown name is an error" `Quick
+    Alcotest.test_case "a method is called through a value" `Quick
       (fun () ->
-        elab_fail "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { self.a(2) } }; C.b(C{v = 1}) }" ();
-        elab_fail "{ C = struct { v : I64; pub method b() { self.zzz } }; 1 }" ();
-        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { a(self)(2) } }; C.b(C{v = 1}) }" 3L ());
+        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { self.a(2) } }; C.b(C{v = 1}) }" 3L ();
+        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k } }; c = C{v = 1}; c.a(2) }" 3L ();
+        eval_i64 "{ C = struct { v : I64; pub method b() : I64 { self.later(5) }; pub method later(k : I64) : I64 { self.v * k } }; C{v = 2}.b() }" 10L ();
+        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { a(self)(2) } }; C.b(C{v = 1}) }" 3L ();
+        elab_fail "{ C = struct { v : I64; pub method b() { self.zzz } }; 1 }" ());
+    Alcotest.test_case "a struct type with methods is not its fields alone" `Quick
+      (elab_fail "{ C = struct { v : I64; pub method get() { self.v } }; D = struct { v : I64 }; f = fn(x : D) { x.v }; f(C{v = 1}) }");
     Alcotest.test_case "a field type mentioning an earlier method is a cycle" `Quick
       (fun () ->
         match elab "{ C = struct { a : I64; pub method get() { self.a }; b : get; }; 0 }" with

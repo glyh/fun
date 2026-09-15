@@ -38,12 +38,16 @@ blocked_by:
 
 ## Done (2026-09-15, branch small-followups)
 
-- **1.** Root cause: a method's `self` type was the fields as an *open* partial
-  struct, so `self.a` / `self.anything` added a field constraint and passed the
-  checker. A method is elaborated after every field, so `self`'s type is now
-  closed (fields only): a method name or unknown name on `self` is an
-  elaboration error; call a method as `a(self)`. Struct type unification
-  compares fields only when one side has no methods (methods are not in the value).
+- **1.** `self.a(2)` and `v.a(2)` are method-call syntax (user decision
+  2026-09-15). Root cause of the old run-time "field not found": a record value
+  holds only its fields, and `Dot` on it never looked at its type's methods;
+  the checker let it through because `self`'s partial type turned any name into a
+  new field constraint. Now `v.m` on a record with no field `m` evaluates to its
+  type's method applied to `v`, and checks as that call. Inside a method every
+  method's type is known before any body (annotations, else metas the body
+  solves), so `self.later(…)` works; an unknown name on `self` is an error. A
+  method declared `m()` is called `v.m()`, as `fn()`. Struct types with methods
+  still differ from their fields alone.
 - **3.** `$(d : Decl)` takes exactly one declaration, `$(d : List(Decl))` any
   number (a brace group or the items up to the hole's extent), as the parameter
   kinds; `Decl` names one declaration everywhere (`Syntax.hole_kind_of_name`).

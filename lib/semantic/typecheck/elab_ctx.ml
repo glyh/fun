@@ -32,6 +32,9 @@ module Ctx = struct
     trait_evidence : trait_evidence list;
     self_entry : name_entry option;
     self_type : value option;
+    (* Inside a method: every method of the struct being defined, by name, at
+       its type - so [self.m] calls one, a later one included. *)
+    self_methods : (string * value) list;
     resume_entry : name_entry option;
     loader : Core_loader.t option;
     (* The capabilities the elaborator needs from the expander to run a
@@ -85,6 +88,7 @@ and macro_runtime = {
       trait_evidence = [];
       self_entry = None;
       self_type = None;
+      self_methods = [];
       resume_entry = None;
       loader = None;
       macro_runtime = None;
@@ -203,8 +207,8 @@ and macro_runtime = {
   let add_trait_evidence (ctx : t) (evidence : trait_evidence) : t =
     { ctx with trait_evidence = evidence :: ctx.trait_evidence }
 
-  let clear_self (ctx : t) : t = { ctx with self_entry = None }
-  let clear_self_scope (ctx : t) : t = { ctx with self_entry = None; self_type = None }
+  let clear_self (ctx : t) : t = { ctx with self_entry = None; self_methods = [] }
+  let clear_self_scope (ctx : t) : t = { ctx with self_entry = None; self_type = None; self_methods = [] }
 
   let fresh_meta (ctx : t) : term =
     let id = MetaContext.fresh ctx.metas in
