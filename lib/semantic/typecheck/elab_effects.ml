@@ -87,8 +87,26 @@ let discharge_local_heaps ctx ~since ~(visible : term list) effects =
   let observable eff = match local_heap eff with Some m -> List.exists (mentions m) visible | None -> true in
   { effects with effects = List.filter observable effects.effects }
 
-let unhandled ctx effects =
-  ElabError (UnhandledEffects (List.map (fun eff -> Debug.pp_value_short ctx.Ctx.metas eff.value) effects))
+(* An effect as an error names it: [Mutate] on a heap names a reference in
+   scope on that heap ([effect Mutate(r)]), not the hidden heap. *)
+let describe_effect ctx eff =
+  let metas = ctx.Ctx.metas in
+  let reference_on heap =
+    Elab_common.NameMap.fold
+      (fun name entry found ->
+        match found, Nbe.force metas entry.Elab_common.ty with
+        | None, VRefTy (h, _) when Ctx.conv ctx h heap -> Some (Syntax.label name)
+        | _ -> found)
+      ctx.Ctx.name_table None
+  in
+  match Nbe.force metas eff.value with
+  | VEffect { id; name; params = [ heap ]; _ } when id = mutate_effect_id -> (
+      match reference_on heap with
+      | Some r -> Printf.sprintf "effect %s(%s)" name r
+      | None -> Debug.pp_value_short metas eff.value)
+  | _ -> Debug.pp_value_short metas eff.value
+
+let unhandled ctx effects = ElabError (UnhandledEffects (List.map (describe_effect ctx) effects))
 
 let require_empty_effects ctx effects =
   match effects.effects, effects.tail with
