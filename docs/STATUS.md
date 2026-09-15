@@ -3,11 +3,20 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after a bare arrow is pure, 2026-09-15.
+Last updated: after methods follow the arrow rule, 2026-09-15.
 
 ---
 
 ## Completed
+
+### Methods follow the arrow rule (2026-09-15)
+
+- A method is pure unless it declares a row: `pub method bump() can {Log} { … }`,
+  `can _` infers it (`Syntax.MethodBinding.effects`, reflected as `DeclMethod`'s
+  row). The row sits on the method's innermost arrow, so a call performs it once
+  every argument is supplied; a body performing beyond it is `UnhandledEffects`.
+- A trait method signature's arrow carries its row like any arrow, and an impl's
+  method is checked against it.
 
 ### A bare arrow is pure (2026-09-15)
 

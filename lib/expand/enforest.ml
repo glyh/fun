@@ -398,11 +398,19 @@ and parse_method_binding env public stmt =
           require_adjacent_span name_term.span params_group.span
             "method parameter list";
           let params = parse_method_params env items in
+          (* [can row]: a method is pure unless it declares a row (E3). *)
+          let effects, rest =
+            match drop_separators rest with
+            | term :: rest when token_kind KwCan term ->
+                let eff, rest = parse_can_effect_row env rest in
+                (Some eff, rest)
+            | rest -> (None, rest)
+          in
           let body, rest, _ = parse_body env "method parameters" rest in
           ensure_no_rest "method declaration" rest;
           Some
             (Syntax.MethodBinding
-               { name = id_of name_term name; params; body; public })
+               { name = id_of name_term name; params; effects; body; public })
       | _ ->
           error
             ("method declaration requires a parenthesized parameter list: "

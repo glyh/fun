@@ -52,7 +52,8 @@ and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }
   | RecGroupBinding of { members : (id * t) list; public : bool }
       (** [rec A = … and B = …]: every member sees every member. *)
-  | MethodBinding of { name : id; params : param list; body : t; public : bool }
+  | MethodBinding of { name : id; params : param list; effects : effect_row option; body : t; public : bool }
+      (** [method m(params) can row { body }]: pure unless [can] declares a row (E3). *)
   | TypeBinding of { members : type_decl list; public : bool }
       (** [type A = … and B = …]: one binding per chain, its members mutually
           recursive; a single declaration is the one-member chain. *)
@@ -476,6 +477,9 @@ let macro_signature ~(output : t option) (value : t) : macro_signature option =
     (* Annotated as a type, so a promised [T] that is not one is an error. *)
     let signature = { kind = Annotated { inner = pis; typ = type_at (fresh_id ~span "Type") }; span } in
     Some { signature; binders = List.map (fun (p : param) -> p.name.name) binders; params }
+
+(* A row's effect and tail forms, mapped. *)
+let map_effect_row f (e : effect_row) = { e with effects = List.map f e.effects; tail = Option.map f e.tail }
 
 (** The kind of a macro with annotation [ann] and value [value]: [TypedExpr]
     when its signature promises a type, so its call waits for the elaborator. *)

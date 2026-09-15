@@ -3,7 +3,9 @@ title: Methods follow the arrow rule — pure unless they say `can`
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented (branch method-rows). MethodBinding carries an optional row written `can row` after the parameters; the elaborator checks the body's effects against it and puts it on the method's innermost arrow. No existing test performed in a method, so none migrated. Trait signatures already carried rows through their arrows; an impl method is checked against them.
 decided: 2026-09-15
 assignee:
 blocked_by:

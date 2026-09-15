@@ -342,8 +342,8 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclLet" [ w_id ns name; w_expr ns value; w_bool ns public; w_bool ns recursive ]
   | RecGroupBinding { members; public } ->
       d "DeclRecGroup" [ ids (List.map fst members); w_list ns (w_expr ns) (List.map snd members); w_bool ns public ]
-  | MethodBinding { name; params; body; public } ->
-      d "DeclMethod" [ w_id ns name; w_list ns (w_param ns) params; w_expr ns body; w_bool ns public ]
+  | MethodBinding { name; params; effects; body; public } ->
+      d "DeclMethod" [ w_id ns name; w_list ns (w_param ns) params; w_option ns (w_effect_row ns) effects; w_expr ns body; w_bool ns public ]
   | TypeBinding { members; public } -> d "DeclType" [ w_list ns (w_type_decl ns) members; w_bool ns public ]
   | EffectBinding { name; params; ops; public } ->
       d "DeclEffect" [ w_id ns name; ids params; w_list ns (w_effect_op ns) ops; w_bool ns public ]
@@ -856,12 +856,13 @@ and u_decl ns v : Syntax.struct_binding option =
           let* public = u_bool ns public in
           let* recursive = u_bool ns recursive in
           Some (Syntax.LetBinding { name; value; public; recursive })
-      | "DeclMethod", [ name; params; body; public ] ->
+      | "DeclMethod", [ name; params; effects; body; public ] ->
           let* name = u_id ns name in
           let* params = u_list ns (u_param ns) params in
+          let* effects = u_option ns (u_effect_row ns) effects in
           let* body = u_expr ns body in
           let* public = u_bool ns public in
-          Some (Syntax.MethodBinding { name; params; body; public })
+          Some (Syntax.MethodBinding { name; params; effects; body; public })
       | "DeclType", [ members; public ] ->
           let* members = u_list ns (u_type_decl ns) members in
           let* public = u_bool ns public in

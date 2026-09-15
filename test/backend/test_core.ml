@@ -449,6 +449,36 @@ let test_top_unhandled_in_imported_unit () =
       expect_unhandled "an imported unit's top-level perform" [ "effect Exc" ] (fun () ->
           eval_source_with_loader loader "{ M = import \"noisy\"; 0 }"))
 
+(* A method follows the arrow rule: pure unless its [can] declares a row. *)
+let exc_counter methods = "effect Exc = sig { raise : I64 -> I64 }; C = struct { n : I64; " ^ methods ^ " }"
+
+let test_method_rows () =
+  expect_unhandled "a method performing an undeclared effect" [ "effect Exc" ] (fun () ->
+      eval_source ("{ " ^ exc_counter "pub method bump() { perform Exc.raise(1); self.n }" ^ "; 0 }"));
+  check_i64 "a method declaring its row, handled at the call" 11L
+    ("{ " ^ exc_counter "pub method bump() can {Exc} { perform Exc.raise(1); self.n }"
+     ^ "; match (C.bump(C{n = 1})) { x => x, effect Exc.raise v => v + 10 } }") ();
+  expect_unhandled "a declared method called at the top without a handler" [ "effect Exc" ] (fun () ->
+      eval_source ("{ " ^ exc_counter "pub method bump() can {Exc} { perform Exc.raise(1); self.n }" ^ "; C.bump(C{n = 1}) }"));
+  check_i64 "can _ infers a method's row" 13L
+    ("{ " ^ exc_counter "pub method add(k : I64) can _ { perform Exc.raise(k) }"
+     ^ "; match (C.add(C{n = 1})(3)) { x => x, effect Exc.raise v => v + 10 } }") ();
+  check_i64 "a method calling another performs its declared row" 12L
+    ("{ " ^ exc_counter "pub method a(k : I64) can {Exc} { perform Exc.raise(k) }; pub method b() can {Exc} { a(self)(2) }"
+     ^ "; match (C.b(C{n = 1})) { x => x, effect Exc.raise v => v + 10 } }") ();
+  expect_unhandled "a pure method calling an effectful one" [ "effect Exc" ] (fun () ->
+      eval_source ("{ " ^ exc_counter "pub method a(k : I64) can {Exc} { perform Exc.raise(k) }; pub method b() { a(self)(2) }" ^ "; 0 }"))
+
+let test_trait_method_rows () =
+  let trait_src impl_body =
+    "{ effect Exc = sig { raise : I64 -> I64 }; effect Other = sig { ping : I64 -> I64 }; \
+     trait Log(A) = sig { log : A -> I64 can {Exc} }; \
+     impl Log(I64) = module { log = fn(x) { " ^ impl_body ^ " } }; 0 }"
+  in
+  check_i64 "an impl method within its trait's row" 0L (trait_src "perform Exc.raise(x)") ();
+  expect_unhandled "an impl method performing beyond its trait's row" [ "effect Other" ] (fun () ->
+      eval_source (trait_src "perform Other.ping(x)"))
+
 let test_eval_match_binds_a_closure () =
   check_i64 "a variable pattern binds a closure scrutinee" 1L
     "{ h = match (fn(u : Unit) { 1 }) { x => x }; h(()) }" ();
@@ -3403,6 +3433,8 @@ let () =
           Alcotest.test_case "an escaping closure called at the top is an error" `Quick test_top_escaping_closure;
           Alcotest.test_case "handled and latent effects pass the top" `Quick test_top_handled_and_latent;
           Alcotest.test_case "an imported unit's unhandled effect is an error" `Quick test_top_unhandled_in_imported_unit;
+          Alcotest.test_case "a method is pure unless it declares a row" `Quick test_method_rows;
+          Alcotest.test_case "a trait method signature carries a row" `Quick test_trait_method_rows;
           Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
           Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;

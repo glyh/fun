@@ -697,13 +697,21 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let partial_self () =
         VStruct { entries = List.rev_map (fun (name, _, ty) -> StructField (name, Field, ty)) !fields; partial = true }
       in
-      let rec elaborate_method_params ctx params body =
+      (* A method follows the arrow rule (E3): its innermost arrow carries the row
+         its [can] declares - none when absent - and its body performs within it. *)
+      let method_body ctx effects body =
+        let (body_core, body_ty), performed = collecting ctx (fun ctx -> ops.infer ctx body) in
+        let row = Elab_type_expr.elaborate_effect_row ops ctx effects in
+        check_effect_subset ctx performed
+          { effect_values = List.map (Ctx.eval ctx) row.effects; tail_value = Option.map (Ctx.eval ctx) row.tail };
+        ((body_core, body_ty), row)
+      in
+      (* The row sits on the innermost arrow, so it is performed once every
+         argument is supplied. *)
+      let innermost_row rest row = if rest = [] then row else empty_effect_row in
+      let rec elaborate_method_params ctx effects params body =
         match params with
-        | [] ->
-            (* ponytail: a method's type carries no row, so what its body performs is
-               dropped here (as before); give the innermost arrow the body's row when
-               methods get latent effects. *)
-            fst (collecting ctx (fun ctx -> ops.infer ctx body))
+        | [] -> method_body ctx effects body
         | param :: rest ->
             let a_ty =
               match param.Syntax.type_ with
@@ -713,30 +721,30 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               | None -> Ctx.raw_meta ctx
             in
             let ctx' = Ctx.bind ctx param.Syntax.name.name a_ty in
-            let body_core, body_ty = elaborate_method_params ctx' rest body in
+            let (body_core, body_ty), row = elaborate_method_params ctx' effects rest body in
             let body_ty_term = Ctx.quote ctx' body_ty in
             let method_ty =
               VPi {
                 explicitness = expl_of_syntax param.explicitness;
                 domain = a_ty;
-                effects = effect_row_closure ctx.env empty_effect_row;
+                effects = effect_row_closure ctx.env (innermost_row rest row);
                 codomain = { env = ctx.env; body = body_ty_term };
               }
             in
-            (Lam body_core, method_ty)
+            ((Lam body_core, method_ty), row)
       in
-      let elaborate_method ctx params body =
+      let elaborate_method ctx params effects body =
         let self_ty = partial_self () in
         let ctx = Ctx.with_self_type ctx self_ty in
         let self_ctx, self_entry = Ctx.bind_anonymous ctx self_ty in
         let self_ctx = { self_ctx with Ctx.self_entry = Some self_entry } in
-        let body_core, body_ty = elaborate_method_params self_ctx params body in
+        let (body_core, body_ty), row = elaborate_method_params self_ctx effects params body in
         let body_ty_term = Ctx.quote self_ctx body_ty in
         let method_ty =
           VPi {
             explicitness = Explicit;
             domain = self_ty;
-            effects = effect_row_closure ctx.env empty_effect_row;
+            effects = effect_row_closure ctx.env (innermost_row params row);
             codomain = { env = ctx.env; body = body_ty_term };
           }
         in
@@ -811,9 +819,9 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let binds = List.map (fun (_, name, core, _, _) -> LetBind (name, kind, core)) members in
             let entries = if public then List.map (fun (_, name, _, ty, _) -> StructField (name, kind, ty)) members else [] in
             go ~defer ctx' (List.rev_append binds acc_binds, List.rev_append entries acc_entries) rest
-        | Syntax.MethodBinding { name = { name = key; _ }; params; body; public } :: rest ->
+        | Syntax.MethodBinding { name = { name = key; _ }; params; effects; body; public } :: rest ->
             let name = Syntax.label key in
-            let method_core, method_ty = elaborate_method ctx params body in
+            let method_core, method_ty = elaborate_method ctx params effects body in
             let method_val = Ctx.eval ctx method_core in
             let kind = if public then Method else PrivateMethod in
             let bind = LetBind (name, kind, method_core) in

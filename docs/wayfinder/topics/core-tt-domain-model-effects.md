@@ -51,7 +51,7 @@ r}`) and row metavariables all normalise to this shape before conversion.
 **Status: implemented (2026-09-15).** In the
 model `A -> B` means `A -> B can {}`; `A -> B can _` infers the row (Koka's
 `_e`), generalised at `let`, which is where effect polymorphism comes from;
-`~>` is prelude sugar for the inferred form ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md), closed). Remaining distance: `~>` is not read in type annotations, which use a separate type grammar.
+`~>` is prelude sugar for the inferred form ([bare-arrow-is-pure](../tickets/bare-arrow-is-pure.md), closed). Remaining distance: `~>` is not read in type annotations, which use a separate type grammar. Methods follow the same rule: pure unless `can` declares a row ([methods-follow-the-arrow-rule](../tickets/methods-follow-the-arrow-rule.md), closed).
 
 ### E4 — the checker evaluates pure closed terms under a budget
 

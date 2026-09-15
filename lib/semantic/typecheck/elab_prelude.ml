@@ -198,7 +198,7 @@ pub Syntax = module {
   and Decl =
     | DeclLet(Id, Expr, Bool, Bool)
     | DeclRecGroup(List(Id), List(Expr), Bool)
-    | DeclMethod(Id, List(Param), Expr, Bool)
+    | DeclMethod(Id, List(Param), Option(EffectRow), Expr, Bool)
     | DeclType(List(TypeDecl), Bool)
     | DeclEffect(Id, List(Id), List(EffectOp), Bool)
     | DeclTrait(Id, List(Id), List(Field), Bool)
