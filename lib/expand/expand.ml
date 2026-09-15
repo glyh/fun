@@ -111,7 +111,7 @@ and go_kind m (k : kind) : kind =
   | Prod xs -> Prod (List.map go xs)
   | ProdTy xs -> ProdTy (List.map go xs)
   | Arrow (expl, name, dom, eff, cod) ->
-    Arrow (expl, Option.map on_id name, go dom, Option.map (fun e -> { e with effects = List.map go e.effects; tail = Option.map go e.tail }) eff, go cod)
+    Arrow (expl, Option.map on_id name, go dom, Option.map (map_effect_row go) eff, go cod)
   | FieldAccess (e, n) -> FieldAccess (go e, n)
   | Proj (e, n) -> Proj (go e, n)
   | RecordConstruct { typ; fields } ->
@@ -150,8 +150,8 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
     (match binding with
      | LetBinding { name; value; public; recursive } -> LetBinding { name = on_id name; value = go value; public; recursive }
      | RecGroupBinding { members; public } -> RecGroupBinding { members = List.map (fun (n, v) -> (on_id n, go v)) members; public }
-     | MethodBinding { name; params; body; public } ->
-       MethodBinding { name = on_id name; params = List.map (map_param m) params; body = go body; public }
+     | MethodBinding { name; params; effects; body; public } ->
+       MethodBinding { name = on_id name; params = List.map (map_param m) params; effects = Option.map (map_effect_row go) effects; body = go body; public }
      | TypeBinding { members; public } ->
        TypeBinding { members = List.map (fun (d : type_decl) ->
                        { name = on_id d.name; params = List.map on_id d.params;
@@ -691,7 +691,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let eff = Option.map (fun e -> { e with effects = List.map expand_scoped e.effects; tail = Option.map expand_scoped e.tail }) eff in
     { stx with kind = Arrow (expl, Some name, dom, eff, expand_scoped cod) }
   | Arrow (expl, None, dom, eff, cod) ->
-    { stx with kind = Arrow (expl, None, expand ctx dom, Option.map (fun e -> { e with effects = List.map (expand ctx) e.effects; tail = Option.map (expand ctx) e.tail }) eff, expand ctx cod) }
+    { stx with kind = Arrow (expl, None, expand ctx dom, Option.map (map_effect_row (expand ctx)) eff, expand ctx cod) }
   | FieldAccess (e, n) -> { stx with kind = FieldAccess (expand ctx e, n) }
   | Proj (e, n) -> { stx with kind = Proj (expand ctx e, n) }
   | RecordConstruct { typ; fields } ->
@@ -1002,10 +1002,11 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
      | _ -> ());
     import_roles ctx ~base_scope:written.scope ~scope value;
     ([LetBinding { name; value; public; recursive }], [[ scope ]])
-  | MethodBinding { name; params; body; public } ->
+  | MethodBinding { name; params; effects; body; public } ->
     let scope, name = bind_declaration ctx name in
+    let effects = Option.map (map_effect_row (expand ctx)) effects in
     let params, body = expand_method_params_body ctx params body in
-    ([MethodBinding { name; params; body; public }], [[ scope ]])
+    ([MethodBinding { name; params; effects; body; public }], [[ scope ]])
   | TypeBinding { members; public } ->
     (* Every member name is introduced before any payload is expanded, so a
        chain's members see each other; separate statements stay sequential. *)

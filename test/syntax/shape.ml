@@ -257,7 +257,7 @@ and lower_struct_binding = function
     RecGroupBinding { members = List.map (fun (n, v) -> (lower_id n, lower_expr v)) members; public }
   | Syntax.LetBinding { name; value; public; recursive } ->
     LetBinding { name = lower_id name; value = lower_expr value; public; recursive }
-  | Syntax.MethodBinding { name; params; body; public } ->
+  | Syntax.MethodBinding { name; params; body; public; _ } ->
     MethodBinding { name = lower_id name; params = List.map lower_param params; body = lower_expr body; public }
   | Syntax.TypeBinding { members; public } ->
     TypeBinding
