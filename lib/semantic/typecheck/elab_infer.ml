@@ -150,7 +150,7 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~re
   | Some _ ->
       let _, members = elab_rec_group ops ctx ~value_ctx:(fun _ -> value_ctx) ~extend:(fun ctx _ -> ctx) [ (key, value) ] in
       let _, _, core, ty, finished = List.hd members in
-      (core, ty, finished)
+      (core, ty, finished, [])
   | None ->
   let rec_ty = Ctx.raw_meta ctx in
   let value_ctx = if recursive then Ctx.bind value_ctx key rec_ty else value_ctx in
@@ -158,8 +158,10 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~re
   emit ctx effects;
   (if recursive then Ctx.unify ctx rec_ty val_ty);
   let val_core = if recursive then fix_one name (Ctx.pure_call ctx rec_ty) val_core else val_core in
-  if is_empty_expr_effects effects then (val_core, val_ty, Ctx.eval ctx val_core)
-  else (val_core, seal_generative ctx val_ty, VRigid { lvl = ctx.Ctx.lvl; spine = [] })
+  if is_empty_expr_effects effects then (val_core, val_ty, Ctx.eval ctx val_core, [])
+  else
+    let sealed_ty, sealed = seal_generative ctx val_ty in
+    (val_core, sealed_ty, VRigid { lvl = ctx.Ctx.lvl; spine = [] }, sealed)
 
 (* A block's [rec name : type_ = value]: its type's term, its core, and the type
    and value the body sees. A struct type is a recursive record; anything else
@@ -374,10 +376,10 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       (ctx, [OpenBind (mod_core, members)], [])
   | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive } ->
       let name = Syntax.label key in
-      let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~key ~name ~recursive value in
+      let val_core, val_ty, val_val, sealed = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~key ~name ~recursive value in
       let kind = if public then Public else Private in
       let bind = LetBind (name, kind, val_core) in
-      let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
+      let ctx' = note_sealed (extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ]) ctx.Ctx.lvl sealed in
       (ctx', [bind], [ModuleField (name, kind, val_ty)])
   | Syntax.RecGroupBinding { members; public } ->
       let kind = if public then Public else Private in
@@ -948,10 +950,10 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest
         | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive; _ } :: rest ->
             let name = Syntax.label key in
-            let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~key ~name ~recursive value in
+            let val_core, val_ty, val_val, sealed = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~key ~name ~recursive value in
             let kind = if public then Public else Private in
             let bind = LetBind (name, kind, val_core) in
-            let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
+            let ctx' = note_sealed (extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ]) ctx.Ctx.lvl sealed in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
             go ~defer ctx'
               (bind :: acc_binds,

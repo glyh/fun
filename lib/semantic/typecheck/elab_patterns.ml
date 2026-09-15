@@ -209,7 +209,13 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                   | None -> n.num_params
                 in
                 Some (n.id, n.name, ctor_params)
-            | _ -> None
+            | _ -> (
+                (* A member of a binder sealed at a generative module (E11). *)
+                match Ctx.lookup_head_opt ctx con_path, con_path.members with
+                | Some (ix, _), [ member ] ->
+                    Option.bind (List.assoc_opt (ctx.Ctx.lvl - 1 - ix) ctx.Ctx.sealed) (fun sealed ->
+                        Option.map (fun (id, arity) -> (id, member, arity)) (List.assoc_opt member sealed))
+                | _ -> None)
           in
           match resolve with
           | Some (id, nm, ctor_params) ->

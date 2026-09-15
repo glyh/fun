@@ -188,25 +188,40 @@ let rec map_generative_refs f cutoff t =
           | None -> failwith "map_generative_refs: subterm under a binder count known only by evaluation (an open)")
         t
 
-let mentions_generative mc depth ty =
-  let found = ref None in
-  ignore (map_generative_refs (fun _ name params -> found := Some name; NomRef { id = 0; name; num_params = 0; captures = []; params }) 0 (Nbe.quote mc depth ty));
-  !found
+(* The generative nominals [ty] mentions, read at [depth]: member label,
+   declaration, arity. *)
+let generative_refs mc depth ty =
+  let found = ref [] in
+  let rec go cutoff t =
+    match t with
+    | NomRef { id; name; num_params; params; _ } when Hashtbl.mem generative_nominals id ->
+        if not (List.mem_assoc name !found) then found := (name, (id, num_params)) :: !found;
+        List.iter (go cutoff) params
+    | _ -> List.iter (fun (under, sub) -> match under with Some u -> go (cutoff + u) sub | None -> ()) (subterms t)
+  in
+  go 0 (Nbe.quote mc depth ty);
+  List.rev !found
+
+let mentions_generative mc depth ty = Option.map fst (List.nth_opt (generative_refs mc depth ty) 0)
 
 (* E11: a module whose evaluation performs something is generative - each
    evaluation is a new type - and its binder names it. In the binder's type, each
    nominal such a module declares becomes that member of the binder, so
    [st1 = SymbolTable(())] gives [st1.intern : I64 -> st1.Symbol], shared with no
-   other evaluation. The type is read one level deeper, where the binder is. *)
-let seal_generative (ctx : Ctx.t) (ty : value) : value =
+   other evaluation. The type is read one level deeper, where the binder is.
+   Returns the sealed type and the nominals it sealed. *)
+let seal_generative (ctx : Ctx.t) (ty : value) : value * (string * (nominal_id * int)) list =
   let mc = ctx.Ctx.metas and depth = ctx.Ctx.lvl + 1 in
-  match mentions_generative mc depth ty with
-  | None -> ty
-  | Some _ ->
+  match generative_refs mc depth ty with
+  | [] -> (ty, [])
+  | sealed ->
       let rec seal cutoff name params =
         List.fold_left (fun acc p -> Ap (acc, Explicit, map_generative_refs seal cutoff p)) (Dot (Var cutoff, name)) params
       in
-      Nbe.eval mc (VRigid { lvl = ctx.Ctx.lvl; spine = [] } :: ctx.Ctx.env) (map_generative_refs seal 0 (Nbe.quote mc depth ty))
+      (Nbe.eval mc (VRigid { lvl = ctx.Ctx.lvl; spine = [] } :: ctx.Ctx.env) (map_generative_refs seal 0 (Nbe.quote mc depth ty)), sealed)
+
+(* [ctx] knows the entry at [lvl] was sealed over [sealed]. *)
+let note_sealed (ctx : Ctx.t) lvl sealed = if sealed = [] then ctx else { ctx with Ctx.sealed = (lvl, sealed) :: ctx.Ctx.sealed }
 
 (* A member of a generative module no binder names: its type may not mention a
    type the module declares, for that type would escape the expression. *)
@@ -234,7 +249,9 @@ let check_sealed_members_stay (_ctx : Ctx.t) ~inner (end_ctx : Ctx.t) entries =
 
 let let_body_ctx ctx name ty core value_effects =
   if is_empty_expr_effects value_effects then Ctx.define ctx name ty (Ctx.eval ctx core)
-  else Ctx.bind ctx name (seal_generative ctx ty)
+  else
+    let sealed_ty, sealed = seal_generative ctx ty in
+    note_sealed (Ctx.bind ctx name sealed_ty) ctx.Ctx.lvl sealed
 
 (* A handler: the scrutinee's and the branch bodies' effects - a handler is deep,
    so what a branch body performs it handles too - less those it handles. *)

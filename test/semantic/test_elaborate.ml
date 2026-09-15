@@ -436,6 +436,8 @@ let structs =
       (elab_fail (symbol_table "st2.name(st1.intern(5))"));
     Alcotest.test_case "an unnamed generative module's type may not escape" `Quick
       (elab_fail (symbol_table "SymbolTable(()).intern(5)"));
+    Alcotest.test_case "type-case separates two generative evaluations by their stamps" `Quick
+      (eval_i64 (symbol_table "f = fn(t : Type) { match (t) { st1.Symbol => 1, _ => 0 } }; f(st1.Symbol) * 10 + f(st2.Symbol)") 10L);
     Alcotest.test_case "a sealed type may not leave its binder's scope" `Quick
       (elab_fail (symbol_table "st1.intern(5)"));
     Alcotest.test_case "a sealed member's type may not reach its module's type" `Quick
