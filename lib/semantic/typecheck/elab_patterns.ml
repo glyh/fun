@@ -1,6 +1,5 @@
 open Core
 include Elab_error
-open Elab_prelude
 open Elab_validate
 
 module Ctx = Elab_ctx.Ctx
@@ -121,7 +120,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
   | PatWild -> (CPatWild, [])
   | PatBind { name; _ } -> (CPatBind, [ (name, scrutinee_ty) ])
   | PatAtom atom ->
-      Ctx.unify ctx scrutinee_ty (VAtomTy (atom_ty_of_atom atom));
+      Ctx.unify ctx scrutinee_ty (VAtomTy (Nbe_prim.atom_ty_of_atom atom));
       (CPatAtom atom, [])
   | PatType atom_ty ->
       Ctx.unify ctx scrutinee_ty VU;

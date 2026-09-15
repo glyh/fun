@@ -130,7 +130,7 @@ let value_substituter (mc : MetaContext.t) (target : lvl) (replacement : value) 
         let args = subs d.args and fs = fields d.fields in
         if args == d.args && fs == d.fields then v else VTraitDict { d with args; fields = fs }
     | VRecOcc r as v -> let args' = subs r.args in if args' == r.args then v else VRecOcc { r with args = args' }
-    | VRefTy a as v -> let a' = sub a in if a' == a then v else VRefTy a'
+    | VRefTy (h, a) as v -> let h' = sub h and a' = sub a in if h' == h && a' == a then v else VRefTy (h', a')
     | VCon c as v ->
         let spine = subs c.spine and nominal = sub c.nominal in
         if spine == c.spine && nominal == c.nominal then v else VCon { c with spine; nominal }

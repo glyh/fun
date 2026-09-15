@@ -174,7 +174,9 @@ let infer_lam ops (ctx : Ctx.t) (param : Syntax.param) (body : Syntax.t) :
         Ctx.raw_meta ctx
   in
   let ctx' = Ctx.bind ctx param.name.name a_ty in
+  let since = MetaContext.count ctx.metas in
   let (body_core, body_ty), body_effects = collecting ctx' (fun ctx' -> ops.infer ctx' body) in
   let body_ty_term = Ctx.quote ctx' body_ty in
+  let body_effects = discharge_local_heaps ctx' ~since ~visible:[ Ctx.quote ctx a_ty; body_ty_term ] body_effects in
   let pi_ty = VPi { explicitness = expl_of_syntax param.explicitness; domain = a_ty; effects = effect_row_closure ctx.env (effect_row_of_expr_effects ctx' body_effects); codomain = { env = ctx.env; body = body_ty_term } } in
   (Lam body_core, pi_ty)

@@ -64,8 +64,8 @@ vocabulary.
   — a crash today; also the cache design the port would copy
 - [env-width contract is unnamed](env-width-contract-is-unnamed.md) — the single
   most likely thing to be silently mis-transcribed
-- [one declaration per primitive](unify-primitive-declaration.md) — four
-  hand-synced string copies become four in .NET
+- [one declaration per primitive](unify-primitive-declaration.md) — (closed
+  2026-09-15) one table; overflow semantics written down (checked I64)
 - [constructor lookup matches the type name](constructor-lookup-matches-type-name.md)
 - [core traversals ignore binder depth](core-traversals-ignore-binding-list-depth.md)
   — the env-width invariant broken in a third place

@@ -445,20 +445,24 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       (Perform { eff = effect_core; op; arg = arg_core }, Nbe.force ctx.metas output_ty)
   | Resume arg -> infer_resume ops ctx arg
   | RefNew e ->
+      (* A new reference starts its own heap. *)
       let core, ty = ops.infer ctx e in
-      (RefNew core, VRefTy ty)
+      let heap = Ctx.raw_meta ctx in
+      emit ctx (mutate_effect ctx heap);
+      (RefNew core, VRefTy (heap, ty))
   | RefGet r ->
       let r_core, r_ty = ops.infer ctx r in
       let r_core, r_ty = insert_implicit_args ctx r_core r_ty in
       (match Nbe.force ctx.metas r_ty with
-      | VRefTy elem_ty -> (RefGet r_core, elem_ty)
+      | VRefTy (heap, elem_ty) -> emit ctx (mutate_effect ctx heap); (RefGet r_core, elem_ty)
       | _ -> raise (ElabError ApplyingNonFunction))
   | RefSet (r, e) ->
       let r_core, r_ty = ops.infer ctx r in
       let r_core, r_ty = insert_implicit_args ctx r_core r_ty in
       (match Nbe.force ctx.metas r_ty with
-      | VRefTy elem_ty ->
+      | VRefTy (heap, elem_ty) ->
           let e_core = ops.check ctx e elem_ty in
+          emit ctx (mutate_effect ctx heap);
           (RefSet (r_core, e_core), VAtomTy Atom_ty.TUnit)
       | _ -> raise (ElabError ApplyingNonFunction))
   | Ap (f, Explicitness.Explicit, a) -> infer_ap ops ctx f a

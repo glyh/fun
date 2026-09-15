@@ -3,7 +3,9 @@ title: One declaration per primitive
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. Nbe_prim.declarations is the one table (name, type, reducer = Atoms | Special); the elaborator's prims and the evaluator's atom reducers derive from it; prims_without_reducer and the startup check are gone. I64 + - * / % are checked; overflow fails with "integer overflow in <op>".
 assignee:
 blocked_by:
 ---
@@ -126,3 +128,35 @@ stays open.**
 Full unification is untouched and should stay that way until the assertion
 actually fires. The `panic` variant question and the `elab_common` combinator
 move both still stand as written.
+
+## Grilled (2026-09-15): overflow is an error; one declaration per primitive
+
+1. **Integer overflow is a run-time error**, like division by zero: `+`, `-`, `*`,
+   `/`, `%` on `I64` that overflow (including `min_int / -1`) fail with an
+   evaluation error naming the operation. During type checking the same failure
+   is an elaboration error (small-followups item 6). The port writes checked
+   arithmetic explicitly rather than inheriting the host's behaviour.
+2. **One declaration per primitive**: name, type, reducer and failure behaviour in
+   one record, e.g. `{ name = "+"; type = I64 -> I64 -> I64; compute = add;
+   fails = Overflow }`. The reducer is a variant (atom reducer | special, as
+   `panic` | type-only), decided up front. Move `pure_effects`, `^->`, `^->>` to
+   the kernel so the type sits beside the reducer; the prelude source refers to
+   primitives through the table; the `prims_without_reducer` list and the
+   duplicated `atom_ty_of_atom` go.
+
+## Implemented (2026-09-15)
+
+- **One table:** `Nbe_prim.declarations : { name; ty; reducer } list`, with
+  `reducer = Atoms of (Atom.t list -> reduction) | Special`. `Special` covers
+  `panic`, `expand_block`, `expand_decls` and `Tuple`, reduced from frames in
+  `Nbe.try_prim_reduce`. The failure behaviour is written in each reducer
+  (`Failed` with a message), so the declaration line says how it fails.
+- **Derived:** `Elab_prelude.prims` (names and types) and `Nbe_prim.atom_reducers`
+  both come from the table; `prim_table`, `prims_without_reducer`, the startup
+  check and the alias copies of `atom_ty_of_atom` are deleted.
+- **Kernel arrows:** `pure_effects`, `^->`, `^=>`, `^->>`, `^=>>` moved from
+  `elab_common.ml` to `core.ml`, so types sit beside reducers in `core_tt_interp`.
+- **Checked arithmetic:** `+ - * /` fail with `integer overflow in <op>`
+  (`min_int / -1` included); `%` cannot overflow (`min_int % -1 = 0`).
+- **Not done:** a `type-only` reducer variant (no primitive needs one); the
+  internal `tuple_arity` head stays outside the table (it has no source name).

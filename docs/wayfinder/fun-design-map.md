@@ -338,10 +338,8 @@ every defect below is an invariant with no name in the source.
   order and count exist once instead of three times. Width is its length. The
   evaluator's two binding folds became one. Remainder is its own ticket below.
 - [One declaration per primitive](tickets/unify-primitive-declaration.md)
-  — two hand-synced tables plus prelude source strings. The ~10-line assertion is
-  **done** (a typed primitive with no reducer now aborts at startup), as is the
-  division-by-zero leak it turned up. Open only for the unification question,
-  which should wait until that check actually fires.
+  (closed) — one table (`Nbe_prim.declarations`: name, type, reducer); I64
+  arithmetic is checked, overflow is a runtime error.
 - [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
   (closed) — implemented 2026-09-15: struct items in source order (a field is an item), fields see earlier opens and bindings, methods checked after the last field, a field type mentioning a method is a cycle error.
 - [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
@@ -594,9 +592,9 @@ Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 Decided by the effects domain-model pass; unimplemented, each ticket is the
 distance from an E-invariant in the topic doc.
 
-- [Refs belong in effect rows](tickets/refs-in-effect-rows.md) — mutation is
-  the three heap effects `Alloc(h)`/`Read(h)`/`Write(h)` over branded
-  `Ref(h, A)`; discharge at generalisation. Today refs are invisible in types.
+- [Refs belong in effect rows](tickets/refs-in-effect-rows.md) (closed) —
+  `Mutate(r)` over a hidden heap (`Ref(A)` takes it implicitly); local heaps
+  discharged at function boundaries; top-level refs through the runtime heap.
 - [Nominal identity is applicative by purity](tickets/nominal-identity-applicative-by-purity.md)
   — same declaration + convertible free variables = same type; generative only
   under a run-time effect. Today a nominal declared under a binder does not

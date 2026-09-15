@@ -126,18 +126,21 @@ It is a syntax form, not a variable — nothing can capture it.
 
 ### E10 — mutation is three heap effects over a branded reference
 
-**Status: decided, not implemented.** `Alloc(h)`, `Read(h)`, `Write(h)`;
-surface `Ref(A)` abbreviates `Ref(h, A)`. Three rather than one merged `Mut(h)`
+**Status: implemented (2026-09-15), in the grilled shape.** One surface effect
+`Mutate(r)` (naming a reference; its heap stays hidden) rather than three —
+`Mutate(r)` = `{Read(r), Write(r)}` stays a compatible later split. Surface
+`Ref(A)` takes its heap `h` implicitly. The model text below is the original
+decision. Three rather than one merged `Mut(h)`
 so read-only code earns the weaker row; parameterised rather than a constant
 effect because discharge needs a parameter to compare — a constant effect
 cannot tell `make` (refs stay inside, effect may drop) from `leak` (a live cell
 escapes, effect must stay), and `Ref` is already the type's name in the one
 bare-name namespace anyway. **Discharge is automatic**: a definition's heap
 effects for a heap that does not occur in its type are dropped at
-generalisation — `runST`'s condition, met by inference. Today `RefNew`,
-`RefGet` and `RefSet` collect no effect of their own (`elab_effect_collect.ml`),
-`compile_time_safe` stands in syntactically, and refs are invisible in types.
-Distance: [refs-in-effect-rows](../tickets/refs-in-effect-rows.md).
+generalisation — `runST`'s condition, met by inference. Implemented at function boundaries: a
+heap created inside a function, absent from its type and not aliased by an older
+heap, is dropped; the program entry's runtime handler discharges the rest
+([refs-in-effect-rows](../tickets/refs-in-effect-rows.md), closed).
 
 ### E11 — nominal identity is applicative by purity
 

@@ -3,11 +3,38 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after methods follow the arrow rule, 2026-09-15.
+Last updated: after refs in effect rows, 2026-09-15.
 
 ---
 
 ## Completed
+
+### Refs in effect rows (2026-09-15)
+
+- **Using a reference is an effect.** `ref(e)`, `deref(r)` and `r <- e` perform
+  `Mutate(h)` on the reference's hidden heap. `Ref : [h : Type] -> Type -> Type`
+  takes the heap as an implicit argument, so `Ref(I64)` is unchanged and each use
+  gets a fresh one. `VRefTy`/`RefTy` carry (heap, element).
+- **A signature names the reference or infers:** `(r : Ref(I64)) -> Unit can
+  {Mutate(r)}` (`Mutate : [h] -> [A] -> Ref(h, A) -> Type` maps a reference to its
+  heap's effect) or `can _`.
+- **Local mutation is pure.** At a function boundary, a heap created while
+  elaborating the function that its type (domain, result) does not mention and no
+  older heap aliases is dropped (`Elab_effects.discharge_local_heaps`):
+  `sum_to : I64 -> I64` with a local accumulator checks and evaluates in a type.
+  Returning the reference, or merging its heap with an outer one, keeps the effect.
+- **Top-level references work:** the entry's runtime handler
+  (`runtime_handled_effects`) discharges `Mutate` on any heap.
+- Discharge happens at function boundaries and the entry; a non-function `let` or
+  block does not discharge on its own.
+
+### One declaration per primitive; checked I64 arithmetic (2026-09-15)
+
+- `Nbe_prim.declarations` is the one table of primitives (name, type, reducer:
+  `Atoms` or `Special`); the elaborator's prim types and the evaluator's reducers
+  derive from it. The pure-arrow combinators live in `core.ml`.
+- I64 `+ - * /` are checked: overflow (including `min_int / -1`) fails with
+  "integer overflow in <op>", as division by zero fails.
 
 ### Tuple types; one grammar for types (2026-09-15)
 
@@ -137,7 +164,8 @@ Last updated: after methods follow the arrow rule, 2026-09-15.
 
 ### References
 - `Ref(A)`, `ref(e)`, `deref(r)`, `r <- e`. Opaque mutable cells, aliasing and
-  closure-capture semantics preserved. See [references](wayfinder/topics/references.md).
+  closure-capture semantics preserved; using one performs `Mutate` on its heap
+  (see "Refs in effect rows"). See [references](wayfinder/topics/references.md).
 
 ### Modules and the strict phase rule
 - `open <module-expr>` is an item of a module or struct body, not only a `do`-block

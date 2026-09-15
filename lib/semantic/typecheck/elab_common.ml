@@ -28,9 +28,3 @@ type trait_evidence = {
 }
 
 let trait_registry : (int, trait_info) Hashtbl.t = Hashtbl.create 16
-
-let pure_effects = effect_row_closure [] empty_effect_row
-let ( ^-> ) = fun lhs rhs -> VPi { explicitness = Explicit; domain = lhs; effects = pure_effects; codomain = { env = []; body = rhs } }
-let ( ^=> ) = fun lhs rhs -> VPi { explicitness = Implicit; domain = lhs; effects = pure_effects; codomain = { env = []; body = rhs } }
-let ( ^->> ) = fun lhs rhs -> Pi { explicitness = Explicit; domain = lhs; effects = empty_effect_row; codomain = rhs }
-let ( ^=>> ) = fun lhs rhs -> Pi { explicitness = Implicit; domain = lhs; effects = empty_effect_row; codomain = rhs }

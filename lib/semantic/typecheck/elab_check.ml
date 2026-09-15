@@ -43,7 +43,11 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       in
       let b_ty = Nbe.closure_apply ctx.metas b_clo binder in
       let body_ctx, body_expected, inserted = insert_hidden_dicts ctx' b_ty 0 in
+      let since = MetaContext.count ctx.metas in
       let body_core, body_effects = collecting body_ctx (fun body_ctx -> ops.check body_ctx body body_expected) in
+      let body_effects =
+        discharge_local_heaps body_ctx ~since ~visible:[ Ctx.quote ctx a_ty; Ctx.quote body_ctx body_expected ] body_effects
+      in
       check_effect_subset body_ctx body_effects (effect_row_values ctx effects binder);
       Lam (List.fold_left (fun acc _ -> Lam acc) body_core (List.init inserted Fun.id))
   | Match (scrutinee, branches), VPi _ ->

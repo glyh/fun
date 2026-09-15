@@ -8,8 +8,6 @@ let visible_kind = Nbe_support.visible_kind
 let dot_value = Nbe_support.dot_value
 let fail = Nbe_support.fail
 let result_value = Nbe_support.result_value
-let atom_ty_of_atom = Nbe_prim.atom_ty_of_atom
-let prim_table = Nbe_prim.prim_table
 
 (* Runtime scope extension for [open]: the values an opened module contributes,
    in entry order, innermost-last. This must stay in lockstep with the
@@ -140,7 +138,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           Done (Quote_holes.fill template (List.combine (List.map fst holes) values)))
   (* Anchor-independent: a unit's value carries its own environment. *)
   | Imported v -> Done v
-  | RefTy a -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy a))
+  | RefTy (h, a) -> bind_result (eval_result mc env h) (fun h -> bind_result (eval_result mc env a) (fun a -> Done (VRefTy (h, a))))
   | RefNew e ->
       bind_result (eval_result mc env e) (fun value -> Done (VRef (ref value)))
   | RefGet r ->
@@ -149,7 +147,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           | VRef cell -> Done !cell
           | VNeutral { ty; neutral } -> (
               match force mc ty with
-              | VRefTy elem_ty ->
+              | VRefTy (_, elem_ty) ->
                   Done
                     (VNeutral
                        {
@@ -457,7 +455,7 @@ and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : v
         List.filter_map (function FApp (VAtom a) -> Some a | _ -> None) frames
       in
       if List.length atoms = List.length frames then
-        match Hashtbl.find_opt prim_table name with
+        match Hashtbl.find_opt Nbe_prim.atom_reducers name with
         | Some f -> (
             match f atoms with
             | Nbe_prim.Prim.Reduced a -> Some (VAtom a)
@@ -791,7 +789,7 @@ and eval_match_result_value (mc : MetaContext.t) (env : env) (scrutinee : value)
         let domain_of_occurrence occ =
           match resolve_occurrence_opt mc scrutinee occ with
           | Some (VCon { nominal; _ }) -> Core_match_compile.Nominal (nominal_constructors mc nominal)
-          | Some (VAtom atom) -> Core_match_compile.Atom (atom_ty_of_atom atom)
+          | Some (VAtom atom) -> Core_match_compile.Atom (Nbe_prim.atom_ty_of_atom atom)
           | Some (VAtomTy _) | Some (VNominal _) -> Type
           | Some (VProd elems) -> Product (List.length elems)
           | Some (VRecord { typ = VStruct { entries; _ }; _ }) ->
