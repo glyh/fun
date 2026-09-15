@@ -130,15 +130,22 @@ let open_type_constructors ~label (ctx : Ctx.t) ctors =
   in
   ({ ctx with Ctx.opened = (label, members) :: ctx.Ctx.opened }, List.mapi (fun i (cname, core, ty) -> (cname, shift_term i 0 core, ty)) ctors)
 
+(* What [export] re-exports: a member, or a named impl. *)
+type export_member = Export_field | Export_impl
+
 (* The public members of a module, for [export]: each a projection of the module
-   at [ctx], with its type. Impls have no projection to re-export. *)
+   at [ctx], with its type. A named impl is projected by its name; an unnamed one
+   has no projection, so it must be named first. *)
 let module_exports (ctx : Ctx.t) m_core m_ty =
   match Nbe.module_type_of ctx.Ctx.metas m_ty (Ctx.eval ctx m_core) with
   | VModule { entries; _ } ->
       List.filter_map
         (function
-          | ModuleField (name, Public, ty) -> Some (name, Dot (m_core, name), ty)
-          | ModuleImpl (_, Public, _, _) -> raise (ElabError ExportImpls)
+          | ModuleField (name, Public, ty) -> Some (Export_field, name, Dot (m_core, name), ty)
+          | ModuleImpl (Some name, Public, ty, _) -> Some (Export_impl, name, Dot (m_core, name), ty)
+          | ModuleImpl (None, Public, ty, _) ->
+              let trait = match resolve_trait_dict_ty ctx ty with Some (info, _, _) -> info.trait_name | None -> "?" in
+              raise (ElabError (ExportUnnamedImpl trait))
           | _ -> None)
         entries
   | _ -> raise (ElabError NotAModule)
@@ -454,7 +461,7 @@ let type_group_entries (acc_binds, acc_entries) results =
    its own or another export's. [exported] holds the names exported so far,
    [seen] every public name so far. *)
 let check_export_clash ~exported ~seen (b : Syntax.struct_binding) entries =
-  let names = List.filter_map (function ModuleField (n, Public, _) -> Some n | _ -> None) entries in
+  let names = List.filter_map (function ModuleField (n, Public, _) | ModuleImpl (Some n, Public, _, _) -> Some n | _ -> None) entries in
   let is_export = match b with Syntax.ExportBinding _ -> true | _ -> false in
   List.iter
     (fun n ->
@@ -497,13 +504,17 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       (* Every member leaves as a public entry of this module, bound under a key
          nothing spells: an export opens nothing here. *)
       let m_core, m_ty = ops.infer ctx m in
-      let members = match type_constructors ctx m_core m_ty with Some ctors -> ctors | None -> module_exports ctx m_core m_ty in
+      let members =
+        match type_constructors ctx m_core m_ty with
+        | Some ctors -> List.map (fun (c, core, ty) -> (Export_field, c, core, ty)) ctors
+        | None -> module_exports ctx m_core m_ty
+      in
       let members =
         match names with
         | None -> members
         | Some names ->
             List.map
-              (fun n -> match List.find_opt (fun (c, _, _) -> String.equal c n) members with
+              (fun n -> match List.find_opt (fun (_, c, _, _) -> String.equal c n) members with
                  | Some member -> member
                  | None -> raise (ElabError (ExportUnknownMember n)))
               names
@@ -511,10 +522,15 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let ctx0 = ctx in
       let ctx, binds, entries, _ =
         List.fold_left
-          (fun (c, binds, entries, i) (name, core, ty) ->
-            let bind = LetBind (name, Public, shift_term i 0 core) in
-            (extend_from_slots c bind [ `Entry (name ^ "#export", ty, Ctx.eval ctx0 core) ],
-             bind :: binds, ModuleField (name, Public, ty) :: entries, i + 1))
+          (fun (c, binds, entries, i) (what, name, core, ty) ->
+            let value = Ctx.eval ctx0 core and core = shift_term i 0 core in
+            match what with
+            | Export_field ->
+                let bind = LetBind (name, Public, core) in
+                (extend_from_slots c bind [ `Entry (name ^ "#export", ty, value) ], bind :: binds, ModuleField (name, Public, ty) :: entries, i + 1)
+            | Export_impl ->
+                let bind = ImplBind (Some name, Public, core, ty) in
+                (extend_from_slots c bind [ `Anonymous (ty, value) ], bind :: binds, ModuleImpl (Some name, Public, ty, value) :: entries, i + 1))
           (ctx, [], [], 0) members
       in
       (ctx, binds, entries)

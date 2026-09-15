@@ -116,6 +116,19 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
       expand_ctx.Expand_ctx.macro_table []
     |> List.sort (fun a b -> String.compare a.name b.name)
   in
+  (* A unit's [export] of another unit re-exports that unit's macros under their names. *)
+  let macro_exports =
+    macro_exports
+    @ List.filter_map
+        (fun (name, key) ->
+          Option.map
+            (fun entry ->
+              { name; entry; public = true;
+                kind = Option.value ~default:Syntax.MacroKind.default (Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table key);
+                params = Option.value ~default:[] (Expand_ctx.lookup_macro_params expand_ctx key) })
+            (Hashtbl.find_opt expand_ctx.Expand_ctx.macro_table key))
+        expand_ctx.Expand_ctx.macro_reexports
+  in
   { expanded; expand_ctx; elab_ctx = !elab_ctx; macro_exports }
 
 (** Stage 8: driver-based import loading. Compiles the public macros of

@@ -1102,12 +1102,22 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
   | ExportBinding { m; names } ->
     (* A unit's public roles are exported with its values: they join this
        unit's syntax exports. *)
-    (match unit_path_of ctx m, ctx.Expand_ctx.load_syntax with
-     | Some path, Some load ->
-         let selected (n, _) = match names with None -> true | Some ns -> List.mem n ns in
-         ctx.Expand_ctx.syntax_exports <- ctx.Expand_ctx.syntax_exports @ List.filter selected (Binding.from_unit path (load path))
-     | _ -> ());
-    ([ ExportBinding { m = expand ctx m; names } ], [ [] ])
+    let m' = expand ctx m in
+    let selected n = match names with None -> true | Some ns -> List.mem n ns in
+    (match unit_path_of ctx m with
+     | Some path ->
+         Option.iter
+           (fun load ->
+             ctx.Expand_ctx.syntax_exports <-
+               ctx.Expand_ctx.syntax_exports @ List.filter (fun (n, _) -> selected n) (Binding.from_unit path (load path)))
+           ctx.Expand_ctx.load_syntax;
+         ctx.Expand_ctx.macro_reexports <-
+           ctx.Expand_ctx.macro_reexports
+           @ List.filter_map
+               (fun n -> if selected n then Some (n, Expand_ctx.unit_macro_key ~path ~name:n) else None)
+               (Expand_ctx.unit_macro_names ctx path)
+     | None -> ());
+    ([ ExportBinding { m = m'; names } ], [ [] ])
   | OpenBinding (m, _) ->
     (* An open binds no name of its own. Its scope marks the later bindings as
        inside it, so a name there can resolve to an open choice. *)

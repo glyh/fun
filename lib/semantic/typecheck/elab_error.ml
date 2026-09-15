@@ -47,8 +47,8 @@ type elab_error =
   | OpenSuppliesRole of string
   | ExportUnknownMember of string
   | ExportClash of string
-  | ExportImpls
-      (** [export M] of a module with public impls: impls are not re-exported *)
+  | ExportUnnamedImpl of string
+      (** [export M] of a module with an unnamed public impl of this trait: name it *)
       (** M7: an open supplies a member named like a syntax form, operator or
           macro visible in its region. *)
   | FieldTypeMentionsMethod of { field : string; method_ : string }
@@ -104,7 +104,7 @@ let string_of_elab_error = function
   | OpenSuppliesRole n -> "OpenSuppliesRole \"" ^ n ^ "\""
   | ExportUnknownMember n -> "ExportUnknownMember \"" ^ n ^ "\""
   | ExportClash n -> "ExportClash \"" ^ n ^ "\""
-  | ExportImpls -> "ExportImpls"
+  | ExportUnnamedImpl t -> "ExportUnnamedImpl \"" ^ t ^ "\""
   | FieldTypeMentionsMethod { field; method_ } ->
       Printf.sprintf "field %s's type mentions method %s, which needs every field: a cycle" field method_
 

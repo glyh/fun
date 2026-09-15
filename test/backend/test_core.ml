@@ -1237,6 +1237,14 @@ let test_macro_through_reexported_member () =
     [ answers_42; ("mid", "pub I = import \"inner\"") ]
     "{ M = import \"mid\"; M.I.answer(0) }"
 
+let test_export_unit_macros () =
+  macro_in_unit "a re-exported macro, dotted" 42L
+    [ answers_42; ("re", "I = import \"inner\";\nexport I") ]
+    "{ R = import \"re\"; R.answer(0) }";
+  macro_in_unit "a re-exported macro, opened" 42L
+    [ answers_42; ("re", "I = import \"inner\";\nexport I") ]
+    "{ open (import \"re\"); answer(0) }"
+
 let test_imported_macro_not_runtime_field () =
   match
     eval_with_imported_macros
@@ -2271,8 +2279,18 @@ let test_export_errors () =
     "{ M = module { pub x = 1 }; K = module { pub x = 2 }; N = module { export M; export K }; 0 }";
   expect_elab_error "an unknown exported name" (function Elaborate.ExportUnknownMember "z" -> true | _ -> false)
     "{ M = module { pub x = 1 }; N = module { export M.{z} }; 0 }";
-  expect_elab_error "a module with impls" (function Elaborate.ExportImpls -> true | _ -> false)
+  expect_elab_error "an unnamed impl asks for a name" (function Elaborate.ExportUnnamedImpl "Eq" -> true | _ -> false)
     "{ M = module { pub C = struct { v : I64 }; pub impl Eq(C) = module { fn eq(a, b) { True } } }; N = module { export M }; 0 }"
+
+let test_export_named_impls () =
+  check_i64_macro "a re-exported named impl resolves after open" 1L
+    "{ M = module { pub rec C = enum { K }; pub impl eq_C : Eq(C) = module { eq = fn(x, y) { True } } };
+       N = module { export M };
+       open N; if (M.C.K == M.C.K) { 1 } else { 0 } }" ();
+  check_i64_macro "the same impl through two paths counts once" 1L
+    "{ M = module { pub rec C = enum { K }; pub impl eq_C : Eq(C) = module { eq = fn(x, y) { True } } };
+       N = module { export M };
+       open M; open N; if (M.C.K == M.C.K) { 1 } else { 0 } }" ()
 
 let test_export_unit_roles () =
   match
@@ -4050,6 +4068,7 @@ let () =
           Alcotest.test_case "unit calls imported macro dotted" `Quick test_unit_calls_imported_macro_dotted;
           Alcotest.test_case "unit calls imported macro via open" `Quick test_unit_calls_imported_macro_via_open;
           Alcotest.test_case "macro through re-exported member" `Quick test_macro_through_reexported_member;
+          Alcotest.test_case "export a unit macros" `Quick test_export_unit_macros;
           Alcotest.test_case "bare import does not inject macros" `Quick test_bare_import_does_not_inject_macros;
           Alcotest.test_case "open delivers macros bare" `Quick test_open_delivers_macros_bare;
           Alcotest.test_case "open bound import delivers macros bare" `Quick test_open_bound_import_delivers_macros_bare;
@@ -4242,6 +4261,7 @@ let () =
           Alcotest.test_case "export a module's members" `Quick test_export_module_members;
           Alcotest.test_case "export an enum's constructors" `Quick test_export_enum_constructors;
           Alcotest.test_case "export errors" `Quick test_export_errors;
+          Alcotest.test_case "export named impls" `Quick test_export_named_impls;
           Alcotest.test_case "export a unit's roles" `Quick test_export_unit_roles;
           Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
           Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;

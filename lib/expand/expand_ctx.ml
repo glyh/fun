@@ -66,6 +66,9 @@ type t = {
   mutable load_syntax : (string -> (string * Syntax.role) list) option;
   (* The public roles this expansion declared: the unit's syntax exports. *)
   mutable syntax_exports : (string * Syntax.role) list;
+  (* Macros an [export] of a unit re-exports: the name exported, and the key the
+     unit's macro is registered under here. *)
+  mutable macro_reexports : (string * string) list;
   (* Per open label, the names of the roles visible in that open's region -
      where it is written, or declared inside it. What an open supplies is known
      only to the elaborator, which rejects a member of one of these names (M7). *)
@@ -97,6 +100,7 @@ let create ?loader () =
     intro_scope_units = Hashtbl.create 8;
     load_syntax = None;
     syntax_exports = [];
+    macro_reexports = [];
     open_roles = Hashtbl.create 8;
     loader }
 
@@ -309,6 +313,7 @@ let copy (ctx : t) : t =
     intro_scope_units = ctx.intro_scope_units;
     load_syntax = ctx.load_syntax;
     syntax_exports = ctx.syntax_exports;
+    macro_reexports = ctx.macro_reexports;
     open_roles = Hashtbl.copy ctx.open_roles;
     loader = ctx.loader }
 
