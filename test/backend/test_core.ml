@@ -2059,6 +2059,18 @@ let test_syntax_template_unless () =
        unless False 10
      }" ()
 
+(* A capture extends as far as its parser reads: the hole ending a use reads at
+   the form's precedence, like a prefix operator's operand; a hole the pattern
+   bounds reads a whole expression. *)
+let test_syntax_template_capture_extent () =
+  check_i64_macro "trailing hole reads at the form's precedence" 20L
+    "{ syntax inc { | inc $x => $x + 1 }; inc 1 * 10 }" ();
+  check_i64_macro "a bounded hole reads a whole expression" 42L
+    "{ syntax pick { | pick $c then $t else $e => if ($c) { $t } else { $e } }; pick True then 40 + 2 else 0 }" ();
+  check_i64_macro "a literal inside the capture is read by the capture" 2L
+    "{ syntax when { | when $c $t else $e => if ($c) { $t } else { $e } };
+       when True if (False) { 1 } else { 2 } else 0 }" ()
+
 let test_syntax_template_when_match () =
   check_i64_macro "when False falls back" 0L
     "{
@@ -3597,6 +3609,7 @@ let () =
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
           Alcotest.test_case "operator prefix shadowing is lexical" `Quick test_operator_prefix_shadowing_is_lexical;
           Alcotest.test_case "syntax template: unless guard" `Quick test_syntax_template_unless;
+          Alcotest.test_case "syntax template: capture extent" `Quick test_syntax_template_capture_extent;
           Alcotest.test_case "syntax template: when/else match" `Quick test_syntax_template_when_match;
           Alcotest.test_case "syntax template: hole reuse duplicates effects" `Quick test_syntax_template_hole_reuse;
           Alcotest.test_case "syntax template: {/} delimiters" `Quick test_syntax_template_do_end_delimiters;

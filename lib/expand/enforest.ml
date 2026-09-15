@@ -544,9 +544,9 @@ and parse_primary env terms =
           Enforest_forms.parse_quote (fun holes -> form_callbacks (eager_env ~holes env)) term.span rest
       | Token { kind = Ident name | Operator name; _ } -> (
           match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope term) name with
-          | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } ->
+          | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; precedence; _ } ->
               let inst, rest =
-                Enforest_template.instantiate (template_callbacks env) ~form:(id_of term name) ~kind:rules_kind
+                Enforest_template.instantiate (template_callbacks env precedence) ~form:(id_of term name) ~kind:rules_kind
                   ~position:Syntax.MacroAnnotation.Expr ~from_unit rules (term :: rest)
               in
               (stx ~span:term.span (Syntax.Instantiate inst), rest)
@@ -1082,9 +1082,11 @@ and parse_syntax_template_decl env (head_id : Syntax.id) kind body_terms rest =
     (Binding.role ~declared_at:head_id.span ~fixity:Syntax.PrefixOp ~precedence:50
        (Syntax.Rules { rules_kind = kind; rules }))
 
-and template_callbacks env =
+and template_callbacks env precedence =
   { Enforest_template.parse_expr = (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
-    parse_pat = parse_pat_terms;
+    parse_expr_prefix = parse_expr_prec env;
+    precedence;
+    parse_pat_prefix = Enforest_pat.parse_pat_prefix;
     eager = env.eager }
 
 (* A syntax form used where a declaration goes. *)
@@ -1092,9 +1094,9 @@ and parse_decl_template_use env stmt =
   match drop_separators stmt with
   | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: _ -> (
       match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
-      | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; _ } ->
+      | Some { meaning = Syntax.Rules { rules_kind; rules }; from_unit; precedence; _ } ->
           let inst, rest =
-            Enforest_template.instantiate (template_callbacks env) ~form:(id_of head_term head) ~kind:rules_kind
+            Enforest_template.instantiate (template_callbacks env precedence) ~form:(id_of head_term head) ~kind:rules_kind
               ~position:Syntax.MacroAnnotation.Decl ~from_unit rules stmt
           in
           ensure_no_rest "declaration syntax template use" rest;
