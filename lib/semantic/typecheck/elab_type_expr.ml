@@ -57,7 +57,9 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
   | None -> empty_effect_row
   | Some (row : Syntax.effect_row) when row.polymorphic -> raise (ElabError PolyArrowOutsideSignature)
   | Some (row : Syntax.effect_row) ->
-      (* An entry is an effect, or a row variable ([->{Log, e}]): the row's tail. *)
+      (* An entry is an effect, or - alone - a row variable ([->{e}]: the row is
+         just that tail); next to effects the variable is written as the tail,
+         after a bar. *)
       let classified =
         List.map
           (fun eff_expr ->
@@ -76,7 +78,8 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
       let written_tail =
         match row_vars, row.tail with
         | [], _ -> None
-        | [ var ], None when not row.inferred -> Some var
+        | [ var ], None when not row.inferred && entries = [] -> Some var
+        | [ _ ], None when not row.inferred -> raise (ElabError RowVariableAmongEffects)
         (* ponytail: a row holds one tail (E2); a union of row variables
            ([->{e1, e2}]) needs multi-tail rows. *)
         | _ -> raise (ElabError (UnsupportedRowUnion (List.length row_vars)))
