@@ -257,6 +257,16 @@ and macro_runtime = {
     let id = MetaContext.fresh ctx.metas in
     InsertedMeta (id, ctx.bds)
 
+  (* A meta for an inferred effect row: abstracted over the row variables in
+     scope only, so a row may be solved to one ([fn(g : A ~> B) ~> C] infers
+     its parameter's row) while a value parameter never lands in its spine. *)
+  let fresh_row_meta (ctx : t) : term =
+    let id = MetaContext.fresh ctx.metas in
+    let row_levels =
+      NameMap.fold (fun _ (e : name_entry) acc -> match Nbe.force ctx.metas e.ty with VEffectRowTy -> e.level :: acc | _ -> acc) ctx.name_table []
+    in
+    InsertedMeta (id, List.mapi (fun i bd -> if bd = Bound && List.mem (ctx.lvl - 1 - i) row_levels then Bound else Defined) ctx.bds)
+
   let raw_meta (ctx : t) : value =
     VFlex { id = MetaContext.fresh ctx.metas; spine = [] }
 

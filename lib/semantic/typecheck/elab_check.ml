@@ -23,8 +23,8 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
   | _, VPi { explicitness = Implicit; domain; codomain; _ }
     when (match Nbe.force ctx.metas domain with VEffectRowTy -> true | _ -> false)
          && (match expr.kind with Lam ({ explicitness = Explicitness.Implicit; _ }, _) -> false | _ -> true) ->
-      let ctx', entry = Ctx.bind_anonymous ctx domain in
-      let body_expected = Nbe.closure_apply ctx.metas codomain (VRigid { lvl = entry.level; spine = [] }) in
+      let ctx' = Ctx.bind ctx (Elab_poly_arrows.fresh_row ()).name domain in
+      let body_expected = Nbe.closure_apply ctx.metas codomain (VRigid { lvl = ctx.lvl; spine = [] }) in
       Lam (ops.check ctx' expr body_expected)
   | Lam (param, body), VPi { explicitness; domain = a_ty; effects; codomain = b_clo } ->
       if expl_of_syntax param.explicitness <> explicitness then raise (ElabError ApplyingNonFunction);
