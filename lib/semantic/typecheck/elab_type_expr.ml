@@ -18,12 +18,13 @@ let type_value_of_expr ops ctx (expr : Syntax.t) =
   | Syntax.Module { bindings } ->
       let rec go ctx acc = function
         | [] -> List.rev acc
-        | Syntax.LetBinding { name = { name; _ }; value; _ } :: rest ->
+        | Syntax.LetBinding { name = { name = key; _ }; value; _ } :: rest ->
+            let name = Syntax.label key in
             let value_core, value_ty = ops.infer ctx value in
             require_pure ops ctx value;
             let value_val = Ctx.eval ctx value_core in
             check_type_like ctx value_ty value_val;
-            go (Ctx.define ctx name VU value_val) ((name, Public, value_val) :: acc) rest
+            go (Ctx.define ctx key VU value_val) ((name, Public, value_val) :: acc) rest
         | _ -> raise (ElabError ApplyingNonFunction)
       in
       let fields = go (Ctx.clear_self_scope ctx) [] bindings in

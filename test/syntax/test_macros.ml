@@ -26,12 +26,12 @@ let syntax_i64_literal () =
   | _ -> Alcotest.fail "expected 42"
 
 let syntax_ap_plus () =
-  match parse "{ macro ap(_) { Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.i64(1)), Syntax.i64(2)) }; ap(0) }" with
+  match parse "{ macro ap(_) { quote(1 + 2) }; ap(0) }" with
   | Shape.Ap (Shape.Ap (Shape.Var "+", _, Shape.Atom (Atom.I64 1L)), _, Shape.Atom (Atom.I64 2L)) -> ()
   | _ -> Alcotest.fail "expected 1 + 2"
 
 let syntax_lam_identity () =
-  match parse "{ macro mk(_) { Syntax.lam(\"x\", Syntax.var(\"x\")) }; mk(0) }" with
+  match parse "{ macro mk(_) { quote(fn(x) { x }) }; mk(0) }" with
   | Shape.Lam ({ name = "x"; _ }, Shape.Var "x") -> ()
   | _ -> Alcotest.fail "expected fun x -> x"
 

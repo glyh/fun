@@ -549,12 +549,11 @@ What remains, in the recommended order:
 Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 
 - [Declaration binders keep their written name](tickets/declaration-binders-keep-written-names.md)
-  — M12/S5: types, constructors, traits, effects and module items resolve under
-  their spelling; the elaborator's macro table is string-keyed. Grill: which
-  binders get fresh names.
+  (closed) — every declaration binder is fresh (`Expand.bind_declaration`); a
+  declaration exports its label (`Syntax.label`).
 - [A resolved name can be forged](tickets/resolved-names-forgeable.md)
-  — M11/M12: any `#` name is trusted as resolved (`new_id("x#5")`); empty-scope
-  and operator macro heads fall back to spelling. Grill: does `new_id` stay.
+  (closed) — string-built ids are deleted; a reflected resolved name needs the
+  certificate its scopes carry; the spelling fallbacks are gone.
 - [Opening a module needs its value](tickets/module-open-width-depends-on-value.md)
   (closed) — I2: an open's entries come from its module type, a misaligned value
   is an invariant failure, and a non-module open is `NotAModule` everywhere.

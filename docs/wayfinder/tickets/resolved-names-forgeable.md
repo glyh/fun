@@ -3,7 +3,9 @@ title: A resolved name can be forged, and context-less ids fall back to spelling
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. Syntax.new_id, var, lam, let_in, seq and the no_scopes primitive are deleted; a reflected id's opaque Scopes atom carries the resolved name it was minted with, and a reflected resolved name is accepted only under that certificate. The empty-scope macro-table and operator spelling fallbacks are deleted.
 assignee:
 blocked_by:
 ---
@@ -58,3 +60,20 @@ fresh) or from an `Id` parameter or hole (the user's site). With no
 string-built ids there is nothing for the `#` check or the empty-scope spelling
 fallbacks to serve: "already resolved" becomes structural and the fallbacks go.
 Migrate the tests and prelude builders that use strings.
+
+## Implemented (2026-09-15)
+
+- Deleted: `Syntax.new_id`, `var`, `lam`, `let_in`, `seq` and the `no_scopes`
+  primitive. Tests migrated to `quote(…)` / `quote { … }` / `Id` parameters
+  (a declaration a caller sees now takes its name as an `Id` argument).
+- A record `Syntax.Id{name = …; scope = s}` can still be built, borrowing scopes
+  from an id the macro was given. So "already resolved" is certified, not
+  spelled: `Atom.Scopes` carries the resolved name its id was minted with
+  (`Syntax.certificate`), and `Macro_eval.u_id` / an `IdentTok` accept a `#` name
+  only when the scopes certify exactly that name (`Syntax.certified`). A forged
+  one is not syntax (`NotSyntax`). Source cannot spell `#`, so reflection was the
+  only other entry.
+- Deleted the empty-scope macro-table fallback in `macro_head_key` and the
+  operator macro's spelling fallback; the operator's in-definition check reads
+  the head's resolution. Test-only macros are bound in the binding table.
+- Test: `resolved names cannot be forged`.

@@ -3,11 +3,24 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after struct source-order scoping and macro signatures, 2026-09-15.
+Last updated: after fresh declaration binders and unforgeable resolved names, 2026-09-15.
 
 ---
 
 ## Completed
+
+### Fresh declaration binders, no string-built ids (2026-09-15)
+
+- Every declaration binder - types, constructors, effects, traits, pattern
+  synonyms, module items, macros - gets a fresh resolved name
+  (`Expand.bind_declaration`); a declaration exports its label (`Syntax.label`),
+  and the elaborator keys its context by resolved name. A macro's `type Tmp`
+  no longer takes the caller's `Tmp`.
+- `Syntax.new_id`, `var`, `lam`, `let_in`, `seq` and `no_scopes` are deleted: a
+  macro gets a name from `quote` or an `Id` parameter. A reflected id's `Scopes`
+  carries the resolved name it was minted with, and a reflected `#` name is
+  accepted only under that certificate, so a macro cannot forge one. The
+  empty-scope and operator spelling fallbacks for macro heads are gone.
 
 ### Performance after M9 (2026-09-14)
 - M9 run 2 slowed the suites up to ~125x (`test_macro_driver_stage7`

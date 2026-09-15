@@ -3,7 +3,9 @@ title: Declaration binders keep their written name as their resolved name
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. Every declaration binder (types, constructors, effects, traits, pattern synonyms, module items, macros) is bound by one helper, Expand.bind_declaration, with a fresh resolved name; what a declaration exports and a member is reached by is its label (Syntax.label). The elaborator keys its context by resolved name and gives Core binds, module fields, nominals and constructors the label.
 assignee:
 blocked_by:
 ---
@@ -58,3 +60,21 @@ type Tmp = Yes | No;
 macro with_tmp(e) : Expr { quote({ type Tmp = A | B; $e }) };
 with_tmp(Tmp.Yes)   // the user's Tmp, not the macro's
 ```
+
+## Implemented (2026-09-15)
+
+- `Expand.bind_declaration` binds every declaration binder at a fresh scope with
+  a minted `name#n`, replacing the `~resolved_name:name.name` sites.
+- `Syntax.label` reads a binder's label off its minted name; `Syntax.path_last`
+  returns a label. It is only read off a binder a declaration owns, never used to
+  find one.
+- The elaborator keys `Ctx.define`/`Entry` by resolved name and uses the label
+  for `LetBind`/`TypeBind`/`ModuleField`/`StructField`, nominal and constructor
+  names, and a signature's fields (`Elab_type_expr`). The recursive-record
+  rewrite compares resolved names. Module macro exports carry the label.
+- A pattern synonym's right-hand side is now expanded (its heads resolve by
+  scope set) and its name is bound like any declaration.
+- Test: `declaration binders are fresh` (a macro's `type Tmp` does not take the
+  caller's `Tmp`).
+- Not covered: syntax-form roles (`SyntaxBinding`) keep their own resolution by
+  scope set and are not renamed.

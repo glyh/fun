@@ -67,7 +67,5 @@ let prim_table : (string, Prim.reducer) Hashtbl.t =
     ("lt_i64", i64_cmp (fun a b -> Int64.compare a b < 0));
     ("gt_i64", i64_cmp (fun a b -> Int64.compare a b > 0));
     ("le_i64", i64_cmp (fun a b -> Int64.compare a b <= 0));
-    ("ge_i64", i64_cmp (fun a b -> Int64.compare a b >= 0));
-    (* The empty scope set: what an id built from a name alone carries. *)
-    ("no_scopes", function [ Atom.Unit ] -> Reduced (Atom.Scopes Scope_set.empty) | _ -> Stuck) ]
+    ("ge_i64", i64_cmp (fun a b -> Int64.compare a b >= 0)) ]
   |> List.to_seq |> Hashtbl.of_seq

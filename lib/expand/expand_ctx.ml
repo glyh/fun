@@ -203,7 +203,7 @@ let resolved_name_counter = ref 0
    contain (it begins a comment), so no written name can ever equal one - by
    construction, not by the counter's freshness. The counter is global, so a name
    minted by one expander is never re-minted by another. *)
-let is_resolved_name name = String.contains name '#'
+let is_resolved_name = Syntax.is_resolved_name
 
 (* A name already resolved is final: expanding expanded syntax again leaves it
    alone, which is what makes expansion idempotent (M9). *)
