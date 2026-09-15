@@ -527,6 +527,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [`open` a module parameter](tickets/open-a-module-parameter.md)
+  — names come from the signature; each is a member projection of the parameter.
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
   — `: Decl` returns one, `: List(Decl)` many; `quote { … }` checks against it.
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
