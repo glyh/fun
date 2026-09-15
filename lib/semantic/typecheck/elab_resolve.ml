@@ -49,27 +49,88 @@ let resolve_path_value ctx p =
 let resolve_path_value_opt ctx p =
   Result.to_option (Result.map (fun (_, value, ty) -> (value, ty)) (resolve_path_result ctx p))
 
-(** Run a type-aware macro call whose result type [ty] is already unified with
-    the annotation's constraint: apply the macro to [ty] and its syntax
-    arguments, expand the output in place like every macro's output (M6), and
-    hand it to [elaborate]. All of it is one call under the evaluation budget
-    (M5), so type-aware calls in the output spend from the same request. A
-    result that is not syntax is an error naming the macro, never a hole. *)
-let run_type_aware_macro (runtime : Ctx.macro_runtime) ~name macro_fn macro_nominals ty args elaborate =
-  let wrapped_ty =
-    match macro_nominals with
-    | Some nominals ->
-        VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ty]; nominal = nominals.Macro_eval.r_ }
+(** A call to a macro whose signature promises types (macro-annotation
+    decisions, 2026-09-15). The macro applies like a function over types: its
+    type binders, and an output that promises nothing, become metas; each
+    [(x : Expr(T))] argument is checked at [T]; the result type meets
+    [expected]. Every binder must be solved by then, for the macro runs with them,
+    each as the reflected type it was solved to. Its output is expanded in place
+    like every macro's output (M6) and checked at the type it promised. The run
+    and the output's expansion are one call under the evaluation budget (M5).
+    [check] elaborates a form at a type; returns the output's core and type. *)
+let apply_typed_macro ~check (ctx : Ctx.t) ~name (args : Syntax.capture list) ~(expected : value option) =
+  (* Expansion defers only a call whose macro has a signature, and only with a
+     runtime to hand it back to. *)
+  let runtime, entry, signature =
+    match ctx.Ctx.macro_runtime with
+    | Some runtime -> (
+        match runtime.Ctx.lookup_macro name with
+        | Some ({ signature = Some signature; _ } as entry) -> (runtime, entry, signature)
+        | _ -> failwith ("Elab_resolve.apply_typed_macro: a deferred call names no typed macro: " ^ name))
+    | None -> failwith "Elab_resolve.apply_typed_macro: a deferred macro call with no macro runtime"
+  in
+  let show v = Debug.pp_value_short ctx.Ctx.metas v in
+  let macro = Eval_budget.written name in
+  let rec instantiate ty metas =
+    match Nbe.force ctx.Ctx.metas ty with
+    | VPi { explicitness = Implicit; codomain; _ } ->
+        let meta = Ctx.eval ctx (Ctx.fresh_meta ctx) in
+        instantiate (Nbe.closure_apply ctx.Ctx.metas codomain meta) (meta :: metas)
+    | ty -> (ty, List.rev metas)
+  in
+  let ty, metas = instantiate signature.type_ [] in
+  (* A plain argument is syntax the macro reads; a typed one elaborates too. *)
+  let arg_syntax = function Syntax.CapExpr { kind = Syntax.Stx stx; _ } -> Syntax.CapExpr stx | c -> c in
+  let args = List.map arg_syntax args in
+  let result_ty =
+    List.fold_left2
+      (fun ty (param, typed) arg ->
+        match typed, arg, Nbe.force ctx.Ctx.metas ty with
+        | false, _, _ -> ty
+        | true, Syntax.CapExpr stx, VPi { explicitness = Explicit; domain; codomain; _ } ->
+            let core =
+              try check ctx (runtime.Ctx.expand stx) domain
+              with Unify.UnifyError _ as e ->
+                raise (ElabError (MacroArgumentType { macro; param; promised = show domain; reason = Printexc.to_string e }))
+            in
+            Nbe.closure_apply ctx.Ctx.metas codomain (Ctx.eval ctx core)
+        | true, _, _ -> failwith "Elab_resolve.apply_typed_macro: a typed parameter's argument is an Expr in the signature's order")
+      ty signature.params args
+  in
+  Option.iter (fun expected -> Ctx.unify ctx expected result_ty) expected;
+  let binders =
+    List.map2
+      (fun binder meta ->
+        match Nbe.force ctx.Ctx.metas meta with
+        | VFlex _ -> raise (ElabError (MacroBinderUnsolved { macro; binder }))
+        | solved -> solved)
+      signature.binders
+      (List.filteri (fun i _ -> i < List.length signature.binders) metas)
+  in
+  let nominals = entry.Expand_ctx.syntax_nominals in
+  let reflect ty =
+    match nominals with
+    | Some ns -> VCon { name = Compiler_names.Constructor_name.r_expr; spine = [ ty ]; nominal = ns.Macro_eval.r_ }
     | None -> ty
   in
+  let promised = Nbe.force ctx.Ctx.metas result_ty in
   runtime.Ctx.macro_application ~name (fun () ->
     let app = runtime.application () in
-    let fn = runtime.run_macro macro_fn wrapped_ty in
-    let fn = List.fold_left (fun fn arg ->
-      let arg = match arg with Syntax.CapExpr { kind = Syntax.Stx stx_arg; _ } -> Syntax.CapExpr stx_arg | c -> c in
-      runtime.run_macro fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.Expand.receive_capture arg))) fn args in
-    match Macro_eval.unwrap_stx ?nominals:macro_nominals fn with
-    | Some expanded -> elaborate (runtime.expand (app.emit expanded))
+    let fn = List.fold_left (fun fn ty -> runtime.run_macro fn (reflect ty)) entry.Expand_ctx.value binders in
+    let fn =
+      List.fold_left
+        (fun fn arg -> runtime.run_macro fn (Macro_eval.wrap_capture ~nominals (app.Expand.receive_capture arg)))
+        fn args
+    in
+    match Macro_eval.unwrap_stx ?nominals fn with
+    | Some expanded ->
+        let output = runtime.expand (app.emit expanded) in
+        let core =
+          try check ctx output promised
+          with Unify.UnifyError _ as e ->
+            raise (ElabError (MacroOutputType { macro; promised = show promised; reason = Printexc.to_string e }))
+        in
+        (core, promised)
     | None -> raise (ElabError (MacroDidNotReturnSyntax name)))
 
 (* A trait is located through the entry its path resolves to, by the identity

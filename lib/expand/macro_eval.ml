@@ -229,8 +229,8 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Stx inner -> e "RawStx" [ x inner ]
   | Quote { template; holes } -> e "RawQuote" [ x template; w_quote_holes ns holes ]
   | QuoteDecls { items; holes } -> e "RawQuoteDecls" [ w_list ns (w_decl ns) items; w_quote_holes ns holes ]
-  | MacroDef { name; value; body; kind } ->
-      e "RawMacroDef" [ w_id ns name; x value; x body; w_option ns (w_macro_ann ns) kind ]
+  | MacroDef { name; value; body; kind; output } ->
+      e "RawMacroDef" [ w_id ns name; x value; x body; w_option ns (w_macro_ann ns) kind; w_option ns x output ]
   | SyntaxDef { name; role; body } -> e "RawSyntaxDef" [ w_id ns name; w_role ns role; x body ]
   | Block ts -> e "RawBlock" [ w_tokens ns ts ]
   | Instantiate { form; rule; captures; from_unit } ->
@@ -342,8 +342,8 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclTrait" [ w_id ns name; ids params; w_fields ns fields; w_bool ns public ]
   | ImplBinding { name; trait; args; fields; public } ->
       d "DeclImpl" [ w_option ns (w_id ns) name; w_path ns trait; w_list ns (w_expr ns) args; w_fields ns fields; w_bool ns public ]
-  | MacroBinding { name; value; public; kind } ->
-      d "DeclMacro" [ w_id ns name; w_expr ns value; w_bool ns public; w_option ns (w_macro_ann ns) kind ]
+  | MacroBinding { name; value; public; kind; output } ->
+      d "DeclMacro" [ w_id ns name; w_expr ns value; w_bool ns public; w_option ns (w_macro_ann ns) kind; w_option ns (w_expr ns) output ]
   | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_captured ns) args ]
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
@@ -606,12 +606,13 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* items = u_list ns (u_decl ns) items in
           let* holes = u_quote_holes ns holes in
           mk (QuoteDecls { items; holes })
-      | "RawMacroDef", [ name; value; body; kind ] ->
+      | "RawMacroDef", [ name; value; body; kind; output ] ->
           let* name = u_id ns name in
           let* value = x value in
           let* body = x body in
           let* kind = u_option ns (u_macro_ann ns) kind in
-          mk (MacroDef { name; value; body; kind })
+          let* output = u_option ns x output in
+          mk (MacroDef { name; value; body; kind; output })
       | "RawSyntaxDef", [ name; role; body ] ->
           let* name = u_id ns name in
           let* role = u_role ns role in
@@ -870,12 +871,13 @@ and u_decl ns v : Syntax.struct_binding option =
           let* fields = u_fields ns fields in
           let* public = u_bool ns public in
           Some (Syntax.ImplBinding { name; trait; args; fields; public })
-      | "DeclMacro", [ name; value; public; kind ] ->
+      | "DeclMacro", [ name; value; public; kind; output ] ->
           let* name = u_id ns name in
           let* value = u_expr ns value in
           let* public = u_bool ns public in
           let* kind = u_option ns (u_macro_ann ns) kind in
-          Some (Syntax.MacroBinding { name; value; public; kind })
+          let* output = u_option ns (u_expr ns) output in
+          Some (Syntax.MacroBinding { name; value; public; kind; output })
       | "DeclMacroCall", [ f; args ] ->
           let* f = u_expr ns f in
           let* args = u_list ns (u_captured ns) args in

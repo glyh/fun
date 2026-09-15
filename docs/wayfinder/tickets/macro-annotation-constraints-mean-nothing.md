@@ -3,7 +3,9 @@ title: What a macro annotation constraint means, and how many type binders a mac
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. A macro's signature (type binders, `(x : Expr(T))` parameters, `: Expr(T)` output) is a pi type elaborated at the definition; a typed call is deferred to the elaborator, which solves binders from the expected type and typed arguments, requires them solved before running, and checks the output. The `_ = T` device and the elaborator's copied macro table are deleted.
 assignee:
 blocked_by:
 ---
@@ -63,3 +65,25 @@ The explicit type-binders implementation (2026-09-14).
 
 Question 3 above (the `_ = T` device) follows from these: the annotation is the
 output's type, so the device should go.
+
+## Implemented (2026-09-15)
+
+- **Signature.** `Syntax.macro_signature` writes the pi type
+  `[A : Type] … -> T1 -> … -> T` (an untyped output is one more implicit
+  binder); the expander elaborates it where the macro is defined, annotated as a
+  `Type`, and stores it on `Expand_ctx.macro_entry`. `MacroBinding`/`MacroDef`
+  carry the written `output`.
+- **When a macro runs.** A macro whose signature promises a type (a binder, a
+  typed parameter or a promised output) is deferred to the elaborator; one that
+  promises nothing runs during expansion, as before.
+- **The call.** `Elab_resolve.apply_typed_macro` instantiates the signature's
+  binders as metas, checks each typed argument (expanded, then checked at its
+  domain), unifies the result with the expected type, requires every binder
+  solved, runs the macro with the reflected types, and checks its expanded output
+  at the promised type. Errors: `MacroArgumentType`, `MacroBinderUnsolved`,
+  `MacroOutputType`, named by the macro's written name.
+- **Choices this made.** A typed argument elaborates twice (checked before the
+  macro runs, and again where the output places it). A promise the expected type
+  contradicts fails as an ordinary unification error at the call, before the
+  macro runs. The elaborator finds compiled macros through its macro runtime
+  (`lookup_macro`), not a copied table.

@@ -117,7 +117,7 @@ let test_provisional_rollback_restores_previous_macro () =
     incr calls;
     if !calls = 1 then VAtom Unit else failwith "compile boom");
   let macro_binding value =
-    Syntax.MacroBinding { name = id "mk"; value; public = false; kind = None }
+    Syntax.MacroBinding { name = id "mk"; value; public = false; kind = None; output = None }
   in
   ignore (Expand.expand_struct_bindings ctx [ macro_binding (stx (Syntax.Atom (I64 1L))) ]);
   let previous_kind = Expand_ctx.lookup_macro_kind ctx "mk" in
@@ -141,6 +141,7 @@ let test_provisional_rollback_removes_fresh_failure () =
       value = stx (Syntax.Atom (I64 1L));
       public = false;
       kind = None;
+      output = None;
     }
   in
   (match Expand.expand_struct_bindings ctx [ macro_binding ] with

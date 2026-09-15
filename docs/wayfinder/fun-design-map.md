@@ -274,7 +274,6 @@ idempotent expansion, unwritable resolved names `x#n`) — see `docs/STATUS.md`.
 **Needs the user (grilling), do not implement without it:**
 [recursive definitions stuck on open arguments](tickets/recursive-definitions-stuck-on-open-arguments.md),
 [pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md),
-[what a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md),
 and the older grilling tickets below (struct open, recursive records, `Self`).
 
 **Research, no decision needed yet:**
@@ -500,7 +499,9 @@ What remains, in the recommended order:
   (closed) — it now mentions each slot its mask binds; dependent application no
   longer applies such a codomain to an out-of-scope variable.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
-  — `: Expr(I64)` resolves but is unused; one type binder max fell out of the implementation. Grill.
+  (closed & **implemented**) — a macro's signature (binders, `Expr(T)` parameters,
+  `: Expr(T)` output) elaborates at its definition; a typed call waits for the
+  elaborator, solves its binders before running and checks the output.
 
 ### Found by the M7 and M9 implementations (2026-09-14)
 

@@ -1,7 +1,7 @@
 (** What a macro expands to, decided syntactically from its definition: [Decl]
-    for [: Decl]; [TypedExpr] when it binds a type parameter [macro m[A](..)],
-    so its call is deferred to the elaborator, which hands it the expected type;
-    [Expr] otherwise. *)
+    for [: Decl]; [TypedExpr] when its signature promises a type ([macro_signature]),
+    so its call is deferred to the elaborator, which solves its type binders and
+    checks its arguments and output; [Expr] otherwise. *)
 module MacroKind = struct
   type t = Expr | TypedExpr | Decl
   let default = Expr
@@ -11,9 +11,8 @@ module MacroKind = struct
   let position = function Expr | TypedExpr -> Expr | Decl -> Decl
 end
 
-(** A macro's annotation as written: [: Decl] or [: Expr(T)]. The names in [T]
-    only refer; the enforester makes them a reference in the macro's body, so
-    they resolve by scope like any other. *)
+(** A macro's annotation as written: [: Decl] or [: Expr(T)]. The [T] is kept as
+    the binding's [output] and elaborated as part of the macro's signature. *)
 module MacroAnnotation = struct
   type t = Expr | Decl
   let default = Expr
@@ -78,7 +77,9 @@ and struct_binding =
       fields : (string * t) list;
       public : bool;
     }
-  | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option }
+  | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option; output : t option }
+      (** [output] is the [T] of a [: Expr(T)] annotation - the type its output
+          promises; [None] for [: Expr(_)], [: Decl] or none. *)
   | MacroCallBinding of { f : t; args : capture list }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
   | FieldBinding of { name : string; type_ : t }
@@ -252,7 +253,7 @@ and kind =
           source identifier - and in [holes] as the ordinary reference [x]. *)
   | QuoteDecls of { items : struct_binding list; holes : (string * t) list }
       (** [quote { … }]: declarations written literally, holes as in [Quote]. *)
-  | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option }
+  | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option; output : t option }
   | SyntaxDef of { name : id; role : role; body : t }
       (** A [SyntaxBinding] scoped over the rest of a block. *)
   | MacroCall of t * capture list
@@ -308,15 +309,6 @@ let path_of_segments ?span = function
   | [] -> invalid_arg "path_of_segments: empty path"
 
 let path_last (p : path) = snd (path_split p)
-
-(** The kind of a macro with annotation [ann] and value [value] (its parameter
-    lambdas): arity is syntactic, so a leading implicit parameter is its type
-    binder. *)
-let macro_kind (ann : MacroAnnotation.t option) (value : t) : MacroKind.t =
-  match ann, value.kind with
-  | Some MacroAnnotation.Decl, _ -> MacroKind.Decl
-  | _, Lam ({ explicitness = Explicitness.Implicit; _ }, _) -> MacroKind.TypedExpr
-  | _ -> MacroKind.Expr
 
 (* A form the compiler writes itself, with no source position. *)
 let synth kind = { kind; span = Source_span.synthetic }
@@ -384,6 +376,10 @@ let token_id (tok : Token_tree.token) =
 let macro_params (value : t) : hole_kind list * t =
   let kind_type (p : param) =
     match p.type_ with
+    | Some { kind = Ap ({ kind = Var ({ name = "Expr"; _ } as written); span }, Explicitness.Explicit, _); span = ty_span } ->
+        (* [(x : Expr(T))]: an [Expr] whose type the macro's signature promises. *)
+        let syntax = { written with name = Compiler_names.Module_name.syntax } in
+        (HoleExpr, Some { kind = FieldAccess ({ kind = Var syntax; span }, "Expr"); span = ty_span })
     | Some ({ kind = Var ({ name; _ } as written); span } as ty) -> (
         match hole_kind_of_name name with
         | Some kind ->
@@ -405,6 +401,60 @@ let macro_params (value : t) : hole_kind list * t =
     | _ -> ([], stx)
   in
   go value
+
+(* The [T] of a parameter annotated [(x : Expr(T))]. *)
+let typed_expr_param (p : param) =
+  match p.type_ with
+  | Some { kind = Ap ({ kind = Var { name = "Expr"; _ }; _ }, Explicitness.Explicit, t); _ } -> Some t
+  | _ -> None
+
+(** A macro's signature (macro-annotation-constraints-mean-nothing): the type the
+    macro has as a function over types, written as a pi type so it elaborates
+    where the macro is defined - its type binders, then the [T] of each
+    [(x : Expr(T))] parameter, then the [T] its [: Expr(T)] output promises. An
+    output that promises nothing is one more type binder, solved at the call.
+    [binders] are the macro's own type binders, as written; [params] names each
+    explicit parameter and says whether the signature has a domain for it. [None] when
+    the macro promises no type: it runs during expansion. *)
+type macro_signature = { signature : t; binders : string list; params : (string * bool) list }
+
+let macro_signature ~(output : t option) (value : t) : macro_signature option =
+  let rec params (stx : t) = match stx.kind with Lam (p, body) -> p :: params body | _ -> [] in
+  let params = params value in
+  let binders = List.filter (fun (p : param) -> p.explicitness = Explicitness.Implicit) params in
+  let explicit = List.filter (fun (p : param) -> p.explicitness = Explicitness.Explicit) params in
+  let params = List.map (fun (p : param) -> (p.name.name, Option.is_some (typed_expr_param p))) explicit in
+  if binders = [] && output = None && not (List.exists snd params) then None
+  else
+    let span = value.span in
+    let type_at (id : id) = { kind = Var { id with name = Compiler_names.Type_name.type_ }; span = id.span } in
+    let pi explicitness name domain codomain = { kind = Arrow (explicitness, name, domain, None, codomain); span } in
+    let result, result_binder =
+      match output with
+      | Some t -> (t, [])
+      (* [$] cannot begin a source identifier, so no annotation can mention it. *)
+      | None -> let r = fresh_id ~span "$output" in ({ kind = Var r; span }, [ r ])
+    in
+    let codomain =
+      List.fold_right
+        (fun p acc -> match typed_expr_param p with Some t -> pi Explicitness.Explicit None t acc | None -> acc)
+        explicit result
+    in
+    let codomain = List.fold_right (fun r acc -> pi Explicitness.Implicit (Some r) (type_at r) acc) result_binder codomain in
+    let pis =
+      List.fold_right (fun (p : param) acc -> pi Explicitness.Implicit (Some p.name) (type_at p.name) acc) binders codomain
+    in
+    (* Annotated as a type, so a promised [T] that is not one is an error. *)
+    let signature = { kind = Annotated { inner = pis; typ = type_at (fresh_id ~span "Type") }; span } in
+    Some { signature; binders = List.map (fun (p : param) -> p.name.name) binders; params }
+
+(** The kind of a macro with annotation [ann] and value [value]: [TypedExpr]
+    when its signature promises a type, so its call waits for the elaborator. *)
+let macro_kind ~output (ann : MacroAnnotation.t option) (value : t) : MacroKind.t =
+  match ann with
+  | Some MacroAnnotation.Decl -> MacroKind.Decl
+  | _ when Option.is_some (macro_signature ~output value) -> MacroKind.TypedExpr
+  | _ -> MacroKind.Expr
 
 let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
 

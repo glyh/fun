@@ -845,11 +845,6 @@ let eval_with_macros source =
   in
   let eval_and_apply = Nbe.apply_macro in
   let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
-  Hashtbl.iter (fun name entry ->
-    let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
-      | Some k -> k | None -> Syntax.MacroKind.default in
-    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
-    expand_ctx.Expand_ctx.macro_table;
   ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
@@ -865,12 +860,6 @@ let eval_decl_module source =
   in
   let eval_and_apply = Nbe.apply_macro in
   let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source in
-  (* Register macros from expander in elaborator context *)
-  Hashtbl.iter (fun name entry ->
-    let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
-      | Some k -> k | None -> Syntax.MacroKind.default in
-    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
-    expand_ctx.Expand_ctx.macro_table;
   ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.eval ctx core
@@ -884,8 +873,8 @@ let eval_with_imported_macros modules source =
         Elaborate.Ctx.eval macro_ctx core
       in
       let eval_and_apply = Nbe.apply_macro in
-      let expr =
-        Parse_expand.parse_expr
+      let expr, expand_ctx =
+        Parse_expand.parse_expr_with_ctx
           ~elaborate
           ~eval_and_apply
           ~syntax_nominals
@@ -895,6 +884,7 @@ let eval_with_imported_macros modules source =
           source
       in
       let ctx = Elaborate.init_ctx () in
+      ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
       let core, _ty = Elaborate.on_expr ~loader ctx expr in
       Elaborate.Ctx.eval ctx core)
 
@@ -1277,12 +1267,12 @@ let test_pattern_round_trip () =
      }" ()
 
 let test_type_aware_macro () =
-  check_i64_macro "type-aware param bound in infer" 1L
+  check_i64_macro "type-aware binder solved from the expected type" 1L
     "{
        macro default[A](_) : Expr(A) {
          { _ = A; Syntax.i64(1) }
        };
-       default(0)
+       { x : I64 = default(0); x }
      }" ()
 
 let test_type_aware_checking () =
@@ -1293,11 +1283,9 @@ let test_type_aware_checking () =
        _ => Syntax.i64(0)
        }
      };
-     pub x : I64 = default(0);
-     pub y = default(0)"
+     pub x : I64 = default(0)"
   in
-  (* Type annotation on x means checking mode — A should be I64 → 42
-     No annotation on y means inference — A is fresh meta → should match wildcard *)
+  (* Type annotation on x means checking mode — A should be I64 → 42 *)
    ()
 
 let test_type_default_macro () =
@@ -1345,7 +1333,7 @@ let test_expr_binding () =
   check_i64_macro "macro : Expr(A) works" 1L
     "{
        macro mk[A](_) : Expr(A) { { _ = A; Syntax.i64(1) } };
-       mk(0)
+       { x : I64 = mk(0); x }
      }" ()
 
 (* M1: reflecting syntax and rebuilding it is the identity on every field —
@@ -1613,25 +1601,27 @@ let test_visit_macros_private_not_registered () =
       Alcotest.(check bool) "not injected bare" true
         (Option.is_none (Expand_ctx.lookup_macro ctx "shown")))
 
-(* A macro binds its type parameter explicitly, [macro m[A](..)], so its arity
-   is syntactic; every name in an annotation only refers, resolved by scope at
-   the definition. *)
+(* A macro's signature - its type binders [macro m[A, B](..)], typed parameters
+   and promised output - is syntactic, and elaborates where the macro is
+   defined: a name in it must resolve there, and a promised [T] must be a type.
+   A macro whose signature promises a type waits for the elaborator. *)
 let test_macro_type_binders_are_explicit () =
   let std src = "open (import \"std\");\n" ^ src in
   let check_macro label ~typed ~arity src =
     let export = exported_macro (std src) "mk" in
     Alcotest.(check bool) (label ^ ": binds a type") typed (Syntax.MacroKind.has_type_binding export.kind);
-    Alcotest.(check int) (label ^ ": arity") arity (compiled_macro_arity export.compiled)
+    Alcotest.(check int) (label ^ ": arity") arity (compiled_macro_arity export.entry.value)
   in
   check_macro "bound" ~typed:true ~arity:2 "macro mk[A](_) : Expr(A) { Syntax.i64(1) }";
   check_macro "lowercase binder" ~typed:true ~arity:2 "macro mk[t](_) { Syntax.i64(1) }";
   check_macro "an earlier type of the binder's name" ~typed:true ~arity:2
     "type A = I64;\nmacro mk[A](_) : Expr(A) { Syntax.i64(1) }";
-  check_macro "constraint" ~typed:false ~arity:1 "macro mk(_) : Expr(I64) { Syntax.i64(1) }";
-  check_macro "lowercase alias constraint" ~typed:false ~arity:1 "t = I64;\nmacro mk(_) : Expr(t) { Syntax.i64(1) }";
-  check_macro "a constructor is a reference too" ~typed:false ~arity:1 "macro mk(_) : Expr(None) { Syntax.i64(1) }";
+  check_macro "two binders" ~typed:true ~arity:3 "macro mk[A, B](_) { Syntax.i64(1) }";
+  check_macro "constraint" ~typed:true ~arity:1 "macro mk(_) : Expr(I64) { Syntax.i64(1) }";
+  check_macro "lowercase alias constraint" ~typed:true ~arity:1 "t = I64;\nmacro mk(_) : Expr(t) { Syntax.i64(1) }";
+  check_macro "typed parameter" ~typed:true ~arity:1 "macro mk(x : Expr(I64)) { x }";
   check_macro "wildcard" ~typed:false ~arity:1 "macro mk(_) : Expr(_) { Syntax.i64(1) }";
-  Alcotest.(check bool) "qualified imported constraint" false
+  Alcotest.(check bool) "qualified imported constraint" true
     (Syntax.MacroKind.has_type_binding
        (exported_kind_with_modules [ ("types_mod", "pub type T = I64") ]
           (std "M = import \"types_mod\";\nmacro mk(_) : Expr(M.T) { Syntax.i64(1) }\n") "mk"));
@@ -1640,17 +1630,60 @@ let test_macro_type_binders_are_explicit () =
     (fun src ->
       match run_driver (std src) with
       | _ -> Alcotest.fail ("expected a definition error: " ^ src)
-      | exception (Elab_error.ElabError _ | Enforest_util.Error _) -> ())
+      | exception (Elab_error.ElabError _ | Unify.UnifyError _ | Enforest_util.Error _) -> ())
     [ "macro mk(_) : Expr(Strng) { Syntax.i64(1) }";
       "macro mk(_) : Expr(foo) { Syntax.i64(1) }";
       "macro mk(_) : Expr(No.Such) { Syntax.i64(1) }";
       "macro mk(_) : Expr(MyTag) { Syntax.i64(1) };\ntype MyTag = I64";
       "macro mk(_) : Int { Syntax.i64(1) }";
-      "macro mk[A, B](_) { Syntax.i64(1) }";
+      "macro mk(_) : Expr(None) { Syntax.i64(1) }";
+      "macro mk(x : Expr(None)) { x }";
       "macro mk[A](_) : Decl { Nil }" ];
   match eval_with_macros "{ macro mk(_) : Expr(Intt) { Syntax.i64(1) }; mk(0) }" with
   | _ -> Alcotest.fail "an unbound annotation name must be an error"
   | exception Elab_error.ElabError (UnboundVariable "Intt") -> ()
+
+
+(* A macro's signature is checked like a function's (macro-annotation decisions,
+   2026-09-15): the output against the type it promises, a typed argument
+   against its parameter's type, and every type binder solved before it runs. *)
+let expect_elab_error label check source =
+  match eval_with_macros source with
+  | exception Elab_error.ElabError e when check e -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+  | _ -> Alcotest.fail (label ^ ": expected an elaboration error")
+
+let test_macro_signature_checks () =
+  expect_elab_error "output against the promised type"
+    (function Elab_error.MacroOutputType { macro = "n"; _ } -> true | _ -> false)
+    "{ macro n(_) : Expr(I64) { quote(\"hi\") }; n(0) }";
+  expect_elab_error "typed argument against its parameter"
+    (function Elab_error.MacroArgumentType { macro = "twice"; param = "x"; _ } -> true | _ -> false)
+    "{ macro twice(x : Expr(I64)) : Expr(I64) { quote($x + $x) }; twice(\"a\") }";
+  expect_elab_error "a binder unsolved when the macro runs"
+    (function Elab_error.MacroBinderUnsolved { macro = "default"; binder = "A" } -> true | _ -> false)
+    "{ macro default[A](_) : Expr(A) { Syntax.i64(1) }; default(0) }";
+  check_i64_macro "a typed argument checks" 42L
+    "{ macro twice(x : Expr(I64)) : Expr(I64) { quote($x + $x) }; twice(21) }" ();
+  check_i64_macro "two binders, solved from the arguments" 42L
+    "{
+       macro first[A, B](a : Expr(A), b : Expr(B)) : Expr(A) {
+         match (B) { RExpr(Bool) => a, _ => b }
+       };
+       first(40, True) + 2
+     }" ()
+
+let test_imported_macro_signature () =
+  let modules =
+    [ ("typed", "open (import \"std\");\npub macro twice(x : Expr(I64)) : Expr(I64) { quote($x + $x) }") ]
+  in
+  (match eval_with_imported_macros modules "{ M = import \"typed\"; M.twice(21) }" with
+   | VAtom (I64 n) -> Alcotest.(check int64) "imported typed macro" 42L n
+   | v -> Alcotest.fail (Debug.pp_value_short (MetaContext.create ()) v));
+  match eval_with_imported_macros modules "{ M = import \"typed\"; M.twice(True) }" with
+  | exception Elab_error.ElabError (MacroArgumentType { param = "x"; _ }) -> ()
+  | exception e -> Alcotest.fail (Printexc.to_string e)
+  | _ -> Alcotest.fail "an imported macro's signature must check its argument"
 
 (** Stage 6: Decl macro generated MacroBinding nodes are recursively
     re-entered through expand_struct_binding. This lower-level regression
@@ -1665,6 +1698,7 @@ let test_generated_macro_binding_reentered () =
       value = stx (Syntax.Atom (I64 42L));
       public = false;
       kind = Some Syntax.MacroAnnotation.Expr;
+      output = None;
     }
   in
   let ctx = Expand_ctx.create () in
@@ -3610,6 +3644,8 @@ let () =
           Alcotest.test_case "driver elab_ctx.macro_runtime populated" `Quick test_driver_elab_ctx_has_macro_runtime;
           Alcotest.test_case "imported private macro not registered" `Quick test_visit_macros_private_not_registered;
           Alcotest.test_case "macro type binders are explicit" `Quick test_macro_type_binders_are_explicit;
+          Alcotest.test_case "a macro signature checks" `Quick test_macro_signature_checks;
+          Alcotest.test_case "an imported macro's signature" `Quick test_imported_macro_signature;
           Alcotest.test_case "generated macro binding re-entered" `Quick test_generated_macro_binding_reentered;
           Alcotest.test_case "generated multi-binding scope threading" `Quick test_generated_multi_binding_scope_threading;
           Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
