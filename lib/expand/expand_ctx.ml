@@ -309,7 +309,7 @@ let register_macro_with_nominals ?signature ctx ~syntax_nominals ~name ~value =
 let register_macro ?signature ctx ~name ~value =
   register_macro_with_nominals ?signature ctx ~syntax_nominals:ctx.syntax_nominals ~name ~value
 
-let register_macro_kind ?(params = []) (ctx : t) ~name ~kind =
+let register_macro_kind (ctx : t) ~name ~kind ~params =
   Hashtbl.replace ctx.macro_kind_table name kind;
   Hashtbl.replace ctx.macro_params_table name params
 

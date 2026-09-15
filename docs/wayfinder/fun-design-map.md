@@ -555,7 +555,10 @@ Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
   (closed) — the field is immutable; a context gets a runtime by construction
   (`Ctx.with_expander`), so an import cannot overwrite the importer's.
 - [An under-applied Decl macro is fed a dummy Unit](tickets/decl-macro-fed-dummy-unit.md)
-  — M8: `force_val` fabricates arguments; arity is checked only for kinded calls.
+  (closed) — every macro application checks its argument count against the
+  declared parameters (`ArgumentCount`) before running; no fabricated arguments.
+  Open: a Decl macro's body has no output type, so a polymorphic result
+  (`{ Nil }`) is instantiated with a type after the call.
 - [Refresh the domain-model docs' "today" sections](tickets/refresh-domain-model-today-sections.md)
   — stale descriptive prose in the core, macro and surface topics.
 
