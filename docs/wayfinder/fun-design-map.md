@@ -260,7 +260,7 @@ idempotent expansion, unwritable resolved names `x#n`) — see `docs/STATUS.md`.
    procedural macro parameter kinds `(n : Id)`, and token-position holes in
    `quote { … }`. Fresh code; the ticket names the mechanism (enforester needs
    parameter kinds while reading a call; loader macro caches carry them).
-2. **Small defects**: [capture extents by exceptions](tickets/capture-extents-chosen-by-exceptions.md),
+2. **Small defects**: ~~[capture extents by exceptions](tickets/capture-extents-chosen-by-exceptions.md)~~ (closed),
    [role visibility gaps](tickets/role-visibility-gaps-after-m7.md),
    [term_mentions_var ignores inserted metas](tickets/term-mentions-var-ignores-inserted-metas.md),
    [budget error names no source call](tickets/budget-error-names-no-source-call.md)
@@ -509,7 +509,8 @@ What remains, in the recommended order:
   — import opens check only unit-wide roles; driver-run opens are unchecked;
   imported roles have no scope set.
 - [Capture extents are chosen by catching parse errors](tickets/capture-extents-chosen-by-exceptions.md)
-  — `try_prefixes`: exceptions as control flow, quadratic re-parsing.
+  (closed) — a capture reads as far as its parser does, one parse per hole; a
+  trailing hole now takes the longest operand (`inc 1 * 10` is `inc (1 * 10)`).
 - [Type-case refinement walks the whole context per branch](tickets/type-case-refinement-walks-whole-context.md)
   — the remaining elaboration hotspot after the M9 performance fix.
 - Still in the open [M9 ticket](tickets/templates-desugar-to-macros.md) ("Left"):

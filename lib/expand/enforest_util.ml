@@ -220,10 +220,6 @@ let is_adjacent_postfix (lhs : Syntax.t) (term : Raw_syntax.t) =
 let spans_adjacent (lhs : Source_span.t) (rhs : Source_span.t) =
   lhs.synthetic || rhs.synthetic || lhs.end_byte = rhs.start_byte
 
-let require_adjacent_postfix lhs term what =
-  if not (is_adjacent_postfix lhs term) then
-    error (what ^ " must be adjacent to the callee; whitespace application is not supported")
-
 let require_adjacent_span lhs rhs what =
   if not (spans_adjacent lhs rhs) then
     error (what ^ " must be adjacent; whitespace form is not supported")
@@ -294,12 +290,13 @@ let parse_all parse terms =
       let rest = drop_separators rest in
       if rest = [] then expr
       else
-        let first =
-          match rest with
-          | term :: _ -> first_unconsumed_name term
-          | [] -> "<none>"
-        in
-        unsupported ("unconsumed terms after expression: " ^ first)
+        match rest with
+        (* An expression ends before a group written apart from it. *)
+        | { datum = Group ((Paren | Bracket | Brace) as d, _, _); _ } :: _ ->
+            let what = match d with Paren -> "function call" | Bracket -> "implicit argument list" | Brace -> "record construction" in
+            error (what ^ " must be adjacent to the callee; whitespace application is not supported")
+        | term :: _ -> unsupported ("unconsumed terms after expression: " ^ first_unconsumed_name term)
+        | [] -> unsupported "unconsumed terms after expression: <none>"
 
 let rec split_at_pred pred acc = function
   | [] -> None

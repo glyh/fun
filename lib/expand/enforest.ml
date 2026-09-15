@@ -602,8 +602,7 @@ and parse_postfix_infix env min_prec lhs terms =
           (Syntax.Annotated { inner = lhs; typ })
       in
       parse_postfix_infix env min_prec lhs rest
-  | ({ datum = Group (Raw_syntax.Paren, items, span); _ } as term) :: rest ->
-      require_adjacent_postfix lhs term "function call";
+  | ({ datum = Group (Raw_syntax.Paren, items, span); _ } as term) :: rest when is_adjacent_postfix lhs term ->
       let args =
         match drop_separators items with
         | [] -> [ unit ~span () ]
@@ -616,8 +615,7 @@ and parse_postfix_infix env min_prec lhs terms =
           lhs args
       in
       parse_postfix_infix env min_prec lhs rest
-  | ({ datum = Group (Raw_syntax.Bracket, items, _); _ } as term) :: rest ->
-      require_adjacent_postfix lhs term "implicit argument list";
+  | ({ datum = Group (Raw_syntax.Bracket, items, _); _ } as term) :: rest when is_adjacent_postfix lhs term ->
       let args = parse_args env items in
       let call_span = span_between lhs.span term.span in
       let lhs =
@@ -626,8 +624,7 @@ and parse_postfix_infix env min_prec lhs terms =
           lhs args
       in
       parse_postfix_infix env min_prec lhs rest
-  | ({ datum = Group (Raw_syntax.Brace, items, _); _ } as term) :: rest ->
-      require_adjacent_postfix lhs term "record construction";
+  | ({ datum = Group (Raw_syntax.Brace, items, _); _ } as term) :: rest when is_adjacent_postfix lhs term ->
       let items = drop_separators items in
       let call_span = span_between lhs.span term.span in
       let lhs =
@@ -1053,7 +1050,8 @@ and parse_syntax_template_decl env (head_id : Syntax.id) kind body_terms rest =
 
 and template_callbacks env =
   { Enforest_template.parse_expr = (fun terms -> parse_all (fun ts -> parse_expr_prec env 0 ts) terms);
-    parse_pat = parse_pat_terms;
+    parse_expr_prefix = parse_expr_prec env 0;
+    parse_pat_prefix = Enforest_pat.parse_pat_prefix;
     eager = env.eager }
 
 (* A syntax form used where a declaration goes. *)
