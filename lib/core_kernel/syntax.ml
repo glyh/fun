@@ -44,7 +44,9 @@ and open_choice = { opens : string list; fallback : string option }
 
 and type_decl = { name : id; params : id list; ctors : (id * t list) list }
 
-and effect_row = { effects : t list; tail : t option }
+(** [inferred]: the row was written [_] ([can _], or [{E | _}]): the rest is
+    inferred. An arrow with no row is pure (E3). *)
+and effect_row = { effects : t list; tail : t option; inferred : bool }
 
 and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }

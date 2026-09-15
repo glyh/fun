@@ -3,11 +3,27 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after recursive records by identity, 2026-09-15.
+Last updated: after a bare arrow is pure, 2026-09-15.
 
 ---
 
 ## Completed
+
+### A bare arrow is pure (2026-09-15)
+
+- `A -> B` is `A -> B can {}` (E3): an omitted row is the closed empty row
+  (`Elab_type_expr.elaborate_effect_row`). `A -> B can _` infers the row (a fresh
+  meta tail); `_` may also stand for a written row's tail, `can {IO | _}`
+  (`Syntax.effect_row.inferred`, reflected as `MkEffectRow`'s third field).
+- `A ~> B` is prelude sugar for `A -> B can _` (`order arrow`, right-associative).
+  It is read only by the expression grammar: type annotations (`x : T`, binding
+  types) go through the separate type grammar, which reads no user operators, so
+  there write `can _` (or bind `Callback = Unit ~> I64` first).
+- A plain `rec fact : I64 -> I64` is now known pure, so its calls get the lazy
+  delta shortcut. A pure call is deferred (`VGlued`) only in checker requests,
+  not inside a macro application, whose result is read at once.
+- Test helpers that run a program now use `Ctx.run` (unbudgeted), not the
+  checker's `Ctx.eval`.
 
 ### Recursive records by identity; records only as let bindings (2026-09-15)
 

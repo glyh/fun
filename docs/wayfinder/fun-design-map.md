@@ -595,8 +595,8 @@ distance from an E-invariant in the topic doc.
   — same declaration + convertible free variables = same type; generative only
   under a run-time effect. Today a nominal declared under a binder does not
   evaluate at all. **Blocked on** refs in effect rows.
-- [A bare arrow is pure](tickets/bare-arrow-is-pure.md) — `A -> B` is pure;
-  `A -> B can _` / `A ~> B` infers the row. Reverses effects Phase 6's default.
+- [A bare arrow is pure](tickets/bare-arrow-is-pure.md) (closed & **implemented**) — `A -> B` is pure;
+  `A -> B can _` / `A ~> B` infers the row. `~>` is read by the expression grammar only (type annotations use the hardcoded type grammar).
 - [The checker evaluates under a budget](tickets/checker-evaluation-budget.md)
   (closed & **implemented**) — each checker request to the evaluator spends
   from one call budget, and exhaustion is an elaboration error; a fixpoint

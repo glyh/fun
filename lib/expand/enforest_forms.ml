@@ -39,9 +39,12 @@ let parse_match callbacks start_span terms =
       (stx ~span:(span_between start_span span) (Syntax.Match (scrut, branches)), rest)
   | _ -> error "match is written match (scrutinee) { pattern => result, … }"
 
+(* [_] where a row or its tail is written: the rest of the row is inferred. *)
+let is_wildcard_term (term : Raw_syntax.t) = match term.datum with Token { kind = Ident "_"; _ } -> true | _ -> false
+
 let parse_effect_row_terms callbacks terms =
   match drop_separators terms with
-  | [] -> { Syntax.effects = []; tail = None }
+  | [] -> { Syntax.effects = []; tail = None; inferred = false }
   | _ -> (
       match split_at_token Bar terms with
       | Some (effect_terms, _, tail_terms) ->
@@ -50,16 +53,19 @@ let parse_effect_row_terms callbacks terms =
             | [] -> []
             | _ -> List.map callbacks.parse_expr_terms (split_commas effect_terms)
           in
-          { Syntax.effects = effects; tail = Some (callbacks.parse_expr_terms tail_terms) }
-      | None -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None })
+          (match drop_separators tail_terms with
+           | [ wild ] when is_wildcard_term wild -> { Syntax.effects = effects; tail = None; inferred = true }
+           | _ -> { Syntax.effects = effects; tail = Some (callbacks.parse_expr_terms tail_terms); inferred = false })
+      | None -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None; inferred = false })
 
 let parse_can_effect_row callbacks terms =
   match drop_separators terms with
   | { datum = Group (Raw_syntax.Brace, items, _); _ } :: rest ->
       (parse_effect_row_terms callbacks items, rest)
+  | wild :: rest when is_wildcard_term wild -> ({ Syntax.effects = []; tail = None; inferred = true }, rest)
   | rest ->
       let eff, rest = callbacks.parse_expr_prec Tight rest in
-      ({ Syntax.effects = [ eff ]; tail = None }, rest)
+      ({ Syntax.effects = [ eff ]; tail = None; inferred = false }, rest)
 
 let attach_effects (lhs : Syntax.t) (eff : Syntax.effect_row) =
   match lhs.kind with

@@ -40,7 +40,8 @@ let infer_signature ops ctx bindings =
   (Module { bindings = List.map (fun (name, _, value) -> LetBind (name, Public, Ctx.quote ctx value)) fields; signature = true }, VU)
 
 let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_row = function
-  | None -> { effects = []; tail = Some (Meta (MetaContext.fresh ctx.Ctx.metas)) }
+  (* A bare arrow is pure (E3). *)
+  | None -> empty_effect_row
   | Some (row : Syntax.effect_row) ->
       let entries =
         List.map
@@ -62,12 +63,14 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
       in
       check_unique entries;
       let tail =
-        Option.map
-          (fun tail_expr ->
-            let tail_core, tail_ty = infer_pure ops ctx tail_expr in
-            Ctx.unify ctx tail_ty VEffectRowTy;
-            tail_core)
-          row.tail
+        if row.inferred then Some (Meta (MetaContext.fresh ctx.Ctx.metas))
+        else
+          Option.map
+            (fun tail_expr ->
+              let tail_core, tail_ty = infer_pure ops ctx tail_expr in
+              Ctx.unify ctx tail_ty VEffectRowTy;
+              tail_core)
+            row.tail
       in
       { effects = List.map fst entries; tail }
 

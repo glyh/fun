@@ -104,7 +104,7 @@ let elab_ok source () =
 let eval_i64 source expected () =
   let ctx = Elaborate.init_ctx () in
   let core, _ = Elaborate.on_expr ctx (parse_expr source) in
-  match Elaborate.Ctx.eval ctx core with
+  match Elaborate.Ctx.run ctx core with
   | VAtom (I64 n) -> Alcotest.(check int64) source expected n
   | _ -> Alcotest.fail ("expected an I64: " ^ source)
 
@@ -1272,12 +1272,25 @@ let effects =
     Alcotest.test_case "effectful call propagates latent row" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; (fn(_) { f() } : Unit -> I64 can State(I64)) }");
-    Alcotest.test_case "unannotated higher-order wrapper threads effects" `Quick
+    Alcotest.test_case "an inferred-row wrapper threads effects" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; \
           f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
-          wrap : (Unit -> I64) -> Unit -> I64 = fn(g) { fn(_) { g() } }; \
+          wrap : (Unit -> I64 can _) -> Unit -> I64 can _ = fn(g) { fn(_) { g() } }; \
           (fn(_) { wrap(f)() } : Unit -> I64 can State(I64)) }");
+    Alcotest.test_case "~> is an arrow with an inferred row" `Quick
+      (elab_ok
+         "{ effect State(S) = sig { get : Unit -> S }; \
+          Callback = Unit ~> I64; \
+          f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
+          app = fn(g : Callback) { g() }; \
+          (fn(_) { app(f) } : Unit -> I64 can State(I64)) }");
+    Alcotest.test_case "a bare arrow rejects an effectful callback" `Quick
+      (elab_fail
+         "{ effect State(S) = sig { get : Unit -> S }; \
+          f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
+          app = fn(g : Unit -> I64) { g() }; \
+          app(f) }");
     Alcotest.test_case "open row accepts concrete prefix effect" `Quick
       (elab_ok
          "{ effect IO = sig { read : Unit -> I64 }; \
@@ -1703,6 +1716,8 @@ let evaluation_budget =
       (elab_ok "{ rec inc : I64 -> I64 = fn(n) { n + 1 }; rec twice_inc : I64 -> I64 = fn(n) { inc(inc(n)) }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(twice_inc(n))) { (y : F(n + 1 + 1)) }; 2 }");
     Alcotest.test_case "two calls of one pure fixpoint on convertible arguments convert without unfolding" `Quick
       (elab_ok "{ rec fact : I64 -> I64 can {} = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
+    Alcotest.test_case "a bare-arrow fixpoint converts without unfolding" `Quick
+      (elab_ok "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
     Alcotest.test_case "calls of two fixpoints with the same body unfold until the budget runs out" `Quick
       (budget_exceeded "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; rec fact2 : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact2(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact2(n))) }; 2 }");
     Alcotest.test_case "only a fixpoint known pure defers its calls" `Quick (fun () ->
@@ -1720,9 +1735,11 @@ let evaluation_budget =
           (purity "{ rec f : I64 -> I64 can {} = fn(n) { f(n) }; 1 }");
         Alcotest.(check bool) "an effectful row" false
           (purity ("{ " ^ effect_decl ^ "; rec f : Unit -> I64 can State(I64) = fn(u) { perform State.get () }; 1 }"));
-        (* A bare arrow's row is still open today (bare-arrow-is-pure): not known pure. *)
-        Alcotest.(check bool) "an open row" false
-          (purity "{ rec f : I64 -> I64 = fn(n) { f(n) }; 1 }"));
+        (* A bare arrow is pure (E3). *)
+        Alcotest.(check bool) "a bare arrow" true
+          (purity "{ rec f : I64 -> I64 = fn(n) { f(n) }; 1 }");
+        Alcotest.(check bool) "an inferred row" false
+          (purity "{ rec f : I64 -> I64 can _ = fn(n) { f(n) }; 1 }"));
     Alcotest.test_case "a closed call still evaluates" `Quick
       (elab_ok "{ rec k : I64 -> Type = fn(n) { if (n == 0) { I64 } else { k(n - 1) } }; g = fn(y : k(3)) { y + 1 }; 2 }");
     Alcotest.test_case "running a program is not budgeted" `Quick (fun () ->
