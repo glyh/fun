@@ -386,7 +386,7 @@ let hole_kind_of_name = function
   | "Expr" -> Some HoleExpr
   | "Block" -> Some HoleBlock
   | "Id" -> Some HoleId
-  | "Decl" -> Some HoleDecl
+  | "Decl" -> Some HoleOneDecl
   | "Pattern" -> Some HolePattern
   | _ -> None
 
@@ -416,8 +416,7 @@ let macro_params (value : t) : hole_kind list * t =
         let syntax = { written with name = Compiler_names.Module_name.syntax } in
         (HoleDecl, Some { kind = FieldAccess ({ kind = Var syntax; span }, "Decls"); span = ty_span })
     | Some ({ kind = Var ({ name; _ } as written); span } as ty) -> (
-        (* As a parameter, [Decl] is exactly one declaration, as it is as an output. *)
-        match (match hole_kind_of_name name with Some HoleDecl -> Some HoleOneDecl | k -> k) with
+        match hole_kind_of_name name with
         | Some kind ->
             let type_name = match kind with HoleBlock -> "Expr" | k -> hole_kind_name k in
             let syntax = { written with name = Compiler_names.Module_name.syntax } in

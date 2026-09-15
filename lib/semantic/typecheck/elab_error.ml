@@ -40,6 +40,9 @@ type elab_error =
       (** A [quote { … }] where one [Decl] is expected holds another number of
           items, or its one item is a declaration hole (which splices a list). *)
   | EvaluationBudgetExceeded of { limit : int; call : string; demand : string; site : Eval_budget.site option }
+  | EvaluationFailed of { message : string; site : Eval_budget.site option }
+      (** Evaluating a term while checking failed (a [panic] in a type, a
+          negative [Tuple] count): an error in the program, reported where. *)
   | OpenSuppliesRole of string
       (** M7: an open supplies a member named like a syntax form, operator or
           macro visible in its region. *)
@@ -90,6 +93,8 @@ let string_of_elab_error = function
       Printf.sprintf "QuoteNotOneDecl \"a Decl is one declaration, this quote holds %d; annotate the macro : List(Decl)\"" n
   | EvaluationBudgetExceeded { limit; call; demand; site } ->
       "EvaluationBudgetExceeded \"" ^ Eval_budget.message ~limit ~call ~demand ~site ^ "\""
+  | EvaluationFailed { message; site } ->
+      "EvaluationFailed \"" ^ message ^ Eval_budget.where site ^ " (while type checking)\""
   | OpenSuppliesRole n -> "OpenSuppliesRole \"" ^ n ^ "\""
   | FieldTypeMentionsMethod { field; method_ } ->
       Printf.sprintf "field %s's type mentions method %s, which needs every field: a cycle" field method_

@@ -35,3 +35,26 @@ blocked_by:
    (`ponytail:` marked) — quadratic.
 10. **`EffectRef` finds its family by name**, so a user `effect Mutate` could
     shadow the built-in — M12 survivor; resolve the built-in family by identity.
+
+## Done (2026-09-15, branch small-followups)
+
+- **1.** `self.a(2)` and `v.a(2)` are method-call syntax (user decision
+  2026-09-15). Root cause of the old run-time "field not found": a record value
+  holds only its fields, and `Dot` on it never looked at its type's methods;
+  the checker let it through because `self`'s partial type turned any name into a
+  new field constraint. Now `v.m` on a record with no field `m` evaluates to its
+  type's method applied to `v`, and checks as that call. Inside a method every
+  method's type is known before any body (annotations, else metas the body
+  solves), so `self.later(…)` works; an unknown name on `self` is an error. A
+  method declared `m()` is called `v.m()`, as `fn()`. Struct types with methods
+  still differ from their fields alone.
+- **3.** `$(d : Decl)` takes exactly one declaration, `$(d : List(Decl))` any
+  number (a brace group or the items up to the hole's extent), as the parameter
+  kinds; `Decl` names one declaration everywhere (`Syntax.hole_kind_of_name`).
+- **5.** `fn(x) : T { … }` and `method m() : T can {E} { … }` check the body
+  against `T` (order as an arrow type `A -> T can {E}`). The result type ends at
+  the first top-level `{ … }` or `can`, so a type holding braces is parenthesised.
+  Macro `: Expr(T)` / `: Decl` annotations are unchanged.
+- **6.** An evaluation error while checking a form (`Tuple(0 - 1)`, `panic` in a
+  type) is `ElabError (EvaluationFailed { message; site })`, converted at the one
+  place every form passes through (`Elab_driver.at`).
