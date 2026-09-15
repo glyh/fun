@@ -13,9 +13,9 @@ type ops = {
    not finished (inside its own body) stays as it is. *)
 let unfold_rec ops mc (v : value) : value =
   match v with
-  | VRecOcc { id; args; _ } -> (
+  | VRecOcc { id; captures; args; _ } -> (
       match Hashtbl.find_opt finished_records id with
-      | Some f -> List.fold_left (ops.apply mc) f args
+      | Some r -> List.fold_left (ops.apply mc) (ops.eval mc (record_instance_env r captures) r.record_body) args
       | None -> v)
   | _ -> v
 
@@ -171,7 +171,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
           trait_name = d.trait_name;
           args = List.map (quote ops mc depth) d.args;
           fields = List.map (fun (name, value) -> (name, quote ops mc depth value)) d.fields }
-  | VRecOcc r -> RecOcc { id = r.id; name = r.name; args = List.map (quote ops mc depth) r.args }
+  | VRecOcc r -> RecOcc { id = r.id; name = r.name; captures = List.map (quote ops mc depth) r.captures; args = List.map (quote ops mc depth) r.args }
   | VRefTy (h, a) -> RefTy (quote ops mc depth h, quote ops mc depth a)
   | VStx (StxExpr stx) -> Stx stx
   | VStx _ -> Nbe_support.fail mc "cannot quote non-expression syntax object"
@@ -353,7 +353,8 @@ let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : 
   (* Occurrences are equal by identity; an occurrence meets anything else as
      its unfolding. *)
   | VRecOcc r1, VRecOcc r2 ->
-      r1.id = r2.id && List.length r1.args = List.length r2.args && List.for_all2 (conv ops mc depth) r1.args r2.args
+      r1.id = r2.id && List.length r1.args = List.length r2.args
+      && List.for_all2 (conv ops mc depth) r1.captures r2.captures && List.for_all2 (conv ops mc depth) r1.args r2.args
   | VCon c1, VCon c2 ->
       String.equal c1.name c2.name
       && List.length c1.spine = List.length c2.spine

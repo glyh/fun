@@ -23,8 +23,8 @@ let rec subst_syn_param (param_name : string) (replacement : core_pat) (pat : co
   | CPatStructType { fields; partial } ->
       CPatStructType { fields = List.map (fun (n, p) -> (n, subst_syn_param param_name replacement p)) fields;
                        partial }
-  | CPatNominalHead { id; name = n; num_params; param_pats } ->
-      CPatNominalHead { id; name = n; num_params;
+  | CPatNominalHead { id; name = n; num_params; head; param_pats } ->
+      CPatNominalHead { id; name = n; num_params; head;
                         param_pats = List.map (subst_syn_param param_name replacement) param_pats }
 
 let subst_syn_params (_params : string list) (replacements : core_pat list) (rhs : core_pat) : core_pat =
@@ -47,8 +47,8 @@ let subst_syn_params (_params : string list) (replacements : core_pat list) (rhs
         CPatRecord { fields = List.map (fun (n, p) -> (n, subst_positional p)) fields; partial }
     | CPatStructType { fields; partial } ->
         CPatStructType { fields = List.map (fun (n, p) -> (n, subst_positional p)) fields; partial }
-    | CPatNominalHead { id; name = n; num_params; param_pats } ->
-        CPatNominalHead { id; name = n; num_params;
+    | CPatNominalHead { id; name = n; num_params; head; param_pats } ->
+        CPatNominalHead { id; name = n; num_params; head;
                           param_pats = List.map subst_positional param_pats }
   in
   subst_positional rhs
@@ -209,7 +209,13 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                   | None -> n.num_params
                 in
                 Some (n.id, n.name, ctor_params)
-            | _ -> None
+            | _ -> (
+                (* A member of a binder sealed at a generative module (E11). *)
+                match Ctx.lookup_head_opt ctx con_path, con_path.members with
+                | Some (ix, _), [ member ] ->
+                    Option.bind (List.assoc_opt (ctx.Ctx.lvl - 1 - ix) ctx.Ctx.sealed) (fun sealed ->
+                        Option.map (fun (id, arity) -> (id, member, arity)) (List.assoc_opt member sealed))
+                | _ -> None)
           in
           match resolve with
           | Some (id, nm, ctor_params) ->
@@ -224,6 +230,7 @@ and elaborate_pat_binders (ctx : Ctx.t) (pat : Syntax.pat)
                   ([], []) sub_pats param_tys
               in
               (CPatNominalHead { id; name = nm; num_params = ctor_params;
+                                 head = Option.map (fun (core, _, _) -> core) (Result.to_option (resolve_path_result ctx con_path));
                                  param_pats = List.rev core_param_pats },
                List.rev binders)
           | None when con_path.members = [] && sub_pats = [] && starts_lowercase name ->

@@ -65,12 +65,15 @@ and elab_struct_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend member
       (fun ((key : string), (value : Syntax.t)) -> (key, Syntax.label key, Option.get (struct_type_params value), value))
       members
   in
+  (* An occurrence captures what the enclosing scope names (E11). *)
+  let levels = List.filter (fun l -> l < ctx.Ctx.lvl) ctx.Ctx.scope_captures in
   let occurrences =
     List.map
       (fun (_, name, params, _) ->
         let id = fresh_record_id () in
         let n = List.length params in
-        let term = List.fold_right (fun _ acc -> Lam acc) params (RecOcc { id; name; args = List.init n (fun i -> Var (n - 1 - i)) }) in
+        let captures = List.map (fun l -> Var (n + ctx.Ctx.lvl - 1 - l)) levels in
+        let term = List.fold_right (fun _ acc -> Lam acc) params (RecOcc { id; name; captures; args = List.init n (fun i -> Var (n - 1 - i)) }) in
         let ty =
           List.fold_right
             (fun (param : Syntax.param) acc ->
@@ -88,14 +91,14 @@ and elab_struct_group (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~extend member
       (fun (ctx, acc) ((key, name, _, value), (id, _, _)) ->
         let body_ctx =
           List.fold_left2
-            (fun body_ctx (key, _, _, _) (_, term, ty) -> Ctx.define body_ctx key ty (Nbe.eval ctx.Ctx.metas [] term))
+            (fun body_ctx (key, _, _, _) (_, term, ty) -> Ctx.define body_ctx key ty (Nbe.eval ctx.Ctx.metas ctx.Ctx.env term))
             (value_ctx ctx) members occurrences
         in
         let (body_core, body_ty), effects = collecting body_ctx (fun body_ctx -> ops.infer body_ctx value) in
         emit ctx effects;
         let core = wrap body_core in
         let finished = Ctx.eval ctx core in
-        finish_record id finished;
+        finish_record id { record_env = ctx.Ctx.env; record_body = core; record_levels = levels };
         let member = (key, name, core, body_ty, finished) in
         (extend ctx member, member :: acc))
       (ctx, []) (List.combine members occurrences)
@@ -150,7 +153,7 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~re
   | Some _ ->
       let _, members = elab_rec_group ops ctx ~value_ctx:(fun _ -> value_ctx) ~extend:(fun ctx _ -> ctx) [ (key, value) ] in
       let _, _, core, ty, finished = List.hd members in
-      (core, ty, finished)
+      (core, ty, finished, [])
   | None ->
   let rec_ty = Ctx.raw_meta ctx in
   let value_ctx = if recursive then Ctx.bind value_ctx key rec_ty else value_ctx in
@@ -158,8 +161,10 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~re
   emit ctx effects;
   (if recursive then Ctx.unify ctx rec_ty val_ty);
   let val_core = if recursive then fix_one name (Ctx.pure_call ctx rec_ty) val_core else val_core in
-  if is_empty_expr_effects effects then (val_core, val_ty, Ctx.eval ctx val_core)
-  else (val_core, seal_generative ctx val_ty, VRigid { lvl = ctx.Ctx.lvl; spine = [] })
+  if is_empty_expr_effects effects then (val_core, val_ty, Ctx.eval ctx val_core, [])
+  else
+    let sealed_ty, sealed = seal_generative ctx val_ty in
+    (val_core, sealed_ty, VRigid { lvl = ctx.Ctx.lvl; spine = [] }, sealed)
 
 (* A block's [rec name : type_ = value]: its type's term, its core, and the type
    and value the body sees. A struct type is a recursive record; anything else
@@ -374,10 +379,10 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       (ctx, [OpenBind (mod_core, members)], [])
   | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive } ->
       let name = Syntax.label key in
-      let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~key ~name ~recursive value in
+      let val_core, val_ty, val_val, sealed = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self_scope ctx) ~key ~name ~recursive value in
       let kind = if public then Public else Private in
       let bind = LetBind (name, kind, val_core) in
-      let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
+      let ctx' = note_sealed (extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ]) ctx.Ctx.lvl sealed in
       (ctx', [bind], [ModuleField (name, kind, val_ty)])
   | Syntax.RecGroupBinding { members; public } ->
       let kind = if public then Public else Private in
@@ -510,6 +515,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         let ty_term = Ctx.quote ctx gen_val_ty in
         let ctx' = let_body_ctx ctx name gen_val_ty gen_val_core value_effects in
         let body_core, body_ty = ops.infer ctx' body in
+        if not (is_empty_expr_effects value_effects) && Option.is_some (mentions_generative ctx.metas ctx.lvl gen_val_ty) then
+          check_sealed_stays ctx.metas ~inner:ctx.lvl ~depth:ctx'.Ctx.lvl ~name:(Syntax.label name) body_ty;
         (Let (ty_term, gen_val_core, body_core), body_ty)
       end
   | Lam (param, body) -> infer_lam ops ctx param body
@@ -577,7 +584,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | VModule { entries; partial = _ } -> (
           match find_field_last (fun (n, _, _) -> String.equal n name) (visible_module_fields entries) with
           | Some (_, _, field_ty) ->
-              check_generative_escape ctx ~head_effects e_ty field_ty;
+              check_generative_escape ctx ~head_effects field_ty;
               (Dot (e_core, name), Nbe.force ctx.metas field_ty)
           (* A named impl is a member: [M.eq_C] has the trait dictionary type,
              which is what makes it usable in evidence position. *)
@@ -723,17 +730,36 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       | _ -> raise (ElabError ApplyingNonFunction))
   | Sig { bindings } -> Elab_type_expr.infer_signature ops ctx bindings
   | Module { bindings } ->
+      (* The module's stamp (E11): its first, private slot. Every nominal the
+         module declares captures it. At check time it is [()]; at run time a
+         module whose evaluation performs something allocates a fresh one, so
+         each evaluation's types are distinct instances - one slot, read by
+         every constructor alike. *)
+      let stamp_ty = VAtomTy Atom_ty.TUnit in
+      let stamp_bind def = LetBind (Compiler_names.Module_name.stamp, Private, def) in
       let binding_ctx =
         Ctx.enclosing_scope (Ctx.clear_self_scope ctx) (fun m -> List.iter (fun b -> ignore (Expand.go_struct_binding m b)) bindings)
       in
-      let _end_ctx, core_bindings, entries =
-        List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
-          let ctx', b, e = elab_module_binding ops ctx b in
-          (ctx', b @ acc_binds, e @ acc_entries))
-        (binding_ctx, [], []) bindings
+      let binding_ctx =
+        let stamped = extend_from_slots binding_ctx (stamp_bind (Atom Atom.Unit)) [ `Entry (Compiler_names.Module_name.stamp, stamp_ty, VAtom Atom.Unit) ] in
+        { stamped with Ctx.scope_captures = List.sort_uniq compare (binding_ctx.Ctx.lvl :: binding_ctx.Ctx.scope_captures) }
       in
-      let core_bindings = List.rev core_bindings in
-      let entries = List.rev entries in
+      let first_declared = NominalId.next () in
+      let (end_ctx, core_bindings, entries), performed =
+        collecting binding_ctx (fun binding_ctx ->
+          List.fold_left (fun (ctx, acc_binds, acc_entries) b ->
+            let ctx', b, e = elab_module_binding ops ctx b in
+            (ctx', b @ acc_binds, e @ acc_entries))
+          (binding_ctx, [], []) bindings)
+      in
+      emit ctx performed;
+      let generative = not (is_empty_expr_effects performed) in
+      if generative then
+        for id = first_declared to NominalId.next () - 1 do Hashtbl.replace generative_nominals id () done;
+      check_sealed_members_stay ctx ~inner:binding_ctx.Ctx.lvl end_ctx entries;
+      let stamp = if generative then RefNew (Atom Atom.Unit) else Atom Atom.Unit in
+      let core_bindings = stamp_bind stamp :: List.rev core_bindings in
+      let entries = ModuleField (Compiler_names.Module_name.stamp, Private, stamp_ty) :: List.rev entries in
       let fields = module_entry_fields entries in
       validate_module_fields fields;
       (Module { bindings = core_bindings; signature = false }, VModule { entries; partial = false })
@@ -927,10 +953,10 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             go ~defer ctx (OpenBind (mod_core, members) :: acc_binds, acc_entries) rest
         | Syntax.LetBinding { name = { name = key; _ }; value; public; recursive; _ } :: rest ->
             let name = Syntax.label key in
-            let val_core, val_ty, val_val = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~key ~name ~recursive value in
+            let val_core, val_ty, val_val, sealed = elab_member_value ops ctx ~value_ctx:(Ctx.clear_self ctx) ~key ~name ~recursive value in
             let kind = if public then Public else Private in
             let bind = LetBind (name, kind, val_core) in
-            let ctx' = extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ] in
+            let ctx' = note_sealed (extend_from_slots ctx bind [ `Entry (key, val_ty, val_val) ]) ctx.Ctx.lvl sealed in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
             go ~defer ctx'
               (bind :: acc_binds,

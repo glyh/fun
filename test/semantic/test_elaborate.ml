@@ -419,6 +419,15 @@ let structs =
             less = fn(a : I64, b : I64) { a < b }; greater = fn(a : I64, b : I64) { a > b };
             up = Set(I64, less); down = Set(I64, greater);
             up.union(up.single(1), down.single(2)) }");
+    Alcotest.test_case "type-case compares nominal instances by their captures" `Quick
+      (eval_i64
+         "{ Set = fn(Elem : Type, cmp : Elem -> Elem -> Bool) { module {
+              pub type T = Leaf | Node(T, Elem, T);
+              pub lt = fn(x : Elem, y : Elem) : Bool { cmp(x, y) } } };
+            less = fn(a : I64, b : I64) { a < b }; greater = fn(a : I64, b : I64) { a > b };
+            a = Set(I64, less); b = Set(I64, less); c = Set(I64, greater);
+            f = fn(t : Type) { match (t) { a.T => 1, _ => 0 } };
+            f(b.T) * 10 + f(c.T) }" 10L);
     Alcotest.test_case "a generative module's types are named by its binder" `Quick
       (eval_i64 (symbol_table "g = fn(x : st1.Symbol) { st1.name(x) }; g(st1.intern(5)) + st1.name(st1.intern(1))") 11L);
     Alcotest.test_case "two generative evaluations are different types" `Quick
@@ -427,6 +436,19 @@ let structs =
       (elab_fail (symbol_table "st2.name(st1.intern(5))"));
     Alcotest.test_case "an unnamed generative module's type may not escape" `Quick
       (elab_fail (symbol_table "SymbolTable(()).intern(5)"));
+    Alcotest.test_case "type-case separates two generative evaluations by their stamps" `Quick
+      (eval_i64 (symbol_table "f = fn(t : Type) { match (t) { st1.Symbol => 1, _ => 0 } }; f(st1.Symbol) * 10 + f(st2.Symbol)") 10L);
+    Alcotest.test_case "a sealed type may not leave its binder's scope" `Quick
+      (elab_fail (symbol_table "st1.intern(5)"));
+    Alcotest.test_case "a sealed member's type may not reach its module's type" `Quick
+      (elab_fail (symbol_table "M = module { t = SymbolTable(()); pub f = t.intern }; 1"));
+    Alcotest.test_case "an outer type a generative module names is not sealed" `Quick
+      (eval_i64
+         "{ type Symbol = Sym(I64);
+            mk = fn(u : Unit) { module { table = ref(0); pub T = Symbol; pub wrap = fn(n : I64) { table <- n; Sym(n) } } };
+            m = mk(());
+            f = fn(s : Symbol) { match (s) { Sym(n) => n } };
+            f(m.wrap(4)) }" 4L);
     Alcotest.test_case "a module type reads a later member's variables at its own depth" `Quick
       (eval_i64 "{ mk = fn(X : Type) { module { pub y = True; pub f = fn(x : X) { x } } }; mk(I64).f(7) }" 7L);
     (* A [type] member inside a [struct] used to push one context entry too many
@@ -621,6 +643,24 @@ let structs =
           l1 = Numbers{ head = 1, tail = None }; l2 = Numbers{ head = 2, tail = Some(l1) }; \
           match (l2.tail) { Some(x) => x.head, None => 0 } }"
          (AtomTy Atom_ty.TI64));
+    Alcotest.test_case "a parameterised recursive record is one type per argument" `Quick
+      (eval_i64
+         "{ rec L = fn(A : Type) { struct { v : A; next : Option(L(A)) } };
+            f = fn(x : L(I64)) { x.v }; f(L(I64){ v = 3, next = None }) }" 3L);
+    Alcotest.test_case "a parameterised recursive record differs by argument" `Quick
+      (elab_fail
+         "{ rec L = fn(A : Type) { struct { v : A; next : Option(L(A)) } };
+            g = fn(x : L(Bool)) { 1 }; g(L(I64){ v = 3, next = None }) }");
+    Alcotest.test_case "a recursive record under a binder is an instance per captures" `Quick
+      (eval_i64
+         "{ mk = fn(B : Type) { rec L = struct { v : B; next : Option(L) }; L };
+            LI = mk(I64); LI2 = mk(I64);
+            x : LI = LI2{ v = 1, next = None }; y : LI = LI{ v = 2, next = Some(x) };
+            match (y.next) { Some(z) => z.v, None => 0 } }" 1L);
+    Alcotest.test_case "a recursive record under a binder differs by captures" `Quick
+      (elab_fail
+         "{ mk = fn(B : Type) { rec L = struct { v : B; next : Option(L) }; L };
+            LI = mk(I64); LB = mk(Bool); x : LI = LI{ v = 1, next = None }; y : LB = x; 1 }");
     Alcotest.test_case "a parameterised recursive record holds itself" `Quick
       (check_type
          "{ rec L = fn(A : Type) { struct { meta : A; next : Option(L(A)) } }; \

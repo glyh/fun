@@ -18,8 +18,11 @@ Last updated: after applicative nominal identity, 2026-09-15.
   binder: a declared type member becomes `st1.Symbol`, distinct from `st2.Symbol`.
   An unnamed effectful module's declared type may not escape a field access
   (`GenerativeTypeEscapes`).
-- Not built: run-time stamps (type-case matches nominal heads by id only), `rec`
-  struct identities under a binder.
+- Run-time stamps: a module's private stamp slot is a fresh cell per evaluation
+  of a generative module; type-case compares nominal instances by captures and
+  stamp. Sealing picks declared nominals by identity; a sealed type may not leave
+  its binder's scope or its module's type.
+- A `rec` struct occurrence carries captures and unfolds per instance.
 ### Nominal identity is applicative (E11, first half, 2026-09-15)
 
 - A nominal's identity is its declaration id plus `captures`, the values of the

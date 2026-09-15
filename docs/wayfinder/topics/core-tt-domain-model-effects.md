@@ -141,20 +141,19 @@ heap, is dropped; the program entry's runtime handler discharges the rest
 
 ### E11 — nominal identity is applicative by purity
 
-**Status: applicative half implemented (2026-09-15); generative half open** — an
-effectful maker does not yet seal its nominal (see the ticket). Same declaration + convertible free
+**Status: implemented (2026-09-16).** Same declaration + convertible free
 variables = same type; generative only under a run-time effect, inferred from
 the row, never declared. Forced by dependent types (the checker re-evaluates
-`Set(I64, cmp).T` during conversion — a type minted per evaluation would not
-equal itself) and by the `SymbolTable` abstraction case. Today a nominal ADT
-declared under a binder does not evaluate at all (`mk(I64)(1)` → `unbound
-nominal type: T`; a structural record under a binder does evaluate);
-`nominal_id` is minted once per declaration at elaboration (`NominalId.fresh`), so neither
-applicative nor generative semantics is implemented. A recursive record's identity (`fresh_record_id`, minted by its
-`rec` binding) has the same limit. Distance:
-[nominal-identity-applicative-by-purity](../tickets/nominal-identity-applicative-by-purity.md),
-blocked on E10. [adts-as-let-bindings](../tickets/adts-as-let-bindings.md) is
-blocked on this.
+`Set(I64, cmp).T` during conversion) and by the `SymbolTable` abstraction case.
+
+- A nominal (and a `rec` struct occurrence) captures what its enclosing module
+  or function body names, compared by conversion.
+- Every module has a private stamp slot its nominals capture: `()` at check
+  time and for a pure module, a fresh cell at run time for a module whose
+  evaluation performs something - so type-case separates evaluations.
+- Such a module's declared nominals are generative: sealed at the binder
+  (`st1.Symbol`), and a sealed type may not leave its binder's scope, its
+  module's type, or an unnamed module's field access (`GenerativeTypeEscapes`).
 
 ## Model decision vs today
 

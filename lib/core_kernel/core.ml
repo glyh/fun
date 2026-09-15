@@ -84,10 +84,11 @@ and term =
     }
       (** Internal trait dictionary type reference. Used by quotation to preserve
           trait dictionary identity without encoding marker fields in structs. *)
-  | RecOcc of { id : int; name : string; args : term list }
+  | RecOcc of { id : int; name : string; captures : term list; args : term list }
       (** A recursive occurrence: a [rec] struct type's reference to itself (or to
-          a member of its [rec] group), by the identity its binding minted,
-          applied to its parameters. Unfolded on demand ([finished_records]). *)
+          a member of its [rec] group), by the identity its binding minted and the
+          values of what its enclosing scope names ([captures], E11), applied to
+          its parameters. Unfolded on demand ([finished_records]). *)
   | Ctor of {
       name : string;
       spine : term list;           (* type args then payload args *)
@@ -200,11 +201,14 @@ and core_pat =
       (** Struct type pattern for type-case. Field subpatterns match field types. *)
   | CPatWild
       (** Wildcard — matches anything, binds nothing. *)
-  | CPatNominalHead of { id : nominal_id; name : string; num_params : int; param_pats : core_pat list }
+  | CPatNominalHead of { id : nominal_id; name : string; num_params : int; head : term option; param_pats : core_pat list }
       (** Nominal type-head pattern for type-case. [id] is the unique nominal identity
           for switch comparison, [name] is the nominal type name,
           [num_params] is how many type params the nominal has, [param_pats] are
-          type-level sub-patterns matched against the nominal's parameter values. *)
+          type-level sub-patterns matched against the nominal's parameter values.
+          [head] is the written head, read in the match's scope: at run time a
+          type matches it only if it is that instance (E11) - the same captures,
+          and for a generative declaration the same evaluation. *)
   | CPatBind
       (** Variable binding — matches anything, binds the matched value.
           No name needed — binding is by de Bruijn index. *)
@@ -362,7 +366,7 @@ and value =
     }
       (** Trait dictionary type. The runtime dictionary value is struct-like,
           but the type is not encoded as private marker fields on [VStruct]. *)
-  | VRecOcc of { id : int; name : string; args : value list }
+  | VRecOcc of { id : int; name : string; captures : value list; args : value list }
       (** A recursive occurrence (see [RecOcc]): equal only to an occurrence of the
           same identity; unfolds to its struct type where a shape is needed. *)
   | VRefTy of value * value (* heap, element *)
@@ -576,6 +580,18 @@ let rec pat_binder_count = function
   | CPatRecord { fields; _ } | CPatStructType { fields; _ } ->
       List.fold_left (fun n (_, p) -> n + pat_binder_count p) 0 fields
 
+(* A pattern with [f] applied to each nominal head's term - read in the match's
+   scope, whatever binders the pattern around it adds. *)
+let rec map_pat_heads f = function
+  | CPatNominalHead h -> CPatNominalHead { h with head = Option.map f h.head; param_pats = List.map (map_pat_heads f) h.param_pats }
+  | CPatSyn s -> CPatSyn { s with sub_pats = List.map (map_pat_heads f) s.sub_pats; rhs = map_pat_heads f s.rhs }
+  | CPatOr (l, r) -> CPatOr (map_pat_heads f l, map_pat_heads f r)
+  | CPatProd ps -> CPatProd (List.map (map_pat_heads f) ps)
+  | CPatCon (n, k, ps) -> CPatCon (n, k, List.map (map_pat_heads f) ps)
+  | CPatRecord r -> CPatRecord { r with fields = List.map (fun (n, p) -> (n, map_pat_heads f p)) r.fields }
+  | CPatStructType r -> CPatStructType { r with fields = List.map (fun (n, p) -> (n, map_pat_heads f p)) r.fields }
+  | (CPatWild | CPatBind | CPatAtom _ | CPatType _) as p -> p
+
 (* A single [rec]: a recursive group of one. *)
 let fix_one name pure body = Fix { members = [ { fix_name = name; fix_pure = pure; fix_body = body } ]; index = 0 }
 
@@ -631,7 +647,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | EffectRowLit r -> EffectRowLit (row 0 r)
   | Prod ts -> Prod (List.map (at 0) ts)
   | ProdTy ts -> ProdTy (List.map (at 0) ts)
-  | RecOcc r -> RecOcc { r with args = List.map (at 0) r.args }
+  | RecOcc r -> RecOcc { r with captures = List.map (at 0) r.captures; args = List.map (at 0) r.args }
   | NomRef n -> NomRef { n with captures = List.map (at 0) n.captures; params = List.map (at 0) n.params }
   | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
   | RefTy (h, a) -> RefTy (at 0 h, at 0 a)
@@ -655,10 +671,10 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
       Struct { s with con_fields = List.map (fun (n, ty) -> (n, at 0 ty)) s.con_fields; bindings = bindings s.bindings }
   | Match (scrut, branches) ->
       let branch = function
-        | ValueBranch (pat, body) -> ValueBranch (pat, at (pat_binder_count pat) body)
+        | ValueBranch (pat, body) -> ValueBranch (map_pat_heads (at 0) pat, at (pat_binder_count pat) body)
         | EffectBranch e ->
             (* the continuation, then the argument pattern's binders *)
-            EffectBranch { e with body = at (1 + pat_binder_count e.arg_pat) e.body }
+            EffectBranch { e with arg_pat = map_pat_heads (at 0) e.arg_pat; body = at (1 + pat_binder_count e.arg_pat) e.body }
       in
       Match (at 0 scrut, List.map branch branches)
   | NominalDef d ->
@@ -749,13 +765,20 @@ end
     two separately-defined types with the same name are distinct. *)
 module NominalId : sig
   val fresh : unit -> nominal_id
+  (* The id [fresh] mints next: ids from here on are declared after this point. *)
+  val next : unit -> nominal_id
 end = struct
   let counter = ref 0
   let fresh () =
     let id = !counter in
     incr counter;
     id
+  let next () = !counter
 end
+
+(* Nominals declared by a module whose evaluation performs something (E11):
+   each evaluation is a new instance, named by the binder it is sealed at. *)
+let generative_nominals : (nominal_id, unit) Hashtbl.t = Hashtbl.create 16
 
 (* A nominal's declaration: each constructor's payload types, as terms over the
    type params (innermost, the last param at index 0) and then the declaration's
@@ -772,16 +795,25 @@ let nominal_constructors id (captures : value list) : (string * closure list) li
   | None -> []
   | Some ctors -> List.map (fun (c, payloads) -> (c, List.map (fun body -> { env = captures; body }) payloads)) ctors
 
-(* A [rec] struct type's identity. The binding mints it before its body is
-   elaborated, so the body's references to the type are occurrences of that
-   identity; [finish_record] records the finished value (a struct type, or a
-   function of the parameters to one) that an occurrence unfolds to.
-   ponytail: minted once at elaboration, like a nominal's id - a [rec] struct
-   under a binder shares one identity across evaluations until E11. *)
+(* A [rec] struct type's declaration. The binding mints its id before its body is
+   elaborated, so the body's references to the type are occurrences of it;
+   [finish_record] records the finished body (a struct type, or a function of the
+   parameters to one) as a term in the declaring environment, and the levels an
+   occurrence captures (E11). An occurrence unfolds to that body evaluated with
+   its own captures in place of those levels - one instance per captures. *)
+type finished_record = { record_env : env; record_body : term; record_levels : lvl list }
+
 let record_counter = ref 0
 let fresh_record_id () = let id = !record_counter in incr record_counter; id
-let finished_records : (int, value) Hashtbl.t = Hashtbl.create 64
-let finish_record id value = Hashtbl.replace finished_records id value
+let finished_records : (int, finished_record) Hashtbl.t = Hashtbl.create 64
+let finish_record id record = Hashtbl.replace finished_records id record
+
+(* The environment a recursive occurrence's body is read in: the declaring one,
+   with the occurrence's captures at the levels they were taken from. *)
+let record_instance_env (r : finished_record) (captures : value list) =
+  let width = List.length r.record_env in
+  let at_position = List.map2 (fun level c -> (width - 1 - level, c)) r.record_levels captures in
+  List.mapi (fun i v -> match List.assoc_opt i at_position with Some c -> c | None -> v) r.record_env
 
 (** Global counter for fresh effect family identities.
     Equality of effect families compares by id and instantiated params, not by

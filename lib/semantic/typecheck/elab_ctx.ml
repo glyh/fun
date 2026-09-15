@@ -59,6 +59,10 @@ module Ctx = struct
        declared in it captures them, so it is the same type exactly when they
        are the same. *)
     scope_captures : lvl list;
+    (* Binders sealed at a generative module (E11), by level: each member label
+       of a nominal the module declares, with its declaration and arity - so a
+       type-case head [st1.Symbol] names that declaration. *)
+    sealed : (lvl * (string * (nominal_id * int)) list) list;
   }
 
 and macro_runtime = {
@@ -105,6 +109,7 @@ and macro_runtime = {
       sink = { performed = { effects = []; tail = None } };
       handler_scopes = [];
       scope_captures = [];
+      sealed = [];
     }
 
   (* The context an imported compilation unit is elaborated against: this
