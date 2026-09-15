@@ -22,6 +22,8 @@ blocked_by:
    (`elab_syntax_util.trait_bound_forms`) — an M12 survivor; resolve with the `*`
    decision in [one-grammar-for-types](one-grammar-for-types.md).
 5. **Return-type annotations `fn(n : I64) : T { … }` fail** (on main; found by the
-   tuple-types run). Either support them or decide they are not syntax.
+   tuple-types run). **Grilled 2026-09-15: support them** — `:` after the
+   parameter list means the result type, as `x : T = …` does for bindings; the
+   body is checked against it. Applies to `fn`, `method` and macro bodies alike.
 6. **`Tuple(0 - 1)` escapes the checker as `EvalError`**, as a `panic` in a type
    does: evaluation errors during checking should be elaboration errors.
