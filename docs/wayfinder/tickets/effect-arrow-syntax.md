@@ -50,15 +50,15 @@ log_map = fn(f : A ~> B, xs : List(A)) ~> List(B) { … perform Log.write(…) �
 Two independent callbacks whose effects must stay apart, or a result with extra
 effects in a bodiless signature, are written with named variables.
 
-**Definitions look like their type; `:` for return types is dropped:**
+**Definitions: `: T` when pure, the arrow form only when effectful** (revised same day):
 ```fun
-bump = fn(n : I64) ->{Log} I64 { … }
-pure = fn(n : I64) -> I64 { … }
-app  = fn(g : Unit ~> I64) ~> I64 { g(()) }
+double = fn(n : I64) : I64 { n + n }            // pure
+bump   = fn(n : I64) ->{Log} I64 { … }          // effectful
+app    = fn(g : Unit ~> I64) ~> I64 { g(()) }   // polymorphic
 pub method tick() ->{Exc} I64 { … }
 ```
-The return form `fn(…) : T { … }` (small-followups item 5) is replaced by
-`fn(…) -> T { … }`; methods and `Mutate(r)` rows follow (`->{Mutate(r)}`).
+`fn(…) -> T { … }` (a pure arrow on a definition) is an error suggesting `: T`, so
+each case has one spelling. Methods and `Mutate(r)` rows follow (`->{Mutate(r)}`).
 
 ## Supersedes
 
