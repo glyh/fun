@@ -527,6 +527,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Multi-tail effect rows](tickets/multi-tail-effect-rows.md)
+  — `{Log | e1, e2}` so `~>` can union several callbacks' effects.
 - [General set literals](tickets/general-set-literals.md)
   — later: `{a, b}` as one Set literal; rows and bounds pinned by position.
 - [`export`](tickets/export-construct.md)
