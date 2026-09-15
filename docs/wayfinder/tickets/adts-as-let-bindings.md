@@ -84,3 +84,23 @@ Option = fn(A : Type) { enum { Some(A), None } }; open Option
   optional parameter list) and builds the `enum` with quoted syntax; no compiler
   support beyond `enum`, M9 parameter kinds and `quote { … }`.
 - Only for ADTs: records have no `type` form.
+
+## Grilled (2026-09-16): macro-system fixes first; enums before the macro
+
+The adts-as-lets run found the `type` macro cannot be written today: syntax forms
+are not tried after `pub`; `and` chains and variable parameter lists do not fit
+hole rules; `type` lexes as a keyword. Decided:
+
+- **Fix the macro system generally** (not built-in sugar, not tail-returning
+  macros): (1) syntax forms (and procedural macro calls) apply after `pub`;
+  (2) a hole kind that captures the rest of the item as unread tokens, which the
+  macro reads itself; (3) `type` becomes an ordinary identifier.
+- **Order:** step 1 — `enum { … }`, constructor members, `Option.Some` via a
+  former, `rec … and …` for enums, with `type` still compiler syntax; step 2 —
+  the macro-system fixes; step 3 — `type` as a prelude macro, migrate the ~350
+  test declarations and 15 prelude types, delete `TypeBinding`/`TypeDef`.
+- **Constructor shadowing:** constructors reach scope through `open`, so a later
+  same-named binding shadows them like any opened name. Accepted.
+- Type parameters become E11 captures (`Option = fn(A : Type) { enum … }`),
+  reaching `VNominal.params`, `build_ctor`, refinement, unification, quoting and
+  reflection — expect several green steps.
