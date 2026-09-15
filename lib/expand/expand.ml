@@ -85,6 +85,7 @@ and map_capture m = function
   | CapId tok -> CapId (m.token { tok with scope = (m.id (token_id tok)).scope })
   | CapPattern p -> CapPattern (go_pat m p)
   | CapDecls ds -> CapDecls (List.map (go_struct_binding m) ds)
+  | CapDecl d -> CapDecl (go_struct_binding m d)
 
 and map_instantiation m (inst : instantiation) : instantiation =
   { inst with form = m.id inst.form; rule = m.used_rule m inst.rule;
@@ -255,7 +256,7 @@ let rec fill (captures : (string * capture) list) : mapper =
         | Some (CapExpr e) -> e
         | Some (CapBlock ts) -> { stx with kind = Block ts }
         | Some (CapId _) | None -> stx
-        | Some (CapPattern _ | CapDecls _) -> unfit "an expression" name)
+        | Some (CapPattern _ | CapDecls _ | CapDecl _) -> unfit "an expression" name)
     | Module { bindings } -> { stx with kind = Module { bindings = splice_decl_holes captures bindings } }
     | Struct { bindings } -> { stx with kind = Struct { bindings = splice_decl_holes captures bindings } }
     | Block [ { datum = Token { kind = Ident name; _ }; _ } ] -> (

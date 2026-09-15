@@ -42,7 +42,11 @@ and macro_call_args env (head : Syntax.t) items =
                 they are spliced. *)
              | HoleDecl, [ { datum = Group (Raw_syntax.Brace, ts, _); _ } ] ->
                  Syntax.CapDecls (if drop_separators ts = [] then [] else [ Syntax.Items ts ])
-             | (HoleId | HoleBlock | HolePattern | HoleDecl), _ ->
+             (* Exactly one declaration, written as a group holding one item. *)
+             | HoleOneDecl, [ { datum = Group (Raw_syntax.Brace, ts, _); _ } ]
+               when List.length (List.filter (fun s -> drop_separators s <> []) (split_statements ts)) = 1 ->
+                 Syntax.CapDecl (Syntax.Items ts)
+             | (HoleId | HoleBlock | HolePattern | HoleDecl | HoleOneDecl), _ ->
                  Expand_error.raise_at (ArgumentKind { macro; kind; span = syntax_span part }))
            kinds parts)
   | _ -> None

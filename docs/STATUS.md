@@ -179,6 +179,10 @@ Last updated: after methods follow the arrow rule, 2026-09-15.
   `Syntax.Decl` at the annotation's scopes). `quote { … }` checked against
   `Syntax.Decl` must hold exactly one non-hole item (`QuoteNotOneDecl`);
   anywhere else it is the list. The `VU` instantiation workaround is gone.
+- A parameter means what the same type means as an output: `(d : Decl)` takes
+  a `{ … }` group holding exactly one item (`HoleOneDecl`, captured `CapDecl`,
+  the macro sees a `Decl`); `(d : List(Decl))` takes a group of any number
+  (`HoleDecl`, a `Decls`). A syntax form's `$(d : Decl)` hole is unchanged.
 - `open` binds what the module's **type** lists (I2): `Core.Open`/`OpenBind`
   carry the members (`OpenField name`, `OpenImpl i`), and the evaluator pushes
   each as a projection of the module value. A module parameter (a neutral) opens

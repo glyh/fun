@@ -187,7 +187,7 @@ let w_assoc ns = function
 
 let w_hole_kind ns (k : Syntax.hole_kind) =
   con ns.hole_kind
-    (match k with HoleExpr -> "HoleExpr" | HoleBlock -> "HoleBlock" | HoleId -> "HoleId" | HoleDecl -> "HoleDecl" | HolePattern -> "HolePattern")
+    (match k with HoleExpr -> "HoleExpr" | HoleBlock -> "HoleBlock" | HoleId -> "HoleId" | HoleDecl -> "HoleDecl" | HoleOneDecl -> "HoleOneDecl" | HolePattern -> "HolePattern")
     []
 
 let rec w_expr ns (stx : Syntax.t) : value =
@@ -288,6 +288,7 @@ and w_captured ns = function
   | CapId tok -> con ns.captured "CapId" [ w_token_tree ns { datum = Token tok; span = tok.span } ]
   | CapPattern p -> con ns.captured "CapPattern" [ w_pat ns p ]
   | CapDecls ds -> con ns.captured "CapDecls" [ w_list ns (w_decl ns) ds ]
+  | CapDecl d -> con ns.captured "CapDecl" [ w_decl ns d ]
 
 and w_captures ns captures =
   w_list ns (fun (n, c) -> con ns.capture "MkCapture" [ w_string n; w_captured ns c ]) captures
@@ -516,6 +517,7 @@ let u_hole_kind ns v : Syntax.hole_kind option =
   | Some ("HoleBlock", []) -> Some HoleBlock
   | Some ("HoleId", []) -> Some HoleId
   | Some ("HoleDecl", []) -> Some HoleDecl
+  | Some ("HoleOneDecl", []) -> Some HoleOneDecl
   | Some ("HolePattern", []) -> Some HolePattern
   | _ -> None
 
@@ -719,6 +721,7 @@ and u_captured ns c : Syntax.capture option =
       match u_token_tree ns t with Some { datum = Token tok; _ } -> Some (Syntax.CapId tok) | _ -> None)
   | Some ("CapPattern", [ p ]) -> let* p = u_pat ns p in Some (Syntax.CapPattern p)
   | Some ("CapDecls", [ ds ]) -> let* ds = u_list ns (u_decl ns) ds in Some (Syntax.CapDecls ds)
+  | Some ("CapDecl", [ d ]) -> let* d = u_decl ns d in Some (Syntax.CapDecl d)
   | _ -> None
 
 and u_captures ns v =
@@ -937,6 +940,8 @@ let wrap_capture ~nominals (c : Syntax.capture) : value =
   | None, CapPattern p -> VStx (StxPattern p)
   | Some ns, CapDecls ds -> w_list ns (w_decl ns) ds
   | None, CapDecls ds -> VStx (StxDecls ds)
+  | Some ns, CapDecl d -> w_decl ns d
+  | None, CapDecl d -> VStx (StxDecls [ d ])
 
 let unwrap_stx ?nominals (v : value) : Syntax.t option =
   match nominals, v with
