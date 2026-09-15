@@ -305,7 +305,7 @@ let infer_quote ops (ctx : Ctx.t) template_value holes =
       match List.sort_uniq compare kinds with
       | [ Quote_holes.Expr ] -> ns.Macro_eval.expr
       | [ Quote_holes.Pattern ] -> ns.pat
-      | [ Quote_holes.Decl ] -> ns.decl
+      | [ Quote_holes.Decl ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Decls" ]
       | [ Quote_holes.Id ] -> Elab_stdlib.resolve ctx [ Compiler_names.Module_name.syntax; "Id" ]
       | _ -> raise (ElabError (QuoteHoleKindConflict name))
     in

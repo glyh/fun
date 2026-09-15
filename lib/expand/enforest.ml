@@ -35,6 +35,10 @@ and macro_call_args env (head : Syntax.t) items =
                  if env.eager then Syntax.CapExpr (parse_all (fun ts -> parse_expr_prec env 0 ts) [ group ])
                  else Syntax.CapBlock ts
              | HolePattern, _ :: _ -> Syntax.CapPattern (parse_pat_terms part)
+             (* Declarations, captured unread as a syntax form's are: read where
+                they are spliced. *)
+             | HoleDecl, [ { datum = Group (Raw_syntax.Brace, ts, _); _ } ] ->
+                 Syntax.CapDecls (if drop_separators ts = [] then [] else [ Syntax.Items ts ])
              | (HoleId | HoleBlock | HolePattern | HoleDecl), _ ->
                  Expand_error.raise_at (ArgumentKind { macro; kind; span = syntax_span part }))
            kinds parts)

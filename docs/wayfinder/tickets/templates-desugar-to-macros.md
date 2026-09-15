@@ -3,7 +3,7 @@ title: Templates desugar to macros
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 decided: 2026-09-14 (blockers 2 and 3 grilled)
@@ -271,13 +271,28 @@ holes). Suite green, 920 tests.
   syntax form declared in a struct is usable by its later items); their bodies
   wait for expansion like any other.
 
-### Left
+### Left after run 2 — all landed (2026-09-15)
 
-- **Macro parameter kinds** (`macro m(n : Id, b : Block)`): a procedural macro's
-  arguments still arrive as `Expr`. An `Id` or `Pattern` parameter needs the
-  enforester to know the macro's parameter kinds while reading a call, and the
-  loader's macro caches to carry them. Related: an `$n` hole in a *token*
-  position inside `quote { … }` (a generated rule's head) is not filled by
-  `Quote_holes`, so a procedural macro cannot yet name generated syntax from the
-  use site; syntax forms can (`syntax $n { | $n … }`).
-- Imported roles are still visible unit-wide (M7 known gap 3).
+- **Token-position holes** (`073a3c9`): a `$n` identifier token inside
+  `quote { … }` - a generated rule's head - is an `Id` hole, filled as the token
+  spelling that id, so a procedural macro names generated syntax from the use site.
+- **Macro parameter kinds** (`739e3b5`): `macro m(n : Id, p : Pattern, b : Block)`.
+  A kind annotation is the parameter's reflection type; the kinds are recorded
+  beside the macro's kind and carried by the loader's and units' macro caches.
+  The enforester reads a call's arguments as the kinds of the macro its head
+  resolves to (the expander answers), so arguments are captures, as a syntax
+  form's holes are. A wrong kind or count is `Expand_error.ArgumentKind` /
+  `ArgumentCount`.
+- **`Decl` parameters** (decided 2026-09-15, `m9-decl-params`): the argument is a
+  brace group of items, read with the module item grammar, and the parameter's
+  value is `Decls` (`List(Decl)`) - matching `quote { … }` and a `: Decl` form's
+  `{ items }` replacement. As a syntax form's `Decl` capture, the items stay
+  unread (`DeclItems`) until spliced. A declaration hole in `quote { … }` now
+  takes `Decls` and splices them in place of its item (it took one `Decl`):
+  ```fun
+  macro twice_decls(d : Decl) : Decl { quote { $d; $d } };
+  twice_decls({ x = 1; y = 2 })
+  ```
+- **Imported roles unit-wide** (`4e3f745`): an import's roles bind in the region
+  of the open or binder that imported it
+  ([role-visibility-gaps-after-m7](role-visibility-gaps-after-m7.md)).

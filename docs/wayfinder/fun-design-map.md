@@ -455,12 +455,16 @@ What remains, in the recommended order:
   (closed & **implemented**) — decided with M7: `fn(x) { … }`, `if (c) { … }`, `match (v) { | p => e }`,
   `struct { x: I64 }` record types, `->` only for function types, newlines are
   whitespace, trailing `;` discards.
-- [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9.
+- [Templates desugar to macros](tickets/templates-desugar-to-macros.md) — M9
+  (closed & **implemented**). **Run 3 (2026-09-15):** macro parameters take kinds
+  — `(n : Id)`, `(p : Pattern)`, `(b : Block)`, `(d : Decl)` a brace group of
+  items whose value is `Decls` — read by the enforester at the call and carried by
+  the loader's caches; a token-position `$n` in `quote { … }` names a generated
+  rule's head; a declaration hole splices `Decls`.
   **Run 2 (2026-09-14): implemented** — rules as reflected data, one
   instantiation path through `Expand.application`, bodies and items read form by
   form as expansion reaches them, exports from expansion, `Block` token trees,
-  `expand_block`, idempotent expansion, unwritable resolved names (`x#n`). Left:
-  procedural macro parameter kinds (`(n : Id)`).
+  `expand_block`, idempotent expansion, unwritable resolved names (`x#n`).
   **Run 1 (2026-09-14):** kinds as types, `quote { … }`, `: Decl` templates and
   `multi`'s removal landed; stopped on five questions in the ticket (bodies inside
   quotes vs typed holes, template macros and the elaborator, where syntax exports
@@ -513,10 +517,6 @@ What remains, in the recommended order:
   — `try_prefixes`: exceptions as control flow, quadratic re-parsing.
 - [Type-case refinement walks the whole context per branch](tickets/type-case-refinement-walks-whole-context.md)
   — the remaining elaboration hotspot after the M9 performance fix.
-- Still in the open [M9 ticket](tickets/templates-desugar-to-macros.md) ("Left"):
-  procedural macro parameter kinds (`macro m(n : Id)` arguments arrive as
-  `Expr`) and token-position holes in `quote { … }` (a `$n` heading a generated
-  rule is not filled).
 - Struct items are read together with a private copy of the roles, not form by
   form (M9 run 2 choice; their bodies still wait for expansion).
 

@@ -336,7 +336,8 @@ let token_id (tok : Token_tree.token) =
 (** A macro's parameter kinds (M9): each explicit parameter annotated with a
     kind - [(n : Id)] - takes that kind, any other an [Expr]. The kind is the
     parameter's type, the reflection type in the [Syntax] module, found from
-    the annotation's own scopes; a [Block] is an [Expr] (a [RawBlock]). Returns
+    the annotation's own scopes; a [Block] is an [Expr] (a [RawBlock]) and a
+    [Decl] the [Decls] its brace group of items is, as [quote { … }]. Returns
     the kinds and the value with each kind annotation made that type. *)
 let macro_params (value : t) : hole_kind list * t =
   let kind_type (p : param) =
@@ -344,7 +345,7 @@ let macro_params (value : t) : hole_kind list * t =
     | Some ({ kind = Var ({ name; _ } as written); span } as ty) -> (
         match hole_kind_of_name name with
         | Some kind ->
-            let type_name = match kind with HoleBlock -> "Expr" | k -> hole_kind_name k in
+            let type_name = match kind with HoleBlock -> "Expr" | HoleDecl -> "Decls" | k -> hole_kind_name k in
             let syntax = { written with name = Compiler_names.Module_name.syntax } in
             (kind, Some { ty with kind = FieldAccess ({ kind = Var syntax; span }, type_name) })
         | None -> (HoleExpr, p.type_))
