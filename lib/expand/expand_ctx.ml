@@ -17,6 +17,18 @@ type macro_snapshot = {
   provisional : bool;
 }
 
+(* What an import of a unit makes available to its importer's expander: the
+   roles it exports and, for a unit whose macros are compiled already (the
+   prelude), those macros. A file unit's macros arrive through [load_macros]. *)
+type unit_syntax = {
+  roles : (string * Syntax.role) list;
+  macros : (string * macro_entry * Syntax.MacroKind.t * Syntax.hole_kind list) list;
+  (* How to apply those macros, for an expander that was given no way to. *)
+  apply : (Core.value Eval_budget.t -> Core.value -> Core.value -> Core.value) option;
+}
+
+let roles_only roles = { roles; macros = []; apply = None }
+
 type t = {
   binding_table : Binding.t;
   mutable scope_counter : int;
@@ -63,7 +75,7 @@ type t = {
      applied was imported: ids its replacement introduces mean that unit's names. *)
   intro_scope_units : (int, string) Hashtbl.t;
   (* A unit's exported roles, by path (the reserved [std] path included). *)
-  mutable load_syntax : (string -> (string * Syntax.role) list) option;
+  mutable load_syntax : (string -> unit_syntax) option;
   (* The public roles this expansion declared: the unit's syntax exports. *)
   mutable syntax_exports : (string * Syntax.role) list;
   (* Macros an [export] of a unit re-exports: the name exported, and the key the

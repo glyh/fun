@@ -9,10 +9,10 @@ let pure_effects = effect_row_closure [] empty_effect_row
 (* Prelude syntax exports (operators, [if]) — passed into every parse so test
    sources can use [+]/[==]/[if]/… now that these are prelude features rather
    than compiler builtins. Mirrors what the entry points and loader inject. *)
-let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
+let builtin_syntax = Macro_driver.std_syntax ()
 
 let parse_expr source =
-  Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+  Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax source
 
 let fail_with_source label source message =
   Alcotest.fail (Printf.sprintf "%s: %s\nsource:\n%s" label message source)
@@ -975,7 +975,7 @@ let eval_with_macros source =
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply = Nbe.apply_macro in
-  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
+  let expr, expand_ctx = Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax source in
   let ctx = Elab_ctx.Ctx.with_expander ctx expand_ctx in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.run ctx core
@@ -990,7 +990,7 @@ let eval_decl_module source =
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply = Nbe.apply_macro in
-  let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source in
+  let expr, expand_ctx = Parse_expand.parse_module_with_ctx ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Macro_driver.std_load_syntax source in
   let ctx = Elab_ctx.Ctx.with_expander ctx expand_ctx in
   let core, _ty = Elaborate.on_expr ctx expr in
   Elaborate.Ctx.run ctx core
@@ -1643,7 +1643,7 @@ let test_binder_body_type_mismatch () =
 (** Stage 3: helper that produces a driver_output via the new [Macro_driver].
     Parses source, runs the driver, and returns the output. *)
 let run_driver source : Macro_driver.driver_output =
-  Macro_driver.run ~load_syntax:Elab_prelude.std_load_syntax (Enforest.parse_module source)
+  Macro_driver.run ~load_syntax:Macro_driver.std_load_syntax (Enforest.parse_module source)
 
 (** Stage 3: equivalence helper — runs both the old pipeline
     ([Parse_expand.parse_module_with_ctx]) and the new driver, and
@@ -1658,7 +1658,7 @@ let driver_vs_pipeline source =
   let eval_and_apply = Nbe.apply_macro in
   let pipeline_surface, _expand_ctx =
     Parse_expand.parse_module_with_ctx
-      ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Elab_prelude.std_load_syntax source
+      ~elaborate ~eval_and_apply ~syntax_nominals:nominals ~load_syntax:Macro_driver.std_load_syntax source
   in
   let driver_output = run_driver source in
   (* Each parse mints its own enforestation scopes (negative, from one global
@@ -3242,7 +3242,7 @@ let test_declaration_binders_are_fresh () =
   check_i64_macro "the caller's type is not the macro's" 1L
     "{
        type Tmp = Yes | No;
-       macro with_tmp(e) { quote({ type Tmp = A | B; $e }) };
+       macro with_tmp(e) { quote({ rec Tmp = enum { A, B }; open Tmp; $e }) };
        with_tmp({ v : Tmp = Yes; match (v) { Yes => 1, No => 0 } })
      }" ()
 
@@ -3500,7 +3500,7 @@ let erase_scopes stx = Expand.map_ids (fun id -> { id with Syntax.scope = Scope_
 
 let test_m9_expansion_idempotent () =
   let source = "{ syntax double { double $x => $x + $x }; f = fn(y) { z = double y; match (z) { w => w } }; f(3) }" in
-  let once, ctx = Parse_expand.parse_expr_with_ctx ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source in
+  let once, ctx = Parse_expand.parse_expr_with_ctx ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax source in
   let twice = Expand.expand ctx once in
   Alcotest.(check bool) "expanding expanded syntax renames nothing" true (erase_scopes once = erase_scopes twice)
 
@@ -3511,7 +3511,7 @@ let expanded_body source =
   let elaborate expr = let core, _ = Elaborate.on_expr ctx expr in Elaborate.Ctx.eval ctx core in
   let expr, _ =
     Parse_expand.parse_expr_with_ctx ~elaborate ~eval_and_apply:Nbe.apply_macro
-      ~syntax_nominals:(Elaborate.syntax_nominals ctx) ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+      ~syntax_nominals:(Elaborate.syntax_nominals ctx) ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax source
   in
   let erase stx =
     Expand.map_forms

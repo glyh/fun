@@ -181,7 +181,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
        PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat m rhs; public }
      | FieldBinding { name; type_ } -> FieldBinding { name; type_ = go type_ }
      | OpenBinding (md, label) -> OpenBinding (go md, label)
-     | ExportBinding { m = md; names } -> ExportBinding { m = go md; names }
+     | ExportBinding { m = md; names; public } -> ExportBinding { m = go md; names; public }
      | SyntaxBinding { name; role; public } -> SyntaxBinding { name = on_id name; role = map_role m role; public }
      | HoleBinding id -> HoleBinding (on_id id)
      | Items terms -> Items (map_terms m terms)
@@ -356,7 +356,17 @@ let application ?unit (ctx : Expand_ctx.t) : application =
   { receive = map_ids receive_id;
     receive_capture = map_capture (mapper receive_id);
     emit = map_ids flip;
-    emit_binding = (fun b -> map_binders prune_use_site (map_binding_ids flip b)) }
+    emit_binding =
+      (fun b ->
+        match map_binding_ids flip b with
+        (* Unread items are declarations read where they land, so every token
+           in them - whichever turns out a binder - loses the use-site scope. *)
+        | Items terms -> Items (map_terms (mapper prune_use_site) terms)
+        (* So are the unread tokens a declaration macro call is handed. *)
+        | MacroCallBinding c ->
+            MacroCallBinding
+              { c with args = List.map (function CapTokens ts -> CapTokens (map_terms (mapper prune_use_site) ts) | a -> a) c.args }
+        | b -> map_binders prune_use_site b) }
 
 
 let add_param_scope (scope : Scope_set.t) (param : Syntax.param) : Syntax.param =
@@ -514,7 +524,7 @@ let macro_params_of (ctx : Expand_ctx.t) (head : t) =
 (* The roles the unit [m] denotes exports, when it denotes one. *)
 let unit_roles_of (ctx : Expand_ctx.t) (m : t) =
   match unit_path_of ctx m, ctx.Expand_ctx.load_syntax with
-  | Some path, Some load -> load path
+  | Some path, Some load -> (load path).Expand_ctx.roles
   | _ -> []
 
 (* The reader of the forms expansion reaches, with the roles bound here. *)
@@ -563,6 +573,7 @@ let decl_over (binding : struct_binding) (body : t) : t =
   | TraitBinding { name; params; fields; public = false } -> over (TraitDef { name; params; fields; body })
   | ImplBinding { name; trait; args; fields; public = false } -> over (ImplDef { name; trait; args; fields; body })
   | OpenBinding (m, label) -> over (Open (m, body, label))
+  | ExportBinding { public = false; _ } -> body
   | _ -> Enforest_util.error "a declaration syntax form in a block writes only private lets, types, effects, traits, impls, opens, macros and syntax"
 
 (* The roles unit [path] exports, when [m] is an import of it: bound like any
@@ -574,7 +585,7 @@ let decl_over (binding : struct_binding) (body : t) : t =
 let import_roles (ctx : Expand_ctx.t) ~base_scope ~scope (m : t) =
   match m.kind, ctx.Expand_ctx.load_syntax with
   | Import { path; _ }, Some load ->
-      let roles = Binding.from_unit path (load path) in
+      let roles = Binding.from_unit path (load path).Expand_ctx.roles in
       (match Binding.duplicate_exports_message roles with
        | Some msg -> raise (Enforest_util.Error msg)
        | None -> ());
@@ -608,7 +619,14 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     (* An import loads its unit - syntax exports, then macros - wherever it is
        written; its roles are bound only by the open or binder around it
        ([import_roles]). *)
-    Option.iter (fun load -> ignore (load path)) ctx.Expand_ctx.load_syntax;
+    Option.iter
+      (fun load ->
+        let unit = load path in
+        List.iter
+          (fun (name, entry, kind, params) -> Expand_ctx.register_unit_macro ctx ~path ~name ~entry ~kind ~params)
+          unit.Expand_ctx.macros;
+        if Option.is_none ctx.Expand_ctx.eval_and_apply then ctx.Expand_ctx.eval_and_apply <- unit.Expand_ctx.apply)
+      ctx.Expand_ctx.load_syntax;
     Option.iter (fun f -> f ctx path) ctx.Expand_ctx.load_macros;
     stx
   | Block terms -> (
@@ -626,7 +644,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
         (instantiate ctx inst (fun app captures -> function
            | ReplaceDecls ds ->
              let filled = splice_decl_holes captures (List.map (go_struct_binding (fill captures)) ds) in
-             List.fold_right decl_over (List.map app.emit_binding filled) body
+             List.fold_right decl_over (List.concat_map (block_decls ctx) (List.map app.emit_binding filled)) body
            | ReplaceExpr _ -> Expand_error.raise_at (NotDeclarations { macro = inst.form.name })))
     | None -> expand ctx (Enforest.parse_block_head env stx.span terms))
   | Instantiate inst ->
@@ -960,6 +978,62 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
     | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
   end
 
+(* A declaration macro call [f(args)]: the declarations it returns, emitted by
+   its application and handed to [k] unexpanded - a definition context expands
+   them in its binding loop, a block scopes each over the rest. [None] when [f]
+   names no macro. *)
+and decl_macro_call : 'a. Expand_ctx.t -> t -> capture list -> (struct_binding list -> 'a) -> 'a option =
+  fun ctx f args k ->
+  let head_macro =
+    match f.kind, macro_member_key ctx f with
+    | FieldAccess _, Some (key, entry) -> Some (key, Some entry, false)
+    | Var id, _ -> macro_head_key ctx id
+    | _, _ -> None
+  in
+  match f.kind, head_macro with
+  | (Var _ | FieldAccess _), Some (key, Some macro_entry, _) ->
+    let macro_fn = macro_entry.Expand_ctx.value in
+    let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
+    begin match ctx.Expand_ctx.eval_and_apply with
+    | Some apply_fn ->
+      let macro_kind = match Expand_ctx.lookup_macro_kind ctx key with
+        | Some k -> k | None -> Syntax.MacroKind.default in
+      check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Decl;
+      check_argument_count ctx ~key args;
+      let apply_fn = apply_fn ctx.Expand_ctx.budget in
+      Some
+        (run_application ctx ~name:key ~nominals:macro_nominals (fun () ->
+             let app = application ctx in
+             let fn = List.fold_left (fun fn arg ->
+                 apply_fn fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.receive_capture arg))) macro_fn args in
+             match Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn with
+             | Some bindings -> k (List.map app.emit_binding bindings)
+             | None -> Expand_error.raise_at (NotDeclarations { macro = key })))
+    | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
+    end
+  | (Var _ | FieldAccess _), Some (key, None, true) ->
+    Expand_error.raise_at (ExpandedDuringDefinition { macro = key })
+  | _ -> None
+
+(* A block's declarations as the private declarations that scope over the rest:
+   a declaration macro call is applied, unread items are read. *)
+and block_decls (ctx : Expand_ctx.t) (b : struct_binding) : struct_binding list =
+  match b with
+  | MacroCallBinding { f; args; _ } -> (
+      match decl_macro_call ctx f args (List.concat_map (block_decls ctx)) with
+      | Some bindings -> bindings
+      | None -> [ b ])
+  | Items terms ->
+      let rec read terms =
+        match Enforest_util.drop_separators terms with
+        | [] -> []
+        | _ ->
+            let stmt, after = Enforest_util.take_statement terms in
+            Enforest.parse_module_statement (lazy_env ctx) stmt @ read after
+      in
+      List.concat_map (block_decls ctx) (read terms)
+  | b -> [ b ]
+
 and expand_struct_bindings_with_scopes ?(after_binding = fun _ -> ()) ?(in_struct = false) ?(publish = false) (ctx : Expand_ctx.t) bindings =
   let rec go active_scopes acc all_scopes = function
     | [] -> (List.rev acc, all_scopes)
@@ -1104,8 +1178,9 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
       | ReplaceExpr _ -> Expand_error.raise_at (NotDeclarations { macro = inst.form.name }))
   | FieldBinding _ when not in_struct -> Enforest_util.error "a field [name : type] belongs in a struct"
   | FieldBinding { name; type_ } -> ([ FieldBinding { name; type_ = expand ctx type_ } ], [ [] ])
-  | ExportBinding _ when in_struct -> Enforest_util.error "export is a module item"
-  | ExportBinding { m; names } ->
+  | ExportBinding { public = true; _ } when in_struct -> Enforest_util.error "export is a module item"
+  | ExportBinding { m; names; public = false } -> ([ ExportBinding { m = expand ctx m; names; public = false } ], [ [] ])
+  | ExportBinding { m; names; public } ->
     (* A unit's public roles are exported with its values: they join this
        unit's syntax exports. *)
     let m' = expand ctx m in
@@ -1115,7 +1190,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
          Option.iter
            (fun load ->
              ctx.Expand_ctx.syntax_exports <-
-               ctx.Expand_ctx.syntax_exports @ List.filter (fun (n, _) -> selected n) (Binding.from_unit path (load path)))
+               ctx.Expand_ctx.syntax_exports @ List.filter (fun (n, _) -> selected n) (Binding.from_unit path (load path).Expand_ctx.roles))
            ctx.Expand_ctx.load_syntax;
          ctx.Expand_ctx.macro_reexports <-
            ctx.Expand_ctx.macro_reexports
@@ -1123,7 +1198,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
                (fun n -> if selected n then Some (n, Expand_ctx.unit_macro_key ~path ~name:n) else None)
                (Expand_ctx.unit_macro_names ctx path)
      | None -> ());
-    ([ ExportBinding { m = m'; names } ], [ [] ])
+    ([ ExportBinding { m = m'; names; public } ], [ [] ])
   | OpenBinding (m, _) ->
     (* An open binds no name of its own. Its scope marks the later bindings as
        inside it, so a name there can resolve to an open choice. *)
@@ -1160,45 +1235,16 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
       ([MacroBinding { name; value = expand ctx value; public; kind; output }], [[]])
     end
   | MacroCallBinding { f; args; public } ->
-    let head_macro =
-      match f.kind, macro_member_key ctx f with
-      | FieldAccess _, Some (key, entry) -> Some (key, Some entry, false)
-      | Var id, _ -> macro_head_key ctx id
-      | _, _ -> None
-    in
-    begin match f.kind with
-    | Var _ | FieldAccess _ ->
-      begin match head_macro with
-      | Some (key, Some macro_entry, _) ->
-        let macro_fn = macro_entry.Expand_ctx.value in
-        let macro_nominals = macro_entry.Expand_ctx.syntax_nominals in
-        begin match ctx.Expand_ctx.eval_and_apply with
-        | Some apply_fn ->
-          let macro_kind = match Expand_ctx.lookup_macro_kind ctx key with
-            | Some k -> k | None -> Syntax.MacroKind.default in
-          check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Decl;
-          check_argument_count ctx ~key args;
-          let apply_fn = apply_fn ctx.Expand_ctx.budget in
-           run_application ctx ~name:key ~nominals:macro_nominals (fun () ->
-             let app = application ctx in
-             let fn = List.fold_left (fun fn arg ->
-                apply_fn fn (Macro_eval.wrap_capture ~nominals:macro_nominals (app.receive_capture arg))) macro_fn args in
-             let result = Macro_eval.unwrap_stx_decl ?nominals:macro_nominals fn in
-             (match result with
-             | Some bindings ->
-                 (* Stage 6: recursively process generated bindings through
-                    the shared binding-list loop so generated MacroBinding
-                    annotations are resolved, macros are compiled/registered,
-                    and sibling-generated scopes thread in source order. *)
-                 expand_struct_bindings_with_scopes ~in_struct ~publish:public ctx (List.map app.emit_binding bindings)
-             | None -> Expand_error.raise_at (NotDeclarations { macro = key })))
-        | None -> Expand_error.raise_at (MissingCallback { callback = "eval_and_apply" })
-        end
-      | Some (key, None, true) ->
-        Expand_error.raise_at (ExpandedDuringDefinition { macro = key })
-      | Some (_, None, false) | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args; public }], [[]])
-      end
-    | _ -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args; public }], [[]])
+    begin match
+      decl_macro_call ctx f args (fun bindings ->
+          (* Stage 6: recursively process generated bindings through the shared
+             binding-list loop so generated MacroBinding annotations are
+             resolved, macros are compiled/registered, and sibling-generated
+             scopes thread in source order. *)
+          expand_struct_bindings_with_scopes ~in_struct ~publish:public ctx bindings)
+    with
+    | Some expanded -> expanded
+    | None -> ([MacroCallBinding { f = expand ctx f; args = List.map (expand_capture (expand ctx)) args; public }], [[]])
     end
 
 and expand_match_branch ctx = function

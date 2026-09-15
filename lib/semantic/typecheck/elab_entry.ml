@@ -9,7 +9,9 @@ open Elab_resolve
 
 (** Build the initial elaboration context with built-in types ([I64],
     [Bool], [Unit], [Char], [Type]) and primitive operators. *)
-let build_init_ctx () : Ctx.t =
+(* The builtins, and stage 1 of the prelude bound as [stdlib]: the base stage 2
+   of the prelude is elaborated against. *)
+let stage1_ctx () : Ctx.t =
   let ctx = Ctx.empty () in
   let add_type ctx name v = Ctx.define ctx name VU v in
   let ctx = add_type ctx Compiler_names.Type_name.i64 (VAtomTy Atom_ty.TI64) in
@@ -40,7 +42,7 @@ let build_init_ctx () : Ctx.t =
         Ctx.define ctx name ty (VNeutral { ty; neutral = { head = HPrim name; frames = [] } }))
       prims ctx
   in
-  let stdlib_core, stdlib_ty = Elab_driver.infer ctx (Lazy.force parsed_stdlib) in
+  let stdlib_core, stdlib_ty = Elab_driver.infer ctx (Lazy.force parsed_stage1) in
   let stdlib_value = Ctx.eval ctx stdlib_core in
   let ctx = Ctx.hide_names ctx syntax_primitive_names in
   let ctx = Ctx.define ctx Compiler_names.Module_name.stdlib stdlib_ty stdlib_value in
@@ -49,10 +51,6 @@ let build_init_ctx () : Ctx.t =
      elaborates against this rather than against the import site. *)
   { ctx with base = Some ctx }
 
-(* The prelude is elaborated once: every context starts from the same base, so the
-   types it declares - and the macros compiled against them - are one set. *)
-let base_ctx = lazy (build_init_ctx ())
-let init_ctx () : Ctx.t = Lazy.force base_ctx
 
 let resolve_stdlib (ctx : Ctx.t) (path : string list) : value =
   Elab_stdlib.resolve ctx path

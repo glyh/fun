@@ -1459,7 +1459,7 @@ and parse_export_binding env public stmt =
       in
       let m, rest = parse_expr_prec env Top module_terms in
       ensure_no_rest "export" rest;
-      Some (Syntax.ExportBinding { m; names })
+      Some (Syntax.ExportBinding { m; names; public = true })
   | _ -> None
 
 (* A role declaration as bindings: the role, then the macro its body defines. *)

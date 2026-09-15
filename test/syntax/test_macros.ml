@@ -8,7 +8,7 @@ let parse source =
     Elaborate.Ctx.eval ctx core
   in
   let eval_and_apply = Nbe.apply_macro in
-  unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
+  unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
 let identity_macro_shape () =
   match parse "{ macro id(stx) { stx }; id(42) }" with

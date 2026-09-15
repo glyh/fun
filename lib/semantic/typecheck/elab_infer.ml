@@ -463,9 +463,13 @@ let type_group_entries (acc_binds, acc_entries) results =
 let check_export_clash ~exported ~seen (b : Syntax.struct_binding) entries =
   let names = List.filter_map (function ModuleField (n, Public, _) | ModuleImpl (Some n, Public, _, _) -> Some n | _ -> None) entries in
   let is_export = match b with Syntax.ExportBinding _ -> true | _ -> false in
+  (* A constructor may share the name of the type it is exported from, as a
+     declaration's constructor always could: the path then denotes it (I3). *)
+  let source = match b with Syntax.ExportBinding { m = { kind = Syntax.Var id; _ }; _ } -> Some (Syntax.label id.name) | _ -> None in
   List.iter
     (fun n ->
-      if Hashtbl.mem exported n || (is_export && Hashtbl.mem seen n) then raise (ElabError (ExportClash n));
+      let own_type = Option.equal String.equal source (Some n) in
+      if Hashtbl.mem exported n || (is_export && Hashtbl.mem seen n && not own_type) then raise (ElabError (ExportClash n));
       if is_export then Hashtbl.replace exported n ();
       Hashtbl.replace seen n ())
     names
@@ -500,7 +504,8 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
       let bind = PatternSynBind (name, kind, syn_val) in
       let ctx' = extend_from_slots ctx bind [ `Entry (key, VU, syn_val) ] in
       (ctx', [bind], [ModuleField (name, kind, VU)])
-  | Syntax.ExportBinding { m; names } ->
+  | Syntax.ExportBinding { public = false; _ } -> (ctx, [], [])
+  | Syntax.ExportBinding { m; names; _ } ->
       (* Every member leaves as a public entry of this module, bound under a key
          nothing spells: an export opens nothing here. *)
       let m_core, m_ty = ops.infer ctx m in
@@ -1149,6 +1154,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                (bind :: acc_binds,
                 StructField (name, kind, VU) :: acc_entries)
               rest
+        | Syntax.ExportBinding { public = false; _ } :: rest -> go ~defer ctx (acc_binds, acc_entries) rest
         | Syntax.ExportBinding _ :: _ -> invalid_arg "export is expanded only as a module item"
         | Syntax.OpenBinding (mod_expr, label) :: rest ->
             let mod_core, mod_ty = ops.infer ctx mod_expr in

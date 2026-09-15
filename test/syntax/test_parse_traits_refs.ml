@@ -1,6 +1,6 @@
 let unwrap_std (e : Shape.t) : Shape.t = match e with Shape.Open (Shape.Import "std", body, _) -> body | other -> other
-let parse_expr source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
-let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
+let parse_expr source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax source)
+let parse_module source = Parse_written.parse_module ~load_syntax:Macro_driver.std_load_syntax source
 open Shape
 
 let trait_decl_shape () =

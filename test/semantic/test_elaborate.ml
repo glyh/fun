@@ -25,8 +25,8 @@ let () =
           | EffectRowMismatch -> "EffectRowMismatch"))
     | _ -> None)
 
-let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
-let parse_expr source = Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source
+let builtin_syntax = Macro_driver.std_syntax ()
+let parse_expr source = Parse_expand.parse_expr ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax source
 let pi explicitness domain codomain = Pi { explicitness; domain; effects = empty_effect_row; codomain }
 
 let elab source =
@@ -622,8 +622,9 @@ let structs =
     Alcotest.test_case "a record type is not a type declaration" `Quick
       (fun () ->
         match elab "{ type Point = struct {x: I64}; Point }" with
-        | exception Enforest_util.Error msg ->
-            Alcotest.(check bool) "names the let form" true (String.starts_with ~prefix:"a record type is a value" msg)
+        | exception e ->
+            let msg = Printexc.to_string e in
+            Alcotest.(check bool) ("names the let form: " ^ msg) true (let sub = "a record type is a value" in let n = String.length sub in let rec at i = i + n <= String.length msg && (String.sub msg i n = sub || at (i + 1)) in at 0)
         | _ -> Alcotest.fail "type X = struct was accepted");
     Alcotest.test_case "record type declaration same recursion" `Quick
       (elab_ok "{ type Option A = Some A | None; rec List = fn[A : Type] { struct {meta: A; next: Option(List[A])} }; List }");
@@ -1942,8 +1943,8 @@ let type_chains =
       (rejected "{ M = module { pub type A = MkA and A = NoB }; 0 }");
     Alcotest.test_case "record in a chain" `Quick
       (rejected "{ M = module { pub type A = MkA(B) and B = struct {x: A} }; 0 }");
-    Alcotest.test_case "chain in a scoped do head" `Quick
-      (rejected "{ type A = MkA(B) and B = MkB(A); 0 }");
+    Alcotest.test_case "chain in a block" `Quick
+      (eval_i64 "{ type A = MkA(B) | NoA and B = MkB(A) | NoB; match (MkA(MkB(NoA))) { MkA(MkB(NoA)) => 1, _ => 0 } }" 1L);
   ]
 
 (* Open choices: a bare name an open may supply resolves to the first open that

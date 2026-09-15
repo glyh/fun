@@ -17,7 +17,7 @@ type t = {
      prelude (the loader layer cannot). Seeded into every module parse so
      imported [.fun] files see the stdlib operators/[if], and returned for the
      reserved [import "std"] path. Replaces the old [builtin_syntax_hook] ref. *)
-  builtin_syntax : (string * Syntax.role) list;
+  builtin_syntax : Expand_ctx.unit_syntax;
   runtime_expanded_cache : (string, Syntax.t) Hashtbl.t;
   runtime_elab_cache : (string, Core.term * Core.value * Core.value) Hashtbl.t;
   (* The expanded unit [Macro_driver.run] produced, with its expander.
@@ -33,7 +33,7 @@ type t = {
   syntax_active : (string, string) Hashtbl.t;
 }
 
-let create ~base_dir ?(builtin_syntax = []) () =
+let create ~base_dir ?(builtin_syntax = Expand_ctx.roles_only []) () =
   { base_dir;
     builtin_syntax;
     runtime_expanded_cache = Hashtbl.create 16;
@@ -56,6 +56,7 @@ let rec load_syntax_exports t path =
      exports are the injected [builtin_syntax] (operators, [if]/[&&]/[||]), not
      the contents of a [std.fun] file. *)
   if String.equal path Compiler_names.Module_name.std_import_path then t.builtin_syntax else
+  Expand_ctx.roles_only @@
   let resolved = resolved_path t path in
   if not (Sys.file_exists resolved) then raise (ImportNotFound path);
   match Hashtbl.find_opt t.syntax_cache resolved with

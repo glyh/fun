@@ -5,11 +5,11 @@ open Shape
    exports resolved via [std_load_syntax]) to exercise [+]/[==]/[not]/…. That
    wraps the body in [Open (Import "std", body)]; [unwrap_std] peels it back off
    so the structural assertions match the bare parse as before. *)
-let builtin_syntax = Lazy.force Elab_prelude.stdlib_syntax_exports
+let builtin_syntax = Macro_driver.std_syntax ()
 let unwrap_std (e : Shape.t) : Shape.t =
   match e with Open (Import "std", body, _) -> body | other -> other
-let parse source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Elab_prelude.std_load_syntax source)
-let parse_module source = Parse_written.parse_module ~load_syntax:Elab_prelude.std_load_syntax source
+let parse source = unwrap_std (Parse_written.parse_expr ~open_prelude:true ~load_syntax:Macro_driver.std_load_syntax source)
+let parse_module source = Parse_written.parse_module ~load_syntax:Macro_driver.std_load_syntax source
 
 let string_contains text needle =
   let needle_len = String.length needle in
@@ -20,7 +20,7 @@ let string_contains text needle =
   in
   String.equal needle "" || go 0
 
-let parse_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax) source =
+let parse_with_macros ?load_macros ?(load_syntax = Macro_driver.std_load_syntax) source =
   let ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
@@ -30,7 +30,7 @@ let parse_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax)
   let eval_and_apply = Nbe.apply_macro in
   unwrap_std (Parse_written.parse_expr ?load_macros ~open_prelude:true ~load_syntax ~elaborate ~eval_and_apply ~syntax_nominals source)
 
-let parse_module_with_macros ?load_macros ?(load_syntax = Elab_prelude.std_load_syntax) source =
+let parse_module_with_macros ?load_macros ?(load_syntax = Macro_driver.std_load_syntax) source =
   let ctx = Elaborate.init_ctx () in
   let syntax_nominals = Elaborate.syntax_nominals ctx in
   let elaborate expr =
@@ -571,7 +571,7 @@ let syntax_exports_include_operator_metadata () =
 
 let duplicate_public_syntax_exports_rejected () =
   match
-    Macro_driver.run ~load_syntax:(fun _ -> Parse_expand.syntax_exports "pub syntax dup { dup $x => $x };
+    Macro_driver.run ~load_syntax:(fun _ -> Expand_ctx.roles_only @@ Parse_expand.syntax_exports "pub syntax dup { dup $x => $x };
 pub syntax dup { dup $x => $x }") (Enforest.parse_module "open (import \"dups\")")
   with
   | exception Enforest.Error msg when string_contains msg "ambiguous syntax extension candidates" -> ()

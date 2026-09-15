@@ -23,7 +23,7 @@ type driver_output = {
   macro_exports : macro_export list;
 }
 
-let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
+let rec run_with ~(elab_ctx : Elab_ctx.Ctx.t) ?loader ?load_syntax (stx : Syntax.t) : driver_output =
   let bindings =
     match stx.kind with
     | Syntax.Module { bindings } -> bindings
@@ -32,8 +32,8 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
   (* Initialise elaboration context (built-in types, stdlib). *)
   (* The unit's own context as it advances binding by binding: nothing is open
      in it but what the unit opens itself (M3). *)
-  let elab_ctx = ref (Elaborate.init_ctx ()) in
-  let syntax_nominals = Elaborate.syntax_nominals !elab_ctx in
+  let elab_ctx = ref elab_ctx in
+  let syntax_nominals = Elab_stdlib.syntax_nominals !elab_ctx in
   (* Build expand context with the same callbacks used by [eval_decl_module]. *)
   let expand_ctx = Expand_ctx.create () in
   Expand_ctx.set_syntax_nominals expand_ctx syntax_nominals;
@@ -43,7 +43,7 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
     <- Some (fun expr ->
          Elab_entry.reporting_budget (fun () ->
              let core, _ty = Elab_driver.infer !elab_ctx expr in
-             Elaborate.Ctx.eval !elab_ctx core));
+             Elab_ctx.Ctx.eval !elab_ctx core));
   expand_ctx.Expand_ctx.eval_and_apply
     <- Some Nbe.apply_macro;
   (* Installed before any binding elaborates, so every open the unit elaborates
@@ -104,6 +104,8 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
   let macro_exports =
     Hashtbl.fold
       (fun name entry acc ->
+        (* A macro an import registered is that unit's, not this one's. *)
+        if String.contains name '\x00' then acc else
         let kind =
           match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
           | Some k -> k
@@ -131,16 +133,39 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
   in
   { expanded; expand_ctx; elab_ctx = !elab_ctx; macro_exports }
 
+(* The prelude, elaborated once in two stages. Stage 1 declares the types and
+   needs no elaborator to expand; stage 2 is a driver run against it (its
+   [import "std"] is stage 1), so it compiles macros - [type] among them. The
+   base context binds stage 2 as [stdlib]; its roles and public macros are what
+   an [import "std"] delivers. *)
+and std_prelude : (Elab_ctx.Ctx.t * Expand_ctx.unit_syntax) Lazy.t =
+  lazy
+    (let ctx1 = Elab_entry.stage1_ctx () in
+     let stage1 path =
+       Expand_ctx.roles_only
+         (if String.equal path Compiler_names.Module_name.std_import_path
+          then Lazy.force Elab_prelude.stage1_syntax_exports else [])
+     in
+     let output = run_with ~elab_ctx:ctx1 ~load_syntax:stage1 (Enforest.parse_module Elab_prelude.stage2_source) in
+     let unit_ctx = Elab_ctx.Ctx.with_expander ctx1 output.expand_ctx in
+     let core, ty = Elab_entry.reporting_budget (fun () -> Elab_driver.infer unit_ctx output.expanded) in
+     let ctx = Elab_ctx.Ctx.define ctx1 Compiler_names.Module_name.stdlib ty (Elab_ctx.Ctx.eval ctx1 core) in
+     let macros =
+       List.filter_map (fun (e : macro_export) -> if e.public then Some (e.name, e.entry, e.kind, e.params) else None)
+         output.macro_exports
+     in
+     ({ ctx with Elab_ctx.Ctx.base = Some ctx }, { Expand_ctx.roles = output.expand_ctx.Expand_ctx.syntax_exports; macros; apply = Some Nbe.apply_macro }))
+
+and init_ctx () : Elab_ctx.Ctx.t = fst (Lazy.force std_prelude)
+
 (** Stage 8: driver-based import loading. Compiles the public macros of
     the module at [path] through a full driver run — so their annotations
     are resolved semantically against that module's own prior type
     namespace — then registers them into [ctx]. Results are cached in the
     loader's [macro_cache]; circular macro visits are rejected. *)
 and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) : unit =
-  (* [import "std"] is the reserved builtin prelude, not a file. Its public
-     syntax ([if]/[&&]/[||] and the operators) is delivered through the loader's
-     injected [builtin_syntax], so there is nothing to harvest from a "std" file
-     here. *)
+  (* [import "std"] is the reserved builtin prelude, not a file: its roles and
+     compiled macros arrive through [load_syntax] ([std_syntax]). *)
   if String.equal path Compiler_names.Module_name.std_import_path then () else
   let resolved = Core_loader.resolved_path loader path in
   if not (Sys.file_exists resolved) then raise (Core_loader.ImportNotFound path);
@@ -168,7 +193,7 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
           (fun () ->
             let source = Core_loader.read_module_source resolved in
             let stx = Enforest.parse_module ~file:resolved source in
-            let output = run ~loader ~load_syntax:(Core_loader.load_syntax_exports loader) stx in
+            let output = run_with ~elab_ctx:(init_ctx ()) ~loader ~load_syntax:(Core_loader.load_syntax_exports loader) stx in
             (* Keep the expanded unit, not just the exports. This is the one
                pass that expands the unit with macros live; without it the
                loader re-expands the file with no [elaborate] callback and every
@@ -186,3 +211,14 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
       Hashtbl.replace loader.Core_loader.macro_cache resolved macros;
       register_cached macros;
       absorb ()
+
+let run ?loader ?load_syntax stx = run_with ~elab_ctx:(init_ctx ()) ?loader ?load_syntax stx
+
+(* What [import "std"] delivers: the prelude's roles and compiled macros. *)
+let std_syntax () : Expand_ctx.unit_syntax = snd (Lazy.force std_prelude)
+
+(* A [load_syntax] resolver for parses that have no loader (expression eval, the
+   REPL's non-file input): it answers the reserved [import "std"] path and knows no
+   other unit. *)
+let std_load_syntax path =
+  if String.equal path Compiler_names.Module_name.std_import_path then std_syntax () else Expand_ctx.roles_only []

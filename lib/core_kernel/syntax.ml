@@ -89,10 +89,12 @@ and struct_binding =
       (** [open <module-expr>] at module/struct top level — the binding-list
           counterpart of the expression-level [Open]. Scopes over the subsequent
           bindings only. The string is the open's label (see [Open]). *)
-  | ExportBinding of { m : t; names : string list option }
+  | ExportBinding of { m : t; names : string list option; public : bool }
       (** [export M] / [export M.{a, b}] at module top level: [M]'s public members
           (all, or the named ones) become members of the enclosing module. Opens
-          nothing locally. *)
+          nothing locally. A written [export] is public; an unpublished one - a
+          macro's, for a declaration it does not know the visibility of - exports
+          only once [pub] publishes it, and is nothing otherwise. *)
   | HoleBinding of id
       (** A declaration hole [$d] in quoted items ([quote { … }], M10): a
           declaration, filled when the quote is evaluated. *)
@@ -580,4 +582,5 @@ let publish (b : struct_binding) : struct_binding =
   | PatternSynBinding r -> PatternSynBinding { r with public = true }
   | SyntaxBinding r -> SyntaxBinding { r with public = true }
   | InstantiateBinding r -> InstantiateBinding { r with public = true }
-  | FieldBinding _ | OpenBinding _ | ExportBinding _ | HoleBinding _ | Items _ -> b
+  | ExportBinding r -> ExportBinding { r with public = true }
+  | FieldBinding _ | OpenBinding _ | HoleBinding _ | Items _ -> b
