@@ -1609,14 +1609,36 @@ let evaluation_budget =
           while reading the type at <unknown>:1:57-1:64 (the budget cannot yet be raised from source)");
     Alcotest.test_case "a divergent type is a budget error" `Quick
       (budget_exceeded "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(y : loop(0)) { 1 }; 2 }");
-    Alcotest.test_case "a call mentioning an unknown variable costs nothing" `Quick
-      (elab_ok "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(n : I64, y : loop(n)) { 1 }; 2 }");
-    Alcotest.test_case "a call passing a closure that captures an unknown variable costs nothing" `Quick
-      (elab_ok "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { n })) { 1 }; 2 }");
-    Alcotest.test_case "a call passing a closure that ignores the unknown variables still evaluates" `Quick
-      (budget_exceeded "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { z })) { 1 }; 2 }");
-    Alcotest.test_case "a stuck call is convertible with itself" `Quick
-      (elab_ok "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(n : I64, y : loop(n)) { (y : loop(n)) }; 2 }");
+    Alcotest.test_case "a recursive call on an unknown variable unfolds" `Quick
+      (elab_ok "{ rec double : I64 -> I64 = fn(n) { n + n }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(double(n))) { (y : F(n + n)) }; 2 }");
+    Alcotest.test_case "a divergent call on an unknown variable is a budget error" `Quick
+      (budget_exceeded "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(n : I64, y : loop(n)) { 1 }; 2 }");
+    Alcotest.test_case "a call passing a closure that captures an unknown variable unfolds too" `Quick
+      (budget_exceeded "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { n })) { 1 }; 2 }");
+    Alcotest.test_case "a recursive call through another on an unknown variable unfolds" `Quick
+      (elab_ok "{ rec inc : I64 -> I64 = fn(n) { n + 1 }; rec twice_inc : I64 -> I64 = fn(n) { inc(inc(n)) }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(twice_inc(n))) { (y : F(n + 1 + 1)) }; 2 }");
+    Alcotest.test_case "two calls of one pure fixpoint on convertible arguments convert without unfolding" `Quick
+      (elab_ok "{ rec fact : I64 -> I64 can {} = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
+    Alcotest.test_case "calls of two fixpoints with the same body unfold until the budget runs out" `Quick
+      (budget_exceeded "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; rec fact2 : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact2(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact2(n))) }; 2 }");
+    Alcotest.test_case "only a fixpoint known pure defers its calls" `Quick (fun () ->
+        let rec fix_purity (t : Core.term) =
+          match t with
+          | Core.Fix (_, pure, _) -> Some pure
+          | t -> List.find_map (fun (_, sub) -> fix_purity sub) (Core.subterms t)
+        in
+        let purity source =
+          let core, _ = elab source in
+          Option.get (fix_purity core)
+        in
+        let effect_decl = "effect State(S) = sig { get : Unit -> S }" in
+        Alcotest.(check bool) "an empty closed row" true
+          (purity "{ rec f : I64 -> I64 can {} = fn(n) { f(n) }; 1 }");
+        Alcotest.(check bool) "an effectful row" false
+          (purity ("{ " ^ effect_decl ^ "; rec f : Unit -> I64 can State(I64) = fn(u) { perform State.get () }; 1 }"));
+        (* A bare arrow's row is still open today (bare-arrow-is-pure): not known pure. *)
+        Alcotest.(check bool) "an open row" false
+          (purity "{ rec f : I64 -> I64 = fn(n) { f(n) }; 1 }"));
     Alcotest.test_case "a closed call still evaluates" `Quick
       (elab_ok "{ rec k : I64 -> Type = fn(n) { if (n == 0) { I64 } else { k(n - 1) } }; g = fn(y : k(3)) { y + 1 }; 2 }");
     Alcotest.test_case "running a program is not budgeted" `Quick (fun () ->

@@ -198,15 +198,29 @@ and macro_runtime = {
     VFlex { id = MetaContext.fresh ctx.metas; spine = [] }
 
   let eval (ctx : t) (t : term) : value = Nbe.eval ctx.metas ctx.env t
+
+  (* Whether a call of a function of type [ty] is known pure: its (first) arrow's
+     effect row is empty and closed. An unsolved row is not known pure. *)
+  let pure_call (ctx : t) (ty : value) : bool =
+    let rec closed_empty (row : effect_row_value) =
+      row.effect_values = []
+      && match Option.map (Nbe.force ctx.metas) row.tail_value with
+         | None -> true
+         | Some (VEffectRow row) -> closed_empty row
+         | Some _ -> false
+    in
+    match Nbe.force ctx.metas ty with
+    | VPi { effects; _ } -> closed_empty (Nbe.eval_effect_row_closure ctx.metas effects (VRigid { lvl = ctx.lvl; spine = [] }))
+    | _ -> false
   (* Running the checked program, not checking it: no evaluation budget. *)
   let run (ctx : t) (t : term) : value = Nbe.run ctx.metas ctx.env t
   let quote (ctx : t) (v : value) : term = Nbe.quote ctx.metas ctx.lvl v
 
   let unify (ctx : t) (v1 : value) (v2 : value) : unit =
-    Eval_budget.demanding ctx.metas.budget "a unification" (fun () -> Unify.unify ctx.metas ctx.env ctx.lvl v1 v2)
+    Eval_budget.request ~demand:"a unification" ctx.metas.budget (fun () -> Unify.unify ctx.metas ctx.env ctx.lvl v1 v2)
 
   let try_unify (ctx : t) (v1 : value) (v2 : value) : bool =
-    Eval_budget.demanding ctx.metas.budget "a unification" (fun () -> Unify.try_unify ctx.metas ctx.env ctx.lvl v1 v2)
+    Eval_budget.request ~demand:"a unification" ctx.metas.budget (fun () -> Unify.try_unify ctx.metas ctx.env ctx.lvl v1 v2)
 
   let conv (ctx : t) (v1 : value) (v2 : value) : bool =
     Nbe.conv ctx.metas ctx.lvl v1 v2

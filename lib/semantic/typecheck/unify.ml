@@ -99,7 +99,7 @@ end
 let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     (ren : Renaming.t) (v : value) : term =
   let rec go (d : lvl) (v : value) : term =
-    match Nbe.force mc v with
+    match (match v with VGlued _ -> v | _ -> Nbe.force mc v) with
     | VRigid { lvl = l; spine = sp } -> (
         match Renaming.find ren l with
         | Some target -> go_spine d (Var (Nbe.lvl_to_ix d target)) sp
@@ -193,9 +193,10 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             fields = List.map (fun (name, value) -> (name, go d value)) dict.fields }
     | VSelfType args -> SelfTypeRef (List.map (go d) args)
     | VCon { name; spine; nominal } -> Nbe_quote.con_term (go d) name spine nominal
-    | VFix { name; body = clo } ->
+    | VFix { name; pure; body = clo } ->
         let var = VRigid { lvl = d; spine = [] } in
-        Fix (name, go (d + 1) (Nbe.closure_apply mc clo var))
+        Fix (name, pure, go (d + 1) (Nbe.closure_apply mc clo var))
+    | VGlued { name; fix; arg; _ } -> Ap (go d (VFix { name; pure = true; body = fix }), Explicit, go d arg)
     | VCont _ -> raise (UnifyError (CannotUnify "cannot quote continuation during unification"))
     | VStx _ -> raise (UnifyError (CannotUnify "cannot quote syntax value during unification"))
     | VPatternSyn _ -> raise (UnifyError (CannotUnify "cannot quote pattern synonym during unification"))
@@ -217,7 +218,6 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             raise (UnifyError OccursCheck) (* same occurs check, via neutral *)
           else Meta id
       | HPrim name -> Prim name
-      | HFix (name, clo) -> go d (VFix { name; body = clo })
     in
     go_frames d head neu.frames
   and go_frames (d : lvl) (head : term) (frames : frame list) : term =
@@ -305,7 +305,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             List.iter (fun f -> match f with
               | FApp v | FRefSet v -> occurs_check v
               | _ -> ()) frames
-        | VU | VEffectRowTy | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VCont _ | VStx _ | VPatternSyn _ -> ()
+        | VU | VEffectRowTy | VAtom _ | VAtomTy _ | VTrait _ | VRigid _ | VLam _ | VFix _ | VGlued _ | VCont _ | VStx _ | VPatternSyn _ -> ()
       in
       occurs_check rhs;
       MetaContext.solve mc id rhs)
@@ -362,11 +362,18 @@ let value_form = function
   | VFlex { id; _ } -> Printf.sprintf "meta ?%d" id
   | VNeutral _ -> "neutral"
   | VFix _ -> "fixpoint"
+  | VGlued { name; _ } -> "call of " ^ name
   | VCont _ -> "continuation"
   | VStx _ -> "syntax"
   | VPatternSyn _ -> "pattern_syn"
 
 let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : value) : unit =
+  Nbe_quote.step mc;
+  match (v1, v2) with
+  (* Lazy delta, as in [Nbe_quote.conv]: arguments are compared by conversion,
+     so a failed shortcut solves no metavariable. *)
+  | VGlued g1, VGlued g2 when Nbe_quote.same_fixpoint g1.fix g2.fix && Nbe.conv mc depth g1.arg g2.arg -> ()
+  | _ ->
   let v1 = Nbe.force mc v1 in
   let v2 = Nbe.force mc v2 in
   match (v1, v2) with
@@ -548,7 +555,6 @@ and unify_neutral (mc : MetaContext.t) (env : env) (depth : lvl) (n1 : neutral) 
   | HVar l1, HVar l2 when l1 = l2 -> ()
   | HMeta id1, HMeta id2 when id1 = id2 -> ()
   | HPrim n1, HPrim n2 when String.equal n1 n2 -> ()
-  | HFix (name, c1), HFix (_, c2) -> unify mc env depth (VFix { name; body = c1 }) (VFix { name; body = c2 })
   | _ ->
       raise (UnifyError NeutralHeadMismatch));
   unify_frames mc env depth n1.frames n2.frames

@@ -470,7 +470,7 @@ What remains, in the recommended order:
 ### Found by the budget and path-heads run (2026-09-14)
 
 - [Recursive definitions stuck on open arguments](tickets/recursive-definitions-stuck-on-open-arguments.md)
-  — grilled 2026-09-15: recursive calls unfold on open arguments under the checker budget; exhaustion is an error (`HFix` stuck rule goes).
+  — grilled 2026-09-15: recursive calls unfold on open arguments under the checker budget; exhaustion is an error (`HFix` stuck rule goes). (closed, **implemented**): the budget measures work; two calls of one known-pure fixpoint on convertible arguments convert without unfolding.
 - [Pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md)
   — (closed) intended: a function reducing to a nominal works as an alias in a pattern head.
 - [Elaborator matches `EffectRow` and `stx_` by spelling](tickets/elaborator-matches-names-by-spelling.md)

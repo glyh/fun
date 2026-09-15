@@ -33,7 +33,10 @@ and term =
   | AtomTy of Atom_ty.t
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
-  | Fix of string * term (* a recursive binding; the name is its binder, for errors only *)
+  | Fix of string * bool * term
+      (* a recursive binding; the name is its binder, for errors only; the flag
+         says its call is known pure (an empty effect row), so the checker may
+         compare two calls of it without unfolding them *)
   | Proj of term * int             (* positional tuple projection: e.0 *)
   | Dot of term * string           (* named member/field access: e.field *)
   | RecordConstruct of { typ : term; fields : (string * term) list }
@@ -271,7 +274,11 @@ and value =
   | VAtomTy of Atom_ty.t
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)
-  | VFix of { name : string; body : closure }
+  | VFix of { name : string; pure : bool; body : closure }
+  | VGlued of { name : string; fix : closure; arg : value; unfolded : value Lazy.t }
+      (** A pure fixpoint applied to [arg] under the checker, unfolded only when
+          inspected ([force]): conversion compares two calls of the same
+          fixpoint by their arguments first (lazy delta). *)
   | VModule of {
       entries : module_entry list;
       partial : bool;
@@ -383,9 +390,6 @@ and head =
   | HVar of lvl
   | HMeta of meta_id
   | HPrim of string
-  | HFix of string * closure
-      (** A fixpoint the checker would not unfold: its call mentions an unknown
-          variable, so evaluating it could diverge (see [Eval_budget]). *)
 and spine = value list
 
 and cont = { mutable used : bool; resume : value -> result }
@@ -525,7 +529,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | Imported _ ->
       t
   | Lam body -> Lam (at 1 body)
-  | Fix (name, body) -> Fix (name, at 1 body)
+  | Fix (name, pure, body) -> Fix (name, pure, at 1 body)
   | Ap (fn, expl, arg) -> Ap (at 0 fn, expl, at 0 arg)
   | Let (ty, def, body) -> Let (at 0 ty, at 0 def, at 1 body)
   | Pi { explicitness; domain; effects; codomain } ->

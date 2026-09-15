@@ -25,6 +25,7 @@ let value_tag (v : value) =
   | VRigid _ -> "VRigid"
   | VFlex _ -> "VFlex"
   | VFix _ -> "VFix"
+  | VGlued _ -> "VGlued"
   | VSelfType _ -> "VSelfType"
   | VEffectRowTy -> "VEffectRowTy"
   | VEffectRow _ -> "VEffectRow"

@@ -1,8 +1,10 @@
 (* The evaluation budget: how many calls the checker may spend on one
    evaluation. An evaluation is one request from the checker to the evaluator,
    however it re-enters itself; the budget is refilled when a request starts
-   and spent by every function call made before it returns. Only closed calls
-   evaluate, so a call stuck on an unknown variable costs nothing. Running a
+   and spent by the work done before it returns: every function call (a
+   fixpoint unfolded on an unknown variable included) and every step of a
+   conversion or unification, so comparing ever larger stuck terms runs out in
+   bounded time. Running a
    program is not checking: it is a request with no limit. Termination is never
    checked, so a divergent evaluation is a budget error, not a hang.
    See docs/wayfinder/tickets/checker-evaluation-budget.md. *)
@@ -77,7 +79,6 @@ let start ~limit ~demand budget f =
 
 let request ~demand budget f = start ~limit:(Some default_limit) ~demand budget f
 let run budget f = start ~limit:None ~demand:"running a program" budget f
-let checking budget = Option.is_some budget.limit
 
 (* [call] describes the callee; it is only built when the budget runs out. *)
 let spend budget ~call =

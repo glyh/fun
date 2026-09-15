@@ -28,28 +28,6 @@ let push_opened_values env entries =
       | _ -> e)
     env entries
 
-(* The slots of its environment a closure body reads, given the [binders] its
-   application pushes first. [None] when the body extends its environment by
-   an amount only evaluation reveals (an [open]). Over-approximates: a term
-   whose evaluation might read a slot counts as reading it. *)
-let closure_slots ~binders (body : term) : int list option =
-  let slots = ref [] in
-  let rec go d t =
-    match t with
-    | Var ix ->
-        if ix >= d then slots := (ix - d) :: !slots;
-        true
-    | InsertedMeta (_, bds) ->
-        (* The meta is applied to every bound entry of the environment. *)
-        List.iteri (fun j bd -> if bd = Bound && j >= d then slots := (j - d) :: !slots) bds;
-        true
-    | _ ->
-        List.for_all
-          (fun (under, sub) -> match under with Some n -> go (d + n) sub | None -> false)
-          (Core.subterms t)
-  in
-  if go binders body then Some !slots else None
-
 let rec closure_apply (mc : MetaContext.t) (c : closure) (v : value) : value =
   eval mc (v :: c.env) c.body
 
@@ -316,7 +294,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           | VModule { entries; partial = _ } ->
               eval_result mc (push_opened_values env entries) body
           | _ -> fail mc "open of non-module")
-  | Fix (name, body) -> Done (VFix { name; body = { env; body } })
+  | Fix (name, pure, body) -> Done (VFix { name; pure; body = { env; body } })
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in
       sequence_values mc env params (fun param_vals ->
@@ -476,20 +454,25 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VLam { body = clo; _ } ->
       spend_call mc clo;
       eval_result mc (va :: clo.env) clo.body
-  | VFix { name; body = clo } ->
-      (* Only fixpoints can diverge, so only they wait for a closed call.
-         Unfolding is charged too: a fixpoint that unfolds to another fixpoint
-         would otherwise loop without ever making a call. *)
-      if Eval_budget.checking mc.MetaContext.budget && not (closed mc va) then
-        Done (VNeutral { ty = VU; neutral = { head = HFix (name, clo); frames = [ FApp va ] } })
-      else begin
+  | VFix { name; pure; body = clo } ->
+      (* A fixpoint unfolds on any argument, open or closed; under the checker a
+         divergent unfolding runs out of budget (an error). Unfolding is charged
+         too: a fixpoint that unfolds to another fixpoint would otherwise loop
+         without ever making a call. Under the checker a pure call is deferred
+         until something inspects it, so conversion can compare two calls of
+         the same fixpoint by their arguments first. *)
+      let unfold () =
         mc.MetaContext.budget.calling <- Some name;
         spend_call mc clo;
-        let self = VFix { name; body = clo } in
+        let self = VFix { name; pure; body = clo } in
         match eval mc (self :: clo.env) clo.body with
         | VLam { body = lam } -> eval_result mc (va :: lam.env) lam.body
         | unfolded -> apply_result mc unfolded va
-      end
+      in
+      if pure && Option.is_some mc.MetaContext.budget.limit then
+        Done (VGlued { name; fix = clo; arg = va; unfolded = lazy (result_value mc (unfold ())) })
+      else unfold ()
+  | VGlued _ -> apply_result mc (force mc vf) va
   | VCont c ->
       let cont = c in
       if cont.used then fail mc "continuation already used";
@@ -509,43 +492,6 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VTraitDict d -> Done (VTraitDict { d with args = d.args @ [ va ] })
   | VCon c -> Done (VCon { c with spine = c.spine @ [ va ] })
   | _ -> fail mc "applying non-function"
-
-(* Whether a value mentions no unknown variable. A closure mentions what the
-   slots its body reads hold; one whose reads evaluation alone reveals is not
-   closed. *)
-and closed (mc : MetaContext.t) (v : value) : bool =
-  let all = List.for_all (closed mc) in
-  match force mc v with
-  | VRigid _ | VFlex _ -> false
-  | VNeutral { neutral = { head = HVar _ | HMeta _; _ }; _ } -> false
-  | VNeutral { neutral = { head = HPrim _ | HFix _; frames }; _ } ->
-      List.for_all
-        (function
-          | FApp v | FRefSet v -> closed mc v
-          | FMatch branches ->
-              List.for_all (fun (pat, clo) -> closure_closed mc ~binders:(pat_binder_count pat) clo) branches
-          | FProj _ | FDot _ | FRefGet -> true)
-        frames
-  | VProd vs | VProdTy vs | VSelfType vs -> all vs
-  | VCon { spine; nominal; _ } -> all spine && closed mc nominal
-  | VRecord { typ; fields } -> closed mc typ && all (List.map snd fields)
-  | VNominal { params; _ } | VEffect { params; _ } -> all params
-  | VTraitDict { args; fields; _ } -> all args && all (List.map snd fields)
-  | VRefTy a -> closed mc a
-  | VPi { domain; effects; codomain; _ } ->
-      closed mc domain
-      && closure_closed mc ~binders:1 { env = effects.env; body = EffectRowLit { effects = effects.effects; tail = effects.tail } }
-      && closure_closed mc ~binders:1 codomain
-  | VLam { body } | VFix { body; _ } -> closure_closed mc ~binders:1 body
-  | VEffectRow { effect_values; tail_value } -> all effect_values && Option.fold ~none:true ~some:(closed mc) tail_value
-  | VU | VPatternSyn _ | VEffectRowTy | VAtom _ | VAtomTy _ | VModule _ | VStruct _
-  | VTrait _ | VRef _ | VCont _ | VStx _ ->
-      true
-
-and closure_closed (mc : MetaContext.t) ~binders (clo : closure) : bool =
-  match closure_slots ~binders clo.body with
-  | None -> false
-  | Some slots -> List.for_all (fun i -> closed mc (List.nth clo.env i)) slots
 
 and spend_call (mc : MetaContext.t) (clo : closure) =
   Eval_budget.spend mc.MetaContext.budget ~call:(fun () ->
@@ -1079,6 +1025,7 @@ and resolve_occurrence_opt (mc : MetaContext.t) (root : value)
 
 and force (mc : MetaContext.t) (v : value) : value =
   match v with
+  | VGlued { unfolded; _ } -> force mc (Lazy.force unfolded)
   | VFlex { id; spine = sp } -> (
       match MetaContext.lookup mc id with
       | Solved v ->
@@ -1108,7 +1055,7 @@ let eval mc env t = request ~demand:"an evaluation" mc (fun () -> eval mc env t)
 let apply mc f a = request ~demand:"an application" mc (fun () -> apply mc f a)
 let closure_apply mc c v = request ~demand:"an application" mc (fun () -> closure_apply mc c v)
 let eval_effect_row_closure mc row binder = request ~demand:"an effect row" mc (fun () -> eval_effect_row_closure mc row binder)
-let force mc v = match v with VFlex _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v) | _ -> v
+let force mc v = match v with VFlex _ | VGlued _ -> request ~demand:"forcing a metavariable" mc (fun () -> force mc v) | _ -> v
 let quote mc depth value = request ~demand:"a normalisation" mc (fun () -> Nbe_quote.quote quote_ops mc depth value)
 let conv mc depth lhs rhs = request ~demand:"a conversion" mc (fun () -> Nbe_quote.conv quote_ops mc depth lhs rhs)
 

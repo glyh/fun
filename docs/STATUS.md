@@ -163,10 +163,13 @@ Last updated: after struct source-order scoping and macro signatures, 2026-09-15
 - Every evaluation the checker asks for spends from one call budget
   (`Eval_budget`, 1,000,000 calls per request, no surface syntax to raise it);
   running out is `ElabError EvaluationBudgetExceeded`, not a hang.
-- A fixpoint unfolds at check time only on a closed argument; a call mentioning
-  an unknown variable stays stuck (`HFix` neutral) and costs nothing. A closure
-  argument mentions what the environment slots its body reads hold
-  (`Nbe.closure_slots`); a body that opens a module is conservatively not closed.
+- A fixpoint unfolds at check time on any argument, open or closed (revised
+  2026-09-15, see below): `double(n)` converts with `n + n`; a divergent
+  unfolding such as `loop(n)` in a type is a budget error naming the call.
+- The budget measures work: calls plus every conversion and unification step.
+  Two calls of one known-pure fixpoint (closed empty effect row) on convertible
+  arguments convert without unfolding: under the checker such a call is a
+  deferred `VGlued`, unfolded when inspected (lazy delta).
 - **One binder count per core form.** `Core.map_subterms` states how many
   environment entries each immediate subterm sits under (`None` where only
   evaluation knows: an `open`'s body, bindings after an `OpenBind`); the
