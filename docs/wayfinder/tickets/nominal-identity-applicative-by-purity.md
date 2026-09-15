@@ -172,3 +172,35 @@ what that body uses.
 - **Each generative evaluation also gets a run-time stamp**, so type-case
   distinguishes `st1.Symbol` from `st2.Symbol`.
 - Apply the same captures rule (part 1) to `rec` struct identities under a binder.
+
+## Implemented (2026-09-16, branch generative-nominals)
+
+- **Part 1.** A nominal captures the levels its enclosing module or function body
+  names (`Ctx.scope_captures`, set by `Ctx.enclosing_scope` at a `Module` and a
+  lambda body), from the first bound variable on (earlier entries are program
+  constants), plus what its payloads mention. `Set(I64, less).T ≠
+  Set(I64, greater).T`; an unused parameter still does not split the type.
+- **Part 2, sealing.** A `let` (or module member) whose value performs something
+  binds a rigid variable whose type is sealed (`Elab_effects.seal_generative`):
+  every reference to a nominal the module declares (a type member of its type) is
+  rewritten to that member of the binder. `st1.intern : I64 -> st1.Symbol`;
+  `st2.Symbol` is a different neutral, so crossing tables is rejected. A member of
+  an unbound effectful module whose type mentions a declared type is
+  `GenerativeTypeEscapes` (checked at field access).
+
+## Still open
+
+- **Run-time stamps are not built, and would not be observable yet:** type-case
+  patterns match a nominal head by id only (`CPatNominalHead`, `nbe.ml`), so
+  captures - applicative ones too - never distinguish instances at run time. A
+  stamp also needs one evaluation per binding: `TypeBind`'s nominal term is
+  evaluated once per constructor slot, so a `ref` stamp there would give each
+  constructor a different nominal. Needs: captures in nominal-head patterns, and a
+  stamp slot in `binding_slots`.
+- **`rec` struct identities under a binder** are still one per elaboration: a
+  `RecOcc` compares by id and args, and the finished record value is stored at
+  elaboration (over the binder's rigid variables). Needs captures on `RecOcc` and
+  finished records as terms.
+- Sealing recognises a declared nominal by its member label (`ponytail:`); an
+  escape through anything but field access (passing the unbound module to a
+  function, returning it) is not checked.

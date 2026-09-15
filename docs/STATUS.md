@@ -9,6 +9,17 @@ Last updated: after applicative nominal identity, 2026-09-15.
 
 ## Completed
 
+
+### E11: captures from the enclosing scope; generative modules sealed (2026-09-16)
+
+- A nominal captures the variables its enclosing module or function body names
+  (from the first bound variable on), so `Set(I64, less).T ≠ Set(I64, greater).T`.
+- A `let` or module member whose value performs something seals its type at the
+  binder: a declared type member becomes `st1.Symbol`, distinct from `st2.Symbol`.
+  An unnamed effectful module's declared type may not escape a field access
+  (`GenerativeTypeEscapes`).
+- Not built: run-time stamps (type-case matches nominal heads by id only), `rec`
+  struct identities under a binder.
 ### Nominal identity is applicative (E11, first half, 2026-09-15)
 
 - A nominal's identity is its declaration id plus `captures`, the values of the
