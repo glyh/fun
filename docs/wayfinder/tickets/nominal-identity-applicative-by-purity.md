@@ -152,3 +152,23 @@ mention. So `Set(I64, less).T ≠ Set(I64, greater).T` because `union` uses `cmp
 while a parameter nothing in the module mentions still does not split the type.
 A nominal declared directly in a function body (no enclosing module) captures
 what that body uses.
+
+## Grilled (2026-09-15), part 2: generative types are named at the binding
+
+- **A call to an effectful maker seals its result at the binding.**
+  `st1 = SymbolTable(())` makes `st1.Symbol` a type unique to `st1`;
+  `st2.Symbol` is distinct. Inside `st1`, `intern : String -> st1.Symbol`.
+  (OCaml generative-functor behaviour.)
+  ```fun
+  g = fn(x : st1.Symbol) { … };
+  g(st1.intern("x"))   // ok
+  g(st2.intern("x"))   // rejected
+  st2.name(st1.intern("x"))   // rejected
+  ```
+- An unbound effectful result may be used within its expression, but its fresh
+  type may not escape it (avoidance: an error naming the type).
+- **Purity is read from the maker's effect row at the call**; `can _` (and any
+  open row) counts as possibly generative.
+- **Each generative evaluation also gets a run-time stamp**, so type-case
+  distinguishes `st1.Symbol` from `st2.Symbol`.
+- Apply the same captures rule (part 1) to `rec` struct identities under a binder.
