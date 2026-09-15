@@ -21,3 +21,7 @@ blocked_by:
 4. **`Eq + Show` trait-bound sugar is recognised by the written name `+`**
    (`elab_syntax_util.trait_bound_forms`) — an M12 survivor; resolve with the `*`
    decision in [one-grammar-for-types](one-grammar-for-types.md).
+5. **Return-type annotations `fn(n : I64) : T { … }` fail** (on main; found by the
+   tuple-types run). Either support them or decide they are not syntax.
+6. **`Tuple(0 - 1)` escapes the checker as `EvalError`**, as a `panic` in a type
+   does: evaluation errors during checking should be elaboration errors.
