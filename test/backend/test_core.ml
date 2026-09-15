@@ -449,6 +449,36 @@ let test_top_unhandled_in_imported_unit () =
       expect_unhandled "an imported unit's top-level perform" [ "effect Exc" ] (fun () ->
           eval_source_with_loader loader "{ M = import \"noisy\"; 0 }"))
 
+(* A method follows the arrow rule: pure unless its [can] declares a row. *)
+let exc_counter methods = "effect Exc = sig { raise : I64 -> I64 }; C = struct { n : I64; " ^ methods ^ " }"
+
+let test_method_rows () =
+  expect_unhandled "a method performing an undeclared effect" [ "effect Exc" ] (fun () ->
+      eval_source ("{ " ^ exc_counter "pub method bump() { perform Exc.raise(1); self.n }" ^ "; 0 }"));
+  check_i64 "a method declaring its row, handled at the call" 11L
+    ("{ " ^ exc_counter "pub method bump() can {Exc} { perform Exc.raise(1); self.n }"
+     ^ "; match (C.bump(C{n = 1})) { x => x, effect Exc.raise v => v + 10 } }") ();
+  expect_unhandled "a declared method called at the top without a handler" [ "effect Exc" ] (fun () ->
+      eval_source ("{ " ^ exc_counter "pub method bump() can {Exc} { perform Exc.raise(1); self.n }" ^ "; C.bump(C{n = 1}) }"));
+  check_i64 "can _ infers a method's row" 13L
+    ("{ " ^ exc_counter "pub method add(k : I64) can _ { perform Exc.raise(k) }"
+     ^ "; match (C.add(C{n = 1})(3)) { x => x, effect Exc.raise v => v + 10 } }") ();
+  check_i64 "a method calling another performs its declared row" 12L
+    ("{ " ^ exc_counter "pub method a(k : I64) can {Exc} { perform Exc.raise(k) }; pub method b() can {Exc} { a(self)(2) }"
+     ^ "; match (C.b(C{n = 1})) { x => x, effect Exc.raise v => v + 10 } }") ();
+  expect_unhandled "a pure method calling an effectful one" [ "effect Exc" ] (fun () ->
+      eval_source ("{ " ^ exc_counter "pub method a(k : I64) can {Exc} { perform Exc.raise(k) }; pub method b() { a(self)(2) }" ^ "; 0 }"))
+
+let test_trait_method_rows () =
+  let trait_src impl_body =
+    "{ effect Exc = sig { raise : I64 -> I64 }; effect Other = sig { ping : I64 -> I64 }; \
+     trait Log(A) = sig { log : A -> I64 can {Exc} }; \
+     impl Log(I64) = module { log = fn(x) { " ^ impl_body ^ " } }; 0 }"
+  in
+  check_i64 "an impl method within its trait's row" 0L (trait_src "perform Exc.raise(x)") ();
+  expect_unhandled "an impl method performing beyond its trait's row" [ "effect Other" ] (fun () ->
+      eval_source (trait_src "perform Other.ping(x)"))
+
 let test_eval_match_binds_a_closure () =
   check_i64 "a variable pattern binds a closure scrutinee" 1L
     "{ h = match (fn(u : Unit) { 1 }) { x => x }; h(()) }" ();
@@ -3149,7 +3179,7 @@ let test_m9_param_decl () =
   check_i64_macro "a Decl parameter spliced into a quote" 33L
     "{
        M = module {
-         macro with_extra(d : Decl) : List(Decl) { quote { $d; pub extra = 22; } };
+         macro with_extra(d : List(Decl)) : List(Decl) { quote { $d; pub extra = 22; } };
          with_extra({ pub x = 1; pub y = 10 })
        };
        M.x + M.y + M.extra
@@ -3157,7 +3187,7 @@ let test_m9_param_decl () =
   check_i64_macro "a Decl parameter spliced twice" 2L
     "{
        M = module {
-         macro twice_decls(d : Decl) : List(Decl) { quote { $d; $d } };
+         macro twice_decls(d : List(Decl)) : List(Decl) { quote { $d; $d } };
          twice_decls({ pub x = 1; pub y = 2 })
        };
        M.y
@@ -3165,7 +3195,7 @@ let test_m9_param_decl () =
   (* Like a syntax form's Decl capture, the items stay unread until spliced. *)
   check_i64_macro "a Decl parameter's items arrive unread" 1L
     "{
-       macro unread(d : Decl) {
+       macro unread(d : List(Decl)) {
          match (d) { Cons(Syntax.DeclItems(_), Nil) => Syntax.i64(1), _ => Syntax.i64(0) }
        };
        unread({ a = 1; b = 2 })
@@ -3174,14 +3204,32 @@ let test_m9_param_decl () =
 let test_m9_param_decl_kind_mismatch () =
   expect_expand_error "a Decl argument that is not a brace group"
     (function Expand_error.ArgumentKind { kind = HoleDecl; _ } -> true | _ -> false)
-    "{ M = module { macro m(d : Decl) : List(Decl) { quote { $d } }; m(x) }; 0 }"
+    "{ M = module { macro m(d : List(Decl)) : List(Decl) { quote { $d } }; m(x) }; 0 }"
+
+(* A parameter's kind means what the same type means as an output:
+   [(d : Decl)] is exactly one declaration, a group holding one item. *)
+let test_m9_param_one_decl () =
+  check_i64_macro "a Decl parameter is one declaration, returned as a Decl" 4L
+    "{
+       M = module {
+         macro keep1(d : Decl) : Decl { d };
+         keep1({ pub x = 4 })
+       };
+       M.x
+     }" ();
+  expect_expand_error "a Decl parameter given two declarations"
+    (function Expand_error.ArgumentKind { kind = HoleOneDecl; _ } -> true | _ -> false)
+    "{ M = module { macro keep1(d : Decl) : Decl { d }; keep1({ pub x = 1; pub y = 2 }) }; 0 }";
+  check_operator "an imported macro's Decl parameter" 6L
+    [ ("one_decl", "open (import \"std\");\npub macro keep1(d : Decl) : Decl { d }") ]
+    "{ M = module { open (import \"one_decl\"); keep1({ pub x = 6 }) }; M.x }"
 
 (* [expand_decls(d)]: a Decl argument's items, expanded form by form - an item
    reads with the syntax earlier items declared - and placeable back into output. *)
 let test_expand_decls () =
   check_i64_macro "expand_decls reads the items, so a macro can count them" 3L
     "{
-       macro count(d : Decl) {
+       macro count(d : List(Decl)) {
          match (Syntax.expand_decls(d)) { Cons(_, Cons(_, Cons(_, Nil))) => Syntax.i64(3), _ => Syntax.i64(0) }
        };
        count({ a = 1; b = 2; c = 3 })
@@ -3189,7 +3237,7 @@ let test_expand_decls () =
   check_i64_macro "a later item reads with syntax an earlier item declares" 2L
     "{
        M = module {
-         macro keep(d : Decl) : List(Decl) { Syntax.expand_decls(d) };
+         macro keep(d : List(Decl)) : List(Decl) { Syntax.expand_decls(d) };
          keep({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 })
        };
        M.y
@@ -3197,7 +3245,7 @@ let test_expand_decls () =
   check_i64_macro "expanded items placed back into a quote" 7L
     "{
        M = module {
-         macro wrap(d : Decl) : List(Decl) { e = Syntax.expand_decls(d); quote { $e; pub z = 5; } };
+         macro wrap(d : List(Decl)) : List(Decl) { e = Syntax.expand_decls(d); quote { $e; pub z = 5; } };
          wrap({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 })
        };
        M.y + M.z
@@ -3207,7 +3255,7 @@ let test_expand_decls_budget () =
   match
     eval_with_macros
       ("{ macro spin(_) " ^ diverging_body
-     ^ "; macro keep(d : Decl) : List(Decl) { Syntax.expand_decls(d) }; M = module { keep({ pub x = spin(0) }) }; 0 }")
+     ^ "; macro keep(d : List(Decl)) : List(Decl) { Syntax.expand_decls(d) }; M = module { keep({ pub x = spin(0) }) }; 0 }")
   with
   | exception Expand_error.Error { error = BudgetExceeded { macro; _ }; _ } ->
       Alcotest.(check bool) "names the macro" true (string_contains macro "spin")
@@ -3216,14 +3264,14 @@ let test_expand_decls_budget () =
 
 let test_expand_decls_imported () =
   check_operator "an imported macro reads its Decl argument" 2L
-    [ ("readers", "open (import \"std\");\npub macro keep(d : Decl) : List(Decl) { Syntax.expand_decls(d) }") ]
+    [ ("readers", "open (import \"std\");\npub macro keep(d : List(Decl)) : List(Decl) { Syntax.expand_decls(d) }") ]
     "{ M = module { open (import \"readers\"); keep({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 }) }; M.y }"
 
 let kinded_unit =
   ("kinds", "open (import \"std\");
              pub macro same(n : Id) { Syntax.RawVar(None, n) };
              pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
-             pub macro with_extra(d : Decl) : List(Decl) { quote { $d; pub extra = 22; } }")
+             pub macro with_extra(d : List(Decl)) : List(Decl) { quote { $d; pub extra = 22; } }")
 
 let test_m9_param_imported () =
   check_operator "an imported macro's Id parameter, dotted" 5L [ kinded_unit ]
@@ -3403,6 +3451,8 @@ let () =
           Alcotest.test_case "an escaping closure called at the top is an error" `Quick test_top_escaping_closure;
           Alcotest.test_case "handled and latent effects pass the top" `Quick test_top_handled_and_latent;
           Alcotest.test_case "an imported unit's unhandled effect is an error" `Quick test_top_unhandled_in_imported_unit;
+          Alcotest.test_case "a method is pure unless it declares a row" `Quick test_method_rows;
+          Alcotest.test_case "a trait method signature carries a row" `Quick test_trait_method_rows;
           Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
           Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;
@@ -4041,6 +4091,7 @@ let () =
           Alcotest.test_case "resolved names cannot be forged" `Quick test_resolved_names_cannot_be_forged;
           Alcotest.test_case "a Decl parameter" `Quick test_m9_param_decl;
           Alcotest.test_case "a Decl argument of the wrong kind" `Quick test_m9_param_decl_kind_mismatch;
+          Alcotest.test_case "a Decl parameter is one declaration" `Quick test_m9_param_one_decl;
           Alcotest.test_case "expand_decls" `Quick test_expand_decls;
           Alcotest.test_case "expand_decls budget" `Quick test_expand_decls_budget;
           Alcotest.test_case "expand_decls imported" `Quick test_expand_decls_imported;

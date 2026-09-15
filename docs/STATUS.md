@@ -3,11 +3,20 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after a bare arrow is pure, 2026-09-15.
+Last updated: after methods follow the arrow rule, 2026-09-15.
 
 ---
 
 ## Completed
+
+### Methods follow the arrow rule (2026-09-15)
+
+- A method is pure unless it declares a row: `pub method bump() can {Log} { … }`,
+  `can _` infers it (`Syntax.MethodBinding.effects`, reflected as `DeclMethod`'s
+  row). The row sits on the method's innermost arrow, so a call performs it once
+  every argument is supplied; a body performing beyond it is `UnhandledEffects`.
+- A trait method signature's arrow carries its row like any arrow, and an impl's
+  method is checked against it.
 
 ### A bare arrow is pure (2026-09-15)
 
@@ -41,11 +50,19 @@ Last updated: after a bare arrow is pure, 2026-09-15.
 - `rec A = struct { … } and B = struct { … }` is a recursive group
   (`RecGroupBinding` / `LetRecGroup`, reflected `DeclRecGroup` /
   `RawLetRecGroup`); one knot (`elab_rec_group`) serves a lone `rec` struct and a
-  group. A group holds struct types only.
+  group. A group holds struct types or values, not both.
 - `rewrite_record_self_refs` (matched by spelling) is deleted. `Self` means only
   the struct being defined. A struct's fields are checked for duplicates.
 - Limit: the identity is minted once at elaboration, so a `rec` struct under a
   binder shares one identity across evaluations until E11 lands.
+- `rec even : I64 -> Bool = fn(n) { … odd(n - 1) … } and odd : … = …` is a group of
+  mutually recursive values (2026-09-15). A fixpoint is a member of a recursive
+  group: `Core.Fix { members; index }`, `VFix` over a `fix_closure`; a single
+  `rec` is a group of one. Every body is checked once seeing every member at its
+  annotated type (or a meta); each member keeps its own name and purity, so
+  check-time unfolding under the budget and the pure-call lazy delta work per
+  member. A module's group bindings are emitted in member order (the group
+  used to come out reversed).
 
 ### One-pass effects; unhandled effects at the top are errors (2026-09-15)
 
@@ -162,6 +179,10 @@ Last updated: after a bare arrow is pure, 2026-09-15.
   `Syntax.Decl` at the annotation's scopes). `quote { … }` checked against
   `Syntax.Decl` must hold exactly one non-hole item (`QuoteNotOneDecl`);
   anywhere else it is the list. The `VU` instantiation workaround is gone.
+- A parameter means what the same type means as an output: `(d : Decl)` takes
+  a `{ … }` group holding exactly one item (`HoleOneDecl`, captured `CapDecl`,
+  the macro sees a `Decl`); `(d : List(Decl))` takes a group of any number
+  (`HoleDecl`, a `Decls`). A syntax form's `$(d : Decl)` hole is unchanged.
 - `open` binds what the module's **type** lists (I2): `Core.Open`/`OpenBind`
   carry the members (`OpenField name`, `OpenImpl i`), and the evaluator pushes
   each as a projection of the module value. A module parameter (a neutral) opens

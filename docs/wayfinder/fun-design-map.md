@@ -529,8 +529,10 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Small follow-ups](tickets/small-followups-2026-09-15.md)
+  — `self.a(2)` crash, method row scope, `$(d : Decl)` hole kind, `+` bound by spelling.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
-  — a method is pure unless it says `can`; trait signatures carry rows.
+  (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
   — `fn(g : Unit ~> I64)` fails; annotations should use the expression grammar.
 - [A `List(I64)` parameter infers a wrong type](tickets/let-bound-lambda-list-param-wrong-type.md)
@@ -542,7 +544,7 @@ What remains, in the recommended order:
 - [`open` a module parameter](tickets/open-a-module-parameter.md)
   (closed) — `Open`/`OpenBind` carry the members the type lists; each is pushed as a projection.
 - [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
-  (closed) — `: Decl` is one, `: List(Decl)` many, checked at the definition.
+  (closed) — `: Decl` is one, `: List(Decl)` many, checked at the definition; a parameter means the same (`(d : Decl)` one, `(d : List(Decl))` a group).
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
   (closed) — effects are computed in one pass during inference; an effect left
   unhandled at a program's entry or a unit's top is an elaboration error.
@@ -556,8 +558,8 @@ What remains, in the recommended order:
   every effect read follows the elaboration it reads.
 - [Records are declared only by let bindings](tickets/records-only-let-bindings.md)
   (closed & **implemented**) — `type X = struct { … }` deleted; a `rec` struct
-  binding mints the recursive record's identity; `rec … and …` groups exist for
-  struct types (the nominal `type … and …` knot is not moved yet: that is
+  binding mints the recursive record's identity; `rec … and …` groups hold
+  struct types or mutually recursive values (the nominal `type … and …` knot is not moved yet: that is
   adts-as-let-bindings).
 - [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
   — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` deleted (maybe kept only as sugar: bind + open the constructors).

@@ -104,9 +104,10 @@ let elab_ok source () =
 let eval_i64 source expected () =
   let ctx = Elaborate.init_ctx () in
   let core, _ = Elaborate.on_expr ctx (parse_expr source) in
+  (* Run the program, as the REPL does: unbudgeted, nothing deferred. *)
   match Elaborate.Ctx.run ctx core with
   | VAtom (I64 n) -> Alcotest.(check int64) source expected n
-  | _ -> Alcotest.fail ("expected an I64: " ^ source)
+  | v -> Alcotest.fail ("expected an I64: " ^ source ^ " got " ^ Debug.pp_value_short ctx.metas v)
 
 let elab_fail source () =
   match elab source with
@@ -576,8 +577,25 @@ let structs =
          "{ M = module { pub rec A = struct { b : Option(B) } and B = struct { n : I64; a : Option(A) } }; \
           (M.B{ n = 5, a = Some(M.A{ b = None }) }).n }"
          5L);
-    Alcotest.test_case "a rec … and … group holds struct types only" `Quick
+    Alcotest.test_case "a rec … and … group does not mix struct types and functions" `Quick
       (elab_fail "{ rec A = struct { b : Option(B) } and B = fn(x : I64) { x }; 1 }");
+    Alcotest.test_case "mutually recursive functions run" `Quick
+      (eval_i64
+         "{ rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
+          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
+          if (even(10)) { if (odd(7)) { 1 } else { 0 } } else { 0 } }"
+         1L);
+    Alcotest.test_case "unannotated mutually recursive functions capture the context" `Quick
+      (eval_i64
+         "{ k = 2; rec down = fn(n : I64) { if (n == 0) { 0 } else { k + back(n - 1) } } \
+          and back = fn(n : I64) { if (n == 0) { 0 } else { down(n - 1) } }; down(4) }"
+         4L);
+    Alcotest.test_case "a module's mutually recursive functions" `Quick
+      (eval_i64
+         "{ M = module { pub rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
+          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } } }; \
+          if (M.odd(5)) { 1 } else { 0 } }"
+         1L);
     Alcotest.test_case "a recursive record holds itself at run time" `Quick
       (eval_i64
          "{ rec Numbers = struct { head : I64; tail : Option(Numbers) }; \
@@ -1752,6 +1770,21 @@ let evaluation_budget =
       (budget_exceeded "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { n })) { 1 }; 2 }");
     Alcotest.test_case "a recursive call through another on an unknown variable unfolds" `Quick
       (elab_ok "{ rec inc : I64 -> I64 = fn(n) { n + 1 }; rec twice_inc : I64 -> I64 = fn(n) { inc(inc(n)) }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(twice_inc(n))) { (y : F(n + 1 + 1)) }; 2 }");
+    Alcotest.test_case "mutually recursive functions unfold in a type" `Quick
+      (elab_ok
+         "{ rec even : I64 -> Bool can {} = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
+          and odd : I64 -> Bool can {} = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
+          F = fn(b : Bool) { if (b) { I64 } else { Bool } }; (42 : F(even(4))) }");
+    Alcotest.test_case "two calls of one pure group member convert without unfolding" `Quick
+      (elab_ok
+         "{ rec even : I64 -> Bool can {} = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
+          and odd : I64 -> Bool can {} = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
+          F = fn(b : Bool) { if (b) { I64 } else { Bool } }; g = fn(n : I64, y : F(odd(n))) { (y : F(odd(n))) }; 2 }");
+    Alcotest.test_case "a divergent mutually recursive pair in a type names a member" `Quick (fun () ->
+        match elab "{ rec a : I64 -> Type = fn(n) { b(n) } and b : I64 -> Type = fn(n) { a(n) }; g = fn(n : I64, y : a(n)) { 1 }; 2 }" with
+        | exception Elaborate.ElabError (Elaborate.EvaluationBudgetExceeded { call; _ }) ->
+            Alcotest.(check bool) "names a or b" true (List.mem call [ "a"; "b" ])
+        | _ -> Alcotest.fail "expected an evaluation budget error");
     Alcotest.test_case "two calls of one pure fixpoint on convertible arguments convert without unfolding" `Quick
       (elab_ok "{ rec fact : I64 -> I64 can {} = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
     Alcotest.test_case "a bare-arrow fixpoint converts without unfolding" `Quick
@@ -1761,7 +1794,7 @@ let evaluation_budget =
     Alcotest.test_case "only a fixpoint known pure defers its calls" `Quick (fun () ->
         let rec fix_purity (t : Core.term) =
           match t with
-          | Core.Fix (_, pure, _) -> Some pure
+          | Core.Fix { members; index } -> Some (List.nth members index).Core.fix_pure
           | t -> List.find_map (fun (_, sub) -> fix_purity sub) (Core.subterms t)
         in
         let purity source =

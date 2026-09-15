@@ -126,7 +126,7 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VRecord _ -> "<record>"
     | VCont _ -> "<continuation>"
     | VFix _ -> "<fix>"
-    | VGlued { name; arg; _ } -> Printf.sprintf "%s(%s)" name (go (depth+1) arg)
+    | VGlued { fix; arg; _ } -> Printf.sprintf "%s(%s)" (fix_member fix).fix_name (go (depth+1) arg)
     | VNeutral _ -> "<neutral>"
     | VStx _ -> "<stx>"
     | VPatternSyn _ -> "<pattern_syn>"

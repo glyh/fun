@@ -267,7 +267,7 @@ and match_parts ?(whole = false) callbacks captures pattern input =
                   ensure_no_rest "pattern hole" after;
                   (Syntax.CapPattern p, List.tl ts))
                 with_capture input)
-      | Syntax.HoleDecl -> (
+      | Syntax.HoleDecl | HoleOneDecl -> (
           (* Declarations, captured unread: they are read where they are spliced. *)
           match decl_extent (extent rest) (drop_separators input) with
           | Some (decls, after) when drop_separators decls <> [] -> with_capture (Syntax.CapDecls [ Syntax.Items decls ]) after

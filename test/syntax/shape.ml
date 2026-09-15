@@ -176,7 +176,7 @@ and lower_effect_op (op : Syntax.effect_op) : effect_op =
 
 and lower_capture = function
   | Syntax.CapExpr e -> lower_expr e
-  | CapBlock _ | CapId _ | CapPattern _ | CapDecls _ -> invalid_arg "lower_capture: an argument not read as an Expr"
+  | CapBlock _ | CapId _ | CapPattern _ | CapDecls _ | CapDecl _ -> invalid_arg "lower_capture: an argument not read as an Expr"
 
 and lower_expr (stx : Syntax.t) : t =
   match stx.kind with
@@ -257,7 +257,7 @@ and lower_struct_binding = function
     RecGroupBinding { members = List.map (fun (n, v) -> (lower_id n, lower_expr v)) members; public }
   | Syntax.LetBinding { name; value; public; recursive } ->
     LetBinding { name = lower_id name; value = lower_expr value; public; recursive }
-  | Syntax.MethodBinding { name; params; body; public } ->
+  | Syntax.MethodBinding { name; params; body; public; _ } ->
     MethodBinding { name = lower_id name; params = List.map lower_param params; body = lower_expr body; public }
   | Syntax.TypeBinding { members; public } ->
     TypeBinding

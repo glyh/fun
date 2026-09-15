@@ -172,10 +172,10 @@ pub Syntax = module {
   and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule)) | OrderGroup
   and Rule = MkRule(List(RulePart), Replacement, Option(Span))
   and RulePart = PartToken(TokenTree) | PartGroup(Delim, List(RulePart), Option(Span)) | PartHole(String, HoleKind, Option(Span))
-  and HoleKind = HoleExpr | HoleBlock | HoleId | HoleDecl | HolePattern
+  and HoleKind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern
   and Replacement = ReplaceExpr(Expr) | ReplaceDecls(List(Decl))
   and Capture = MkCapture(String, Captured)
-  and Captured = CapExpr(Expr) | CapBlock(List(TokenTree)) | CapId(TokenTree) | CapPattern(Pattern) | CapDecls(List(Decl))
+  and Captured = CapExpr(Expr) | CapBlock(List(TokenTree)) | CapId(TokenTree) | CapPattern(Pattern) | CapDecls(List(Decl)) | CapDecl(Decl)
   and Field = MkField(String, Expr)
   and QuoteHole = MkQuoteHole(String, Expr)
   and Param = MkParam(Id, Option(Expr), List(Path), Explicitness)
@@ -198,7 +198,7 @@ pub Syntax = module {
   and Decl =
     | DeclLet(Id, Expr, Bool, Bool)
     | DeclRecGroup(List(Id), List(Expr), Bool)
-    | DeclMethod(Id, List(Param), Expr, Bool)
+    | DeclMethod(Id, List(Param), Option(EffectRow), Expr, Bool)
     | DeclType(List(TypeDecl), Bool)
     | DeclEffect(Id, List(Id), List(EffectOp), Bool)
     | DeclTrait(Id, List(Id), List(Field), Bool)

@@ -56,3 +56,10 @@ rec Tree = fn(A : Type) { struct { value : A; kids : List(Tree(A)) } }
   the identity is minted by the `rec` binding.
 - Coordinate with [adts-as-let-bindings](adts-as-let-bindings.md), which needs the
   same `rec … and …` group.
+
+## Functions in groups (2026-09-15)
+
+A `rec … and …` group now also holds mutually recursive values
+(`rec even : I64 -> Bool = fn(n) { … odd(n - 1) … } and odd : … = …`), as a
+`Core.Fix` group; a single `rec` is a group of one. A group mixing struct types
+and values is an error.

@@ -42,7 +42,11 @@ and macro_call_args env (head : Syntax.t) items =
                 they are spliced. *)
              | HoleDecl, [ { datum = Group (Raw_syntax.Brace, ts, _); _ } ] ->
                  Syntax.CapDecls (if drop_separators ts = [] then [] else [ Syntax.Items ts ])
-             | (HoleId | HoleBlock | HolePattern | HoleDecl), _ ->
+             (* Exactly one declaration, written as a group holding one item. *)
+             | HoleOneDecl, [ { datum = Group (Raw_syntax.Brace, ts, _); _ } ]
+               when List.length (List.filter (fun s -> drop_separators s <> []) (split_statements ts)) = 1 ->
+                 Syntax.CapDecl (Syntax.Items ts)
+             | (HoleId | HoleBlock | HolePattern | HoleDecl | HoleOneDecl), _ ->
                  Expand_error.raise_at (ArgumentKind { macro; kind; span = syntax_span part }))
            kinds parts)
   | _ -> None
@@ -398,11 +402,19 @@ and parse_method_binding env public stmt =
           require_adjacent_span name_term.span params_group.span
             "method parameter list";
           let params = parse_method_params env items in
+          (* [can row]: a method is pure unless it declares a row (E3). *)
+          let effects, rest =
+            match drop_separators rest with
+            | term :: rest when token_kind KwCan term ->
+                let eff, rest = parse_can_effect_row env rest in
+                (Some eff, rest)
+            | rest -> (None, rest)
+          in
           let body, rest, _ = parse_body env "method parameters" rest in
           ensure_no_rest "method declaration" rest;
           Some
             (Syntax.MethodBinding
-               { name = id_of name_term name; params; body; public })
+               { name = id_of name_term name; params; effects; body; public })
       | _ ->
           error
             ("method declaration requires a parenthesized parameter list: "

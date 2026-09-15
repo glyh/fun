@@ -295,7 +295,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           Done (dot_value mc value name))
   | Open (s, members, body) ->
       bind_result (eval_result mc env s) (fun vs -> eval_result mc (push_open_members mc env vs members) body)
-  | Fix (name, pure, body) -> Done (VFix { name; pure; body = { env; body } })
+  | Fix { members; index } -> Done (VFix { fix_members = members; fix_env = env; fix_index = index })
   | NomRef { id; name; params } ->
       let nom = eval_nominal env id name in
       sequence_values mc env params (fun param_vals ->
@@ -458,26 +458,26 @@ and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   | VLam { body = clo; _ } ->
       spend_call mc clo;
       eval_result mc (va :: clo.env) clo.body
-  | VFix { name; pure; body = clo } ->
+  | VFix fc ->
       (* A fixpoint unfolds on any argument, open or closed; under the checker a
          divergent unfolding runs out of budget (an error). Unfolding is charged
          too: a fixpoint that unfolds to another fixpoint would otherwise loop
          without ever making a call. Under the checker a pure call is deferred
          until something inspects it, so conversion can compare two calls of
          the same fixpoint by their arguments first. *)
+      let { fix_name; fix_pure; fix_body } = fix_member fc in
       let unfold () =
-        mc.MetaContext.budget.calling <- Some name;
-        spend_call mc clo;
-        let self = VFix { name; pure; body = clo } in
-        match eval mc (self :: clo.env) clo.body with
+        mc.MetaContext.budget.calling <- Some fix_name;
+        spend_call mc { env = fc.fix_env; body = fix_body };
+        match eval mc (fix_body_env fc) fix_body with
         | VLam { body = lam } -> eval_result mc (va :: lam.env) lam.body
         | unfolded -> apply_result mc unfolded va
       in
       (* A macro application runs its body like a program: its result is read
          at once, so nothing is deferred there. *)
       let budget = mc.MetaContext.budget in
-      if pure && Option.is_some budget.limit && Option.is_none budget.application then
-        Done (VGlued { name; fix = clo; arg = va; unfolded = lazy (result_value mc (unfold ())) })
+      if fix_pure && Option.is_some budget.limit && Option.is_none budget.application then
+        Done (VGlued { fix = fc; arg = va; unfolded = lazy (result_value mc (unfold ())) })
       else unfold ()
   | VGlued _ -> apply_result mc (force mc vf) va
   | VCont c ->
@@ -895,6 +895,7 @@ let quote_ops : Nbe_quote.ops =
 
 let lvl_to_ix = Nbe_quote.lvl_to_ix
 let conv_pat = Nbe_quote.conv_pat
+let fix_bodies mc depth fc = Nbe_quote.fix_bodies_at quote_ops mc depth fc
 
 (* The checker's entry points. Each call from outside the evaluator is one
    evaluation under the budget (see [Eval_budget]); the evaluator's own
