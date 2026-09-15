@@ -56,7 +56,7 @@ and Stmt = enum { Do(Expr) }
 - Migrate the 15 prelude types, compiler-known `Expr` ADTs and their pattern
   synonyms (see `CLAUDE.md`, "Adding a new Syntax ADT"), and every test.
 
-## Open: `type` as sugar (2026-09-15)
+## `type` as sugar — decided: a prelude macro (2026-09-15)
 
 The user may keep `type … = …` for ADTs **only as sugar**: a let binding of the
 `enum` plus an open of its constructors, so the branches are in scope without
@@ -68,5 +68,18 @@ type Color = Red | Green | Blue
 Color = enum { Red, Green, Blue }; open Color
 ```
 
-This would tension with "one syntax per construct" (records dropped
-`type X = struct`); decide when implementing whether the sugar stays.
+**Decided:** `type` is not compiler syntax. It is a `: Decl` macro in the prelude
+(Stage 11, library-level features) expanding to exactly the bind and the open:
+
+```fun
+type Option A = Some(A) | None
+// expands to:
+Option = fn(A : Type) { enum { Some(A), None } }; open Option
+```
+
+- `type` stops being a keyword; it is a prelude role like any syntax form, so a
+  user can shadow or not open it.
+- The macro reads its alternatives from tokens (`|`-separated constructors, an
+  optional parameter list) and builds the `enum` with quoted syntax; no compiler
+  support beyond `enum`, M9 parameter kinds and `quote { … }`.
+- Only for ADTs: records have no `type` form.
