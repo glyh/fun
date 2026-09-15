@@ -52,7 +52,10 @@ let base_roles (tbl : Binding.t) =
   Binding.extend tbl ~name:"<-" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"<-"
     ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef);
   Binding.extend tbl ~name:"type" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"type"
-    ~role:(Binding.role ~fixity:Syntax.PrefixOp Syntax.TypeDeclaration)
+    ~role:(Binding.role ~fixity:Syntax.PrefixOp Syntax.TypeDeclaration);
+  (* [~>]: read like [->], a base role so the arrow family needs no lexer rule. *)
+  Binding.extend tbl ~name:"~>" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"~>"
+    ~role:(Binding.role ~fixity:Syntax.InfixOp Syntax.PolyArrow)
 
 (* Where an expression is read, which decides what may continue it. Precedence
    among operators is relative (brackets-decide-grouping): an operand continues

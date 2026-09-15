@@ -55,6 +55,7 @@ let infer_signature ops ctx bindings =
 let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_row = function
   (* A bare arrow is pure (E3). *)
   | None -> empty_effect_row
+  | Some (row : Syntax.effect_row) when row.polymorphic -> raise (ElabError PolyArrowOutsideSignature)
   | Some (row : Syntax.effect_row) ->
       (* An entry is an effect, or a row variable ([->{Log, e}]): the row's tail. *)
       let classified =

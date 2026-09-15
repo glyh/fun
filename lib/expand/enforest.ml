@@ -544,10 +544,13 @@ and continues prec symbol (role : Syntax.role) =
 and parse_postfix_infix env min_prec lhs terms =
   match terms with
   | term :: _ when is_separator term -> (lhs, terms)
-  | term :: rest when token_kind ThinArrow term && (match min_prec with Top | ArrowRhs -> true | _ -> false) ->
-      (* [A ->{E} B]: a brace group adjacent to the arrow is its effect row. *)
+  | term :: rest when (token_kind ThinArrow term || is_poly_arrow env term) && (match min_prec with Top | ArrowRhs -> true | _ -> false) ->
+      (* [A ->{E} B]: a brace group adjacent to the arrow is its effect row.
+         [A ~> B]: a polymorphic row, decided by the arrow's signature. *)
       let row, rest =
         match rest with
+        | _ when not (token_kind ThinArrow term) ->
+            (Some { Syntax.effects = []; tail = None; inferred = false; polymorphic = true }, rest)
         | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest when spans_adjacent term.span span ->
             (Some (parse_effect_row_terms env items), rest)
         | _ -> (None, rest)
@@ -653,12 +656,20 @@ and parse_postfix_infix env min_prec lhs terms =
                 | Syntax.CallMacro -> syntax_operator_arg ~span ~use:term symbol role [ lhs; rhs ]
                 | Syntax.ApplyValue ->
                     ap ~span (ap ~span (var_of term symbol) Explicitness.Explicit lhs) Explicitness.Explicit rhs
-                | Syntax.OrderGroup | Syntax.TypeDeclaration -> error ("not an infix operator: " ^ symbol)
+                | Syntax.OrderGroup | Syntax.TypeDeclaration | Syntax.PolyArrow -> error ("not an infix operator: " ^ symbol)
               in
               parse_postfix_infix env min_prec lhs rest
           | _ -> (lhs, term :: rest))
       | None -> (lhs, term :: rest))
   | [] -> (lhs, [])
+
+and is_poly_arrow env term =
+  match token_text term with
+  | Some symbol -> (
+      match Binding.find_role env.operators ~fixity:Syntax.InfixOp ~scope:(token_scope term) symbol with
+      | Some { meaning = Syntax.PolyArrow; _ } -> true
+      | _ -> false)
+  | None -> false
 
 and parse_binding_statement env stmt =
   match parse_value_decl_statement env stmt with

@@ -15,8 +15,6 @@ pub order comparison : stronger_than(conjunction);
 pub order additive : stronger_than(comparison);
 pub order multiplicative : stronger_than(additive);
 pub order negation : stronger_than(multiplicative);
-pub order arrow : weaker_than(disjunction) assoc(right);
-pub infix (~>) arrow ($a, $b) { $a -> $b can _ };
 pub infix (&&) conjunction ($a, $b) { match ($a) { True => $b, False => False } };
 pub infix (||) disjunction ($a, $b) { match ($a) { True => True, False => $b } };
 pub i64_to_bool = fn(n) { match (n) { 0 => False, _ => True } };
@@ -108,7 +106,7 @@ pub Syntax = module {
   and Delim = ParenDelim | BracketDelim | BraceDelim
   and Role = MkRole(Fixity, Option(Order), RoleMeaning, Option(Span), Option(String))
   and Order = MkOrder(String, String, Assoc, Bool, List(Order), List(Order))
-  and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule)) | OrderGroup | TypeDeclaration
+  and RoleMeaning = ApplyValue | AssignRef | CallMacro | Rules(MacroAnn, List(Rule)) | OrderGroup | TypeDeclaration | PolyArrow
   and Rule = MkRule(List(RulePart), Replacement, Option(Span))
   and RulePart = PartToken(TokenTree) | PartGroup(Delim, List(RulePart), Option(Span)) | PartHole(String, HoleKind, Option(Span))
   and HoleKind = HoleExpr | HoleBlock | HoleId | HoleDecl | HoleOneDecl | HolePattern | HoleTokens
@@ -118,7 +116,7 @@ pub Syntax = module {
   and Field = MkField(String, Expr)
   and QuoteHole = MkQuoteHole(String, Expr)
   and Param = MkParam(Id, Option(Expr), List(Path), Explicitness)
-  and EffectRow = MkEffectRow(List(Expr), Option(Expr), Bool)
+  and EffectRow = MkEffectRow(List(Expr), Option(Expr), Bool, Bool)
   and EffectOp = MkEffectOp(String, Expr, Expr)
   and TypeDecl = MkTypeDecl(Id, List(Id), List(Ctor))
   and Ctor = MkCtor(Id, List(Expr))

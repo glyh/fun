@@ -44,9 +44,11 @@ and open_choice = { opens : string list; fallback : string option }
 
 and type_decl = { name : id; params : id list; ctors : (id * t list) list }
 
-(** [inferred]: the row was written [_] ([can _], or [{E | _}]): the rest is
-    inferred. An arrow with no row is pure (E3). *)
-and effect_row = { effects : t list; tail : t option; inferred : bool }
+(** [inferred]: the row was written [_] ([->{_}], or [{E | _}]): the rest is
+    inferred. [polymorphic]: the arrow was written [~>]; its row is decided by
+    where the arrow sits in its signature ([Elab_poly_arrows]). An arrow with no
+    row is pure (E3). *)
+and effect_row = { effects : t list; tail : t option; inferred : bool; polymorphic : bool }
 
 and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }
@@ -143,6 +145,7 @@ and role_meaning =
   | TypeDeclaration
       (** [type A = … and B = …]: the built-in type declaration, a base role so
           [type] is an ordinary identifier a user form may shadow *)
+  | PolyArrow  (** [~>]: an arrow whose effects are polymorphic *)
 
 (** One rule: the tokens a use consumes and what each hole captures, and the
     replacement - quoted syntax parsed where the rule is written. *)

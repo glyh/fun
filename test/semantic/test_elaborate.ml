@@ -1503,25 +1503,31 @@ let effects =
           f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
           wrap : (Unit -> I64 can _) -> Unit -> I64 can _ = fn(g) { fn(_) { g() } }; \
           (fn(_) { wrap(f)() } : Unit -> I64 can State(I64)) }");
-    Alcotest.test_case "~> is an arrow with an inferred row" `Quick
+    (* [~>] (effect-arrow-syntax): a parameter's [~>] mints a row variable the
+       function is polymorphic in; a result's collects its parameters'. *)
+    Alcotest.test_case "~> in a parameter is effect-polymorphic" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; \
-          Callback = Unit ~> I64; \
-          f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
-          app = fn(g : Callback) { g() }; \
-          (fn(_) { app(f) } : Unit -> I64 can State(I64)) }");
-    (* Annotations are read with the expression grammar, so a user type
-       operator works in every annotation position. *)
+          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
+          app = fn(g : Unit ~> I64) { g() }; \
+          (fn(_) { app(f) } : Unit ->{State(I64)} I64); \
+          app(fn(_) { 1 }) }");
     Alcotest.test_case "~> in every annotation position" `Quick
       (elab_ok
          "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit ~> I64 = fn(_) { perform State.get () }; \
+          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
           app = fn(g : Unit ~> I64) { g() }; \
           twice : (Unit ~> I64) -> Unit ~> I64 = fn(g) { fn(_) { g() + g() } }; \
-          S = sig { cb : Unit ~> I64 }; \
-          R = struct { cb : Unit ~> I64 }; \
+          S = sig { cb : (Unit ~> I64) ~> I64 }; \
+          R = struct { cb : (Unit ~> I64) ~> I64 }; \
           ((1, 2) : Tuple(2, I64, I64)); \
-          (fn(_) { app(twice(f)) } : Unit -> I64 can State(I64)) }");
+          (fn(_) { app(twice(f)) } : Unit ->{State(I64)} I64) }");
+    Alcotest.test_case "a result ~> with no parameter's row is pure" `Quick
+      (elab_fail
+         "{ effect State(S) = sig { get : Unit -> S }; \
+          f : Unit ~> I64 = fn(_) { perform State.get () }; 1 }");
+    Alcotest.test_case "~> results cannot yet unite two row variables" `Quick
+      (elab_fail "{ f : (I64 ~> I64) -> (I64 ~> I64) ~> I64 = fn(g, h) { g(1) + h(2) }; 1 }");
     Alcotest.test_case "* is not a product type" `Quick
       (elab_fail "{ p : I64 * Bool = (1, True); 1 }");
     Alcotest.test_case "a bare arrow rejects an effectful callback" `Quick

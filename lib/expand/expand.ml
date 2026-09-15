@@ -80,7 +80,7 @@ and map_rule_default m (r : rule) : rule =
 and map_role m (role : role) : role =
   match role.meaning with
   | Rules { rules_kind; rules } -> { role with meaning = Rules { rules_kind; rules = List.map (m.rule m) rules } }
-  | ApplyValue | AssignRef | CallMacro | OrderGroup | TypeDeclaration -> role
+  | ApplyValue | AssignRef | CallMacro | OrderGroup | TypeDeclaration | PolyArrow -> role
 
 and map_capture m c =
   match m.capture c with

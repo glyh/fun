@@ -15,6 +15,7 @@ type elab_error =
   | DuplicateEffectOperation of string
   | ExpectedEffect
   | UnsupportedRowUnion of int
+  | PolyArrowOutsideSignature
   | DuplicateEffect
   | DuplicateEffectBranch of string
   | UnknownEffectOperation of string
@@ -70,6 +71,7 @@ let string_of_elab_error = function
   | DuplicateEffectOperation n -> "DuplicateEffectOperation \"" ^ n ^ "\""
   | ExpectedEffect -> "ExpectedEffect"
   | UnsupportedRowUnion n -> Printf.sprintf "UnsupportedRowUnion %d: a row holds one row variable; a union of %d is not supported yet" n n
+  | PolyArrowOutsideSignature -> "PolyArrowOutsideSignature: ~> is read where it sits in a signature (a parameter or result position)"
   | DuplicateEffect -> "DuplicateEffect"
   | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
   | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
