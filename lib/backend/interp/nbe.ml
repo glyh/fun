@@ -650,7 +650,9 @@ and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : term)
       find_effect_branch mc effect_branches request.eff request.op request.arg
     with
     | Some (arg_bindings, body) ->
-        let k = make_cont request.k in
+        (* Deep (E8): resuming re-enters this handler, so the resumed
+           computation's result passes through its value branch. *)
+        let k = make_cont (fun resume -> resume_with (request.k resume)) in
         handle_body
           (eval_result mc
              (k :: List.rev_append arg_bindings body.env)

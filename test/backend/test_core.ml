@@ -522,6 +522,17 @@ let test_eval_handler_resumes_once () =
     "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => resume(n + 1) } }"
     ()
 
+let test_eval_handler_resume_through_value_branch () =
+  check_i64 "resume passes through the value branch" 46L
+    "{ effect E = sig { op : I64 -> I64 }; match (perform E.op(1)) { x => x + 5, effect E.op n => resume(n + 40) } }"
+    ();
+  check_i64 "an unresumed handler skips the value branch" 41L
+    "{ effect E = sig { op : I64 -> I64 }; match (perform E.op(1)) { x => x + 5, effect E.op n => n + 40 } }"
+    ();
+  check_i64 "a perform after resume is handled again, value branch once" 1103L
+    "{ effect E = sig { op : I64 -> I64 }; match (perform E.op(1) + perform E.op(2)) { x => x + 1000, effect E.op n => resume(n + 50) } }"
+    ()
+
 let test_eval_handler_value_branch () =
   check_i64 "handler value branch" 42L
     "{ effect Exc = sig { raise : I64 -> I64 }; match (41) { x => x + 1, effect Exc.raise n => 0 } }"
@@ -582,6 +593,8 @@ let test_eval_recursive_handler_ping_pong_effects () =
     ()
 
 let test_eval_state_handler_sequences_operations () =
+  (* Deep handlers (E8): a resumed computation re-enters this handler, so state
+     is threaded by the handler returning a function of the state. *)
   check_i64 "state handler sequences operations" 2L
     "{
        effect State(S) = sig { get : Unit -> S; put : S -> Unit };
@@ -590,15 +603,12 @@ let test_eval_state_handler_sequences_operations () =
          _ = perform State.put(x + 1);
          perform State.get()
        } };
-        rec run : I64 -> (Unit -> I64 can State(I64)) -> I64 = fn(state, thunk) {
-          match (thunk()) { x => x,
-          effect State.get () => run(state, fn(_) { resume(state) }),
-          effect State.put next => run(next, fn(_) { resume() })
-          }
-        };
-        run(1, program)
-     }"
-    ()
+       h = match (program(())) { x => fn(s : I64) { x },
+         effect State.get () => fn(s : I64) { resume(s)(s) },
+         effect State.put next => fn(s : I64) { resume(())(next) }
+       };
+       h(1)
+     }" ()
 
 let test_eval_handler_tuple_payload_pattern () =
   check_i64 "handler tuple payload pattern" 42L
@@ -3497,6 +3507,7 @@ let () =
           Alcotest.test_case "a trait method signature carries a row" `Quick test_trait_method_rows;
           Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
           Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
+          Alcotest.test_case "resume passes through the value branch" `Quick test_eval_handler_resume_through_value_branch;
           Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;
           Alcotest.test_case "match binds a closure scrutinee" `Quick test_eval_match_binds_a_closure;
           Alcotest.test_case "handler outer bubble" `Quick test_eval_handler_outer_bubble;
