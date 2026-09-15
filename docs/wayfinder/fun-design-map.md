@@ -527,6 +527,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [A Decl macro's output is typed](tickets/decl-macro-output-type.md)
+  — `: Decl` returns one, `: List(Decl)` many; `quote { … }` checks against it.
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
   — a top-level `perform` or a closure escaping its handler fails only at run time.
 - [The unhandled-effect error says handlers are not implemented](tickets/unhandled-effect-message-is-stale.md)
