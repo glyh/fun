@@ -193,10 +193,11 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
             fields = List.map (fun (name, value) -> (name, go d value)) dict.fields }
     | VRecOcc r -> RecOcc { id = r.id; name = r.name; args = List.map (go d) r.args }
     | VCon { name; spine; nominal } -> Nbe_quote.con_term (go d) name spine nominal
-    | VFix { name; pure; body = clo } ->
-        let var = VRigid { lvl = d; spine = [] } in
-        Fix (name, pure, go (d + 1) (Nbe.closure_apply mc clo var))
-    | VGlued { name; fix; arg; _ } -> Ap (go d (VFix { name; pure = true; body = fix }), Explicit, go d arg)
+    | VFix fc ->
+        let d' = d + List.length fc.fix_members in
+        Fix { members = List.map2 (fun m body -> { m with fix_body = go d' body }) fc.fix_members (Nbe.fix_bodies mc d fc);
+              index = fc.fix_index }
+    | VGlued { fix; arg; _ } -> Ap (go d (VFix fix), Explicit, go d arg)
     | VCont _ -> raise (UnifyError (CannotUnify "cannot quote continuation during unification"))
     | VStx _ -> raise (UnifyError (CannotUnify "cannot quote syntax value during unification"))
     | VPatternSyn _ -> raise (UnifyError (CannotUnify "cannot quote pattern synonym during unification"))
@@ -362,7 +363,7 @@ let value_form = function
   | VFlex { id; _ } -> Printf.sprintf "meta ?%d" id
   | VNeutral _ -> "neutral"
   | VFix _ -> "fixpoint"
-  | VGlued { name; _ } -> "call of " ^ name
+  | VGlued { fix; _ } -> "call of " ^ (fix_member fix).fix_name
   | VCont _ -> "continuation"
   | VStx _ -> "syntax"
   | VPatternSyn _ -> "pattern_syn"
@@ -497,11 +498,9 @@ let rec unify (mc : MetaContext.t) (env : env) (depth : lvl) (v1 : value) (v2 : 
         raise (UnifyError (CannotUnify ("constructor mismatch: " ^ c1.name ^ " vs " ^ c2.name)));
       unify_spine mc env depth c1.spine c2.spine
   | VNeutral { neutral = n1; _ }, VNeutral { neutral = n2; _ } -> unify_neutral mc env depth n1 n2
-  | VFix { body = clo1; _ }, VFix { body = clo2; _ } ->
-      let var = VRigid { lvl = depth; spine = [] } in
-      unify mc env (depth + 1)
-        (Nbe.closure_apply mc clo1 var)
-        (Nbe.closure_apply mc clo2 var)
+  | VFix fc1, VFix fc2 when fc1.fix_index = fc2.fix_index && List.length fc1.fix_members = List.length fc2.fix_members ->
+      let n = List.length fc1.fix_members in
+      List.iter2 (unify mc env (depth + n)) (Nbe.fix_bodies mc depth fc1) (Nbe.fix_bodies mc depth fc2)
   | (VRecOcc _ as occ), other | other, (VRecOcc _ as occ) -> (
       match Nbe.force_shape mc occ with
       | VRecOcc _ -> raise (UnifyError (CannotUnify (value_form v1 ^ " vs " ^ value_form v2)))

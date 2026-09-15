@@ -30,6 +30,13 @@ let con_term (quote : value -> term) name spine nominal =
 
 let lvl_to_ix (depth : lvl) (l : lvl) : ix = depth - l - 1
 
+(* A recursive group's bodies, each under rigid variables for the members at
+   levels [depth .. depth + members - 1] (the first member outermost). *)
+let fix_bodies_at ops mc depth (fc : fix_closure) =
+  let vars = List.mapi (fun i _ -> VRigid { lvl = depth + i; spine = [] }) fc.fix_members in
+  let env = List.rev vars @ fc.fix_env in
+  List.map (fun m -> ops.eval mc env m.fix_body) fc.fix_members
+
 let rec conv_pat (p1 : core_pat) (p2 : core_pat) : bool =
   match (p1, p2) with
   | CPatWild, CPatWild -> true
@@ -90,12 +97,13 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VAtomTy t -> AtomTy t
   | VProd elems -> Prod (List.map (quote ops mc depth) elems)
   | VProdTy elems -> ProdTy (List.map (quote ops mc depth) elems)
-  | VFix { name; pure; body = clo } ->
-      let var = VRigid { lvl = depth; spine = [] } in
-      Fix (name, pure, quote ops mc (depth + 1) (ops.closure_apply mc clo var))
+  | VFix fc ->
+      let depth' = depth + List.length fc.fix_members in
+      let bodies = fix_bodies_at ops mc depth fc in
+      Fix { members = List.map2 (fun m body -> { m with fix_body = quote ops mc depth' body }) fc.fix_members bodies;
+            index = fc.fix_index }
   (* A deferred call quotes as the call, not its unfolding. *)
-  | VGlued { name; fix; arg; _ } ->
-      Ap (quote ops mc depth (VFix { name; pure = true; body = fix }), Explicit, quote ops mc depth arg)
+  | VGlued { fix; arg; _ } -> Ap (quote ops mc depth (VFix fix), Explicit, quote ops mc depth arg)
   | VModule { entries; partial } ->
       let fields = module_entry_fields entries in
       let bindings =
@@ -201,9 +209,9 @@ let step (mc : MetaContext.t) =
 
 (* Two deferred calls of one fixpoint: the same closure, or the same body over
    the same captured values. *)
-let same_fixpoint (c1 : closure) (c2 : closure) =
+let same_fixpoint (c1 : fix_closure) (c2 : fix_closure) =
   let rec same_env e1 e2 = e1 == e2 || match (e1, e2) with v1 :: e1, v2 :: e2 -> v1 == v2 && same_env e1 e2 | _ -> false in
-  c1 == c2 || (c1.body == c2.body && same_env c1.env c2.env)
+  c1 == c2 || (c1.fix_index = c2.fix_index && c1.fix_members == c2.fix_members && same_env c1.fix_env c2.fix_env)
 
 let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : bool =
   step mc;
@@ -244,9 +252,10 @@ let rec conv ops (mc : MetaContext.t) (depth : lvl) (v1 : value) (v2 : value) : 
   | VFlex { id = id1; spine = sp1 }, VFlex { id = id2; spine = sp2 } ->
       id1 = id2 && conv_spine ops mc depth sp1 sp2
   | VNeutral { neutral = n1; _ }, VNeutral { neutral = n2; _ } -> conv_neutral ops mc depth n1 n2
-  | VFix { body = clo1; _ }, VFix { body = clo2; _ } ->
-      let var = VRigid { lvl = depth; spine = [] } in
-      conv ops mc (depth + 1) (ops.closure_apply mc clo1 var) (ops.closure_apply mc clo2 var)
+  | VFix fc1, VFix fc2 ->
+      let n = List.length fc1.fix_members in
+      fc1.fix_index = fc2.fix_index && n = List.length fc2.fix_members
+      && List.for_all2 (conv ops mc (depth + n)) (fix_bodies_at ops mc depth fc1) (fix_bodies_at ops mc depth fc2)
   | ( VModule { entries = es1; partial = p1 }, VModule { entries = es2; partial = p2 } ) ->
       let fs1 = module_entry_fields es1 in
       let fs2 = module_entry_fields es2 in

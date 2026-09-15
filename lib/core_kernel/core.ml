@@ -38,10 +38,10 @@ and term =
   | AtomTy of Atom_ty.t
   | Prod of term list (* value-level tuple: (a, b) has type ProdTy [A, B] *)
   | ProdTy of term list (* type-level tuple: (A, B) has type U *)
-  | Fix of string * bool * term
-      (* a recursive binding; the name is its binder, for errors only; the flag
-         says its call is known pure (an empty effect row), so the checker may
-         compare two calls of it without unfolding them *)
+  | Fix of { members : fix_member list; index : int }
+      (* the [index]th member of a group of mutually recursive definitions
+         ([rec f = … and g = …]; a single [rec] is a group of one). Every body
+         sits under one entry per member, the first member outermost. *)
   | Proj of term * int             (* positional tuple projection: e.0 *)
   | Dot of term * string           (* named member/field access: e.field *)
   | RecordConstruct of { typ : term; fields : (string * term) list }
@@ -283,8 +283,8 @@ and value =
   | VAtomTy of Atom_ty.t
   | VProd of value list (* value-level tuple *)
   | VProdTy of value list (* type-level tuple — lives in VU *)
-  | VFix of { name : string; pure : bool; body : closure }
-  | VGlued of { name : string; fix : closure; arg : value; unfolded : value Lazy.t }
+  | VFix of fix_closure
+  | VGlued of { fix : fix_closure; arg : value; unfolded : value Lazy.t }
       (** A pure fixpoint applied to [arg] under the checker, unfolded only when
           inspected ([force]): conversion compares two calls of the same
           fixpoint by their arguments first (lazy delta). *)
@@ -426,6 +426,14 @@ and frame =
 
 and closure = { env : env; body : term }
 
+(* A recursive group member: its binder name (for errors only), and whether its
+   call is known pure (an empty effect row), so the checker may compare two calls
+   of it without unfolding them. *)
+and fix_member = { fix_name : string; fix_pure : bool; fix_body : term }
+
+(* The [fix_index]th member of a recursive group, closed over [fix_env]. *)
+and fix_closure = { fix_members : fix_member list; fix_env : env; fix_index : int }
+
 let empty_effect_row = { effects = []; tail = None }
 let is_empty_effect_row row = List.is_empty row.effects && Option.is_none row.tail
 let effect_row_closure env row = { env; effects = row.effects; tail = row.tail }
@@ -509,6 +517,16 @@ let rec pat_binder_count = function
   | CPatRecord { fields; _ } | CPatStructType { fields; _ } ->
       List.fold_left (fun n (_, p) -> n + pat_binder_count p) 0 fields
 
+(* A single [rec]: a recursive group of one. *)
+let fix_one name pure body = Fix { members = [ { fix_name = name; fix_pure = pure; fix_body = body } ]; index = 0 }
+
+let fix_member (fc : fix_closure) = List.nth fc.fix_members fc.fix_index
+
+(* The environment a group member's body runs in: every member, the first
+   outermost, over the group's own environment. *)
+let fix_body_env (fc : fix_closure) =
+  List.rev (List.mapi (fun i _ -> VFix { fc with fix_index = i }) fc.fix_members) @ fc.fix_env
+
 (** Rebuild a term with [f under sub] applied to each immediate subterm [sub],
     where [under] is how many environment entries the evaluator has pushed
     between the term and that subterm: [Some n], or [None] when the count is
@@ -543,7 +561,9 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | Imported _ ->
       t
   | Lam body -> Lam (at 1 body)
-  | Fix (name, pure, body) -> Fix (name, pure, at 1 body)
+  | Fix f ->
+      let n = List.length f.members in
+      Fix { f with members = List.map (fun m -> { m with fix_body = at n m.fix_body }) f.members }
   | Ap (fn, expl, arg) -> Ap (at 0 fn, expl, at 0 arg)
   | Let (ty, def, body) -> Let (at 0 ty, at 0 def, at 1 body)
   | Pi { explicitness; domain; effects; codomain } ->

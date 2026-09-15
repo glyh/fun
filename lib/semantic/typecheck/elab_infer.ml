@@ -114,7 +114,7 @@ let elab_member_value (ops : Elab_ops.t) (ctx : Ctx.t) ~value_ctx ~key ~name ~re
   let (val_core, val_ty), effects = collecting value_ctx (fun value_ctx -> ops.infer value_ctx value) in
   emit ctx effects;
   (if recursive then Ctx.unify ctx rec_ty val_ty);
-  let val_core = if recursive then Fix (name, Ctx.pure_call ctx rec_ty, val_core) else val_core in
+  let val_core = if recursive then fix_one name (Ctx.pure_call ctx rec_ty) val_core else val_core in
   let val_val = if is_empty_expr_effects effects then Ctx.eval ctx val_core else VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
   (val_core, val_ty, val_val)
 
@@ -132,7 +132,7 @@ let elab_rec_let (ops : Elab_ops.t) (ctx : Ctx.t) ~name ~type_ value =
   | None ->
       let rec_ty = match annotation with Some ty -> ty | None -> Ctx.raw_meta ctx in
       let val_core = ops.check (Ctx.bind ctx name rec_ty) value rec_ty in
-      let fix_core = Fix (name, Ctx.pure_call ctx rec_ty, val_core) in
+      let fix_core = fix_one name (Ctx.pure_call ctx rec_ty) val_core in
       (Ctx.quote ctx rec_ty, fix_core, rec_ty, Ctx.eval ctx fix_core)
 
 (* THE nominal-type binding elaboration, in one place.

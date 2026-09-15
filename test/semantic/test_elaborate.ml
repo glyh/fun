@@ -1708,7 +1708,7 @@ let evaluation_budget =
     Alcotest.test_case "only a fixpoint known pure defers its calls" `Quick (fun () ->
         let rec fix_purity (t : Core.term) =
           match t with
-          | Core.Fix (_, pure, _) -> Some pure
+          | Core.Fix { members; index } -> Some (List.nth members index).Core.fix_pure
           | t -> List.find_map (fun (_, sub) -> fix_purity sub) (Core.subterms t)
         in
         let purity source =
