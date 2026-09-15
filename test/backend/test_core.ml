@@ -2775,6 +2775,19 @@ let test_m9_quote_nested_rule_holes () =
        M.result
      }" ()
 
+let test_m9_quote_token_position_hole () =
+  check_i64_macro "a quote fills a hole naming generated syntax" 42L
+    "{
+       M = module {
+         macro make(n) : Decl {
+           match (n) { | Syntax.Var(name) => quote { syntax $name { | $name $x => $x * 2 }; } | _ => quote { } }
+         };
+         make(double);
+         pub r = double 21
+       };
+       M.r
+     }" ()
+
 (* Names and shape only: a binder expanded again gets a fresh scope, which
    resolution of an already-resolved name never consults. *)
 let erase_scopes stx = Expand.map_ids (fun id -> { id with Syntax.scope = Scope_set.empty }) stx
@@ -3502,5 +3515,6 @@ let () =
           Alcotest.test_case "expansion is idempotent" `Quick test_m9_expansion_idempotent;
           Alcotest.test_case "filling equals the quote" `Quick test_m9_filling_equals_quote;
           Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
+          Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
         ] );
     ]
