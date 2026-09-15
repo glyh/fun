@@ -526,6 +526,12 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [Records are declared only by let bindings](tickets/records-only-let-bindings.md)
+  — `type X = struct { … }` deleted; a `rec` struct binding mints the recursive
+  record's identity; needs value-level `rec … and …`.
+- [ADTs are declared by let bindings](tickets/adts-as-let-bindings.md)
+  — `Option = fn(A : Type) { enum { Some(A), None } }`; `type` deleted.
+  **Blocked on** nominal identity applicative by purity (E11).
 Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
 
 - [Declaration binders keep their written name](tickets/declaration-binders-keep-written-names.md)
