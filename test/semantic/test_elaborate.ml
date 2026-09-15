@@ -192,10 +192,24 @@ let annotations =
 let tuples =
   [
     Alcotest.test_case "pair" `Quick
-      (check_type_of "(1, True)" "((0, False) : I64 * Bool)");
+      (check_type_of "(1, True)" "((0, False) : Tuple(2, I64, Bool))");
     Alcotest.test_case "triple" `Quick
       (check_type "(1, 2, 3)"
          (ProdTy [ AtomTy Atom_ty.TI64; AtomTy Atom_ty.TI64; AtomTy Atom_ty.TI64 ]));
+    (* [Tuple(n, …)]: flat, its arity computed from [n]. *)
+    Alcotest.test_case "Tuple annotation and projection" `Quick
+      (check_type_src "{ p : Tuple(3, I64, Bool, String) = (1, True, \"a\"); p.2 }" "String");
+    Alcotest.test_case "Tuple is flat" `Quick
+      (check_type_of "(1, True, \"a\")" "((0, False, \"b\") : Tuple(3, I64, Bool, String))");
+    (* ponytail: the checker lets an evaluation error escape as [EvalError]
+       (a [panic] in a type does too); wrap once checker errors carry sites. *)
+    Alcotest.test_case "Tuple with a negative count" `Quick (fun () ->
+        match elab "{ T = Tuple(0 - 1); 1 }" with
+        | exception Nbe_error.EvalError msg ->
+            Alcotest.(check string) "message" "Tuple: the number of components is negative" msg
+        | _ -> Alcotest.fail "expected a negative Tuple count to be rejected");
+    Alcotest.test_case "Tuple under-applied is a type function" `Quick
+      (check_type_src "Tuple(2, I64)" "Type -> Type");
   ]
 
 let operators =
@@ -1341,6 +1355,20 @@ let effects =
           f : Unit -> I64 can State(I64) = fn(_) { perform State.get () }; \
           app = fn(g : Callback) { g() }; \
           (fn(_) { app(f) } : Unit -> I64 can State(I64)) }");
+    (* Annotations are read with the expression grammar, so a user type
+       operator works in every annotation position. *)
+    Alcotest.test_case "~> in every annotation position" `Quick
+      (elab_ok
+         "{ effect State(S) = sig { get : Unit -> S }; \
+          f : Unit ~> I64 = fn(_) { perform State.get () }; \
+          app = fn(g : Unit ~> I64) { g() }; \
+          twice : (Unit ~> I64) -> Unit ~> I64 = fn(g) { fn(_) { g() + g() } }; \
+          S = sig { cb : Unit ~> I64 }; \
+          R = struct { cb : Unit ~> I64 }; \
+          ((1, 2) : Tuple(2, I64, I64)); \
+          (fn(_) { app(twice(f)) } : Unit -> I64 can State(I64)) }");
+    Alcotest.test_case "* is not a product type" `Quick
+      (elab_fail "{ p : I64 * Bool = (1, True); 1 }");
     Alcotest.test_case "a bare arrow rejects an effectful callback" `Quick
       (elab_fail
          "{ effect State(S) = sig { get : Unit -> S }; \
@@ -1385,7 +1413,7 @@ let effects =
          "{ effect Exc = sig { raise : I64 -> I64 }; (match (perform Exc.raise(1)) { x => x, effect Exc.raise n => True } : I64) }");
     Alcotest.test_case "tuple effect branch payload checked" `Quick
       (elab_fail
-         "{ effect Console = sig { log : I64 * I64 -> I64 }; \
+         "{ effect Console = sig { log : Tuple(2, I64, I64) -> I64 }; \
           match (perform Console.log((1, 2))) { x => x, effect Console.log(only) => only } }");
     Alcotest.test_case "record effect branch payload checked" `Quick
       (elab_fail

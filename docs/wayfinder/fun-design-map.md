@@ -534,7 +534,7 @@ What remains, in the recommended order:
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
-  — `fn(g : Unit ~> I64)` fails; annotations should use the expression grammar.
+  — (closed) one grammar for types; tuple types are `Tuple(n, T1, …, Tn)`, `*` is only multiplication.
 - [A `List(I64)` parameter infers a wrong type](tickets/let-bound-lambda-list-param-wrong-type.md)
   — (closed) a NomRef took an applied instance (`Decls = List(Decl)`) for its template; `eval_nominal` now matches only the template.
 - [`expand_decls`](tickets/expand-decls-reader.md)
