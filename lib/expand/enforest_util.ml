@@ -31,15 +31,26 @@ type env = {
      scopes it over the statements after it. *)
   mutable declared : int;
   errors : Parse_error.t list ref;
+  (* The roles the unit a module expression denotes exports, when it denotes one:
+     a dotted group reference [M.g] reads [g] among them. The expander answers. *)
+  unit_roles : Syntax.t -> (string * Syntax.role) list;
   (* The parameter kinds of the macro a call's head names, when it names one:
      its arguments are read as those kinds (M9). The expander answers. *)
   macro_params : Syntax.t -> Syntax.hole_kind list option;
 }
 
-(* The compiler-known base role: [<-], ref assignment, always in scope. *)
+(* The compiler-known base roles, always in scope: [<-], ref assignment, and
+   its order group [assignment] - weaker than every prelude group (the prelude
+   declares [disjunction] stronger than it) and non-associative, so
+   [r <- x + 1] is [r <- (x + 1)] and [a <- b <- c] is an error. *)
+let assignment_order =
+  { Syntax.group = "assignment@base"; group_name = "assignment"; group_assoc = Syntax.NonAssoc; stronger_than = []; weaker_than = [] }
+
 let base_roles (tbl : Binding.t) =
+  Binding.extend tbl ~name:"assignment" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"assignment"
+    ~role:(Binding.role ~fixity:Syntax.PrefixOp ~order:assignment_order Syntax.OrderGroup);
   Binding.extend tbl ~name:"<-" ~scope:Scope_set.empty ~kind:Binding.Role ~resolved_name:"<-"
-    ~role:(Binding.role ~fixity:Syntax.InfixOp Syntax.AssignRef)
+    ~role:(Binding.role ~fixity:Syntax.InfixOp ~order:assignment_order Syntax.AssignRef)
 
 (* Where an expression is read, which decides what may continue it. Precedence
    among operators is relative (brackets-decide-grouping): an operand continues
@@ -62,8 +73,8 @@ let fresh_order_group name =
   Printf.sprintf "%s@%d" name !order_counter
 
 (* Reading forms as expansion reaches them, with the expander's roles. *)
-let lazy_env ?(macro_params = fun _ -> None) operators =
-  { operators; eager = false; registers = false; holes = []; declared = 0; errors = ref []; macro_params }
+let lazy_env ?(macro_params = fun _ -> None) ?(unit_roles = fun _ -> []) operators =
+  { operators; eager = false; registers = false; holes = []; declared = 0; errors = ref []; macro_params; unit_roles }
 
 (* Reading quoted syntax where it is written. *)
 let eager_env ?(holes = []) env =

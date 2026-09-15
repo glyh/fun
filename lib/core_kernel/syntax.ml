@@ -117,7 +117,7 @@ and role = {
   from_unit : string option;
 }
 
-and assoc = LeftAssoc | RightAssoc
+and assoc = LeftAssoc | RightAssoc | NonAssoc  (** [assoc(none)]: members do not chain *)
 
 (** An order group (brackets-decide-grouping): precedence is relative. A group
     is its declaration - [group] is unique - and carries the groups its

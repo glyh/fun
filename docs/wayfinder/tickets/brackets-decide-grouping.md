@@ -90,9 +90,6 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   unconsumed tail) — not now; ticket as an escape hatch when a case needs it.
 - **Parse "as if after operator `op`"** (Rhombus `AfterPrefixParsed`) for a hole —
   not decided; no known case needs it.
-- **A dotted group reference** (`stronger_than(Std.additive)`, `infix (op) M.g`):
-  a group is reached bare, through `open` or an import's binder; the dotted
-  spelling is not read yet.
 
 ## Implementation notes (branch `order-groups`, 2026-09-15)
 
@@ -123,7 +120,17 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
   `DeclItems` (no per-item inspection without an `expand_block`-like reader); a
   `$d` hole accepts only a list.
 
-## Grilled after implementation (2026-09-15)
+## Grilled after implementation (2026-09-15) — implemented (branch `order-group-leftovers`)
+
+- `assoc(none)` is `Syntax.NonAssoc`, reflected as `NonAssoc`. `<-` and a
+  compiler-known group `assignment` (`assoc(none)`) are base roles; the prelude
+  declares `disjunction : stronger_than(assignment)`, so `assignment` is below
+  every prelude group. An operator in a group unrelated to the prelude's still
+  meets `<-` with "no declared order".
+- A dotted group reference reads the group among the roles the unit the path's
+  prefix denotes exports (`Expand.unit_path_of`, the same resolution macro
+  members use), handed to the enforester as `unit_roles`. A path through an
+  inline `module { … }` (not a unit) is "unknown order group".
 
 - **`<-` gets its own group, weakest, and does not chain.** `r <- x + 1` is
   `r <- (x + 1)`; `a <- b <- c` is an error (it would store `Unit`). This needs a

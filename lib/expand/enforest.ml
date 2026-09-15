@@ -615,7 +615,14 @@ and continues prec symbol (role : Syntax.role) =
           match Syntax.order_relation i o with
           | Syntax.Stronger -> true
           | Weaker -> false
-          | Same -> o.group_assoc = Syntax.RightAssoc
+          | Same -> (
+              match o.group_assoc with
+              | Syntax.RightAssoc -> true
+              | LeftAssoc -> false
+              | NonAssoc ->
+                  error
+                    (Printf.sprintf "`%s` and `%s` do not chain: their group %s is assoc(none); parenthesise one of them"
+                       outer symbol o.group_name))
           | Unrelated -> no_order outer)
       | Some _, None -> false
       | None, Some _ -> true
@@ -1083,22 +1090,59 @@ and parse_operator_template_decl env (sym_id : Syntax.id) order value_terms =
        (Syntax.Rules { rules_kind = Syntax.MacroAnnotation.Expr; rules = [ rule ] }))
 
 (* An order group named where an operator, form or group declaration names it:
-   resolved by scope set, like any binder. *)
-and resolve_order env term =
-  match term.datum with
-  | Token { kind = Ident name; _ } -> (
+   a bare name resolves by scope set, like any binder; [M.g] reads [g] among the
+   roles the unit [M] denotes exports. *)
+and resolve_order env terms =
+  let not_a_group () = error "an order group is named by an identifier or a dotted path M.g" in
+  match drop_separators terms with
+  | [ ({ datum = Token { kind = Ident name; _ }; _ } as term) ] -> (
       match Binding.find_order env.operators ~scope:(token_scope term) name with
       | Some order -> order
       | None -> error ("unknown order group: " ^ name))
-  | _ -> error "an order group is named by an identifier"
+  | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: path -> (
+      let rec members acc = function
+        | dot :: { datum = Token { kind = Ident m; _ }; _ } :: rest when token_kind Dot dot -> members (m :: acc) rest
+        | [] -> acc
+        | _ -> not_a_group ()
+      in
+      match members [] path with
+      | [] -> not_a_group ()
+      | name :: rev_prefix ->
+          let prefix = List.rev rev_prefix in
+          let unit_expr =
+            List.fold_left
+              (fun m field -> stx ~span:head_term.span (Syntax.FieldAccess (m, field)))
+              (var_of head_term head) prefix
+          in
+          let group_of (n, (r : Syntax.role)) =
+            if String.equal n name && r.meaning = Syntax.OrderGroup then r.order else None
+          in
+          match List.find_map group_of (env.unit_roles unit_expr) with
+          | Some order -> order
+          | None -> error ("unknown order group: " ^ String.concat "." ((head :: prefix) @ [ name ])))
+  | _ -> not_a_group ()
 
-(* [order name : stronger_than(g, …), weaker_than(g, …), assoc(left|right)]:
+(* The terms naming one group at the front of [terms] - [g] or [M.N.g] - and the
+   terms after them. *)
+and take_order_ref terms =
+  let rec go acc = function
+    | dot :: ({ datum = Token { kind = Ident _; _ }; _ } as t) :: rest when token_kind Dot dot -> go (t :: dot :: acc) rest
+    | rest -> (List.rev acc, rest)
+  in
+  match drop_separators terms with
+  | ({ datum = Token { kind = Ident _; _ }; _ } as t) :: rest -> go [ t ] rest
+  | rest -> ([], rest)
+
+(* [order name : stronger_than(g, …), weaker_than(g, …), assoc(left|right|none)]:
    precedence is relative, and a group is related only by declarations. The
    order is transitive; a declaration that would make it cyclic is an error. *)
 and parse_order_decl env name_term name clauses =
   let groups items =
     List.map
-      (fun ts -> match drop_separators ts with [ t ] -> resolve_order env t | _ -> error "expected an order group")
+      (fun ts ->
+        match take_order_ref ts with
+        | (_ :: _ as ref_terms), [] -> resolve_order env ref_terms
+        | _ -> error "expected an order group")
       (split_commas items)
   in
   (* Clauses follow each other: a [,] would end the declaration's statement. *)
@@ -1112,8 +1156,9 @@ and parse_order_decl env name_term name clauses =
         match drop_separators items with
         | [ { datum = Token { kind = Ident "left"; _ }; _ } ] -> read_clauses (s, w, Syntax.LeftAssoc) rest
         | [ { datum = Token { kind = Ident "right"; _ }; _ } ] -> read_clauses (s, w, Syntax.RightAssoc) rest
-        | _ -> error "assoc is written assoc(left) or assoc(right)")
-    | _ -> error "an order clause is stronger_than(…), weaker_than(…) or assoc(left|right)"
+        | [ { datum = Token { kind = Ident "none"; _ }; _ } ] -> read_clauses (s, w, Syntax.NonAssoc) rest
+        | _ -> error "assoc is written assoc(left), assoc(right) or assoc(none)")
+    | _ -> error "an order clause is stronger_than(…), weaker_than(…) or assoc(left|right|none)"
   in
   let stronger_than, weaker_than, group_assoc = read_clauses ([], [], Syntax.LeftAssoc) (drop_separators clauses) in
   List.iter
@@ -1180,8 +1225,10 @@ and parse_joined_order env terms =
   match drop_separators terms with
   | { datum = Token { kind = Int _; _ }; _ } :: _ ->
       error "numeric precedence was removed; declare an order group (order g : stronger_than(…)) and write infix (op) g"
-  | ({ datum = Token { kind = Ident _; _ }; _ } as term) :: rest -> (Some (resolve_order env term), rest)
-  | rest -> (None, rest)
+  | terms -> (
+      match take_order_ref terms with
+      | [], rest -> (None, rest)
+      | ref_terms, rest -> (Some (resolve_order env ref_terms), rest))
 
 and parse_operator_shape env stmt =
   match drop_separators stmt with

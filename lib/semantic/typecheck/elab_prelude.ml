@@ -71,7 +71,7 @@ let stdlib_source =
   {|
 pub type Bool = False | True;
 pub syntax if { if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t, False => $e } };
-pub order disjunction;
+pub order disjunction : stronger_than(assignment);
 pub order conjunction : stronger_than(disjunction);
 pub order comparison : stronger_than(conjunction);
 pub order additive : stronger_than(comparison);
@@ -109,7 +109,7 @@ pub type Option(A) = Some(A) | None;
 pub type List(A) = Nil | Cons(A, List(A));
 pub Syntax = module {
   pub type Explicitness = Explicit | Implicit;
-  pub type Assoc = Left | Right;
+  pub type Assoc = Left | Right | NonAssoc;
 
   pub type Span = struct {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)};
 
