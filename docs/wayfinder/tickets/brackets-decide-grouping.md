@@ -151,3 +151,12 @@ syntax, so `{}`, `[]`, `()`, `,` and `;` carry the structure.
 - **`Std = import "std"` in the test helper fails with `OpenSuppliesRole "not"`**
   — likely pre-existing (an import binder of the prelude conflicting with the
   already-open prelude's roles). Investigate.
+
+### Grilled (2026-09-15): `<-` is the default bottom, overridable
+
+`assignment` (the `<-` group) is implicitly weaker than every group that does not
+state its relation to it, so `r <- a <> b` works for any user group `mine`. A
+group may override by declaring a relation to `assignment` explicitly
+(`order mine : weaker_than(assignment)`); the explicit declaration wins. Express
+it as a general property a group declaration can carry (e.g. `order assignment :
+weakest assoc(none)`), not as a check for the name `<-`.
