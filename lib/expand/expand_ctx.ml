@@ -1,6 +1,13 @@
+(** A macro's signature, elaborated where it is defined ([Syntax.macro_signature]):
+    [type_] is the pi type; [binders] the macro's own type binders, which lead
+    it; [params] each explicit parameter's name and whether it has a domain in it. *)
+type signature = { type_ : Core.value; binders : string list; params : (string * bool) list }
+
 type macro_entry = {
   value : Core.value;
   syntax_nominals : Macro_eval.syntax_nominals option;
+  (* [None] for a macro that promises no type and runs during expansion. *)
+  signature : signature option;
 }
 
 type macro_snapshot = {
@@ -296,11 +303,11 @@ let copy (ctx : t) : t =
     open_roles = Hashtbl.copy ctx.open_roles;
     loader = ctx.loader }
 
-let register_macro_with_nominals ctx ~syntax_nominals ~name ~value =
-  Hashtbl.replace ctx.macro_table name { value; syntax_nominals }
+let register_macro_with_nominals ?signature ctx ~syntax_nominals ~name ~value =
+  Hashtbl.replace ctx.macro_table name { value; syntax_nominals; signature }
 
-let register_macro ctx ~name ~value =
-  register_macro_with_nominals ctx ~syntax_nominals:ctx.syntax_nominals ~name ~value
+let register_macro ?signature ctx ~name ~value =
+  register_macro_with_nominals ?signature ctx ~syntax_nominals:ctx.syntax_nominals ~name ~value
 
 let register_macro_kind ?(params = []) (ctx : t) ~name ~kind =
   Hashtbl.replace ctx.macro_kind_table name kind;
@@ -318,9 +325,9 @@ let note_unit_macro ctx ~path ~name =
   if not (List.mem name names) then
     Hashtbl.replace ctx.unit_macros path (name :: names)
 
-let register_unit_macro ctx ~path ~name ~value ~kind ~params ~syntax_nominals =
+let register_unit_macro ctx ~path ~name ~(entry : macro_entry) ~kind ~params =
   let key = unit_macro_key ~path ~name in
-  register_macro_with_nominals ctx ~syntax_nominals ~name:key ~value;
+  Hashtbl.replace ctx.macro_table key entry;
   register_macro_kind ctx ~name:key ~kind ~params;
   note_unit_macro ctx ~path ~name
 
@@ -405,9 +412,9 @@ let restore_macro_snapshot ctx ~name snapshot =
 let register_provisional_macro ctx ~name () =
   Hashtbl.replace ctx.provisional_macros name ()
 
-let fill_provisional_macro ctx ~name ~value =
+let fill_provisional_macro ?signature ctx ~name ~value =
   Hashtbl.remove ctx.provisional_macros name;
-  register_macro ctx ~name ~value
+  register_macro ?signature ctx ~name ~value
 
 (* Run one macro application, and the expansion of its output, as a call under
    the evaluation budget. An overrun or evaluation failure inside it is this

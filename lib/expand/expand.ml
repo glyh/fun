@@ -131,7 +131,7 @@ and go_kind m (k : kind) : kind =
   | Match (scrut, brs) -> Match (go scrut, List.map (go_match_branch m) brs)
   | Block terms -> Block (map_terms m terms)
   | Instantiate inst -> Instantiate (map_instantiation m inst)
-  | MacroDef { name; value; body; kind } -> MacroDef { name = on_id name; value = go value; body = go body; kind }
+  | MacroDef { name; value; body; kind; output } -> MacroDef { name = on_id name; value = go value; body = go body; kind; output = Option.map go output }
   | SyntaxDef { name; role; body } -> SyntaxDef { name = on_id name; role = map_role m role; body = go body }
   | MacroCall (f, args) -> MacroCall (go f, List.map (map_capture m) args)
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
@@ -158,7 +158,7 @@ and go_struct_binding m (binding : Syntax.struct_binding) : Syntax.struct_bindin
        TraitBinding { name = on_id name; params = List.map on_id params; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
      | ImplBinding { name; trait; args; fields; public } ->
        ImplBinding { name; trait = map_path m trait; args = List.map go args; fields = List.map (fun (n, e) -> (n, go e)) fields; public }
-     | MacroBinding { name; value; public; kind } -> MacroBinding { name = on_id name; value = go value; public; kind }
+     | MacroBinding { name; value; public; kind; output } -> MacroBinding { name = on_id name; value = go value; public; kind; output = Option.map go output }
      | MacroCallBinding { f; args } -> MacroCallBinding { f = go f; args = List.map (map_capture m) args }
      | PatternSynBinding { name; params; rhs; public } ->
        PatternSynBinding { name = on_id name; params = List.map on_id params; rhs = go_pat m rhs; public }
@@ -525,7 +525,7 @@ let decl_over (binding : struct_binding) (body : t) : t =
   match binding with
   | LetBinding { name; value; recursive; public = false } -> over (Let { name; type_ = None; value; body; recursive })
   | SyntaxBinding { name; role; public = false } -> over (SyntaxDef { name; role; body })
-  | MacroBinding { name; value; kind; public = false } -> over (MacroDef { name; value; body; kind })
+  | MacroBinding { name; value; kind; output; public = false } -> over (MacroDef { name; value; body; kind; output })
   | TypeBinding { members = [ { name; params; ctors } ]; public = false } -> over (TypeDef { name; params; ctors; body })
   | RecordTypeBinding { name; params; fields; public = false } -> over (RecordTypeDef { name; params; fields; body })
   | EffectBinding { name; params; ops; public = false } -> over (EffectDef { name; params; ops; body })
@@ -751,13 +751,15 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
   | SyntaxDef { name; role; body } ->
     let scope = Expand_ctx.extend_role ctx ~role ~name in
     expand ctx (add_scope scope body)
-  | MacroDef { name; value; body; kind; _ } ->
+  | MacroDef { name; value; body; kind; output } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
+      let resolved_kind = Syntax.macro_kind ~output kind value in
+      let signature = Syntax.macro_signature ~output value in
       let params, value = Syntax.macro_params value in
       let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
       let macro_fn = elab (in_definition_site_opens ctx name value) in
-      let resolved_kind = Syntax.macro_kind kind value in
+      let signature = Option.map (compile_signature ctx elab name) signature in
       (* Promote the macro into the scope-aware binding table with a fresh
          hygienic [resolved_name] and a [Macro] kind, then key its compiled
          entry by that [resolved_name]. This replaces the old macro_table
@@ -766,7 +768,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
          macro's call sites resolve to it through normal binding resolution. *)
       let scope, resolved_name =
         Expand_ctx.extend_at_fresh_kinded ctx ~span:name.span ~name:name.name ~base_scope:name.scope ~kind:Binding.Macro () in
-      Expand_ctx.register_macro ctx ~name:resolved_name ~value:macro_fn;
+      Expand_ctx.register_macro ?signature ctx ~name:resolved_name ~value:macro_fn;
       Expand_ctx.register_macro_kind ctx ~name:resolved_name ~kind:resolved_kind ~params;
       expand ctx (add_scope scope body)
     | None ->
@@ -868,6 +870,13 @@ and instantiate : 'a. Expand_ctx.t -> instantiation -> (application -> (string *
     let app = application ?unit:inst.from_unit ctx in
     k app (List.map (fun (n, c) -> (n, app.receive_capture c)) inst.captures) inst.rule.replacement)
 
+(* A macro's signature, elaborated where the macro is defined, as its value is:
+   a name in it that resolves to nothing, or a [T] that is not a type, is an
+   error at the definition. *)
+and compile_signature (ctx : Expand_ctx.t) elab name (s : Syntax.macro_signature) : Expand_ctx.signature =
+  let type_ = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx s.signature) in
+  { type_ = elab (in_definition_site_opens ctx name type_); binders = s.binders; params = s.params }
+
 (** Run a resolved procedural-macro call: check kind compatibility against the
     current context, then either defer a type-aware macro to the elaborator
     (producing the internal [MacroCall] node with [Stx]-wrapped args) or expand
@@ -886,11 +895,16 @@ and run_macro_call (ctx : Expand_ctx.t) (stx : t) ~(key : string)
   (* An application form is an expression: a call in item position is a
      [MacroCallBinding]. *)
   check_macro_kind ~key ~macro_kind ~ctx_kind:Syntax.MacroKind.Expr;
-  if Syntax.MacroKind.has_type_binding macro_kind then
-    (* Defer to the elaborator: args travel as syntax objects, marked [Stx]. *)
+  match macro_entry.Expand_ctx.signature with
+  | Some signature ->
+    (* Its signature promises types: the call waits for the elaborator, its
+       arguments travelling as syntax objects, marked [Stx]. *)
+    if List.length macro_args <> List.length signature.params then
+      Expand_error.raise_at
+        (ArgumentCount { macro = key; expected = List.length signature.params; got = List.length macro_args });
     let wrap_stx = function CapExpr arg -> CapExpr { arg with kind = Syntax.Stx arg } | c -> c in
     { stx with kind = MacroCall (head, List.map wrap_stx macro_args) }
-  else begin match ctx.Expand_ctx.eval_and_apply with
+  | None -> begin match ctx.Expand_ctx.eval_and_apply with
     | Some apply_fn ->
       let apply_fn = apply_fn ctx.Expand_ctx.budget in
       let site =
@@ -1065,11 +1079,12 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
     let open_scope, label = Expand_ctx.enter_open ctx ~occurrence:(member_scope m) m in
     import_roles ctx ~base_scope:(member_scope m) ~scope:open_scope m';
     ([OpenBinding (m', label)], [ open_scope :: open_unit_macro_scopes ctx m ])
-   | MacroBinding { name; value; public; kind } ->
+   | MacroBinding { name; value; public; kind; output } ->
     begin match ctx.Expand_ctx.elaborate with
     | Some elab ->
+      let resolved_kind = Syntax.macro_kind ~output kind value in
+      let signature = Syntax.macro_signature ~output value in
       let params, value = Syntax.macro_params value in
-      let resolved_kind = Syntax.macro_kind kind value in
       let binding_name = id_name name in
       (* Stage 7: introduce name scope and register provisional macro BEFORE
          expansion/elaboration so the macro's own name is known during its
@@ -1086,10 +1101,11 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
         (fun () ->
           let value = Expand_ctx.in_macro_definition ctx (fun () -> expand ctx value) in
           let macro_fn = elab (in_definition_site_opens ctx name value) in
-          Expand_ctx.fill_provisional_macro ctx ~name:binding_name ~value:macro_fn;
-          ([MacroBinding { name = add_id_scope scope name; value; public; kind }], [[ scope ]]))
+          let signature = Option.map (compile_signature ctx elab name) signature in
+          Expand_ctx.fill_provisional_macro ?signature ctx ~name:binding_name ~value:macro_fn;
+          ([MacroBinding { name = add_id_scope scope name; value; public; kind; output }], [[ scope ]]))
     | None ->
-      ([MacroBinding { name; value = expand ctx value; public; kind }], [[]])
+      ([MacroBinding { name; value = expand ctx value; public; kind; output }], [[]])
     end
   | MacroCallBinding { f; args } ->
     let head_macro =

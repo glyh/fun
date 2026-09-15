@@ -27,6 +27,10 @@ type elab_error =
   | AmbiguousTraitImplementation of string
   | MissingTraitImplementation of string
   | MacroDidNotReturnSyntax of string
+  | MacroBinderUnsolved of { macro : string; binder : string }
+      (** A macro's type binder is not solved when the macro must run. *)
+  | MacroArgumentType of { macro : string; param : string; promised : string; reason : string }
+  | MacroOutputType of { macro : string; promised : string; reason : string }
   | QuoteHoleKindConflict of string
   | EvaluationBudgetExceeded of { limit : int; call : string; demand : string; site : Eval_budget.site option }
   | OpenSuppliesRole of string
@@ -64,6 +68,11 @@ let string_of_elab_error = function
   | AmbiguousTraitImplementation n -> "AmbiguousTraitImplementation \"" ^ n ^ "\""
   | MissingTraitImplementation n -> "MissingTraitImplementation \"" ^ n ^ "\""
   | MacroDidNotReturnSyntax n -> "MacroDidNotReturnSyntax \"" ^ n ^ "\""
+  | MacroBinderUnsolved { macro; binder } -> Printf.sprintf "MacroBinderUnsolved \"cannot infer %s for `%s`\"" binder macro
+  | MacroArgumentType { macro; param; promised; reason } ->
+      Printf.sprintf "MacroArgumentType \"argument %s of `%s` expects Expr(%s): %s\"" param macro promised reason
+  | MacroOutputType { macro; promised; reason } ->
+      Printf.sprintf "MacroOutputType \"macro `%s` promises Expr(%s), its output does not have that type: %s\"" macro promised reason
   | QuoteHoleKindConflict n -> "QuoteHoleKindConflict \"" ^ n ^ "\""
   | EvaluationBudgetExceeded { limit; call; demand; site } ->
       "EvaluationBudgetExceeded \"" ^ Eval_budget.message ~limit ~call ~demand ~site ^ "\""

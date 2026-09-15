@@ -24,7 +24,6 @@ module Ctx = struct
     self_type : value option;
     resume_entry : name_entry option;
     loader : Core_loader.t option;
-    macro_table : (string, Core.value * Syntax.MacroKind.t * Macro_eval.syntax_nominals option) Hashtbl.t;
     (* The capabilities the elaborator needs from the expander to run a
        type-aware macro, and nothing more: how to apply a macro value, how to
        run an application as a call under the evaluation budget, and how to expand its output. It never consults the
@@ -44,6 +43,8 @@ and macro_runtime = {
   macro_application : 'a. name:string -> (unit -> 'a) -> 'a;
   expand : Syntax.t -> Syntax.t;
   application : unit -> Expand.application;
+  (* The compiled macro a deferred call's head names. *)
+  lookup_macro : string -> Expand_ctx.macro_entry option;
   (* The names of the syntactic roles visible in an open's region (M7). *)
   roles_in_open : string -> string list;
 }
@@ -57,6 +58,7 @@ and macro_runtime = {
           macro_application = (fun ~name f -> Expand_ctx.macro_application ectx ~name ~expand:(Expand.expand ectx) f);
           expand = Expand.expand ectx;
           application = (fun () -> Expand.application ectx);
+          lookup_macro = Expand_ctx.lookup_macro_entry ectx;
           roles_in_open = Expand_ctx.roles_in_open ectx })
       ectx.Expand_ctx.eval_and_apply
 
@@ -74,7 +76,6 @@ and macro_runtime = {
       self_type = None;
       resume_entry = None;
       loader = None;
-      macro_table = Hashtbl.create 4;
       macro_runtime = None;
       base = None;
     }
@@ -88,7 +89,7 @@ and macro_runtime = {
     match ctx.base with
     | None -> ctx
     | Some base ->
-        { base with loader = ctx.loader; macro_table = ctx.macro_table;
+        { base with loader = ctx.loader;
                     macro_runtime = ctx.macro_runtime }
 
   let bind (ctx : t) (name : string) (ty : value) : t =

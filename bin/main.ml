@@ -26,11 +26,6 @@ let run source =
       source
   in
   let ctx = Elaborate.init_ctx () in
-  Hashtbl.iter (fun name entry ->
-    let kind = match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
-      | Some k -> k | None -> Syntax.MacroKind.default in
-    Hashtbl.replace ctx.Elab_ctx.Ctx.macro_table name (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
-    expand_ctx.Expand_ctx.macro_table;
   ctx.Elab_ctx.Ctx.macro_runtime <- Elab_ctx.Ctx.macro_runtime_of_expander expand_ctx;
   let core, ty = Elaborate.on_expr ~loader ctx expr in
   let value = Elaborate.Ctx.run ctx core in

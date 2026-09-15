@@ -130,20 +130,8 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       let effect_branches' = List.map (elaborate_effect_branch ops ctx expected residual scrutinee_effects) effect_branches in
       check_match_exhaustive ctx scrut_ty (List.map fst (core_value_branches value_branches'));
       Match (scrut_core, value_branches' @ effect_branches')
-  | MacroCall ({ kind = Var { name = macro_name; _ }; _ }, args), _ ->
-      let fallback () =
-        let core, inferred = ops.infer ctx expr in
-        Ctx.unify ctx expected inferred;
-        core
-      in
-      (match Hashtbl.find_opt ctx.macro_table macro_name with
-       | Some (macro_fn, macro_kind, macro_nominals) when Syntax.MacroKind.has_type_binding macro_kind ->
-           (match ctx.macro_runtime with
-            | Some runtime ->
-                run_type_aware_macro runtime ~name:macro_name macro_fn macro_nominals expected args
-                  (fun output -> ops.check ctx output expected)
-            | None -> fallback ())
-       | _ -> fallback ())
+  | MacroCall ({ kind = Var { name; _ }; _ }, args), _ ->
+      fst (apply_typed_macro ~check:ops.check ctx ~name args ~expected:(Some expected))
   | _ ->
       let core, inferred = ops.infer ctx expr in
       let rec wrap_implicits core ty =

@@ -12,8 +12,7 @@ type macro_export = {
   name : string;
   kind : Syntax.MacroKind.t;
   params : Syntax.hole_kind list;
-  compiled : Core.value;
-  syntax_nominals : Macro_eval.syntax_nominals option;
+  entry : Expand_ctx.macro_entry;
   public : bool;
 }
 
@@ -110,26 +109,13 @@ let rec run ?loader ?load_syntax (stx : Syntax.t) : driver_output =
           | Some k -> k
           | None -> Syntax.MacroKind.default
         in
-        { name; kind; compiled = entry.Expand_ctx.value;
+        { name; kind; entry;
           params = Option.value ~default:[] (Expand_ctx.lookup_macro_params expand_ctx name);
-          syntax_nominals = entry.Expand_ctx.syntax_nominals;
           public = List.mem name public_macro_names }
         :: acc)
       expand_ctx.Expand_ctx.macro_table []
     |> List.sort (fun a b -> String.compare a.name b.name)
   in
-  (* Copy compiled macros into the elaboration context so it can resolve
-     macro calls during later elaboration (matching [eval_decl_module]). *)
-  Hashtbl.iter
-    (fun name entry ->
-      let kind =
-        match Hashtbl.find_opt expand_ctx.Expand_ctx.macro_kind_table name with
-        | Some k -> k
-        | None -> Syntax.MacroKind.default
-      in
-      Hashtbl.replace !elab_ctx.Elab_ctx.Ctx.macro_table name
-        (entry.Expand_ctx.value, kind, entry.Expand_ctx.syntax_nominals))
-    expand_ctx.Expand_ctx.macro_table;
   { expanded; expand_ctx; elab_ctx = !elab_ctx; macro_exports }
 
 (** Stage 8: driver-based import loading. Compiles the public macros of
@@ -147,8 +133,7 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
   if not (Sys.file_exists resolved) then raise (Core_loader.ImportNotFound path);
   let register_cached macros =
     List.iter
-      (fun (name, value, kind, params, syntax_nominals) ->
-        Expand_ctx.register_unit_macro ctx ~path ~name ~value ~kind ~params ~syntax_nominals)
+      (fun (name, entry, kind, params) -> Expand_ctx.register_unit_macro ctx ~path ~name ~entry ~kind ~params)
       macros
   in
   (* Whatever the unit's own expander learned has to cross into this one, or a
@@ -181,7 +166,7 @@ and visit_macros (loader : Core_loader.t) (ctx : Expand_ctx.t) (path : string) :
               output.expand_ctx.Expand_ctx.own_unit_members;
             List.filter_map
               (fun (e : macro_export) ->
-                if e.public then Some (e.name, e.compiled, e.kind, e.params, e.syntax_nominals)
+                if e.public then Some (e.name, e.entry, e.kind, e.params)
                 else None)
               output.macro_exports)
       in

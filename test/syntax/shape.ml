@@ -289,7 +289,7 @@ and lower_struct_binding = function
     ImplBinding { name = Option.map (fun (i : Syntax.id) -> i.name) name;
                           trait_path; trait_name; args = List.map lower_expr args;
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
-  | Syntax.MacroBinding { name; value; public; kind } ->
+  | Syntax.MacroBinding { name; value; public; kind; output = _ } ->
     MacroBinding { name = lower_id name; value = lower_expr value; public; kind }
   | Syntax.MacroCallBinding { f; args } ->
     MacroCallBinding { f = lower_expr f; args = List.map lower_capture args }

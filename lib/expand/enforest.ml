@@ -306,10 +306,10 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
     | _ -> error "fn requires at least one parameter list"
   in
   let params = implicit_params @ explicit_params in
-  (* A macro's annotation: [: Decl], or [: Expr(T)] whose [T] only refers - to
-     the macro's type binder or to a type in scope - and becomes a reference in
-     the body, so a name that resolves to nothing is an error at the definition. *)
-  let kind, reference, rest =
+  (* A macro's annotation: [: Decl], or [: Expr(T)] whose [T] is the type its
+     output promises - elaborated where the macro is defined, as its signature.
+     [: Expr(_)] promises nothing. *)
+  let kind, output, rest =
     if not kind_annotation then (None, None, rest)
     else
       match drop_separators rest with
@@ -328,31 +328,27 @@ and parse_fn_parts env ?(allow_empty = false) ?(kind_annotation = false)
           error "a macro annotation is : Expr(T), : Expr(_) or : Decl"
       | rest -> (None, None, rest)
   in
-  (* A macro binds at most one type parameter, the expected type of its call,
-     which ranges over reflected types unless annotated. *)
+  (* A macro's type binders are solved before it runs, each handed to it as the
+     reflected type it was solved to - a [Syntax.R] unless annotated. *)
   let params =
     if not kind_annotation then params
     else
       match implicit_params, kind with
       | [], _ -> params
       | _, Some Syntax.MacroAnnotation.Decl -> error "a Decl macro binds no type parameter"
-      | [ p ], _ ->
-          (* Written at the binder, so it carries the binder's scopes. *)
-          let syntax_id = Syntax.fresh_id ~span:p.name.span ~scope:p.name.scope Compiler_names.Module_name.syntax in
-          let r_type = stx (Syntax.FieldAccess (stx (Syntax.Var syntax_id), Compiler_names.Syntax_name.r)) in
-          { p with type_ = Some (Option.value p.type_ ~default:r_type) } :: explicit_params
-      | _ -> error "a macro binds at most one type parameter"
+      | _ ->
+          List.map
+            (fun (p : Syntax.param) ->
+              (* Written at the binder, so it carries the binder's scopes. *)
+              let syntax_id = Syntax.fresh_id ~span:p.name.span ~scope:p.name.scope Compiler_names.Module_name.syntax in
+              let r_type = stx (Syntax.FieldAccess (stx (Syntax.Var syntax_id), Compiler_names.Syntax_name.r)) in
+              { p with type_ = Some (Option.value p.type_ ~default:r_type) })
+            implicit_params
+          @ explicit_params
   in
   let body, rest, span = parse_body env "fn parameters" rest in
   let span = span_between start_span span in
-  let body =
-    match reference with
-    | None -> body
-    | Some t ->
-        stx ~span:t.span
-          (Syntax.Let { name = id ~span:t.span "_"; type_ = None; value = t; body; recursive = false })
-  in
-  (params, kind, body, rest, span)
+  (params, kind, output, body, rest, span)
 
 (* A body is a brace group, parsed as a block. *)
 and parse_body env what terms =
@@ -366,10 +362,10 @@ and parse_body env what terms =
   | _ -> error ("expected { body } after " ^ what)
 
 and parse_fn ?(kind_annotation = false) env start_span terms =
-  let params, kind, body, rest, span =
+  let params, kind, output, body, rest, span =
     parse_fn_parts ~kind_annotation env start_span terms
   in
-  ( kind,
+  ( (kind, output),
     List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body,
     rest )
 
@@ -1315,7 +1311,7 @@ and do_statement env span stmt =
                     fun acc ->
                       let body =
                         match macro_value with
-                        | Some value -> stx ~span (Syntax.MacroDef { name; value; body = acc; kind = None })
+                        | Some value -> stx ~span (Syntax.MacroDef { name; value; body = acc; kind = None; output = None })
                         | None -> acc
                       in
                       stx ~span (Syntax.SyntaxDef { name; role; body })
@@ -1323,10 +1319,10 @@ and do_statement env span stmt =
                     match parse_macro_binding env false stmt with
                     | Some
                         (Syntax.MacroBinding
-                           { name; value; public = false; kind; _ }) ->
+                           { name; value; public = false; kind; output }) ->
                         fun acc ->
                           stx ~span
-                            (Syntax.MacroDef { name; value; body = acc; kind })
+                            (Syntax.MacroDef { name; value; body = acc; kind; output })
                     | Some (Syntax.MacroBinding { public = true; _ }) ->
                         error "pub macro is not supported inside do blocks"
                     | Some _ -> error "unexpected non-macro binding"
@@ -1375,13 +1371,13 @@ and parse_macro_binding env public stmt =
   | { datum = Token { kind = KwMacro; _ }; _ }
     :: ({ datum = Token { kind = Ident name; _ }; span = name_span } as name_term)
     :: rest ->
-      let kind, value, rest =
+      let (kind, output), value, rest =
         parse_fn ~kind_annotation:true env name_span rest
       in
       ensure_no_rest "macro binding" rest;
       Some
         (Syntax.MacroBinding
-           { name = id_of name_term name; value; public; kind })
+           { name = id_of name_term name; value; public; kind; output })
   | _ -> None
 
 and parse_pattern_syn_binding _env public stmt =
@@ -1468,7 +1464,7 @@ and parse_open_binding env public stmt =
 (* A role declaration as bindings: the role, then the macro its body defines. *)
 and role_bindings public { role_name = name; role; macro_value } =
   Syntax.SyntaxBinding { name; role; public }
-  :: (match macro_value with Some value -> [ Syntax.MacroBinding { name; value; public; kind = None } ] | None -> [])
+  :: (match macro_value with Some value -> [ Syntax.MacroBinding { name; value; public; kind = None; output = None } ] | None -> [])
 
 and parse_module_binding env stmt =
   let public, stmt = parse_public_prefix stmt in

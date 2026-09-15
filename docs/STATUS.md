@@ -3,7 +3,7 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after order groups and structural hole extents, 2026-09-15.
+Last updated: after macro signatures, 2026-09-15.
 
 ---
 
@@ -74,6 +74,23 @@ Last updated: after order groups and structural hole extents, 2026-09-15.
 - A template hole ending a group now extends its capture to the whole group.
 - Prelude and every test source migrated mechanically
   ([surface-syntax-braces](wayfinder/tickets/surface-syntax-braces.md)).
+
+### Macro signatures (2026-09-15)
+- A macro's type binders, `(x : Expr(T))` parameters and `: Expr(T)` output are
+  its **signature**, a pi type elaborated where the macro is defined
+  (`Syntax.macro_signature`, carried on `Expand_ctx.macro_entry`). A name in it
+  must resolve there and a promised `T` must be a type. The `_ = T` body device is
+  deleted; `MacroBinding`/`MacroDef` carry `output`, reflected both ways.
+- A macro whose signature promises a type waits for the elaborator, which applies
+  it like a function over types (`Elab_resolve.apply_typed_macro`): binders become
+  metas, typed arguments are checked at their types, the result meets the
+  expected type, every binder must then be solved ("cannot infer A for
+  `default`"), the macro runs with them, and its output is checked at the promised
+  type ("macro `n` promises Expr(I64) …"). Any number of binders. A macro that
+  promises no type still runs during expansion.
+- The elaborator's copied macro table is gone: it asks its macro runtime, so a
+  typed macro works inside the unit that defines it and when imported
+  ([macro-annotation-constraints-mean-nothing](wayfinder/tickets/macro-annotation-constraints-mean-nothing.md)).
 
 ### Order groups and structural hole extents (2026-09-15)
 - Precedence is relative: `order g : stronger_than(a) weaker_than(b) assoc(right)`
@@ -195,10 +212,8 @@ Last updated: after order groups and structural hole extents, 2026-09-15.
   ([names-resolve-without-spelling](wayfinder/tickets/names-resolve-without-spelling.md)).
   Still by spelling: a constructor label matched inside a scrutinee's known nominal.
 - **Macro type binders are explicit.** `macro m[A](x) : Expr(A)` binds `A` (a
-  reflected type, `Syntax.R`, unless annotated); a macro binds at most one, and
-  binding one is what makes it type-aware, so arity is syntactic. Every name in
-  `: Expr(T)` only refers: the enforester makes `T` a reference in the body, so an
-  unbound or misspelt name is an error at the definition. The uppercase rule, the
+  reflected type, `Syntax.R`, unless annotated), so arity is syntactic. (Superseded
+  2026-09-15 by macro signatures, above: any number of binders, `T` checked.) The uppercase rule, the
   `Macro_resolver` pass, the parse-time adapter and `: A` binders are deleted
   ([macro-type-binders-should-be-explicit](wayfinder/tickets/macro-type-binders-should-be-explicit.md)).
   `Elab_infer` no longer special-cases `EffectRow` or `stx_` names

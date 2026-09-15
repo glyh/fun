@@ -974,14 +974,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let macro_name = match f.kind with Var n -> Some n.name | _ -> None in
       (match macro_name with
        | Some name ->
-           (match Hashtbl.find_opt ctx.macro_table name with
-             | Some (macro_fn, _, macro_nominals) ->
-                (match ctx.macro_runtime with
-                 | Some runtime ->
-                     let ty = Ctx.raw_meta ctx in
-                     run_type_aware_macro runtime ~name macro_fn macro_nominals ty args (ops.infer ctx)
-                 | None -> failwith "macro runtime required")
-            | None -> failwith "macro-only syntax should not reach elaboration")
+           apply_typed_macro ~check:ops.check ctx ~name args ~expected:None
        | None -> failwith "macro-only syntax should not reach elaboration")
   | MacroDef _ | SyntaxDef _ | SyntaxOperatorUse _ | Block _ | Instantiate _ ->
       failwith "macro-only syntax should not reach elaboration"
