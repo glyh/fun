@@ -356,7 +356,7 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclImpl" [ w_option ns (w_id ns) name; w_path ns trait; w_list ns (w_expr ns) args; w_fields ns fields; w_bool ns public ]
   | MacroBinding { name; value; public; kind; output } ->
       d "DeclMacro" [ w_id ns name; w_expr ns value; w_bool ns public; w_option ns (w_macro_ann ns) kind; w_option ns (w_expr ns) output ]
-  | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_captured ns) args ]
+  | MacroCallBinding { f; args; public } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_captured ns) args; w_bool ns public ]
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
   | FieldBinding { name; type_ } -> d "DeclField" [ w_string name; w_expr ns type_ ]
@@ -364,8 +364,8 @@ and w_decl ns (b : Syntax.struct_binding) =
   | HoleBinding id -> d "DeclHole" [ w_id ns id ]
   | SyntaxBinding { name; role; public } -> d "DeclSyntax" [ w_id ns name; w_role ns role; w_bool ns public ]
   | Items ts -> d "DeclItems" [ w_tokens ns ts ]
-  | InstantiateBinding { form; rule; captures; from_unit } ->
-      d "DeclInstantiate" [ w_id ns form; w_rule ns rule; w_captures ns captures; w_option ns w_string from_unit ]
+  | InstantiateBinding { inst = { form; rule; captures; from_unit }; public } ->
+      d "DeclInstantiate" [ w_id ns form; w_rule ns rule; w_captures ns captures; w_option ns w_string from_unit; w_bool ns public ]
 
 (* ---- reading values back ---- *)
 
@@ -899,10 +899,11 @@ and u_decl ns v : Syntax.struct_binding option =
           let* kind = u_option ns (u_macro_ann ns) kind in
           let* output = u_option ns (u_expr ns) output in
           Some (Syntax.MacroBinding { name; value; public; kind; output })
-      | "DeclMacroCall", [ f; args ] ->
+      | "DeclMacroCall", [ f; args; public ] ->
           let* f = u_expr ns f in
           let* args = u_list ns (u_captured ns) args in
-          Some (Syntax.MacroCallBinding { f; args })
+          let* public = u_bool ns public in
+          Some (Syntax.MacroCallBinding { f; args; public })
       | "DeclPatternSyn", [ name; params; rhs; public ] ->
           let* name = u_id ns name in
           let* params = ids params in
@@ -918,12 +919,13 @@ and u_decl ns v : Syntax.struct_binding option =
           let* public = u_bool ns public in
           Some (Syntax.SyntaxBinding { name; role; public })
       | "DeclItems", [ ts ] -> let* ts = u_tokens ns ts in Some (Syntax.Items ts)
-      | "DeclInstantiate", [ form; rule; captures; from_unit ] ->
+      | "DeclInstantiate", [ form; rule; captures; from_unit; public ] ->
           let* form = u_id ns form in
           let* rule = u_rule ns rule in
           let* captures = u_captures ns captures in
           let* from_unit = u_option ns u_string from_unit in
-          Some (Syntax.InstantiateBinding { form; rule; captures; from_unit })
+          let* public = u_bool ns public in
+          Some (Syntax.InstantiateBinding { inst = { form; rule; captures; from_unit }; public })
       | _ -> None)
 
 (* ---- the interface the expander and elaborator use ---- *)

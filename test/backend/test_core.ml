@@ -1885,7 +1885,7 @@ let test_generated_macro_binding_reentered () =
   Binding.extend ctx.Expand_ctx.binding_table ~name:"gen" ~scope:Scope_set.empty ~kind:Binding.Macro ~resolved_name:"gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_macro ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
-  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = []; public = false } in
   let _surface_bindings = Expand.expand_struct_bindings ctx [ call ] in
   Alcotest.(check bool) "generated macro registered" true
     (Hashtbl.fold (fun k _ acc -> acc || String.equal (Syntax.label k) "answer") ctx.Expand_ctx.macro_table false);
@@ -1924,7 +1924,7 @@ let test_generated_multi_binding_scope_threading () =
   Binding.extend ctx.Expand_ctx.binding_table ~name:"gen" ~scope:Scope_set.empty ~kind:Binding.Macro ~resolved_name:"gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_x; generated_y ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
-  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
+  let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = []; public = false } in
   let expanded_bindings = Expand.expand_struct_bindings ctx [ call ] in
   let find_let name binds =
     List.find_opt (function Syntax.LetBinding b -> Syntax.label b.name.name = name | _ -> false) binds
@@ -3330,6 +3330,25 @@ let kinded_unit =
              pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
              pub macro with_extra(d : List(Decl)) : List(Decl) { quote { $d; pub extra = 22; } }")
 
+(* [pub] before a declaration syntax form or a declaration macro call makes every
+   declaration it returns public. *)
+let pub_forms_unit =
+  ("pubforms", "open (import \"std\");
+                syntax make : Decl { make $(n : Id) => { $n = 41 } };
+                pub make answer;
+                macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
+                pub seven(sev);
+                make hidden")
+
+let test_pub_form_uses () =
+  check_operator "a pub syntax form's declaration is exported" 42L [ pub_forms_unit ]
+    "{ M = import \"pubforms\"; M.answer + 1 }";
+  check_operator "a pub macro call's declaration is exported" 7L [ pub_forms_unit ]
+    "{ M = import \"pubforms\"; M.sev }";
+  match eval_with_imported_macros [ pub_forms_unit ] "{ M = import \"pubforms\"; M.hidden }" with
+  | exception _ -> ()
+  | _ -> Alcotest.fail "a form used without pub exported its declaration"
+
 let test_m9_param_imported () =
   check_operator "an imported macro's Id parameter, dotted" 5L [ kinded_unit ]
     "{ M = import \"kinds\"; x = 5; M.same(x) }";
@@ -4153,6 +4172,7 @@ let () =
           Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
           Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
           Alcotest.test_case "type is shadowable" `Quick test_type_is_shadowable;
+          Alcotest.test_case "pub form uses export" `Quick test_pub_form_uses;
           Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
           Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
           Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;

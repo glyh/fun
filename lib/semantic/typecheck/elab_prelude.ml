@@ -142,14 +142,14 @@ pub Syntax = module {
     | DeclTrait(Id, List(Id), List(Field), Bool)
     | DeclImpl(Option(Id), Path, List(Expr), List(Field), Bool)
     | DeclMacro(Id, Expr, Bool, Option(MacroAnn), Option(Expr))
-    | DeclMacroCall(Expr, List(Captured))
+    | DeclMacroCall(Expr, List(Captured), Bool)
     | DeclPatternSyn(Id, List(Id), Pattern, Bool)
     | DeclField(String, Expr)
     | DeclOpen(Expr, String)
     | DeclHole(Id)
     | DeclSyntax(Id, Role, Bool)
     | DeclItems(List(TokenTree))
-    | DeclInstantiate(Id, Rule, List(Capture), Option(String));
+    | DeclInstantiate(Id, Rule, List(Capture), Option(String), Bool);
   pub pattern Var(name) = RawVar(_, name);
   pub pattern Ap(f, a) = RawAp(_, f, _, a);
   pub pattern Lam(name, body) = RawLam(_, name, body);

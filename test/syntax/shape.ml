@@ -279,7 +279,7 @@ and lower_struct_binding = function
                           fields = List.map (fun (n, e) -> (n, lower_expr e)) fields; public }
   | Syntax.MacroBinding { name; value; public; kind; output = _ } ->
     MacroBinding { name = lower_id name; value = lower_expr value; public; kind }
-  | Syntax.MacroCallBinding { f; args } ->
+  | Syntax.MacroCallBinding { f; args; public = _ } ->
     MacroCallBinding { f = lower_expr f; args = List.map lower_capture args }
   | Syntax.PatternSynBinding { name; params; rhs; public } ->
     PatternSynBinding { name = lower_id name;

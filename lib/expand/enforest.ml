@@ -1075,8 +1075,9 @@ and template_callbacks env trailing =
     parse_pat_prefix = Enforest_pat.parse_pat_prefix;
     eager = env.eager }
 
-(* A syntax form used where a declaration goes. *)
-and parse_decl_template_use env stmt =
+(* A syntax form used where a declaration goes; [public] when written after
+   [pub], which makes every declaration it returns public. *)
+and parse_decl_template_use ?(public = false) env stmt =
   match drop_separators stmt with
   | ({ datum = Token { kind = Ident head; _ }; _ } as head_term) :: _ -> (
       match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
@@ -1086,7 +1087,7 @@ and parse_decl_template_use env stmt =
               ~position:Syntax.MacroAnnotation.Decl ~from_unit rules stmt
           in
           ensure_no_rest "declaration syntax template use" rest;
-          Some (Syntax.InstantiateBinding inst)
+          Some (Syntax.InstantiateBinding { inst; public })
       | _ -> None)
   | _ -> None
 
@@ -1342,7 +1343,7 @@ match Parse_spec.parse header _env stmt with
       | _ -> error "expected '=' after pattern synonym parameters")
   | None -> None
 
-and parse_macro_call_binding env stmt =
+and parse_macro_call_binding env public stmt =
   (* A bare application statement [f(args)] at declaration position is a
      (decl-)macro invocation: the head is resolved to a macro by the expander,
      which reclassifies it into the internal [MacroCallBinding]. There is no
@@ -1363,7 +1364,7 @@ and parse_macro_call_binding env stmt =
            | None, [] -> [ Syntax.CapExpr (unit ~span:Source_span.synthetic ()) ]
            | None, _ -> List.map (fun a -> Syntax.CapExpr a) (parse_args env items)
          in
-         Syntax.MacroCallBinding { f; args }))
+         Syntax.MacroCallBinding { f; args; public }))
     env stmt
 
 (* [rec A = … and B = …]: a recursive group, its members in order. A lone [rec]
@@ -1435,7 +1436,7 @@ and parse_module_binding env stmt =
           [
             parse_open_binding env public;
             parse_macro_binding env public;
-            parse_macro_call_binding env;
+            parse_macro_call_binding env public;
             parse_pattern_syn_binding env public;
             parse_type_binding env public;
             parse_effect_binding env public;
@@ -1462,7 +1463,8 @@ and parse_module_statement env stmt =
       [ Syntax.HoleBinding (id_of term name) ]
   | [] -> []
   | _ -> (
-      match parse_decl_template_use env stmt with
+      let public, unprefixed = parse_public_prefix stmt in
+      match parse_decl_template_use ~public env unprefixed with
       | Some binding -> [ binding ]
       | None -> parse_module_binding env stmt)
 
@@ -1491,7 +1493,7 @@ and parse_struct_binding env stmt =
       | Some _ when public -> error "pub macro is not supported inside structs"
       | Some binding -> Some [ binding ]
       | None -> (
-          match parse_macro_call_binding env stmt with
+          match parse_macro_call_binding env public stmt with
           | Some _ when public ->
               error "pub macro call is not supported inside structs"
           | Some binding -> Some [ binding ]
@@ -1559,7 +1561,7 @@ let parse_block_decl_form env terms =
       match Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope:(token_scope head_term) head with
       | Some { meaning = Syntax.Rules { rules_kind = Syntax.MacroAnnotation.Decl; _ }; _ } -> (
           match parse_decl_template_use env stmt with
-          | Some (Syntax.InstantiateBinding inst) -> Some (inst, rest)
+          | Some (Syntax.InstantiateBinding { inst; _ }) -> Some (inst, rest)
           | _ -> None)
       | _ -> None)
   | _ -> None
