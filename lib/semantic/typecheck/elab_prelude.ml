@@ -32,7 +32,6 @@ let prims =
     ("gt_i64", i64_predicate);
     ("le_i64", i64_predicate);
     ("ge_i64", i64_predicate);
-    ("no_scopes", VAtomTy Atom_ty.TUnit ^-> AtomTy Atom_ty.TScopes);
     (* [expand_block[Syntax.Expr]]: typed in the prelude's [Syntax] module. *)
     ("expand_block", VPi { explicitness = Implicit; domain = VU; effects = pure_effects; codomain = { env = []; body = Var 0 ^->> Var 1 } });
   ]
@@ -138,6 +137,7 @@ pub Syntax = module {
     | RawRecordConstruct(Option(Span), Expr, List(Field))
     | RawStruct(Option(Span), List(Decl))
     | RawModule(Option(Span), List(Decl))
+    | RawSig(Option(Span), List(Decl))
     | RawImport(Option(Span), String, Scopes)
     | RawOpen(Option(Span), Expr, Expr, String)
     | RawOpenChoice(Option(Span), Id, List(String), Option(String))
@@ -230,17 +230,12 @@ pub Syntax = module {
   pub Decls = List(Decl);
   pub decl_let = fn(name, val, is_pub) { DeclLet(name, val, is_pub, False) };
   pub type R = RExpr(Type) | RDecls | RPat;
-  pub new_id = fn(name) { Id{name = name; span = None; scope = no_scopes(())} };
   pub atom_val = fn(val) { RawAtom(None, val) };
-  pub var = fn(name) { RawVar(None, new_id(name)) };
   pub ap = fn(f, a) { RawAp(None, f, Explicit, a) };
-  pub lam = fn(name, body) { RawLam(None, MkParam(new_id(name), None, Nil, Explicit), body) };
-  pub let_in = fn(name, val, body) { RawLet(None, new_id(name), None, val, body, False) };
   pub i64 = fn(n) { atom_val(I64Atom(n)) };
   pub string = fn(s) { atom_val(StringAtom(s)) };
   pub char = fn(c) { atom_val(CharAtom(c)) };
   pub unit = fn(_) { atom_val(UnitAtom) };
-  pub seq = fn(a, b) { RawLet(None, new_id("_"), None, a, b, False) };
   pub tokens = fn(b : Expr) { match (b) { RawBlock(_, ts) => ts, _ => panic[List(TokenTree)]("tokens: not a block") } };
   pub expand_block = fn(b : Expr) { expand_block[Expr](b) };
   pub id_name = fn(stx) { match (stx) { RawVar(_, id) => id.name, _ => panic[String]("expected identifier") } };

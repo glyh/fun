@@ -106,12 +106,12 @@ let test_eval_dot () =
 
 let test_eval_module_signature_argument () =
   check_i64 "module signature argument" 42L
-    "(fn(m : module { pub x = I64 }) { m.x })(module { pub x = 42 })"
+    "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 42 })"
     ()
 
 let test_eval_module_signature_extra_field () =
   check_i64 "module signature extra field" 42L
-    "(fn(m : module { pub x = I64 }) { m.x })(module { pub x = 42; pub y = True })"
+    "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 42; pub y = True })"
     ()
 
 let test_eval_signature_sugar_argument () =
@@ -119,16 +119,20 @@ let test_eval_signature_sugar_argument () =
     "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 42 })"
     ()
 
-(* A signature is a value: a let-bound one reads as a type exactly as the inline
-   form does, and so does any module whose public members are all types. *)
+(* A signature is its own kind of value: a let-bound one is a type exactly as the
+   inline form is. A module is never a type, even one whose members are types. *)
 let test_eval_let_bound_signature () =
-  check_i64 "let-bound sig" 42L "{ Sig = sig { x : I64 }; f = fn(m : Sig) { m.x + 1 }; f(module { pub x = 41 }) }" ();
-  check_i64 "let-bound module of types" 42L
-    "{ M = module { pub x = I64 }; f = fn(m : M) { m.x }; f(module { pub x = 42 }) }" ()
+  check_i64 "let-bound sig" 42L "{ Sig = sig { x : I64 }; f = fn(m : Sig) { m.x + 1 }; f(module { pub x = 41 }) }" ()
+
+let test_eval_module_is_not_a_signature () =
+  match eval_source "{ Types = module { pub x = I64 }; f = fn(m : Types) { m.x }; f(module { pub x = 42 }) }" with
+  | exception Elab_error.ElabError (Elab_error.NotASignature (Some "Types")) -> ()
+  | exception e -> Alcotest.fail ("module as a type: " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "module as a type: expected NotASignature"
 
 let test_eval_module_signature_functor () =
   check_i64 "module signature functor" 42L
-    "{ F = fn(M : module { pub x = I64 }) { module { pub doubled = M.x + M.x } }; F(module { pub x = 21 }).doubled }"
+    "{ F = fn(M : sig { x : I64 }) { module { pub doubled = M.x + M.x } }; F(module { pub x = 21 }).doubled }"
     ()
 
 let test_ref_read_initial () =
@@ -931,11 +935,11 @@ let check_i64_macro label expected source () =
 
 let test_macro_hygiene_no_capture_user () =
   check_i64_macro "no capture" 1L
-    "{ x = 1; macro m(_) { Syntax.lam(\"x\", Syntax.var(\"x\")) }; (m(0))(x) }" ()
+    "{ x = 1; macro m(_) { quote(fn(x) { x }) }; (m(0))(x) }" ()
 
 let test_macro_hygiene_user_no_capture_macro () =
   check_i64_macro "no capture" 1L
-    "{ macro m(_) { Syntax.lam(\"x\", Syntax.var(\"x\")) }; x = 1; (m(0))(x) }" ()
+    "{ macro m(_) { quote(fn(x) { x }) }; x = 1; (m(0))(x) }" ()
 
 let test_macro_panic_has_message () =
   match eval_with_macros "{ macro bad(_) { panic[I64](\"boom\") }; bad(0) }" with
@@ -1200,14 +1204,14 @@ let test_operator_infix_macro_expands () =
 let test_macro_multi_arg () =
   check_i64_macro "macro multi-arg" 7L
     "{
-       macro add(a, b) { Syntax.ap(Syntax.ap(Syntax.var(\"+\"), a), b) };
+       macro add(a, b) { quote($a + $b) };
        add(3, 4)
      }" ()
 
 let test_macro_multi_arg_swap () =
   check_i64_macro "macro multi-arg swap" (-2L)
     "{
-       macro flip(a, b) { Syntax.ap(Syntax.ap(Syntax.var(\"-\"), b), a) };
+       macro flip(a, b) { quote($b - $a) };
        flip(5, 3)
      }" ()
 
@@ -1229,7 +1233,7 @@ let test_macro_decl_in_expr_context () =
   match
     eval_with_macros
       "{
-         macro check(_) : Decl { Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(42), False) };
+         macro check(_) : Decl { quote { x = 42 } };
          check(0)
        }"
   with
@@ -1241,7 +1245,7 @@ let test_macro_decl_in_expr_context () =
 let test_macro_name_shadowing () =
   check_i64_macro "macro name shadowing regardless of kind" 1L
     "{
-       macro m(_) : Decl { Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(0), False) };
+       macro m(_) : Decl { quote { x = 0 } };
        macro m(stx) { Syntax.i64(1) };
        m(0)
      }" ()
@@ -1249,7 +1253,7 @@ let test_macro_name_shadowing () =
 let test_decl_kind_registered_persists () =
   match eval_with_macros
     "{
-       macro m(_) : Decl { Syntax.decl_let(Syntax.new_id(\"x\"), Syntax.i64(1), False) };
+       macro m(_) : Decl { quote { x = 1 } };
        m(0)
      }"
   with
@@ -1258,21 +1262,21 @@ let test_decl_kind_registered_persists () =
 
 let test_decl_macro_generates_binding () =
   let _ = eval_decl_module
-    "open (import \"std\");\nmacro mk(_) : Decl { Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) };
-mk(0);
-pub answer = 42"
+    "open (import \"std\");\nmacro mk(n : Id) : Decl { quote { $n = 42 } };
+mk(answer);
+pub answer2 = answer"
   in
   ()
 
 let test_imported_decl_macro () =
   match eval_with_imported_macros
     [ "imported_decl_module",
-      "open (import \"std\");\nmacro mk(_) : Decl { Syntax.decl_let(Syntax.new_id(\"answer\"), Syntax.i64(42), False) };
-mk(0);
-pub answer = 42" ]
+      "open (import \"std\");\nmacro mk(n : Id) : Decl { quote { $n = 42 } };
+mk(answer);
+pub answer2 = answer" ]
     "{
       M = import \"imported_decl_module\";
-      M.answer
+      M.answer2
      }"
   with
   | VAtom (I64 n) -> Alcotest.(check int64) "imported DeclLet generates binding" 42L n
@@ -1318,7 +1322,7 @@ let test_type_default_macro () =
        macro default[A](_) : Expr(A) {
          match (A) {
          RExpr(I64) => Syntax.i64(0),
-         RExpr(Bool) => Syntax.var(\"False\"),
+         RExpr(Bool) => quote(False),
          _ => { _ = A; Syntax.i64(42) }
          }
        };
@@ -1420,7 +1424,7 @@ let test_block_local_macros_do_not_leak () =
     [ "{ x = { macro mi(_) { Syntax.i64(7) }; 0 }; mi(0) }";
       "{ M = module { macro mi(_) { Syntax.i64(7) } }; mi(0) }";
       "{ R = struct { macro mi(_) { Syntax.i64(7) } }; mi(0) }";
-      "{ Q = struct { macro mi(_) { Syntax.var(\"I64\") }; g : I64 }; R = struct { f : mi(0) }; R{f = 1}.f }" ];
+      "{ Q = struct { macro mi(_) { quote(I64) }; g : I64 }; R = struct { f : mi(0) }; R{f = 1}.f }" ];
   check_i64_macro "block-local macro usable inside its block" 7L
     "{ R = struct { macro mi(_) { Syntax.i64(7) }; pub h = mi(0) }; R.h }" ()
 
@@ -1430,9 +1434,9 @@ let test_block_local_macros_do_not_leak () =
 let test_macro_does_not_capture_argument () =
   List.iter
     (fun src -> check_i64_macro src 1L src ())
-    [ "{ x = 1; macro m(e) { Syntax.ap(Syntax.lam(\"x\", e), Syntax.i64(2)) }; y : I64 = m(x); y }";
+    [ "{ x = 1; macro m(e) { quote((fn(x) { $e })(2)) }; y : I64 = m(x); y }";
       "{ x = 1; macro m(e) { quote((fn(x) { $e })(2)) }; y : I64 = m(x); y }";
-      "{ x = 1; macro m[A](e) : Expr(A) { { _ = A; Syntax.ap(Syntax.lam(\"x\", e), Syntax.i64(2)) } }; y : I64 = m(x); y }";
+      "{ x = 1; macro m[A](e) : Expr(A) { { _ = A; quote((fn(x) { $e })(2)) } }; y : I64 = m(x); y }";
       "{ x = 1; syntax li { li $body => { x = 2; $body } }; y : I64 = li x; y }" ]
 
 (* A template's literal ids mean the declarer's names: a caller's [False] or
@@ -1462,7 +1466,7 @@ let test_quote_declarations () =
   check_i64_macro "quote { } splices an expression hole into a declaration" 42L
     "{ macro define(v) : Decl { quote { pub answer = $v; } }; M = module { define(21 + 21) }; M.answer }" ();
   check_i64_macro "quote { } splices a declaration hole" 6L
-    "{ macro wrap(v) : List(Decl) { d = Cons(Syntax.decl_let(Syntax.new_id(\"answer\"), v, True), Nil); quote { $d; pub other = 1; } };
+    "{ macro wrap(v) : List(Decl) { d = quote { pub answer = $v }; quote { $d; pub other = 1; } };
        M = module { wrap(5) }; M.answer + M.other }" ()
 
 let test_type_aware_output_is_expanded () =
@@ -1483,7 +1487,7 @@ let test_expected_type_reaches_macro () =
 
 let test_expected_type_rejects_mismatch () =
   match eval_decl_module
-    "open (import \"std\");\nmacro typed[A](_) : Expr(A) { Syntax.var(\"True\") };
+    "open (import \"std\");\nmacro typed[A](_) : Expr(A) { quote(True) };
      pub x : I64 = typed(0)"
   with
   | _ -> Alcotest.fail "expected type mismatch"
@@ -1504,7 +1508,7 @@ let test_binder_type_mismatch () =
     incompatible with the annotated use site. *)
 let test_binder_body_type_mismatch () =
   match eval_decl_module
-    "open (import \"std\");\nmacro mk(_) : Expr(I64) { Syntax.var(\"True\") };
+    "open (import \"std\");\nmacro mk(_) : Expr(I64) { quote(True) };
      pub x : I64 = mk(0)"
   with
   | _ -> Alcotest.fail "expected binder body type mismatch"
@@ -1534,7 +1538,22 @@ let driver_vs_pipeline source =
   (* Each parse mints its own enforestation scopes (negative, from one global
      counter), so compare with those erased; the expander's scopes restart per
      context and must agree. *)
-  let erase = Expand.map_ids (fun (id : Syntax.id) -> { id with scope = List.filter (fun s -> s >= 0) id.scope }) in
+  (* Resolved names come from one global counter, so each run's are numbered
+     in order of first appearance before comparing. *)
+  let erase stx =
+    let numbering = Hashtbl.create 16 in
+    let rename name =
+      if not (String.contains name '#') then name
+      else
+        match Hashtbl.find_opt numbering name with
+        | Some n -> n
+        | None ->
+            let n = Printf.sprintf "%s#%d" (Syntax.label name) (Hashtbl.length numbering) in
+            Hashtbl.add numbering name n;
+            n
+    in
+    Expand.map_ids (fun (id : Syntax.id) -> { id with name = rename id.name; scope = List.filter (fun s -> s >= 0) id.scope }) stx
+  in
   (erase pipeline_surface, erase driver_output.expanded)
 
 (** Stage 3: structural equivalence — a module with only runtime bindings
@@ -1763,13 +1782,15 @@ let test_generated_macro_binding_reentered () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
+  Binding.extend ctx.Expand_ctx.binding_table ~name:"gen" ~scope:Scope_set.empty ~kind:Binding.Macro ~resolved_name:"gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_macro ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
   let _surface_bindings = Expand.expand_struct_bindings ctx [ call ] in
   Alcotest.(check bool) "generated macro registered" true
-    (Option.is_some (Expand_ctx.lookup_macro ctx "answer"));
-  begin match Expand_ctx.lookup_macro_kind ctx "answer" with
+    (Hashtbl.fold (fun k _ acc -> acc || String.equal (Syntax.label k) "answer") ctx.Expand_ctx.macro_table false);
+  let key = Hashtbl.fold (fun k _ acc -> if String.equal (Syntax.label k) "answer" then k else acc) ctx.Expand_ctx.macro_table "" in
+  begin match Expand_ctx.lookup_macro_kind ctx key with
   | Some kind ->
       Alcotest.(check bool) "generated macro binds no type" false
         (Syntax.MacroKind.has_type_binding kind)
@@ -1800,12 +1821,13 @@ let test_generated_multi_binding_scope_threading () =
   let ctx = Expand_ctx.create () in
   ctx.Expand_ctx.elaborate <- Some (fun _ -> VAtom Unit);
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ fn _ -> fn);
+  Binding.extend ctx.Expand_ctx.binding_table ~name:"gen" ~scope:Scope_set.empty ~kind:Binding.Macro ~resolved_name:"gen";
   Expand_ctx.register_macro ctx ~name:"gen" ~value:(VStx (StxDecls [ generated_x; generated_y ]));
   Expand_ctx.register_macro_kind ctx ~name:"gen" ~kind:Syntax.MacroKind.Decl ~params:[];
   let call = Syntax.MacroCallBinding { f = stx (Syntax.Var (id "gen")); args = [] } in
   let expanded_bindings = Expand.expand_struct_bindings ctx [ call ] in
   let find_let name binds =
-    List.find_opt (function Syntax.LetBinding b -> b.name.name = name | _ -> false) binds
+    List.find_opt (function Syntax.LetBinding b -> Syntax.label b.name.name = name | _ -> false) binds
   in
   match find_let "x" expanded_bindings, find_let "y" expanded_bindings with
   | Some (Syntax.LetBinding { name = x_name; _ }), Some (Syntax.LetBinding { value = y_value; _ }) ->
@@ -1821,7 +1843,7 @@ let test_generated_multi_binding_scope_threading () =
 let test_macro_and_syntax_together () =
   check_i64_macro "macro and syntax together" 20L
     "{
-       macro twice(x) { Syntax.ap(Syntax.ap(Syntax.var(\"+\"), x), x) };
+       macro twice(x) { quote($x + $x) };
        syntax wrap { wrap $x => twice($x) };
        wrap 10
      }" ()
@@ -1938,7 +1960,7 @@ let test_syntax_module_literal_inspectors () =
     "{ macro answer(_) { Syntax.i64(42) }; answer() }" ()
 
 let test_syntax_module_literal_inspector_error () =
-  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Atom(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(Syntax.var(\"x\")) }" with
+  match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Atom(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(g(x)) }" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected atom fallback on non-atom"
 
@@ -1984,7 +2006,7 @@ let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
   match Elaborate.resolve_stdlib ctx ["Syntax"; "Expr"] with
   | VNominal { name = "Expr"; num_params = 0; constructors; _ } ->
-      Alcotest.(check int) "one constructor per expression form" 39 (List.length constructors);
+      Alcotest.(check int) "one constructor per expression form" 40 (List.length constructors);
       Alcotest.(check bool) "RawVar present" true
         (List.exists (fun (n, _) -> n = "RawVar") constructors);
       Alcotest.(check bool) "RawAtom present" true
@@ -2021,7 +2043,7 @@ let test_syntax_primitive_names_hidden () =
 let test_syntax_module_application_builder () =
   check_i64_macro "Syntax.ap builder" 3L
     "{
-       macro add(_) { Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.i64(1)), Syntax.i64(2)) };
+       macro add(_) { quote(1 + 2) };
        add(0)
      }" ()
 
@@ -2038,7 +2060,7 @@ let test_syntax_module_literal_builders () =
 let test_syntax_module_let_builder () =
   check_i64_macro "Syntax let builder" 7L
     "{
-       macro answer(_) { Syntax.let_in(\"x\", Syntax.i64(3), Syntax.ap(Syntax.ap(Syntax.var(\"+\"), Syntax.var(\"x\")), Syntax.i64(4))) };
+       macro answer(_) { quote({ x = 3; x + 4 }) };
        answer(0)
       }" ()
 
@@ -2058,9 +2080,9 @@ let test_7g_adt_matching_hygiene_roundtrip () =
    macro's, and does not capture the caller's [x] (M2). *)
 let test_7g_adt_matching_hygiene_introduced_body () =
   check_i64_macro "7G: rebuilt lambda binds its body through its own parameter" 80L
-    "{ macro double(stx) { match (stx) { Syntax.Lam(p, body) => Syntax.RawLam(None, p, Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)), _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }" ();
+    "{ macro double(stx) { match (stx) { Syntax.Lam(p, body) => Syntax.RawLam(None, p, quote($body + $body)), _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }" ();
   match eval_with_macros
-    "{ macro double(stx) { match (stx) { Syntax.Lam(_, body) => Syntax.lam(\"x\", Syntax.ap(Syntax.ap(Syntax.var(\"+\"), body), body)), _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }"
+    "{ macro double(stx) { match (stx) { Syntax.Lam(_, body) => quote(fn(x) { $body + $body }), _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }"
   with
   | _ -> Alcotest.fail "a string-built binder must not capture the caller's x"
   | exception _ -> ()
@@ -3014,6 +3036,23 @@ let expect_expand_error label check source =
   | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
   | _ -> Alcotest.fail (label ^ ": expected an expansion error")
 
+(* M12: every declaration binder is fresh, so a type a macro declares does not
+   take the caller's type of the same name. *)
+let test_declaration_binders_are_fresh () =
+  check_i64_macro "the caller's type is not the macro's" 1L
+    "{
+       type Tmp = Yes | No;
+       macro with_tmp(e) { quote({ type Tmp = A | B; $e }) };
+       with_tmp({ v : Tmp = Yes; match (v) { Yes => 1, No => 0 } })
+     }" ()
+
+(* M11/M12: with no string-built ids, a resolved name reaches the expander only
+   under the certificate its scopes carry, so a macro cannot forge one. *)
+let test_resolved_names_cannot_be_forged () =
+  expect_expand_error "a resolved name the macro was not given"
+    (function Expand_error.NotSyntax _ -> true | _ -> false)
+    "{ x = 5; macro steal(n : Id) { Syntax.RawVar(None, Syntax.Id{name = \"x#0\"; span = None; scope = n.scope}) }; steal(y) }"
+
 let test_m9_param_id () =
   check_i64_macro "an Id parameter names the use site's binder" 5L
     "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 5; same(x) }" ()
@@ -3121,17 +3160,17 @@ let count_error expected got = function
 
 let test_m8_argument_count () =
   expect_expand_error "a Decl macro given too few arguments" (count_error 2 1)
-    "{ M = module { macro two(a, b) : Decl { Syntax.decl_let(Syntax.new_id(\"x\"), a, False) }; two(1); pub r = 1 }; M.r }";
+    "{ M = module { macro two(a, b) : Decl { quote { x = $a } }; two(1); pub r = 1 }; M.r }";
   expect_expand_error "a Decl macro given too many arguments" (count_error 2 3)
-    "{ M = module { macro two(a, b) : Decl { Syntax.decl_let(Syntax.new_id(\"x\"), a, False) }; two(1, 2, 3); pub r = 1 }; M.r }";
+    "{ M = module { macro two(a, b) : Decl { quote { x = $a } }; two(1, 2, 3); pub r = 1 }; M.r }";
   expect_expand_error "an Expr macro given too many arguments" (count_error 1 2)
     "{ macro one(a) { a }; one(1, 2) }";
   expect_expand_error "an Expr macro given too few arguments" (count_error 2 1)
     "{ macro two(a, b) { a }; two(1) }";
   check_i64_macro "a Decl macro with an empty parameter list" 4L
-    "{ M = module { macro four() : Decl { Syntax.decl_let(Syntax.new_id(\"four\"), Syntax.i64(4), False) }; four(); pub r = 1 }; M.r + 3 }" ();
+    "{ M = module { macro four() : Decl { quote { four = 4 } }; four(); pub r = 1 }; M.r + 3 }" ();
   check_i64_macro "a macro's result applied to a further argument" 5L
-    "{ macro ident(_) { Syntax.lam(\"y\", Syntax.var(\"y\")) }; ident(0)(5) }" ()
+    "{ macro ident(_) { quote(fn(y) { y }) }; ident(0)(5) }" ()
 
 (* A Decl macro's output type: [: Decl] is one declaration, [: List(Decl)] any
    number; its body is checked against it where the macro is defined. *)
@@ -3236,6 +3275,7 @@ let () =
           Alcotest.test_case "module signature extra field" `Quick test_eval_module_signature_extra_field;
           Alcotest.test_case "signature sugar argument" `Quick test_eval_signature_sugar_argument;
           Alcotest.test_case "let-bound signature" `Quick test_eval_let_bound_signature;
+          Alcotest.test_case "a module is not a signature" `Quick test_eval_module_is_not_a_signature;
           Alcotest.test_case "imported signature" `Quick test_eval_imported_signature;
           Alcotest.test_case "module signature functor" `Quick test_eval_module_signature_functor;
           Alcotest.test_case "ref read initial" `Quick test_ref_read_initial;
@@ -3910,6 +3950,8 @@ let () =
           Alcotest.test_case "a Block parameter" `Quick test_m9_param_block;
           Alcotest.test_case "a type-aware macro's Id parameter" `Quick test_m9_param_type_aware;
           Alcotest.test_case "an argument of the wrong kind" `Quick test_m9_param_kind_mismatch;
+          Alcotest.test_case "declaration binders are fresh" `Quick test_declaration_binders_are_fresh;
+          Alcotest.test_case "resolved names cannot be forged" `Quick test_resolved_names_cannot_be_forged;
           Alcotest.test_case "a Decl parameter" `Quick test_m9_param_decl;
           Alcotest.test_case "a Decl argument of the wrong kind" `Quick test_m9_param_decl_kind_mismatch;
           Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;

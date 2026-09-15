@@ -17,11 +17,31 @@ let type_value_of_expr ops ctx (expr : Syntax.t) =
   let core, ty = ops.infer ctx expr in
   require_pure ops ctx expr;
   let value = Ctx.eval ctx core in
-  match signature_of_module ctx value with
-  | Some signature -> (core, VU, signature)
-  | None ->
-      check_type_like ctx ty value;
-      (core, ty, value)
+  (* A module is never a type: only a signature value ([sig { … }]) is. *)
+  (match Nbe.force ctx.Ctx.metas value with
+   | VModule { partial = false; _ } -> raise (ElabError (NotASignature (Option.map Syntax.label (Syntax.written_name expr))))
+   | _ -> ());
+  check_type_like ctx ty value;
+  (core, ty, value)
+
+(* [sig { x : I64; … }]: a signature value, its own kind of value, distinct from
+   a module. Each member is a type, seen by the members after it. *)
+let infer_signature ops ctx bindings =
+  let rec go ctx acc = function
+    | [] -> List.rev acc
+    | Syntax.LetBinding { name = { name = key; _ }; value; _ } :: rest ->
+        let name = Syntax.label key in
+        let value_core, value_ty = ops.infer ctx value in
+        require_pure ops ctx value;
+        let value_val = Ctx.eval ctx value_core in
+        check_type_like ctx value_ty value_val;
+        go (Ctx.define ctx key VU value_val) ((name, Public, value_val) :: acc) rest
+    | _ -> raise (ElabError ApplyingNonFunction)
+  in
+  let fields = go (Ctx.clear_self_scope ctx) [] bindings in
+  check_duplicate_names (List.map (fun (name, _, _) -> name) fields);
+  validate_module_fields fields;
+  (Module { bindings = List.map (fun (name, _, value) -> LetBind (name, Public, Ctx.quote ctx value)) fields; signature = true }, VU)
 
 let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_row = function
   | None -> { effects = []; tail = Some (Meta (MetaContext.fresh ctx.Ctx.metas)) }

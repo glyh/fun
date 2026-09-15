@@ -29,18 +29,22 @@ h = fn(m : sig { T : Type; v : T }) { m.v }   // fails, even without open
 
 ## (1) Implemented (2026-09-15, branch `named-signatures`)
 
-Root cause: a module was read as a signature only when the syntactic `module`/`sig`
-form sat in a type position (`Elab_type_expr.type_value_of_expr` had a separate
-branch for it); a let-bound signature is a module *value* and failed
-`check_type_like`. Now one rule reads any module value whose public members are
-all types as the signature of modules with those members
-(`Elab_validate.signature_of_module`), wherever it was written; the syntactic
-branch is deleted. `Sig = sig { x : I64 }; fn(m : Sig)`, a let-bound
-`module { pub x = I64 }`, and an imported `S.Sig` all work.
+**Decided (user, option B):** `sig { … }` evaluates to its own kind of value, a
+signature value, distinct from a module. A module whose members are all types is
+*not* a signature: `Types = module { pub Id = I64 }; fn(m : Types)` is an error
+(`NotASignature "Types"`). Only a signature value — inline, let-bound or imported
+— is a parameter type. No value has two meanings.
 
-Behaviour change: the deleted branch ignored `pub`, so `fn(m : module { x = I64 })`
-used to mean a public `x`. Now a signature's members are the module's public
-members, as for any module; tests migrated to `sig { x : I64 }`.
+- **Representation.** `Syntax.Sig { bindings }` (reflected `RawSig`), elaborated by
+  `Elab_type_expr.infer_signature` to `Core.Module { …; signature = true }`, which
+  evaluates to `VModule { partial = true }` and quotes back to itself. A module
+  evaluates to `partial = false` and is rejected in a type position.
+- **Root cause of the ticket's bug.** A signature was recognised only by the
+  syntactic form in a type position (a special branch in `type_value_of_expr`),
+  so a let-bound one was just a module value. The branch is deleted; the value
+  carries what it is.
+- **Behaviour change.** `fn(m : module { x = I64 })` (a module literal as a type)
+  is now `NotASignature`; tests migrated to `sig { x : I64 }`.
 
 ## Still open
 

@@ -495,7 +495,7 @@ and parse_sig_expr env start_span terms =
               }
         | _ -> error "expected signature field name : type")
   in
-  (stx ~span:(span_between start_span span) (Syntax.Module { bindings }), rest)
+  (stx ~span:(span_between start_span span) (Syntax.Sig { bindings }), rest)
 
 and parse_struct_expr env start_span terms =
   let body_terms, rest, span = brace_body "struct" terms in

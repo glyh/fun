@@ -192,6 +192,9 @@ and kind =
   | Struct of { bindings : struct_binding list }
       (** A struct's items in source order: a [FieldBinding] is one of its fields. *)
   | Module of { bindings : struct_binding list }
+  | Sig of { bindings : struct_binding list }
+      (** [sig { x : I64 }]: a signature value, its own kind of value (not a
+          module); each item is a [LetBinding] whose value is a type. *)
   | Import of { path : string; scope : Scope_set.t }
       (** [import "path"]. [scope] is where it is written, the scope set the
           [import] keyword carries: the roles visible there are what an open of
@@ -315,7 +318,27 @@ let path_of_segments ?span = function
   | head :: members -> { head = fresh_id ?span head; members; head_choice = None }
   | [] -> invalid_arg "path_of_segments: empty path"
 
-let path_last (p : path) = snd (path_split p)
+(* A declaration's label: the name it exports and a member is reached by
+   ([M.x]), as a struct field's label. A binder's resolved name is minted as its
+   label followed by [#n] ([#] begins a comment, so no label contains one); the
+   label is only ever read off a binder the declaration owns, never used to find
+   one. *)
+let label (name : string) = match String.index_opt name '#' with Some i -> String.sub name 0 i | None -> name
+
+(* A resolved name is written with [#], which no token can contain, so source
+   never spells one: only the expander mints them. *)
+let is_resolved_name name = String.contains name '#'
+
+(* Reflection is the one other way a name reaches the expander, so a reflected
+   id's opaque scopes carry the resolved name it was minted with ([Atom.Scopes]),
+   and a reflected resolved name is accepted only under that certificate: a macro
+   that did not receive an id cannot make one that reaches its binder (M11, M12). *)
+let certificate name = if is_resolved_name name then Some name else None
+let certified name cert = (not (is_resolved_name name)) || cert = Some name
+
+(* The label a path's last segment names: a member label, or the label of the
+   binder its head resolved to (a constructor, an effect). *)
+let path_last (p : path) = label (snd (path_split p))
 
 (* A form the compiler writes itself, with no source position. *)
 let synth kind = { kind; span = Source_span.synthetic }

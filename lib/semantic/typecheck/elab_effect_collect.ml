@@ -43,7 +43,7 @@ let rec compile_time_safe (expr : Syntax.t) : bool =
   | Syntax.FieldAccess (e, _) | Syntax.Proj (e, _) -> compile_time_safe e
   | Syntax.RecordConstruct { typ; fields } ->
       compile_time_safe typ && List.for_all (fun (_, value) -> compile_time_safe value) fields
-  | Syntax.Struct { bindings } | Syntax.Module { bindings } -> List.for_all compile_time_safe_struct_binding bindings
+  | Syntax.Struct { bindings } | Syntax.Module { bindings } | Syntax.Sig { bindings } -> List.for_all compile_time_safe_struct_binding bindings
   | Syntax.Open (m, body, _) -> compile_time_safe m && compile_time_safe body
   | Syntax.OpenChoice _ -> true
   | Syntax.RecordTypeDef { fields; body; _ } ->
@@ -184,6 +184,8 @@ let collect_effects ops (ctx : Ctx.t) (expr : Syntax.t) : expr_effects =
   | Syntax.FieldAccess (e, _) | Syntax.Proj (e, _) -> ops.collect_effects ctx e
   | Syntax.RecordConstruct { typ; fields } ->
       union_many_expr_effects ctx (ops.collect_effects ctx typ :: List.map (fun (_, value) -> ops.collect_effects ctx value) fields)
+  (* A signature's members are types, which run nothing. *)
+  | Syntax.Sig _ -> empty_expr_effects
   | Syntax.Module _ | Syntax.Struct _ ->
       let core, _ty = ops.infer ctx expr in
       let value = Ctx.eval ctx core in

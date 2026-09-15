@@ -62,16 +62,6 @@ let rec is_type_like_value ctx value =
         entries
   | _ -> false
 
-(* A module whose members are all types, read as a type, is the signature of
-   modules with members of those types: [sig { x : I64 }] is the module
-   [x = I64]. The reading depends on the value, never on where it was written, so
-   a let-bound signature means what the inline one does. *)
-let signature_of_module ctx value =
-  match Nbe.force ctx.Ctx.metas value with
-  | VModule { entries; partial = false } when is_type_like_value ctx (VModule { entries; partial = true }) ->
-      Some (VModule { entries; partial = true })
-  | _ -> None
-
 let check_type_like ctx ty value =
   if not (Ctx.conv ctx ty VU || is_type_like_value ctx value) then Ctx.unify ctx ty VU
 
