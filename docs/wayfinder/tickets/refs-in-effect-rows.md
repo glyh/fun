@@ -85,3 +85,6 @@ run this during type checking", but it is no longer where purity is decided.
   `Mutate(r)` maps to `r`'s hidden heap. An effect row may therefore mention a
   parameter (see small-followups item 2: method rows are expanded in the wrong
   scope for this).
+- **One surface effect, `Mutate(r)`,** covers allocation, reading and writing a
+  ref's heap. A later split (`Mutate(r)` = `{Read(r), Write(r)}`) stays
+  compatible; add it only when concurrency or `const`-style contracts need it.
