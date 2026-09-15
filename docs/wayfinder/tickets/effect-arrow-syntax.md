@@ -27,7 +27,6 @@ callback's effects" — with `~>` (`-> … can _`) inheriting both.
 | `A -> B` | pure (`->{}`) |
 | `A ->{Log, Exc} B` | exactly these effects |
 | `A ->{_} B` | infer; must be solved (unsolved is an error) |
-| `A ->{any} B` | may perform anything (replaces `can any`) |
 | `A ->{e} B` with `fn[e]…` | polymorphic, named row variable |
 | `A ~> B` | polymorphic sugar (below) |
 
@@ -65,7 +64,7 @@ each case has one spelling. Methods and `Mutate(r)` rows follow (`->{Mutate(r)}`
 - `can {…}`, `can _`, `can any`, the prelude `~>` = `-> … can _`.
 - The "`_` in a parameter becomes a hidden row parameter" proposal (not adopted;
   `~>` covers it).
-- `can any` — now `->{any}`; its meaning at a call site is still open (grill).
+- `can any` / `->{any}` — **dropped** (grilled 2026-09-16): no "may perform anything" row; code whose effects vary uses `~>` or named row variables. Truly dynamic code is not supported.
 
 ## Work
 

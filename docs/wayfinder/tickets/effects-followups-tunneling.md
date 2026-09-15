@@ -47,11 +47,7 @@ blocked_by:
    **Fixed 2026-09-15**: an `UnhandledEffects` raised while a match's branches
    elaborate that names an instance the match handles is reported as
    `HandledEffectEscapes`.
-   **Also decided:** an explicit annotation for "may perform any effect",
-   spelled `can any` (user's suggestion) — an open row the checker does not try to
-   infer, distinct from `can _` (infer) and `can {}` (pure). An unsolved `_` is an
-   error; `can any` is the deliberate way to say "anything".
-
+   **Superseded (2026-09-16):** `can any` / `->{any}` was dropped; see effect-arrow-syntax.
 ## Open questions from the effects-followups run (2026-09-15)
 
 - **An unsolved `can _` in a let-bound lambda's parameter.** Making an unsolved
