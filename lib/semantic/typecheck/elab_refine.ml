@@ -10,6 +10,9 @@ open Elab_resolve
    evaluation reveals, it may. *)
 let rec term_mentions_var target = function
   | Var ix -> ix = target
+  (* An inserted meta is applied to every bound slot, so it reads each one
+     ([Nbe.closure_slots]). *)
+  | InsertedMeta (_, bds) -> List.nth_opt bds target = Some Bound
   | term ->
       List.exists
         (fun (under, sub) -> match under with Some n -> term_mentions_var (target + n) sub | None -> true)

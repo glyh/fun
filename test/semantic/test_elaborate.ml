@@ -85,7 +85,7 @@ let check_type_src source expected_src () =
   let ecore, _ = Elaborate.on_expr ctx (parse_expr expected_src) in
   let expected_val = Elaborate.Ctx.eval ctx ecore in
   if not (Nbe.conv ctx.metas 0 ty expected_val) then
-    Alcotest.fail (Printf.sprintf "type mismatch for %s" source)
+    Alcotest.fail (Printf.sprintf "type mismatch for %s: %s vs %s" source (Debug.pp_value_short ctx.metas ty) (Debug.pp_value_short ctx.metas expected_val))
 
 (* Compares the type of [source] against the type of a reference expression
    [ref_src]. Useful when the expected type (e.g. a product involving the
@@ -1649,6 +1649,8 @@ let binder_counts =
       (eval_i64 "{ f = fn(x) { (module { pub a = 1; pub b = x }).b }; { _ = f(True); f(1) } }" 1L);
     Alcotest.test_case "a perform capturing an outer binding is not generalized" `Quick
       (eval_i64 "{ k = 41; effect E = sig { tell : I64 -> I64 }; g = fn(x) { (fn(u) { x })(perform E.tell(k)) }; match (g(1)) { v => v, effect E.tell n => n } }" 41L);
+    Alcotest.test_case "an inserted meta in a codomain mentions its binder" `Quick
+      (check_type_src "{ Endo = fn[T : Type](u : I64) { T -> T }; id_at : (B : Type) -> B -> B = fn(B : Type, x : B) { x }; f : (A : Type) -> Endo(0) = fn(A : Type) { id_at(A) }; f(I64) }" "I64 -> I64");
   ]
 
 let () =
