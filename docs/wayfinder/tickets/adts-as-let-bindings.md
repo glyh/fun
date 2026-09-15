@@ -155,3 +155,16 @@ enum { … } }; pub open Option`. `pub open` is allowed only when the opened val
 is an enum: it re-exports exactly its constructors (a general `pub open` stays
 rejected). So `open Std; Some(1)` works as before. The rule is in the macro's
 output plus that one narrow `pub open` case.
+
+## Revised (2026-09-16): `export`, not `pub open`
+
+`pub open` stays rejected in every case. A separate construct re-exports:
+
+- **`export M`** makes `M`'s public members members of the enclosing module;
+  **`export M.{a, b}`** exports only those. `M` may be any module or enum.
+- **`export` does not bring names into the module's own scope** — that is `open`'s
+  job. `open` uses names; `export` passes them on.
+- An exported name that clashes with the module's own member (or another export)
+  is an error.
+- `pub type Option A = Some(A) | None` expands to
+  `pub rec Option = fn(A : Type) { enum { Some(A), None } }; open Option; export Option`.

@@ -527,6 +527,8 @@ What remains, in the recommended order:
 
 ### Found by the domain-model audit (2026-09-15)
 
+- [`export`](tickets/export-construct.md)
+  — `export M` / `export M.{a, b}` re-exports members; `pub open` stays rejected.
 - [Effects on the arrow](tickets/effect-arrow-syntax.md)
   — Unison `A ->{E} B`; `~>` params mint, results collect; `can` dropped; pure definitions keep `: T`.
 - [Effects follow-ups from tunneling](tickets/effects-followups-tunneling.md)
