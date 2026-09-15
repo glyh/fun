@@ -506,11 +506,13 @@ What remains, in the recommended order:
 ### Found by the M7 and M9 implementations (2026-09-14)
 
 - [Role visibility gaps left by M7](tickets/role-visibility-gaps-after-m7.md)
-  — import opens check only unit-wide roles; driver-run opens are unchecked;
-  imported roles have no scope set.
+  (closed) — an import's roles bind in the region of the open or binder that
+  imported it; `Import` carries its written scope set, so every open is checked
+  against the roles visible where it is written, driver-run opens included.
 - [Capture extents are chosen by catching parse errors](tickets/capture-extents-chosen-by-exceptions.md)
-  (closed) — a capture reads as far as its parser does, one parse per hole; a
-  trailing hole now takes the longest operand (`inc 1 * 10` is `inc (1 * 10)`).
+  (closed) — a capture reads as far as its parser does, one parse per hole; the
+  hole ending a use reads at the form's precedence (`inc 1 * 10` is
+  `(inc 1) * 10`); whitespace never ends a capture.
 - [Type-case refinement walks the whole context per branch](tickets/type-case-refinement-walks-whole-context.md)
   — the remaining elaboration hotspot after the M9 performance fix.
 - Still in the open [M9 ticket](tickets/templates-desugar-to-macros.md) ("Left"):

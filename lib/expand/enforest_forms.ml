@@ -137,8 +137,8 @@ let parse_perform callbacks start_span terms =
   (stx ~span:(span_between start_span arg.span) (Syntax.Perform { op; arg }), rest)
 
 (* The unit's roles arrive when expansion reaches the import. *)
-let parse_import start_span terms =
+let parse_import ~scope start_span terms =
   match drop_separators terms with
   | { datum = Token { kind = String path; _ }; span } :: rest ->
-      (stx ~span:(span_between start_span span) (Syntax.Import path), rest)
+      (stx ~span:(span_between start_span span) (Syntax.Import { path; scope }), rest)
   | _ -> error "import requires a string path"

@@ -17,6 +17,13 @@ type t =
   | UnfilledHole of { hole : string }
       (** A declaration hole reached expansion: quoted items were placed without
           being evaluated. *)
+  | ArgumentCount of { macro : string; expected : int; got : int }
+      (** A call to a macro with kinded parameters (M9) gives another number of
+          arguments. *)
+  | ArgumentKind of { macro : string; kind : Syntax.hole_kind; span : Source_span.t }
+      (** A macro argument that cannot be read as its parameter's kind. *)
+  | ParameterKind of { macro : string; kind : Syntax.hole_kind }
+      (** A kind a macro parameter cannot take yet. *)
   | RoleConflict of { name : string; span : Source_span.t }
       (** M7: a binder of [name] where a syntax form, operator or macro of that
           name is visible, or the reverse. *)
@@ -40,6 +47,13 @@ let message = function
   | EvalFailed { macro; message } -> Printf.sprintf "expanding macro '%s' failed: %s" macro message
   | UnfitHole { hole; position } -> Printf.sprintf "syntax form hole %s cannot stand as %s" hole position
   | UnfilledHole { hole } -> Printf.sprintf "declaration hole %s reached expansion unfilled" hole
+  | ArgumentCount { macro; expected; got } ->
+      Printf.sprintf "macro '%s' takes %d arguments, given %d" macro expected got
+  | ArgumentKind { macro; kind; span } ->
+      Printf.sprintf "argument at %s of macro '%s' is not %s %s" (Format.asprintf "%a" Source_span.pp span) macro
+        (match kind with Syntax.HoleExpr | HoleId -> "an" | _ -> "a") (Syntax.hole_kind_name kind)
+  | ParameterKind { macro; kind } ->
+      Printf.sprintf "macro '%s' has a %s parameter, which a macro cannot take yet" macro (Syntax.hole_kind_name kind)
   | RoleConflict { name; span } ->
       Printf.sprintf "'%s' at %s is bound both as a syntax form, operator or macro and as another binder \
                       where both are visible" name (Format.asprintf "%a" Source_span.pp span)

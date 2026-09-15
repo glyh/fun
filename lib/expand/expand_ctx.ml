@@ -6,6 +6,7 @@ type macro_entry = {
 type macro_snapshot = {
   entry : macro_entry option;
   kind : Syntax.MacroKind.t option;
+  params : Syntax.hole_kind list option;
   provisional : bool;
 }
 
@@ -21,6 +22,8 @@ type t = {
   mutable opens : (int * string) list;
   mutable macro_table : (string, macro_entry) Hashtbl.t;
   mutable macro_kind_table : (string, Syntax.MacroKind.t) Hashtbl.t;
+  (* A macro's parameter kinds, syntactic like its kind (M9). *)
+  mutable macro_params_table : (string, Syntax.hole_kind list) Hashtbl.t;
   mutable provisional_macros : (string, unit) Hashtbl.t;
   mutable elaborate : (Syntax.t -> Core.value) option;
   (* Applies a macro value to an argument, spending from the budget it is handed. *)
@@ -72,6 +75,7 @@ let create ?loader () =
     opens = [];
     macro_table = Hashtbl.create 8;
     macro_kind_table = Hashtbl.create 8;
+    macro_params_table = Hashtbl.create 8;
     provisional_macros = Hashtbl.create 4;
     elaborate = None;
     eval_and_apply = None;
@@ -138,7 +142,7 @@ let enter_open (ctx : t) ?(occurrence = Scope_set.empty) (m : Syntax.t) : Scope_
   let scope = fresh_scope ctx in
   let label =
     match m.kind with
-    | Syntax.Import path -> Compiler_names.Module_name.unit_open_label path
+    | Syntax.Import { path; _ } -> Compiler_names.Module_name.unit_open_label path
     | _ -> "open:" ^ string_of_int scope
   in
   Hashtbl.iter
@@ -272,6 +276,7 @@ let copy (ctx : t) : t =
     opens = ctx.opens;
     macro_table = Hashtbl.copy ctx.macro_table;
     macro_kind_table = Hashtbl.copy ctx.macro_kind_table;
+    macro_params_table = Hashtbl.copy ctx.macro_params_table;
     provisional_macros = Hashtbl.copy ctx.provisional_macros;
     elaborate = ctx.elaborate;
     eval_and_apply = ctx.eval_and_apply;
@@ -295,8 +300,9 @@ let register_macro_with_nominals ctx ~syntax_nominals ~name ~value =
 let register_macro ctx ~name ~value =
   register_macro_with_nominals ctx ~syntax_nominals:ctx.syntax_nominals ~name ~value
 
-let register_macro_kind (ctx : t) ~name ~kind =
-  Hashtbl.replace ctx.macro_kind_table name kind
+let register_macro_kind ?(params = []) (ctx : t) ~name ~kind =
+  Hashtbl.replace ctx.macro_kind_table name kind;
+  Hashtbl.replace ctx.macro_params_table name params
 
 (* The [macro_table] key under which unit [path]'s macro [name] is filed. The
    separator cannot occur in a source identifier, so a unit's macro is reachable
@@ -310,10 +316,10 @@ let note_unit_macro ctx ~path ~name =
   if not (List.mem name names) then
     Hashtbl.replace ctx.unit_macros path (name :: names)
 
-let register_unit_macro ctx ~path ~name ~value ~kind ~syntax_nominals =
+let register_unit_macro ctx ~path ~name ~value ~kind ~params ~syntax_nominals =
   let key = unit_macro_key ~path ~name in
   register_macro_with_nominals ctx ~syntax_nominals ~name:key ~value;
-  register_macro_kind ctx ~name:key ~kind;
+  register_macro_kind ctx ~name:key ~kind ~params;
   note_unit_macro ctx ~path ~name
 
 let unit_macro_names ctx path =
@@ -351,6 +357,9 @@ let absorb_units ~(from : t) (ctx : t) =
               (match Hashtbl.find_opt from.macro_kind_table key with
                | Some kind -> Hashtbl.replace ctx.macro_kind_table key kind
                | None -> ());
+              (match Hashtbl.find_opt from.macro_params_table key with
+               | Some params -> Hashtbl.replace ctx.macro_params_table key params
+               | None -> ());
               note_unit_macro ctx ~path ~name
           | None -> ())
         names)
@@ -366,12 +375,16 @@ let lookup_macro_entry (ctx : t) name =
 let lookup_macro_kind (ctx : t) name =
   Hashtbl.find_opt ctx.macro_kind_table name
 
+let lookup_macro_params (ctx : t) name =
+  Hashtbl.find_opt ctx.macro_params_table name
+
 let is_provisional_macro ctx name =
   Hashtbl.mem ctx.provisional_macros name
 
 let snapshot_macro ctx name =
   { entry = Hashtbl.find_opt ctx.macro_table name;
     kind = Hashtbl.find_opt ctx.macro_kind_table name;
+    params = Hashtbl.find_opt ctx.macro_params_table name;
     provisional = is_provisional_macro ctx name }
 
 let restore_macro_snapshot ctx ~name snapshot =
@@ -381,6 +394,9 @@ let restore_macro_snapshot ctx ~name snapshot =
   (match snapshot.kind with
    | Some kind -> Hashtbl.replace ctx.macro_kind_table name kind
    | None -> Hashtbl.remove ctx.macro_kind_table name);
+  (match snapshot.params with
+   | Some params -> Hashtbl.replace ctx.macro_params_table name params
+   | None -> Hashtbl.remove ctx.macro_params_table name);
   if snapshot.provisional then Hashtbl.replace ctx.provisional_macros name ()
   else Hashtbl.remove ctx.provisional_macros name
 

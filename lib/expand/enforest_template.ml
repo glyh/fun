@@ -8,14 +8,12 @@ open Enforest_util
 
 (* A hole's kind is written as its reflection type: [$(x : Id)]. *)
 let parse_hole_kind = function
-  | "Expr" -> Syntax.HoleExpr
-  | "Block" -> Syntax.HoleBlock
-  | "Id" -> Syntax.HoleId
-  | "Decl" -> Syntax.HoleDecl
-  | "Pattern" -> Syntax.HolePattern
   | ("expr" | "block" | "binder" | "ident" | "decl") as kind ->
       error ("hole kinds are written as types (Expr, Block, Id, Decl, Pattern), not " ^ kind)
-  | kind -> error ("unknown syntax template hole kind: " ^ kind)
+  | kind -> (
+      match Syntax.hole_kind_of_name kind with
+      | Some k -> k
+      | None -> error ("unknown syntax template hole kind: " ^ kind))
 
 let raw_token_spelling term =
   match term.datum with
@@ -175,8 +173,13 @@ let parse_rules ~(available : string list) ~head ~parse_replacement body_terms :
 
 type callbacks = {
   parse_expr : Raw_syntax.t list -> Syntax.t;
-  (* The longest expression at the front of the terms, and the terms after it. *)
-  parse_expr_prefix : Raw_syntax.t list -> Syntax.t * Raw_syntax.t list;
+  (* An expression at the front of the terms, read at a precedence, and the
+     terms after it. *)
+  parse_expr_prefix : int -> Raw_syntax.t list -> Syntax.t * Raw_syntax.t list;
+  (* What the hole ending a use reads at: the form's role precedence, as a
+     prefix operator's operand. A hole the pattern bounds - by what follows it,
+     or by its group - reads a whole expression (0). *)
+  precedence : int;
   parse_pat_prefix : Raw_syntax.t list -> Syntax.pat * Raw_syntax.t list;
   (* Reading quoted syntax, which is parsed completely where it is written: a
      captured block is read now too (M10). *)
@@ -205,7 +208,7 @@ let decl_extent rest input =
 (* A group's pattern must consume the whole group: a hole ending it must read
    to the group's end. *)
 let rec match_group callbacks captures pattern_items input_items =
-  Option.map fst (match_parts ~whole:true callbacks captures pattern_items input_items)
+  Option.map fst (match_parts ~whole:true { callbacks with precedence = 0 } captures pattern_items input_items)
 
 and match_parts ?(whole = false) callbacks captures pattern input =
   let continue captures rest input = match_parts ~whole callbacks captures rest input in
@@ -237,7 +240,8 @@ and match_parts ?(whole = false) callbacks captures pattern input =
               with_capture (if callbacks.eager then Syntax.CapExpr (callbacks.parse_expr [ group ]) else Syntax.CapBlock items) input_rest
           | _ -> None)
       | Syntax.HoleExpr ->
-          capture (fun ts -> let e, after = callbacks.parse_expr_prefix ts in (Syntax.CapExpr e, after)) with_capture input
+          let precedence = if rest = [] then callbacks.precedence else 0 in
+          capture (fun ts -> let e, after = callbacks.parse_expr_prefix precedence ts in (Syntax.CapExpr e, after)) with_capture input
       | Syntax.HolePattern ->
           capture (fun ts -> let p, after = callbacks.parse_pat_prefix ts in (Syntax.CapPattern p, after)) with_capture input
       | Syntax.HoleDecl -> (

@@ -205,7 +205,7 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | RecordConstruct { typ; fields } -> e "RawRecordConstruct" [ x typ; w_fields ns fields ]
   | Struct { con_fields; bindings } -> e "RawStruct" [ w_fields ns con_fields; w_list ns (w_decl ns) bindings ]
   | Module { bindings } -> e "RawModule" [ w_list ns (w_decl ns) bindings ]
-  | Import path -> e "RawImport" [ w_string path ]
+  | Import { path; scope } -> e "RawImport" [ w_string path; VAtom (Scopes scope) ]
   | Open (m, body, label) -> e "RawOpen" [ x m; x body; w_string label ]
   | OpenChoice { name; opens; fallback } ->
       e "RawOpenChoice" [ w_id ns name; w_list ns w_string opens; w_option ns w_string fallback ]
@@ -234,7 +234,7 @@ let rec w_expr ns (stx : Syntax.t) : value =
   | Block ts -> e "RawBlock" [ w_tokens ns ts ]
   | Instantiate { form; rule; captures; from_unit } ->
       e "RawInstantiate" [ w_id ns form; w_rule ns rule; w_captures ns captures; w_option ns w_string from_unit ]
-  | MacroCall (f, args) -> e "RawMacroCall" [ x f; w_list ns x args ]
+  | MacroCall (f, args) -> e "RawMacroCall" [ x f; w_list ns (w_captured ns) args ]
   | SyntaxOperatorUse { operator; fixity; operands; declaration_span; use_span; unit } ->
       e "RawOperatorUse"
         [ w_id ns operator; w_fixity ns fixity; w_list ns x operands; w_span ns declaration_span;
@@ -266,15 +266,15 @@ and w_rule_part ns = function
   | PartHole { hole; hole_kind; hole_span } ->
       con ns.rule_part "PartHole" [ w_string hole; w_hole_kind ns hole_kind; w_span ns hole_span ]
 
+and w_captured ns = function
+  | Syntax.CapExpr e -> con ns.captured "CapExpr" [ w_expr ns e ]
+  | CapBlock ts -> con ns.captured "CapBlock" [ w_tokens ns ts ]
+  | CapId tok -> con ns.captured "CapId" [ w_token_tree ns { datum = Token tok; span = tok.span } ]
+  | CapPattern p -> con ns.captured "CapPattern" [ w_pat ns p ]
+  | CapDecls ds -> con ns.captured "CapDecls" [ w_list ns (w_decl ns) ds ]
+
 and w_captures ns captures =
-  let captured = function
-    | Syntax.CapExpr e -> con ns.captured "CapExpr" [ w_expr ns e ]
-    | CapBlock ts -> con ns.captured "CapBlock" [ w_tokens ns ts ]
-    | CapId tok -> con ns.captured "CapId" [ w_token_tree ns { datum = Token tok; span = tok.span } ]
-    | CapPattern p -> con ns.captured "CapPattern" [ w_pat ns p ]
-    | CapDecls ds -> con ns.captured "CapDecls" [ w_list ns (w_decl ns) ds ]
-  in
-  w_list ns (fun (n, c) -> con ns.capture "MkCapture" [ w_string n; captured c ]) captures
+  w_list ns (fun (n, c) -> con ns.capture "MkCapture" [ w_string n; w_captured ns c ]) captures
 
 and w_quote_holes ns holes = w_list ns (fun (n, h) -> con ns.quote_hole "MkQuoteHole" [ w_string n; w_expr ns h ]) holes
 
@@ -337,7 +337,7 @@ and w_decl ns (b : Syntax.struct_binding) =
       d "DeclImpl" [ w_option ns (w_id ns) name; w_path ns trait; w_list ns (w_expr ns) args; w_fields ns fields; w_bool ns public ]
   | MacroBinding { name; value; public; kind } ->
       d "DeclMacro" [ w_id ns name; w_expr ns value; w_bool ns public; w_option ns (w_macro_ann ns) kind ]
-  | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_expr ns) args ]
+  | MacroCallBinding { f; args } -> d "DeclMacroCall" [ w_expr ns f; w_list ns (w_captured ns) args ]
   | PatternSynBinding { name; params; rhs; public } ->
       d "DeclPatternSyn" [ w_id ns name; ids params; w_pat ns rhs; w_bool ns public ]
   | OpenBinding (m, label) -> d "DeclOpen" [ w_expr ns m; w_string label ]
@@ -543,7 +543,7 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* bindings = u_list ns (u_decl ns) bindings in
           mk (Struct { con_fields; bindings })
       | "RawModule", [ bindings ] -> let* bindings = u_list ns (u_decl ns) bindings in mk (Module { bindings })
-      | "RawImport", [ path ] -> let* path = u_string path in mk (Import path)
+      | "RawImport", [ path; VAtom (Scopes scope) ] -> let* path = u_string path in mk (Import { path; scope })
       | "RawOpen", [ m; body; label ] ->
           let* m = x m in let* body = x body in let* label = u_string label in mk (Open (m, body, label))
       | "RawOpenChoice", [ name; opens; fallback ] ->
@@ -619,7 +619,7 @@ let rec u_expr ns (v : value) : Syntax.t option =
           let* captures = u_captures ns captures in
           let* from_unit = u_option ns u_string from_unit in
           mk (Instantiate { form; rule; captures; from_unit })
-      | "RawMacroCall", [ f; args ] -> let* f = x f in let* args = u_list ns x args in mk (MacroCall (f, args))
+      | "RawMacroCall", [ f; args ] -> let* f = x f in let* args = u_list ns (u_captured ns) args in mk (MacroCall (f, args))
       | "RawOperatorUse", [ operator; fixity; operands; declaration_span; use_span; unit ] ->
           let* operator = u_id ns operator in
           let* fixity = u_fixity ns fixity in
@@ -681,21 +681,21 @@ and u_rule_part ns v : Syntax.rule_part option =
       Some (Syntax.PartHole { hole; hole_kind; hole_span })
   | _ -> None
 
+and u_captured ns c : Syntax.capture option =
+  match payload ns.captured c with
+  | Some ("CapExpr", [ e ]) -> let* e = u_expr ns e in Some (Syntax.CapExpr e)
+  | Some ("CapBlock", [ ts ]) -> let* ts = u_tokens ns ts in Some (Syntax.CapBlock ts)
+  | Some ("CapId", [ t ]) -> (
+      match u_token_tree ns t with Some { datum = Token tok; _ } -> Some (Syntax.CapId tok) | _ -> None)
+  | Some ("CapPattern", [ p ]) -> let* p = u_pat ns p in Some (Syntax.CapPattern p)
+  | Some ("CapDecls", [ ds ]) -> let* ds = u_list ns (u_decl ns) ds in Some (Syntax.CapDecls ds)
+  | _ -> None
+
 and u_captures ns v =
-  let captured c : Syntax.capture option =
-    match payload ns.captured c with
-    | Some ("CapExpr", [ e ]) -> let* e = u_expr ns e in Some (Syntax.CapExpr e)
-    | Some ("CapBlock", [ ts ]) -> let* ts = u_tokens ns ts in Some (Syntax.CapBlock ts)
-    | Some ("CapId", [ t ]) -> (
-        match u_token_tree ns t with Some { datum = Token tok; _ } -> Some (Syntax.CapId tok) | _ -> None)
-    | Some ("CapPattern", [ p ]) -> let* p = u_pat ns p in Some (Syntax.CapPattern p)
-    | Some ("CapDecls", [ ds ]) -> let* ds = u_list ns (u_decl ns) ds in Some (Syntax.CapDecls ds)
-    | _ -> None
-  in
   u_list ns
     (fun e ->
       match payload ns.capture e with
-      | Some ("MkCapture", [ n; c ]) -> let* n = u_string n in let* c = captured c in Some (n, c)
+      | Some ("MkCapture", [ n; c ]) -> let* n = u_string n in let* c = u_captured ns c in Some (n, c)
       | _ -> None)
     v
 
@@ -862,7 +862,7 @@ and u_decl ns v : Syntax.struct_binding option =
           Some (Syntax.MacroBinding { name; value; public; kind })
       | "DeclMacroCall", [ f; args ] ->
           let* f = u_expr ns f in
-          let* args = u_list ns (u_expr ns) args in
+          let* args = u_list ns (u_captured ns) args in
           Some (Syntax.MacroCallBinding { f; args })
       | "DeclPatternSyn", [ name; params; rhs; public ] ->
           let* name = u_id ns name in
@@ -890,6 +890,19 @@ and u_decl ns v : Syntax.struct_binding option =
 
 let wrap_stx ~nominals (stx : Syntax.t) : value =
   match nominals with None -> VStx (StxExpr stx) | Some ns -> w_expr ns stx
+
+(* A macro argument, as the value of its parameter's kind (M9): a [Block] is the
+   [Expr] it stands as, an [Id] the id its token names. *)
+let wrap_capture ~nominals (c : Syntax.capture) : value =
+  match nominals, c with
+  | _, CapExpr e -> wrap_stx ~nominals e
+  | _, CapBlock ts -> wrap_stx ~nominals (Syntax.synth (Block ts))
+  | Some ns, CapId tok -> w_id ns (Syntax.token_id tok)
+  | None, CapId tok -> VStx (StxExpr (Syntax.synth (Var (Syntax.token_id tok))))
+  | Some ns, CapPattern p -> w_pat ns p
+  | None, CapPattern p -> VStx (StxPattern p)
+  | Some ns, CapDecls ds -> w_list ns (w_decl ns) ds
+  | None, CapDecls ds -> VStx (StxDecls ds)
 
 let unwrap_stx ?nominals (v : value) : Syntax.t option =
   match nominals, v with

@@ -2059,13 +2059,14 @@ let test_syntax_template_unless () =
        unless False 10
      }" ()
 
-(* A capture extends as far as its parser reads: a trailing hole takes the
-   whole operand, and a group written apart ends an expression hole. *)
+(* A capture extends as far as its parser reads: the hole ending a use reads at
+   the form's precedence, like a prefix operator's operand; a hole the pattern
+   bounds reads a whole expression. *)
 let test_syntax_template_capture_extent () =
-  check_i64_macro "trailing hole takes the longest expression" 11L
+  check_i64_macro "trailing hole reads at the form's precedence" 20L
     "{ syntax inc { | inc $x => $x + 1 }; inc 1 * 10 }" ();
-  check_i64_macro "group written apart ends a capture" 3L
-    "{ syntax both { | both $a $b => $a + $b }; both (1) (2) }" ();
+  check_i64_macro "a bounded hole reads a whole expression" 42L
+    "{ syntax pick { | pick $c then $t else $e => if ($c) { $t } else { $e } }; pick True then 40 + 2 else 0 }" ();
   check_i64_macro "a literal inside the capture is read by the capture" 2L
     "{ syntax when { | when $c $t else $e => if ($c) { $t } else { $e } };
        when True if (False) { 1 } else { 2 } else 0 }" ()
@@ -2347,7 +2348,7 @@ let test_syntax_template_pattern_hole () =
   check_i64_macro "pattern hole splices a use-site pattern and its binders" 4L
     "{
        syntax unwrap_or {
-       | unwrap_or $v $(p : Pattern) $body $d => match ($v) { | $p => $body | _ => $d }
+       | unwrap_or ($v) $(p : Pattern) $body $d => match ($v) { | $p => $body | _ => $d }
        };
        unwrap_or (Some(4)) (Some(x)) x 0
      }" ()
@@ -2711,6 +2712,44 @@ let test_m7_open_without_conflict () =
   check_i64_macro "an open supplying other names" 7L
     "{ M = module { pub x = 7 }; syntax answer { | answer => 42 }; open M; x }" ()
 
+(* Role visibility gaps left by M7: an imported role is visible in the region
+   of the open or binder that imported it, and every open is checked. *)
+let answer_syntax = ("ops", "pub syntax answer { | answer => 42 }")
+
+let test_m7_import_open_role_in_region () =
+  match eval_with_imported_macros [ answer_syntax ] "{ x = { open (import \"ops\"); answer }; x }" with
+  | VAtom (I64 n) -> Alcotest.(check int64) "an imported role is visible in its open's region" 42L n
+  | _ -> Alcotest.fail "expected 42"
+
+let imported_role_leaks label source () =
+  match eval_with_imported_macros [ answer_syntax ] source with
+  | VAtom (I64 84L) -> Alcotest.fail (label ^ ": an imported role leaked out of its region")
+  | _ -> Alcotest.fail (label ^ ": expected the use outside the region to be rejected")
+  | exception (Enforest.Error _ | Enforest.Unsupported _ | Elab_error.ElabError _) -> ()
+
+let test_m7_import_open_role_not_after_block () =
+  imported_role_leaks "a block's open (import …)" "{ x = { open (import \"ops\"); answer }; x + answer }" ()
+
+let test_m7_import_binder_role_not_after_block () =
+  imported_role_leaks "a block's M = import …" "{ x = { M = import \"ops\"; answer }; x + answer }" ()
+
+let test_m7_import_open_under_syntax () =
+  match
+    eval_with_imported_macros
+      [ ("m_answer", "pub answer = 7");
+        ("user", "syntax answer { | answer => 42 };\nopen (import \"m_answer\");\npub r = 1") ]
+      "{ U = import \"user\"; U.r }"
+  with
+  | exception Elab_error.ElabError (OpenSuppliesRole "answer") -> ()
+  | exception e -> Alcotest.fail ("unexpected exception " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "an import open supplying a name a unit role has must be rejected"
+
+let test_m7_driver_open_under_syntax () =
+  match run_driver "M = module { pub answer = 7 };\nsyntax answer { | answer => 42 };\nopen M;\npub r = 1" with
+  | exception Elab_error.ElabError (OpenSuppliesRole "answer") -> ()
+  | exception e -> Alcotest.fail ("unexpected exception " ^ Printexc.to_string e)
+  | _ -> Alcotest.fail "an open the driver elaborates must be checked"
+
 let test_m7_template_written_syntax_invisible () =
   match
     eval_with_imported_macros
@@ -2785,6 +2824,96 @@ let test_m9_quote_nested_rule_holes () =
        };
        M.result
      }" ()
+
+let test_m9_quote_token_position_hole () =
+  check_i64_macro "a quote fills a hole naming generated syntax" 42L
+    "{
+       M = module {
+         macro make(n) : Decl {
+           match (n) { | Syntax.Var(name) => quote { syntax $name { | $name $x => $x * 2 }; } | _ => quote { } }
+         };
+         make(double);
+         pub r = double 21
+       };
+       M.r
+     }" ()
+
+(* M9: a macro parameter takes a kind, as a syntax form's hole does; its call's
+   arguments are read as those kinds. *)
+
+let expect_expand_error label check source =
+  match eval_with_macros source with
+  | exception Expand_error.Error { error; _ } when check error -> ()
+  | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
+  | _ -> Alcotest.fail (label ^ ": expected an expansion error")
+
+let test_m9_param_id () =
+  check_i64_macro "an Id parameter names the use site's binder" 5L
+    "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 5; same(x) }" ()
+
+let test_m9_param_id_binds () =
+  check_i64_macro "an Id parameter binds for the caller" 7L
+    "{
+       M = module {
+         macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
+         seven(x);
+         pub r = x
+       };
+       M.r
+     }" ()
+
+let test_m9_param_pattern () =
+  check_i64_macro "a Pattern parameter is read as a pattern" 10L
+    "{
+       macro matches(p : Pattern, e) { quote(match ($e) { | $p => 1 | _ => 0 }) };
+       matches(Some(_), Some(3)) * 10 + matches(None, Some(3))
+     }" ()
+
+let test_m9_param_type_aware () =
+  check_i64_macro "a type-aware macro's Id parameter" 4L
+    "{ macro pick[A](n : Id) : Expr(A) { { _ = A; Syntax.RawVar(None, n) } }; x = 3; pick(x) + 1 }" ()
+
+let test_m9_param_block () =
+  check_i64_macro "a Block parameter is the unread block" 1L
+    "{
+       macro sql(q : Block) {
+         match (Syntax.tokens(q)) {
+         | Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
+             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) }
+         | _ => Syntax.i64(2)
+         }
+       };
+       sql({ SELECT name FROM users })
+     }" ()
+
+let test_m9_param_kind_mismatch () =
+  expect_expand_error "an Id argument that is not an identifier"
+    (function Expand_error.ArgumentKind { kind = HoleId; _ } -> true | _ -> false)
+    "{ macro same(n : Id) { Syntax.RawVar(None, n) }; same(1) }";
+  expect_expand_error "a Block argument that is not a block"
+    (function Expand_error.ArgumentKind { kind = HoleBlock; _ } -> true | _ -> false)
+    "{ macro b(q : Block) { q }; b(1) }";
+  expect_expand_error "too many arguments"
+    (function Expand_error.ArgumentCount { expected = 1; got = 2; _ } -> true | _ -> false)
+    "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 1; same(x, x) }"
+
+let test_m9_param_decl_rejected () =
+  expect_expand_error "a Decl parameter"
+    (function Expand_error.ParameterKind { kind = HoleDecl; _ } -> true | _ -> false)
+    "{ macro m(d : Decl) { Syntax.i64(1) }; 0 }"
+
+let kinded_unit =
+  ("kinds", "open (import \"std\");
+             pub macro same(n : Id) { Syntax.RawVar(None, n) };
+             pub macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) }")
+
+let test_m9_param_imported () =
+  check_operator "an imported macro's Id parameter, dotted" 5L [ kinded_unit ]
+    "{ M = import \"kinds\"; x = 5; M.same(x) }";
+  check_operator "an imported macro's Id parameter, opened" 5L [ kinded_unit ]
+    "{ open (import \"kinds\"); x = 5; same(x) }";
+  check_operator "an imported Decl macro's Id parameter" 7L [ kinded_unit ]
+    "{ M = module { open (import \"kinds\"); seven(y); pub r = y }; M.r }"
 
 (* Names and shape only: a binder expanded again gets a fresh scope, which
    resolution of an already-resolved name never consults. *)
@@ -3503,6 +3632,11 @@ let () =
           Alcotest.test_case "open under syntax" `Quick test_m7_open_under_syntax;
           Alcotest.test_case "syntax inside open region" `Quick test_m7_syntax_inside_open_region;
           Alcotest.test_case "open without conflict" `Quick test_m7_open_without_conflict;
+          Alcotest.test_case "imported role in its open's region" `Quick test_m7_import_open_role_in_region;
+          Alcotest.test_case "block open (import) role not after block" `Quick test_m7_import_open_role_not_after_block;
+          Alcotest.test_case "block import binder role not after block" `Quick test_m7_import_binder_role_not_after_block;
+          Alcotest.test_case "import open under unit syntax" `Quick test_m7_import_open_under_syntax;
+          Alcotest.test_case "driver-run open under syntax" `Quick test_m7_driver_open_under_syntax;
         ] );
       ( "m9 forms",
         [
@@ -3514,5 +3648,14 @@ let () =
           Alcotest.test_case "expansion is idempotent" `Quick test_m9_expansion_idempotent;
           Alcotest.test_case "filling equals the quote" `Quick test_m9_filling_equals_quote;
           Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
+          Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
+          Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
+          Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
+          Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;
+          Alcotest.test_case "a Block parameter" `Quick test_m9_param_block;
+          Alcotest.test_case "a type-aware macro's Id parameter" `Quick test_m9_param_type_aware;
+          Alcotest.test_case "an argument of the wrong kind" `Quick test_m9_param_kind_mismatch;
+          Alcotest.test_case "a Decl parameter is rejected" `Quick test_m9_param_decl_rejected;
+          Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;
         ] );
     ]

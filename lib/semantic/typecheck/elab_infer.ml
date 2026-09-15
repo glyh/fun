@@ -509,14 +509,14 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             raise (ElabError TupleLengthMismatch);
           (Proj (e_core, i), Nbe.force ctx.metas (List.nth tys i))
       | _ -> raise (ElabError ApplyingNonFunction))
-  | Import path when String.equal path Compiler_names.Module_name.std_import_path ->
+  | Import { path; _ } when String.equal path Compiler_names.Module_name.std_import_path ->
       (* Reserved path: [import "std"] resolves to the builtin prelude module,
          already elaborated and bound by [init_ctx] as [stdlib]. Resolving it
          here (typecheck layer) keeps the loader from having to name the prelude
          upward across the layer boundary. *)
       let ix, ty = Ctx.lookup ctx Compiler_names.Module_name.stdlib in
       (Var ix, ty)
-  | Import path -> (
+  | Import { path; _ } -> (
       match ctx.loader with
       | Some loader ->
           (* A compilation unit's meaning depends only on its own source plus

@@ -79,7 +79,7 @@ and struct_binding =
       public : bool;
     }
   | MacroBinding of { name : id; value : t; public : bool; kind : MacroAnnotation.t option }
-  | MacroCallBinding of { f : t; args : t list }
+  | MacroCallBinding of { f : t; args : capture list }
   | PatternSynBinding of { name : id; params : id list; rhs : pat; public : bool }
   | OpenBinding of t * string
       (** [open <module-expr>] at module/struct top level — the binding-list
@@ -177,7 +177,10 @@ and kind =
       bindings : struct_binding list;
     }
   | Module of { bindings : struct_binding list }
-  | Import of string
+  | Import of { path : string; scope : Scope_set.t }
+      (** [import "path"]. [scope] is where it is written, the scope set the
+          [import] keyword carries: the roles visible there are what an open of
+          it must not supply (M7). *)
   | Open of t * t * string
       (** [open m; body]. The string labels this open, so an open choice can
           name it: [""] until expansion assigns one - ["unit:p"] for an open of
@@ -238,7 +241,10 @@ and kind =
   | MacroDef of { name : id; value : t; body : t; kind : MacroAnnotation.t option }
   | SyntaxDef of { name : id; role : role; body : t }
       (** A [SyntaxBinding] scoped over the rest of a block. *)
-  | MacroCall of t * t list
+  | MacroCall of t * capture list
+      (** A macro call whose arguments were read as its parameters' kinds, or
+          one compiler-derived; each argument is a capture, as a syntax
+          form's hole takes (M9). *)
   | SyntaxOperatorUse of {
       operator : id;
       fixity : operator_fixity;
@@ -308,6 +314,54 @@ let attaches (role : role) = role.meaning = ApplyValue
    identifier). *)
 let hole_name (name : string) =
   if String.length name > 1 && name.[0] = '$' then Some (String.sub name 1 (String.length name - 1)) else None
+
+(* A kind is written as its reflection type, in a hole [$(x : Id)] and a macro
+   parameter [(x : Id)] alike. *)
+let hole_kind_of_name = function
+  | "Expr" -> Some HoleExpr
+  | "Block" -> Some HoleBlock
+  | "Id" -> Some HoleId
+  | "Decl" -> Some HoleDecl
+  | "Pattern" -> Some HolePattern
+  | _ -> None
+
+let hole_kind_name = function
+  | HoleExpr -> "Expr" | HoleBlock -> "Block" | HoleId -> "Id" | HoleDecl -> "Decl" | HolePattern -> "Pattern"
+
+(* The id an identifier or operator token names. *)
+let token_id (tok : Token_tree.token) =
+  let name = match tok.kind with Ident s | Operator s -> s | _ -> "" in
+  { name; span = tok.span; scope = tok.scope }
+
+(** A macro's parameter kinds (M9): each explicit parameter annotated with a
+    kind - [(n : Id)] - takes that kind, any other an [Expr]. The kind is the
+    parameter's type, the reflection type in the [Syntax] module, found from
+    the annotation's own scopes; a [Block] is an [Expr] (a [RawBlock]). Returns
+    the kinds and the value with each kind annotation made that type. *)
+let macro_params (value : t) : hole_kind list * t =
+  let kind_type (p : param) =
+    match p.type_ with
+    | Some ({ kind = Var ({ name; _ } as written); span } as ty) -> (
+        match hole_kind_of_name name with
+        | Some kind ->
+            let type_name = match kind with HoleBlock -> "Expr" | k -> hole_kind_name k in
+            let syntax = { written with name = Compiler_names.Module_name.syntax } in
+            (kind, Some { ty with kind = FieldAccess ({ kind = Var syntax; span }, type_name) })
+        | None -> (HoleExpr, p.type_))
+    | _ -> (HoleExpr, p.type_)
+  in
+  let rec go (stx : t) =
+    match stx.kind with
+    | Lam (({ explicitness = Explicitness.Implicit; _ } as p), body) ->
+        let kinds, body = go body in
+        (kinds, { stx with kind = Lam (p, body) })
+    | Lam (p, body) ->
+        let kind, type_ = kind_type p in
+        let kinds, body = go body in
+        (kind :: kinds, { stx with kind = Lam ({ p with type_ }, body) })
+    | _ -> ([], stx)
+  in
+  go value
 
 let names (ids : id list) = List.map (fun (i : id) -> i.name) ids
 

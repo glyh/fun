@@ -19,7 +19,7 @@ let expect_budget_exceeded ~call f =
   | _ -> Alcotest.fail "expected an evaluation budget error"
 
 let expr_call name =
-  stx (Syntax.MacroCall (stx (Syntax.Var (id name)), [ stx (Syntax.Atom (I64 0L)) ]))
+  stx (Syntax.MacroCall (stx (Syntax.Var (id name)), [ Syntax.CapExpr (stx (Syntax.Atom (I64 0L))) ]))
 
 let ready_expr_macro_ctx () =
   let ctx = Expand_ctx.create () in
@@ -64,7 +64,7 @@ let test_decl_macro_exhausts_budget () =
    never trips on it; the budget counts every application. *)
 let doubling_macro_ctx () =
   let ctx = Expand_ctx.create () in
-  let call n = stx (Syntax.MacroCall (stx (Syntax.Var (id "mk")), [ stx (Syntax.Atom (I64 n)) ])) in
+  let call n = stx (Syntax.MacroCall (stx (Syntax.Var (id "mk")), [ Syntax.CapExpr (stx (Syntax.Atom (I64 n))) ])) in
   let plus a b = stx (Syntax.Ap (stx (Syntax.Ap (stx (Syntax.Var (id "+")), Explicit, a)), Explicit, b)) in
   ctx.Expand_ctx.eval_and_apply <- Some (fun _ _ arg ->
     match arg with

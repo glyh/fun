@@ -31,6 +31,9 @@ type env = {
      scopes it over the statements after it. *)
   mutable declared : int;
   errors : Parse_error.t list ref;
+  (* The parameter kinds of the macro a call's head names, when it names one:
+     its arguments are read as those kinds (M9). The expander answers. *)
+  macro_params : Syntax.t -> Syntax.hole_kind list option;
 }
 
 (* The compiler-known base role: [<-], ref assignment, always in scope. *)
@@ -39,7 +42,8 @@ let base_roles (tbl : Binding.t) =
     ~role:(Binding.role ~fixity:Syntax.InfixOp ~precedence:1 ~assoc:Syntax.RightAssoc Syntax.AssignRef)
 
 (* Reading forms as expansion reaches them, with the expander's roles. *)
-let lazy_env operators = { operators; eager = false; registers = false; holes = []; declared = 0; errors = ref [] }
+let lazy_env ?(macro_params = fun _ -> None) operators =
+  { operators; eager = false; registers = false; holes = []; declared = 0; errors = ref []; macro_params }
 
 (* Reading quoted syntax where it is written. *)
 let eager_env ?(holes = []) env =
@@ -220,6 +224,10 @@ let is_adjacent_postfix (lhs : Syntax.t) (term : Raw_syntax.t) =
 let spans_adjacent (lhs : Source_span.t) (rhs : Source_span.t) =
   lhs.synthetic || rhs.synthetic || lhs.end_byte = rhs.start_byte
 
+let require_adjacent_postfix lhs term what =
+  if not (is_adjacent_postfix lhs term) then
+    error (what ^ " must be adjacent to the callee; whitespace application is not supported")
+
 let require_adjacent_span lhs rhs what =
   if not (spans_adjacent lhs rhs) then
     error (what ^ " must be adjacent; whitespace form is not supported")
@@ -290,13 +298,12 @@ let parse_all parse terms =
       let rest = drop_separators rest in
       if rest = [] then expr
       else
-        match rest with
-        (* An expression ends before a group written apart from it. *)
-        | { datum = Group ((Paren | Bracket | Brace) as d, _, _); _ } :: _ ->
-            let what = match d with Paren -> "function call" | Bracket -> "implicit argument list" | Brace -> "record construction" in
-            error (what ^ " must be adjacent to the callee; whitespace application is not supported")
-        | term :: _ -> unsupported ("unconsumed terms after expression: " ^ first_unconsumed_name term)
-        | [] -> unsupported "unconsumed terms after expression: <none>"
+        let first =
+          match rest with
+          | term :: _ -> first_unconsumed_name term
+          | [] -> "<none>"
+        in
+        unsupported ("unconsumed terms after expression: " ^ first)
 
 let rec split_at_pred pred acc = function
   | [] -> None
