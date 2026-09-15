@@ -83,3 +83,6 @@ trait-dispatched for every type (an `Add` trait with an `I64` impl, changing all
 arithmetic), and a value for `Eq + Show` (a bound set) that `[A : …]` reads.
 Decide: make `+` a trait method language-wide, or give bound sets another
 non-overloaded form. Spelling recognition in `trait_bound_forms` stays until then.
+11. **Match on a list inside a recursive function fails at run time**:
+    `Cons(m, Nil) => …, Cons(m, rest) => f(rest)` → "match on non-constructor
+    value" (found by the staged-prelude run). **Bug.**
