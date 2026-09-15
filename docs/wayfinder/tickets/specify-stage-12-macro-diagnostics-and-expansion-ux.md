@@ -27,3 +27,11 @@ before the CLR / C# rewrite.
 ## Resolution
 
 _Unresolved._
+
+## Deferred to after the .NET port (2026-09-15)
+
+- **A typed macro call whose expected type contradicts its promise** fails today
+  with a plain unification error before the macro runs (`b : Bool = n()` with
+  `macro n() : Expr(I64)` → "cannot unify I64 with Bool"). Preferred message
+  (user, 2026-09-15): "macro `n` promises Expr(I64), but Bool is expected here".
+  Diagnostics polish — do after the port.
