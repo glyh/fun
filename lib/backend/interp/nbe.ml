@@ -386,16 +386,13 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       in
       eval_result mc (eff :: env) body
   | Match (scrut, branches) -> eval_match_result mc env scrut branches
-  | Tunnel (skips, body) ->
+  | Tunnel { named; handlers; body } ->
       let rec tunnel = function
         | Done v -> Done v
         | Effect request ->
-            let hops =
-              match force mc request.eff with
-              | VEffect { id; _ } -> Option.value (List.assoc_opt id skips) ~default:request.hops
-              | _ -> request.hops
-            in
-            Effect { request with hops; k = (fun v -> tunnel (request.k v)) }
+            let own = List.exists (fun eff -> runtime_value_equal mc (eval mc env eff) request.eff) named in
+            let skips = if own then request.skips else handlers @ request.skips in
+            Effect { request with skips; k = (fun v -> tunnel (request.k v)) }
       in
       tunnel (eval_result mc env body)
   | Perform { eff; op; arg } ->
@@ -403,7 +400,7 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
           bind_result (eval_result mc env arg) (fun arg ->
               match force mc eff with
               | VEffect _ as eff ->
-                  Effect { eff; op; arg; hops = 0; k = (fun v -> Done v) }
+                  Effect { eff; op; arg; skips = []; k = (fun v -> Done v) }
               | _ -> fail mc "perform target is not an effect"))
 
 and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : value option =
@@ -590,14 +587,13 @@ and eval_match_result (mc : MetaContext.t) (env : env) (scrutinee : term)
     | Done v -> Done v
     | Effect request -> handle_effect handle_body request
   and handle_effect resume_with request =
-    (* A tunneled request skips this handler when it handles the request's
-       effect family at all (the count was taken per family). *)
-    let handles_family =
-      request.hops > 0
-      && List.exists (fun (branch_eff, _, _, _) -> same_effect_family mc branch_eff request.eff) effect_branches
+    (* A tunneled request passes this handler: it belongs to a caller outside
+       the function body the handler is written in. *)
+    let skipped =
+      List.exists (fun (handler, _, _, _, _) -> List.mem handler request.skips) effect_branches
     in
-    if handles_family then
-      Effect { request with hops = request.hops - 1; k = (fun resume -> resume_with (request.k resume)) }
+    if skipped then
+      Effect { request with k = (fun resume -> resume_with (request.k resume)) }
     else
     match
       find_effect_branch mc effect_branches request.eff request.op request.arg
@@ -622,15 +618,15 @@ and close_match_branches env branches =
       (fun branch (values, effects) ->
         match branch with
         | ValueBranch (pat, body) -> ((pat, body) :: values, effects)
-        | EffectBranch { eff; op; arg_pat; body } ->
-            (values, (eff, op, arg_pat, { env; body }) :: effects))
+        | EffectBranch { handler; eff; op; arg_pat; body } ->
+            (values, (handler, eff, op, arg_pat, { env; body }) :: effects))
       branches ([], [])
   in
   (value_branches, effect_branches)
 
 and find_effect_branch mc branches eff op arg =
   List.find_map
-    (fun (branch_eff, branch_op, arg_pat, body) ->
+    (fun (_handler, branch_eff, branch_op, arg_pat, body) ->
       let branch_eff = force mc branch_eff in
       if String.equal op branch_op && runtime_value_equal mc eff branch_eff then
         Option.map
@@ -638,11 +634,6 @@ and find_effect_branch mc branches eff op arg =
           (match_core_pat mc body.env arg_pat arg)
       else None)
     branches
-
-and same_effect_family mc lhs rhs =
-  match (force mc lhs, force mc rhs) with
-  | VEffect e1, VEffect e2 -> e1.id = e2.id
-  | _ -> false
 
 and runtime_value_equal mc lhs rhs =
   lhs == rhs ||

@@ -10,24 +10,16 @@ open Elab_refine
 open Elab_ops
 
 (* Tunneling (E5): a call whose row has an open tail may perform, through that
-   tail, an effect family a handler lexically enclosing the call handles without
-   the row naming it. Such a request belongs to the caller's caller, so it
-   skips every one of those handlers. A family the row names is the call's own,
-   handled by the nearest. ponytail: per effect family, not per instance, and an
-   unsolved meta tail counts as open. *)
+   tail, an effect its row does not name. Such a request belongs to the
+   caller's caller, so it passes the handlers lexically enclosing the call in
+   this function body. Whether a request's instance is named is decided when it
+   is performed (family and parameters, E1). *)
 let tunnel ctx (row : effect_row_value) =
-  match row.tail_value with
-  | None -> Fun.id
-  | Some _ ->
-      let family v = match Nbe.force ctx.Ctx.metas v with VEffect { id; _ } -> Some id | _ -> None in
-      let named = List.filter_map family row.effect_values in
-      let skips =
-        List.sort_uniq compare (List.concat ctx.Ctx.handler_scopes)
-        |> List.filter_map (fun id ->
-               if List.mem id named then None
-               else Some (id, List.length (List.filter (List.mem id) ctx.Ctx.handler_scopes)))
-      in
-      if skips = [] then Fun.id else fun core -> Tunnel (skips, core)
+  match row.tail_value, ctx.Ctx.handler_scopes with
+  | None, _ | _, [] -> Fun.id
+  | Some _, handlers ->
+      let named = List.map (Ctx.quote ctx) row.effect_values in
+      fun body -> Tunnel { named; handlers; body }
 
 (* Applying a function performs its latent row, instantiated at the argument,
    and tunnels what its open tail performs (the returned wrapper for the call).

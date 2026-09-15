@@ -34,16 +34,38 @@ let emit ctx effects =
     ctx.Ctx.sink.performed <- union_expr_effects ctx ctx.Ctx.sink.performed effects
 
 (* [f] elaborates in a fresh sink: its result, and what it performed - which
-   does not reach the enclosing form. *)
+   does not reach the enclosing form. What it stored into references does. *)
 let collecting (ctx : Ctx.t) f =
-  let sink = { Elab_ctx.performed = empty_expr_effects } in
+  let sink = { Elab_ctx.performed = empty_expr_effects; stored = [] } in
   let result = f { ctx with Ctx.sink } in
+  ctx.Ctx.sink.stored <- sink.stored @ ctx.Ctx.sink.stored;
   (result, sink.performed)
+
+let record_store ctx heap ty = ctx.Ctx.sink.stored <- (heap, ty) :: ctx.Ctx.sink.stored
 
 (* Using a reference performs [Mutate] on its heap. *)
 let mutate_effect ctx heap =
   let value = VEffect { id = mutate_effect_id; name = Compiler_names.Effect_name.mutate; params = [ heap ]; operations = [] } in
   singleton_expr_effect (Ctx.quote ctx value) value
+
+(* The heaps allocated since meta [since] that no older meta has been unified
+   with: an older heap solved to a newer id makes that id stand for the older
+   heap too, which is not local. One pass over the older metas. *)
+let local_heaps ctx ~since =
+  let metas = ctx.Ctx.metas in
+  let aliased = Hashtbl.create 8 in
+  for i = 0 to since - 1 do
+    match MetaContext.lookup metas i with
+    | Solved _ -> (
+        match Nbe.force metas (VFlex { id = i; spine = [] }) with
+        | VFlex { id; spine = [] } -> Hashtbl.replace aliased id ()
+        | _ -> ())
+    | Unsolved -> ()
+  done;
+  fun heap ->
+    match Nbe.force metas heap with
+    | VFlex { id = m; spine = [] } when m >= since && not (Hashtbl.mem aliased m) -> Some m
+    | _ -> None
 
 (* A heap allocated while elaborating a function (its meta is newer than
    [since]) that nothing [visible] outside mentions - the function's domain and
@@ -52,23 +74,10 @@ let mutate_effect ctx heap =
    unification, is never dropped. *)
 let discharge_local_heaps ctx ~since ~(visible : term list) effects =
   let metas = ctx.Ctx.metas in
-  (* An older heap unified with a newer one is solved to it: the newer id then
-     stands for the older heap too, which is not local. *)
-  let aliased_by_older m =
-    Seq.exists
-      (fun i ->
-        match MetaContext.lookup metas i with
-        | Solved _ -> (match Nbe.force metas (VFlex { id = i; spine = [] }) with VFlex { id; spine = [] } -> id = m | _ -> false)
-        | Unsolved -> false)
-      (Seq.init since Fun.id)
-  in
+  let local = local_heaps ctx ~since in
   let local_heap eff =
     match Nbe.force metas eff.value with
-    | VEffect { id; params = [ heap ]; _ } when id = mutate_effect_id -> (
-        (* ponytail: scans every older meta per candidate heap; index heap aliases if ref-heavy code slows down. *)
-        match Nbe.force metas heap with
-        | VFlex { id = m; spine = [] } when m >= since && not (aliased_by_older m) -> Some m
-        | _ -> None)
+    | VEffect { id; params = [ heap ]; _ } when id = mutate_effect_id -> local heap
     | _ -> None
   in
   let rec mentions m = function

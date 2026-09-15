@@ -477,6 +477,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       (match Nbe.force ctx.metas r_ty with
       | VRefTy (heap, elem_ty) ->
           let e_core = ops.check ctx e elem_ty in
+          record_store ctx heap elem_ty;
           emit ctx (mutate_effect ctx heap);
           (RefSet (r_core, e_core), VAtomTy Atom_ty.TUnit)
       | _ -> raise (ElabError ApplyingNonFunction))
@@ -1161,6 +1162,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let body_core, body_ty = ops.infer body_ctx body in
       (Let (Ctx.quote ctx impl_ty, impl_core, body_core), body_ty)
   | Match (scrutinee, branches) ->
+      let within_handler, check_escapes = escape_guard ctx in
       let hctx = with_handler ctx branches in
       let (scrut_core, scrut_ty), scrutinee_effects = collecting hctx (fun ctx -> ops.infer ctx scrutinee) in
       let value_branches = value_branches_of branches in
@@ -1169,18 +1171,19 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let ret_ty = Ctx.raw_meta ctx in
       let refinement_target = refinement_target_of_scrutinee ctx scrut_core in
       let residual = residual_effects ctx scrutinee_effects effect_branches in
+      let handled = handled_instances ctx scrutinee_effects effect_branches in
       let (value_branches', effect_branches'), body_effects =
-        collecting hctx (fun ctx ->
+        within_handler handled (fun () -> collecting hctx (fun ctx ->
           ( List.map (fun (pat, body) ->
               let branch_ctx = refine_branch_context ctx refinement_target pat in
               let core_pat, ctx' = elaborate_pat branch_ctx pat scrut_ty in
               let body_core = ops.check ctx' body ret_ty in
               ValueBranch (core_pat, body_core))
               value_branches,
-            List.map (elaborate_effect_branch ops ctx ret_ty residual scrutinee_effects) effect_branches ))
+            List.map (elaborate_effect_branch ops ~handler_ctx:hctx ctx ret_ty residual scrutinee_effects) effect_branches )))
       in
       emit_residual ctx ~residual_of:(fun effects -> residual_effects ctx effects effect_branches) scrutinee_effects body_effects;
-      check_handled_effects_do_not_escape ctx branches ret_ty;
+      check_escapes handled ret_ty;
       let pats = List.map fst (core_value_branches value_branches') in
       check_match_exhaustive ctx scrut_ty pats;
       (Match (scrut_core, value_branches' @ effect_branches'), Nbe.force ctx.metas ret_ty)
