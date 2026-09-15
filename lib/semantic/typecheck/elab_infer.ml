@@ -184,6 +184,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
     : Ctx.t * Core.struct_binding_term list * Core.module_entry list =
   match b with
   | Syntax.MethodBinding _ -> failwith "module binding cannot be method"
+  | Syntax.FieldBinding _ -> failwith "a field is expanded only inside a struct"
   | Syntax.MacroBinding _ | Syntax.SyntaxBinding _ -> (ctx, [], [])
   | Syntax.MacroCallBinding _ -> (ctx, [], [])
   | Syntax.HoleBinding _ | Syntax.Items _ | Syntax.InstantiateBinding _ -> failwith "unexpanded declarations should not reach elaboration"
@@ -267,7 +268,7 @@ let elab_module_binding (ops : Elab_ops.t) (ctx : Ctx.t) (b : Syntax.struct_bind
         | [] ->
             let self_type = VSelfType param_values in
             ops.infer (Ctx.with_self_type ctx self_type)
-              (Syntax.synth (Syntax.Struct { con_fields = rewritten_fields; bindings = [] }))
+              (Syntax.synth (Syntax.struct_of_fields rewritten_fields))
         | param :: rest ->
             let param_value = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
             let ctx' = Ctx.bind ctx param VU in
@@ -583,20 +584,17 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let fields = module_entry_fields entries in
       validate_module_fields fields;
       (Module { bindings = core_bindings }, VModule { entries; partial = false })
-  | Struct { con_fields; bindings } ->
-      let con_cores =
-        List.map (fun (name, ty_expr) ->
-          let ty_core, _ty_ty, ty_value = ops.type_value_of_expr ctx ty_expr in
-          (name, ty_core, ty_value))
-        con_fields
+  | Struct { bindings } ->
+      (* Items elaborate in source order (as a module's do): a field's type sees
+         the items written before it, and leaves as a value, quoted at the
+         struct's own level - every slot an item adds holds a value. A method
+         needs [self]'s type, which is every field, so a method written before
+         the last field is elaborated right after it. *)
+      let outer = ctx in
+      let fields = ref [] and deferred = ref [] in
+      let partial_self () =
+        VStruct { entries = List.rev_map (fun (name, _, ty) -> StructField (name, Field, ty)) !fields; partial = true }
       in
-      let self_ty =
-        VStruct {
-          entries = List.map (fun (name, _, ty) -> StructField (name, Field, ty)) con_cores;
-          partial = true;
-        }
-      in
-      let binding_ctx = Ctx.with_self_type ctx self_ty in
       let rec elaborate_method_params ctx params body =
         match params with
         | [] ->
@@ -624,6 +622,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             (Lam body_core, method_ty)
       in
       let elaborate_method ctx params body =
+        let self_ty = partial_self () in
+        let ctx = Ctx.with_self_type ctx self_ty in
         let self_ctx, self_entry = Ctx.bind_anonymous ctx self_ty in
         let self_ctx = { self_ctx with Ctx.self_entry = Some self_entry } in
         let body_core, body_ty = elaborate_method_params self_ctx params body in
@@ -638,11 +638,29 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         in
         (Lam body_core, method_ty)
       in
-      let rec go ctx (acc_binds, acc_entries) = function
-        | [] -> (ctx, List.rev acc_binds, List.rev acc_entries)
-        | (Syntax.MacroBinding _ | Syntax.SyntaxBinding _) :: rest -> go ctx (acc_binds, acc_entries) rest
+      (* [Self] in an item other than a field is the fields written so far; a
+         field's own type keeps the enclosing [Self] (a record declaration's). *)
+      let rec go ~defer ctx acc items = go_item ~defer (Ctx.with_self_type ctx (partial_self ())) acc items
+      and go_item ~defer ctx (acc_binds, acc_entries) = function
+        | [] -> (ctx, (acc_binds, acc_entries))
+        | Syntax.FieldBinding { name; type_ } :: rest ->
+            let mentions (m : Syntax.id) =
+              let found = ref false in
+              ignore (Expand.map_ids (fun (i : Syntax.id) -> if String.equal i.name m.name then found := true; i) type_);
+              !found
+            in
+            (match List.find_map (function Syntax.MethodBinding { name = m; _ } when mentions m -> Some m | _ -> None) !deferred with
+             | Some m -> raise (ElabError (FieldTypeMentionsMethod { field = name; method_ = m.name }))
+             | None -> ());
+            let _core, _ty_ty, value = ops.type_value_of_expr { ctx with Ctx.self_type = outer.Ctx.self_type } type_ in
+            fields := (name, Ctx.quote outer value, value) :: !fields;
+            go ~defer ctx (acc_binds, acc_entries) rest
+        | (Syntax.MethodBinding _ as m) :: rest when defer ->
+            deferred := m :: !deferred;
+            go ~defer ctx (acc_binds, acc_entries) rest
+        | (Syntax.MacroBinding _ | Syntax.SyntaxBinding _) :: rest -> go ~defer ctx (acc_binds, acc_entries) rest
         | (Syntax.HoleBinding _ | Syntax.Items _ | Syntax.InstantiateBinding _) :: _ -> failwith "unexpanded declarations should not reach elaboration"
-        | Syntax.MacroCallBinding _ :: rest -> go ctx (acc_binds, acc_entries) rest
+        | Syntax.MacroCallBinding _ :: rest -> go ~defer ctx (acc_binds, acc_entries) rest
         | Syntax.PatternSynBinding { name = { name; _ }; params; rhs; public } :: rest ->
             let params = Syntax.names params in
             let scrutinee_ty =
@@ -658,7 +676,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let kind = if public then Public else Private in
             let bind = PatternSynBind (name, kind, syn_val) in
             let ctx' = extend_from_slots ctx bind [ `Entry (name, VU, syn_val) ] in
-            go ctx'
+            go ~defer ctx'
                (bind :: acc_binds,
                 StructField (name, kind, VU) :: acc_entries)
               rest
@@ -667,7 +685,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let mod_value = Ctx.eval ctx mod_core in
             (match (Nbe.force ctx.metas mod_ty, Nbe.force ctx.metas mod_value) with
              | VModule _, VModule _ ->
-                 go (open_module_value ~label ctx mod_ty mod_value)
+                 go ~defer (open_module_value ~label ctx mod_ty mod_value)
                    (OpenBind mod_core :: acc_binds, acc_entries) rest
              | _ -> raise (ElabError NotAModule))
         | Syntax.LetBinding { name = { name; _ }; value; public; recursive; _ } :: rest ->
@@ -682,7 +700,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let bind = LetBind (name, kind, val_core) in
             let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
-            go ctx'
+            go ~defer ctx'
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
@@ -693,7 +711,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let bind = LetBind (name, kind, method_core) in
             let ctx' = extend_from_slots ctx bind [ `Entry (name, method_ty, method_val) ] in
             let entries = if public then [ StructField (name, kind, method_ty) ] else [] in
-            go ctx'
+            go ~defer ctx'
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
@@ -706,7 +724,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let bind = EffectBind (name, kind, eff) in
             let ctx' = extend_from_slots ctx bind [ `Entry (name, eff_ty, eff) ] in
             let entries = if public then [ StructField (name, kind, eff_ty) ] else [] in
-            go ctx'
+            go ~defer ctx'
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
@@ -722,7 +740,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               extend_from_slots ctx bind [ `Anonymous (c.impl_dict_ty, c.impl_value) ]
             in
             let ctx', _evidence = install_impl_evidence ?impl_name:name ctx' c ~level in
-            go ctx'
+            go ~defer ctx'
               (bind :: acc_binds,
                StructImpl (name, kind, c.impl_dict_ty, c.impl_value) :: acc_entries)
               rest
@@ -738,7 +756,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
               | [] ->
                   let self_type = VSelfType param_values in
                   ops.infer (Ctx.with_self_type ctx self_type)
-                    (Syntax.synth (Syntax.Struct { con_fields = rewritten_fields; bindings = [] }))
+                    (Syntax.synth (Syntax.struct_of_fields rewritten_fields))
               | param :: rest ->
                   let param_value = VRigid { lvl = ctx.Ctx.lvl; spine = [] } in
                   let ctx' = Ctx.bind ctx param VU in
@@ -757,7 +775,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
             let bind = LetBind (name, kind, val_core) in
             let ctx' = extend_from_slots ctx bind [ `Entry (name, val_ty, val_val) ] in
             let entries = if public then [ StructField (name, kind, val_ty) ] else [] in
-            go ctx'
+            go ~defer ctx'
               (bind :: acc_binds,
                List.rev_append entries acc_entries)
               rest
@@ -770,16 +788,21 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                   (bind :: acc_binds, List.rev_append type_entries acc_entries))
                 (acc_binds, acc_entries) results
             in
-            go ctx' acc rest
+            go ~defer ctx' acc rest
       in
-      let _end_ctx, core_bindings, extra_entries = go binding_ctx ([], []) bindings in
-      let result_con_fields = List.map (fun (n, c, _) -> (n, c)) con_cores in
-      let type_entries =
-        List.map (fun (n, _, ty) -> StructField (n, Field, ty)) con_cores
-        @ extra_entries
+      let is_field = function Syntax.FieldBinding _ -> true | _ -> false in
+      let rec split_after_last_field = function
+        | items when not (List.exists is_field items) -> ([], items)
+        | item :: rest -> let before, after = split_after_last_field rest in (item :: before, after)
+        | [] -> ([], [])
       in
-      (Struct { con_fields = result_con_fields; bindings = core_bindings; partial = false },
-       VStruct { entries = type_entries; partial = false })
+      let before, after = split_after_last_field bindings in
+      let ctx', acc = go ~defer:true ctx ([], []) before in
+      let ctx', acc = go ~defer:false ctx' acc (List.rev !deferred) in
+      let _end_ctx, (rev_binds, rev_entries) = go ~defer:false ctx' acc after in
+      let con = List.rev !fields in
+      (Struct { con_fields = List.map (fun (n, c, _) -> (n, c)) con; bindings = List.rev rev_binds; partial = false },
+       VStruct { entries = List.map (fun (n, _, ty) -> StructField (n, Field, ty)) con @ List.rev rev_entries; partial = false })
   | OpenChoice { name = { name; _ }; opens; fallback } -> (
       match Ctx.lookup_choice_opt ctx name { opens; fallback } with
       | Some (ix, ty) -> (Var ix, ty)
@@ -804,7 +827,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         | [] ->
             let self_type = VSelfType param_values in
             ops.infer (Ctx.with_self_type ctx self_type)
-              (Syntax.synth (Syntax.Struct { con_fields = rewritten_fields; bindings = [] }))
+              (Syntax.synth (Syntax.struct_of_fields rewritten_fields))
         | param :: rest ->
             let param_value = VRigid { lvl = ctx.lvl; spine = [] } in
             let ctx' = Ctx.bind ctx param VU in

@@ -32,6 +32,9 @@ type elab_error =
   | OpenSuppliesRole of string
       (** M7: an open supplies a member named like a syntax form, operator or
           macro visible in its region. *)
+  | FieldTypeMentionsMethod of { field : string; method_ : string }
+      (** A field's type mentions a method written before it: the method needs
+          every field (its [self]), so the field cannot wait for it. *)
 
 exception ElabError of elab_error
 
@@ -68,6 +71,8 @@ let string_of_elab_error = function
   | EvaluationBudgetExceeded { limit; call; demand; site } ->
       "EvaluationBudgetExceeded \"" ^ Eval_budget.message ~limit ~call ~demand ~site ^ "\""
   | OpenSuppliesRole n -> "OpenSuppliesRole \"" ^ n ^ "\""
+  | FieldTypeMentionsMethod { field; method_ } ->
+      Printf.sprintf "field %s's type mentions method %s, which needs every field: a cycle" field method_
 
 let () =
   Printexc.register_printer (function

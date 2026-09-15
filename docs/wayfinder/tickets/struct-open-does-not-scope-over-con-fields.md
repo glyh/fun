@@ -3,7 +3,9 @@ title: Struct open does not scope over con_fields
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-15
+resolution: Implemented. Struct items are one source-ordered list (a field is a FieldBinding item); a field type sees earlier opens and bindings and leaves as a value; methods are checked after the last field; a field type mentioning an earlier method is FieldTypeMentionsMethod. No dependent fields and no own name, both as unbound names (no dedicated message).
 assignee:
 blocked_by:
 ---
@@ -168,3 +170,23 @@ recommended.
 3. **A struct does not see its own name.** `C` binds after `C = struct { … }`,
    as any binding does; the body uses bare names and `self`. `C.k` inside `C`
    is an error that suggests `k`.
+
+## Implemented (2026-09-15)
+
+- `Syntax.Struct` carries only `bindings`; a field is `FieldBinding { name; type_ }`
+  (reflected `DeclField(String, Expr)`, `RawStruct(Option(Span), List(Decl))`).
+  The enforester keeps source order, and expansion threads each item's scopes to
+  the next, fields included.
+- The elaborator walks items in order. A field's type is elaborated where it
+  stands and quoted at the struct's own level (every slot an item adds holds a
+  value), so `Core.Struct` and the evaluator are unchanged. Methods written
+  before the last field are elaborated right after it.
+- Choice this run made: `Self` in an item other than a field or method (a
+  `pub id = fn(b : Self) …`, an `impl Eq(Self)`) is the fields written so far,
+  where it used to be every field.
+- Not done: dedicated messages for decisions 2 and 3. Both are unbound names
+  today. A message for `C.k` inside `C` needs to know that no open supplies `C`,
+  which only elaboration knows (the prelude is open almost everywhere), so the
+  expander cannot report it by scope set alone; doing it at elaboration would
+  mean matching the binder by spelling or carrying the struct's binder in the
+  open choice.

@@ -344,7 +344,7 @@ every defect below is an invariant with no name in the source.
   division-by-zero leak it turned up. Open only for the unification question,
   which should wait until that check actually fires.
 - [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
-  — grilled 2026-09-15: source-order scoping (fields see earlier opens and bindings), method bodies deferred until all fields exist, no dependent fields, a struct does not see its own name.
+  (closed) — implemented 2026-09-15: struct items in source order (a field is an item), fields see earlier opens and bindings, methods checked after the last field, a field type mentioning a method is a cycle error.
 - [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
   (closed) — the written-name fallback now serves only context-less
   (string-built) ids, so a source-written call resolves by scope set alone and a

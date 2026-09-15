@@ -490,8 +490,8 @@ and parse_sig_expr env start_span terms =
 
 and parse_struct_expr env start_span terms =
   let body_terms, rest, span = brace_body "struct" terms in
-  let con_fields, bindings = parse_struct_items env body_terms in
-  (stx ~span:(span_between start_span span) (Syntax.Struct { con_fields; bindings }), rest)
+  let bindings = parse_struct_items env body_terms in
+  (stx ~span:(span_between start_span span) (Syntax.Struct { bindings }), rest)
 
 and parse_primary env terms =
   match drop_separators terms with
@@ -1522,7 +1522,7 @@ and parse_struct_field env stmt =
   | { datum = Token { kind = Ident name; _ }; _ } :: colon :: typ_terms
     when token_kind Colon colon ->
       if List.exists (token_kind Equals) typ_terms then None
-      else Some (name, parse_type_terms env typ_terms)
+      else Some (Syntax.FieldBinding { name; type_ = parse_type_terms env typ_terms })
   | _ -> None
 
 and parse_struct_binding env stmt =
@@ -1574,10 +1574,10 @@ and parse_struct_items env body_terms =
   map_context_statements env
     (fun ~last:_ stmt ->
       match parse_struct_field env stmt with
-      | Some field -> ([ field ], [])
-      | None -> ([], parse_struct_statement env stmt))
+      | Some field -> [ field ]
+      | None -> parse_struct_statement env stmt)
     body_terms
-  |> List.fold_left (fun (fields, bindings) (f, b) -> (fields @ f, bindings @ b)) ([], [])
+  |> List.concat
 
 let parse_terms env terms = parse_all (fun ts -> parse_expr_prec env Top ts) terms
 
