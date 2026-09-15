@@ -522,7 +522,7 @@ let test_eval_match_binds_a_closure () =
     ()
 
 let test_debug_perform () =
-  let text = Debug.pp_term (Perform { eff = EffectRef ("State", [ AtomTy Atom_ty.TI64 ]); op = "get"; arg = Atom Unit }) in
+  let text = Debug.pp_term (Perform { eff = EffectRef { id = 0; name = "State"; params = [ AtomTy Atom_ty.TI64 ] }; op = "get"; arg = Atom Unit }) in
   if not (String.contains text 'g') then Alcotest.fail ("expected perform debug output, got " ^ text)
 
 let test_eval_handler_ignores_continuation () =

@@ -309,8 +309,8 @@ and eval_result (mc : MetaContext.t) (env : env) (t : term) : result =
       sequence_values mc env captures (fun captures ->
           sequence_values mc env params (fun params ->
               Done (VNominal { id; name; num_params; captures; params })))
-  | EffectRef (name, params) -> (
-      match eval_eff env name with
+  | EffectRef { id; name; params } -> (
+      match eval_eff env id with
       | VEffect _ as eff ->
           sequence_values mc env params (fun param_vals ->
               Done (List.fold_left (fun acc v -> apply mc acc v) eff param_vals))
@@ -565,10 +565,11 @@ and eval_inserted_meta (mc : MetaContext.t) (env : env) (id : meta_id)
   in
   go base (List.rev env) (List.rev bds)
 
-and eval_eff (env : env) (name : string) : value =
+(* The effect declared with identity [id], found by that identity (M12). *)
+and eval_eff (env : env) (id : int) : value =
   let rec go = function
-    | [] -> raise (EvalError ("unbound eff: " ^ name))
-    | VEffect e :: _ when String.equal e.name name -> VEffect e
+    | [] -> raise (EvalError ("unbound effect id " ^ string_of_int id))
+    | VEffect e :: _ when e.id = id && List.is_empty e.params -> VEffect e
     | _ :: rest -> go rest
   in
   go env

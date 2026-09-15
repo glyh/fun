@@ -32,7 +32,7 @@ and pp_term (t : term) : string =
   | Meta id -> Printf.sprintf "Meta(%d)" id
   | InsertedMeta (id, _) -> Printf.sprintf "IMeta(%d)" id
   | NomRef { name; params = args; _ } -> Printf.sprintf "NomRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
-  | EffectRef (name, args) -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
+  | EffectRef { name; params = args; _ } -> Printf.sprintf "EffectRef(%s, [%s])" name (String.concat "," (List.map pp_term args))
   | TraitRef { trait_name; _ } -> Printf.sprintf "TraitRef(%s)" trait_name
   | TraitDictTy { trait_name; args; _ } ->
       Printf.sprintf "TraitDictTy(%s, [%s])" trait_name (String.concat "," (List.map pp_term args))

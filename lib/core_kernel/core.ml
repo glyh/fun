@@ -69,7 +69,8 @@ and term =
           the same declaration over convertible captures is the same type. [eval]
           builds the [VNominal] directly, never looking the declaration up in an
           environment ([name] is for display), and applies [params]. *)
-  | EffectRef of string * term list
+  | EffectRef of { id : int; name : string; params : term list }
+      (** An effect by identity (its declaration's id); [name] is for printing. *)
       (** Applied effect family reference. [eval] scans the environment for a
           [VEffect] template with this name, evaluates the param terms, and
           returns [VEffect] with those params. *)
@@ -651,7 +652,7 @@ let map_subterms (f : int option -> term -> term) (t : term) : term =
   | ProdTy ts -> ProdTy (List.map (at 0) ts)
   | RecOcc r -> RecOcc { r with captures = List.map (at 0) r.captures; args = List.map (at 0) r.args }
   | NomRef n -> NomRef { n with captures = List.map (at 0) n.captures; params = List.map (at 0) n.params }
-  | EffectRef (name, ts) -> EffectRef (name, List.map (at 0) ts)
+  | EffectRef e -> EffectRef { e with params = List.map (at 0) e.params }
   | RefTy (h, a) -> RefTy (at 0 h, at 0 a)
   | RefNew a -> RefNew (at 0 a)
   | RefGet a -> RefGet (at 0 a)
