@@ -349,10 +349,9 @@ queue. Running: [primitives](port-primitives.md) and
 [the macro runtime interface](port-macro-runtime-interface.md), both prerequisites
 of the prelude. Primitives merged (`5f16665`); the macro runtime interface merged
 (`107a91c`); refs merged (`4fd4b6a`); [effects follow-ups](port-effects-followups.md)
-and [follow-up verification](port-followup-verification.md) merged. Running:
-[prelude stage 1](port-prelude-stage1.md). Queued: the user's rulings on the
-verification's open questions (an implementation fork once all are answered);
-procedural macros; prelude stage 2. The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
+and [follow-up verification](port-followup-verification.md) merged. [Prelude stage 1](port-prelude-stage1.md)
+and the verification rulings merged. Running: [a method's `~>` row](method-cannot-infer-row-with-poly-arrow.md).
+Queued: procedural macros; prelude stage 2. The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
 wait for a quiet moment with no fork editing `Syntax.cs`.
 
 ## Readiness (2026-09-16)

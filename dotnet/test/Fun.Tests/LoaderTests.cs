@@ -34,9 +34,30 @@ public class LoaderTests
         Assert.Contains("unbound variable: outer_val", error.Message);
     }
 
+    /// <summary>
+    /// <c>import "std"</c> is the one prelude every loader shares, elaborated once per
+    /// process, and the base context binds that same value as <c>stdlib</c>.
+    /// </summary>
     [Fact]
-    public void ThePreludeIsNotPortedYet() =>
-        Assert.Throws<NotImplementedException>(() => With().Load("std", new MetaContext()));
+    public void ThePreludeIsElaboratedOnceAndBoundAsStdlib()
+    {
+        var first = With().Load("std", new MetaContext());
+        Assert.Same(first.Value, With().Load("std", new MetaContext()).Value);
+
+        var ctx = Elaborator.BaseContext(new MetaContext(), preludeOpen: false);
+        var (index, _) = ctx.Locate("stdlib");
+        Assert.Same(first.Value, ctx.Environment[index]);
+    }
+
+    /// <summary>A base context's metas start after the prelude's, so no id means two metas.</summary>
+    [Fact]
+    public void ABaseContextsMetasFollowThePreludes()
+    {
+        var metas = new MetaContext();
+        Elaborator.BaseContext(metas, preludeOpen: false);
+        Assert.True(metas.Count > 0);
+        Assert.Equal(metas.Count, metas.Fresh());
+    }
 
     [Fact]
     public void AMissingUnitIsAnError() =>

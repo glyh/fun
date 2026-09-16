@@ -17,8 +17,8 @@ public sealed partial class Expander
     /// <summary>Every open entered so far: the scope it adds to its region, and its label.</summary>
     private readonly List<(int Scope, string Label)> _opens = [];
 
-    public static Syntax ExpandExpr(string source, IMacroRuntime runtime, string? file = null) =>
-        new Expander(runtime).Expand(Enforest.ParseExpr(source, file));
+    public static Syntax ExpandExpr(string source, IMacroRuntime runtime, string? file = null, bool openPrelude = false) =>
+        new Expander(runtime).Expand(Enforest.ParseExpr(source, file, openPrelude));
 
     private ScopeSet FreshScope() => ScopeSet.Singleton(_scopeCounter++);
 

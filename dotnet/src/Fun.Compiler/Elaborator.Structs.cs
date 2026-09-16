@@ -352,7 +352,8 @@ public static partial class Elaborator
 
     private static bool IsTypeLike(Context ctx, Value value) => ctx.Force(value) switch
     {
-        Value.VU or Value.VAtomTy or Value.VPi or Value.VProdTy or Value.VSig or Value.VRecursiveOccurrence => true,
+        Value.VU or Value.VEffectRowTy or Value.VAtomTy or Value.VPi or Value.VProdTy or Value.VNominal
+            or Value.VEffect or Value.VTraitDict or Value.VRefTy or Value.VSig or Value.VRecursiveOccurrence => true,
         Value.VModule { Partial: true } m => m.Entries.OfType<ModuleEntry.Field>().All(f => f.Kind switch
         {
             MemberKind.Public => IsTypeLike(ctx, f.Value),

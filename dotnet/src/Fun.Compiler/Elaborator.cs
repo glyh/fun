@@ -70,8 +70,19 @@ public sealed partial record Context(
     public (int Index, Value Type) Locate(string name)
     {
         if (Names.TryGetValue(name, out var entry)) return At(entry);
-        if (PreludeOpen) throw new NotImplementedException($"not ported yet: `{name}` from the prelude");
-        throw new FunException($"unbound variable: {name}");
+        throw Unbound(name, PreludeOpen);
+    }
+
+    /// <summary>
+    /// A name nothing supplies. Where the prelude is open, it may be one stage 2
+    /// publishes, which is not ported: then it is not yet known to be unbound.
+    /// </summary>
+    private static Exception Unbound(string name, bool preludeOpen)
+    {
+        var written = name.IndexOf('#') is var i and >= 0 ? name[..i] : name;
+        return preludeOpen && Prelude.Stage2Names.Contains(written)
+            ? new NotImplementedException($"not ported yet: `{written}` from the prelude")
+            : new FunException($"unbound variable: {written}");
     }
 
     /// <summary>
@@ -85,8 +96,7 @@ public sealed partial record Context(
                 return At(member);
         if (fallback is not null) return Locate(fallback);
         if (BaseNames.TryGetValue(name, out var based)) return At(based);
-        if (PreludeOpen) throw new NotImplementedException($"not ported yet: `{name}` from the prelude");
-        throw new FunException($"unbound variable: {name}");
+        throw Unbound(name, PreludeOpen || opens.Contains(Fun.Expand.Expander.UnitOpenLabel(Prelude.Path)));
     }
 
     private (int Index, Value Type) At(Entry entry) => (Nbe.LevelToIndex(Width, entry.Level), entry.Type);
@@ -123,10 +133,21 @@ public sealed partial record Context(
 public static partial class Elaborator
 {
     /// <summary>
-    /// The base context: the atom types, as definitions. A program's indices
+    /// The base context every compilation unit elaborates against: the builtins and
+    /// the prelude bound as <c>stdlib</c> - bound, not opened. A program's indices
     /// count these entries, so it runs in this context's environment.
     /// </summary>
     public static Context BaseContext(MetaContext metas, bool preludeOpen)
+    {
+        metas.SeedFrom(Prelude.Metas);
+        var ctx = BuiltinContext(metas, preludeOpen);
+        var (value, type) = Prelude.Unit;
+        ctx = ctx.Define(Prelude.Binding, type, value);
+        return ctx with { BaseNames = ctx.Names };
+    }
+
+    /// <summary>The atom types, the primitives and the reference entries: what the prelude itself elaborates against.</summary>
+    public static Context BuiltinContext(MetaContext metas, bool preludeOpen)
     {
         var ctx = Context.Empty(metas, preludeOpen);
         foreach (var (name, ty) in new (string, AtomTy)[]
@@ -514,7 +535,7 @@ public static partial class Elaborator
         var ((valueTerm, valueType), performed) = Collecting(ctx, c =>
             writtenType is null ? Infer(c, let.Value) : (Check(c, let.Value, writtenType), writtenType));
         Emit(ctx, performed);
-        // ponytail: no let-generalisation yet; the prototype generalises here.
+        (valueTerm, valueType) = Generalise(ctx, valueTerm, valueType);
         // A value is known in the body only when evaluating it performs nothing (E4).
         var body = performed.IsEmpty
             ? ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm))

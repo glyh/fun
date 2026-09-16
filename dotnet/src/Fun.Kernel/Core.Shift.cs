@@ -56,8 +56,33 @@ public abstract partial record Term
             Open o => o with { Of = Go(o.Of), Body = Go(o.Body, o.Members.Length) },
             Fix f => f with { Members = [.. f.Members.Select(m => m with { Body = Go(m.Body, f.Members.Length) })] },
             Module m => new Module(MapBindings(m.Bindings, visit, under)),
+            // Arm i's body sits under its binders, as many as the tree's leaves for i push.
+            Match { EffectBranches.IsEmpty: true } m when ArmBinders(m.Tree) is { } binders => m with
+            {
+                Scrutinee = Go(m.Scrutinee),
+                Bodies = [.. m.Bodies.Select((b, i) => Go(b, binders.GetValueOrDefault(i)))],
+            },
             _ => throw new NotImplementedException($"not ported yet: traversing {GetType().Name}"),
         };
+    }
+
+    /// <summary>
+    /// How many binders each arm's body sits under, read off the decision tree's leaves;
+    /// null for a tree that holds terms of its own (arms tried in order).
+    /// </summary>
+    private static Dictionary<int, int>? ArmBinders(DecisionTree tree)
+    {
+        var binders = new Dictionary<int, int>();
+        bool Walk(DecisionTree? t) => t switch
+        {
+            null => true,
+            DecisionTree.Leaf leaf => (binders[leaf.Branch] = leaf.Bindings.Length) >= 0,
+            DecisionTree.Destruct d => d.Cases.All(c => Walk(c.Tree)) && Walk(d.Default),
+            DecisionTree.Switch s => s.Cases.All(c => Walk(c.Tree)) && Walk(s.Default),
+            DecisionTree.TypeSwitch s => s.Cases.All(c => Walk(c.Tree)) && Walk(s.Default),
+            _ => false,
+        };
+        return Walk(tree) ? binders : null;
     }
 
     /// <summary>A binding list's terms, each read under the entries the bindings before it pushed.</summary>
