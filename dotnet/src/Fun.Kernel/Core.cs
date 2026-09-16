@@ -22,8 +22,11 @@ public abstract partial record Term
     /// <summary>let _ : A = Def in Body.</summary>
     public sealed record Let(Term Type, Term Def, Term Body) : Term;
 
-    /// <summary>(x : Domain) -> Codomain. A row is not carried yet: every arrow is pure.</summary>
-    public sealed record Pi(Explicitness Explicitness, Term Domain, Term Codomain) : Term;
+    /// <summary>(x : Domain) ->{Row} Codomain. The row is read under the binder; absent, the arrow is pure.</summary>
+    public sealed record Pi(Explicitness Explicitness, Term Domain, Term Codomain) : Term
+    {
+        public RowTerm Row { get; init; } = RowTerm.Pure;
+    }
 
     /// <summary>Type : Type.</summary>
     public sealed record U : Term
@@ -128,7 +131,11 @@ public abstract partial record Value
 {
     public sealed record VLam(Closure Body) : Value;
 
-    public sealed record VPi(Explicitness Explicitness, Value Domain, Closure Codomain) : Value;
+    public sealed record VPi(Explicitness Explicitness, Value Domain, Closure Codomain) : Value
+    {
+        /// <summary>The effects a call performs, read under the binder; pure unless written.</summary>
+        public RowClosure Row { get; init; } = RowClosure.Pure;
+    }
 
     public sealed record VU : Value
     {

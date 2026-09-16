@@ -26,8 +26,13 @@ public static partial class Unify
             case (Value.VAtom a, Value.VAtom b) when a.Atom == b.Atom:
                 return;
 
+            case (Value.VEffectRowTy, Value.VEffectRowTy): return;
+            case (Value.VEffectRow a, Value.VEffectRow b): Rows(mc, width, a, b); return;
+            case (Value.VEffect a, Value.VEffect b): Effects(mc, width, a, b); return;
+
             case (Value.VPi a, Value.VPi b) when a.Explicitness == b.Explicitness:
                 Values(mc, width, a.Domain, b.Domain);
+                ArrowRows(mc, width, a, b);
                 Values(mc, width + 1,
                     Nbe.ApplyClosure(mc, a.Codomain, fresh), Nbe.ApplyClosure(mc, b.Codomain, fresh));
                 return;
@@ -160,7 +165,11 @@ public static partial class Unify
             Value.VVar r => Spine(Var(r.Level), r.Spine),
             Value.VLam lam => new Term.Lam(Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, lam.Body, fresh))),
             Value.VPi pi => new Term.Pi(pi.Explicitness, Go(pi.Domain),
-                Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, pi.Codomain, fresh))),
+                Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, pi.Codomain, fresh)))
+            {
+                Row = pi.Row.Row.IsPure ? RowTerm.Pure : RenameRow(mc, id, ren.Lift(), Nbe.EvalRowClosure(mc, pi.Row, fresh)),
+            },
+            Value.VEffectRowTy or Value.VEffectRow or Value.VEffect => RenameEffects(mc, id, ren, value)!,
             Value.VU => Term.U.Instance,
             Value.VAtom a => new Term.Atom(a.Atom),
             Value.VAtomTy a => new Term.AtomTy(a.Ty),
@@ -205,6 +214,12 @@ public static partial class Unify
                 return;
             case Value.VNominal n:
                 foreach (var c in n.Captures) OccursCheck(mc, id, c);
+                return;
+            case Value.VEffectRow row:
+                foreach (var v in row.Effects.Concat(row.Tails)) OccursCheck(mc, id, v);
+                return;
+            case Value.VEffect e:
+                foreach (var p in e.Params) OccursCheck(mc, id, p);
                 return;
             case Value.VNeutral n:
                 foreach (var frame in n.Frames)
