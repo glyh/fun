@@ -71,7 +71,7 @@ public sealed record Token(TokenKind Kind, SourceSpan Span, ScopeSet Scope)
 /// The reader's output: tokens and delimiter groups. In the kernel so unparsed
 /// bodies can sit inside a <see cref="Syntax"/> node.
 /// </summary>
-public abstract record TokenTree(SourceSpan Span)
+public abstract partial record TokenTree(SourceSpan Span)
 {
     public sealed record Leaf(Token Token) : TokenTree(Token.Span);
 

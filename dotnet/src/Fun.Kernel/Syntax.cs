@@ -121,6 +121,7 @@ public abstract partial record Syntax(SourceSpan Span)
             Struct st => st with { Bindings = [.. st.Bindings.Select(b => b.AddScope(scope))] },
             Sig sg => sg with { Bindings = [.. sg.Bindings.Select(b => b.AddScope(scope))] },
             RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
+            SyntaxDef or Instantiate => Map(SyntaxMapper.OfIds(Mark)),
             _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
@@ -159,6 +160,7 @@ public abstract partial record Binding
         Let l => l with { Name = l.Name with { Scope = l.Name.Scope.Union(scope) }, Value = l.Value.AddScope(scope) },
         Open o => o with { Of = o.Of.AddScope(scope) },
         Export e => e with { Of = e.Of.AddScope(scope) },
+        SyntaxDecl or Instantiate or Hole => Map(SyntaxMapper.OfIds(id => id with { Scope = id.Scope.Union(scope) })),
         Items i => i with { Terms = [.. i.Terms.Select(t => t.AddScope(scope))] },
         RecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))] },
         Field f => f with { Type = f.Type.AddScope(scope) },
