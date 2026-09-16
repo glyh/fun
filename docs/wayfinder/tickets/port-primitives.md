@@ -3,7 +3,7 @@ title: "Port: primitives"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -36,3 +36,24 @@ Wave 3 fork. Follow the porting conventions in
 Base-context names reachable from programs, and whatever conformance cases call
 primitives directly; mostly this unblocks the prelude slice. xUnit for reduction,
 stuck applications and overflow.
+
+## Resolution (2026-09-16)
+
+Merged from `port/primitives` (`5f16665`). `Primitives.cs` is the one table: name,
+type, reducer. Checked I64 `+ - * / %` (overflow and division by zero are genuine
+errors; `MinValue % -1` is 0), comparisons on I64/Char/Unit/String returning I64 1
+or 0, `panic` once its message is a string atom, `Tuple`/`tuple_arity`;
+`expand_block`/`expand_decls` are "not ported yet". Base-context entries, so no
+width is hard-coded; one hook in `Nbe.ApplyStuck` reduces on atoms. Also fixed: the
+unifier had no case for two neutrals (`Unify.Neutrals.cs` compares head then
+frames). `elaborate/elab-238` now passes on its genuine error. C# 207/650; xUnit 108.
+
+**Follow-ups:**
+- **Runners do not run `error` cases.** `cases/README.md` defines `error` as failing
+  "at expansion, elaboration or evaluation", but both runners only elaborate an
+  `error` case, so a run-time failure (overflow, division by zero, `panic`) cannot
+  be a shared case. The README states the intent; the runners are wrong. Queued as
+  a fix to both runners (overflow is pinned in xUnit until then).
+- **Deviation:** `panic` whose message is not yet a known string stays stuck ("reduces
+  on atoms"); the prototype fails with the literal message `panic`. No case
+  exercises it.

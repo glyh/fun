@@ -137,6 +137,9 @@ public static partial class Elaborator
             ctx = ctx.Define(name, Value.VU.Instance, new Value.VAtomTy(ty));
         ctx = ctx.Define("Type", Value.VU.Instance, Value.VU.Instance);
         ctx = ctx.Define("EffectRow", Value.VU.Instance, Value.VEffectRowTy.Instance);
+        // Each primitive a program names: a defined entry whose value is the primitive itself.
+        foreach (var p in Primitives.Declarations)
+            if (p.Type is { } type) ctx = ctx.Define(p.Name, type, new Value.VNeutral(type, new Head.HPrim(p.Name), []));
         return ctx with { BaseNames = ctx.Names };
     }
 
