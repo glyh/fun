@@ -13,7 +13,7 @@ public sealed record Entry(int Level, Value Type);
 /// abstracted over. An entry's type lives in <see cref="Names"/>, keyed by the
 /// resolved name expansion gave its binder.
 /// </summary>
-public sealed record Context(
+public sealed partial record Context(
     Environment Environment,
     int Width,
     EquatableArray<EntryKind> EntryKinds,
@@ -138,10 +138,10 @@ public static partial class Elaborator
     /// Elaborates a program read as an expression. Such a program has nowhere to
     /// write <c>open (import "std")</c>, so it is elaborated inside that open.
     /// </summary>
-    public static Elaborated ElaborateProgram(Syntax program)
+    public static Elaborated ElaborateProgram(Syntax program, Loader? loader = null)
     {
         var metas = new MetaContext();
-        var ctx = BaseContext(metas, preludeOpen: true);
+        var ctx = BaseContext(metas, preludeOpen: true) with { Loader = loader };
         var (term, type) = Infer(ctx, program);
         return new Elaborated(term, type, ctx);
     }
@@ -172,6 +172,9 @@ public static partial class Elaborator
                 var (index, type) = ctx.LocateChoice(choice.Name.Name, choice.Opens, choice.Fallback);
                 return (new Term.Var(index), type);
             }
+
+            case Syntax.Import import:
+                return InferImport(ctx, import);
 
             case Syntax.Module module:
                 return InferModule(ctx, module);
@@ -210,6 +213,9 @@ public static partial class Elaborator
 
             case Syntax.Ap { Explicitness: Explicitness.Explicit } ap:
                 return InferAp(ctx, ap);
+
+            case Syntax.Ap { Explicitness: Explicitness.Implicit } ap:
+                return InferApImplicit(ctx, ap);
 
             case Syntax.Let { Recursive: false } let:
             {
@@ -286,6 +292,7 @@ public static partial class Elaborator
             default:
             {
                 var (term, inferred) = Infer(ctx, stx);
+                (term, inferred) = InsertImplicitArgs(ctx, term, inferred);
                 ctx.Unify(expected, inferred);
                 return term;
             }
@@ -405,6 +412,7 @@ public static partial class Elaborator
     private static (Term, Value) InferAp(Context ctx, Syntax.Ap ap)
     {
         var (fn, fnType) = Infer(ctx, ap.Fn);
+        (fn, fnType) = InsertImplicitArgs(ctx, fn, fnType);
         switch (ctx.Force(fnType))
         {
             case Value.VPi { Explicitness: Explicitness.Explicit } pi:
@@ -413,8 +421,6 @@ public static partial class Elaborator
                 var result = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ctx.Eval(arg));
                 return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
             }
-            case Value.VPi:
-                throw new NotImplementedException("not ported yet: implicit argument insertion");
             case Value.VMeta or Value.VVar or Value.VNeutral:
                 throw new NotImplementedException("not ported yet: applying a value of unknown function type");
             default:

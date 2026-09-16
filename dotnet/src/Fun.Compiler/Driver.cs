@@ -21,10 +21,9 @@ public static class Driver
     /// </summary>
     public static Elaborated Elaborate(string source, IReadOnlyDictionary<string, string> units)
     {
-        if (units.Count > 0) throw new NotImplementedException("imports not ported yet");
         try
         {
-            return Elaborator.ElaborateProgram(Fun.Expand.Expander.ExpandExpr(source));
+            return Elaborator.ElaborateProgram(Fun.Expand.Expander.ExpandExpr(source), new Loader(units));
         }
         // The runner sees one failure kind: where it happened is the implementation's business.
         catch (Fun.Expand.ReaderException e)

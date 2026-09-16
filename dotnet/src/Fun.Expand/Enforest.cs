@@ -206,12 +206,17 @@ public static partial class Enforest
                         return ParseFn(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Module:
                         return ParseModuleExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Import:
+                        return ParseImport(term.Span, rest);
                     case TokenKind.Word w:
                         throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
                     case TokenKind.Operator o:
                         throw new ExpandException($"unsupported prefix operator: {o.Spelling}");
                 }
                 break;
+
+            case TokenTree.Group { Delimiter: Delimiter.Bracket } bracket:
+                return ParseBracketPrimary(bracket, rest);
 
             case TokenTree.Group g:
                 return (ParseGroupExpr(g), rest);
@@ -277,12 +282,17 @@ public static partial class Enforest
                 continue;
             }
 
-            // `f{ … }` and `f[ … ]`: record construction and implicit arguments.
-            if (term is TokenTree.Group { Delimiter: Delimiter.Brace or Delimiter.Bracket } postfix
+            if (term is TokenTree.Group { Delimiter: Delimiter.Bracket } implicitArgs)
+            {
+                lhs = ParseImplicitApplication(lhs, implicitArgs);
+                terms = terms.Tail;
+                continue;
+            }
+
+            // `f{ … }`: record construction.
+            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } postfix
                 && lhs.Span.End == postfix.Span.Start)
-                throw new NotImplementedException(postfix.Delimiter == Delimiter.Brace
-                    ? "not ported yet: record construction"
-                    : "not ported yet: implicit argument lists");
+                throw new NotImplementedException("not ported yet: record construction");
 
             // An infix operator is a declared role; no role is bound yet.
             if (TokenText(term) is string symbol)
@@ -327,13 +337,31 @@ public static partial class Enforest
     /// </summary>
     private static (Syntax, Terms) ParseFn(SourceSpan startSpan, Terms terms)
     {
+        // `fn[A : Type](x : A)`: an implicit list, then an explicit one, each
+        // touching what precedes it. Either may be absent, not both.
         terms = DropSeparators(terms);
-        if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Paren } group)
-            throw new ExpandException("fn requires at least one parameter list");
-        RequireAdjacent(startSpan, group.Span, "explicit fn parameter list");
+        EquatableArray<Param> implicits = [];
+        var previous = startSpan;
+        if (terms.Head is TokenTree.Group { Delimiter: Delimiter.Bracket } implicitGroup)
+        {
+            RequireAdjacent(startSpan, implicitGroup.Span, "implicit fn parameter list");
+            implicits = ParseParamGroup(new Terms(implicitGroup.Items), Explicitness.Implicit);
+            previous = implicitGroup.Span;
+            terms = DropSeparators(terms.Tail);
+        }
 
-        var parameters = ParseParamGroup(new Terms(group.Items));
-        var (result, afterResult) = ParseResultType(terms.Tail);
+        EquatableArray<Param> explicits = [];
+        if (terms.Head is TokenTree.Group { Delimiter: Delimiter.Paren } group)
+        {
+            RequireAdjacent(previous, group.Span, "explicit fn parameter list");
+            explicits = ParseParamGroup(new Terms(group.Items), Explicitness.Explicit);
+            terms = terms.Tail;
+        }
+        else if (implicits.IsEmpty)
+            throw new ExpandException("fn requires at least one parameter list");
+
+        EquatableArray<Param> parameters = [.. implicits, .. explicits];
+        var (result, afterResult) = ParseResultType(terms);
         var (body, rest, bodySpan) = ParseBody(afterResult);
         var span = SourceSpan.Between(startSpan, bodySpan);
 
@@ -344,24 +372,31 @@ public static partial class Enforest
         return (value, rest);
     }
 
-    private static EquatableArray<Param> ParseParamGroup(Terms items)
+    private static EquatableArray<Param> ParseParamGroup(Terms items, Explicitness explicitness)
     {
         items = DropSeparators(items);
-        // `fn() { … }` takes one unit parameter.
-        if (items.IsEmpty) return [new Param(new Id("_", items.Span), UnitType(items.Span), Explicitness.Explicit)];
-        return [.. SplitCommas(items).Select(ParseParamItem)];
+        if (items.IsEmpty)
+            // `fn() { … }` takes one unit parameter; `fn[]` binds nothing and is an error.
+            return explicitness == Explicitness.Explicit
+                ? [new Param(new Id("_", items.Span), UnitType(items.Span), Explicitness.Explicit)]
+                : throw new ExpandException("empty implicit parameter list");
+        return [.. SplitCommas(items).Select(item => ParseParamItem(item, explicitness))];
     }
 
-    private static Param ParseParamItem(Terms terms)
+    private static Param ParseParamItem(Terms terms, Explicitness explicitness)
     {
         terms = DropSeparators(terms);
         if (NameOf(terms.Head) is not Id name)
             throw new ExpandException("expected parameter of the form name or name : Type");
         var rest = DropSeparators(terms.Tail);
-        if (rest.IsEmpty) return new Param(name, null, Explicitness.Explicit);
+        if (rest.IsEmpty) return new Param(name, null, explicitness);
         if (rest.Head is not TokenTree.Leaf { Token.Kind: var colon } || colon != TokenKind.Colon)
             throw new ExpandException("expected parameter of the form name or name : Type");
-        return new Param(name, ParseAll(rest.Tail), Explicitness.Explicit);
+        // `[A : {Eq, Show}]`: the traits an implicit binder must implement.
+        if (explicitness == Explicitness.Implicit && rest.Count == 2
+            && rest[1] is TokenTree.Group { Delimiter: Delimiter.Brace })
+            throw new NotImplementedException("not ported yet: trait bounds");
+        return new Param(name, ParseAll(rest.Tail), explicitness);
     }
 
     /// <summary>
