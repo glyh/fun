@@ -562,6 +562,10 @@ What remains, in the recommended order:
 - [A bare constructor pattern resolves by name](tickets/bare-constructor-pattern-resolves-by-name.md)
   — `Red => …` finds the scrutinee's constructor with no `open`, even over a value
   named `Red`. Fixed in the C# port only.
+- [A recursive record whose field has the record's own type cannot be used](tickets/recursive-record-field-of-own-type-rejected.md)
+  — `next : L` in `rec L = struct { … }` fails once `L` is a parameter type. Fixed in the C# port only.
+- [A type-case former head takes its arity from the template](tickets/type-case-former-head-arity-from-template.md)
+  — `Opt(x)` on a `fn(A) { enum … }` former is `PatternArityMismatch`. Fixed in the C# port only.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),

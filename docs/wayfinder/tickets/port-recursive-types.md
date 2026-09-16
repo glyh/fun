@@ -3,7 +3,7 @@ title: "Port: recursive type definitions"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -36,3 +36,24 @@ Wave 2 fork. Follow the porting conventions in
 [nominal-identity-applicative-by-purity](nominal-identity-applicative-by-purity.md);
 domain model "What the port's types should be named after" (`RecursiveOccurrence`).
 `Elaborator.Rec.cs` and `Elaborator.Enum.cs` are where rec values and enums live.
+
+## Resolution (2026-09-16)
+
+Merged from `port/rec-types` (`5dd30df`, `83a610a`, `e5e3ba1`; one conflict in
+`Nbe.cs`, both cases kept). Recursive enums, parameterised formers and
+`rec … and …` groups (each declaration minted before its members elaborate);
+recursive records as `RecordDecl`s whose in-group name is a `RecursiveOccurrence`
+unfolded on demand (same-shaped recursive records are distinct types). Newly
+passing: values elab-160–163, elaborate elab-109, 164 (genuine mixed-group error),
+shared `values/rec-enum-captures-enclosing-param` (7),
+`elaborate/rec-record-occurrences-have-identity` (error). `core-144` no longer
+fails with a language error: a record built through an implicit former inserts its
+implicit arguments, so it waits only on the prelude's `True`.
+
+**Prototype defect** (ticketed by the integrator):
+[recursive-record-field-of-own-type-rejected](recursive-record-field-of-own-type-rejected.md).
+
+**Follow-up (C# bug, not ticketed as a prototype defect):** `macros/core-311` fails
+with "`A` is not a constructor in scope": constructors that arrive through
+`export` and then `open` are not marked as constructor entries, so a bare pattern
+cannot resolve to them. It sits between the export and match code.

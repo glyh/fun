@@ -11,3 +11,5 @@ elaborate/lambda-param-type-mismatch        lambda-check-ignores-written-paramet
 elaborate/meta-solution-dependent-spine     meta-solution-renaming-not-lifted-under-binders.md
 elaborate/bare-constructor-pattern-needs-open         bare-constructor-pattern-resolves-by-name.md
 elaborate/bare-constructor-pattern-shadowed-by-value  bare-constructor-pattern-resolves-by-name.md
+values/rec-record-field-of-own-type             recursive-record-field-of-own-type-rejected.md
+values/type-case-former-parameter              type-case-former-head-arity-from-template.md
