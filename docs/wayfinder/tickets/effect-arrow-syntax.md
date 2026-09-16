@@ -173,3 +173,18 @@ decides a language question the ticket does not:
 caller chooses the row) or rank 2 (the callee needs a value polymorphic in it)?**
 Today a hand-written `fn(g : [e : EffectRow] -> Unit ->{e} I64)` is rank 2;
 lifting changes that spelling's meaning too, or needs the two to be told apart.
+
+### Rank of an alias's implicit row binder (grilled 2026-09-16)
+
+An implicit row variable minted by `~>` inside a parameter's type is **rank 1**:
+it is bound at the enclosing definition and chosen by that definition's caller.
+
+```fun
+Callback = Unit ~> I64;                       // [e] -> Unit ->{e} I64
+app = fn(g : Callback) : I64 { g(()) }        // ERROR: result declared pure, g performs e
+app = fn(g : Callback) ~> I64 { g(()) }       // ok; app(log_cb) then has {Log}
+```
+
+A hand-written `fn(g : [e : EffectRow] -> Unit ->{e} I64)` stays rank 2 (the
+callback must work for every row) — writing the binder explicitly is how you ask
+for that.
