@@ -95,6 +95,9 @@ public sealed partial class Expander
             case Syntax.Module m:
                 return m with { Bindings = ExpandBindings(m.Bindings) };
 
+            case Syntax.LetRecGroup g:
+                return ExpandLetRecGroup(g);
+
             case Syntax.Ap a:
                 return a with { Fn = Expand(a.Fn), Arg = Expand(a.Arg) };
 
@@ -211,6 +214,10 @@ public sealed partial class Expander
                     active = active.Union(scope);
                     break;
                 }
+
+                case Binding.RecGroup g:
+                    active = ExpandRecGroupBinding(g, active, expanded);
+                    break;
 
                 case var other:
                     throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");

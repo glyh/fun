@@ -48,6 +48,8 @@ public static partial class Enforest
     /// <summary>A block statement, as the form it makes of the rest of the block.</summary>
     private static Syntax DoStatement(SourceSpan span, Terms stmt, Syntax body)
     {
+        if (ParseRecGroup(stmt) is { } group) return new Syntax.LetRecGroup(group, body, span);
+
         var decl = ParseValueDeclStatement(stmt);
         if (decl is var (name, type, value, recursive))
             return new Syntax.Let(name, type, value, body, recursive, span);
@@ -74,10 +76,11 @@ public static partial class Enforest
         }
 
         // `fn name(params) { body }`
-        if (stmt.Head is TokenTree.Leaf { Token.Kind: var fnKind } fnLeaf && fnKind == TokenKind.Fn
+        if (stmt.Head is TokenTree.Leaf { Token.Kind: var fnKind } && fnKind == TokenKind.Fn
             && NameOf(stmt.Drop(1).Head) is Id fnName)
         {
-            var (value, rest) = ParseFn(fnLeaf.Span, stmt.Drop(2));
+            // The parameter list touches the name, not the `fn` keyword.
+            var (value, rest) = ParseFn(fnName.Span, stmt.Drop(2));
             EnsureNoRest("function declaration", rest);
             return (fnName, null, value, recursive);
         }
@@ -143,6 +146,8 @@ public static partial class Enforest
             if (isPublic) throw new ExpandException("open is not a public item");
             return [new Binding.Open(opened, "")];
         }
+
+        if (ParseRecGroup(unprefixed) is { } group) return [new Binding.RecGroup(group, isPublic)];
 
         if (ParseValueDeclStatement(unprefixed) is var (name, type, value, recursive))
         {

@@ -115,6 +115,7 @@ public abstract partial record Syntax(SourceSpan Span)
             Module m => m with { Bindings = [.. m.Bindings.Select(b => b.AddScope(scope))] },
             Open o => o with { Of = Go(o.Of), Body = Go(o.Body) },
             OpenChoice c => c with { Name = Mark(c.Name) },
+            LetRecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))], Body = Go(g.Body) },
             _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
@@ -153,6 +154,7 @@ public abstract partial record Binding
         Let l => l with { Name = l.Name with { Scope = l.Name.Scope.Union(scope) }, Value = l.Value.AddScope(scope) },
         Open o => o with { Of = o.Of.AddScope(scope) },
         Items i => i with { Terms = [.. i.Terms.Select(t => t.AddScope(scope))] },
+        RecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))] },
         _ => throw new InvalidOperationException($"unhandled binding {GetType().Name}"),
     };
 }
