@@ -97,6 +97,7 @@ public sealed partial class Expander
 
             case Syntax.Match m: return ExpandMatch(m);
             case Syntax.EffectDef or Syntax.Perform or Syntax.Resume: return ExpandEffects(stx)!;
+            case Syntax.TraitDef or Syntax.ImplDef or Syntax.TraitBoundSet: return ExpandTraits(stx);
 
             // Constructor names are labels of the type, not binders.
             case Syntax.Enum e: return e with { Constructors = [.. e.Constructors.Select(c => c with { Payloads = [.. c.Payloads.Select(Expand)] })] };
@@ -242,6 +243,13 @@ public sealed partial class Expander
                     active = active.Union(scope);
                     break;
                 }
+                case var declared when declared is Binding.Trait or Binding.Impl:
+                    active = ExpandTraitBinding(declared, active, expanded);
+                    break;
+
+                case Binding.Export e:
+                    expanded.Add(ExpandExport(e, active));
+                    break;
 
                 // A field is a label, not a binder: nothing after it sees it.
                 case Binding.Field f:

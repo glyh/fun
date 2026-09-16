@@ -4,13 +4,19 @@ namespace Fun.Compiler;
 
 public static partial class Elaborator
 {
+    private static (Term, Value) InferMatch(Context ctx, Syntax.Match match) => ElaborateMatch(ctx, match, expected: null);
+
+    private static Term CheckMatch(Context ctx, Syntax.Match match, Value expected) => ElaborateMatch(ctx, match, expected).Item1;
+
     /// <summary>
     /// A match: the scrutinee's type, refined by the first pattern that says
     /// something about it; each arm's result checked at one result type under
     /// its binders; the arms compiled to a decision tree, which fails exactly
-    /// when some value no arm matches.
+    /// when some value no arm matches. A type-case on a type variable narrows
+    /// that variable to each branch's type head, in the branch's context and -
+    /// when checking - in its expected type.
     /// </summary>
-    private static (Term, Value) InferMatch(Context ctx, Syntax.Match match)
+    private static (Term, Value) ElaborateMatch(Context ctx, Syntax.Match match, Value? expected)
     {
         // A match with effect branches is a handler: its scrutinee and branch bodies
         // elaborate inside it, for tunneling (E5).
@@ -25,7 +31,8 @@ public static partial class Elaborator
         var residual = Residual(ctx, scrutineeEffects.Effects, handled);
 
         scrutineeType = RefineScrutineeType(ctx, scrutineeType, valueBranches);
-        var resultType = ctx.RawMeta();
+        var resultType = expected ?? ctx.RawMeta();
+        var target = RefinementTarget(ctx, scrutinee, scrutineeType);
 
         var patterns = new List<CorePattern>();
         var bodies = new List<Term>();
@@ -33,10 +40,16 @@ public static partial class Elaborator
         {
             foreach (var branch in valueBranches)
             {
-                var (pattern, binders) = ElaboratePattern(bctx, branch.Pattern, scrutineeType);
-                var inner = binders.Aggregate(bctx, (c, b) => c.Bind(b.Name, b.Type));
+                var (branchCtx, branchExpected) = (bctx, resultType);
+                if (target is int level && RefinementOf(bctx, branch.Pattern) is { } replacement)
+                {
+                    branchCtx = RefineContext(bctx, level, replacement);
+                    if (expected is not null) branchExpected = Substitute(bctx, level, replacement, expected);
+                }
+                var (pattern, binders) = ElaboratePattern(branchCtx, branch.Pattern, scrutineeType);
+                var inner = binders.Aggregate(branchCtx, (c, b) => c.Bind(b.Name, b.Type));
                 patterns.Add(pattern);
-                bodies.Add(Check(inner, branch.Body, resultType));
+                bodies.Add(Check(inner, branch.Body, branchExpected));
             }
             return (effectBranches.Select(b => ElaborateEffectBranch(ctx, bctx, b, resultType, residual)).ToList(), 0);
         });
@@ -47,7 +60,11 @@ public static partial class Elaborator
 
         var (tree, missing) = MatchCompile.Compile(patterns, occurrence => DomainOf(ctx, TypeAt(ctx, scrutineeType, occurrence)));
         if (missing is not null) throw new FunException($"non-exhaustive match: {missing} is not matched");
-        return (new Term.Match(scrutinee, [.. bodies], tree!) { EffectBranches = [.. branchTerms], Handler = handler }, ctx.Force(resultType));
+        // A struct type's exact field set and a nominal type's instance are more
+        // than a tree tests: such a match runs its arms in order, once the tree
+        // has shown them exhaustive.
+        var run = patterns.Any(p => p.NeedsDirectMatch()) ? new DecisionTree.Sequential([.. patterns]) : tree!;
+        return (new Term.Match(scrutinee, [.. bodies], run) { EffectBranches = [.. branchTerms], Handler = handler }, ctx.Force(resultType));
     }
 
     /// <summary>
@@ -64,7 +81,13 @@ public static partial class Elaborator
             Pattern.Atom a => new Value.VAtomTy(AtomTypeOf(a.Value)),
             Pattern.Prod prod => new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
-            Pattern.Con c => (ResolveConstructorHead(ctx, c.Head) ?? throw new NotImplementedException(UnportedConstructorHead)).Nominal,
+            // A head naming a type makes this a type-case: the scrutinee is a type.
+            Pattern.Con c => TypeHead(ctx, c.Head) is not null
+                ? Value.VU.Instance
+                : (ResolveConstructorHead(ctx, c.Head) ?? throw new NotImplementedException(UnportedConstructorHead)).Nominal,
+            Pattern.Record r => RecordPatternType(ctx, r),
+            Pattern.AtomType => Value.VU.Instance,
+            Pattern.StructType => type is Value.VStruct ? type : Value.VU.Instance,
             _ => null,
         };
 
@@ -117,6 +140,9 @@ public static partial class Elaborator
                 return (new CorePattern.Prod([.. items]), binders);
             }
 
+            case Pattern.Con c when ctx.Force(type) is Value.VU:
+                return ElaborateNominalHeadPattern(ctx, c);
+
             case Pattern.Con c:
             {
                 var (nominal, constructor) = ResolveConstructorHead(ctx, c.Head)
@@ -137,6 +163,16 @@ public static partial class Elaborator
                 return (new CorePattern.Con(constructor.Name, 0, [.. args]), binders);
             }
 
+            case Pattern.Record r:
+                return ElaborateRecordPattern(ctx, r, type);
+
+            case Pattern.AtomType t:
+                ctx.Unify(type, Value.VU.Instance);
+                return (new CorePattern.AtomType(t.Ty), []);
+
+            case Pattern.StructType s:
+                return ElaborateStructTypePattern(ctx, s, type);
+
             default:
                 throw new InvalidOperationException($"unhandled pattern {pattern.GetType().Name}");
         }
@@ -154,6 +190,9 @@ public static partial class Elaborator
                               && c.Index < tuple.Items.Length
             ? tuple.Items[c.Index]
             : null,
+        Occurrence.Field f => TypeAt(ctx, type, f.Parent) is { } parent && ctx.Force(parent) is Value.VStruct st
+            ? FieldType(st, f.Name)
+            : null,
         _ => throw new InvalidOperationException($"unhandled occurrence {occurrence.GetType().Name}"),
     };
 
@@ -163,6 +202,7 @@ public static partial class Elaborator
         {
             Value.VAtomTy a => new MatchDomain.AtomDomain(a.Ty),
             Value.VNominal n => new MatchDomain.Nominal([.. n.Decl.Constructors.Select(c => new ConstructorShape(c.Name, 0, c.Payloads.Length))]),
+            Value.VStruct st => new MatchDomain.Record([.. st.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Field).Select(f => f.Name).Distinct()]),
             _ => MatchDomain.Unknown.Instance,
         };
 

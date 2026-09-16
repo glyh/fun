@@ -49,6 +49,9 @@ public abstract partial record Pattern
         Prod p => p with { Items = [.. p.Items.Select(i => i.AddScope(scope))] },
         Or o => o with { Left = o.Left.AddScope(scope), Right = o.Right.AddScope(scope) },
         Con c => c with { Head = c.Head.AddScope(scope), Args = [.. c.Args.Select(a => a.AddScope(scope))] },
+        Record r => r with { Type = r.Type.AddScope(scope), Fields = [.. r.Fields.Select(f => (f.Name, f.Pattern.AddScope(scope)))] },
+        AtomType => this,
+        StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, f.Pattern.AddScope(scope)))] },
         _ => throw new InvalidOperationException($"unhandled pattern {GetType().Name}"),
     };
 
@@ -67,6 +70,8 @@ public abstract partial record Pattern
                 case Prod pr: foreach (var i in pr.Items) Go(i); break;
                 case Or o: Go(o.Left); Go(o.Right); break;
                 case Con c: foreach (var a in c.Args) Go(a); break;
+                case Record r: foreach (var f in r.Fields) Go(f.Pattern); break;
+                case StructType s: foreach (var f in s.Fields) Go(f.Pattern); break;
             }
         }
         Go(this);

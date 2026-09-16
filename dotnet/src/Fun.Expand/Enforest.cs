@@ -59,6 +59,7 @@ public static partial class Enforest
 
         if (ParseEffectDecl(stmt) is var (effectName, effectParams, ops))
             return new Syntax.EffectDef(effectName, effectParams, ops, body, span);
+        if (ParseTraitOrImplStatement(span, stmt, body) is { } declared) return declared;
 
         // Not a binding: the statement is an expression whose value is discarded.
         return new Syntax.Let(new Id("_", span), null, ParseAll(stmt), body, false, span);
@@ -144,6 +145,8 @@ public static partial class Enforest
         var isPublic = IsToken(stmt.Head, TokenKind.Pub);
         var unprefixed = isPublic ? stmt.Tail : stmt;
 
+        if (ParseExportStatement(isPublic, unprefixed) is { } export) return [export];
+
         if (ParseOpenStatement(unprefixed) is { } opened)
         {
             if (isPublic) throw new ExpandException("open is not a public item");
@@ -160,6 +163,8 @@ public static partial class Enforest
             var annotated = type is null ? value : new Syntax.Annotated(value, type, unprefixed.Span);
             return [new Binding.Let(name, annotated, isPublic, recursive)];
         }
+
+        if (ParseTraitOrImplItem(unprefixed, isPublic) is { } item) return [item];
 
         throw new NotImplementedException(
             $"not ported yet: module item starting `{(unprefixed.Head is { } head ? Describe(head) : "(empty)")}`");
@@ -420,8 +425,8 @@ public static partial class Enforest
             throw new ExpandException("expected parameter of the form name or name : Type");
         // `[A : {Eq, Show}]`: the traits an implicit binder must implement.
         if (explicitness == Explicitness.Implicit && rest.Count == 2
-            && rest[1] is TokenTree.Group { Delimiter: Delimiter.Brace })
-            throw new NotImplementedException("not ported yet: trait bounds");
+            && rest[1] is TokenTree.Group { Delimiter: Delimiter.Brace } bounds)
+            return new Param(name, ParseTraitBoundSet(bounds), explicitness);
         return new Param(name, ParseAll(rest.Tail), explicitness);
     }
 

@@ -108,13 +108,18 @@ public abstract partial record BindingTerm
     public EquatableArray<Slot>? Slots() => this switch
     {
         Let l => [new Slot(l.Name, l.Kind, new SlotSource.Def(l.Def))],
+        Impl i => [new Slot(i.Name, i.Kind, new SlotSource.Def(i.Def)) { ImplType = i.DictType }],
         Open => null,
         _ => throw new InvalidOperationException($"unhandled binding term {GetType().Name}"),
     };
 }
 
 /// <summary>One entry a binding adds, with the name it exports where it has one.</summary>
-public sealed record Slot(string? Name, MemberKind Kind, SlotSource Source);
+public sealed record Slot(string? Name, MemberKind Kind, SlotSource Source)
+{
+    /// <summary>For an impl's slot, its dictionary type: the entry it exports is an impl, not a field.</summary>
+    public Value? ImplType { get; init; }
+}
 
 /// <summary>Where a slot's payload comes from; each side hangs its own payload on it.</summary>
 public abstract partial record SlotSource
@@ -215,6 +220,9 @@ public sealed class Environment
 
     /// <summary>The entry a de Bruijn index names.</summary>
     public Value this[int index] => _values[index];
+
+    /// <summary>This environment with the entry at <paramref name="index"/> holding <paramref name="value"/> instead.</summary>
+    public Environment Replace(int index, Value value) => new(_values.SetItem(index, value));
 
     public int Count => _values.Count;
 }

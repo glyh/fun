@@ -83,10 +83,17 @@ public static partial class Unify
     /// <summary>The values a module, struct, record or signature holds, for the occurs check.</summary>
     private static IEnumerable<Value> Contents(MetaContext mc, Value value) => Nbe.Force(mc, value) switch
     {
-        Value.VModule m => m.Entries.OfType<ModuleEntry.Field>().Select(f => f.Value),
-        Value.VStruct st => st.Entries.OfType<ModuleEntry.Field>().Select(f => f.Value),
+        Value.VModule m => m.Entries.SelectMany(EntryValues),
+        Value.VStruct st => st.Entries.SelectMany(EntryValues),
         Value.VRecord r => [r.Type, .. r.Fields.Select(f => f.Value)],
         Value.VSig sig => [Nbe.ApplyClosure(mc, sig.Body, new Value.VVar(0, []))],
+        _ => [],
+    };
+
+    private static IEnumerable<Value> EntryValues(ModuleEntry entry) => entry switch
+    {
+        ModuleEntry.Field f => [f.Value],
+        ModuleEntry.Impl i => [i.DictType, i.Value],
         _ => [],
     };
 

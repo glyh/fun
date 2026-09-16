@@ -44,6 +44,13 @@ public static partial class Nbe
                     };
                     continue;
 
+                case DecisionTree.TypeSwitch typeSwitch:
+                    tree = SelectTypeCase(mc, ValueAt(mc, scrutinee, typeSwitch.At), typeSwitch);
+                    continue;
+
+                case DecisionTree.Sequential sequential:
+                    return SelectArmInOrder(mc, env, scrutinee, match, sequential);
+
                 default:
                     throw new InvalidOperationException($"unhandled decision tree {tree.GetType().Name}");
             }
@@ -62,6 +69,11 @@ public static partial class Nbe
         Occurrence.Payload p => Force(mc, ValueAt(mc, root, p.Parent)) switch
         {
             Value.VCon con => con.Args[p.Index],
+            var other => Stuck<Value>(other),
+        },
+        Occurrence.Field f => Force(mc, ValueAt(mc, root, f.Parent)) switch
+        {
+            Value.VRecord record => record.Fields.Last(field => field.Name == f.Name).Value,
             var other => Stuck<Value>(other),
         },
         _ => throw new InvalidOperationException($"unhandled occurrence {at.GetType().Name}"),

@@ -191,6 +191,9 @@ public static partial class Elaborator
             case Syntax.EffectDef def: return InferEffectDef(ctx, def);
             case Syntax.Perform perform: return InferPerform(ctx, perform);
             case Syntax.Resume resume: return InferResume(ctx, resume);
+            case Syntax.TraitDef trait: return InferTraitDef(ctx, trait);
+            case Syntax.ImplDef impl: return InferImplDef(ctx, impl);
+            case Syntax.TraitBoundSet: throw new FunException("a {…} bound lists traits");
             case Syntax.Enum e: return InferEnum(ctx, e);
 
             case Syntax.Open open:
@@ -203,6 +206,7 @@ public static partial class Elaborator
             case Syntax.FieldAccess access:
             {
                 var (of, ofType) = Infer(ctx, access.Of);
+                if (TraitOf(ctx, of, ofType) is { } trait) return TraitMethod(ctx, trait, access.Field);
                 // A nominal type or type former's members are its constructors.
                 if (ctx.Force(ofType) is Value.VU or Value.VPi && ConstructorMember(ctx, of, ofType, access.Field) is { } constructor)
                     return constructor;
@@ -251,6 +255,10 @@ public static partial class Elaborator
                 return (new Term.Let(ctx.Quote(valueType), valueTerm, bodyTerm), bodyType);
             }
 
+            case Syntax.Arrow { Explicitness: Explicitness.Implicit, Name: not null, Row: null } bounded
+                when TraitBounds(ctx, bounded.Domain) is { } traits:
+                return InferBoundArrow(ctx, bounded, traits);
+
             case Syntax.Arrow arrow:
             {
                 var domain = TypeTerm(ctx, arrow.Domain);
@@ -287,6 +295,8 @@ public static partial class Elaborator
         expected = ctx.Force(expected);
         switch (stx, expected)
         {
+            case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
+
             case (Syntax.Lam lam, Value.VPi pi):
             {
                 if (lam.Param.Explicitness != pi.Explicitness)
@@ -299,9 +309,11 @@ public static partial class Elaborator
                 var binder = new Value.VVar(ctx.Width, []);
                 var inner = ctx.Bind(lam.Param.Name.Name, pi.Domain) with { Enclosing = lam.Body, HandlerScopes = [] };
                 var bodyType = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, binder);
+                var (dictCtx, dictBodyType, hidden) = InsertHiddenDicts(inner, bodyType);
                 // The body performs within the row the function type declares; a bare arrow's is empty.
-                var (body, performed) = Collecting(inner, c => Check(c, lam.Body, bodyType));
-                CheckEffectSubset(inner, performed, Nbe.EvalRowClosure(ctx.Metas, pi.Row, binder), inFunction: true);
+                var (body, performed) = Collecting(dictCtx, c => Check(c, lam.Body, dictBodyType));
+                CheckEffectSubset(dictCtx, performed, Nbe.EvalRowClosure(ctx.Metas, pi.Row, binder), inFunction: true);
+                for (var i = 0; i < hidden; i++) body = new Term.Lam(body);
                 return new Term.Lam(body);
             }
 
@@ -332,17 +344,31 @@ public static partial class Elaborator
         var inner = ctx.WithoutSelf() with { Enclosing = module };
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
+        var clashes = new ExportClashes();
 
         foreach (var binding in module.Bindings)
         {
+            var before = entries.Count;
             switch (binding)
             {
+                case Binding.Export export:
+                    inner = InferExport(inner, export, terms, entries);
+                    break;
+
                 case Binding.RecGroup group:
                     inner = InferRecGroupBinding(inner, group, terms, entries);
                     break;
 
                 case Binding.Effect effect:
                     inner = InferEffectBinding(inner, effect, terms, entries);
+                    break;
+
+                case Binding.Trait trait:
+                    inner = InferTraitBinding(inner, trait, terms, entries);
+                    break;
+
+                case Binding.Impl impl:
+                    inner = InferImplBinding(inner, impl, terms, entries);
                     break;
 
                 case Binding.Let let:
@@ -369,6 +395,7 @@ public static partial class Elaborator
                 default:
                     throw new NotImplementedException($"not ported yet: elaborating the binding {binding.GetType().Name}");
             }
+            clashes.Check(binding, entries.Skip(before));
         }
 
         return (new Term.Module([.. terms]), new Value.VModule([.. entries], Partial: false));
@@ -415,8 +442,15 @@ public static partial class Elaborator
         var value = ctx.Eval(term);
         var members = ImmutableDictionary<string, Entry>.Empty;
         var opened = new List<OpenMember>();
-        foreach (var field in moduleType.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Public))
+        var impls = 0;
+        foreach (var member in moduleType.Entries)
         {
+            if (member is ModuleEntry.Impl { Kind: MemberKind.Public } impl)
+            {
+                ctx = OpenImpl(ctx, impl, value, impls++, opened);
+                continue;
+            }
+            if (member is not ModuleEntry.Field { Kind: MemberKind.Public } field) continue;
             (ctx, var entry) = ctx.DefineAnonymous(field.Value, Nbe.DotValue(value, field.Name));
             members = members.SetItem(field.Name, entry);
             opened.Add(new OpenMember.Field(field.Name));
@@ -450,6 +484,7 @@ public static partial class Elaborator
     {
         var (fn, fnType) = Infer(ctx, ap.Fn);
         (fn, fnType) = InsertImplicitArgs(ctx, fn, fnType);
+        if (InferApWithPendingDicts(ctx, fn, fnType, ap.Arg) is { } withDicts) return withDicts;
         switch (ctx.Force(fnType))
         {
             case Value.VPi { Explicitness: Explicitness.Explicit } pi:
