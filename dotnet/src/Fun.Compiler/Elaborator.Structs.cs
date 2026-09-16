@@ -143,13 +143,18 @@ public static partial class Elaborator
 
     /// <summary>
     /// <c>P{x = 1}</c>: every constructor field of <c>P</c> given exactly once, each
-    /// checked against its type. The record's type is <c>P</c>'s type.
+    /// checked against its type. The record's type is <c>P</c>'s type. A type former
+    /// with implicit parameters (<c>fn[A : Type] { struct { … } }</c>) gets them
+    /// inserted, as an application does, and the fields solve them.
     /// </summary>
     private static (Term, Value) InferRecordConstruct(Context ctx, Syntax.RecordConstruct record)
     {
         var (type, typeType) = Infer(ctx, record.Type);
+        (type, typeType) = InsertImplicitArgs(ctx, type, typeType);
         if (ctx.Force(typeType) is not Value.VStruct structType)
-            throw new FunException("record construction of a non-struct");
+            throw ctx.Force(typeType) is Value.VPi or Value.VMeta or Value.VVar or Value.VNeutral
+                ? new NotImplementedException("not ported yet: record construction through an explicit type former or a type of unknown shape")
+                : new FunException("record construction of a non-struct");
 
         var declared = structType.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Field).ToList();
         RejectDuplicates(record.Fields.Select(f => f.Name));
