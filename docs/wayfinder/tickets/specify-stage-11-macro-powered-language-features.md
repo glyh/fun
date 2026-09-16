@@ -92,3 +92,12 @@ and pattern position. They are ordinary identifiers now
   2026-09-16. No `while` exists to demote.
 - Not this ticket, noticed: `enforest_pat.ml` picks type patterns (`I64`, `Unit`,
   `Char`, `String`, `Absurd`) by spelling — an M12 survivor.
+
+## Grilled (2026-09-16): `ref` / `deref` stay compiler nodes
+
+Not demoted to the library. Each `ref(…)` must mint a **fresh** heap by
+construction; as a primitive `ref : [h, A] -> A ->{Mutate(h)} Ref(h, A)` the heap
+would be an ordinary meta that unification could merge with an existing one,
+breaking the discharge rule that local mutation is private. `RefNew` also carries
+E11's generative stamp. Considered and rejected: moving them plus a
+"these heaps are distinct" constraint — more machinery than the node it removes.
