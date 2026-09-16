@@ -19,7 +19,7 @@ public abstract record Atom
     /// </summary>
     public sealed record Scopes(ScopeSet Set, string? ResolvedName) : Atom;
 
-    public override string ToString() => this switch
+    public sealed override string ToString() => this switch
     {
         Unit => "()",
         I64 a => a.Value.ToString(),
