@@ -121,6 +121,7 @@ public abstract partial record Syntax(SourceSpan Span)
             Struct st => st with { Bindings = [.. st.Bindings.Select(b => b.AddScope(scope))] },
             Sig sg => sg with { Bindings = [.. sg.Bindings.Select(b => b.AddScope(scope))] },
             RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
+            TraitDef or ImplDef or TraitBoundSet => AddScopeTraits(scope),
             _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
@@ -167,6 +168,7 @@ public abstract partial record Binding
             Params = [.. m.Params.Select(p => p with { Name = p.Name with { Scope = p.Name.Scope.Union(scope) }, Type = p.Type?.AddScope(scope) })],
             Body = m.Body.AddScope(scope),
         },
+        Trait or Impl => AddScopeTraits(scope),
         _ => throw new InvalidOperationException($"unhandled binding {GetType().Name}"),
     };
 }

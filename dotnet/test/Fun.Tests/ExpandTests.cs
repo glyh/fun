@@ -14,6 +14,7 @@ public class ExpandTests
         Syntax.Lam l => $"(fn {Implicit(l.Param.Explicitness, l.Param.Name.Name + ShowType(l.Param.Type))} {Show(l.Body)})",
         Syntax.Let l => $"(let {l.Name.Name}{ShowType(l.Type)} {Show(l.Value)} {Show(l.Body)})",
         Syntax.Annotated a => $"({Show(a.Inner)} : {Show(a.Type)})",
+        Syntax.TraitBoundSet b => $"{{{string.Join(", ", b.Traits.Select(Show))}}}",
         Syntax.Arrow a => $"({Implicit(a.Explicitness, (a.Name is null ? "" : a.Name.Name + " : ") + Show(a.Domain))} -> {Show(a.Codomain)})",
         Syntax.Prod p => $"(tuple {string.Join(" ", p.Items.Select(Show))})",
         Syntax.Proj p => $"({Show(p.Of)}.{p.Index})",
@@ -65,6 +66,8 @@ public class ExpandTests
     [InlineData("{ M = module { pub y = 5 }; y = 1; open M; y }", "(let M#0 (module (pub y#1 5)) (let y#2 1 (open M#0 open:3 (choice y [open:3] y#2))))")]
     // `y`'s binder is inside the open, so it shadows the open.
     [InlineData("{ M = module { pub y = 5 }; open M; y = 1; y }", "(let M#0 (module (pub y#1 5)) (open M#0 open:2 (let y#2 1 y#2)))")]
+    // `[A : {Eq, Show}]`: an implicit binder's bound set; each trait is an occurrence.
+    [InlineData("fn[A : {Eq, Show}](a : A) { a }", "(fn [A#0 : {Eq, Show}] (fn a#1 : A#0 a#1))")]
     public void Expands(string source, string expected) =>
         Assert.Equal(expected, Show(Expander.ExpandExpr(source)));
 
@@ -99,7 +102,6 @@ public class ExpandTests
     [Theory]
     [InlineData("1 + 2", "not ported yet: the infix operator `+`")]
     [InlineData("ref (x)", "not ported yet: the `ref` form")]
-    [InlineData("fn[A : {Eq}](a : A) { a }", "not ported yet: trait bounds")]
     public void RejectsUnported(string source, string message) =>
         Assert.Equal(message, Assert.Throws<NotImplementedException>(() => Expander.ExpandExpr(source)).Message);
 }
