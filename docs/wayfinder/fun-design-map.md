@@ -570,6 +570,8 @@ What remains, in the recommended order:
   — `Flip(a, b) = Pt(b, a)` binds its use by position; a synonym through `open` is unknown. Fixed in the C# port only.
 - [Checking a module against a signature takes the first member of a name](tickets/signature-check-takes-first-member.md)
   — `sig { x : I64 }` against `module { pub x = 'a'; pub x = 1 }` fails on the first `x`. Fixed in the C# port only.
+- [Checking against an implicit function type inserts metas first](tickets/check-against-implicit-type-inserts-first.md)
+  — `g : [A : Type] -> A -> A = id` is rejected; decided it must check. To fix in the C# port only.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),

@@ -58,7 +58,7 @@ Merged from `port/followup-verification` (`a9593ed`, `1bba77c`, `1d8578e`).
 | 1 | signature check takes the last member | **prototype defect** (I3): [signature-check-takes-first-member](signature-check-takes-first-member.md), `values/signature-check-takes-last-member` listed |
 | 2 | struct readback depth in `nbe_quote.ml` | **not observable**: no program reaches a struct binding's readback; closed |
 | 3 | export exemption through `open` | **C# bug, fixed**: `N.T` is not a member of `M`, so it clashes; `elaborate/export-clash-through-open` (error) |
-| 4 | `g : [A : Type] -> A -> A = id` | **agrees**: both reject it — open question whether intended |
+| 4 | `g : [A : Type] -> A -> A = id` | both reject it; **decided (user): accept** — [check-against-implicit-type-inserts-first](check-against-implicit-type-inserts-first.md) |
 | 5 | `panic` with an unknown message | **undecided** (user) |
 | 6 | `deref` on a value of unknown type | **undecided** (user) |
 
@@ -70,4 +70,4 @@ guard); no existing outcome changed. New shared cases `values/runtime-i64-overfl
 parentheses reads as a name, as in the prototype. C# 236/666; xUnit 123; OCaml 666
 cases, 0 failed, 10 known divergences.
 
-**Open (user):** #4, #5, #6.
+**Open (user):** #5, #6.
