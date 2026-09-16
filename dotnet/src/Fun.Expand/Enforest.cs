@@ -139,7 +139,7 @@ public static class Enforest
                     case TokenKind.Word w when w == TokenKind.Fn:
                         return ParseFn(term.Span, rest);
                     case TokenKind.Word w:
-                        throw new ExpandException($"not ported yet: the `{w.Spelling}` form");
+                        throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
                     case TokenKind.Operator o:
                         throw new ExpandException($"unsupported prefix operator: {o.Spelling}");
                 }
@@ -209,9 +209,16 @@ public static class Enforest
                 continue;
             }
 
+            // `f{ … }` and `f[ … ]`: record construction and implicit arguments.
+            if (term is TokenTree.Group { Delimiter: Delimiter.Brace or Delimiter.Bracket } postfix
+                && lhs.Span.End == postfix.Span.Start)
+                throw new NotImplementedException(postfix.Delimiter == Delimiter.Brace
+                    ? "not ported yet: record construction"
+                    : "not ported yet: implicit argument lists");
+
             // An infix operator is a declared role; no role is bound yet.
             if (TokenText(term) is string symbol)
-                throw new ExpandException($"not ported yet: the infix operator `{symbol}`");
+                throw new NotImplementedException($"not ported yet: the infix operator `{symbol}`");
 
             return (lhs, terms);
         }
@@ -226,7 +233,7 @@ public static class Enforest
                 return new Syntax.Block(group.Items, group.Span);
 
             case Delimiter.Bracket:
-                throw new ExpandException("not ported yet: bracket expressions");
+                throw new NotImplementedException("not ported yet: bracket expressions");
 
             default:
                 if (items.IsEmpty) return Unit(group.Span);

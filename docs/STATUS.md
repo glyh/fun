@@ -3,24 +3,31 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after the .NET port scaffold, 2026-09-16.
+Last updated: after .NET port slice 1, 2026-09-16.
 
 ---
 
 ## Completed
 
-### .NET port started — scaffold and reader (2026-09-16)
+### .NET port — slice 1: reader to evaluator (2026-09-16)
 
 - The C# port lives in `dotnet/` in this repo, so `test/conformance/cases` stays
   one copy. Three projects (`Fun.Kernel`, `Fun.Expand`, `Fun.Compiler`, plus
   `Fun.Cli` and two test projects): the split enforces that `Fun.Expand` cannot
   reference the elaborator, as `core_tt_expand` cannot today. `dune build`
   ignores `dotnet/` (root `dune`, `(dirs :standard \ dotnet)`).
-- Ported: `SourceSpan`, `ScopeSet`, `Atom`/`AtomTy`, `TokenTree` and the reader
-  (a hand-written scanner over `System.Buffers.SearchValues` plus the
-  delimiter-group builder), with 15 xUnit cases.
-- `test/Fun.Conformance` walks the same 601 cases as the OCaml runner and
-  reports 601 failures. That number reaching 0 is the port.
+- The whole pipeline runs for the prelude-free subset: a hand-written reader
+  (`System.Buffers.SearchValues`), enforestation with blocks read one statement at
+  a time, scope-set expansion, bidirectional elaboration with metavariables, and
+  the evaluator as an explicit frame-stack machine (a million nested calls run
+  without touching the native stack).
+- **10 of 601 conformance cases pass**, each for a genuine reason: literals,
+  lambdas, `let` with shadowing and annotations, and three `error`/`ok`
+  elaboration cases. 35 xUnit cases cover the reader, hygiene and the machine.
+- Unported forms raise `NotImplementedException`, which the runner counts as a
+  failure and never as a passing `error` case; so does a name the base context
+  lacks inside the prelude open, and (until `std`'s syntax roles are ported) any
+  enforest error.
 - Decisions and the slice plan: `docs/wayfinder/tickets/port-core-tt-to-dotnet.md`.
 
 

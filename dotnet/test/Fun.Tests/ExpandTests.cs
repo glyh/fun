@@ -52,9 +52,15 @@ public class ExpandTests
     [InlineData("{ }", "empty block")]
     [InlineData("{ x = ; 1 }", "missing value for binding: x")]
     [InlineData("fn { 1 }", "fn requires at least one parameter list")]
-    // Unported forms name themselves rather than parsing into something else.
-    [InlineData("1 + 2", "not ported yet: the infix operator `+`")]
-    [InlineData("match (x) { }", "not ported yet: the `match` form")]
     public void Rejects(string source, string message) =>
         Assert.Equal(message, Assert.Throws<ExpandException>(() => Expander.ExpandExpr(source)).Message);
+
+    // Unported forms name themselves rather than parsing into something else, and
+    // are never an ordinary error: a conformance case expecting `error` must not
+    // pass because a form is missing.
+    [Theory]
+    [InlineData("1 + 2", "not ported yet: the infix operator `+`")]
+    [InlineData("match (x) { }", "not ported yet: the `match` form")]
+    public void RejectsUnported(string source, string message) =>
+        Assert.Equal(message, Assert.Throws<NotImplementedException>(() => Expander.ExpandExpr(source)).Message);
 }

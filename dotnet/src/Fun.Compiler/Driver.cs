@@ -1,28 +1,12 @@
+using Fun.Kernel;
+
 namespace Fun.Compiler;
-
-/// <summary>
-/// What a program produced. The conformance suite may only observe this much:
-/// an <c>I64</c> renders as its digits, a constructor as its name, anything
-/// else as a short debug form that no case is allowed to depend on.
-/// See test/conformance/cases/README.md.
-/// </summary>
-public abstract record Value
-{
-    public sealed record I64(long N) : Value;
-    public sealed record Con(string Name) : Value;
-    public sealed record Other(string Debug) : Value;
-
-    public string Describe() => this switch
-    {
-        I64 v => v.N.ToString(),
-        Con c => c.Name,
-        Other o => o.Debug,
-        _ => throw new InvalidOperationException($"unhandled value {GetType().Name}"),
-    };
-}
 
 /// <summary>An expansion, elaboration or evaluation failure.</summary>
 public sealed class FunException(string message) : Exception(message);
+
+/// <summary>A program checked and ready to run, with the context it was checked in.</summary>
+public sealed record Elaborated(Term Term, Value Type, Ctx Context);
 
 /// <summary>
 /// The pipeline as the REPL runs it: source to a checked term, then to a value.
@@ -35,10 +19,40 @@ public static class Driver
     /// <paramref name="units"/> importable by name (<c>import "m"</c>).
     /// Throws <see cref="FunException"/> if it does not type check.
     /// </summary>
-    public static object Elaborate(string source, IReadOnlyDictionary<string, string> units) =>
-        throw new NotImplementedException("elaborator not ported yet");
+    public static Elaborated Elaborate(string source, IReadOnlyDictionary<string, string> units)
+    {
+        if (units.Count > 0) throw new NotImplementedException("imports not ported yet");
+        try
+        {
+            return Elaborator.ElaborateProgram(Fun.Expand.Expander.ExpandExpr(source));
+        }
+        // The runner sees one failure kind: where it happened is the implementation's business.
+        catch (Fun.Expand.ReaderException e)
+        {
+            throw new FunException(e.Message);
+        }
+        // ponytail: `std`'s syntax roles (`type`, `if`, operators) are not ported, and
+        // the enforester reads every statement against them first, so none of its
+        // errors is known to be genuine yet. Reporting one as an error would pass
+        // an `error` case for a missing form. Becomes FunException when roles land.
+        catch (Fun.Expand.ExpandException e)
+        {
+            throw new NotImplementedException($"not ported yet: prelude syntax roles (enforest said: {e.Message})");
+        }
+    }
 
     /// <summary>Runs an elaborated term. Throws <see cref="FunException"/> if it does not.</summary>
-    public static Value Run(object elaborated) =>
-        throw new NotImplementedException("evaluator not ported yet");
+    // The program's indices count the base context's entries, so it runs in that environment.
+    public static Value Run(Elaborated program) => program.Context.Eval(program.Term);
+
+    /// <summary>
+    /// What a program produced, as far as the conformance suite may observe it:
+    /// an <c>I64</c> as its digits, a constructor as its name. Anything else is
+    /// a debug form no case may depend on.
+    /// </summary>
+    public static string Describe(Value value) => value switch
+    {
+        Value.VAtom { Atom: Atom.I64 n } => n.Value.ToString(),
+        _ => value.GetType().Name,
+    };
 }

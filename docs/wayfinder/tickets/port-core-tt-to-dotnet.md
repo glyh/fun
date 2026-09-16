@@ -229,12 +229,42 @@ scanner uses `System.Buffers.SearchValues<char>` for its character classes, and
 it never grows a rule: operators lex uniformly and the enforester assigns their
 meaning.
 
-**Slice 1 (in progress)** targets the three conformance cases that need no
-prelude: `values/core-001` (`42`), `core-002` (`(fn(x) { x })(7)`) and
-`core-004` (`{ x : I64 = 5; x }`). Landed: the scaffold, `SourceSpan`,
-`ScopeSet`, `Atom`/`AtomTy`, `TokenTree` and the reader, with 15 xUnit cases.
-The conformance runner walks the same 601 files the OCaml runner does and
-reports 601 failures - that number reaching 0 is the port.
+**Slice 1 (done, 2026-09-16)** targeted the conformance cases that need no
+prelude. The whole pipeline runs: reader, enforester (blocks read a statement at
+a time), scope-set expander, bidirectional elaborator with metavariables and
+readback, and the frame-stack evaluator. **10 of 601 cases pass**, each checked to
+pass for a genuine reason; 35 xUnit cases.
+
+Honesty rules the runner depends on, so a missing form never passes a case that
+expects `error`:
+
+- Unported forms raise `NotImplementedException`, which the runner counts as a
+  failure; `FunException` is reserved for real language errors.
+- A program read as an expression is elaborated inside `open (import "std")`, as
+  the prototype's entry point does. A name the base context lacks there may be a
+  `std` member, so it is "not ported", not "unbound". Checking the base before
+  `std` gives the prototype's answer only while `std` rebinds no base-context
+  name - true today (the base names it spells are `Syntax` members).
+- While `std`'s syntax roles are unported, no enforest error is known to be
+  genuine (the enforester reads every statement against roles first), so the
+  Driver reports enforest errors as not ported. Reader errors stay real.
+
+**Found while porting (2026-09-16), for the user to rule on** - neither is
+ported yet, and neither is silently "fixed":
+
+- `unify.ml` `rename` (non-empty spine): under a `Lam`/`Pi` it introduces
+  `VRigid { lvl = d }` with `d` in the *solution's* numbering, then looks that
+  level up in a renaming keyed by the *meta's context* levels, without lifting
+  the renaming. A dependent right-hand side can raise `VarNotInSpine` or be
+  renamed to the wrong variable. The port throws "not ported yet" for non-empty
+  spines until this is settled.
+- `elab_check.ml` checking a `Lam` against a `VPi` never reads the parameter's
+  written type, so `fn(x : Char) { x }` checks against `I64 -> I64`. The suite
+  pins this (`elaborate/elab-049` is `ok` with a written `x : T` against
+  `I64`), and the port matches it.
+
+Next slice candidates: the prelude (stage 1 enums, then stage 2's roles and
+macros) - nearly every remaining case opens it.
 
 ## Readiness (2026-09-16)
 

@@ -124,7 +124,7 @@ public sealed class Expander
                 return Expand(Enforest.ParseBlockHead(b.Span, new Terms(b.Terms)));
 
             default:
-                throw new ExpandException($"not ported yet: expanding {stx.GetType().Name}");
+                throw new NotImplementedException($"not ported yet: expanding {stx.GetType().Name}");
         }
     }
 

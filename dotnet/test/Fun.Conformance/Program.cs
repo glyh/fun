@@ -32,7 +32,7 @@ static string? RunCase(string path)
     var expect = File.ReadAllText(Path.Combine(dir, name + ".expect")).Trim();
     var units = UnitSources(dir, name);
 
-    object elaborated;
+    Elaborated elaborated;
     try
     {
         elaborated = Driver.Elaborate(File.ReadAllText(path), units);
@@ -49,7 +49,7 @@ static string? RunCase(string path)
 
     try
     {
-        var got = Driver.Run(elaborated).Describe();
+        var got = Driver.Describe(Driver.Run(elaborated));
         return got == expect ? null : $"expected {expect}, got {got}";
     }
     catch (NotImplementedException e) { return e.Message; }
