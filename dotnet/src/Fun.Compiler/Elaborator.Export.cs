@@ -68,12 +68,10 @@ public static partial class Elaborator
         public void Check(Binding binding, IEnumerable<ModuleEntry> added)
         {
             var export = binding as Binding.Export;
-            var source = export?.Of switch
-            {
-                Syntax.Var v => Label(v.Id.Name),
-                Syntax.OpenChoice c => c.Name.Name,
-                _ => null,
-            };
+            // The exemption holds only when the export names this module's own enum
+            // binder: an enum reached through an open is not a member here, so a
+            // public member of its name is a different binding and clashes.
+            var source = export?.Of is Syntax.Var v ? Label(v.Id.Name) : null;
             foreach (var name in added.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Public).Select(f => f.Name))
             {
                 if (_exported.Contains(name) || export is not null && _seen.Contains(name) && name != source)
