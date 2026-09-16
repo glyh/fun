@@ -59,8 +59,8 @@ Merged from `port/followup-verification` (`a9593ed`, `1bba77c`, `1d8578e`).
 | 2 | struct readback depth in `nbe_quote.ml` | **not observable**: no program reaches a struct binding's readback; closed |
 | 3 | export exemption through `open` | **C# bug, fixed**: `N.T` is not a member of `M`, so it clashes; `elaborate/export-clash-through-open` (error) |
 | 4 | `g : [A : Type] -> A -> A = id` | both reject it; **decided (user): accept** — [check-against-implicit-type-inserts-first](check-against-implicit-type-inserts-first.md) |
-| 5 | `panic` with an unknown message | **undecided** (user) |
-| 6 | `deref` on a value of unknown type | **undecided** (user) |
+| 5 | `panic` with an unknown message | **decided (user): stays unevaluated** — [panic-with-unknown-message-fails-checking](panic-with-unknown-message-fails-checking.md) |
+| 6 | `deref` on a value of unknown type | **decided (user): infer a reference** — [deref-of-unknown-type-is-not-a-reference](deref-of-unknown-type-is-not-a-reference.md) |
 
 `core-311` fixed: module fields carry a `ConstructorMark`, so `OpenModule` restores a
 constructor entry that arrived through `export`. Both runners now run an `error`
@@ -70,4 +70,4 @@ guard); no existing outcome changed. New shared cases `values/runtime-i64-overfl
 parentheses reads as a name, as in the prototype. C# 236/666; xUnit 123; OCaml 666
 cases, 0 failed, 10 known divergences.
 
-**Open (user):** #5, #6.
+All three open questions are decided.
