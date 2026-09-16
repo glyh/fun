@@ -32,7 +32,7 @@ public static class Nbe
         public sealed record PiCodomain(Explicitness Explicitness, Env Env, Term Codomain) : Kont;
 
         /// <summary>One tuple element is evaluated; carry on with the rest.</summary>
-        public sealed record ProdItems(Env Env, ImmutableArray<Term> Rest, ImmutableArray<Value> Done, bool IsType)
+        public sealed record ProdItems(Env Env, EquatableArray<Term> Rest, EquatableArray<Value> Done, bool IsType)
             : Kont;
 
         /// <summary>The tuple is evaluated; take its nth element.</summary>
@@ -189,7 +189,7 @@ public static class Nbe
         _ => throw new FunException("projection of a non-tuple"),
     };
 
-    private static ImmutableArray<Frame> Spine(ImmutableArray<Value> spine) =>
+    private static EquatableArray<Frame> Spine(EquatableArray<Value> spine) =>
         [.. spine.Select(v => (Frame)new Frame.FApp(v))];
 
     // ---- metavariables ----------------------------------------------------
@@ -202,7 +202,7 @@ public static class Nbe
     /// scope that a binder introduced, skipping the ones a definition did,
     /// whose values are already known.
     /// </summary>
-    private static Value InsertedMeta(MetaContext mc, Env env, int id, ImmutableArray<Bd> bds)
+    private static Value InsertedMeta(MetaContext mc, Env env, int id, EquatableArray<Bd> bds)
     {
         if (bds.Length != env.Count)
             throw new InvalidOperationException(
@@ -247,7 +247,7 @@ public static class Nbe
         };
     }
 
-    private static Term QuoteSpine(MetaContext mc, int depth, Term head, ImmutableArray<Value> spine) =>
+    private static Term QuoteSpine(MetaContext mc, int depth, Term head, EquatableArray<Value> spine) =>
         spine.Aggregate(head, (acc, v) => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, depth, v)));
 
     private static Term QuoteHead(int depth, Head head) => head switch

@@ -57,10 +57,10 @@ public static class Unify
                 Pairwise(mc, depth, a.Spine, b.Spine);
                 return;
             case (Value.VFlex a, _):
-                Solve(mc, a.Id, a.Spine, right);
+                Solve(mc, depth, a.Id, a.Spine, right);
                 return;
             case (_, Value.VFlex b):
-                Solve(mc, b.Id, b.Spine, left);
+                Solve(mc, depth, b.Id, b.Spine, left);
                 return;
 
             default:
@@ -68,25 +68,106 @@ public static class Unify
         }
     }
 
-    private static void Pairwise(MetaContext mc, int depth, ImmutableArray<Value> a, ImmutableArray<Value> b)
+    private static void Pairwise(MetaContext mc, int depth, EquatableArray<Value> a, EquatableArray<Value> b)
     {
         if (a.Length != b.Length) throw new UnifyException("length mismatch");
         for (var i = 0; i < a.Length; i++) Values(mc, depth, a[i], b[i]);
     }
 
     /// <summary>
-    /// Solves <c>?id[spine] = rhs</c>. With an empty spine the solution is the
-    /// value itself, after an occurs check -- as the prototype does.
+    /// Solves <c>?id[spine] = rhs</c> at <paramref name="depth"/> entries. With an
+    /// empty spine the meta abstracts over nothing, so its solution is the value
+    /// itself, after an occurs check. Otherwise the spine must be distinct bound
+    /// variables, and the solution is <c>rhs</c> abstracted over them.
     /// </summary>
-    private static void Solve(MetaContext mc, int id, ImmutableArray<Value> spine, Value rhs)
+    private static void Solve(MetaContext mc, int depth, int id, EquatableArray<Value> spine, Value rhs)
     {
-        // The prototype's renaming for a non-empty spine reuses the solution's
-        // own levels as keys into the renaming under a binder, so a dependent
-        // right-hand side can be misrenamed. Not ported until that is settled.
-        if (!spine.IsEmpty)
-            throw new NotImplementedException("not ported yet: solving a metavariable applied to a spine");
-        OccursCheck(mc, id, rhs);
-        mc.Solve(id, rhs);
+        if (spine.IsEmpty)
+        {
+            OccursCheck(mc, id, rhs);
+            mc.Solve(id, rhs);
+            return;
+        }
+
+        var renaming = Invert(mc, depth, spine);
+        Term body = Rename(mc, id, renaming, rhs);
+        for (var i = 0; i < spine.Length; i++) body = new Term.Lam(body);
+        mc.Solve(id, Nbe.Eval(mc, Env.Empty, body));
+    }
+
+    /// <summary>
+    /// A partial renaming from the context a meta is solved in (<c>Cod</c>
+    /// entries) to its solution's lambdas (<c>Dom</c> entries): which context
+    /// level each solution level stands for.
+    /// </summary>
+    private sealed record Renaming(int Dom, int Cod, ImmutableDictionary<int, int> Levels)
+    {
+        /// <summary>
+        /// Under a binder in the right-hand side: the binder is a new variable on
+        /// both sides, so the renaming grows by it. Not lifting here is the
+        /// prototype's defect (meta-solution-renaming-not-lifted-under-binders).
+        /// </summary>
+        public Renaming Lift() => new(Dom + 1, Cod + 1, Levels.SetItem(Cod, Dom));
+    }
+
+    /// <summary>The renaming a pattern spine denotes: each argument a distinct bound variable.</summary>
+    private static Renaming Invert(MetaContext mc, int depth, EquatableArray<Value> spine)
+    {
+        var levels = ImmutableDictionary<int, int>.Empty;
+        for (var i = 0; i < spine.Length; i++)
+        {
+            if (Nbe.Force(mc, spine[i]) is not Value.VRigid { Spine.IsEmpty: true } rigid)
+                throw new UnifyException("a metavariable's spine argument is not a variable");
+            if (levels.ContainsKey(rigid.Level))
+                throw new UnifyException("a metavariable's spine repeats a variable");
+            levels = levels.Add(rigid.Level, i);
+        }
+        return new Renaming(spine.Length, depth, levels);
+    }
+
+    /// <summary>
+    /// Reads <paramref name="value"/> back as a term over the solution's lambdas,
+    /// failing on a variable the spine does not abstract (it would escape) and on
+    /// the meta being solved (an infinite solution).
+    /// </summary>
+    private static Term Rename(MetaContext mc, int id, Renaming ren, Value value)
+    {
+        Term Go(Value v) => Rename(mc, id, ren, v);
+        Term Var(int level) => ren.Levels.TryGetValue(level, out var target)
+            ? new Term.Var(Nbe.LevelToIndex(ren.Dom, target))
+            : throw new UnifyException("a variable escapes its scope in a metavariable's solution");
+        Term Spine(Term head, EquatableArray<Value> spine) =>
+            spine.Aggregate(head, (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a)));
+        var fresh = new Value.VRigid(ren.Cod, []);
+
+        return Nbe.Force(mc, value) switch
+        {
+            Value.VFlex f when f.Id == id => throw new UnifyException("occurs check: a metavariable in its own solution"),
+            Value.VFlex f => Spine(new Term.Meta(f.Id), f.Spine),
+            Value.VRigid r => Spine(Var(r.Level), r.Spine),
+            Value.VLam lam => new Term.Lam(Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, lam.Body, fresh))),
+            Value.VPi pi => new Term.Pi(pi.Explicitness, Go(pi.Domain),
+                Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, pi.Codomain, fresh))),
+            Value.VU => Term.U.Instance,
+            Value.VAtom a => new Term.Atom(a.Atom),
+            Value.VAtomTy a => new Term.AtomTy(a.Ty),
+            Value.VProd p => new Term.Prod([.. p.Items.Select(Go)]),
+            Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(Go)]),
+            Value.VNeutral n => n.Frames.Aggregate(n.Head switch
+            {
+                Head.HVar h => Var(h.Level),
+                Head.HMeta h when h.Id == id => throw new UnifyException("occurs check: a metavariable in its own solution"),
+                Head.HMeta h => new Term.Meta(h.Id),
+                Head.HPrim h => new Term.Prim(h.Name),
+                _ => throw new InvalidOperationException($"unhandled head {n.Head.GetType().Name}"),
+            }, (acc, frame) => frame switch
+            {
+                Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Go(a.Arg)),
+                Frame.FProj p => new Term.Proj(acc, p.Index),
+                _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
+            }),
+            var other => throw new NotImplementedException($"not ported yet: solving to {other.GetType().Name}"),
+        };
     }
 
     private static void OccursCheck(MetaContext mc, int id, Value value)

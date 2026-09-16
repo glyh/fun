@@ -556,6 +556,12 @@ What remains, in the recommended order:
 - [A meta in a method's signature captures `self`](tickets/method-signature-metas-capture-self.md)
   — `s.keep(x)` with `keep(r : Ref(I64))` fails at the call; the hidden implicit
   is solved against a spine holding the struct value.
+- [Solving a meta applied to a spine fails on a dependent right-hand side](tickets/meta-solution-renaming-not-lifted-under-binders.md)
+  — `rename` never lifts its renaming under a binder, so a solution mentioning its
+  own binders raises `VarNotInSpine`. Fixed in the C# port only.
+- [Checking a lambda ignores its written parameter type](tickets/lambda-check-ignores-written-parameter-type.md)
+  — `fn(x : Char) { x }` checks against `I64 -> I64`. Fixed in the C# port only;
+  `elab-049` diverges there.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)

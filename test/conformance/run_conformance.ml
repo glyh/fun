@@ -112,11 +112,36 @@ let case_files root =
                   else None)
          else [])
 
+(* [prototype-divergences.txt]: the cases this prototype is known to fail, each a
+   defect the .NET port fixes (see the file). Keyed by [<area>/<name>]. *)
+let prototype_divergences () =
+  read_file "prototype-divergences.txt"
+  |> String.split_on_char '\n'
+  |> List.filter_map (fun line ->
+         let line = match String.index_opt line '#' with Some i -> String.sub line 0 i | None -> line in
+         match String.split_on_char ' ' line |> List.filter (fun f -> f <> "") with
+         | [] -> None
+         | [ case; _ticket ] -> Some case
+         | _ -> failwith ("prototype-divergences.txt: expected `<case> <ticket>`, got: " ^ line))
+
+let case_key path =
+  Filename.concat (Filename.basename (Filename.dirname path)) (Filename.remove_extension (Filename.basename path))
+
 let () =
   let cases = case_files "cases" in
+  let divergences = prototype_divergences () in
+  let results = List.map (fun path -> (path, run_case path)) cases in
+  (* A listed case is expected to fail; one that passes has had its defect fixed. *)
   let failures =
-    List.filter_map (fun path -> Option.map (fun why -> (path, why)) (run_case path)) cases
+    List.filter_map
+      (fun (path, result) ->
+        match List.mem (case_key path) divergences, result with
+        | false, Some why -> Some (path, why)
+        | true, None -> Some (path, "passes, but prototype-divergences.txt lists it: remove it from the list")
+        | false, None | true, Some _ -> None)
+      results
   in
   List.iter (fun (path, why) -> Printf.printf "FAIL %s: %s\n" path why) failures;
-  Printf.printf "conformance: %d cases, %d failed\n" (List.length cases) (List.length failures);
+  Printf.printf "conformance: %d cases, %d failed, %d known prototype divergences\n" (List.length cases)
+    (List.length failures) (List.length divergences);
   if failures <> [] then exit 1

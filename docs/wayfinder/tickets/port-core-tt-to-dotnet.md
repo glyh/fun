@@ -249,19 +249,22 @@ expects `error`:
   genuine (the enforester reads every statement against roles first), so the
   Driver reports enforest errors as not ported. Reader errors stay real.
 
-**Found while porting (2026-09-16), for the user to rule on** - neither is
-ported yet, and neither is silently "fixed":
+**Decided (2026-09-16): the domain model is the specification; the OCaml
+prototype is supporting material.** A prototype defect gets a ticket and is fixed
+**in the C# port only**; the prototype keeps it. The shared conformance suite
+states the specified behaviour, so a case the prototype gets wrong keeps the
+correct `.expect` and is listed in `test/conformance/prototype-divergences.txt`
+with its ticket: the OCaml runner expects it to fail and reports it once it
+passes; the .NET runner ignores the list.
 
-- `unify.ml` `rename` (non-empty spine): under a `Lam`/`Pi` it introduces
-  `VRigid { lvl = d }` with `d` in the *solution's* numbering, then looks that
-  level up in a renaming keyed by the *meta's context* levels, without lifting
-  the renaming. A dependent right-hand side can raise `VarNotInSpine` or be
-  renamed to the wrong variable. The port throws "not ported yet" for non-empty
-  spines until this is settled.
-- `elab_check.ml` checking a `Lam` against a `VPi` never reads the parameter's
-  written type, so `fn(x : Char) { x }` checks against `I64 -> I64`. The suite
-  pins this (`elaborate/elab-049` is `ok` with a written `x : T` against
-  `I64`), and the port matches it.
+Defects found while porting, each reproduced in the prototype before filing:
+
+- [Solving a meta applied to a spine fails on a dependent right-hand side](meta-solution-renaming-not-lifted-under-binders.md)
+  - `rename` never lifts its renaming under a binder. The port uses a partial
+  renaming lifted at every binder.
+- [Checking a lambda ignores its written parameter type](lambda-check-ignores-written-parameter-type.md)
+  - `fn(x : Char) { x }` checks against `I64 -> I64`. The port unifies the written
+  type with the expected domain; `elaborate/elab-049` diverges.
 
 Next slice candidates: the prelude (stage 1 enums, then stage 2's roles and
 macros) - nearly every remaining case opens it.

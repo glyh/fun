@@ -26,6 +26,12 @@ case it came from.
 | `ok` | it elaborates (type checks); the program is not run |
 | `error` | it fails, at expansion, elaboration or evaluation |
 
+The `.expect` states the language's behaviour as the domain model specifies it,
+not whatever an implementation happens to do. A case the OCaml prototype gets
+wrong is listed in `../prototype-divergences.txt` with the ticket for its defect:
+the OCaml runner expects those cases to fail (and reports one that starts
+passing), the .NET runner ignores the list.
+
 `error` is deliberately coarse: an error's class and wording are
 implementation-specific, and pinning them here would make the suite untestable
 for a second implementation. Tests that assert a particular error stay in the

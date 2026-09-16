@@ -6,6 +6,7 @@ using Fun.Compiler;
 
 const string UnitInfix = ".unit-";
 
+// prototype-divergences.txt is the OCaml runner's business: the port passes every case.
 var root = CasesRoot(args);
 var cases = Directory.EnumerateDirectories(root)
     .OrderBy(d => d, StringComparer.Ordinal)

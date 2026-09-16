@@ -75,7 +75,7 @@ public abstract record TokenTree(SourceSpan Span)
 {
     public sealed record Leaf(Token Token) : TokenTree(Token.Span);
 
-    public sealed record Group(Delimiter Delimiter, ImmutableArray<TokenTree> Items, SourceSpan GroupSpan)
+    public sealed record Group(Delimiter Delimiter, EquatableArray<TokenTree> Items, SourceSpan GroupSpan)
         : TokenTree(GroupSpan);
 
     /// <summary>Adds <paramref name="scope"/> to every token in the tree, inside groups too.</summary>

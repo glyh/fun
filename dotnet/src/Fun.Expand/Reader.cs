@@ -32,13 +32,13 @@ public static class Reader
     private static readonly SearchValues<char> Space = SearchValues.Create(" \t\r\n");
 
     /// <summary>Reads <paramref name="source"/> into the top-level term sequence.</summary>
-    public static ImmutableArray<TokenTree> Read(string source, string? file = null) =>
+    public static EquatableArray<TokenTree> Read(string source, string? file = null) =>
         BuildGroups(Scan(source, file));
 
     // ---- scanner ----------------------------------------------------------
 
     /// <summary>Every token in <paramref name="source"/>, ending with EOF.</summary>
-    public static ImmutableArray<Token> Scan(string source, string? file = null)
+    public static EquatableArray<Token> Scan(string source, string? file = null)
     {
         var tokens = ImmutableArray.CreateBuilder<Token>();
         var s = new Scanner(source, file);
@@ -46,7 +46,7 @@ public static class Reader
         {
             var token = s.Next();
             tokens.Add(token);
-            if (token.Kind == TokenKind.Eof) return tokens.ToImmutable();
+            if (token.Kind == TokenKind.Eof) return new EquatableArray<Token>(tokens.ToImmutable());
         }
     }
 
@@ -233,15 +233,15 @@ public static class Reader
     /// Pairs delimiters into groups. <c>#_</c> drops the whole datum after it,
     /// group or token.
     /// </summary>
-    private static ImmutableArray<TokenTree> BuildGroups(ImmutableArray<Token> tokens)
+    private static EquatableArray<TokenTree> BuildGroups(EquatableArray<Token> tokens)
     {
         var pos = 0;
         var items = ReadSequence(tokens, ref pos, close: null, out _);
         return items;
     }
 
-    private static ImmutableArray<TokenTree> ReadSequence(
-        ImmutableArray<Token> tokens, ref int pos, TokenKind? close, out SourceSpan? closeSpan)
+    private static EquatableArray<TokenTree> ReadSequence(
+        EquatableArray<Token> tokens, ref int pos, TokenKind? close, out SourceSpan? closeSpan)
     {
         var acc = ImmutableArray.CreateBuilder<TokenTree>();
         while (true)
@@ -251,7 +251,7 @@ public static class Reader
 
             if (token.Kind == TokenKind.Eof)
             {
-                if (close is null) { closeSpan = null; return acc.ToImmutable(); }
+                if (close is null) { closeSpan = null; return new EquatableArray<TokenTree>(acc.ToImmutable()); }
                 throw new ReaderException($"unterminated {close.Text()} group");
             }
 
@@ -259,7 +259,7 @@ public static class Reader
             {
                 pos++;
                 closeSpan = token.Span;
-                return acc.ToImmutable();
+                return new EquatableArray<TokenTree>(acc.ToImmutable());
             }
 
             if (token.Kind == TokenKind.DatumComment)
@@ -279,7 +279,7 @@ public static class Reader
         }
     }
 
-    private static TokenTree ReadGroup(ImmutableArray<Token> tokens, ref int pos)
+    private static TokenTree ReadGroup(EquatableArray<Token> tokens, ref int pos)
     {
         var opener = tokens[pos++];
         var (delimiter, close) = Opening(opener.Kind)
@@ -289,7 +289,7 @@ public static class Reader
     }
 
     /// <summary>The next datum, whether a token or a whole group.</summary>
-    private static TokenTree ReadOne(ImmutableArray<Token> tokens, ref int pos)
+    private static TokenTree ReadOne(EquatableArray<Token> tokens, ref int pos)
     {
         if (pos >= tokens.Length) throw new ReaderException("expected term");
         var token = tokens[pos];

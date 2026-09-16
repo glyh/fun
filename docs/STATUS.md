@@ -21,13 +21,22 @@ Last updated: after .NET port slice 1, 2026-09-16.
   a time, scope-set expansion, bidirectional elaboration with metavariables, and
   the evaluator as an explicit frame-stack machine (a million nested calls run
   without touching the native stack).
-- **10 of 601 conformance cases pass**, each for a genuine reason: literals,
-  lambdas, `let` with shadowing and annotations, and three `error`/`ok`
-  elaboration cases. 35 xUnit cases cover the reader, hygiene and the machine.
+- **12 of 604 conformance cases pass**, each for a genuine reason: literals,
+  lambdas, `let` with shadowing and annotations, and three elaboration cases.
+  41 xUnit cases cover the reader, hygiene, the machine, unification and
+  kernel equality.
 - Unported forms raise `NotImplementedException`, which the runner counts as a
   failure and never as a passing `error` case; so does a name the base context
   lacks inside the prelude open, and (until `std`'s syntax roles are ported) any
   enforest error.
+- The domain model is the port's specification. Two prototype defects are
+  ticketed and fixed in C# only: a meta's solution under a spine is renamed
+  without lifting under binders, and checking a lambda ignored its written
+  parameter type. The shared suite states the specified behaviour: cases the
+  prototype gets wrong are listed in `test/conformance/prototype-divergences.txt`,
+  which the OCaml runner expects to fail (`elab-049` is now `error`; three cases).
+- Kernel records hold sequences as `EquatableArray<T>`: `ImmutableArray<T>`
+  compares by reference, which made structurally equal records unequal.
 - Decisions and the slice plan: `docs/wayfinder/tickets/port-core-tt-to-dotnet.md`.
 
 

@@ -10,9 +10,9 @@ namespace Fun.Expand;
 /// prototype pattern-matches on -- <c>rest</c> is always the real remainder,
 /// never the empty list.
 /// </summary>
-public readonly struct Terms(ImmutableArray<TokenTree> items, int start) : IEnumerable<TokenTree>
+public readonly struct Terms(EquatableArray<TokenTree> items, int start) : IEnumerable<TokenTree>
 {
-    public Terms(ImmutableArray<TokenTree> items) : this(items, 0) { }
+    public Terms(EquatableArray<TokenTree> items) : this(items, 0) { }
 
     public static readonly Terms Empty = new([], 0);
 
@@ -26,7 +26,7 @@ public readonly struct Terms(ImmutableArray<TokenTree> items, int start) : IEnum
 
     public Terms Tail => Drop(1);
 
-    public ImmutableArray<TokenTree> ToArray() => [.. this];
+    public EquatableArray<TokenTree> ToArray() => [.. this];
 
     public SourceSpan Span => Count == 0
         ? SourceSpan.Synthetic

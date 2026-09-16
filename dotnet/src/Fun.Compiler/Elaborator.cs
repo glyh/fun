@@ -16,7 +16,7 @@ public sealed record NameEntry(int Level, Value Type);
 public sealed record Ctx(
     Env Env,
     int Level,
-    ImmutableArray<Bd> Bds,
+    EquatableArray<Bd> Bds,
     ImmutableDictionary<string, NameEntry> Names,
     MetaContext Metas,
     bool PreludeOpen)
@@ -174,7 +174,7 @@ public static class Elaborator
 
             case Syntax.Prod prod:
             {
-                var items = prod.Items.Select(i => Infer(ctx, i)).ToImmutableArray();
+                var items = prod.Items.Select(i => Infer(ctx, i)).ToEquatableArray();
                 return (new Term.Prod([.. items.Select(i => i.Item1)]),
                         new Value.VProdTy([.. items.Select(i => i.Item2)]));
             }
@@ -203,6 +203,11 @@ public static class Elaborator
             {
                 if (lam.Param.Explicitness != pi.Explicitness)
                     throw new FunException("applying non-function");
+                // A written parameter type is an annotation like any other: it
+                // must agree with the domain expected. The prototype ignores it
+                // here (lambda-check-ignores-written-parameter-type).
+                if (lam.Param.Type is { } written)
+                    ctx.Unify(pi.Domain, TypeValue(ctx, written));
                 var inner = ctx.Bind(lam.Param.Name.Name, pi.Domain);
                 var bodyType = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, new Value.VRigid(ctx.Level, []));
                 return new Term.Lam(Check(inner, lam.Body, bodyType));

@@ -22,8 +22,8 @@ public sealed record Param(Id Name, Syntax? Type, Explicitness Explicitness);
 /// where it sits in its signature. An arrow with no row at all is pure.
 /// </summary>
 public sealed record EffectRow(
-    ImmutableArray<Syntax> Effects,
-    ImmutableArray<Syntax> Tails,
+    EquatableArray<Syntax> Effects,
+    EquatableArray<Syntax> Tails,
     bool Inferred,
     bool Polymorphic);
 
@@ -53,8 +53,8 @@ public abstract record Syntax(SourceSpan Span)
         Explicitness Explicitness, Id? Name, Syntax Domain, EffectRow? Row, Syntax Codomain, SourceSpan Span)
         : Syntax(Span);
 
-    public sealed record Prod(ImmutableArray<Syntax> Items, SourceSpan Span) : Syntax(Span);
-    public sealed record ProdTy(ImmutableArray<Syntax> Items, SourceSpan Span) : Syntax(Span);
+    public sealed record Prod(EquatableArray<Syntax> Items, SourceSpan Span) : Syntax(Span);
+    public sealed record ProdTy(EquatableArray<Syntax> Items, SourceSpan Span) : Syntax(Span);
     public sealed record Proj(Syntax Of, int Index, SourceSpan Span) : Syntax(Span);
     public sealed record FieldAccess(Syntax Of, string Field, SourceSpan Span) : Syntax(Span);
 
@@ -63,7 +63,7 @@ public abstract record Syntax(SourceSpan Span)
     /// at a time as expansion reaches them, so a declaration in the block can
     /// bind the syntax the statements after it are read with.
     /// </summary>
-    public sealed record Block(ImmutableArray<TokenTree> Terms, SourceSpan Span) : Syntax(Span);
+    public sealed record Block(EquatableArray<TokenTree> Terms, SourceSpan Span) : Syntax(Span);
 
     /// <summary>
     /// Adds <paramref name="scope"/> to every identifier and unread token in the

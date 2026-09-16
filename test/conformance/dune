@@ -1,7 +1,8 @@
 (test
  (name run_conformance)
  (deps
-  (source_tree cases))
+  (source_tree cases)
+  prototype-divergences.txt)
  (libraries
   core_tt_kernel
   core_tt_syntax

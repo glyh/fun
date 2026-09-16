@@ -276,7 +276,7 @@ public static class Enforest
         return (value, rest);
     }
 
-    private static ImmutableArray<Param> ParseParamGroup(Terms items)
+    private static EquatableArray<Param> ParseParamGroup(Terms items)
     {
         items = DropSeparators(items);
         // `fn() { … }` takes one unit parameter.
@@ -327,7 +327,7 @@ public static class Enforest
     /// <c>fn(p1 : A, …) : T</c>'s type: one arrow per parameter. Every parameter
     /// needs its type, since the annotation states the whole function's.
     /// </summary>
-    private static Syntax FunctionType(SourceSpan span, ImmutableArray<Param> parameters, Syntax result)
+    private static Syntax FunctionType(SourceSpan span, EquatableArray<Param> parameters, Syntax result)
     {
         if (parameters.IsEmpty) throw new ExpandException("a result type needs a parameter list");
         var type = result;
@@ -394,7 +394,7 @@ public static class Enforest
     {
         var items = ImmutableArray.CreateBuilder<TokenTree>(to - from);
         for (var i = from; i < to; i++) items.Add(terms[i]);
-        return new Terms(items.ToImmutable());
+        return new Terms(new EquatableArray<TokenTree>(items.ToImmutable()));
     }
 
     /// <summary>The name a term binds, when it is a bare identifier.</summary>

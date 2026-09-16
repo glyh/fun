@@ -35,8 +35,8 @@ public abstract record Term
     public sealed record AtomTy(Fun.Kernel.AtomTy Ty) : Term;
 
     /// <summary>A tuple: (a, b) has type ProdTy [A, B].</summary>
-    public sealed record Prod(ImmutableArray<Term> Items) : Term;
-    public sealed record ProdTy(ImmutableArray<Term> Items) : Term;
+    public sealed record Prod(EquatableArray<Term> Items) : Term;
+    public sealed record ProdTy(EquatableArray<Term> Items) : Term;
     public sealed record Proj(Term Of, int Index) : Term;
 
     /// <summary>A primitive, by name. It evaluates to a neutral headed by itself.</summary>
@@ -54,7 +54,7 @@ public abstract record Term
     /// evaluation applies the meta to every bound one, so the solver abstracts
     /// only over entries whose value is unknown.
     /// </summary>
-    public sealed record InsertedMeta(int Id, ImmutableArray<Bd> Bds) : Term;
+    public sealed record InsertedMeta(int Id, EquatableArray<Bd> Bds) : Term;
 }
 
 /// <summary>
@@ -74,21 +74,21 @@ public abstract record Value
 
     public sealed record VAtom(Fun.Kernel.Atom Atom) : Value;
     public sealed record VAtomTy(Fun.Kernel.AtomTy Ty) : Value;
-    public sealed record VProd(ImmutableArray<Value> Items) : Value;
-    public sealed record VProdTy(ImmutableArray<Value> Items) : Value;
+    public sealed record VProd(EquatableArray<Value> Items) : Value;
+    public sealed record VProdTy(EquatableArray<Value> Items) : Value;
 
     /// <summary>
     /// A stuck computation: a primitive under elimination frames. Three kinds of
     /// stuck want three strategies, which is why they are three constructors --
     /// this one decomposes head and frames.
     /// </summary>
-    public sealed record VNeutral(Value Ty, Head Head, ImmutableArray<Frame> Frames) : Value;
+    public sealed record VNeutral(Value Ty, Head Head, EquatableArray<Frame> Frames) : Value;
 
     /// <summary>A metavariable applied to a spine; unification solves it.</summary>
-    public sealed record VFlex(int Id, ImmutableArray<Value> Spine) : Value;
+    public sealed record VFlex(int Id, EquatableArray<Value> Spine) : Value;
 
     /// <summary>A bound variable applied to arguments; unification compares levels.</summary>
-    public sealed record VRigid(int Level, ImmutableArray<Value> Spine) : Value;
+    public sealed record VRigid(int Level, EquatableArray<Value> Spine) : Value;
 }
 
 public abstract record Head
