@@ -62,8 +62,11 @@ core_tt_kernel → core_tt_syntax → core_tt_expand → core_tt_loader → core
 
 A test that is only "source string → value or error" belongs in
 `test/conformance/cases/` instead (two data files, no registration), so the .NET
-port runs it too. Keep a test in Alcotest when it inspects internals: syntax
-shapes, reflection round trips, budget accounting, macro nominals plumbing.
+port runs it too — **and only there**: the Alcotest copies of those cases were
+deleted, so language behaviour has one source of truth. Keep a test in Alcotest
+when it inspects internals: syntax shapes, reflection round trips, budget
+accounting, macro nominals plumbing, an exact error constructor
+(`expect_elab_error`), or a type rather than a value (`check_type`).
 
 ---
 

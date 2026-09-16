@@ -166,10 +166,12 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
   format and conventions in `test/conformance/cases/README.md`. The OCaml runner
   is `test/conformance/run_conformance.ml` (~120 lines) — the C# port needs the
   same walk-and-compare.
-  The extracted cases still also run from the Alcotest binaries: the duplicate is
-  self-checking (a stale `.fun` fails the OCaml suite) and was kept to avoid
-  conflicting with the syntax migrations in flight. Delete the Alcotest copies
-  once the migrations settle.
+  **The suite is the single source for language behaviour** (2026-09-16): the
+  Alcotest copies are deleted (`test_core` 443 → 172 cases, `test_elaborate`
+  500 → 269; 601 conformance cases unchanged). Each deleted case was matched to
+  its twin by program text, or — for programs built by concatenation helpers — by
+  provenance label plus fragment containment. What the port must therefore also
+  cover, and what stays OCaml-only, is the internals list below.
 - **C# unit tests (xUnit)** for implementation internals that are not observable
   as a program's result — enforester/syntax shapes, reflection round trips, NbE
   and unifier internals, budget accounting — mirroring the OCaml internal tests.

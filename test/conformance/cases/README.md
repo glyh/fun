@@ -44,3 +44,7 @@ A failure names the file, what was expected and what came out.
 
 Write the two files. Nothing to register — the runner walks the directory.
 Keep programs small and self-contained; the prelude (`std`) is open.
+
+This suite is the only place a language behaviour is tested — the Alcotest
+binaries keep internal tests only (shapes, reflection round trips, budget
+accounting, exact error constructors, types rather than values).

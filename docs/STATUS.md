@@ -23,14 +23,19 @@ Last updated: after Stage 11 increment 2, 2026-09-16.
 
 - `test/conformance/cases/<area>/<name>.fun` + `<name>.expect` is the
   language-behaviour suite both the prototype and the .NET port run; extra units
-  are `<name>.unit-<unit>.fun`. 590 cases (`values`, `macros`, `imports`,
-  `elaborate`), extracted from the Alcotest binaries, which still run their own
-  copies.
+  are `<name>.unit-<unit>.fun`. 601 cases (`values`, `macros`, `imports`,
+  `elaborate`), extracted from the Alcotest binaries. **It is now the only copy:**
+  the Alcotest cases it covers are deleted (`test_core` 443 → 172 cases,
+  `test_elaborate` 500 → 269), so a language behaviour is tested in exactly one
+  place.
 - `.expect` is a value, a constructor name, `ok` (elaborates) or `error` (fails).
   Error wording is not pinned - it is implementation-specific.
 - Runner: `test/conformance/run_conformance.ml`, `dune test test/conformance`.
-  Internal tests (shapes, reflection round trips, budget accounting, macro
-  nominals plumbing) stay in Alcotest.
+  Internal tests stay in Alcotest: shapes, reflection round trips, budget
+  accounting, macro nominals plumbing, an exact error constructor
+  (`expect_elab_error`/`expect_expand_error`), a type rather than a value
+  (`check_type`/`check_conv`), and a program whose expectation lives in the
+  caller.
 
 
 ### Staged prelude; `type` is a std macro; `export` (2026-09-16)
