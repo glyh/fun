@@ -29,11 +29,17 @@ public sealed partial class Enforest
         public sealed record Operand(string Name, Role Role) : Prec;
     }
 
-    /// <summary>A source read as an expression: one body, read as expansion reaches it.</summary>
-    public static Syntax ParseExpr(string source, string? file = null)
+    /// <summary>
+    /// A source read as an expression: one body, read as expansion reaches it.
+    /// <paramref name="openPrelude"/> is the entry point's implicit leading
+    /// <c>open (import "std")</c>: a bare expression has nowhere to write the open.
+    /// </summary>
+    public static Syntax ParseExpr(string source, string? file = null, bool openPrelude = false)
     {
         var terms = Reader.Read(source, file);
-        return new Syntax.Block(terms, new Terms(terms).Span);
+        var span = new Terms(terms).Span;
+        Syntax body = new Syntax.Block(terms, span);
+        return openPrelude ? new Syntax.Open(new Syntax.Import("std", span), body, "", span) : body;
     }
 
     // ---- statements -------------------------------------------------------
