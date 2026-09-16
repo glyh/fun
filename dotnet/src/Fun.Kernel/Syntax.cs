@@ -94,7 +94,7 @@ public abstract partial record Syntax(SourceSpan Span)
 
         return this switch
         {
-            Atom or Import => this,
+            Atom or Import or Self or SelfType => this,
             Var v => v with { Id = Mark(v.Id) },
             Ap a => a with { Fn = Go(a.Fn), Arg = Go(a.Arg) },
             Lam l => l with { Param = MarkParam(l.Param, scope), Body = Go(l.Body) },
@@ -116,6 +116,9 @@ public abstract partial record Syntax(SourceSpan Span)
             Open o => o with { Of = Go(o.Of), Body = Go(o.Body) },
             OpenChoice c => c with { Name = Mark(c.Name) },
             LetRecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))], Body = Go(g.Body) },
+            Struct st => st with { Bindings = [.. st.Bindings.Select(b => b.AddScope(scope))] },
+            Sig sg => sg with { Bindings = [.. sg.Bindings.Select(b => b.AddScope(scope))] },
+            RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
             _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
@@ -155,6 +158,13 @@ public abstract partial record Binding
         Open o => o with { Of = o.Of.AddScope(scope) },
         Items i => i with { Terms = [.. i.Terms.Select(t => t.AddScope(scope))] },
         RecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))] },
+        Field f => f with { Type = f.Type.AddScope(scope) },
+        Method m => m with
+        {
+            Name = m.Name with { Scope = m.Name.Scope.Union(scope) },
+            Params = [.. m.Params.Select(p => p with { Name = p.Name with { Scope = p.Name.Scope.Union(scope) }, Type = p.Type?.AddScope(scope) })],
+            Body = m.Body.AddScope(scope),
+        },
         _ => throw new InvalidOperationException($"unhandled binding {GetType().Name}"),
     };
 }

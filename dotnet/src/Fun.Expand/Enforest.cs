@@ -206,6 +206,14 @@ public static partial class Enforest
                         return ParseFn(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Module:
                         return ParseModuleExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Struct:
+                        return ParseStructExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Self:
+                        return (new Syntax.Self(term.Span), rest);
+                    case TokenKind.Word w when w == TokenKind.SelfType:
+                        return (new Syntax.SelfType(term.Span), rest);
+                    case TokenKind.Word w when w == TokenKind.Sig:
+                        return ParseSigExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Import:
                         return ParseImport(term.Span, rest);
                     case TokenKind.Word w:
@@ -282,6 +290,13 @@ public static partial class Enforest
                 continue;
             }
 
+            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } record && lhs.Span.End == record.Span.Start
+                && IndexOfToken(new Terms(record.Items), TokenKind.Eq) >= 0)
+            {
+                (lhs, terms) = (ParseRecordConstruct(lhs, record), terms.Tail);
+                continue;
+            }
+
             if (term is TokenTree.Group { Delimiter: Delimiter.Bracket } implicitArgs)
             {
                 lhs = ParseImplicitApplication(lhs, implicitArgs);
@@ -289,10 +304,10 @@ public static partial class Enforest
                 continue;
             }
 
-            // `f{ … }`: record construction.
+            // `f{ e }` with no `=`: an implicit argument written in braces.
             if (term is TokenTree.Group { Delimiter: Delimiter.Brace } postfix
                 && lhs.Span.End == postfix.Span.Start)
-                throw new NotImplementedException("not ported yet: record construction");
+                throw new NotImplementedException("not ported yet: an implicit argument written f{ e }");
 
             // An infix operator is a declared role; no role is bound yet.
             if (TokenText(term) is string symbol)

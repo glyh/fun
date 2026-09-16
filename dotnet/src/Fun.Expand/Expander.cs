@@ -79,7 +79,7 @@ public sealed partial class Expander
     {
         switch (stx)
         {
-            case Syntax.Atom or Syntax.OpenChoice or Syntax.Import:
+            case Syntax.Atom or Syntax.OpenChoice or Syntax.Import or Syntax.Self or Syntax.SelfType:
                 return stx;
 
             case Syntax.Var v:
@@ -97,6 +97,14 @@ public sealed partial class Expander
 
             case Syntax.LetRecGroup g:
                 return ExpandLetRecGroup(g);
+            case Syntax.Struct st:
+                return st with { Bindings = ExpandBindings(st.Bindings) };
+
+            case Syntax.Sig sg:
+                return sg with { Bindings = ExpandBindings(sg.Bindings) };
+
+            case Syntax.RecordConstruct r:
+                return r with { Type = Expand(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Expand(f.Value)))] };
 
             case Syntax.Ap a:
                 return a with { Fn = Expand(a.Fn), Arg = Expand(a.Arg) };
@@ -218,6 +226,19 @@ public sealed partial class Expander
                 case Binding.RecGroup g:
                     active = ExpandRecGroupBinding(g, active, expanded);
                     break;
+
+                // A field is a label, not a binder: nothing after it sees it.
+                case Binding.Field f:
+                    expanded.Add(f with { Type = Expand(f.Type.AddScope(active)) });
+                    break;
+
+                case Binding.Method m:
+                {
+                    var (scope, method) = ExpandMethod((Binding.Method)m.AddScope(active));
+                    expanded.Add(method);
+                    active = active.Union(scope);
+                    break;
+                }
 
                 case var other:
                     throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");

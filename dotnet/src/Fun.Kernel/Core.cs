@@ -42,8 +42,12 @@ public abstract partial record Term
     /// <summary><c>e.name</c>: a member, by label. The last member of that name wins (I3).</summary>
     public sealed record Dot(Term Of, string Name) : Term;
 
-    /// <summary>A module: each binding pushes its slots, and later bindings read earlier ones.</summary>
-    public sealed record Module(EquatableArray<BindingTerm> Bindings) : Term;
+    /// <summary>
+    /// A module: each binding pushes its slots, and later bindings read earlier
+    /// ones. A <paramref name="Signature"/>'s bindings are member types, and it
+    /// evaluates to a partial module.
+    /// </summary>
+    public sealed record Module(EquatableArray<BindingTerm> Bindings, bool Signature = false) : Term;
 
     /// <summary>
     /// <c>open m in body</c>: pushes each of <paramref name="Members"/>, in order,
@@ -69,10 +73,11 @@ public abstract partial record Term
     public sealed record InsertedMeta(int Id, EquatableArray<EntryKind> EntryKinds) : Term;
 }
 
-/// <summary>A member's visibility from outside its container.</summary>
-// The prototype's `struct_field_kind` also has Field, Method and PrivateMethod,
-// which arrive with structs.
-public enum MemberKind { Public, Private }
+/// <summary>
+/// What a member of a module or struct is: a struct's constructor field, a
+/// binding visible from outside or not, or a method visible from outside or not.
+/// </summary>
+public enum MemberKind { Public, Private, Field, Method, PrivateMethod }
 
 /// <summary>What an <c>open</c> pushes: a member by label.</summary>
 public abstract partial record OpenMember

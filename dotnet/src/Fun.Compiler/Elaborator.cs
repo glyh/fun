@@ -194,18 +194,14 @@ public static partial class Elaborator
             case Syntax.FieldAccess access:
             {
                 var (of, ofType) = Infer(ctx, access.Of);
-                switch (ctx.Force(ofType))
-                {
-                    case Value.VModule module:
-                        var member = module.PublicMember(access.Field)
-                            ?? throw new FunException($"no public member `{access.Field}`");
-                        return (new Term.Dot(of, access.Field), ctx.Force(member.Value));
-                    case Value.VMeta or Value.VVar or Value.VNeutral:
-                        throw new NotImplementedException("not ported yet: a member of a value of unknown type");
-                    default:
-                        throw new FunException($"member access `.{access.Field}` on a non-module");
-                }
+                return InferMember(ctx, of, ofType, access.Field);
             }
+
+            case Syntax.Struct st: return InferStruct(ctx, st);
+            case Syntax.RecordConstruct record: return InferRecordConstruct(ctx, record);
+            case Syntax.Sig sig: return InferSig(ctx, sig);
+            case Syntax.Self: return ctx.LocateSelf();
+            case Syntax.SelfType: return (ctx.Quote(ctx.SelfType ?? throw new FunException("unbound variable: Self")), Value.VU.Instance);
 
             case Syntax.Annotated a:
             {
@@ -304,7 +300,7 @@ public static partial class Elaborator
             {
                 var (term, inferred) = Infer(ctx, stx);
                 (term, inferred) = InsertImplicitArgs(ctx, term, inferred);
-                ctx.Unify(expected, inferred);
+                AgreeWithExpected(ctx, expected, inferred, term);
                 return term;
             }
         }
@@ -320,7 +316,7 @@ public static partial class Elaborator
     // both sides read the slot list, so adding it moves no index by hand.
     private static (Term, Value) InferModule(Context ctx, Syntax.Module module)
     {
-        var inner = ctx;
+        var inner = ctx.WithoutSelf();
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
 
@@ -388,7 +384,9 @@ public static partial class Elaborator
     /// </summary>
     private static (Context, Term, EquatableArray<OpenMember>) OpenModule(Context ctx, Syntax of, string label)
     {
-        var (term, type) = Infer(ctx, of);
+        var (term, inferred) = Infer(ctx, of);
+        // A signature-typed module (a parameter) opens as the signature gives it.
+        var type = ModuleTypeOf(ctx, inferred, term);
         if (ctx.Force(type) is not Value.VModule moduleType)
             throw ctx.Force(type) is Value.VMeta or Value.VVar or Value.VNeutral
                 ? new NotImplementedException("not ported yet: opening a value of unknown type")
@@ -444,7 +442,7 @@ public static partial class Elaborator
     }
 
     /// <summary>A written type, as a term. Its own type must be a universe.</summary>
-    private static Term TypeTerm(Context ctx, Syntax stx) => Check(ctx, stx, Value.VU.Instance);
+    private static Term TypeTerm(Context ctx, Syntax stx) => TypeOfExpr(ctx, stx);
 
     /// <summary>
     /// A written type's value. Reading a type inspects it, so a type computed by a
