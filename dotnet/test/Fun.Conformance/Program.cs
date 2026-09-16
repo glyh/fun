@@ -45,19 +45,29 @@ static string? RunCase(string path)
         return expect == "error" ? null : $"elaboration failed: {e.Message}";
     }
 
-    if (expect == "error") return "expected an error";
     if (expect == "ok") return null;
 
-    try
+    // An `error` case that elaborates is run too: it may fail at evaluation
+    // (cases/README.md). Running has no budget, so a run that does not finish is
+    // reported rather than left to hang the suite.
+    // ponytail: a timed-out run's thread keeps spinning until the process exits.
+    var timeout = TimeSpan.FromSeconds(10);
+    var run = Task.Run(() =>
     {
-        var got = Driver.Describe(Driver.Run(elaborated));
-        return got == expect ? null : $"expected {expect}, got {got}";
-    }
-    catch (NotImplementedException e) { return e.Message; }
-    catch (FunException e)
+        try { return (Value: (string?)Driver.Describe(Driver.Run(elaborated)), Error: (Exception?)null); }
+        catch (Exception e) when (e is FunException or NotImplementedException) { return (null, e); }
+    });
+    if (!run.Wait(timeout)) return $"did not finish within {timeout.TotalSeconds}s";
+    var (got, error) = run.Result;
+
+    return (expect, error) switch
     {
-        return $"evaluation failed: {e.Message}";
-    }
+        (_, NotImplementedException e) => e.Message,
+        ("error", FunException) => null,
+        ("error", _) => "expected an error",
+        (_, FunException e) => $"evaluation failed: {e.Message}",
+        _ => got == expect ? null : $"expected {expect}, got {got}",
+    };
 }
 
 // A case's extra compilation units: <name>.unit-<unit>.fun beside it, each

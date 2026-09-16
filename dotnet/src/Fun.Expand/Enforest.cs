@@ -380,6 +380,9 @@ public sealed partial class Enforest
 
             default:
                 if (items.IsEmpty) return Unit(group.Span);
+                // `(+)`: an operator on its own names its value, as an identifier does.
+                if (items.Count == 1 && items[0] is TokenTree.Leaf { Token: { Kind: TokenKind.Operator op } token })
+                    return new Syntax.Var(new Id(op.Spelling, group.Span, token.Scope));
                 var colon = IndexOfToken(items, TokenKind.Colon);
                 if (colon >= 0)
                     return new Syntax.Annotated(

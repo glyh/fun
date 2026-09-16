@@ -74,6 +74,19 @@ public class PrimitivesTests
     public void MacroRuntimePrimitivesAreNotPortedYet() =>
         Assert.Throws<NotImplementedException>(() => Apply(Prim("expand_block"), Value.VU.Instance, I64(0)));
 
+    /// <summary>
+    /// The shared cases values/runtime-i64-overflow and runtime-division-by-zero
+    /// elaborate and fail at evaluation, for exactly these reasons.
+    /// </summary>
+    [Theory]
+    [InlineData("(+)(9223372036854775807, 1)", "integer overflow in +")]
+    [InlineData("(/)(1, 0)", "division by zero")]
+    public void ProgramsFailAtEvaluation(string source, string message)
+    {
+        var program = Driver.Elaborate(source, new Dictionary<string, string>());
+        Assert.Equal(message, Assert.Throws<FunException>(() => Driver.Run(program)).Message);
+    }
+
     [Fact]
     public void TupleIsTheFlatProductOfItsComponents() =>
         Assert.Equal(new Value.VProdTy([new Value.VAtomTy(AtomTy.I64), new Value.VAtomTy(AtomTy.Char)]),

@@ -22,17 +22,17 @@ public static partial class Elaborator
 
         for (var i = 0; i < members.Count; i++)
         {
-            var (name, term, type) = members[i];
+            var (name, term, type, constructor) = members[i];
             var binding = new BindingTerm.Let(name, MemberKind.Public, term.Shift(i));
             ctx = ExtendFromSlots(ctx, binding, [($"{name}#export", type)]);
             terms.Add(binding);
-            entries.Add(new ModuleEntry.Field(name, MemberKind.Public, type));
+            entries.Add(new ModuleEntry.Field(name, MemberKind.Public, type) { Constructor = constructor });
         }
         return ctx;
     }
 
     /// <summary>What <c>export M</c> takes: an enum's constructors, or a module's public members, in order.</summary>
-    private static List<(string Name, Term Term, Value Type)> ExportedMembers(Context ctx, Syntax of)
+    private static List<(string Name, Term Term, Value Type, ConstructorMark? Constructor)> ExportedMembers(Context ctx, Syntax of)
     {
         var (term, type) = Infer(ctx, of);
 
@@ -40,14 +40,14 @@ public static partial class Elaborator
             return [.. nominal.Decl.Constructors.Select(c =>
             {
                 var (member, memberType) = ConstructorMember(ctx, term, type, c.Name)!.Value;
-                return (c.Name, member, memberType);
+                return (c.Name, member, memberType, (ConstructorMark?)new ConstructorMark(ctx.Eval(term), ctx.Force(type), c));
             })];
 
         return ctx.Force(ModuleTypeOf(ctx, type, term)) switch
         {
             Value.VModule module => [.. module.Entries.OfType<ModuleEntry.Field>()
                 .Where(f => f.Kind == MemberKind.Public)
-                .Select(f => (f.Name, (Term)new Term.Dot(term, f.Name), ctx.Force(f.Value)))],
+                .Select(f => (f.Name, (Term)new Term.Dot(term, f.Name), ctx.Force(f.Value), f.Constructor))],
             Value.VMeta or Value.VVar or Value.VNeutral =>
                 throw new NotImplementedException("not ported yet: exporting a value of unknown type"),
             _ => throw new FunException("export of a non-module"),
@@ -68,12 +68,10 @@ public static partial class Elaborator
         public void Check(Binding binding, IEnumerable<ModuleEntry> added)
         {
             var export = binding as Binding.Export;
-            var source = export?.Of switch
-            {
-                Syntax.Var v => Label(v.Id.Name),
-                Syntax.OpenChoice c => c.Name.Name,
-                _ => null,
-            };
+            // The exemption holds only when the export names this module's own enum
+            // binder: an enum reached through an open is not a member here, so a
+            // public member of its name is a different binding and clashes.
+            var source = export?.Of is Syntax.Var v ? Label(v.Id.Name) : null;
             foreach (var name in added.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Public).Select(f => f.Name))
             {
                 if (_exported.Contains(name) || export is not null && _seen.Contains(name) && name != source)
