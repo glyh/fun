@@ -104,51 +104,91 @@ public static partial class Elaborator
 
     /// <summary>
     /// A method's type before its body is read: <c>Self -> params -> result</c>,
-    /// each parameter and the result at its written type, else a meta the body solves.
+    /// each parameter and the result at its written type, else a meta the body
+    /// solves, and its declared row on the innermost arrow.
     /// </summary>
     private static Value MethodType(Context ctx, Value.VStruct self, Binding.Method method)
     {
         var (selfCtx, _) = (ctx with { SelfType = self }).BindAnonymous(self);
         Value Result(Context at) => method.Body is Syntax.Annotated { Type: var written } ? TypeValue(at, written) : at.RawMeta();
-        return new Value.VPi(Explicitness.Explicit, self, new Closure(ctx.Environment, selfCtx.Quote(Params(selfCtx, method.Params, Result))));
+        var (type, row) = Params(selfCtx, method.Params, Result, method.Row);
+        return new Value.VPi(Explicitness.Explicit, self, new Closure(ctx.Environment, selfCtx.Quote(type)))
+        {
+            Row = InnermostRow(ctx, method.Params, row),
+        };
     }
 
     /// <summary>
     /// A method: a function of <c>self</c>, then of its parameters. Inside it
     /// <c>self</c> is the value called on and <c>self.m</c> reaches every method;
-    /// its type must agree with the one promised before any body was read.
+    /// its body performs within its declared row, which is pure when none is
+    /// written (E3); its type must agree with the one promised before any body was
+    /// read, rows included.
     /// </summary>
     private static (Term, Value) ElaborateMethod(Context ctx, Value.VStruct self, Binding.Method method, ImmutableDictionary<string, Value> methodTypes)
     {
         var withSelf = ctx with { SelfType = self };
         var (selfCtx, entry) = withSelf.BindAnonymous(self);
-        selfCtx = selfCtx with { SelfEntry = entry, SelfMethods = methodTypes };
+        selfCtx = selfCtx with { SelfEntry = entry, SelfMethods = methodTypes, HandlerScopes = [] };
 
-        var (body, bodyType) = MethodBody(selfCtx, method.Params, method.Body);
-        var type = new Value.VPi(Explicitness.Explicit, self, new Closure(withSelf.Environment, selfCtx.Quote(bodyType)));
+        var (body, bodyType, row) = MethodBody(selfCtx, method.Params, method.Body, method.Row);
+        var type = new Value.VPi(Explicitness.Explicit, self, new Closure(withSelf.Environment, selfCtx.Quote(bodyType)))
+        {
+            Row = InnermostRow(withSelf, method.Params, row),
+        };
         if (methodTypes.TryGetValue(Label(method.Name.Name), out var promised)) ctx.Unify(promised, type);
         return (new Term.Lam(body), type);
     }
 
-    private static (Term, Value) MethodBody(Context ctx, EquatableArray<Param> parameters, Syntax body)
+    private static (Term, Value, RowTerm) MethodBody(Context ctx, EquatableArray<Param> parameters, Syntax body, EffectRow? rowSyntax)
     {
-        if (parameters.IsEmpty) return Infer(ctx, body);
+        if (parameters.IsEmpty)
+        {
+            var ((term, type), performed) = Collecting(ctx, c => Infer(c, body));
+            var row = MethodRow(ctx, rowSyntax);
+            CheckEffectSubset(ctx, performed, Nbe.EvalRow(ctx.Metas, ctx.Environment, row), inFunction: true);
+            return (term, type, row);
+        }
         var param = parameters[0];
         var domain = param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
         var inner = ctx.Bind(param.Name.Name, domain);
-        var (term, type) = MethodBody(inner, parameters.RemoveAt(0), body);
-        return (new Term.Lam(term), new Value.VPi(param.Explicitness, domain, new Closure(ctx.Environment, inner.Quote(type))));
+        var rest = parameters.RemoveAt(0);
+        var (bodyTerm, bodyType, bodyRow) = MethodBody(inner, rest, body, rowSyntax);
+        return (new Term.Lam(bodyTerm), new Value.VPi(param.Explicitness, domain, new Closure(ctx.Environment, inner.Quote(bodyType)))
+        {
+            Row = InnermostRow(ctx, rest, bodyRow),
+        }, bodyRow);
     }
 
-    /// <summary>The function type over <paramref name="parameters"/>, ending in the type <paramref name="result"/> gives.</summary>
-    private static Value Params(Context ctx, EquatableArray<Param> parameters, Func<Context, Value> result)
+    /// <summary>The function type over <paramref name="parameters"/>, ending in the type <paramref name="result"/> gives, with the row on its innermost arrow.</summary>
+    private static (Value Type, RowTerm Row) Params(Context ctx, EquatableArray<Param> parameters, Func<Context, Value> result, EffectRow? rowSyntax)
     {
-        if (parameters.IsEmpty) return result(ctx);
+        if (parameters.IsEmpty) return (result(ctx), MethodRow(ctx, rowSyntax));
         var param = parameters[0];
         var domain = param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
         var inner = ctx.Bind(param.Name.Name, domain);
-        return new Value.VPi(param.Explicitness, domain, new Closure(ctx.Environment, inner.Quote(Params(inner, parameters.RemoveAt(0), result))));
+        var rest = parameters.RemoveAt(0);
+        var (type, row) = Params(inner, rest, result, rowSyntax);
+        return (new Value.VPi(param.Explicitness, domain, new Closure(ctx.Environment, inner.Quote(type)))
+        {
+            Row = InnermostRow(ctx, rest, row),
+        }, row);
     }
+
+    /// <summary>
+    /// A method's declared row, read with every parameter bound. <c>~&gt; T</c> on a
+    /// definition is inferred from the body, as <c>-&gt;{_} T</c> is.
+    /// </summary>
+    private static RowTerm MethodRow(Context ctx, EffectRow? row) =>
+        ElaborateRow(ctx, row is { Polymorphic: true } ? row with { Polymorphic = false, Inferred = true } : row);
+
+    /// <summary>
+    /// The row an arrow of a method carries: the declared row on the innermost one
+    /// (the arrow whose remaining parameters are <paramref name="rest"/>, none),
+    /// pure on every other. <paramref name="outer"/> is the context outside that arrow.
+    /// </summary>
+    private static RowClosure InnermostRow(Context outer, EquatableArray<Param> rest, RowTerm row) =>
+        rest.IsEmpty && !row.IsPure ? new RowClosure(outer.Environment, row) : RowClosure.Pure;
 
     /// <summary>
     /// <c>P{x = 1}</c>: every constructor field of <c>P</c> given exactly once, each

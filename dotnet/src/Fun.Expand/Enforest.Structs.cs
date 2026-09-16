@@ -47,10 +47,10 @@ public sealed partial class Enforest
 
         var items = DropSeparators(new Terms(group.Items));
         EquatableArray<Param> parameters = items.IsEmpty ? [] : ParseParamGroup(items, Explicitness.Explicit);
-        var (result, afterResult) = ParseResultType(stmt.Drop(3));
+        var (result, row, afterResult) = ParseResult(stmt.Drop(3));
         var (body, rest, _) = ParseBody(afterResult);
         EnsureNoRest("method declaration", rest);
-        return new Binding.Method(name, parameters, result is null ? body : new Syntax.Annotated(body, result, body.Span), isPublic);
+        return new Binding.Method(name, parameters, result is null ? body : new Syntax.Annotated(body, result, body.Span), isPublic, row);
     }
 
     /// <summary><c>sig { name : Type; … }</c>: each item a public member whose value is its type.</summary>

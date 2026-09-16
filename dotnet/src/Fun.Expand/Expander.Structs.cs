@@ -34,6 +34,8 @@ public sealed partial class Expander
             Name = Rename(m.Name, scope, resolved),
             Params = [.. parameters],
             Body = Expand(m.Body.AddScope(paramScopes)),
+            // The row sits on the innermost arrow, so it reads the parameters: `->{Mutate(r)}`.
+            Row = ExpandRow(m.Row, paramScopes),
         });
     }
 }

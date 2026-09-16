@@ -139,7 +139,7 @@ public abstract partial record Syntax(SourceSpan Span)
     private static Param MarkParam(Param p, ScopeSet scope) =>
         p with { Name = p.Name with { Scope = p.Name.Scope.Union(scope) }, Type = p.Type?.AddScope(scope) };
 
-    private static EffectRow? MarkRow(EffectRow? row, ScopeSet scope) =>
+    internal static EffectRow? MarkRow(EffectRow? row, ScopeSet scope) =>
         row is null ? null : row with
         {
             Effects = [.. row.Effects.Select(e => e.AddScope(scope))],
@@ -189,6 +189,7 @@ public abstract partial record Binding
             Name = m.Name with { Scope = m.Name.Scope.Union(scope) },
             Params = [.. m.Params.Select(p => p with { Name = p.Name with { Scope = p.Name.Scope.Union(scope) }, Type = p.Type?.AddScope(scope) })],
             Body = m.Body.AddScope(scope),
+            Row = Syntax.MarkRow(m.Row, scope),
         },
         Trait or Impl => AddScopeTraits(scope),
         _ => throw new InvalidOperationException($"unhandled binding {GetType().Name}"),

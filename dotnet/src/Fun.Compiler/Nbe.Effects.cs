@@ -137,7 +137,7 @@ public static partial class Nbe
 
     // ---- rows -------------------------------------------------------------
 
-    private static Value.VEffectRow EvalRow(MetaContext mc, Environment env, RowTerm row) =>
+    public static Value.VEffectRow EvalRow(MetaContext mc, Environment env, RowTerm row) =>
         row.IsPure
             ? Value.VEffectRow.Pure
             : NormalizeRow(mc, [.. row.Effects.Select(e => Eval(mc, env, e))], [.. row.Tails.Select(t => Eval(mc, env, t))]);

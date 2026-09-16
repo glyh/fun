@@ -185,6 +185,11 @@ public abstract partial record Binding
                 Name = m.Id(me.Name),
                 Params = [.. me.Params.Select(p => p with { Name = m.Id(p.Name), Type = p.Type?.Map(m) })],
                 Body = me.Body.Map(m),
+                Row = me.Row is null ? null : me.Row with
+                {
+                    Effects = [.. me.Row.Effects.Select(e => e.Map(m))],
+                    Tails = [.. me.Row.Tails.Select(t => t.Map(m))],
+                },
             },
             Export e => e with { Of = e.Of.Map(m) },
             SyntaxDecl s => s with { Name = m.Id(s.Name), Role = m.MapRole(s.Role) },

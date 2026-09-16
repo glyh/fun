@@ -462,18 +462,6 @@ public sealed partial class Enforest
         return new Param(name, ParseAll(rest.Tail), explicitness);
     }
 
-    /// <summary>
-    /// An optional result type before a body. Brackets decide grouping: the type
-    /// ends at the first top-level <c>{ … }</c>, so a type holding braces is
-    /// parenthesised.
-    /// </summary>
-    private (Syntax?, Terms) ParseResultType(Terms terms)
-    {
-        var (type, row, rest) = ParseResult(terms);
-        if (row is not null) throw new NotImplementedException("not ported yet: an effect row on a method result");
-        return (type, rest);
-    }
-
     private (Syntax, Terms, SourceSpan) ParseBody(Terms terms)
     {
         terms = DropSeparators(terms);
