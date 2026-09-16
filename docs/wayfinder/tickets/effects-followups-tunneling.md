@@ -52,6 +52,11 @@ blocked_by:
    **Fixed 2026-09-15**: an `UnhandledEffects` raised while a match's branches
    elaborate that names an instance the match handles is reported as
    `HandledEffectEscapes`.
+   **Extended 2026-09-16**: enforcing "`: T` is a pure result"
+   ([effect-arrow-syntax](effect-arrow-syntax.md)) made the same shape raise
+   `EffectsInPureResult` instead, which slipped past that translation (`main` was
+   red on "an escaping closure called at the top is an error"). Both errors are
+   now translated.
    **Superseded (2026-09-16):** `can any` / `->{any}` was dropped; see effect-arrow-syntax.
 
 ## Closed questions (2026-09-16)

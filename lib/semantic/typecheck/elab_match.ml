@@ -303,7 +303,7 @@ let escape_guard ctx =
      branch fixed its row to one without a handled effect is that escape. *)
   let within handled elaborate_branches =
     try elaborate_branches ()
-    with ElabError (UnhandledEffects names) as err -> (
+    with ElabError (UnhandledEffects names | EffectsInPureResult names) as err -> (
       let handled_names =
         List.map (fun v -> (Debug.pp_value_short metas v, v)) handled
       in
