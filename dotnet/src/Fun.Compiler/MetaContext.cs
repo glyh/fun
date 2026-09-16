@@ -46,6 +46,24 @@ public sealed class MetaContext
         for (var i = 0; i < _solutions.Count; i++) _solutions[i] = i < snapshot.Length ? snapshot[i] : null;
     }
 
+    /// <summary>
+    /// Makes a fresh context carry the prelude's metas, solutions and nominal
+    /// bookkeeping first, so a prelude value whose terms name one of its metas means
+    /// the same meta here, and this context's own metas never reuse an id.
+    /// </summary>
+    internal void SeedFrom(MetaContext prelude)
+    {
+        if (ReferenceEquals(this, prelude) || _seeded) return;
+        if (_solutions.Count > 0)
+            throw new InvalidOperationException("a meta context must be seeded from the prelude before it creates metas");
+        _solutions.AddRange(prelude._solutions);
+        DeclaredNominals.AddRange(prelude.DeclaredNominals);
+        foreach (var (decl, label) in prelude.GenerativeNominals) GenerativeNominals[decl] = label;
+        _seeded = true;
+    }
+
+    private bool _seeded;
+
     public void Solve(int id, Value value)
     {
         if (_solutions[id] is not null)

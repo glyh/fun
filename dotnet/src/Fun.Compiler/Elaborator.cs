@@ -123,10 +123,21 @@ public sealed partial record Context(
 public static partial class Elaborator
 {
     /// <summary>
-    /// The base context: the atom types, as definitions. A program's indices
+    /// The base context every compilation unit elaborates against: the builtins and
+    /// the prelude bound as <c>stdlib</c> - bound, not opened. A program's indices
     /// count these entries, so it runs in this context's environment.
     /// </summary>
     public static Context BaseContext(MetaContext metas, bool preludeOpen)
+    {
+        metas.SeedFrom(Prelude.Metas);
+        var ctx = BuiltinContext(metas, preludeOpen);
+        var (value, type) = Prelude.Unit;
+        ctx = ctx.Define(Prelude.Binding, type, value);
+        return ctx with { BaseNames = ctx.Names };
+    }
+
+    /// <summary>The atom types, the primitives and the reference entries: what the prelude itself elaborates against.</summary>
+    public static Context BuiltinContext(MetaContext metas, bool preludeOpen)
     {
         var ctx = Context.Empty(metas, preludeOpen);
         foreach (var (name, ty) in new (string, AtomTy)[]

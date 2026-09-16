@@ -17,12 +17,11 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
     private readonly Dictionary<string, (Value Value, Value Type)> _loaded = [];
     private readonly HashSet<string> _active = [];
 
-    public UnitSyntax LoadSyntax(string path) => Expanded(path).Syntax;
+    public UnitSyntax LoadSyntax(string path) => path == Prelude.Path ? Prelude.Syntax : Expanded(path).Syntax;
 
     /// <summary>A unit expanded by its own expander, which this loader serves in turn.</summary>
     private (Syntax Unit, UnitSyntax Syntax) Expanded(string path)
     {
-        if (path == "std") throw new NotImplementedException("not ported yet: the prelude (`import \"std\"`)");
         if (_expanded.TryGetValue(path, out var expanded)) return expanded;
         if (!sources.TryGetValue(path, out var source)) throw new FunException($"import not found: \"{path}\"");
         if (!_expanding.Add(path)) throw new FunException($"circular import: \"{path}\"");
@@ -40,6 +39,8 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
 
     public (Value Value, Value Type) Load(string path, MetaContext metas)
     {
+        // Elaborated once per process; the importer's metas are seeded from the prelude's.
+        if (path == Prelude.Path) return Prelude.Unit;
         if (_loaded.TryGetValue(path, out var loaded)) return loaded;
         var (unit, _) = Expanded(path);
         if (!_active.Add(path)) throw new FunException($"circular import: \"{path}\"");
