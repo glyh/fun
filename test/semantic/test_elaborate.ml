@@ -1565,12 +1565,45 @@ let effects =
           R = struct { cb : (Unit ~> I64) ~> I64 }; \
           ((1, 2) : Tuple(2, I64, I64)); \
           (fn(_) { app(twice(f)) } : Unit ->{State(I64)} I64) }");
-    Alcotest.test_case "a result ~> with no parameter's row is pure" `Quick
+    (* A standalone [~>] has no parameter to collect from, so it mints its own
+       variable: the value must work for every row, which a body that performs
+       does not. *)
+    Alcotest.test_case "a standalone ~> mints, so an effectful body is rejected" `Quick
       (elab_fail
          "{ effect State(S) = sig { get : Unit -> S }; \
           f : Unit ~> I64 = fn(_) { perform State.get () }; 1 }");
-    Alcotest.test_case "~> results cannot yet unite two row variables" `Quick
-      (elab_fail "{ f : (I64 ~> I64) -> (I64 ~> I64) ~> I64 = fn(g, h) { g(1) + h(2) }; 1 }");
+    (* A result unites what its parameters mint (multi-tail rows). *)
+    Alcotest.test_case "a ~> result unites two callbacks' rows" `Quick
+      (eval_i64
+         "{ effect Log = sig { write : I64 -> I64 }; effect Exc = sig { raise : I64 -> I64 }; \
+          f : (I64 ~> I64) -> (I64 ~> I64) ~> I64 = fn(g, h) { g(1) + h(2) }; \
+          lg : I64 ->{Log} I64 = fn(n) { perform Log.write(n) }; \
+          ex : I64 ->{Exc} I64 = fn(n) { perform Exc.raise(n) }; \
+          a = f(fn(n : I64) { n }, fn(n : I64) { n * 10 }); \
+          b = match (f(lg, fn(n : I64) { n })) { v => v, effect Log.write n => n + 100 }; \
+          c = match (match (f(lg, ex)) { v => v, effect Log.write n => n }) { v => v, effect Exc.raise n => n * 1000 }; \
+          a + b + c }" 123L);
+    Alcotest.test_case "a row names several tails after the bar" `Quick
+      (eval_i64
+         "{ effect Log = sig { write : I64 -> I64 }; \
+          f : [e1 : EffectRow, e2 : EffectRow] -> (I64 ->{e1} I64) -> (I64 ->{e2} I64) -> I64 ->{e1, e2} I64 \
+            = fn[e1 : EffectRow, e2 : EffectRow](g, h, x) { g(x) + h(x) }; \
+          lg : I64 ->{Log} I64 = fn(n) { perform Log.write(n) }; \
+          match (f(lg, fn(n : I64) { n }, 5)) { v => v, effect Log.write n => n * 3 } }" 15L);
+    (* Curried [~>]: only the final arrow collects, so a partial application is
+       pure. *)
+    Alcotest.test_case "a curried ~> collects on its final arrow" `Quick
+      (eval_i64
+         "{ effect Log = sig { write : I64 -> I64 }; \
+          twice : (I64 ~> I64) ~> I64 ~> I64 = fn(g) { fn(x) { g(g(x)) } }; \
+          lg : I64 ->{Log} I64 = fn(n) { perform Log.write(n) }; \
+          pure_twice : I64 -> I64 = twice(fn(x : I64) { x + 1 }); \
+          logging : I64 ->{Log} I64 = twice(lg); \
+          pure_twice(3) }" 5L);
+    Alcotest.test_case "~> mints inside a higher-order parameter" `Quick
+      (eval_i64
+         "{ twice : ((I64 ~> I64) ~> I64) ~> I64 = fn(k) { k(fn(x : I64) { x + 1 }) }; \
+          twice(fn(c : I64 -> I64) { c(41) }) }" 42L);
     Alcotest.test_case "* is not a product type" `Quick
       (elab_fail "{ p : I64 * Bool = (1, True); 1 }");
     Alcotest.test_case "a bare arrow rejects an effectful callback" `Quick

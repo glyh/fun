@@ -2,9 +2,9 @@ open Core
 
 let rec pp_effect_row (row : effect_row) =
   let effects = List.map pp_term row.effects in
-  match row.tail with
-  | None -> String.concat ", " effects
-  | Some tail -> String.concat ", " effects ^ " | " ^ pp_term tail
+  match row.tails with
+  | [] -> String.concat ", " effects
+  | tails -> String.concat ", " effects ^ " | " ^ String.concat ", " (List.map pp_term tails)
 
 and pp_term (t : term) : string =
   match t with
@@ -56,9 +56,9 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VEffectRowTy -> "EffectRow"
     | VEffectRow row ->
         let effects = List.map (go (depth + 1)) row.effect_values in
-        let tail = Option.map (go (depth + 1)) row.tail_value in
+        let tails = List.map (go (depth + 1)) row.tail_values in
         Printf.sprintf "{%s%s}" (String.concat ", " effects)
-          (match tail with None -> "" | Some tail -> " | " ^ tail)
+          (match tails with [] -> "" | tails -> " | " ^ String.concat ", " tails)
     | VAtom (I64 n) -> Int64.to_string n
     | VAtom Unit -> "()"
     | VAtom (Char c) -> Atom.pp (Char c)
@@ -89,7 +89,7 @@ let pp_value_short (mc : MetaContext.t) (v : value) : string =
     | VLam _ -> "<lam>"
     | VPi { explicitness; domain; effects; _ } ->
         let row =
-          if List.is_empty effects.effects && Option.is_none effects.tail then ""
+          if List.is_empty effects.effects && List.is_empty effects.tails then ""
           else Printf.sprintf "{%s}" (String.concat ", " (List.map pp_term effects.effects))
         in
         (match explicitness with

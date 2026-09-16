@@ -15,9 +15,9 @@ open Elab_ops
    this function body. Whether a request's instance is named is decided when it
    is performed (family and parameters, E1). *)
 let tunnel ctx (row : effect_row_value) =
-  match row.tail_value, ctx.Ctx.handler_scopes with
-  | None, _ | _, [] -> Fun.id
-  | Some _, handlers ->
+  match row.tail_values, ctx.Ctx.handler_scopes with
+  | [], _ | _, [] -> Fun.id
+  | _ :: _, handlers ->
       let named = List.map (Ctx.quote ctx) row.effect_values in
       fun body -> Tunnel { named; handlers; body }
 
@@ -26,10 +26,10 @@ let tunnel ctx (row : effect_row_value) =
    The argument is evaluated only when the row mentions it: evaluating it at
    check time would run what it performs. *)
 let emit_latent ctx (latent : effect_row_closure) arg_core =
-  match latent.effects, latent.tail with
-  | [], None -> Fun.id
+  match latent.effects, latent.tails with
+  | [], [] -> Fun.id
   | _ ->
-      let terms = latent.effects @ Option.to_list latent.tail in
+      let terms = latent.effects @ latent.tails in
       let arg =
         if List.exists (term_mentions_var 0) terms then Ctx.eval ctx arg_core
         else VRigid { lvl = ctx.Ctx.lvl; spine = [] }

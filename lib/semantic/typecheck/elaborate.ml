@@ -4,7 +4,7 @@ include Elab_error
 module Ctx = Elab_ctx.Ctx
 
 type expr_effect = Elab_effects.expr_effect = { core : term; value : value }
-type expr_effects = Elab_effects.expr_effects = { effects : expr_effect list; tail : expr_effect option }
+type expr_effects = Elab_effects.expr_effects = { effects : expr_effect list; tails : expr_effect list }
 
 let init_ctx = Macro_driver.init_ctx
 let resolve_stdlib = Elab_entry.resolve_stdlib

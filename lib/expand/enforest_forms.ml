@@ -44,7 +44,7 @@ let is_wildcard_term (term : Raw_syntax.t) = match term.datum with Token { kind 
 
 let parse_effect_row_terms callbacks terms =
   match drop_separators terms with
-  | [] -> { Syntax.effects = []; tail = None; inferred = false; polymorphic = false }
+  | [] -> { Syntax.effects = []; tails = []; inferred = false; polymorphic = false }
   | _ -> (
       match split_at_token Bar terms with
       | Some (effect_terms, _, tail_terms) ->
@@ -54,12 +54,16 @@ let parse_effect_row_terms callbacks terms =
             | _ -> List.map callbacks.parse_expr_terms (split_commas effect_terms)
           in
           (match drop_separators tail_terms with
-           | [ wild ] when is_wildcard_term wild -> { Syntax.effects = effects; tail = None; inferred = true; polymorphic = false }
-           | _ -> { Syntax.effects = effects; tail = Some (callbacks.parse_expr_terms tail_terms); inferred = false; polymorphic = false })
+           | [ wild ] when is_wildcard_term wild -> { Syntax.effects = effects; tails = []; inferred = true; polymorphic = false }
+           (* Several row variables after the bar: the row is their union. *)
+           | _ ->
+               { Syntax.effects = effects;
+                 tails = List.map callbacks.parse_expr_terms (split_commas tail_terms);
+                 inferred = false; polymorphic = false })
       | None -> (
           match drop_separators terms with
-          | [ wild ] when is_wildcard_term wild -> { Syntax.effects = []; tail = None; inferred = true; polymorphic = false }
-          | _ -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tail = None; inferred = false; polymorphic = false }))
+          | [ wild ] when is_wildcard_term wild -> { Syntax.effects = []; tails = []; inferred = true; polymorphic = false }
+          | _ -> { Syntax.effects = List.map callbacks.parse_expr_terms (split_commas terms); tails = []; inferred = false; polymorphic = false }))
 
 let parse_ref callbacks start_span terms =
   match drop_separators terms with

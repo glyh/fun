@@ -17,7 +17,9 @@ type explicitness = Implicit | Explicit
     position among the public impls. *)
 type open_member = OpenField of string | OpenImpl of int
 
-type effect_row = { effects : term list; tail : term option }
+(* A row: known effects, plus the row variables whose effects it also has
+   (a union of tails, E2). *)
+type effect_row = { effects : term list; tails : term list }
 
 and term =
   | Var of ix
@@ -268,9 +270,9 @@ and syntax_object =
 
 and env = value list (* head = most recently bound *)
 
-and effect_row_closure = { env : env; effects : term list; tail : term option }
+and effect_row_closure = { env : env; effects : term list; tails : term list }
 
-and effect_row_value = { effect_values : value list; tail_value : value option }
+and effect_row_value = { effect_values : value list; tail_values : value list }
 
 (*
    Notation used in the [value] constructor comments:
@@ -465,9 +467,9 @@ and fix_member = { fix_name : string; fix_pure : bool; fix_body : term }
 (* The [fix_index]th member of a recursive group, closed over [fix_env]. *)
 and fix_closure = { fix_members : fix_member list; fix_env : env; fix_index : int }
 
-let empty_effect_row = { effects = []; tail = None }
-let is_empty_effect_row row = List.is_empty row.effects && Option.is_none row.tail
-let effect_row_closure env row = { env; effects = row.effects; tail = row.tail }
+let empty_effect_row = { effects = []; tails = [] }
+let is_empty_effect_row row = List.is_empty row.effects && List.is_empty row.tails
+let effect_row_closure env row = { env; effects = row.effects; tails = row.tails }
 
 (* Pure arrows, for types the compiler writes itself (primitives, constructors). *)
 let pure_effects = effect_row_closure [] empty_effect_row
@@ -615,7 +617,7 @@ let fix_body_env (fc : fix_closure) =
     [Var] and the leaves are returned unchanged. *)
 let map_subterms (f : int option -> term -> term) (t : term) : term =
   let at n = f (Some n) in
-  let row n (r : effect_row) = { effects = List.map (at n) r.effects; tail = Option.map (at n) r.tail } in
+  let row n (r : effect_row) = { effects = List.map (at n) r.effects; tails = List.map (at n) r.tails } in
   let bindings bs =
     let step (under, acc) b =
       let g = f under in

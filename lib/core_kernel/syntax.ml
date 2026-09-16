@@ -48,7 +48,7 @@ and type_decl = { name : id; params : id list; ctors : (id * t list) list }
     inferred. [polymorphic]: the arrow was written [~>]; its row is decided by
     where the arrow sits in its signature ([Elab_poly_arrows]). An arrow with no
     row is pure (E3). *)
-and effect_row = { effects : t list; tail : t option; inferred : bool; polymorphic : bool }
+and effect_row = { effects : t list; tails : t list; inferred : bool; polymorphic : bool }
 
 and struct_binding =
   | LetBinding of { name : id; value : t; public : bool; recursive : bool }
@@ -511,7 +511,7 @@ let macro_signature ~(output : t option) (value : t) : macro_signature option =
     Some { signature; binders = List.map (fun (p : param) -> p.name.name) binders; params }
 
 (* A row's effect and tail forms, mapped. *)
-let map_effect_row f (e : effect_row) = { e with effects = List.map f e.effects; tail = Option.map f e.tail }
+let map_effect_row f (e : effect_row) = { e with effects = List.map f e.effects; tails = List.map f e.tails }
 
 (** The kind of a macro with annotation [ann] and value [value]: [TypedExpr]
     when its signature promises a type, so its call waits for the elaborator. *)

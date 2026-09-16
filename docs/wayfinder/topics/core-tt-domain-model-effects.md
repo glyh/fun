@@ -39,12 +39,17 @@ and `State(I64).get` is a different handler branch from `State(Bool).get`
 (`find_effect_branch` compares the operation *and* the full instance by
 conversion).
 
-### E2 — a row is a set with an optional tail
+### E2 — a row is a set of effects with a set of tails
 
 **Status: enforced by construction.** Concrete effects are order-insensitive
-and duplicate-free; a row tail flattens into the prefix
-(`normalize_effect_row_value`). Closed rows (`->{IO}`), open rows (`->{IO |
-r}`) and row metavariables all normalise to this shape before conversion.
+and duplicate-free; a row carries a *set* of row variables (`->{IO | e1, e2}`,
+2026-09-16), so a result can unite several callbacks' rows. A tail solved to a
+row is spliced into the prefix (`normalize_effect_row_value`), so a union
+disappears as its variables are solved. Closed rows (`->{IO}`), open rows
+(`->{IO | r}`) and row metavariables all normalise to this shape before
+conversion. Unification cancels the tails both sides name and solves a single
+remaining one; a union of two unsolved tails against a concrete row is a
+mismatch rather than a guess.
 
 ### E3 — a bare arrow is pure
 

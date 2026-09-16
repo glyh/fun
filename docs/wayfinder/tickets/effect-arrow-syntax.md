@@ -5,7 +5,7 @@ labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-16
-resolution: Implemented (branch effect-arrows). Rows sit on arrows (`A ->{E} B`, open `{E | e}`, `->{_}` inferred and an error when nothing solves it); `~>` mints row variables in parameter positions and collects them in result positions (a definition's result also infers what its body performs); `can` is deleted; definitions keep `: T` when pure and take `->{E} T` / `~> T` when effectful. Limit: a row holds one row variable (E2), so a result collecting two parameters' variables is `UnsupportedRowUnion`. Trait bounds are a set `[A : {Eq, Show}]`.
+resolution: Implemented (branch effect-arrows). Rows sit on arrows (`A ->{E} B`, open `{E | e}`, `->{_}` inferred and an error when nothing solves it); `~>` mints row variables in parameter positions and collects them in result positions (a definition's result also infers what its body performs); `can` is deleted; definitions keep `: T` when pure and take `->{E} T` / `~> T` when effectful. Rows carry a set of row variables, so a result unites its callbacks' rows; a curried `~>` collects on its final arrow. Trait bounds are a set `[A : {Eq, Show}]`.
 decided: 2026-09-16
 assignee:
 blocked_by:
@@ -103,11 +103,14 @@ dedicated syntax in their positions for now; generalising to one set literal is
   right row named (`{Exc}` against `{| ?m}` failed); leftovers now go to the other
   side's tail from both sides. A method's row known before its body is unified
   with the row the body solved.
-- **Limit (E2):** a row holds one tail, so `f : (A ~> B) -> (C ~> D) ~> E` —
-  a result uniting two row variables — is `UnsupportedRowUnion`. Uniting them
-  needs multi-tail rows, which E2 ("a row is a set with an optional tail") rules
-  out: a decision, not an implementation gap. Rank 1: variables minted under a
-  higher-order parameter are bound at the root (`ponytail:`).
+- **Multi-tail rows (2026-09-16):** a row is known effects plus a set of row
+  variables, so `f : (A ~> B) -> (C ~> D) ~> E` works
+  ([multi-tail-effect-rows](multi-tail-effect-rows.md)). Rank 1: variables minted
+  under a higher-order parameter are bound at the root (`ponytail:`).
+- **Curried `~>` (2026-09-16):** polarity is gone. Every function type is read on
+  its own: each parameter's type is a signature in its own right, and the chain's
+  final arrow carries what its parameters minted, so `twice : (A ~> A) ~> A ~> A`
+  is `[e] -> (A ->{e} A) -> (A ->{e} A)` and `twice(f)` is pure.
 - **Trait bounds** are a set, `[A : {Eq, Show}]` (`Syntax.TraitBoundSet`); a
   trait named twice is `DuplicateTraitBound`; the `+` spelling recognition is
   deleted. Bounds are still read only on an implicit arrow (`[A : …] -> …`); a
@@ -144,3 +147,29 @@ app = fn(g : Callback) ~> I64 { g(()) }   // ok: the result collects g's e
 So a use of the alias behaves exactly like writing `Unit ~> I64` in that
 parameter position, and a caller's pure result annotation is rejected rather than
 silently widened.
+
+## Not implemented: a standalone `~>` alias at its use site (2026-09-16)
+
+The minting half landed: `Callback = Unit ~> I64` now elaborates to
+`[e : EffectRow] -> Unit ->{e} I64` (it no longer silently means pure). But a
+*use* of that alias reads it as a **rank-2** type - the value must work for
+every row - which is the opposite of what the ticket asks:
+
+```fun
+Callback = Unit ~> I64;
+app = fn(g : Callback) : I64 { g(()) }     // accepted today; ticket wants an error
+app = fn(g : Callback) ~> I64 { g(()) };
+app(lg)                                     // rejected today (lg is not polymorphic)
+```
+
+For the ticket's behaviour the alias's binder must be **lifted to the enclosing
+definition** (rank 1): `fn(g : Callback)` would bind `e` as an implicit parameter
+of `app`, so `app`'s pure result contradicts `g`'s row and its `~>` result
+collects it. That is an elaborator change (implicit row binders in a parameter's
+annotation are bound by the enclosing lambda instead of instantiated), and it
+decides a language question the ticket does not:
+
+**Does an implicit row binder written inside a parameter's type mean rank 1 (the
+caller chooses the row) or rank 2 (the callee needs a value polymorphic in it)?**
+Today a hand-written `fn(g : [e : EffectRow] -> Unit ->{e} I64)` is rank 2;
+lifting changes that spelling's meaning too, or needs the two to be told apart.

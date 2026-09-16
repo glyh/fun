@@ -377,7 +377,7 @@ let effectful_pi effects =
   VPi
     { explicitness = Explicit;
       domain = VAtomTy Atom_ty.TI64;
-      effects = { env = effect_row_env (); effects; tail = None };
+      effects = { env = effect_row_env (); effects; tails = [] };
       codomain = { env = []; body = AtomTy Atom_ty.TI64 } }
 
 let test_conv_effect_row_order () =

@@ -92,13 +92,9 @@ let value_substituter (mc : MetaContext.t) (target : lvl) (replacement : value) 
     | VProdTy elems as v -> let elems' = subs elems in if elems' == elems then v else VProdTy elems'
     | VEffectRow row as v ->
         let effect_values = subs row.effect_values in
-        let tail_value =
-          match row.tail_value with
-          | Some t -> let t' = sub t in if t' == t then row.tail_value else Some t'
-          | None -> None
-        in
-        if effect_values == row.effect_values && tail_value == row.tail_value then v
-        else VEffectRow { effect_values; tail_value }
+        let tail_values = subs row.tail_values in
+        if effect_values == row.effect_values && tail_values == row.tail_values then v
+        else VEffectRow { effect_values; tail_values }
     | VModule { entries; partial } as v ->
         let entries' =
           map_shared

@@ -3,7 +3,9 @@ title: Effect rows with several row variables (union of tails)
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-16
+resolution: Implemented (branch row-unions). Core rows carry `tails : term list` (`tail_values : value list`), written `->{Log | e1, e2}`; `normalize_effect_row_value` splices a tail solved to a row, so a union disappears as its variables are solved; unification cancels the tails both sides name and solves a single remaining one, and a union of two unsolved tails against a concrete row is `EffectRowMismatch` rather than a guess. `UnsupportedRowUnion` is deleted.
 decided: 2026-09-16
 assignee:
 blocked_by:
@@ -29,3 +31,12 @@ arise at results). Written syntax for several tails: `->{Log | e1, e2}`.
 
 Tests: the two-callback `f` with pure/Log/Exc callbacks in each slot; `->{e1, e2}`
 written by hand; tunneling and discharge unchanged; E2 doc updated.
+
+## Resolution (2026-09-16)
+
+Strategy: **normalise, then cancel.** A tail solved to a row is spliced into its
+row, so the common case - a call whose callbacks' rows are solved when its
+arguments are checked - needs no constraint solving at all. Unification removes
+the tails both sides name, then solves one remaining tail to whatever is left.
+Only a union of two *unsolved* tails meeting a concrete row has no principal
+solution; that is an error rather than a guess, and no test needed it.

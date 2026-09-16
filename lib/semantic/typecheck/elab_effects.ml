@@ -4,27 +4,21 @@ open Elab_error
 module Ctx = Elab_ctx.Ctx
 
 type expr_effect = Elab_ctx.expr_effect = { core : term; value : value }
-type expr_effects = Elab_ctx.expr_effects = { effects : expr_effect list; tail : expr_effect option }
+type expr_effects = Elab_ctx.expr_effects = { effects : expr_effect list; tails : expr_effect list }
 
-let empty_expr_effects = { effects = []; tail = None }
-let singleton_expr_effect core value = { effects = [ { core; value } ]; tail = None }
-let singleton_expr_effect_tail core value = { effects = []; tail = Some { core; value } }
-let is_empty_expr_effects effects = List.is_empty effects.effects && Option.is_none effects.tail
+let empty_expr_effects = { effects = []; tails = [] }
+let singleton_expr_effect core value = { effects = [ { core; value } ]; tails = [] }
+let singleton_expr_effect_tail core value = { effects = []; tails = [ { core; value } ] }
+let is_empty_expr_effects effects = List.is_empty effects.effects && List.is_empty effects.tails
 
+(* What two forms perform together: the union of their effects and of their row
+   variables (multi-tail rows), each kept once. *)
 let union_expr_effects ctx lhs rhs =
   let add acc eff =
     if List.exists (fun existing -> Ctx.conv ctx existing.value eff.value) acc then acc else eff :: acc
   in
-  let tail =
-    match lhs.tail, rhs.tail with
-    | None, tail | tail, None -> tail
-    | Some lhs_tail, Some rhs_tail when Ctx.conv ctx lhs_tail.value rhs_tail.value -> Some lhs_tail
-    | Some lhs_tail, Some rhs_tail ->
-        let row = VEffectRow { effect_values = List.map (fun eff -> eff.value) rhs.effects; tail_value = Some rhs_tail.value } in
-        Ctx.unify ctx lhs_tail.value row;
-        Some lhs_tail
-  in
-  { effects = List.rev (List.fold_left add (List.rev lhs.effects) rhs.effects); tail }
+  { effects = List.rev (List.fold_left add (List.rev lhs.effects) rhs.effects);
+    tails = List.rev (List.fold_left add (List.rev lhs.tails) rhs.tails) }
 
 let union_many_expr_effects ctx effs = List.fold_left (union_expr_effects ctx) empty_expr_effects effs
 
@@ -117,11 +111,12 @@ let describe_effect ctx eff =
 
 let unhandled ctx effects = ElabError (UnhandledEffects (List.map (describe_effect ctx) effects))
 
+let empty_row = VEffectRow { effect_values = []; tail_values = [] }
+
 let require_empty_effects ctx effects =
-  match effects.effects, effects.tail with
-  | [], None -> ()
-  | [], Some tail -> Ctx.unify ctx tail.value (VEffectRow { effect_values = []; tail_value = None })
-  | effs, _ -> raise (unhandled ctx effs)
+  match effects.effects with
+  | [] -> List.iter (fun tail -> Ctx.unify ctx tail.value empty_row) effects.tails
+  | effs -> raise (unhandled ctx effs)
 
 (* A type is evaluated at check time, so it must be pure (E4). *)
 let pure ctx f =
@@ -134,7 +129,7 @@ let effect_row_values ctx row binder =
 
 let expr_effects_of_row_values ctx row =
   { effects = List.map (fun value -> { core = Ctx.quote ctx value; value }) row.effect_values;
-    tail = Option.map (fun value -> { core = Ctx.quote ctx value; value }) row.tail_value }
+    tails = List.map (fun value -> { core = Ctx.quote ctx value; value }) row.tail_values }
 
 let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value) =
   let same_flex lhs rhs =
@@ -165,19 +160,21 @@ let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value
     | VFlex { id; _ } -> Dynarray.exists (Int.equal id) ctx.Ctx.metas.written_rows
     | _ -> false
   in
-  match unmatched, actual.tail, expected.tail_value with
-  | [], None, Some expected_tail when written_row expected_tail -> Ctx.unify ctx expected_tail (VEffectRow { effect_values = []; tail_value = None })
-  | [], None, _ -> ()
-  | [], Some actual_tail, Some expected_tail when same_flex actual_tail.value expected_tail || Ctx.conv ctx actual_tail.value expected_tail -> ()
-  | [], Some actual_tail, Some expected_tail -> Ctx.unify ctx actual_tail.value expected_tail
-  | leftovers, None, Some expected_tail ->
-      Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = None })
-  | leftovers, Some actual_tail, Some expected_tail when same_flex actual_tail.value expected_tail || Ctx.conv ctx actual_tail.value expected_tail ->
-      Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = Some expected_tail })
-  | leftovers, Some actual_tail, Some expected_tail ->
-      Ctx.unify ctx expected_tail (VEffectRow { effect_values = List.map (fun eff -> eff.value) leftovers; tail_value = Some actual_tail.value })
-  | [], Some actual_tail, None -> Ctx.unify ctx actual_tail.value (VEffectRow { effect_values = []; tail_value = None })
-  | leftovers, _, None -> raise (unhandled ctx leftovers)
+  (* A row variable the expected row also names is already covered. *)
+  let covered tail = List.exists (fun expected -> same_flex tail.value expected || Ctx.conv ctx tail.value expected) expected.tail_values in
+  let actual_tails = List.filter (fun tail -> not (covered tail)) actual.tails in
+  let values effs = List.map (fun eff -> eff.value) effs in
+  match unmatched, actual_tails, expected.tail_values with
+  (* A written row checked against a body that performs nothing at all is empty;
+     one the body's own tails covered stays as it is. *)
+  | [], [], expected_tails when actual.tails = [] ->
+      List.iter (fun expected_tail -> if written_row expected_tail then Ctx.unify ctx expected_tail empty_row) expected_tails
+  | [], [], _ -> ()
+  | leftovers, tails, [ expected_tail ] ->
+      Ctx.unify ctx expected_tail (VEffectRow { effect_values = values leftovers; tail_values = values tails })
+  | [], tails, [] -> List.iter (fun tail -> Ctx.unify ctx tail.value empty_row) tails
+  | leftovers, _, [] -> raise (unhandled ctx leftovers)
+  | leftovers, _, _ -> raise (unhandled ctx leftovers)
 
 (* The effects a program's entry may leave unhandled: those the handler the
    runtime wraps around the entry discharges: the heap, so top-level references
@@ -186,7 +183,7 @@ let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value
 let runtime_handled_effects ctx : effect_row_value =
   let heap = Ctx.raw_meta ctx in
   { effect_values = [ VEffect { id = mutate_effect_id; name = Compiler_names.Effect_name.mutate; params = [ heap ]; operations = [] } ];
-    tail_value = None }
+    tail_values = [] }
 
 (* A program's top - a unit's bindings, an entry expression - performs only
    what the runtime handles. *)
@@ -206,7 +203,7 @@ let require_handled_at_entry ~since ctx effects =
 
 let effect_row_of_expr_effects ctx (effects : expr_effects) : effect_row =
   { effects = List.map (fun eff -> Ctx.quote ctx eff.value) effects.effects;
-    tail = Option.map (fun eff -> Ctx.quote ctx eff.value) effects.tail }
+    tails = List.map (fun eff -> Ctx.quote ctx eff.value) effects.tails }
 
 let expr_effect_of_value ctx value = { core = Ctx.quote ctx value; value }
 

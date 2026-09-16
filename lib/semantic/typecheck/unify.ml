@@ -121,7 +121,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
         let row_value = Nbe.eval_effect_row_closure mc effects var in
         let row =
           { effects = List.map (go (d + 1)) row_value.effect_values;
-            tail = Option.map (go (d + 1)) row_value.tail_value }
+            tails = List.map (go (d + 1)) row_value.tail_values }
         in
         Pi
           { explicitness = expl;
@@ -133,7 +133,7 @@ let rename (mc : MetaContext.t) (meta_id : meta_id) (depth : lvl)
     | VEffectRow row ->
         EffectRowLit
           { effects = List.map (go d) row.effect_values;
-            tail = Option.map (go d) row.tail_value }
+            tails = List.map (go d) row.tail_values }
     | VAtom a -> Atom a
     | VAtomTy t -> AtomTy t
     | VProd elems -> Prod (List.map (go d) elems)
@@ -263,7 +263,7 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
   match sp with
   | [] ->
       (match Nbe.force mc rhs with
-      | VEffectRow { effect_values = []; tail_value = Some tail } when same_flex tail -> ()
+      | VEffectRow { effect_values = []; tail_values = [ tail ] } when same_flex tail -> ()
       | _ ->
       let rec occurs_check v =
         match Nbe.force mc v with
@@ -275,13 +275,13 @@ let solve (mc : MetaContext.t) (env : env) (id : meta_id) (sp : spine) (rhs : va
             let var = VRigid { lvl = 0; spine = [] } in
             let row = Nbe.eval_effect_row_closure mc effects var in
             List.iter occurs_check row.effect_values;
-            Option.iter occurs_check row.tail_value;
+            List.iter occurs_check row.tail_values;
             occurs_check (Nbe.closure_apply mc clo var)
         | VProd elems | VProdTy elems -> List.iter occurs_check elems
         | VSig clo -> occurs_check (Nbe.closure_apply mc clo (VRigid { lvl = 0; spine = [] }))
         | VEffectRow row ->
             List.iter occurs_check row.effect_values;
-            Option.iter occurs_check row.tail_value
+            List.iter occurs_check row.tail_values
         | VRefTy (h, a) -> occurs_check h; occurs_check a
         | VRef _ -> raise (UnifyError (CannotUnify "cannot unify ref cell"))
         | VModule { entries; partial = _ } ->
@@ -566,14 +566,29 @@ and unify_effect_rows (mc : MetaContext.t) (env : env) (depth : lvl)
       ([], row2.effect_values) row1.effect_values
   in
   let remaining1 = List.rev remaining1 in
-      match remaining1, remaining2, row1.tail_value, row2.tail_value with
-      | [], [], None, None -> ()
-      | [], [], Some lhs, Some rhs -> unify mc env depth lhs rhs
-      | [], leftovers, Some tail, None -> unify mc env depth tail (VEffectRow { effect_values = leftovers; tail_value = None })
-      | leftovers, [], None, Some tail -> unify mc env depth (VEffectRow { effect_values = leftovers; tail_value = None }) tail
-      | [], leftovers, Some tail1, Some tail2 -> unify mc env depth tail1 (VEffectRow { effect_values = leftovers; tail_value = Some tail2 })
-      | leftovers, [], Some tail1, Some tail2 -> unify mc env depth (VEffectRow { effect_values = leftovers; tail_value = Some tail1 }) tail2
-      | _ -> raise (UnifyError EffectRowMismatch)
+  (* Tails are a set too: one the other side also names cancels, so
+     a row over [e1, e2] meets one over [e2, e1] with nothing left to solve. *)
+  let rec remove_tail tail = function
+    | [] -> None
+    | candidate :: rest ->
+        if Nbe.conv mc depth tail candidate then Some rest
+        else Option.map (fun rest -> candidate :: rest) (remove_tail tail rest)
+  in
+  let tails1, tails2 =
+    List.fold_left
+      (fun (left, rest2) tail -> match remove_tail tail rest2 with Some rest2 -> (left, rest2) | None -> (tail :: left, rest2))
+      ([], row2.tail_values) row1.tail_values
+  in
+  let tails1 = List.rev tails1 in
+  let row effects tails = VEffectRow { effect_values = effects; tail_values = tails } in
+  (* ponytail: one side's single tail takes what the other side has left; a
+     union of two unsolved tails against something concrete has no principal
+     solution and is an error rather than a guess. *)
+  match remaining1, remaining2, tails1, tails2 with
+  | [], [], [], [] -> ()
+  | [], leftovers, [ tail1 ], tails2 -> unify mc env depth tail1 (row leftovers tails2)
+  | leftovers, [], tails1, [ tail2 ] -> unify mc env depth (row leftovers tails1) tail2
+  | _ -> raise (UnifyError EffectRowMismatch)
 
 (** Unify two stuck computations. First check the heads match (same
     variable level, same metavariable id, or same primitive name),

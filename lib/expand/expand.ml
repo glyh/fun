@@ -725,7 +725,7 @@ let rec expand (ctx : Expand_ctx.t) (stx : t) : t =
     let scope, resolved_name = Expand_ctx.extend_at_fresh ctx ~span:name.span ~name:name.name ~base_scope:name.scope () in
     let name = bind_id scope resolved_name name in
     let expand_scoped e = expand ctx (add_scope scope e) in
-    let eff = Option.map (fun e -> { e with effects = List.map expand_scoped e.effects; tail = Option.map expand_scoped e.tail }) eff in
+    let eff = Option.map (fun e -> { e with effects = List.map expand_scoped e.effects; tails = List.map expand_scoped e.tails }) eff in
     { stx with kind = Arrow (expl, Some name, dom, eff, expand_scoped cod) }
   | Arrow (expl, None, dom, eff, cod) ->
     { stx with kind = Arrow (expl, None, expand ctx dom, Option.map (map_effect_row (expand ctx)) eff, expand ctx cod) }
