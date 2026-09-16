@@ -158,6 +158,9 @@ public abstract partial record Syntax
             },
             Perform p => p with { Operation = (FieldAccess)Go(p.Operation), Arg = Go(p.Arg) },
             Resume r => r with { Arg = Go(r.Arg) },
+            RefNew n => n with { Arg = Go(n.Arg) },
+            RefGet g => g with { Ref = Go(g.Ref) },
+            RefSet r => r with { Ref = Go(r.Ref), Value = Go(r.Value) },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over {GetType().Name}"),
         };
         return m.Form(mapped);

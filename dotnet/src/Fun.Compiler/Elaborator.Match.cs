@@ -20,6 +20,7 @@ public static partial class Elaborator
     {
         // A match with effect branches is a handler: its scrutinee and branch bodies
         // elaborate inside it, for tunneling (E5).
+        var (storedBefore, since) = (ctx.Sink.Stored.Count, ctx.Metas.Count);
         var effectSyntax = match.Branches.Where(b => b.Operation is not null).ToList();
         var valueBranches = new EquatableArray<MatchBranch>([.. match.Branches.Where(b => b.Operation is null)]);
         var handler = effectSyntax.Count > 0 ? NextHandler() : 0;
@@ -60,6 +61,7 @@ public static partial class Elaborator
         Emit(ctx, Residual(ctx, all.Effects, Handled(ctx, all, effectBranches)), scrutineeEffects.Tails.Concat(bodyEffects.Tails));
         // E6 is about the instances the branches name, handled in full or not.
         CheckEscape(ctx, [.. effectBranches.Select(b => (Value)b.Instance)], resultType);
+        CheckStoredEscape(ctx, [.. effectBranches.Select(b => (Value)b.Instance)], storedBefore, since);
 
         var (tree, missing) = MatchCompile.Compile(patterns, occurrence => DomainOf(ctx, TypeAt(ctx, scrutineeType, occurrence)));
         if (missing is not null) throw new FunException($"non-exhaustive match: {missing} is not matched");

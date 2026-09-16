@@ -158,7 +158,7 @@ public static partial class Enforest
                 _ => throw new ExpandException($"an infix syntax form takes two operands: {symbol}"),
             },
             RoleMeaning.Rules => throw new ExpandException($"an infix syntax form has one rule: {symbol}"),
-            RoleMeaning.AssignRef => throw new NotImplementedException("not ported yet: the `<-` form"),
+            RoleMeaning.AssignRef => new Syntax.RefSet(lhs, rhs, span),
             RoleMeaning.CallMacro => throw new NotImplementedException($"not ported yet: the procedural operator macro `{symbol}`"),
             _ => throw new ExpandException($"not an infix operator: {symbol}"),
         };

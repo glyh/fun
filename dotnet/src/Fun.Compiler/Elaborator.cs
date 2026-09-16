@@ -137,6 +137,7 @@ public static partial class Elaborator
             ctx = ctx.Define(name, Value.VU.Instance, new Value.VAtomTy(ty));
         ctx = ctx.Define("Type", Value.VU.Instance, Value.VU.Instance);
         ctx = ctx.Define("EffectRow", Value.VU.Instance, Value.VEffectRowTy.Instance);
+        ctx = DefineReferenceEntries(ctx);
         // Each primitive a program names: a defined entry whose value is the primitive itself.
         foreach (var p in Primitives.Declarations)
             if (p.Type is { } type) ctx = ctx.Define(p.Name, type, new Value.VNeutral(type, new Head.HPrim(p.Name), []));
@@ -194,6 +195,7 @@ public static partial class Elaborator
             case Syntax.EffectDef def: return InferEffectDef(ctx, def);
             case Syntax.Perform perform: return InferPerform(ctx, perform);
             case Syntax.Resume resume: return InferResume(ctx, resume);
+            case Syntax.RefNew or Syntax.RefGet or Syntax.RefSet: return InferRefs(ctx, stx);
             case Syntax.TraitDef trait: return InferTraitDef(ctx, trait);
             case Syntax.ImplDef impl: return InferImplDef(ctx, impl);
             case Syntax.TraitBoundSet: throw new FunException("a {…} bound lists traits");
@@ -239,25 +241,13 @@ public static partial class Elaborator
                 return InferApImplicit(ctx, ap);
 
             case Syntax.Let { Recursive: true } let:
-                return InferRecLet(ctx, let);
+                return Discharging(ctx, c => InferRecLet(c, let));
 
             case Syntax.LetRecGroup group:
                 return InferLetRecGroup(ctx, group);
 
             case Syntax.Let { Recursive: false } let:
-            {
-                var writtenType = let.Type is { } written ? TypeValue(ctx, written) : null;
-                var ((valueTerm, valueType), performed) = Collecting(ctx, c =>
-                    writtenType is null ? Infer(c, let.Value) : (Check(c, let.Value, writtenType), writtenType));
-                Emit(ctx, performed);
-                // ponytail: no let-generalisation yet; the prototype generalises here.
-                // A value is known in the body only when evaluating it performs nothing (E4).
-                var body = performed.IsEmpty
-                    ? ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm))
-                    : ctx.Bind(let.Name.Name, valueType);
-                var (bodyTerm, bodyType) = Infer(body, let.Body);
-                return (new Term.Let(ctx.Quote(valueType), valueTerm, bodyTerm), bodyType);
-            }
+                return Discharging(ctx, c => InferLet(c, let));
 
             case Syntax.Arrow { Explicitness: Explicitness.Implicit, Name: not null, Row: null } bounded
                 when TraitBounds(ctx, bounded.Domain) is { } traits:
@@ -315,7 +305,9 @@ public static partial class Elaborator
                 var bodyType = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, binder);
                 var (dictCtx, dictBodyType, hidden) = InsertHiddenDicts(inner, bodyType);
                 // The body performs within the row the function type declares; a bare arrow's is empty.
+                var since = ctx.Metas.Count;
                 var (body, performed) = Collecting(dictCtx, c => Check(c, lam.Body, dictBodyType));
+                performed = DischargeLocalHeaps(dictCtx, since, [pi.Domain, dictBodyType], performed);
                 CheckEffectSubset(dictCtx, performed, Nbe.EvalRowClosure(ctx.Metas, pi.Row, binder), inFunction: true);
                 for (var i = 0; i < hidden; i++) body = new Term.Lam(body);
                 return new Term.Lam(body);
@@ -471,11 +463,29 @@ public static partial class Elaborator
     /// is a fresh meta; the codomain is the body's type read back under
     /// the parameter.
     /// </summary>
+    private static (Term, Value) InferLet(Context ctx, Syntax.Let let)
+    {
+        var writtenType = let.Type is { } written ? TypeValue(ctx, written) : null;
+        var ((valueTerm, valueType), performed) = Collecting(ctx, c =>
+            writtenType is null ? Infer(c, let.Value) : (Check(c, let.Value, writtenType), writtenType));
+        Emit(ctx, performed);
+        // ponytail: no let-generalisation yet; the prototype generalises here.
+        // A value is known in the body only when evaluating it performs nothing (E4).
+        var body = performed.IsEmpty
+            ? ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm))
+            : ctx.Bind(let.Name.Name, valueType);
+        var (bodyTerm, bodyType) = Infer(body, let.Body);
+        return (new Term.Let(ctx.Quote(valueType), valueTerm, bodyTerm), bodyType);
+    }
+
     private static (Term, Value) InferLam(Context ctx, Syntax.Lam lam)
     {
         var domain = lam.Param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
+        var since = ctx.Metas.Count;
         var inner = ctx.Bind(lam.Param.Name.Name, domain) with { Enclosing = lam.Body, HandlerScopes = [] };
         var ((body, bodyType), performed) = Collecting(inner, c => Infer(c, lam.Body));
+        // A heap allocated in the body that neither the domain nor the result mentions cannot be observed.
+        performed = DischargeLocalHeaps(inner, since, [domain, bodyType], performed);
         var codomain = new Closure(ctx.Environment, inner.Quote(bodyType));
         var row = RowOf(inner, performed);
         return (new Term.Lam(body), new Value.VPi(lam.Param.Explicitness, domain, codomain)

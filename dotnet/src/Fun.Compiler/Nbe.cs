@@ -166,6 +166,7 @@ public static partial class Nbe
                         break;
 
                     case Term.Match match: stack.Push(new Kont.MatchOn(env, match)); term = match.Scrutinee; continue;
+                    case Term.RefTy or Term.RefNew or Term.RefGet or Term.RefSet: term = StartRef(stack, term); continue;
 
                     case Term.Nominal { Captures.IsEmpty: true } n: value = new Value.VNominal(n.Decl, []); break;
                     case Term.Nominal n: stack.Push(new Kont.NominalOf(n.Decl)); term = new Term.Prod(n.Captures); continue;
@@ -336,6 +337,7 @@ public static partial class Nbe
                     case Kont.MatchOn f: (env, term) = SelectArm(mc, f.Env, value, f.Match); goto evaluate;
                     case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
                     case Kont.TraitDictOf f: value = TraitDict(f, value); continue;
+                    case Kont.RefKont f: value = FinishRef(f, value); continue;
                     case Kont.RecursiveOccurrenceOf f: value = RecursiveOccurrence(f, (Value.VProd)value); continue;
 
                     case Kont.ModuleOpen f:
@@ -535,11 +537,15 @@ public static partial class Nbe
             Value.VStruct st => QuoteStruct(mc, width, st),
             Value.VRecord r => new Term.RecordConstruct(Quote(mc, width, r.Type), [.. r.Fields.Select(f => (f.Name, Quote(mc, width, f.Value)))]),
             Value.VSig sig => new Term.Sig(Quote(mc, width + 1, ApplyClosure(mc, sig.Body, fresh))),
+            Value.VRefTy r => new Term.RefTy(Quote(mc, width, r.Heap), Quote(mc, width, r.Element)),
+            Value.VRef => throw new FunException("a reference cell cannot be read back as a term"),
             Value.VNeutral n => n.Frames.Aggregate(QuoteHead(width, n.Head), (acc, frame) => frame switch
             {
                 Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a.Arg)),
                 Frame.FProj p => new Term.Proj(acc, p.Index),
                 Frame.FDot d => new Term.Dot(acc, d.Name),
+                Frame.FRefGet => new Term.RefGet(acc),
+                Frame.FRefSet s => new Term.RefSet(acc, Quote(mc, width, s.Value)),
                 _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
             }),
             var other => throw new NotImplementedException($"not ported yet: reading back {other.GetType().Name}"),
