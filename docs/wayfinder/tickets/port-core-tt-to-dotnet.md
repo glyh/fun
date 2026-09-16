@@ -173,3 +173,9 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
 - **C# unit tests (xUnit)** for implementation internals that are not observable
   as a program's result — enforester/syntax shapes, reflection round trips, NbE
   and unifier internals, budget accounting — mirroring the OCaml internal tests.
+
+## Not to be started (2026-09-16)
+
+The user's instruction: **do not begin the port** — prepare everything up to it
+and stop. Treat this ticket as a readiness checklist; the port starts only when
+the user says so.
