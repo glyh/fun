@@ -131,7 +131,12 @@ let expr_effects_of_row_values ctx row =
   { effects = List.map (fun value -> { core = Ctx.quote ctx value; value }) row.effect_values;
     tails = List.map (fun value -> { core = Ctx.quote ctx value; value }) row.tail_values }
 
-let check_effect_subset ctx (actual : expr_effects) (expected : effect_row_value) =
+(* [in_function]: the body of a function or method against the row its result
+   form declares, so effects left over mean the result was written pure. *)
+let check_effect_subset ?(in_function = false) ctx (actual : expr_effects) (expected : effect_row_value) =
+  let unhandled ctx effs =
+    if in_function then ElabError (EffectsInPureResult (List.map (describe_effect ctx) effs)) else unhandled ctx effs
+  in
   let same_flex lhs rhs =
     match Nbe.force ctx.Ctx.metas lhs, Nbe.force ctx.Ctx.metas rhs with
     | VFlex { id = lhs_id; spine = lhs_spine }, VFlex { id = rhs_id; spine = rhs_spine } ->

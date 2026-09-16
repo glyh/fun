@@ -423,7 +423,8 @@ let test_eval_unhandled_perform () =
    effect left unhandled there is an elaboration error, not a run-time crash. *)
 let expect_unhandled label names run =
   match run () with
-  | exception Elaborate.ElabError (UnhandledEffects got) when got = names -> ()
+  (* A pure result reports the same effects under its own name. *)
+  | exception Elaborate.ElabError ((UnhandledEffects got | EffectsInPureResult got)) when got = names -> ()
   | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
   | _ -> Alcotest.fail (label ^ ": expected an unhandled-effect error")
 

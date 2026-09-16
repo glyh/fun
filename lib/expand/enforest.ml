@@ -247,10 +247,15 @@ and parse_result_type env terms =
       (Some (typ, Some { Syntax.effects = []; tails = []; inferred = true; polymorphic = true }), rest)
   | _ -> (None, terms)
 
-and annotate_result result (body : Syntax.t) =
-  match result with
-  | Some (typ, None) -> stx ~span:body.span (Syntax.Annotated { inner = body; typ })
-  | _ -> body
+(* [: T] is the pure member of the result-type family: the body is checked at
+   [T] and the definition's row is empty, so a body that performs must say so
+   with [->{E} T] or [~> T]. The annotation therefore rides on the function's
+   type, as an effectful result's does - unless a parameter has no type to write
+   there, when only the body's type can be stated. *)
+and result_row = function
+  | Some (typ, Some row) -> Some (typ, row)
+  | Some (typ, None) -> Some (typ, { Syntax.effects = []; tails = []; inferred = false; polymorphic = false })
+  | None -> None
 
 (* A body is a brace group, parsed as a block. *)
 and parse_body env what terms =
@@ -267,23 +272,23 @@ and parse_fn ?(kind_annotation = false) env start_span terms =
   let params, kind, output, result, body, rest, span =
     parse_fn_parts ~kind_annotation env start_span terms
   in
-  let lam = List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params (annotate_result result body) in
+  let lam = List.fold_right (fun p acc -> stx ~span (Syntax.Lam (p, acc))) params body in
   let value =
-    match result with
-    | Some (typ, Some row) -> stx ~span (Syntax.Annotated { inner = lam; typ = function_type ~span params row typ })
-    | _ -> lam
+    match result_row result with
+    | Some (typ, row) -> stx ~span (Syntax.Annotated { inner = lam; typ = function_type ~span params row typ })
+    | None -> lam
   in
   ((kind, output), value, rest)
 
 (* [fn(p1 : A, …) ->{E} T]'s type: its parameters' arrows, the last carrying the row. *)
 and function_type ~span (params : Syntax.param list) row typ =
   let rec go = function
-    | [] -> error "an effectful result needs a parameter list"
+    | [] -> error "a result type needs a parameter list"
     | (p : Syntax.param) :: rest ->
         let dom =
           match p.type_ with
           | Some t -> t
-          | None -> error ("an effectful result form needs every parameter's type: " ^ p.name.name)
+          | None -> error ("a result type needs every parameter's type: " ^ p.name.name)
         in
         let row, cod = match rest with [] -> (Some row, typ) | _ -> (None, go rest) in
         stx ~span (Syntax.Arrow (p.explicitness, Some p.name, dom, row, cod))

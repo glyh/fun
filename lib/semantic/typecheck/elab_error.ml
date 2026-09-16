@@ -22,6 +22,7 @@ type elab_error =
   | UnknownEffectOperation of string
   | EffectOperationPathExpected
   | UnhandledEffects of string list
+  | EffectsInPureResult of string list
   | HandledEffectEscapes of string
   | GenerativeTypeEscapes of string
       (** Effects left where nothing handles them, named. *)
@@ -84,6 +85,9 @@ let string_of_elab_error = function
   | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""
   | EffectOperationPathExpected -> "EffectOperationPathExpected"
   | UnhandledEffects names -> "UnhandledEffects \"" ^ String.concat ", " names ^ "\""
+  | EffectsInPureResult names ->
+      "EffectsInPureResult \"" ^ String.concat ", " names
+      ^ "\": a pure result performs nothing; write ->{…} T or ~> T"
   | HandledEffectEscapes name -> "HandledEffectEscapes \"" ^ name ^ "\""
   | GenerativeTypeEscapes name -> "GenerativeTypeEscapes \"" ^ name ^ "\""
   | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""

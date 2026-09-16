@@ -59,7 +59,7 @@ let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
       let body_effects =
         discharge_local_heaps body_ctx ~since ~visible:[ Ctx.quote ctx a_ty; Ctx.quote body_ctx body_expected ] body_effects
       in
-      check_effect_subset body_ctx body_effects (effect_row_values ctx effects binder);
+      check_effect_subset ~in_function:true body_ctx body_effects (effect_row_values ctx effects binder);
       Lam (List.fold_left (fun acc _ -> Lam acc) body_core (List.init inserted Fun.id))
   | Match (scrutinee, branches), VPi _ ->
       let within_handler, check_escapes = escape_guard ctx in
