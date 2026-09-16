@@ -70,8 +70,19 @@ public sealed partial record Context(
     public (int Index, Value Type) Locate(string name)
     {
         if (Names.TryGetValue(name, out var entry)) return At(entry);
-        if (PreludeOpen) throw new NotImplementedException($"not ported yet: `{name}` from the prelude");
-        throw new FunException($"unbound variable: {name}");
+        throw Unbound(name, PreludeOpen);
+    }
+
+    /// <summary>
+    /// A name nothing supplies. Where the prelude is open, it may be one stage 2
+    /// publishes, which is not ported: then it is not yet known to be unbound.
+    /// </summary>
+    private static Exception Unbound(string name, bool preludeOpen)
+    {
+        var written = name.IndexOf('#') is var i and >= 0 ? name[..i] : name;
+        return preludeOpen && Prelude.Stage2Names.Contains(written)
+            ? new NotImplementedException($"not ported yet: `{written}` from the prelude")
+            : new FunException($"unbound variable: {written}");
     }
 
     /// <summary>
@@ -85,8 +96,7 @@ public sealed partial record Context(
                 return At(member);
         if (fallback is not null) return Locate(fallback);
         if (BaseNames.TryGetValue(name, out var based)) return At(based);
-        if (PreludeOpen) throw new NotImplementedException($"not ported yet: `{name}` from the prelude");
-        throw new FunException($"unbound variable: {name}");
+        throw Unbound(name, PreludeOpen || opens.Contains(Fun.Expand.Expander.UnitOpenLabel(Prelude.Path)));
     }
 
     private (int Index, Value Type) At(Entry entry) => (Nbe.LevelToIndex(Width, entry.Level), entry.Type);
