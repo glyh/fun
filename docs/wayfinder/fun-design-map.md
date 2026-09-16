@@ -576,6 +576,8 @@ What remains, in the recommended order:
   — decided it stays unevaluated, like every primitive. The C# port already does.
 - [A reference operation on a value of unknown type is "not a reference"](tickets/deref-of-unknown-type-is-not-a-reference.md)
   — decided it infers `Ref(?h, ?A)`, like application infers an arrow. The C# port already does.
+- [A method cannot infer its row with `~>`](tickets/method-cannot-infer-row-with-poly-arrow.md)
+  — decided it may. To fix in the C# port only.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),
