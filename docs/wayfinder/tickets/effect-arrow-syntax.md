@@ -129,3 +129,18 @@ This also applies inside nested higher-order parameters (the rule is recursive:
 each function type mints from its own parameters and collects on its own final
 arrow). Needs [multi-tail rows](multi-tail-effect-rows.md) when more than one
 parameter mints.
+
+## Grilled (2026-09-16), a standalone `~>` alias mints
+
+A `~>` written outside a signature's parameter/result structure (a type alias,
+a field or member type) **mints its own row variable**:
+
+```fun
+Callback = Unit ~> I64;              // = [e] -> Unit ->{e} I64
+app = fn(g : Callback) : I64 { g(()) }    // ERROR: the result is declared pure,
+                                          // but calling g performs e
+app = fn(g : Callback) ~> I64 { g(()) }   // ok: the result collects g's e
+```
+So a use of the alias behaves exactly like writing `Unit ~> I64` in that
+parameter position, and a caller's pure result annotation is rejected rather than
+silently widened.
