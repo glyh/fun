@@ -566,6 +566,8 @@ What remains, in the recommended order:
   — `next : L` in `rec L = struct { … }` fails once `L` is a parameter type. Fixed in the C# port only.
 - [A type-case former head takes its arity from the template](tickets/type-case-former-head-arity-from-template.md)
   — `Opt(x)` on a `fn(A) { enum … }` former is `PatternArityMismatch`. Fixed in the C# port only.
+- [Pattern synonym arguments bind by position](tickets/pattern-synonym-arguments-bind-by-position.md)
+  — `Flip(a, b) = Pt(b, a)` binds its use by position; a synonym through `open` is unknown. Fixed in the C# port only.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),

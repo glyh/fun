@@ -56,7 +56,8 @@ in `Pt`'s second slot, so the result is 20. The prototype substitutes by positio
 head resolves like any other bare pattern head, through its binder or an open
 (the constructor-pattern decision); the prototype's `UnknownConstructor` for a
 synonym reached through `open` is a defect too. Both go in as shared cases with
-the correct result, listed in `prototype-divergences.txt` with a ticket.
+the correct result, listed in `prototype-divergences.txt` with a ticket:
+[pattern-synonym-arguments-bind-by-position](pattern-synonym-arguments-bind-by-position.md).
 
 **Follow-up:** matching a nominal head evaluates the head term with a nested
 `Eval` (`ponytail:` in `Nbe.Patterns.cs`) rather than a `Kont` frame; its depth is
