@@ -180,7 +180,15 @@ public abstract partial record Value
 
 public abstract partial record ModuleEntry
 {
-    public sealed record Field(string Name, MemberKind Kind, Value Value) : ModuleEntry;
+    public sealed record Field(string Name, MemberKind Kind, Value Value) : ModuleEntry
+    {
+        /// <summary>
+        /// Set when the member is a constructor (an enum's, exported into the
+        /// module): an open pushes it as a constructor entry, so a bare pattern
+        /// head can resolve to it.
+        /// </summary>
+        public ConstructorMark? Constructor { get; init; }
+    }
 }
 
 public abstract partial record Head

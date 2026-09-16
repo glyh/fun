@@ -44,6 +44,9 @@ public sealed class NominalDecl(string name, EquatableArray<ConstructorDecl> con
 
 public sealed record ConstructorDecl(string Name, EquatableArray<Term> Payloads);
 
+/// <summary>A constructor as a member carries it: the type (or former) it belongs to, that type's type, and which constructor.</summary>
+public sealed record ConstructorMark(Value Type, Value TypeType, ConstructorDecl Constructor);
+
 public abstract partial record Term
 {
     /// <summary>The nominal of a declaration over the values of its captures.</summary>

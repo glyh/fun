@@ -450,6 +450,8 @@ public static partial class Elaborator
             }
             if (member is not ModuleEntry.Field { Kind: MemberKind.Public } field) continue;
             (ctx, var entry) = ctx.DefineAnonymous(field.Value, Nbe.DotValue(value, field.Name));
+            if (field.Constructor is { } mark)
+                ctx = ctx with { ConstructorEntries = ctx.ConstructorEntries.SetItem(entry.Level, (mark.Type, mark.TypeType, mark.Constructor)) };
             members = members.SetItem(field.Name, entry);
             opened.Add(new OpenMember.Field(field.Name));
         }
