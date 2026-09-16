@@ -90,7 +90,12 @@ let run_case path =
       | _ -> Some (Printf.sprintf "elaboration failed: %s" (Printexc.to_string e)))
   | ctx, core -> (
       match expect with
-      | Fails -> Some "expected an error"
+      (* An [error] case that elaborates is run too: it may fail at evaluation
+         (cases/README.md). *)
+      | Fails -> (
+          match Elaborate.Ctx.run ctx core with
+          | exception _ -> None
+          | _ -> Some "expected an error")
       | Elaborates -> None
       | Value expected -> (
           match Elaborate.Ctx.run ctx core with
