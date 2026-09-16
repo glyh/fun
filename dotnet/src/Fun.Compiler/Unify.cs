@@ -79,6 +79,8 @@ public static partial class Unify
             case (Value.VStruct a, Value.VStruct b): Structs(mc, width, a, b); return;
             case (Value.VRecord a, Value.VRecord b): Records(mc, width, a, b); return;
 
+            case (Value.VNeutral a, Value.VNeutral b): Neutrals(mc, width, a, b); return;
+
             case (Value.VFix a, Value.VFix b):
                 FixBodies(mc, width, a, b);
                 return;

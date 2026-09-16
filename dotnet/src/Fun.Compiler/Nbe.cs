@@ -445,7 +445,7 @@ public static partial class Nbe
     private static Value ApplyStuck(MetaContext mc, Value fn, Value arg) => Force(mc, fn) switch
     {
         Value.VLam or Value.VFix => Apply(mc, Force(mc, fn), arg),
-        Value.VNeutral n => n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) },
+        Value.VNeutral n => ReduceNeutral(n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) }),
         Value.VMeta f => f with { Spine = f.Spine.Add(arg) },
         Value.VVar r => r with { Spine = r.Spine.Add(arg) },
         Value.VEffect e => e with { Params = e.Params.Add(arg) },
