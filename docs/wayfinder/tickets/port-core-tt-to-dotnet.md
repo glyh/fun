@@ -215,5 +215,8 @@ test/conformance` (601 cases, 0 failed) on `main`.
 - **Use the framework's immutable collections** (`System.Collections.Immutable`)
   wherever they fit; hand-roll a persistent structure only where a measured hot
   path (scope sets, contexts) demands it, and say so in the code.
-- Test framework: **not decided** (xUnit was a placeholder in the earlier
-  "conformance suite plus C# unit tests" note).
+- **Test framework: xUnit** (grilled 2026-09-16 against NUnit, MSTest, TUnit):
+  biggest ecosystem and tooling in modern .NET, and it carries only the internals
+  tests since the 601 conformance cases run from their own walker. Async tests
+  (`async Task`) are supported if the loader or a language server later needs them;
+  the elaborator and the frame-stack evaluator stay synchronous.
