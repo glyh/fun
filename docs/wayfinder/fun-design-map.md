@@ -562,6 +562,10 @@ What remains, in the recommended order:
 - [A bare constructor pattern resolves by name](tickets/bare-constructor-pattern-resolves-by-name.md)
   — `Red => …` finds the scrutinee's constructor with no `open`, even over a value
   named `Red`. Fixed in the C# port only.
+- Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
+  [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
+  [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),
+  [export](tickets/port-export.md).
 - Port wave 1 (parallel forks): [structs, records, signatures](tickets/port-structs-records-signatures.md),
   [match and enums](tickets/port-match-and-enums.md), [implicit parameters](tickets/port-implicit-parameters.md),
   [recursive definitions](tickets/port-recursive-definitions.md), [imports](tickets/port-imports.md).

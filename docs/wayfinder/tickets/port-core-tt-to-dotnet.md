@@ -327,6 +327,16 @@ Forked in parallel from `b894c12`+1, one worktree each:
 rows), macros and syntax roles (need the prelude), recursive enums (need both
 match-enums and recursive definitions).
 
+## Wave 2 (2026-09-16)
+
+Forked in parallel from main, one worktree each:
+[recursive types](port-recursive-types.md), [patterns](port-patterns.md),
+[effects](port-effects.md), [syntactic roles](port-syntax-roles.md),
+[traits](port-traits.md), [export](port-export.md). Held for wave 3: the prelude
+(needs all six), procedural macros (need the prelude's `Syntax` module), refs
+(need effect rows). Effects adds rows to arrows as an optional, pure-by-default
+member so no other fork's arrow construction changes.
+
 ## Readiness (2026-09-16)
 
 **The prototype is ready to be ported.** Recorded here so a later session can
