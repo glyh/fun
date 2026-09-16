@@ -302,9 +302,12 @@ order.
 
 ### Blocking the .NET port
 
-[Port `core_tt` to .NET (F#/C#)](tickets/port-core-tt-to-dotnet.md) is the
-destination; it is **blocked** until the model exists and the defects a port
-would faithfully reproduce are gone. **Blockers extended 2026-09-14:** the decided
+[Port `core_tt` to .NET](tickets/port-core-tt-to-dotnet.md) is the destination.
+**Ready as of 2026-09-16**: every blocker closed, the conformance suite (601
+cases) is the single source of truth for language behaviour, and the rounds that
+day landed without reopening a decision. Language: C#; the evaluator is an
+explicit frame-stack machine. The port is **not to be started** until the user
+says so. History below. **Blockers extended 2026-09-14:** the decided
 effect semantics, the `Self`-identity soundness hole and record knot, the open
 semantic questions, and M9's last distance — plus a stability signal (runs that
 land without reopening decisions) and two decisions made at port start (no

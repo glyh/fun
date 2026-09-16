@@ -181,3 +181,29 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
 The user's instruction: **do not begin the port** — prepare everything up to it
 and stop. Treat this ticket as a readiness checklist; the port starts only when
 the user says so.
+
+## Readiness (2026-09-16)
+
+**The prototype is ready to be ported.** Recorded here so a later session can
+check the claim rather than re-derive it.
+
+| Gate | State |
+|---|---|
+| Blockers (19 listed in `blocked_by`) | all closed |
+| Model | four domain-model passes written, "today" sections refreshed 2026-09-15 |
+| Conformance suite | `test/conformance`, 601 cases, the single source of truth for language behaviour (the Alcotest duplicates were deleted 2026-09-16) |
+| Internal tests | 613 Alcotest cases (10 + 162 + 172 + 269) covering shapes, reflection, budget, driver, exact error constructors |
+| Stability signal | the 2026-09-16 rounds landed without reopening a decision; every fork that met an undecided rule stopped and asked |
+| Port decisions | C#; evaluator an explicit frame-stack machine; conformance suite + xUnit internals tests |
+
+**How to verify:** `dune test` (all Alcotest binaries) and `dune test
+test/conformance` (601 cases, 0 failed) on `main`.
+
+**Known, deliberately not blocking:**
+- `method-signature-metas-capture-self.md` — an inserted meta in a method's
+  parameter type captures `self` (live defect, small).
+- Performance research: deep non-tail recursion, type-case refinement.
+- Parked design: general set literals, deriving/protocols, private types.
+- Diagnostics polish and error spans — deferred to post-port by decision.
+
+**Not to be started without the user's word** (see the section above).
