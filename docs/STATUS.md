@@ -3,11 +3,21 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after the conformance suite, 2026-09-16.
+Last updated: after Stage 11 increment 2, 2026-09-16.
 
 ---
 
 ## Completed
+
+### Stage 11 increment 2 — keyword surface (2026-09-16)
+
+- `then`, `with`, `end`, `else` and `Unit` are no longer keyword tokens: no parser
+  rule matched them (a syntax form's rule literals compare by spelling, so the
+  prelude's `if` form matches `else` as a plain token; `Unit` had an identical
+  `Ident` path in expression and pattern position). They are ordinary identifiers.
+- Already library, confirmed by survey: `if`/`else`, `&&`/`||`, arithmetic and
+  comparison operators, prefix `not`, `type` (stage-2 std macro).
+
 
 ### Shared conformance suite (2026-09-16)
 
