@@ -207,3 +207,13 @@ test/conformance` (601 cases, 0 failed) on `main`.
 - Diagnostics polish and error spans — deferred to post-port by decision.
 
 **Not to be started without the user's word** (see the section above).
+
+## Port environment decisions (2026-09-16)
+
+- **Latest .NET** (whatever is current when the port starts), latest C# language
+  version.
+- **Use the framework's immutable collections** (`System.Collections.Immutable`)
+  wherever they fit; hand-roll a persistent structure only where a measured hot
+  path (scope sets, contexts) demands it, and say so in the code.
+- Test framework: **not decided** (xUnit was a placeholder in the earlier
+  "conformance suite plus C# unit tests" note).
