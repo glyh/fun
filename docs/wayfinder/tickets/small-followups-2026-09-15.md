@@ -3,7 +3,9 @@ title: Small follow-ups from the 2026-09-15 runs
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-16
+resolution: All items done. Item 2 (a method row naming a parameter) fixed on branch small-followups-2; items 4, 6, 7, 8, 10 verified already done. The run found a separate pre-existing defect, ticketed as method-signature-metas-capture-self.
 assignee:
 blocked_by:
 ---
@@ -12,15 +14,14 @@ blocked_by:
 
 1. **`self.a(2)` inside a struct fails at run time** with "field not found"
    (pre-existing; `a(self)(2)` works). Found by method-rows.
-2. **A method's `can {E(k)}` row is expanded in the struct's scope**, not the
+2. **Done 2026-09-16.** **A method's row is expanded in the struct's scope**, not the
    parameters' scope, so it cannot name a parameter. Found by method-rows.
 3. **A syntax form's `$(d : Decl)` hole must match the parameter kind** (M9: a
    capture `$(x : T)` is the parameter `(x : T)`): `Decl` captures exactly one
    declaration in a `{ … }` group, `List(Decl)` a group of any number. Today the
    hole kind `Decl` still reads the group as a list (decl-param-one left it).
-4. **`Eq + Show` trait-bound sugar is recognised by the written name `+`**
-   (`elab_syntax_util.trait_bound_forms`) — an M12 survivor; resolve with the `*`
-   decision in [one-grammar-for-types](one-grammar-for-types.md).
+4. **Done 2026-09-16 (bounds are the set `{Eq, Show}`).** **`Eq + Show` trait-bound sugar is recognised by the written name `+`**
+   (`elab_syntax_util.trait_bound_forms`) — an M12 survivor.
 5. **Return-type annotations `fn(n : I64) : T { … }` fail** (on main; found by the
    tuple-types run). **Grilled 2026-09-15: support them** — `:` after the
    parameter list means the result type, as `x : T = …` does for bindings; the
@@ -64,25 +65,10 @@ blocked_by:
 A binder's trait bounds are written as a set with the same brace-and-comma
 notation as effect rows: `fn[T : {Eq, Show}](a : T, b : T)`; a single bound may
 stay bare (`[T : Eq]`). Order is irrelevant; a duplicate is an error. `+` is not
-used for bounds and stays arithmetic, so the spelling recognition in
-`elab_syntax_util.trait_bound_forms` is deleted, and `+` needs no trait dispatch.
-Migrate `Eq + Show` uses.
+used for bounds and stays arithmetic. Verified 2026-09-16:
+`Elab_syntax_util.trait_bound_forms` reads `Syntax.TraitBoundSet` and never the
+spelling `+`; the earlier "`+` as a trait method language-wide" question is moot.
 
-
-`Eq + Show` stays, resolved like any `+`: the prelude gives traits an impl of the
-addition trait that combines bounds, so the elaborator no longer recognises the
-spelling `+`. Unlike `*` on types (rejected because `A * B * C` could not mean a
-flat tuple), combining bounds is associative and unambiguous once the operand
-types are known.
-
-### Item 4: not implemented — open question (effects-followups run, 2026-09-15)
-
-`+` is today the I64 primitive (`Nbe_prim` `"+"`, `infix (+) additive`), not a
-trait method. "An ordinary `+` via a prelude impl on traits" needs `+` to be
-trait-dispatched for every type (an `Add` trait with an `I64` impl, changing all
-arithmetic), and a value for `Eq + Show` (a bound set) that `[A : …]` reads.
-Decide: make `+` a trait method language-wide, or give bound sets another
-non-overloaded form. Spelling recognition in `trait_bound_forms` stays until then.
 11. **Match on a list inside a recursive function fails at run time**:
     `Cons(m, Nil) => …, Cons(m, rest) => f(rest)` → "match on non-constructor
     value" (found by the staged-prelude run). **Fixed 2026-09-16:** a decision
@@ -92,3 +78,18 @@ non-overloaded form. Spelling recognition in `trait_bound_forms` stays until the
     into source order (`Core_match_compile.collect_leaf_bindings`), and the
     elaborator's binder lists for nested multi-binder sub-patterns are in source
     order too (they were reversed within each sub-pattern).
+
+## Done (2026-09-16, branch small-followups-2)
+
+- **2.** A method's row is expanded inside its parameters' scopes
+  (`Expand.expand_method_parts`), as a dependent arrow's row already was, so
+  `pub method bump(r : Ref(I64)) ->{Mutate(r)} I64 { … }` resolves `r`. The
+  elaborator already read the row with every parameter bound.
+- **Verified already done:** 4 (bounds are `TraitBoundSet`, no `+` spelling),
+  6 (`Tuple(0 - 1)` and `panic` in a type are `ElabError (EvaluationFailed …)`),
+  7 (`UnhandledEffects "effect Mutate(r)"` names the ref), 8 (a `let`/block with
+  private mutation is pure), 10 (a user `effect Mutate` does not shadow the
+  built-in).
+
+Every item on this ticket is now closed; the run's remaining find is spun out as
+[method-signature-metas-capture-self](method-signature-metas-capture-self.md).

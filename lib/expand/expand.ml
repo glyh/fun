@@ -1057,10 +1057,13 @@ and expand_struct_bindings ?in_struct (ctx : Expand_ctx.t) bindings =
   let expanded_bindings, _introduced_scopes_list = expand_struct_bindings_with_scopes ?in_struct ctx bindings in
   List.filter (function Syntax.MacroBinding _ -> false | _ -> true) expanded_bindings
 
-and expand_method_params_body ctx params body =
+(* A method's row sits on its innermost arrow, so it reads the parameters:
+   [->{Mutate(r)}] names [r] like a dependent arrow's row does. *)
+and expand_method_parts ctx params effects body =
   let rec go active_scopes param_scopes acc = function
     | [] ->
-      (List.rev acc, expand ctx (add_scopes param_scopes body))
+      let scoped e = expand ctx (add_scopes param_scopes e) in
+      (List.rev acc, Option.map (map_effect_row scoped) effects, scoped body)
     | param :: rest ->
       let param = if active_scopes = [] then param else add_param_scope (union_scopes active_scopes) param in
       let pname = param_name param in
@@ -1100,8 +1103,7 @@ and expand_struct_binding ?(in_struct = false) (ctx : Expand_ctx.t) (binding : S
     ([LetBinding { name; value; public; recursive }], [[ scope ]])
   | MethodBinding { name; params; effects; body; public } ->
     let scope, name = bind_declaration ctx name in
-    let effects = Option.map (map_effect_row (expand ctx)) effects in
-    let params, body = expand_method_params_body ctx params body in
+    let params, effects, body = expand_method_parts ctx params effects body in
     ([MethodBinding { name; params; effects; body; public }], [[ scope ]])
   | EffectBinding { name; params; ops; public } ->
     let scope, name = bind_declaration ctx name in
