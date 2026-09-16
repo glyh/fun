@@ -11,6 +11,8 @@ public static partial class Unify
 {
     public static void Values(MetaContext mc, int width, Value left, Value right)
     {
+        mc.Budget.Spend("a unification");
+        if (SameDeferredCall(mc, width, left, right)) return;
         left = Nbe.Force(mc, left);
         right = Nbe.Force(mc, right);
         var fresh = new Value.VVar(width, []);
@@ -67,6 +69,10 @@ public static partial class Unify
             // then a mismatch involving one is not known to be a real one.
             case (Value.VModule, _) or (_, Value.VModule):
                 throw new NotImplementedException("not ported yet: unifying module types");
+
+            case (Value.VFix a, Value.VFix b):
+                FixBodies(mc, width, a, b);
+                return;
 
             default:
                 throw new UnifyException($"cannot unify {left.GetType().Name} with {right.GetType().Name}");

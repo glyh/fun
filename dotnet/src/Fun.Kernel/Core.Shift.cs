@@ -20,7 +20,7 @@ public abstract partial record Term
             {
                 EntryKinds = [.. m.EntryKinds.Take(cutoff), .. Enumerable.Repeat(EntryKind.Defined, amount), .. m.EntryKinds.Skip(cutoff)],
             },
-            U or Atom or AtomTy or Prim or Meta => this,
+            U or Atom or AtomTy or Prim or Meta or Imported => this,
             Lam l => new Lam(Go(l.Body, 1)),
             Ap a => a with { Fn = Go(a.Fn), Arg = Go(a.Arg) },
             Let l => new Let(Go(l.Type), Go(l.Def), Go(l.Body, 1)),

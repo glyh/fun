@@ -17,7 +17,7 @@ public static partial class Nbe
     /// A continuation frame: what the machine does with the value it is about to
     /// produce. Distinct from <see cref="Frame"/>, an elimination stuck on a neutral.
     /// </summary>
-    private abstract record Kont
+    private abstract partial record Kont
     {
         /// <summary>The callee is evaluated; evaluate the argument next.</summary>
         public sealed record EvalArg(Environment Environment, Term Arg) : Kont;
@@ -61,10 +61,16 @@ public static partial class Nbe
             EquatableArray<BindingTerm> RestBindings, EquatableArray<ModuleEntry> Entries) : Kont;
     }
 
-    public static Value Eval(MetaContext mc, Environment env, Term term)
+    /// <summary>
+    /// Evaluates <paramref name="term"/>: one request under the evaluation budget
+    /// (a nested one spends from the request it is part of).
+    /// </summary>
+    public static Value Eval(MetaContext mc, Environment env, Term term) =>
+        mc.Budget.Request("an evaluation", () => Machine(mc, env, term, new Stack<Kont>()));
+
+    /// <param name="stack">The frames the machine still owes work to, innermost last.</param>
+    private static Value Machine(MetaContext mc, Environment env, Term term, Stack<Kont> stack)
     {
-        // The frames the machine still owes work to, innermost last.
-        var stack = new Stack<Kont>();
 
         while (true)
         {
@@ -77,6 +83,7 @@ public static partial class Nbe
                 {
                     case Term.Var v: value = env[v.Index]; break;
                     case Term.Lam l: value = new Value.VLam(new Closure(env, l.Body)); break;
+                    case Term.Fix fix: value = new Value.VFix(fix.Members, env, fix.Index); break;
                     case Term.U: value = Value.VU.Instance; break;
                     case Term.Atom a: value = new Value.VAtom(a.Value); break;
                     case Term.Imported i: value = i.Value; break;
@@ -154,6 +161,16 @@ public static partial class Nbe
             while (true)
             {
                 if (stack.Count == 0) return value;
+                if (value is Value.VGlued glued && NeedsShape(stack.Peek()))
+                {
+                    if (glued.Unfolded.IsValueCreated)
+                    {
+                        value = glued.Unfolded.Value;
+                        continue;
+                    }
+                    (env, term) = Unfold(mc, stack, glued.Fix, glued.Arg);
+                    goto evaluate;
+                }
                 switch (stack.Pop())
                 {
                     case Kont.EvalArg f:
@@ -161,16 +178,29 @@ public static partial class Nbe
                         (env, term) = (f.Environment, f.Arg);
                         goto evaluate;
 
+                    // Applying a closure or a fixpoint continues the loop in its
+                    // body: this is where native recursion per call would be.
                     case Kont.ApplyTo f:
-                        // Applying a closure continues the loop in its body:
-                        // this is where native recursion per call would be.
-                        if (f.Fn is Value.VLam lam)
+                    {
+                        if (Enter(mc, stack, f.Fn, value, charged: false, out var applied) is { } next)
                         {
-                            (env, term) = (lam.Body.Environment.Push(value), lam.Body.Body);
+                            (env, term) = next;
                             goto evaluate;
                         }
-                        value = ApplyStuck(mc, f.Fn, value);
+                        value = applied ?? throw new InvalidOperationException("an application gave neither a term nor a value");
                         continue;
+                    }
+
+                    case Kont.ApplyArg f:
+                    {
+                        if (Enter(mc, stack, value, f.Arg, f.Charged, out var applied) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = applied ?? throw new InvalidOperationException("an application gave neither a term nor a value");
+                        continue;
+                    }
 
                     case Kont.LetBody f:
                         (env, term) = (f.Environment.Push(value), f.Body);
@@ -308,15 +338,14 @@ public static partial class Nbe
         });
 
     /// <summary>Applies <paramref name="fn"/> to <paramref name="arg"/>.</summary>
+    // Through the machine, so a call is charged and a fixpoint unfolds exactly as in a program.
     public static Value Apply(MetaContext mc, Value fn, Value arg) =>
-        fn is Value.VLam lam
-            ? Eval(mc, lam.Body.Environment.Push(arg), lam.Body.Body)
-            : ApplyStuck(mc, fn, arg);
+        Eval(mc, Environment.Empty.Push(fn).Push(arg), new Term.Ap(new Term.Var(1), Explicitness.Explicit, new Term.Var(0)));
 
     /// <summary>Application to something that is not a closure: the result is stuck.</summary>
     private static Value ApplyStuck(MetaContext mc, Value fn, Value arg) => Force(mc, fn) switch
     {
-        Value.VLam lam => Eval(mc, lam.Body.Environment.Push(arg), lam.Body.Body),
+        Value.VLam or Value.VFix => Apply(mc, Force(mc, fn), arg),
         Value.VNeutral n => n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) },
         Value.VMeta f => f with { Spine = f.Spine.Add(arg) },
         Value.VVar r => r with { Spine = r.Spine.Add(arg) },
@@ -375,8 +404,12 @@ public static partial class Nbe
     public static Term Quote(MetaContext mc, int width, Value value)
     {
         var fresh = new Value.VVar(width, []);
+        // A deferred call reads back as the call, not its unfolding.
+        if (value is Value.VGlued glued)
+            return new Term.Ap(Quote(mc, width, glued.Fix), Explicitness.Explicit, Quote(mc, width, glued.Arg));
         return Force(mc, value) switch
         {
+            Value.VFix fix => QuoteFix(mc, width, fix),
             Value.VLam lam => new Term.Lam(Quote(mc, width + 1, ApplyClosure(mc, lam.Body, fresh))),
             Value.VPi pi => new Term.Pi(pi.Explicitness, Quote(mc, width, pi.Domain),
                 Quote(mc, width + 1, ApplyClosure(mc, pi.Codomain, fresh))),
@@ -419,11 +452,24 @@ public static partial class Nbe
     /// <summary>A level as the index it is at <paramref name="width"/> entries.</summary>
     public static int LevelToIndex(int width, int level) => width - level - 1;
 
-    /// <summary>A value with any solved meta at its head resolved away.</summary>
-    public static Value Force(MetaContext mc, Value value)
+    /// <summary>A value with any solved meta or deferred call at its head resolved away.</summary>
+    // One request for the whole loop: a divergent call unfolds to another deferred
+    // call, and a request per unfold would refill the budget forever.
+    public static Value Force(MetaContext mc, Value value) =>
+        value is Value.VMeta or Value.VGlued
+            ? mc.Budget.Request("an evaluation", () => ForceLoop(mc, value))
+            : value;
+
+    private static Value ForceLoop(MetaContext mc, Value value)
     {
-        while (value is Value.VMeta meta && mc.Solution(meta.Id) is { } solution)
-            value = meta.Spine.Aggregate(solution, (f, a) => ApplyStuck(mc, f, a));
-        return value;
+        while (true)
+        {
+            if (value is Value.VMeta meta && mc.Solution(meta.Id) is { } solution)
+                value = meta.Spine.Aggregate(solution, (f, a) => ApplyStuck(mc, f, a));
+            else if (value is Value.VGlued glued)
+                value = glued.Unfolded.Value;
+            else
+                return value;
+        }
     }
 }

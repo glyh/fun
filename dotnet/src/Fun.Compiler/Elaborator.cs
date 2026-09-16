@@ -102,7 +102,12 @@ public sealed partial record Context(
     {
         try
         {
-            Fun.Compiler.Unify.Values(Metas, Width, expected, inferred);
+            // One request: every step of the unification spends from the same budget.
+            Metas.Budget.Request("a unification", () =>
+            {
+                Fun.Compiler.Unify.Values(Metas, Width, expected, inferred);
+                return true;
+            });
         }
         catch (UnifyException e)
         {
@@ -217,6 +222,12 @@ public static partial class Elaborator
             case Syntax.Ap { Explicitness: Explicitness.Implicit } ap:
                 return InferApImplicit(ctx, ap);
 
+            case Syntax.Let { Recursive: true } let:
+                return InferRecLet(ctx, let);
+
+            case Syntax.LetRecGroup group:
+                return InferLetRecGroup(ctx, group);
+
             case Syntax.Let { Recursive: false } let:
             {
                 Term valueTerm;
@@ -317,9 +328,13 @@ public static partial class Elaborator
         {
             switch (binding)
             {
-                case Binding.Let { Recursive: false } let:
+                case Binding.RecGroup group:
+                    inner = InferRecGroupBinding(inner, group, terms, entries);
+                    break;
+
+                case Binding.Let let:
                 {
-                    var (def, type) = Infer(inner, let.Value);
+                    var (def, type) = let.Recursive ? InferRecMember(inner, let) : Infer(inner, let.Value);
                     var kind = let.Public ? MemberKind.Public : MemberKind.Private;
                     var term = new BindingTerm.Let(Label(let.Name.Name), kind, def);
                     inner = ExtendFromSlots(inner, term, [(let.Name.Name, type)]);
@@ -422,7 +437,7 @@ public static partial class Elaborator
                 return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
             }
             case Value.VMeta or Value.VVar or Value.VNeutral:
-                throw new NotImplementedException("not ported yet: applying a value of unknown function type");
+                return InferApUnknown(ctx, fn, fnType, ap.Arg);
             default:
                 throw new FunException("applying non-function");
         }
@@ -431,5 +446,14 @@ public static partial class Elaborator
     /// <summary>A written type, as a term. Its own type must be a universe.</summary>
     private static Term TypeTerm(Context ctx, Syntax stx) => Check(ctx, stx, Value.VU.Instance);
 
-    private static Value TypeValue(Context ctx, Syntax stx) => ctx.Eval(TypeTerm(ctx, stx));
+    /// <summary>
+    /// A written type's value. Reading a type inspects it, so a type computed by a
+    /// divergent call is an evaluation budget error here rather than a deferred one.
+    /// </summary>
+    private static Value TypeValue(Context ctx, Syntax stx)
+    {
+        var value = ctx.Eval(TypeTerm(ctx, stx));
+        ctx.Force(value);
+        return value;
+    }
 }
