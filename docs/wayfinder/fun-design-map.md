@@ -542,8 +542,13 @@ What remains, in the recommended order:
   — `resume` value branch, instance routing, E6 via refs and the pure-branch
   shape done; open: unsolved `can _` at generalisation, `can any` semantics.
 - [Small follow-ups](tickets/small-followups-2026-09-15.md)
-  — refs items 7–10 done (error names the ref, let/block discharge, one-pass
-  alias check, `EffectRef` by id); open: `+` on traits needs `+` trait-dispatched.
+  (closed) — every item done: a method's row is expanded in its parameters'
+  scopes (`->{Mutate(r)}` names `r`), bounds are the set `{Eq, Show}`, checking-time
+  evaluation errors are elaboration errors, refs name the ref and discharge at a
+  `let`/block, `EffectRef` resolves by id.
+- [A meta in a method's signature captures `self`](tickets/method-signature-metas-capture-self.md)
+  — `s.keep(x)` with `keep(r : Ref(I64))` fails at the call; the hidden implicit
+  is solved against a spine holding the struct value.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
