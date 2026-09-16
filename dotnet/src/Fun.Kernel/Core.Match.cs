@@ -56,7 +56,7 @@ public abstract record Occurrence
 }
 
 /// <summary>A compiled match: the tests to run on a scrutinee to choose an arm.</summary>
-public abstract record DecisionTree
+public abstract partial record DecisionTree
 {
     /// <summary>Arm <paramref name="Branch"/> is chosen; its binders sit at <paramref name="Bindings"/>, in source order.</summary>
     public sealed record Leaf(int Branch, EquatableArray<Occurrence> Bindings) : DecisionTree;

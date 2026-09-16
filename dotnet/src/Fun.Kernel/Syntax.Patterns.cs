@@ -8,4 +8,13 @@ public abstract partial record Pattern
     /// written by the label. <paramref name="Partial"/> (<c>_</c>) lets fields go unnamed.
     /// </summary>
     public sealed record Record(Syntax Type, EquatableArray<(string Name, Pattern Pattern)> Fields, bool Partial) : Pattern;
+
+    /// <summary>A primitive type head in a type-case: <c>I64</c>, <c>Unit</c>, <c>Char</c>, <c>String</c>, <c>Absurd</c>.</summary>
+    public sealed record AtomType(AtomTy Ty) : Pattern;
+
+    /// <summary>
+    /// <c>struct { x : p; _ }</c> in a type-case: a struct type whose constructor
+    /// fields' types match their patterns. Without <c>_</c> it has exactly these fields.
+    /// </summary>
+    public sealed record StructType(EquatableArray<(string Name, Pattern Pattern)> Fields, bool Partial) : Pattern;
 }

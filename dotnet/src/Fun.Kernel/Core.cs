@@ -209,5 +209,8 @@ public sealed class Environment
     /// <summary>The entry a de Bruijn index names.</summary>
     public Value this[int index] => _values[index];
 
+    /// <summary>This scope with the entry at <paramref name="index"/> standing for <paramref name="value"/> instead.</summary>
+    public Environment With(int index, Value value) => new(_values.SetItem(index, value));
+
     public int Count => _values.Count;
 }

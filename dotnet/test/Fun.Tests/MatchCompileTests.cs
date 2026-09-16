@@ -75,6 +75,22 @@ public class MatchCompileTests
         Assert.Equal("None", missing!.ToString());
     }
 
+    /// <summary>The universe of types is open: a type-case needs a fallback, and with one it switches on the head.</summary>
+    [Fact]
+    public void ATypeCaseNeedsAFallback()
+    {
+        static MatchDomain Types(Occurrence _) => MatchDomain.Unknown.Instance;
+        CorePattern i64 = new CorePattern.AtomType(AtomTy.I64), chr = new CorePattern.AtomType(AtomTy.Char);
+
+        Assert.Equal("_", MatchCompile.Compile([i64, chr], Types).Missing!.ToString());
+        Assert.Equal(
+            new DecisionTree.TypeSwitch(Root,
+                [new TypeCase(new TypeKey.Atom(AtomTy.I64), new DecisionTree.Leaf(0, [])),
+                 new TypeCase(new TypeKey.Atom(AtomTy.Char), new DecisionTree.Leaf(1, []))],
+                new DecisionTree.Leaf(2, [])),
+            MatchCompile.Compile([i64, chr, Wild], Types).Tree);
+    }
+
     /// <summary>
     /// <c>P {y = 1, x} => …, P {y; _} => …</c>: fields are columns in label order,
     /// so a leaf binds by label (x before y) whatever order the pattern names them in.

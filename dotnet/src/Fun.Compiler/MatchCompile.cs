@@ -87,8 +87,11 @@ public static class MatchCompile
             case CorePattern.Atom:
                 return CompileSwitch(m, occurrence, source, domainOf);
 
-            case CorePattern.Record:
+            case CorePattern.Record or CorePattern.StructType:
                 return Go(SpecializeRecord(m, domainOf(occurrence)), source, domainOf);
+
+            case CorePattern.AtomType or CorePattern.NominalHead:
+                return CompileTypeSwitch(m, occurrence, source, domainOf);
 
             default:
                 throw new InvalidOperationException($"unhandled pattern {first.GetType().Name}");
@@ -223,16 +226,62 @@ public static class MatchCompile
     /// </summary>
     private static Matrix SpecializeRecord(Matrix m, MatchDomain domain)
     {
+        static EquatableArray<(string Name, CorePattern Pattern)>? FieldsOf(CorePattern p) => p switch
+        {
+            CorePattern.Record r => r.Fields,
+            CorePattern.StructType s => s.Fields,
+            _ => null,
+        };
         var labels = (domain is MatchDomain.Record r ? r.Fields : [])
-            .Concat(m.Rows.Select(row => row.Patterns[0]).OfType<CorePattern.Record>().SelectMany(p => p.Fields.Select(f => f.Name)))
+            .Concat(m.Rows.SelectMany(row => FieldsOf(row.Patterns[0]) ?? []).Select(f => f.Name))
             .Distinct()
             .Order(StringComparer.Ordinal)
             .ToList();
         return SpecializeAt(m, labels.Count, i => new Occurrence.Field(m.Header[0], labels[i]),
-            p => p is CorePattern.Record record
-                ? labels.Select(label => record.Fields.LastOrDefault(f => f.Name == label).Pattern ?? CorePattern.Wild.Instance).ToEquatableArray()
+            p => FieldsOf(p) is { } fields
+                ? labels.Select(label => fields.LastOrDefault(f => f.Name == label).Pattern ?? CorePattern.Wild.Instance).ToEquatableArray()
                 : null);
     }
+
+    /// <summary>
+    /// A type-case column: one case per primitive type or nominal declaration the
+    /// column names, a nominal's parameters becoming child columns. The universe
+    /// of types is open, so the column needs a fallback row.
+    /// </summary>
+    private static (DecisionTree?, MissingPattern?) CompileTypeSwitch(
+        Matrix m, Occurrence occurrence, IReadOnlyList<CorePattern> source, Func<Occurrence, MatchDomain> domainOf)
+    {
+        static TypeKey? KeyOf(CorePattern p) => p switch
+        {
+            CorePattern.AtomType t => new TypeKey.Atom(t.Ty),
+            CorePattern.NominalHead n => new TypeKey.Nominal(n.Decl),
+            _ => null,
+        };
+        var keys = m.Rows.Select(r => KeyOf(r.Patterns[0])).OfType<TypeKey>().Distinct().ToList();
+
+        var cases = new List<TypeCase>();
+        foreach (var key in keys)
+        {
+            var arity = key is TypeKey.Nominal
+                ? m.Rows.Select(r => r.Patterns[0]).OfType<CorePattern.NominalHead>().First(n => new TypeKey.Nominal(n.Decl) == key).Arity
+                : 0;
+            var sub = SpecializeAt(m, arity, i => new Occurrence.Child(occurrence, i),
+                p => KeyOf(p) == key ? (p is CorePattern.NominalHead n ? n.Params : []) : null);
+            var (tree, missing) = Go(sub, source, domainOf);
+            if (missing is not null) return (null, missing);
+            cases.Add(new TypeCase(key, tree!));
+        }
+
+        var dm = DefaultMatrix(m);
+        if (dm.Rows.IsEmpty) return (null, MissingPattern.Wild.Instance);
+        var (fallback, missingDefault) = Go(dm, source, domainOf);
+        if (missingDefault is not null) return (null, missingDefault);
+        return (new DecisionTree.TypeSwitch(occurrence, [.. cases], fallback!), null);
+    }
+
+    /// <summary>Occurrences in the order an arm writes its binders: by path, a field step by its label.</summary>
+    public static IEnumerable<T> InSourceOrder<T>(IEnumerable<T> items, Func<T, Occurrence> occurrenceOf) =>
+        items.OrderBy(i => Path(occurrenceOf(i)), PathComparer.Instance);
 
     /// <summary>The rows that match whatever the first column holds, without it.</summary>
     private static Matrix DefaultMatrix(Matrix m) => new(

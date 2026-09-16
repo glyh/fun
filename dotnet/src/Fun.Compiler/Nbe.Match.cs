@@ -44,6 +44,13 @@ public static partial class Nbe
                     };
                     continue;
 
+                case DecisionTree.TypeSwitch typeSwitch:
+                    tree = SelectTypeCase(mc, ValueAt(mc, scrutinee, typeSwitch.At), typeSwitch);
+                    continue;
+
+                case DecisionTree.Sequential sequential:
+                    return SelectArmInOrder(mc, env, scrutinee, match, sequential);
+
                 default:
                     throw new InvalidOperationException($"unhandled decision tree {tree.GetType().Name}");
             }
