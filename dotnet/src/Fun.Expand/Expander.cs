@@ -237,6 +237,10 @@ public sealed partial class Expander
                     active = ExpandTraitBinding(declared, active, expanded);
                     break;
 
+                case Binding.Export e:
+                    expanded.Add(ExpandExport(e, active));
+                    break;
+
                 // A field is a label, not a binder: nothing after it sees it.
                 case Binding.Field f:
                     expanded.Add(f with { Type = Expand(f.Type.AddScope(active)) });

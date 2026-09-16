@@ -38,6 +38,7 @@ public class ExpandTests
     {
         Binding.Let l => $"({(l.Public ? "pub " : "")}{l.Name.Name} {Show(l.Value)})",
         Binding.Open o => $"(open {Show(o.Of)} {o.Label})",
+        Binding.Export e => $"(export {Show(e.Of)}{(e.Names is { } n ? " {" + string.Join(" ", n) + "}" : "")})",
         _ => throw new InvalidOperationException(b.GetType().Name),
     };
 
@@ -62,6 +63,8 @@ public class ExpandTests
     [InlineData("(1, 2).0", "((tuple 1 2).0)")]
     // Module items see the items before them; an open's region makes a bare name an open choice.
     [InlineData("module { a = 1; pub b = a }", "(module (a#0 1) (pub b#1 a#0))")]
+    // An export binds nothing; a trailing `.{ … }` is its selection, not a record.
+    [InlineData("module { a = 1; export a.{x, y}; export a }", "(module (a#0 1) (export a#0 {x y}) (export a#0))")]
     // `y` is inside the open and its binder is not: the open is tried first, the binder is the fallback.
     [InlineData("{ M = module { pub y = 5 }; y = 1; open M; y }", "(let M#0 (module (pub y#1 5)) (let y#2 1 (open M#0 open:3 (choice y [open:3] y#2))))")]
     // `y`'s binder is inside the open, so it shadows the open.

@@ -159,6 +159,7 @@ public abstract partial record Binding
     {
         Let l => l with { Name = l.Name with { Scope = l.Name.Scope.Union(scope) }, Value = l.Value.AddScope(scope) },
         Open o => o with { Of = o.Of.AddScope(scope) },
+        Export e => e with { Of = e.Of.AddScope(scope) },
         Items i => i with { Terms = [.. i.Terms.Select(t => t.AddScope(scope))] },
         RecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))] },
         Field f => f with { Type = f.Type.AddScope(scope) },
