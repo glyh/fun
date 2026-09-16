@@ -220,3 +220,10 @@ test/conformance` (601 cases, 0 failed) on `main`.
   tests since the 601 conformance cases run from their own walker. Async tests
   (`async Task`) are supported if the loader or a language server later needs them;
   the elaborator and the frame-stack evaluator stay synchronous.
+- **Nullable reference types: on, with nullable warnings as errors**
+  (`<Nullable>enable</Nullable>` plus the CS86xx warnings escalated). OCaml's
+  `option` maps to `T?` and the compiler enforces the checks the OCaml `match`
+  enforces today. Considered and rejected: an explicit `Option<T>` type (most
+  faithful, but verbose and unidiomatic C#); nullable off (every dropped `None`
+  becomes a runtime `NullReferenceException`). `default!` and `!` are escape
+  hatches to avoid — if one is unavoidable, comment why.
