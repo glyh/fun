@@ -1565,7 +1565,10 @@ let effects =
           R = struct { cb : (Unit ~> I64) ~> I64 }; \
           ((1, 2) : Tuple(2, I64, I64)); \
           (fn(_) { app(twice(f)) } : Unit ->{State(I64)} I64) }");
-    Alcotest.test_case "a result ~> with no parameter's row is pure" `Quick
+    (* A standalone [~>] has no parameter to collect from, so it mints its own
+       variable: the value must work for every row, which a body that performs
+       does not. *)
+    Alcotest.test_case "a standalone ~> mints, so an effectful body is rejected" `Quick
       (elab_fail
          "{ effect State(S) = sig { get : Unit -> S }; \
           f : Unit ~> I64 = fn(_) { perform State.get () }; 1 }");

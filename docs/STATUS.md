@@ -33,10 +33,16 @@ Last updated: after the staged prelude, 2026-09-16.
 - A row sits on its arrow: `A ->{Log, Exc} B`, open `A ->{Log | e} B`, a variable
   alone `A ->{e} B`, inferred `A ->{_} B` (unsolved at the entry is
   `UnsolvedEffectRow`). A bare arrow is pure. `can` is deleted.
-- `~>` (a base role): a parameter's `~>` mints a row variable bound implicitly at
-  the signature (`Elab_poly_arrows`); a result's `~>` carries its parameters'
-  variables, and on a definition also what the body performs. A result uniting
-  two variables is `UnsupportedRowUnion` (one tail per row, E2).
+- A row is known effects plus a **set** of row variables (`A ->{Log | e1, e2} B`),
+  so a result may unite several callbacks' rows. A tail solved to a row is
+  spliced in (`normalize_effect_row_value`), so a union disappears as its
+  variables are solved; a union of two unsolved tails against a concrete row is a
+  mismatch, not a guess.
+- `~>` (a base role): every function type is read on its own - each parameter's
+  type is a signature in its own right, and the chain's **final** arrow carries
+  the variables its parameters minted (`Elab_poly_arrows`), so a partial
+  application is pure; on a definition the final arrow also infers what the body
+  performs. A final `~>` with no parameter to collect from mints its own variable.
 - Definitions: `fn(n : I64) : I64 { … }` when pure, `fn(n : I64) ->{Log} I64 { … }`
   or `fn(g : Unit ~> I64) ~> I64 { … }` when not; `pub method m() ->{Exc} I64 { … }`.
 - Trait bounds are a set: `[A : {Eq, Show}]` (a single bound may stay bare).

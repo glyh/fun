@@ -5,7 +5,7 @@ labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-16
-resolution: Implemented (branch effect-arrows). Rows sit on arrows (`A ->{E} B`, open `{E | e}`, `->{_}` inferred and an error when nothing solves it); `~>` mints row variables in parameter positions and collects them in result positions (a definition's result also infers what its body performs); `can` is deleted; definitions keep `: T` when pure and take `->{E} T` / `~> T` when effectful. Limit: a row holds one row variable (E2), so a result collecting two parameters' variables is `UnsupportedRowUnion`. Trait bounds are a set `[A : {Eq, Show}]`.
+resolution: Implemented (branch effect-arrows). Rows sit on arrows (`A ->{E} B`, open `{E | e}`, `->{_}` inferred and an error when nothing solves it); `~>` mints row variables in parameter positions and collects them in result positions (a definition's result also infers what its body performs); `can` is deleted; definitions keep `: T` when pure and take `->{E} T` / `~> T` when effectful. Rows carry a set of row variables, so a result unites its callbacks' rows; a curried `~>` collects on its final arrow. Trait bounds are a set `[A : {Eq, Show}]`.
 decided: 2026-09-16
 assignee:
 blocked_by:
@@ -103,11 +103,14 @@ dedicated syntax in their positions for now; generalising to one set literal is
   right row named (`{Exc}` against `{| ?m}` failed); leftovers now go to the other
   side's tail from both sides. A method's row known before its body is unified
   with the row the body solved.
-- **Limit (E2):** a row holds one tail, so `f : (A ~> B) -> (C ~> D) ~> E` —
-  a result uniting two row variables — is `UnsupportedRowUnion`. Uniting them
-  needs multi-tail rows, which E2 ("a row is a set with an optional tail") rules
-  out: a decision, not an implementation gap. Rank 1: variables minted under a
-  higher-order parameter are bound at the root (`ponytail:`).
+- **Multi-tail rows (2026-09-16):** a row is known effects plus a set of row
+  variables, so `f : (A ~> B) -> (C ~> D) ~> E` works
+  ([multi-tail-effect-rows](multi-tail-effect-rows.md)). Rank 1: variables minted
+  under a higher-order parameter are bound at the root (`ponytail:`).
+- **Curried `~>` (2026-09-16):** polarity is gone. Every function type is read on
+  its own: each parameter's type is a signature in its own right, and the chain's
+  final arrow carries what its parameters minted, so `twice : (A ~> A) ~> A ~> A`
+  is `[e] -> (A ->{e} A) -> (A ->{e} A)` and `twice(f)` is pure.
 - **Trait bounds** are a set, `[A : {Eq, Show}]` (`Syntax.TraitBoundSet`); a
   trait named twice is `DuplicateTraitBound`; the `+` spelling recognition is
   deleted. Bounds are still read only on an implicit arrow (`[A : …] -> …`); a
