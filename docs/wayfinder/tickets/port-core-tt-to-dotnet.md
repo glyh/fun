@@ -327,11 +327,11 @@ Forked in parallel from `b894c12`+1, one worktree each:
 rows), macros and syntax roles (need the prelude), recursive enums (need both
 match-enums and recursive definitions).
 
-## Wave 2 (2026-09-16) — merged except pattern synonyms
+## Wave 2 (2026-09-16) — merged
 
-Export, traits, recursive types, patterns (synonyms still running), syntactic
-roles and effects merged. C# 91/621 → 203/647; xUnit 73 → 90; OCaml 647 cases,
-0 failed, 7 known divergences. Each ticket records its merge and what remains.
+Export, traits, recursive types, patterns (synonyms included), syntactic roles and
+effects merged. C# 91/621 → 206/650; xUnit 73 → 90; OCaml 650 cases, 0 failed,
+9 known divergences. Each ticket records its merge and what remains.
 
 
 Forked in parallel from main, one worktree each:

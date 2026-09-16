@@ -3,7 +3,7 @@ title: "Port: type-case, record and struct-type patterns, pattern synonyms"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -62,3 +62,24 @@ the correct result, listed in `prototype-divergences.txt` with a ticket:
 **Follow-up:** matching a nominal head evaluates the head term with a nested
 `Eval` (`ponytail:` in `Nbe.Patterns.cs`) rather than a `Kont` frame; its depth is
 the head term's, not the program's call depth.
+
+## Resolution (2026-09-16)
+
+Pattern synonyms merged from `port/patterns` (`6a6b770`, merge `5e945fb`):
+`pattern Name(params) = rhs` in blocks and module items (`pub pattern` too); the
+right-hand side elaborates once where written, every binder in it a parameter
+bound exactly once; a use resolves the name like any bare pattern head (binder,
+`open`, or `M.Flip`); arguments bind by parameter name. Shared cases
+`values/pattern-synonym-binds-by-name` (20; prototype gives 10) and
+`values/pattern-synonym-through-open` (7; prototype `UnknownConstructor "Swap"`) are
+listed in `prototype-divergences.txt`; `values/pattern-synonym-agrees` (3) agrees.
+C# 206/650; xUnit 90.
+
+**Follow-ups:**
+- **Block synonyms are a C#-only form.** The prototype has no `pattern` block
+  statement (`unexpected token in expression`); the port accepts one because this
+  ticket's scope said "blocks and modules". No shared case covers it. Decide
+  whether a block may declare a synonym (a binding in a block is otherwise legal)
+  or remove it from the port.
+- Still "not ported yet": synonyms whose pattern does not fix the scrutinee or
+  parameter types, and synonyms over a type-case pattern.

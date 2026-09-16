@@ -3,11 +3,26 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after .NET port wave 1, 2026-09-16.
+Last updated: after .NET port wave 2, 2026-09-16.
 
 ---
 
 ## Completed
+
+### .NET port — wave 2 (2026-09-16)
+
+- **206 of 650 conformance cases pass in C#** (90 xUnit), up from 91/621. Added:
+  export; traits and impls with evidence resolution and bounds; recursive enums,
+  groups and recursive records (`RecursiveOccurrence`); record, struct-type and
+  type-case patterns, pattern synonyms; syntactic roles, operators, order groups
+  and `syntax` rule forms; algebraic effects (rows on arrows, deep one-shot
+  handlers as machine frames, tunneling, E6).
+- Prototype defects found this wave, each fixed in C# only and listed in
+  `test/conformance/prototype-divergences.txt` (9 in all): a recursive record field
+  of its own type, a type-case former head's arity, pattern synonyms binding by
+  position and not found through `open`.
+- Remaining walls: the prelude (327 cases wait on its operators, forms and names),
+  procedural macros (54), refs (34).
 
 ### .NET port — slice 2a and wave 1 (2026-09-16)
 

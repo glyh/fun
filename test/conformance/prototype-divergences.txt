@@ -13,3 +13,5 @@ elaborate/bare-constructor-pattern-needs-open         bare-constructor-pattern-r
 elaborate/bare-constructor-pattern-shadowed-by-value  bare-constructor-pattern-resolves-by-name.md
 values/rec-record-field-of-own-type             recursive-record-field-of-own-type-rejected.md
 values/type-case-former-parameter              type-case-former-head-arity-from-template.md
+values/pattern-synonym-binds-by-name           pattern-synonym-arguments-bind-by-position.md
+values/pattern-synonym-through-open            pattern-synonym-arguments-bind-by-position.md
