@@ -521,7 +521,7 @@ public static partial class Elaborator
         var ((valueTerm, valueType), performed) = Collecting(ctx, c =>
             writtenType is null ? Infer(c, let.Value) : (Check(c, let.Value, writtenType), writtenType));
         Emit(ctx, performed);
-        // ponytail: no let-generalisation yet; the prototype generalises here.
+        (valueTerm, valueType) = Generalise(ctx, valueTerm, valueType);
         // A value is known in the body only when evaluating it performs nothing (E4).
         var body = performed.IsEmpty
             ? ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm))
