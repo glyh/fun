@@ -38,6 +38,7 @@ public sealed partial class Expander
     /// </summary>
     private (ScopeSet Scope, string Resolved) Bind(Id name)
     {
+        CheckRoleMixing(name.Name, name.Scope, isRole: false, attaches: false, group: false);
         var scope = FreshScope();
         var resolved = FreshResolvedName(name.Name);
         _bindings.Extend(name.Name, name.Scope.Union(scope), resolved);
@@ -181,7 +182,19 @@ public sealed partial class Expander
                 // Read the body's first statement with what is bound here,
                 // scoped over the rest, which stays unread until expansion
                 // reaches it.
-                return Expand(Enforest.ParseBlockHead(b.Span, new Terms(b.Terms)));
+            {
+                if (ExpandBlockDeclForm(b) is { } declForm) return declForm;
+                Syntax head;
+                using (Reading()) head = Enforest.ParseBlockHead(b.Span, new Terms(b.Terms));
+                return Expand(head);
+            }
+
+            // A role binds for the rest of the block; the declaration itself elaborates to nothing.
+            case Syntax.SyntaxDef d:
+                return Expand(d.Body.AddScope(BindRole(d.Name, d.Role)));
+
+            case Syntax.Instantiate use:
+                return ExpandInstantiate(use);
 
             default:
                 throw new NotImplementedException($"not ported yet: expanding {stx.GetType().Name}");
@@ -195,22 +208,45 @@ public sealed partial class Expander
     /// </summary>
     private EquatableArray<Binding> ExpandBindings(EquatableArray<Binding> bindings)
     {
-        var pending = new Stack<Binding>(bindings.Reverse());
+        // Each pending binding carries whether a `pub` form use published it.
+        var pending = new Stack<(Binding Binding, bool Publish)>(bindings.Reverse().Select(b => (b, false)));
         var expanded = new List<Binding>();
         var active = ScopeSet.Empty;
 
         while (pending.Count > 0)
         {
-            switch (pending.Pop())
+            var (next, publish) = pending.Pop();
+            if (publish) next = Publish(next);
+            switch (next)
             {
                 case Binding.Items items:
                 {
                     var (stmt, after) = Enforest.TakeStatement(new Terms(items.Terms));
-                    if (!Enforest.DropSeparators(after).IsEmpty) pending.Push(new Binding.Items(after.ToArray()));
+                    if (!Enforest.DropSeparators(after).IsEmpty) pending.Push((new Binding.Items(after.ToArray()), publish));
                     var marked = new Terms([.. stmt.Select(t => t.AddScope(active))]);
-                    foreach (var read in Enforest.ParseModuleStatement(marked).Reverse()) pending.Push(read);
+                    EquatableArray<Binding> read;
+                    using (Reading()) read = Enforest.ParseModuleStatement(marked);
+                    foreach (var b in read.Reverse()) pending.Push((b, publish));
                     break;
                 }
+
+                // A role binds for the items after it, which carry its scope.
+                case Binding.SyntaxDecl decl:
+                {
+                    decl = (Binding.SyntaxDecl)decl.AddScope(active);
+                    active = active.Union(BindRole(decl.Name, decl.Role));
+                    break;
+                }
+
+                case Binding.Instantiate use:
+                {
+                    var returned = InstantiateDecls(((Binding.Instantiate)use.AddScope(active)).Instantiation);
+                    foreach (var b in returned.Reverse()) pending.Push((b, publish || use.Public));
+                    break;
+                }
+
+                case Binding.Hole hole:
+                    throw new ExpandException($"an unfilled declaration hole {hole.Name.Name}");
 
                 case Binding.Let l:
                 {

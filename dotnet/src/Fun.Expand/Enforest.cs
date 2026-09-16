@@ -15,8 +15,19 @@ namespace Fun.Expand;
 // most at risk of.
 public static partial class Enforest
 {
-    /// <summary>How tightly the expression being read binds.</summary>
-    public enum Prec { Top, ArrowRhs, Tight }
+    /// <summary>
+    /// Where an expression is read, which decides what may continue it: after
+    /// <c>-&gt;</c>, a tight argument no infix operator continues, or the operand
+    /// of an operator, continued only by operators that bind tighter.
+    /// </summary>
+    public abstract record Prec
+    {
+        public static readonly Prec Top = new Position("Top"), ArrowRhs = new Position("ArrowRhs"), Tight = new Position("Tight");
+
+        private sealed record Position(string Name) : Prec;
+
+        public sealed record Operand(string Name, Role Role) : Prec;
+    }
 
     /// <summary>A source read as an expression: one body, read as expansion reaches it.</summary>
     public static Syntax ParseExpr(string source, string? file = null)
@@ -49,6 +60,8 @@ public static partial class Enforest
     private static Syntax DoStatement(SourceSpan span, Terms stmt, Syntax body)
     {
         if (ParseRecGroup(stmt) is { } group) return new Syntax.LetRecGroup(group, body, span);
+
+        if (ParseRoleDecl(stmt) is var (roleName, role)) return new Syntax.SyntaxDef(roleName, role, body, span);
 
         var decl = ParseValueDeclStatement(stmt);
         if (decl is var (name, type, value, recursive))
@@ -122,7 +135,8 @@ public static partial class Enforest
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
             throw new ExpandException("module is written module { … }");
-        return (new Syntax.Module([new Binding.Items(body.Items)], SourceSpan.Between(startSpan, body.Span)), terms.Tail);
+        EquatableArray<Binding> items = _env is { Eager: true } ? ReadItemsNow(new Terms(body.Items)) : [new Binding.Items(body.Items)];
+        return (new Syntax.Module(items, SourceSpan.Between(startSpan, body.Span)), terms.Tail);
     }
 
     /// <summary><c>open e</c>: the module expression, or null when the statement is not an open.</summary>
@@ -142,8 +156,14 @@ public static partial class Enforest
         stmt = DropSeparators(stmt);
         if (stmt.IsEmpty) return [];
 
+        // A lone `$d` is a declaration hole: only quoted syntax spells an id with `$`.
+        if (stmt is [var lone] && HoleName(lone) is not null && NameOf(lone) is Id hole) return [new Binding.Hole(hole)];
+
         var isPublic = IsToken(stmt.Head, TokenKind.Pub);
         var unprefixed = isPublic ? stmt.Tail : stmt;
+
+        if (DeclFormUse(unprefixed) is { } declUse) return [new Binding.Instantiate(declUse, isPublic)];
+        if (ParseRoleDecl(unprefixed) is var (roleName, role)) return [new Binding.SyntaxDecl(roleName, role, isPublic)];
 
         if (ParseExportStatement(isPublic, unprefixed) is { } export) return [export];
 
@@ -200,6 +220,8 @@ public static partial class Enforest
         if (terms.Head is not TokenTree term) throw new ExpandException("expected expression");
         var rest = terms.Tail;
 
+        if (PrefixRoleUse(term, rest) is var (roleUse, afterRoleUse)) return (roleUse, afterRoleUse);
+
         switch (term)
         {
             case TokenTree.Leaf { Token: var token }:
@@ -255,7 +277,7 @@ public static partial class Enforest
 
             // `A -> B`: a function type. A bare arrow is pure; `A ->{E} B` and
             // `A ~> B` carry a row.
-            if ((IsToken(term, TokenKind.ThinArrow) || IsPolyArrow(term)) && prec is Prec.Top or Prec.ArrowRhs)
+            if ((IsToken(term, TokenKind.ThinArrow) || IsPolyArrow(term)) && (prec == Prec.Top || prec == Prec.ArrowRhs))
             {
                 var (row, afterRow) = ParseArrowRow(term, terms.Tail);
                 var (cod, afterCod) = ParseExprPrec(afterRow, Prec.ArrowRhs);
@@ -325,9 +347,15 @@ public static partial class Enforest
                 && lhs.Span.End == postfix.Span.Start)
                 throw new NotImplementedException("not ported yet: an implicit argument written f{ e }");
 
-            // An infix operator is a declared role; no role is bound yet.
+            // An infix operator is a declared role. An identifier with none ends
+            // the expression; an operator with none may be the prelude's.
             if (TokenText(term) is string symbol)
+            {
+                if (InfixRoleUse(lhs, term, terms.Tail, prec) is var (use, afterUse)) { (lhs, terms) = (use, afterUse); continue; }
+                if (_env?.Roles.FindRole(symbol, Fixity.Infix, ((TokenTree.Leaf)term).Token.Scope) is not null
+                    || term is TokenTree.Leaf { Token.Kind: TokenKind.Ident }) return (lhs, terms);
                 throw new NotImplementedException($"not ported yet: the infix operator `{symbol}`");
+            }
 
             return (lhs, terms);
         }
@@ -339,7 +367,7 @@ public static partial class Enforest
         switch (group.Delimiter)
         {
             case Delimiter.Brace:
-                return new Syntax.Block(group.Items, group.Span);
+                return ReadBlock(group.Items, group.Span);
 
             case Delimiter.Bracket:
                 throw new NotImplementedException("not ported yet: bracket expressions");
@@ -447,7 +475,7 @@ public static partial class Enforest
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } group)
             throw new ExpandException("expected { body } after fn parameters");
-        return (new Syntax.Block(group.Items, group.Span), terms.Tail, group.Span);
+        return (ReadBlock(group.Items, group.Span), terms.Tail, group.Span);
     }
 
     /// <summary>

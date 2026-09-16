@@ -146,9 +146,13 @@ public static partial class Enforest
             : new EffectRow(effects, Entries(tails), Inferred: false, Polymorphic: false);
     }
 
-    /// <summary><c>~&gt;</c>: an arrow whose row its signature decides.</summary>
+    /// <summary>
+    /// <c>~&gt;</c>: an arrow whose row its signature decides. It is a base role, so
+    /// it is recognised by the role its token resolves to, never by spelling.
+    /// </summary>
     private static bool IsPolyArrow(TokenTree? term) =>
-        term is TokenTree.Leaf { Token.Kind: TokenKind.Operator { Spelling: "~>" } };
+        _env is not null && term is TokenTree.Leaf leaf && TokenText(leaf) is string symbol
+        && _env.Roles.FindRole(symbol, Fixity.Infix, leaf.Token.Scope) is { Meaning: RoleMeaning.PolyArrow };
 
     private static EffectRow PolymorphicRow(bool inferred) => new([], [], inferred, Polymorphic: true);
 

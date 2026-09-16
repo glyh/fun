@@ -164,7 +164,7 @@ public static partial class Elaborator
         if (rowVariables.Count > 0) tails = [.. rowVariables];
         else if (row.Inferred)
         {
-            var meta = FreshMeta(ctx);
+            var meta = FreshRowMeta(ctx);
             ctx.Metas.WrittenRows.Add(((Term.InsertedMeta)meta).Id);
             tails = [meta];
         }
@@ -388,4 +388,20 @@ public static partial class Elaborator
     }
 
     private static int NextHandler() => Interlocked.Increment(ref _nextHandler);
+
+    /// <summary>
+    /// A meta for an inferred row: abstracted over the row variables in scope only,
+    /// so a row may be solved to one while a value parameter never lands in its
+    /// spine - a callback's row is the same row wherever it is called.
+    /// </summary>
+    private static Term FreshRowMeta(Context ctx)
+    {
+        var rowLevels = ctx.Names.Values
+            .Where(e => ctx.Force(e.Type) is Value.VEffectRowTy)
+            .Select(e => e.Level)
+            .ToHashSet();
+        var kinds = ctx.EntryKinds.Select((kind, index) =>
+            kind == EntryKind.Bound && rowLevels.Contains(ctx.Width - 1 - index) ? EntryKind.Bound : EntryKind.Defined);
+        return new Term.InsertedMeta(ctx.Metas.Fresh(), [.. kinds]);
+    }
 }

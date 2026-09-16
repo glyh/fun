@@ -55,8 +55,11 @@ public static partial class Elaborator
         });
 
         // A handler is deep (E8): what its branch bodies perform it handles too.
-        Emit(ctx, Residual(ctx, scrutineeEffects.Effects.Concat(bodyEffects.Effects), handled), scrutineeEffects.Tails.Concat(bodyEffects.Tails));
-        CheckEscape(ctx, handled, resultType);
+        var all = new EffectSink();
+        all.Effects.AddRange(scrutineeEffects.Effects.Concat(bodyEffects.Effects));
+        Emit(ctx, Residual(ctx, all.Effects, Handled(ctx, all, effectBranches)), scrutineeEffects.Tails.Concat(bodyEffects.Tails));
+        // E6 is about the instances the branches name, handled in full or not.
+        CheckEscape(ctx, [.. effectBranches.Select(b => (Value)b.Instance)], resultType);
 
         var (tree, missing) = MatchCompile.Compile(patterns, occurrence => DomainOf(ctx, TypeAt(ctx, scrutineeType, occurrence)));
         if (missing is not null) throw new FunException($"non-exhaustive match: {missing} is not matched");

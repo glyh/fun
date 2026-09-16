@@ -26,6 +26,10 @@ public static class Driver
             return Elaborator.ElaborateProgram(Fun.Expand.Expander.ExpandExpr(source), new Loader(units));
         }
         // The runner sees one failure kind: where it happened is the implementation's business.
+        catch (Fun.Expand.RoleException e)
+        {
+            throw new FunException(e.Message);
+        }
         catch (Fun.Expand.ReaderException e)
         {
             throw new FunException(e.Message);
