@@ -176,11 +176,65 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
   as a program's result — enforester/syntax shapes, reflection round trips, NbE
   and unifier internals, budget accounting — mirroring the OCaml internal tests.
 
-## Not to be started (2026-09-16)
+## Started (2026-09-16)
 
-The user's instruction: **do not begin the port** — prepare everything up to it
-and stop. Treat this ticket as a readiness checklist; the port starts only when
-the user says so.
+The user gave the word; the port is under way in `dotnet/`, in the same repo as
+the prototype so the conformance suite stays one copy.
+
+**Layout — three projects** (`dotnet/Fun.slnx`), not seven and not one:
+
+```
+src/Fun.Kernel/     Atom, ScopeSet, SourceSpan, TokenTree, Syntax, Core
+src/Fun.Expand/     reader, enforester, expander     -> Kernel only
+src/Fun.Compiler/   elaborator, unify, match, NbE, loader
+src/Fun.Cli/
+test/Fun.Tests/         xUnit, internals
+test/Fun.Conformance/   walks ../../test/conformance/cases
+```
+
+The split enforces the one edge that is load-bearing: `Fun.Expand` cannot
+reference the elaborator, exactly as `core_tt_expand` depends on only
+`core_tt_kernel` and `core_tt_syntax`. `match`, `interp` and `loader` are leaves
+off the kernel that only `typecheck` consumes, so they are folders, not projects.
+
+**Decided (2026-09-16): the expander's callbacks become one injected
+capability.** `Expand_ctx`'s `elaborate`, `eval_and_apply` and
+`load_macros`/`load_syntax` are `mutable … option` fields installed after
+construction, and a missing one is the runtime error `MissingCallback` - an
+expander that silently compiles no macro and leaves every macro call unexpanded
+(`core_loader.ml:26` comments on exactly that). The *recursion* they carry is
+real and stays: expanding a `MacroDef` must compile and evaluate the macro body
+before the next form is read, because that form may call it. What goes is the
+optionality. The port declares one `IMacroRuntime` in `Fun.Expand`, implemented
+in `Fun.Compiler`, taken non-nullable by the expander's constructor, so
+`MissingCallback` is unrepresentable. The genuinely runtime-free pass
+(`Parse_expand.syntax_exports`, which only reads a unit's exported roles) becomes
+its own entry point rather than an expander with nulls in it.
+
+**Decided (2026-09-16): porting order is a vertical slice.** Reader through
+evaluator for a handful of conformance cases first, accepting rework as each
+layer fills in, rather than finishing `Fun.Kernel` bottom-up with nothing
+running until the end. The reason is the ticket's own risk list: the env-width
+contract and the scope-set invariants are what gets silently mis-transcribed,
+and only a running pipeline catches that early.
+
+**Decided (2026-09-16): the reader is hand-written.** Researched against the
+alternatives: ANTLR4 is the only real generator for .NET and needs a JDK at
+build time; Pidgin, Superpower and Sprache are runtime combinators (slower than
+hand-written, not faster); Hime is effectively unmaintained. Generated is not
+faster for this token set - a `switch` on the first character beats ATN
+simulation - and two thirds of `raw_syntax.ml` is the delimiter-group builder,
+which no generator supplies. `#|…|#` also nests, which no regex can express. The
+scanner uses `System.Buffers.SearchValues<char>` for its character classes, and
+it never grows a rule: operators lex uniformly and the enforester assigns their
+meaning.
+
+**Slice 1 (in progress)** targets the three conformance cases that need no
+prelude: `values/core-001` (`42`), `core-002` (`(fn(x) { x })(7)`) and
+`core-004` (`{ x : I64 = 5; x }`). Landed: the scaffold, `SourceSpan`,
+`ScopeSet`, `Atom`/`AtomTy`, `TokenTree` and the reader, with 15 xUnit cases.
+The conformance runner walks the same 601 files the OCaml runner does and
+reports 601 failures - that number reaching 0 is the port.
 
 ## Readiness (2026-09-16)
 

@@ -3,11 +3,26 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after Stage 11 increment 2, 2026-09-16.
+Last updated: after the .NET port scaffold, 2026-09-16.
 
 ---
 
 ## Completed
+
+### .NET port started — scaffold and reader (2026-09-16)
+
+- The C# port lives in `dotnet/` in this repo, so `test/conformance/cases` stays
+  one copy. Three projects (`Fun.Kernel`, `Fun.Expand`, `Fun.Compiler`, plus
+  `Fun.Cli` and two test projects): the split enforces that `Fun.Expand` cannot
+  reference the elaborator, as `core_tt_expand` cannot today. `dune build`
+  ignores `dotnet/` (root `dune`, `(dirs :standard \ dotnet)`).
+- Ported: `SourceSpan`, `ScopeSet`, `Atom`/`AtomTy`, `TokenTree` and the reader
+  (a hand-written scanner over `System.Buffers.SearchValues` plus the
+  delimiter-group builder), with 15 xUnit cases.
+- `test/Fun.Conformance` walks the same 601 cases as the OCaml runner and
+  reports 601 failures. That number reaching 0 is the port.
+- Decisions and the slice plan: `docs/wayfinder/tickets/port-core-tt-to-dotnet.md`.
+
 
 ### Stage 11 increment 2 — keyword surface (2026-09-16)
 

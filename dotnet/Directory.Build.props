@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- port-core-tt-to-dotnet.md: OCaml's `option` maps to `T?`, and the
+         compiler must enforce what the OCaml `match` enforces today. -->
+    <WarningsAsErrors>Nullable</WarningsAsErrors>
+  </PropertyGroup>
+</Project>

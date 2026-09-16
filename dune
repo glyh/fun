@@ -1,0 +1,3 @@
+; The .NET port lives in dotnet/ and is built by `dotnet build`, not dune.
+; See docs/wayfinder/tickets/port-core-tt-to-dotnet.md.
+(dirs :standard \ dotnet)

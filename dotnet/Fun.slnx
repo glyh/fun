@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Fun.Cli/Fun.Cli.csproj" />
+    <Project Path="src/Fun.Compiler/Fun.Compiler.csproj" />
+    <Project Path="src/Fun.Expand/Fun.Expand.csproj" />
+    <Project Path="src/Fun.Kernel/Fun.Kernel.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Fun.Conformance/Fun.Conformance.csproj" />
+    <Project Path="test/Fun.Tests/Fun.Tests.csproj" />
+  </Folder>
+</Solution>
