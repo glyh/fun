@@ -3,11 +3,21 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after the conformance suite, 2026-09-16.
+Last updated: after Stage 11 increment 2, 2026-09-16.
 
 ---
 
 ## Completed
+
+### Stage 11 increment 2 — keyword surface (2026-09-16)
+
+- `then`, `with`, `end`, `else` and `Unit` are no longer keyword tokens: no parser
+  rule matched them (a syntax form's rule literals compare by spelling, so the
+  prelude's `if` form matches `else` as a plain token; `Unit` had an identical
+  `Ident` path in expression and pattern position). They are ordinary identifiers.
+- Already library, confirmed by survey: `if`/`else`, `&&`/`||`, arithmetic and
+  comparison operators, prefix `not`, `type` (stage-2 std macro).
+
 
 ### Shared conformance suite (2026-09-16)
 
@@ -63,6 +73,10 @@ Last updated: after the conformance suite, 2026-09-16.
   performs. A final `~>` with no parameter to collect from mints its own variable.
 - Definitions: `fn(n : I64) : I64 { … }` when pure, `fn(n : I64) ->{Log} I64 { … }`
   or `fn(g : Unit ~> I64) ~> I64 { … }` when not; `pub method m() ->{Exc} I64 { … }`.
+  `: T` is the pure member of that family: it states the function's type with an
+  empty row (so it needs every parameter's type), and a body that performs under
+  it is `EffectsInPureResult`, which names the effects and points at the arrow
+  forms. A method with no declared row reads the same way.
 - Trait bounds are a set: `[A : {Eq, Show}]` (a single bound may stay bare).
 - Row unification sends each side's unnamed effects to the other side's tail.
 

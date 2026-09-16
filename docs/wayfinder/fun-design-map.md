@@ -351,7 +351,10 @@ every defect below is an invariant with no name in the source.
 
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
-  increment 1 (Bool + `if`) landed; **stays open** for more increments.
+  increment 1 (Bool + `if`) landed; increment 2 (2026-09-16) deleted five unused
+  keyword tokens (`then`, `with`, `end`, `else`, `Unit`) after finding `if`,
+  `&&`/`||`, the operators and `type` already live in the prelude. **Stays open**:
+  `ref`/`deref` as primitives needs a decision (fresh heap per call).
 - [Mutually-recursive nominal type declarations](tickets/mutually-recursive-nominal-types.md)
   (closed) — `type A = … and B = …` chains, elaborated by one three-phase knot.
   Nested patterns through recursive positions (broken for every recursive type,

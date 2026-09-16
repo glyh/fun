@@ -59,3 +59,36 @@ dictionaries, effects) — the idea store for future increments:
   [Unify operators into the scope-aware binding table](unify-operators-into-scope-aware-binding-table.md).
 - [Reflect Match in the Expr macro ADT](reflect-match-in-expr-macro-adt.md)
   — required for a *true* prelude-macro `if` (macros can't construct `Match` today).
+
+## Progress — increment 2 (2026-09-16): the keyword surface
+
+Survey of what is still compiler-built found the library demotions already done:
+`if`/`else` (prelude `pub syntax if`), `&&`/`||`, every arithmetic and comparison
+operator, prefix `not`, and `type` (a stage-2 std macro since the staged prelude).
+`Match` and `Branch` are reflected in the `Expr` ADT, so
+[reflect-match-in-expr-macro-adt](reflect-match-in-expr-macro-adt.md)'s blocker is
+gone and `if` already is a prelude form.
+
+**Landed:** five keyword tokens deleted — `then`, `with`, `end`, `else`, `Unit`.
+Nothing matched them: a syntax form's rule literals compare by spelling
+(`Enforest_template.same_literal_token`), so the prelude's `if` form matches
+`else` as a plain token, and `Unit` had an identical `Ident` path in expression
+and pattern position. They are ordinary identifiers now
+(`test/conformance/cases/values/freed-keywords.fun`).
+
+## What remains
+
+- **`ref` / `deref` as primitives** — needs a decision. `RefNew` mints a *fresh*
+  heap meta per occurrence (`elab_infer.ml`, "a new reference starts its own
+  heap"). As a primitive its type would be
+  `[h : Type, A : Type] -> A ->{Mutate(h)} Ref(h, A)`, where `h` is solved by
+  unification: normally a fresh meta (same behaviour), but an expected type could
+  force an existing heap, widening what is discharged. `RefNew` also carries E11's
+  generative module stamp, so the core node stays either way.
+- Everything else keyword-driven (`match`, `fn`, `struct`, `module`, `sig`,
+  `enum`, `trait`, `impl`, `effect`, `macro`, `pattern`, `import`, `open`,
+  `export`, `perform`, `resume`, `method`, `rec`, `pub`, `self`, `Self`) is a core
+  structural form producing a primitive node — keywords by the rule decided
+  2026-09-16. No `while` exists to demote.
+- Not this ticket, noticed: `enforest_pat.ml` picks type patterns (`I64`, `Unit`,
+  `Char`, `String`, `Absurd`) by spelling — an M12 survivor.

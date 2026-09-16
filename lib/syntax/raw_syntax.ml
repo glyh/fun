@@ -12,14 +12,10 @@ let operator_chars = [%sedlex.regexp? Plus ('+' | '-' | '*' | '/' | '%' | '=' | 
 let keyword = function
   | "let" -> Some KwLet
   | "fun" -> Some KwFun
-  | "then" -> Some KwThen
   | "sig" -> Some KwSig
   | "fn" -> Some KwFn
   | "do" -> Some KwDo
-  | "end" -> Some KwEnd
-  | "else" -> Some KwElse
   | "match" -> Some KwMatch
-  | "with" -> Some KwWith
   | "effect" -> Some KwEffect
   | "module" -> Some KwModule
   | "struct" -> Some KwStruct
@@ -40,7 +36,6 @@ let keyword = function
   | "perform" -> Some KwPerform
   | "resume" -> Some KwResume
   | "method" -> Some KwMethod
-  | "Unit" -> Some KwUnit
   | _ -> None
 
 let span_between (a : Source_span.t) (b : Source_span.t) =
@@ -165,14 +160,10 @@ let read ?file source =
     | Ident s | Operator s -> s
     | KwLet -> "let"
     | KwFun -> "fun"
-    | KwThen -> "then"
     | KwSig -> "sig"
     | KwFn -> "fn"
     | KwDo -> "do"
-    | KwEnd -> "end"
-    | KwElse -> "else"
     | KwMatch -> "match"
-    | KwWith -> "with"
     | KwEffect -> "effect"
     | KwModule -> "module"
     | KwStruct -> "struct"
@@ -193,7 +184,6 @@ let read ?file source =
     | KwPerform -> "perform"
     | KwResume -> "resume"
     | KwMethod -> "method"
-    | KwUnit -> "Unit"
     | Int _ -> "integer"
     | Char _ -> "char"
     | String _ -> "string"

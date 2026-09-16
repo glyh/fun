@@ -1929,7 +1929,7 @@ let references =
 (* Refs in effect rows: using a reference performs [Mutate] on its hidden heap. *)
 let mutates_unhandled source () =
   match elab source with
-  | exception Elaborate.ElabError (Elaborate.UnhandledEffects effs)
+  | exception Elaborate.ElabError ((Elaborate.UnhandledEffects effs | Elaborate.EffectsInPureResult effs))
     when List.exists (fun e -> String.starts_with ~prefix:"effect Mutate" e) effs -> ()
   | exception e -> Alcotest.fail ("expected an unhandled Mutate: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected an unhandled Mutate"
@@ -1965,7 +1965,7 @@ let ref_effects =
     Alcotest.test_case "an unhandled Mutate names the reference" `Quick
       (fun () ->
         match elab "{ r = ref(0); f : Unit -> Unit = fn(_) { r <- 2 }; 1 }" with
-        | exception Elaborate.ElabError (Elaborate.UnhandledEffects effs) ->
+        | exception Elaborate.ElabError ((Elaborate.UnhandledEffects effs | Elaborate.EffectsInPureResult effs)) ->
             Alcotest.(check (list string)) "names r" [ "effect Mutate(r)" ] effs
         | exception e -> Alcotest.fail (Printexc.to_string e)
         | _ -> Alcotest.fail "expected an unhandled Mutate");

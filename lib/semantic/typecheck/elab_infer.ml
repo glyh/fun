@@ -989,7 +989,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
       let method_body ctx effects body =
         let (body_core, body_ty), performed = collecting ctx (fun ctx -> ops.infer ctx body) in
         let row = Elab_type_expr.elaborate_effect_row ops ctx effects in
-        check_effect_subset ctx performed
+        check_effect_subset ~in_function:true ctx performed
           { effect_values = List.map (Ctx.eval ctx) row.effects; tail_values = List.map (Ctx.eval ctx) row.tails };
         ((body_core, body_ty), row)
       in

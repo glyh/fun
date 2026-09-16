@@ -185,10 +185,22 @@ through like any alias, so `Poly = [e : EffectRow] -> Unit ->{e} I64` used as a
 parameter type is rank 2 only because its own type is `Type`, not `EffectRow ->
 Type`.
 
-**Still open, and not about aliases:** `app = fn(g : Callback) : I64 { g(()) }`
-is accepted, because `: T` does not yet mean "pure result" - it annotates the
-body's value type while the row is inferred from the body. The same holds for
-`bad = fn(u : Unit) : I64 { perform Log.write(1) }`. Enforcing the grilled rule
-(`: T` is the pure form, `->{E} T` / `~> T` the effectful one) is a separate
-change to every definition, with its own migration of any `: T` definition whose
-body performs.
+### `: T` is the pure result form, enforced (2026-09-16, branch `pure-colon`)
+
+`: T` states the function's type with an empty row, exactly as `->{E} T` states
+it with `E`, so it needs every parameter's type for the same reason. A body that
+performs under it is `EffectsInPureResult`, naming the effects and pointing at
+`->{E} T` / `~> T`:
+
+```fun
+bad  = fn(u : Unit) : I64 { perform Log.write(1) }      // error: names Log
+good = fn(u : Unit) ->{Log} I64 { perform Log.write(1) }
+app  = fn(g : Callback) : I64 { g(()) }                 // error: g performs its row
+```
+
+Methods already read an absent row as pure (E3); they now report it under the
+same name. The migration was empty: every `: T` definition in the prelude, the
+Alcotest suites and the conformance cases was already pure and had its
+parameters' types, and no `.expect` changed. Three Alcotest helpers now accept
+`EffectsInPureResult` where they matched `UnhandledEffects`, since a function's
+body reports the same effects under the more precise name.

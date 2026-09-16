@@ -192,14 +192,10 @@ let token_kind kind term =
 
 let keyword_name = function
   | KwFn -> Some "fn"
-  | KwEnd -> Some "end"
   | KwLet -> Some "let"
   | KwFun -> Some "fun"
-  | KwThen -> Some "then"
   | KwSig -> Some "sig"
-  | KwElse -> Some "else"
   | KwMatch -> Some "match"
-  | KwWith -> Some "with"
   | KwEffect -> Some "effect"
   | KwModule -> Some "module"
   | KwStruct -> Some "struct"
@@ -253,7 +249,7 @@ let ap ?span f explicitness arg = stx ?span (Syntax.Ap (f, explicitness, arg))
 
 let is_expr_start env term =
   match term.datum with
-  | Token { kind = Int _ | Char _ | String _ | Unit | KwUnit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwEnum | KwMacro | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
+  | Token { kind = Int _ | Char _ | String _ | Unit | KwSelf | KwSelfType | KwFn | KwMatch | KwRef | KwDeref | KwResume | KwImport | KwModule | KwSig | KwStruct | KwEnum | KwMacro | KwEffect | KwTrait | KwImpl | Ident _; _ } -> true
   | Token { kind = Operator s; scope; _ } -> Option.is_some (Binding.find_role env.operators ~fixity:Syntax.PrefixOp ~scope s)
   | Group (Raw_syntax.Paren, _, _) -> true
   | _ -> false
