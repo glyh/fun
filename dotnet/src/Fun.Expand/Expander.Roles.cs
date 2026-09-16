@@ -4,8 +4,6 @@ namespace Fun.Expand;
 
 public sealed partial class Expander
 {
-    public Expander() => AddBaseRoles(_bindings);
-
     /// <summary>
     /// The compiler-known base roles, always in scope: <c>&lt;-</c> and its order
     /// group <c>assignment</c> -- weakest (weaker than every group that states no
@@ -26,7 +24,7 @@ public sealed partial class Expander
     private readonly HashSet<int> _introScopes = [];
 
     /// <summary>An enforester reading forms with the roles bound so far (M9).</summary>
-    private Enforest Reader() => Enforest.Lazy(_bindings);
+    private Enforest Reader() => Enforest.Lazy(_bindings, UnitRoles);
 
     /// <summary>
     /// M7: a syntactic role never mixes with another binder of its name where
@@ -52,10 +50,21 @@ public sealed partial class Expander
     /// <summary>A syntax form or fixity declaration as a binder: the forms read after it resolve its role by scope set.</summary>
     private ScopeSet BindRole(Id name, Role role)
     {
-        CheckRoleMixing(name.Name, name.Scope, isRole: true, role.Attaches, role.Meaning is RoleMeaning.OrderGroup);
         var scope = FreshScope();
-        _bindings.Extend(name.Name, name.Scope.Union(scope), name.Name, BinderMeaning.Role, role);
+        BindRoleAt(name.Name, name.Scope, scope, name.Name, role);
         return scope;
+    }
+
+    /// <summary>
+    /// A role binder written with <paramref name="written"/> and bound in the region
+    /// <paramref name="region"/> marks; noted against every open whose region it is in.
+    /// </summary>
+    private void BindRoleAt(string name, ScopeSet written, ScopeSet region, string resolved, Role role)
+    {
+        var group = role.Meaning is RoleMeaning.OrderGroup;
+        CheckRoleMixing(name, written, isRole: true, role.Attaches, group);
+        if (!group) NoteRoleInOpens(name, written, role);
+        _bindings.Extend(name, written.Union(region), resolved, BinderMeaning.Role, role);
     }
 
     // ---- application --------------------------------------------------------
@@ -68,11 +77,12 @@ public sealed partial class Expander
     /// </summary>
     private sealed record Application(SyntaxMapper Receive, SyntaxMapper Emit, SyntaxMapper PruneUseSite);
 
-    private Application NewApplication()
+    private Application NewApplication(string? fromUnit)
     {
         var useSite = _scopeCounter++;
         var intro = _scopeCounter++;
         _introScopes.Add(intro);
+        if (fromUnit is not null) _introScopeUnits[intro] = fromUnit;
         return new Application(
             SyntaxMapper.OfIds(id => id with { Scope = id.Scope.Add(useSite).Add(intro) }),
             SyntaxMapper.OfIds(id => id with { Scope = id.Scope.Contains(intro) ? id.Scope.Remove(intro) : id.Scope.Add(intro) }),
@@ -82,7 +92,7 @@ public sealed partial class Expander
     /// <summary>A syntax form's use in expression position: its replacement filled with the captures, expanded in place.</summary>
     private Syntax ExpandInstantiate(Syntax.Instantiate use)
     {
-        var app = NewApplication();
+        var app = NewApplication(use.Instantiation.FromUnit);
         var captures = Receive(app, use.Instantiation);
         if (use.Instantiation.Rule.Replacement is not Replacement.Expr expr)
             throw new ExpandException($"syntax form {use.Instantiation.Form.Name} returns declarations where an expression goes");
@@ -92,7 +102,7 @@ public sealed partial class Expander
     /// <summary>A declaration syntax form's use: the declarations it returns, ready to be bound where it was written.</summary>
     private EquatableArray<Binding> InstantiateDecls(Instantiation inst)
     {
-        var app = NewApplication();
+        var app = NewApplication(inst.FromUnit);
         var captures = Receive(app, inst);
         if (inst.Rule.Replacement is not Replacement.Decls decls)
             throw new ExpandException($"syntax form {inst.Form.Name} returns an expression where declarations go");

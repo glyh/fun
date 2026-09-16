@@ -23,7 +23,8 @@ public static class Driver
     {
         try
         {
-            return Elaborator.ElaborateProgram(Fun.Expand.Expander.ExpandExpr(source), new Loader(units));
+            var loader = new Loader(units);
+            return Elaborator.ElaborateProgram(Fun.Expand.Expander.ExpandExpr(source, loader), loader);
         }
         // The runner sees one failure kind: where it happened is the implementation's business.
         catch (Fun.Expand.RoleException e)

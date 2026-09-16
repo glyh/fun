@@ -8,9 +8,14 @@ namespace Fun.Expand;
 /// replacement) reads it completely where it is written, against a copy of the
 /// table, registering each role it declares for the statements after it (M10).
 /// </summary>
-public sealed class EnforestEnv(BinderTable roles, bool eager, bool registers, EquatableArray<string> holes)
+public sealed class EnforestEnv(
+    BinderTable roles, Func<Syntax, EquatableArray<(string Name, Role Role)>?> unitRoles,
+    bool eager, bool registers, EquatableArray<string> holes)
 {
     public BinderTable Roles { get; } = roles;
+
+    /// <summary>The roles the unit an expression denotes exports; null when it denotes no unit.</summary>
+    public Func<Syntax, EquatableArray<(string Name, Role Role)>?> UnitRoles { get; } = unitRoles;
 
     /// <summary>Quoted syntax: blocks and module items are read now, not left for expansion.</summary>
     public bool Eager { get; } = eager;
@@ -24,13 +29,16 @@ public sealed class EnforestEnv(BinderTable roles, bool eager, bool registers, E
     /// <summary>Roles registered while reading, so a statement that declared one scopes it over the statements after it.</summary>
     public int Declared { get; set; }
 
-    public static EnforestEnv Lazy(BinderTable roles) => new(roles, eager: false, registers: false, []);
+    public static EnforestEnv Lazy(BinderTable roles, Func<Syntax, EquatableArray<(string Name, Role Role)>?> unitRoles) =>
+        new(roles, unitRoles, eager: false, registers: false, []);
 
     public EnforestEnv Quoted(IEnumerable<string> holes) =>
-        Eager ? new(Roles, true, true, [.. holes, .. Holes]) { Declared = Declared } : new(Roles.Copy(), true, true, [.. holes]);
+        Eager
+            ? new(Roles, UnitRoles, true, true, [.. holes, .. Holes]) { Declared = Declared }
+            : new(Roles.Copy(), UnitRoles, true, true, [.. holes]);
 
     /// <summary>A struct's items are read together, each seeing the roles declared before it.</summary>
-    public EnforestEnv RegisteringItems() => Registers ? this : new(Roles.Copy(), Eager, true, Holes);
+    public EnforestEnv RegisteringItems() => Registers ? this : new(Roles.Copy(), UnitRoles, Eager, true, Holes);
 }
 
 /// <summary>
@@ -43,7 +51,8 @@ public sealed partial class Enforest(EnforestEnv env)
     private readonly EnforestEnv _env = env;
 
     /// <summary>An enforester reading with the roles of <paramref name="roles"/>, as expansion reaches each form.</summary>
-    public static Enforest Lazy(BinderTable roles) => new(EnforestEnv.Lazy(roles));
+    public static Enforest Lazy(BinderTable roles, Func<Syntax, EquatableArray<(string Name, Role Role)>?> unitRoles) =>
+        new(EnforestEnv.Lazy(roles, unitRoles));
 
     // Scopes the enforester mints for the statements of quoted syntax count
     // down from -1, apart from the expander's.
@@ -286,12 +295,19 @@ public sealed partial class Enforest(EnforestEnv env)
     /// <summary>An order group named where a declaration names it: a bare name resolves by scope set, like any binder.</summary>
     private Order ResolveOrder(Terms reference)
     {
-        if (reference.Count != 1)
-            throw new NotImplementedException("not ported yet: an order group named through a unit's path");
         var leaf = (TokenTree.Leaf)reference[0];
         var name = ((TokenKind.Ident)leaf.Token.Kind).Name;
-        return _env.Roles.FindOrder(name, leaf.Token.Scope)
-            ?? throw new ExpandException($"unknown order group: {name}");
+        if (reference.Count == 1)
+            return _env.Roles.FindOrder(name, leaf.Token.Scope)
+                ?? throw new ExpandException($"unknown order group: {name}");
+
+        // `M.g`: `g` among the roles the unit `M` denotes exports.
+        if (reference.Count != 3)
+            throw new NotImplementedException("not ported yet: an order group named through a unit member's path");
+        var group = ((TokenKind.Ident)((TokenTree.Leaf)reference[2]).Token.Kind).Name;
+        var unit = new Syntax.Var(new Id(name, leaf.Span, leaf.Token.Scope));
+        return (_env.UnitRoles(unit) ?? []).FirstOrDefault(r => r.Name == group && r.Role.Meaning is RoleMeaning.OrderGroup).Role?.Order
+            ?? throw new ExpandException($"unknown order group: {name}.{group}");
     }
 
     /// <summary>

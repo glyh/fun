@@ -8,8 +8,6 @@ namespace Fun.Expand;
 /// comes out has no <see cref="Syntax.Block"/> left in it and every
 /// <see cref="Syntax.Var"/> carries a resolved name.
 /// </summary>
-// Slice 1 has no macros, so the expander takes no IMacroRuntime yet: nothing
-// here can call the elaborator. That parameter arrives with `macro`.
 public sealed partial class Expander
 {
     private readonly BinderTable _bindings = new();
@@ -19,8 +17,8 @@ public sealed partial class Expander
     /// <summary>Every open entered so far: the scope it adds to its region, and its label.</summary>
     private readonly List<(int Scope, string Label)> _opens = [];
 
-    public static Syntax ExpandExpr(string source, string? file = null) =>
-        new Expander().Expand(Enforest.ParseExpr(source, file));
+    public static Syntax ExpandExpr(string source, IMacroRuntime runtime, string? file = null) =>
+        new Expander(runtime).Expand(Enforest.ParseExpr(source, file));
 
     private ScopeSet FreshScope() => ScopeSet.Singleton(_scopeCounter++);
 
@@ -46,18 +44,6 @@ public sealed partial class Expander
     }
 
     /// <summary>
-    /// Enters an open: a fresh scope marks its region, and a label names it so an
-    /// open choice can refer to it.
-    /// </summary>
-    private (ScopeSet Scope, string Label) EnterOpen()
-    {
-        var scope = _scopeCounter++;
-        var label = $"open:{scope}";
-        _opens.Add((scope, label));
-        return (ScopeSet.Singleton(scope), label);
-    }
-
-    /// <summary>
     /// A bare name: the binder it resolves to, or -- when an open might supply it
     /// -- an open choice. An open is a candidate when the name is inside it and
     /// its binder, if any, is not: a binder inside the open shadows it.
@@ -66,11 +52,16 @@ public sealed partial class Expander
     {
         if (v.Id.Name.Contains('#')) return v;
         var binder = _bindings.Resolve(v.Id);
-        var opens = _opens
+        var region = _opens
             .Where(o => v.Id.Scope.Contains(o.Scope) && (binder is null || !binder.Scope.Contains(o.Scope)))
             .OrderByDescending(o => o.Scope)
-            .Select(o => o.Label)
-            .ToEquatableArray();
+            .Select(o => o.Label);
+        // An id no binder took, introduced by a form imported from a unit, may
+        // also mean that unit's names.
+        var units = binder is not null
+            ? []
+            : v.Id.Scope.Values.Where(_introScopeUnits.ContainsKey).Select(s => UnitOpenLabel(_introScopeUnits[s]));
+        var opens = region.Concat(units).Distinct().ToEquatableArray();
         return binder is not null && opens.IsEmpty
             ? v with { Id = v.Id with { Name = binder.ResolvedName } }
             : new Syntax.OpenChoice(v.Id, opens, binder?.ResolvedName);
@@ -80,7 +71,13 @@ public sealed partial class Expander
     {
         switch (stx)
         {
-            case Syntax.Atom or Syntax.OpenChoice or Syntax.Import or Syntax.Self or Syntax.SelfType:
+            case Syntax.Atom or Syntax.OpenChoice or Syntax.Self or Syntax.SelfType:
+                return stx;
+
+            // An import loads its unit's syntax wherever it is written; its roles
+            // bind only in the region of the open or binder that imported it.
+            case Syntax.Import import:
+                _runtime.LoadSyntax(import.Path);
                 return stx;
 
             case Syntax.Var v:
@@ -89,8 +86,10 @@ public sealed partial class Expander
             case Syntax.Open o:
             {
                 var of = Expand(o.Of);
-                var (scope, label) = EnterOpen();
-                return o with { Of = of, Body = Expand(o.Body.AddScope(scope)), Label = label };
+                var (scope, label) = EnterOpen(o.Of);
+                ImportRoles(of, Occurrence(o.Of), scope);
+                var body = Expand(o.Body.AddScope(scope));
+                return o with { Of = of, Body = body, Label = label, RolesInRegion = RolesInRegion(label) };
             }
 
             case Syntax.Module m:
@@ -151,6 +150,7 @@ public sealed partial class Expander
                 var (scope, resolved) = Bind(l.Name);
                 // Only a `rec` binding's value is inside its own binder.
                 var value = Expand(l.Recursive ? l.Value.AddScope(scope) : l.Value);
+                BindImportHandle(value, l.Name, scope, resolved);
                 var body = Expand(l.Body.AddScope(scope));
                 return l with
                 {
@@ -236,6 +236,7 @@ public sealed partial class Expander
                 {
                     decl = (Binding.SyntaxDecl)decl.AddScope(active);
                     active = active.Union(BindRole(decl.Name, decl.Role));
+                    if (decl.Public) _syntaxExports.Add((decl.Name.Name, decl.Role));
                     break;
                 }
 
@@ -254,6 +255,7 @@ public sealed partial class Expander
                     l = (Binding.Let)l.AddScope(active);
                     var (scope, resolved) = Bind(l.Name);
                     var value = Expand(l.Recursive ? l.Value.AddScope(scope) : l.Value);
+                    BindImportHandle(value, l.Name, scope, resolved);
                     expanded.Add(l with { Name = Rename(l.Name, scope, resolved), Value = value });
                     active = active.Union(scope);
                     break;
@@ -263,7 +265,8 @@ public sealed partial class Expander
                 {
                     o = (Binding.Open)o.AddScope(active);
                     var of = Expand(o.Of);
-                    var (scope, label) = EnterOpen();
+                    var (scope, label) = EnterOpen(o.Of);
+                    ImportRoles(of, Occurrence(o.Of), scope);
                     expanded.Add(o with { Of = of, Label = label });
                     active = active.Union(scope);
                     break;
@@ -285,8 +288,12 @@ public sealed partial class Expander
                     break;
 
                 case Binding.Export e:
-                    expanded.Add(ExpandExport(e, active));
+                {
+                    var export = ExpandExport(e, active);
+                    ExportUnitRoles((Binding.Export)e.AddScope(active));
+                    expanded.Add(export);
                     break;
+                }
 
                 // A field is a label, not a binder: nothing after it sees it.
                 case Binding.Field f:
@@ -305,7 +312,8 @@ public sealed partial class Expander
                     throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");
             }
         }
-        return [.. expanded];
+        // An open's region is the rest of the list: what it may not supply is known now.
+        return [.. expanded.Select(b => b is Binding.Open o ? o with { RolesInRegion = RolesInRegion(o.Label) } : b)];
     }
 
     private static Id Rename(Id name, ScopeSet scope, string resolved) =>

@@ -254,7 +254,7 @@ public sealed partial class Enforest
                     case TokenKind.Word w when w == TokenKind.Sig:
                         return ParseSigExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Import:
-                        return ParseImport(term.Span, rest);
+                        return ParseImport(term.Span, token.Scope, rest);
                     case TokenKind.Word w when w == TokenKind.Perform: return ParsePerform(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Resume: return ParseResume(term.Span, rest);
                     case TokenKind.Word w:

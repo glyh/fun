@@ -5,12 +5,12 @@ namespace Fun.Expand;
 public sealed partial class Enforest
 {
     /// <summary><c>import "path"</c>.</summary>
-    private (Syntax, Terms) ParseImport(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseImport(SourceSpan startSpan, ScopeSet startScope, Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Str path } leaf)
             throw new ExpandException("import is written import \"path\"");
-        return (new Syntax.Import(path.Value, SourceSpan.Between(startSpan, leaf.Span)), terms.Tail);
+        return (new Syntax.Import(path.Value, SourceSpan.Between(startSpan, leaf.Span)) { Scope = startScope }, terms.Tail);
     }
 
     /// <summary>

@@ -99,7 +99,9 @@ public abstract partial record Syntax
 
         Syntax mapped = this switch
         {
-            Atom or Import or Self or SelfType => this,
+            // Where an import is written is a scope set like an id's.
+            Import i => i with { Scope = m.Id(new Id("", i.Span, i.Scope)).Scope },
+            Atom or Self or SelfType => this,
             Var v => v with { Id = m.Id(v.Id) },
             Ap a => a with { Fn = Go(a.Fn), Arg = Go(a.Arg) },
             Lam l => l with { Param = MapParam(l.Param, m), Body = Go(l.Body) },

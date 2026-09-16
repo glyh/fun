@@ -199,7 +199,7 @@ public static partial class Elaborator
 
             case Syntax.Open open:
             {
-                var (body, of, members) = OpenModule(ctx, open.Of, open.Label);
+                var (body, of, members) = OpenModule(ctx, open.Of, open.Label, open.RolesInRegion);
                 var (bodyTerm, bodyType) = Infer(body, open.Body);
                 return (new Term.Open(of, members, bodyTerm), bodyType);
             }
@@ -387,7 +387,7 @@ public static partial class Elaborator
 
                 case Binding.Open open:
                 {
-                    var (after, of, members) = OpenModule(inner, open.Of, open.Label);
+                    var (after, of, members) = OpenModule(inner, open.Of, open.Label, open.RolesInRegion);
                     inner = after;
                     terms.Add(new BindingTerm.Open(of, members));
                     break;
@@ -427,9 +427,11 @@ public static partial class Elaborator
     /// <summary>
     /// Opens a module: one entry per public member of its *type*, in order, each
     /// valued by projecting the module. Recorded under the open's label for the
-    /// open choices in its region.
+    /// open choices in its region. A member named like a syntactic role visible in
+    /// the region is an error: the role would read that name, never the member (M7).
     /// </summary>
-    private static (Context, Term, EquatableArray<OpenMember>) OpenModule(Context ctx, Syntax of, string label)
+    private static (Context, Term, EquatableArray<OpenMember>) OpenModule(
+        Context ctx, Syntax of, string label, EquatableArray<string> rolesInRegion)
     {
         var (term, inferred) = Infer(ctx, of);
         if (OpenNominal(ctx, term, inferred, label) is { } nominal) return nominal;
@@ -456,6 +458,8 @@ public static partial class Elaborator
             members = members.SetItem(field.Name, entry);
             opened.Add(new OpenMember.Field(field.Name));
         }
+        if (rolesInRegion.FirstOrDefault(members.ContainsKey) is { } supplied)
+            throw new FunException($"the open supplies `{supplied}`, which a syntactic role names in its region");
         return (ctx with { Opened = ctx.Opened.SetItem(label, members) }, term, [.. opened]);
     }
 
