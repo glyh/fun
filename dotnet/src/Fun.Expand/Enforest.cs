@@ -201,6 +201,7 @@ public static partial class Enforest
                         return ParseFn(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Module:
                         return ParseModuleExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Match: return ParseMatch(term.Span, rest);
                     case TokenKind.Word w:
                         throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
                     case TokenKind.Operator o:

@@ -95,6 +95,8 @@ public sealed partial class Expander
             case Syntax.Module m:
                 return m with { Bindings = ExpandBindings(m.Bindings) };
 
+            case Syntax.Match m: return ExpandMatch(m);
+
             case Syntax.Ap a:
                 return a with { Fn = Expand(a.Fn), Arg = Expand(a.Arg) };
 

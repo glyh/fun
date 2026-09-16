@@ -78,7 +78,7 @@ public class ExpandTests
     // pass because a form is missing.
     [Theory]
     [InlineData("1 + 2", "not ported yet: the infix operator `+`")]
-    [InlineData("match (x) { }", "not ported yet: the `match` form")]
+    [InlineData("ref (x)", "not ported yet: the `ref` form")]
     public void RejectsUnported(string source, string message) =>
         Assert.Equal(message, Assert.Throws<NotImplementedException>(() => Expander.ExpandExpr(source)).Message);
 }

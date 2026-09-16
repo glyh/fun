@@ -176,6 +176,8 @@ public static partial class Elaborator
             case Syntax.Module module:
                 return InferModule(ctx, module);
 
+            case Syntax.Match match: return InferMatch(ctx, match);
+
             case Syntax.Open open:
             {
                 var (body, of, members) = OpenModule(ctx, open.Of, open.Label);

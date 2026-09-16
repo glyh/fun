@@ -17,7 +17,7 @@ public static partial class Nbe
     /// A continuation frame: what the machine does with the value it is about to
     /// produce. Distinct from <see cref="Frame"/>, an elimination stuck on a neutral.
     /// </summary>
-    private abstract record Kont
+    private abstract partial record Kont
     {
         /// <summary>The callee is evaluated; evaluate the argument next.</summary>
         public sealed record EvalArg(Environment Environment, Term Arg) : Kont;
@@ -129,6 +129,8 @@ public static partial class Nbe
                         break;
                     }
 
+                    case Term.Match match: stack.Push(new Kont.MatchOn(env, match)); term = match.Scrutinee; continue;
+
                     case Term.Prod { Items.IsEmpty: true }: value = new Value.VProd([]); break;
                     case Term.ProdTy { Items.IsEmpty: true }: value = new Value.VProdTy([]); break;
 
@@ -211,6 +213,8 @@ public static partial class Nbe
                         value = FinishModule(stack);
                         continue;
                     }
+
+                    case Kont.MatchOn f: (env, term) = SelectArm(mc, f.Env, value, f.Match); goto evaluate;
 
                     case Kont.ModuleOpen f:
                     {

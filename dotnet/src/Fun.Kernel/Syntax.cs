@@ -115,6 +115,7 @@ public abstract partial record Syntax(SourceSpan Span)
             Module m => m with { Bindings = [.. m.Bindings.Select(b => b.AddScope(scope))] },
             Open o => o with { Of = Go(o.Of), Body = Go(o.Body) },
             OpenChoice c => c with { Name = Mark(c.Name) },
+            Match m => m with { Scrutinee = Go(m.Scrutinee), Branches = [.. m.Branches.Select(b => new MatchBranch(b.Pattern.AddScope(scope), Go(b.Body)))] },
             _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
