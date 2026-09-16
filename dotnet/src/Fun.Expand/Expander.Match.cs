@@ -14,9 +14,11 @@ public sealed partial class Expander
         Scrutinee = Expand(match.Scrutinee),
         Branches = [.. match.Branches.Select(branch =>
         {
+            // An effect branch's operation is outside the binders its argument pattern writes.
+            var operation = branch.Operation is null ? null : (Syntax.FieldAccess)Expand(branch.Operation);
             var scopes = branch.Pattern.Binders()
                 .Aggregate(ScopeSet.Empty, (acc, binder) => acc.Union(Bind(binder).Scope));
-            return new MatchBranch(ExpandPattern(branch.Pattern.AddScope(scopes)), Expand(branch.Body.AddScope(scopes)));
+            return new MatchBranch(ExpandPattern(branch.Pattern.AddScope(scopes)), Expand(branch.Body.AddScope(scopes))) { Operation = operation };
         })],
     };
 

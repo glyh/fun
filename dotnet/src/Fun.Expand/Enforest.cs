@@ -72,6 +72,8 @@ public static partial class Enforest
         if (ParseOpenStatement(stmt) is { } opened)
             return new Syntax.Open(opened, body, "", span);
 
+        if (ParseEffectDecl(stmt) is var (effectName, effectParams, ops))
+            return new Syntax.EffectDef(effectName, effectParams, ops, body, span);
         if (ParseTraitOrImplStatement(span, stmt, body) is { } declared) return declared;
 
         // Not a binding: the statement is an expression whose value is discarded.
@@ -177,6 +179,9 @@ public static partial class Enforest
 
         if (ParsePatternSynonym(unprefixed) is var (synName, synonym)) return [new Binding.Let(synName, synonym, isPublic, false)];
 
+        if (ParseEffectDecl(unprefixed) is var (effectName, effectParams, ops))
+            return [new Binding.Effect(effectName, effectParams, ops, isPublic)];
+
         if (ParseValueDeclStatement(unprefixed) is var (name, type, value, recursive))
         {
             var annotated = type is null ? value : new Syntax.Annotated(value, type, unprefixed.Span);
@@ -250,6 +255,8 @@ public static partial class Enforest
                         return ParseSigExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Import:
                         return ParseImport(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Perform: return ParsePerform(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Resume: return ParseResume(term.Span, rest);
                     case TokenKind.Word w:
                         throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
                     case TokenKind.Operator o:
@@ -272,16 +279,17 @@ public static partial class Enforest
         {
             if (terms.Head is not TokenTree term || IsSeparator(term)) return (lhs, terms);
 
-            // `A -> B`: a function type. A bare arrow is pure.
-            if (term is TokenTree.Leaf { Token.Kind: var arrow } && arrow == TokenKind.ThinArrow
-                && (prec == Prec.Top || prec == Prec.ArrowRhs))
+            // `A -> B`: a function type. A bare arrow is pure; `A ->{E} B` and
+            // `A ~> B` carry a row.
+            if ((IsToken(term, TokenKind.ThinArrow) || IsPolyArrow(term)) && (prec == Prec.Top || prec == Prec.ArrowRhs))
             {
-                var (cod, afterCod) = ParseExprPrec(terms.Tail, Prec.ArrowRhs);
+                var (row, afterRow) = ParseArrowRow(term, terms.Tail);
+                var (cod, afterCod) = ParseExprPrec(afterRow, Prec.ArrowRhs);
                 var span = SourceSpan.Between(lhs.Span, cod.Span);
                 // `(x : A) -> B` names its domain; anything else is anonymous.
                 lhs = lhs is Syntax.Annotated { Inner: Syntax.Var v, Type: var dom }
-                    ? new Syntax.Arrow(Explicitness.Explicit, v.Id, dom, null, cod, span)
-                    : new Syntax.Arrow(Explicitness.Explicit, null, lhs, null, cod, span);
+                    ? new Syntax.Arrow(Explicitness.Explicit, v.Id, dom, row, cod, span)
+                    : new Syntax.Arrow(Explicitness.Explicit, null, lhs, row, cod, span);
                 terms = afterCod;
                 continue;
             }
@@ -416,14 +424,14 @@ public static partial class Enforest
             throw new ExpandException("fn requires at least one parameter list");
 
         EquatableArray<Param> parameters = [.. implicits, .. explicits];
-        var (result, afterResult) = ParseResultType(terms);
+        var (result, row, afterResult) = ParseResult(terms);
         var (body, rest, bodySpan) = ParseBody(afterResult);
         var span = SourceSpan.Between(startSpan, bodySpan);
 
         var lam = parameters.Reverse().Aggregate(body, (acc, p) => new Syntax.Lam(p, acc, span));
         var value = result is null
             ? lam
-            : new Syntax.Annotated(lam, FunctionType(span, parameters, result), span);
+            : new Syntax.Annotated(lam, FunctionType(span, parameters, result, row), span);
         return (value, rest);
     }
 
@@ -461,16 +469,9 @@ public static partial class Enforest
     /// </summary>
     private static (Syntax?, Terms) ParseResultType(Terms terms)
     {
-        var start = DropSeparators(terms);
-        if (start.Head is not TokenTree.Leaf { Token.Kind: var colon } || colon != TokenKind.Colon)
-            return (null, terms);
-
-        var rest = start.Tail;
-        var end = 0;
-        while (end < rest.Count && rest[end] is not TokenTree.Group { Delimiter: Delimiter.Brace }) end++;
-        var typeTerms = TakeTerms(rest, end);
-        if (DropSeparators(typeTerms).IsEmpty) throw new ExpandException("expected a result type after :");
-        return (ParseAll(typeTerms), rest.Drop(end));
+        var (type, row, rest) = ParseResult(terms);
+        if (row is not null) throw new NotImplementedException("not ported yet: an effect row on a method result");
+        return (type, rest);
     }
 
     private static (Syntax, Terms, SourceSpan) ParseBody(Terms terms)
@@ -485,15 +486,18 @@ public static partial class Enforest
     /// <c>fn(p1 : A, …) : T</c>'s type: one arrow per parameter. Every parameter
     /// needs its type, since the annotation states the whole function's.
     /// </summary>
-    private static Syntax FunctionType(SourceSpan span, EquatableArray<Param> parameters, Syntax result)
+    private static Syntax FunctionType(SourceSpan span, EquatableArray<Param> parameters, Syntax result, EffectRow? row)
     {
         if (parameters.IsEmpty) throw new ExpandException("a result type needs a parameter list");
         var type = result;
+        // The innermost arrow - the one that runs the body - carries the row.
+        var innermost = true;
         foreach (var p in parameters.Reverse())
         {
             var domain = p.Type
                 ?? throw new ExpandException($"a result type needs every parameter's type: {p.Name.Name}");
-            type = new Syntax.Arrow(p.Explicitness, p.Name, domain, null, type, span);
+            type = new Syntax.Arrow(p.Explicitness, p.Name, domain, innermost ? row : null, type, span);
+            innermost = false;
         }
         return type;
     }

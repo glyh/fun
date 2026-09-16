@@ -39,6 +39,10 @@ public static partial class Nbe
             case Value.VFix fix:
                 return Unfold(mc, stack, fix, arg);
 
+            case Value.VCont cont:
+                result = Resume(stack, cont, arg);
+                return null;
+
             case Value.VGlued glued:
                 // The deferred call is the function: unfold it, then apply its result.
                 stack.Push(new Kont.ApplyArg(arg, Charged: false));

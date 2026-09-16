@@ -29,7 +29,10 @@ public static partial class Nbe
         public sealed record LetBody(Environment Environment, Term Body) : Kont;
 
         /// <summary>The domain is evaluated; close the codomain over the environment.</summary>
-        public sealed record PiCodomain(Explicitness Explicitness, Environment Environment, Term Codomain) : Kont;
+        public sealed record PiCodomain(Explicitness Explicitness, Environment Environment, Term Codomain) : Kont
+        {
+            public RowTerm Row { get; init; } = RowTerm.Pure;
+        }
 
         /// <summary>One tuple element is evaluated; carry on with the rest.</summary>
         public sealed record ProdItems(Environment Environment, EquatableArray<Term> Rest, EquatableArray<Value> Done, bool IsType)
@@ -106,7 +109,7 @@ public static partial class Nbe
                         continue;
 
                     case Term.Pi pi:
-                        stack.Push(new Kont.PiCodomain(pi.Explicitness, env, pi.Codomain));
+                        stack.Push(new Kont.PiCodomain(pi.Explicitness, env, pi.Codomain) { Row = pi.Row });
                         term = pi.Domain;
                         continue;
 
@@ -155,6 +158,12 @@ public static partial class Nbe
                         value = FinishModule(stack);
                         break;
                     }
+
+                    case Term.EffectRowTy or Term.EffectRowLit or Term.Effect or Term.EffectDecl or Term.Perform or Term.Tunnel
+                        or Term.Match { EffectBranches.IsEmpty: false }:
+                        if (StartEffects(mc, stack, env, term, out var effectValue) is { } effectStep) { (env, term) = effectStep; continue; }
+                        value = effectValue!;
+                        break;
 
                     case Term.Match match: stack.Push(new Kont.MatchOn(env, match)); term = match.Scrutinee; continue;
 
@@ -235,7 +244,26 @@ public static partial class Nbe
                         goto evaluate;
 
                     case Kont.PiCodomain f:
-                        value = new Value.VPi(f.Explicitness, value, new Closure(f.Environment, f.Codomain));
+                        value = new Value.VPi(f.Explicitness, value, new Closure(f.Environment, f.Codomain))
+                        {
+                            Row = f.Row.IsPure ? RowClosure.Pure : new RowClosure(f.Environment, f.Row),
+                        };
+                        continue;
+
+                    case Kont.PerformOn f:
+                        stack.Push(new Kont.PerformArg(value, f.Op));
+                        (env, term) = (f.Env, f.Arg);
+                        goto evaluate;
+                    case Kont.PerformArg f:
+                        (env, term) = Raise(mc, stack, f.Instance, f.Op, value);
+                        goto evaluate;
+                    case Kont.TunnelFrame:
+                        continue;
+                    case Kont.Handle { InBody: false } f:
+                        stack.Push(f with { InBody = true });
+                        (env, term) = SelectArm(mc, f.Env, value, f.Match);
+                        goto evaluate;
+                    case Kont.Handle:
                         continue;
 
                     case Kont.ProjOf f:
@@ -420,6 +448,7 @@ public static partial class Nbe
         Value.VNeutral n => n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) },
         Value.VMeta f => f with { Spine = f.Spine.Add(arg) },
         Value.VVar r => r with { Spine = r.Spine.Add(arg) },
+        Value.VEffect e => e with { Params = e.Params.Add(arg) },
         var other => throw new FunException($"applying non-function: {other.GetType().Name}"),
     };
 
@@ -483,7 +512,10 @@ public static partial class Nbe
             Value.VFix fix => QuoteFix(mc, width, fix),
             Value.VLam lam => new Term.Lam(Quote(mc, width + 1, ApplyClosure(mc, lam.Body, fresh))),
             Value.VPi pi => new Term.Pi(pi.Explicitness, Quote(mc, width, pi.Domain),
-                Quote(mc, width + 1, ApplyClosure(mc, pi.Codomain, fresh))),
+                Quote(mc, width + 1, ApplyClosure(mc, pi.Codomain, fresh))) { Row = QuoteRowClosure(mc, width, pi.Row) },
+            Value.VEffectRowTy => Term.EffectRowTy.Instance,
+            Value.VEffectRow row => new Term.EffectRowLit(QuoteRow(mc, width, row)),
+            Value.VEffect effect => QuoteEffect(mc, width, effect),
             Value.VU => Term.U.Instance,
             Value.VAtom a => new Term.Atom(a.Atom),
             Value.VAtomTy a => new Term.AtomTy(a.Ty),

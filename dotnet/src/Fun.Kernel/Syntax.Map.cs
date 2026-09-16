@@ -127,7 +127,8 @@ public abstract partial record Syntax
             Match ma => ma with
             {
                 Scrutinee = Go(ma.Scrutinee),
-                Branches = [.. ma.Branches.Select(b => new MatchBranch(b.Pattern.Map(m), Go(b.Body)))],
+                // An effect branch keeps its operation path, mapped like any form.
+                Branches = [.. ma.Branches.Select(b => new MatchBranch(b.Pattern.Map(m), Go(b.Body)) { Operation = (FieldAccess?)b.Operation?.Map(m) })],
             },
             Enum e => e with { Constructors = [.. e.Constructors.Select(c => c with { Payloads = [.. c.Payloads.Select(Go)] })] },
             LetRecGroup g => g with { Members = [.. g.Members.Select(x => new RecMember(m.Id(x.Name), Go(x.Value)))], Body = Go(g.Body) },
@@ -147,6 +148,16 @@ public abstract partial record Syntax
             },
             TraitBoundSet b => b with { Traits = [.. b.Traits.Select(Go)] },
             PatternSynonym s => s with { Params = [.. s.Params.Select(m.Id)], Rhs = s.Rhs.Map(m) },
+
+            EffectDef d => d with
+            {
+                Name = m.Id(d.Name),
+                Params = [.. d.Params.Select(m.Id)],
+                Ops = [.. d.Ops.Select(o => o with { Input = Go(o.Input), Output = Go(o.Output) })],
+                Body = Go(d.Body),
+            },
+            Perform p => p with { Operation = (FieldAccess)Go(p.Operation), Arg = Go(p.Arg) },
+            Resume r => r with { Arg = Go(r.Arg) },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over {GetType().Name}"),
         };
         return m.Form(mapped);
@@ -177,6 +188,12 @@ public abstract partial record Binding
             SyntaxDecl s => s with { Name = m.Id(s.Name), Role = m.MapRole(s.Role) },
             Instantiate i => i with { Instantiation = m.MapInstantiation(i.Instantiation) },
             Hole h => h with { Name = m.Id(h.Name) },
+            Effect e => e with
+            {
+                Name = m.Id(e.Name),
+                Params = [.. e.Params.Select(m.Id)],
+                Ops = [.. e.Ops.Select(o => o with { Input = o.Input.Map(m), Output = o.Output.Map(m) })],
+            },
             Trait t => t with { Name = m.Id(t.Name), Param = m.Id(t.Param), Fields = [.. t.Fields.Select(f => (f.Name, f.Type.Map(m)))] },
             Impl i => i with
             {

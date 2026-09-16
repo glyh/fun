@@ -115,7 +115,7 @@ public abstract partial record Syntax(SourceSpan Span)
             Module m => m with { Bindings = [.. m.Bindings.Select(b => b.AddScope(scope))] },
             Open o => o with { Of = Go(o.Of), Body = Go(o.Body) },
             OpenChoice c => c with { Name = Mark(c.Name) },
-            Match m => m with { Scrutinee = Go(m.Scrutinee), Branches = [.. m.Branches.Select(b => new MatchBranch(b.Pattern.AddScope(scope), Go(b.Body)))] },
+            Match m => m with { Scrutinee = Go(m.Scrutinee), Branches = [.. m.Branches.Select(b => b with { Pattern = b.Pattern.AddScope(scope), Body = Go(b.Body), Operation = (FieldAccess?)b.Operation?.AddScope(scope) })] },
             Enum e => e with { Constructors = [.. e.Constructors.Select(c => c with { Payloads = [.. c.Payloads.Select(Go)] })] },
             PatternSynonym s => s with { Params = [.. s.Params.Select(Mark)], Rhs = s.Rhs.AddScope(scope) },
             LetRecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))], Body = Go(g.Body) },
@@ -124,7 +124,7 @@ public abstract partial record Syntax(SourceSpan Span)
             RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
             SyntaxDef or Instantiate => Map(SyntaxMapper.OfIds(Mark)),
             TraitDef or ImplDef or TraitBoundSet => AddScopeTraits(scope),
-            _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
+            _ => AddScopeEffects(scope) ?? throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
 
@@ -166,6 +166,12 @@ public abstract partial record Binding
         Items i => i with { Terms = [.. i.Terms.Select(t => t.AddScope(scope))] },
         RecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))] },
         Field f => f with { Type = f.Type.AddScope(scope) },
+        Effect e => e with
+        {
+            Name = e.Name with { Scope = e.Name.Scope.Union(scope) },
+            Params = [.. e.Params.Select(p => p with { Scope = p.Scope.Union(scope) })],
+            Ops = [.. e.Ops.Select(o => o with { Input = o.Input.AddScope(scope), Output = o.Output.AddScope(scope) })],
+        },
         Method m => m with
         {
             Name = m.Name with { Scope = m.Name.Scope.Union(scope) },

@@ -6,7 +6,14 @@ public abstract partial record Syntax
     public sealed record Match(Syntax Scrutinee, EquatableArray<MatchBranch> Branches, SourceSpan Span) : Syntax(Span);
 }
 
-public sealed record MatchBranch(Pattern Pattern, Syntax Body);
+public sealed record MatchBranch(Pattern Pattern, Syntax Body)
+{
+    /// <summary>
+    /// An effect branch's operation path (<c>effect E.op pattern =&gt; body</c>):
+    /// its pattern matches the operation's argument. Null for a value branch.
+    /// </summary>
+    public Syntax.FieldAccess? Operation { get; init; }
+}
 
 /// <summary>A pattern as written.</summary>
 // Only the pattern kinds the current slice reaches: type-case, struct-type and

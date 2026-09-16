@@ -18,26 +18,48 @@ public static partial class Elaborator
     /// </summary>
     private static (Term, Value) ElaborateMatch(Context ctx, Syntax.Match match, Value? expected)
     {
-        var (scrutinee, scrutineeType) = Infer(ctx, match.Scrutinee);
-        scrutineeType = RefineScrutineeType(ctx, scrutineeType, match.Branches);
+        // A match with effect branches is a handler: its scrutinee and branch bodies
+        // elaborate inside it, for tunneling (E5).
+        var effectSyntax = match.Branches.Where(b => b.Operation is not null).ToList();
+        var valueBranches = new EquatableArray<MatchBranch>([.. match.Branches.Where(b => b.Operation is null)]);
+        var handler = effectSyntax.Count > 0 ? NextHandler() : 0;
+        var hctx = handler == 0 ? ctx : ctx with { HandlerScopes = ctx.HandlerScopes.Add(handler) };
+
+        var ((scrutinee, scrutineeType), scrutineeEffects) = Collecting(hctx, c => Infer(c, match.Scrutinee));
+        var effectBranches = effectSyntax.Select(b => ResolveHandlerBranch(ctx, scrutineeEffects, b)).ToList();
+        var handled = Handled(ctx, scrutineeEffects, effectBranches);
+        var residual = Residual(ctx, scrutineeEffects.Effects, handled);
+
+        scrutineeType = RefineScrutineeType(ctx, scrutineeType, valueBranches);
         var resultType = expected ?? ctx.RawMeta();
         var target = RefinementTarget(ctx, scrutinee, scrutineeType);
 
         var patterns = new List<CorePattern>();
         var bodies = new List<Term>();
-        foreach (var branch in match.Branches)
+        var ((branchTerms, _), bodyEffects) = Collecting(hctx, bctx =>
         {
-            var (branchCtx, branchExpected) = (ctx, resultType);
-            if (target is int level && RefinementOf(ctx, branch.Pattern) is { } replacement)
+            foreach (var branch in valueBranches)
             {
-                branchCtx = RefineContext(ctx, level, replacement);
-                if (expected is not null) branchExpected = Substitute(ctx, level, replacement, expected);
+                var (branchCtx, branchExpected) = (bctx, resultType);
+                if (target is int level && RefinementOf(bctx, branch.Pattern) is { } replacement)
+                {
+                    branchCtx = RefineContext(bctx, level, replacement);
+                    if (expected is not null) branchExpected = Substitute(bctx, level, replacement, expected);
+                }
+                var (pattern, binders) = ElaboratePattern(branchCtx, branch.Pattern, scrutineeType);
+                var inner = binders.Aggregate(branchCtx, (c, b) => c.Bind(b.Name, b.Type));
+                patterns.Add(pattern);
+                bodies.Add(Check(inner, branch.Body, branchExpected));
             }
-            var (pattern, binders) = ElaboratePattern(branchCtx, branch.Pattern, scrutineeType);
-            var inner = binders.Aggregate(branchCtx, (c, b) => c.Bind(b.Name, b.Type));
-            patterns.Add(pattern);
-            bodies.Add(Check(inner, branch.Body, branchExpected));
-        }
+            return (effectBranches.Select(b => ElaborateEffectBranch(ctx, bctx, b, resultType, residual)).ToList(), 0);
+        });
+
+        // A handler is deep (E8): what its branch bodies perform it handles too.
+        var all = new EffectSink();
+        all.Effects.AddRange(scrutineeEffects.Effects.Concat(bodyEffects.Effects));
+        Emit(ctx, Residual(ctx, all.Effects, Handled(ctx, all, effectBranches)), scrutineeEffects.Tails.Concat(bodyEffects.Tails));
+        // E6 is about the instances the branches name, handled in full or not.
+        CheckEscape(ctx, [.. effectBranches.Select(b => (Value)b.Instance)], resultType);
 
         var (tree, missing) = MatchCompile.Compile(patterns, occurrence => DomainOf(ctx, TypeAt(ctx, scrutineeType, occurrence)));
         if (missing is not null) throw new FunException($"non-exhaustive match: {missing} is not matched");
@@ -45,7 +67,7 @@ public static partial class Elaborator
         // than a tree tests: such a match runs its arms in order, once the tree
         // has shown them exhaustive.
         var run = patterns.Any(p => p.NeedsDirectMatch()) ? new DecisionTree.Sequential([.. patterns]) : tree!;
-        return (new Term.Match(scrutinee, [.. bodies], run), ctx.Force(resultType));
+        return (new Term.Match(scrutinee, [.. bodies], run) { EffectBranches = [.. branchTerms], Handler = handler }, ctx.Force(resultType));
     }
 
     /// <summary>

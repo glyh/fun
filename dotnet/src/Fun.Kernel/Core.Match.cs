@@ -7,7 +7,16 @@ public abstract partial record Term
     /// arm and says where each of its binders sits in the scrutinee; arm
     /// <c>i</c>'s result is <c>Bodies[i]</c>, under its binders in source order.
     /// </summary>
-    public sealed record Match(Term Scrutinee, EquatableArray<Term> Bodies, DecisionTree Tree) : Term;
+    public sealed record Match(Term Scrutinee, EquatableArray<Term> Bodies, DecisionTree Tree) : Term
+    {
+        /// <summary>
+        /// A match with effect branches is a handler: deep, lexical (E5, E8).
+        /// <see cref="Handler"/> identifies it among the handlers a tunneled request skips.
+        /// </summary>
+        public EquatableArray<EffectBranchTerm> EffectBranches { get; init; } = [];
+
+        public int Handler { get; init; }
+    }
 }
 
 /// <summary>A pattern as elaboration leaves it: binders are positional, named by nothing.</summary>

@@ -97,6 +97,7 @@ public sealed partial class Expander
                 return m with { Bindings = ExpandBindings(m.Bindings) };
 
             case Syntax.Match m: return ExpandMatch(m);
+            case Syntax.EffectDef or Syntax.Perform or Syntax.Resume: return ExpandEffects(stx)!;
             case Syntax.TraitDef or Syntax.ImplDef or Syntax.TraitBoundSet: return ExpandTraits(stx);
 
             // Constructor names are labels of the type, not binders.
@@ -161,7 +162,7 @@ public sealed partial class Expander
             }
 
             case Syntax.Arrow { Name: null } a:
-                return a with { Domain = Expand(a.Domain), Codomain = Expand(a.Codomain) };
+                return a with { Domain = Expand(a.Domain), Row = ExpandRow(a.Row, ScopeSet.Empty), Codomain = Expand(a.Codomain) };
 
             case Syntax.Arrow a:
             {
@@ -172,6 +173,8 @@ public sealed partial class Expander
                 {
                     Name = Rename(a.Name!, scope, resolved),
                     Domain = domain,
+                    // The row runs the body, so it is inside the binder: `(r : Ref(I64)) ->{Mutate(r)} I64`.
+                    Row = ExpandRow(a.Row, scope),
                     Codomain = Expand(a.Codomain.AddScope(scope)),
                 };
             }
@@ -270,6 +273,13 @@ public sealed partial class Expander
                     active = ExpandRecGroupBinding(g, active, expanded);
                     break;
 
+                case Binding.Effect e:
+                {
+                    var (scope, effect) = ExpandEffectBinding((Binding.Effect)e.AddScope(active));
+                    expanded.Add(effect);
+                    active = active.Union(scope);
+                    break;
+                }
                 case var declared when declared is Binding.Trait or Binding.Impl:
                     active = ExpandTraitBinding(declared, active, expanded);
                     break;
