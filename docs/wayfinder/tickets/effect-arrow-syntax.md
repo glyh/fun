@@ -113,3 +113,19 @@ dedicated syntax in their positions for now; generalising to one set literal is
   deleted. Bounds are still read only on an implicit arrow (`[A : …] -> …`); a
   bound on a lambda's implicit parameter (`fn[T : Eq]`) was not supported before
   and is not now.
+
+## Grilled (2026-09-16), curried `~>`: only the final arrow collects
+
+Arrows are right-associative, so a multi-argument `~>` type is curried. A result
+arrow that only *returns another function* collects nothing; the parameters'
+variables land on the **final** arrow (where the callback is actually called),
+together with whatever the body performs there.
+
+```fun
+twice : (A ~> A) ~> A ~> A
+//    = [e] -> (A ->{e} A) -> (A ->{e} A)      // twice(f) is pure
+```
+This also applies inside nested higher-order parameters (the rule is recursive:
+each function type mints from its own parameters and collects on its own final
+arrow). Needs [multi-tail rows](multi-tail-effect-rows.md) when more than one
+parameter mints.
