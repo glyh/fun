@@ -42,6 +42,8 @@ source → Raw_syntax → Enforest Syntax.t → Expand → expanded Syntax.t →
 - `lib/backend/interp/` — `Nbe`
 - `lib/loader/` — `Core_loader`
 - `test/backend/`, `test/semantic/`, `test/syntax/` — tests by pipeline stage
+- `test/conformance/` — the shared conformance suite: `.fun` programs plus
+  `.expect` results that the .NET port must pass too (`cases/README.md`)
 
 ### Library dependency graph
 
@@ -57,6 +59,11 @@ core_tt_kernel → core_tt_syntax → core_tt_expand → core_tt_loader → core
 - `eval_decl_module` — module-level macro tests (uses `parse_module` with callbacks)
 - `eval_with_imported_macros` — cross-module tests (writes temp `.fun` files)
 - `check_i64_macro` — asserts macro result equals an i64
+
+A test that is only "source string → value or error" belongs in
+`test/conformance/cases/` instead (two data files, no registration), so the .NET
+port runs it too. Keep a test in Alcotest when it inspects internals: syntax
+shapes, reflection round trips, budget accounting, macro nominals plumbing.
 
 ---
 

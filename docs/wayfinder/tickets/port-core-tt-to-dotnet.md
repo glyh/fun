@@ -155,11 +155,21 @@ recurse natively over syntax (its depth is program-text depth, not run-time dept
 ## Decided (2026-09-16): conformance suite plus C# unit tests
 
 - **Shared conformance suite** for language behaviour: each test is a `.fun`
-  program plus an expected result (`.expect`: a value, or an error class and
-  message), under `tests/conformance/<area>/`. Both implementations have a small
-  runner; the port is complete when C# passes every file OCaml passes. Extract the
-  current Alcotest cases that are "source string → value/error" into it (scripted
-  where possible) before porting.
+  program plus an expected result (`.expect`). Both implementations have a small
+  runner; the port is complete when C# passes every file OCaml passes.
+  **Built 2026-09-16** at `test/conformance/cases/<area>/` (repo convention is
+  `test/`, not `tests/`): 590 cases in `values`, `macros`, `imports` and
+  `elaborate`, extracted from the Alcotest binaries. `<name>.expect` holds a
+  value, a constructor name, `ok` (elaborates) or `error` (fails anywhere) —
+  error wording is deliberately not pinned, since it is implementation-specific.
+  Extra units are `<name>.unit-<unit>.fun`. Run with `dune test test/conformance`;
+  format and conventions in `test/conformance/cases/README.md`. The OCaml runner
+  is `test/conformance/run_conformance.ml` (~120 lines) — the C# port needs the
+  same walk-and-compare.
+  The extracted cases still also run from the Alcotest binaries: the duplicate is
+  self-checking (a stale `.fun` fails the OCaml suite) and was kept to avoid
+  conflicting with the syntax migrations in flight. Delete the Alcotest copies
+  once the migrations settle.
 - **C# unit tests (xUnit)** for implementation internals that are not observable
   as a program's result — enforester/syntax shapes, reflection round trips, NbE
   and unifier internals, budget accounting — mirroring the OCaml internal tests.

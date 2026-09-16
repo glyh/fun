@@ -3,11 +3,25 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after the staged prelude, 2026-09-16.
+Last updated: after the conformance suite, 2026-09-16.
 
 ---
 
 ## Completed
+
+### Shared conformance suite (2026-09-16)
+
+- `test/conformance/cases/<area>/<name>.fun` + `<name>.expect` is the
+  language-behaviour suite both the prototype and the .NET port run; extra units
+  are `<name>.unit-<unit>.fun`. 590 cases (`values`, `macros`, `imports`,
+  `elaborate`), extracted from the Alcotest binaries, which still run their own
+  copies.
+- `.expect` is a value, a constructor name, `ok` (elaborates) or `error` (fails).
+  Error wording is not pinned - it is implementation-specific.
+- Runner: `test/conformance/run_conformance.ml`, `dune test test/conformance`.
+  Internal tests (shapes, reflection round trips, budget accounting, macro
+  nominals plumbing) stay in Alcotest.
+
 
 ### Staged prelude; `type` is a std macro; `export` (2026-09-16)
 
