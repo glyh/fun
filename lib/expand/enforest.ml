@@ -244,7 +244,7 @@ and parse_result_type env terms =
   | arrow :: _ when token_kind ThinArrow arrow -> error "a pure result is written : T; ->{E} T is for an effectful one"
   | arrow :: rest when is_poly_arrow env arrow ->
       let typ, rest = result_type "~>" rest in
-      (Some (typ, Some { Syntax.effects = []; tail = None; inferred = true; polymorphic = true }), rest)
+      (Some (typ, Some { Syntax.effects = []; tails = []; inferred = true; polymorphic = true }), rest)
   | _ -> (None, terms)
 
 and annotate_result result (body : Syntax.t) =
@@ -577,7 +577,7 @@ and parse_postfix_infix env min_prec lhs terms =
       let row, rest =
         match rest with
         | _ when not (token_kind ThinArrow term) ->
-            (Some { Syntax.effects = []; tail = None; inferred = false; polymorphic = true }, rest)
+            (Some { Syntax.effects = []; tails = []; inferred = false; polymorphic = true }, rest)
         | { datum = Group (Raw_syntax.Brace, items, span); _ } :: rest when spans_adjacent term.span span ->
             (Some (parse_effect_row_terms env items), rest)
         | _ -> (None, rest)

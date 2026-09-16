@@ -27,7 +27,7 @@ let pure_arrow_shape () =
 
 let single_row_shape () =
   match parse_expr "I64 ->{IO} I64" with
-  | Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tail = None }, Var "I64") -> ()
+  | Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tails = [] }, Var "I64") -> ()
   | _ -> Alcotest.fail "expected single-effect row"
 
 let braced_row_shape () =
@@ -36,19 +36,19 @@ let braced_row_shape () =
       ( Explicit,
         None,
         Var "Unit",
-        Some { effects = [ Ap (Var "State", Explicit, Var "I64"); Var "IO" ]; tail = None },
+        Some { effects = [ Ap (Var "State", Explicit, Var "I64"); Var "IO" ]; tails = [] },
         Var "I64" ) ->
       ()
   | _ -> Alcotest.fail "expected braced effect row"
 
 let pure_row_shape () =
   match parse_expr "Unit ->{} I64" with
-  | Arrow (Explicit, None, Var "Unit", Some { effects = []; tail = None }, Var "I64") -> ()
+  | Arrow (Explicit, None, Var "Unit", Some { effects = []; tails = [] }, Var "I64") -> ()
   | _ -> Alcotest.fail "expected pure effect row"
 
 let open_row_shape () =
   match parse_expr "Unit ->{IO | r} I64" with
-  | Arrow (Explicit, None, Var "Unit", Some { effects = [ Var "IO" ]; tail = Some (Var "r") }, Var "I64") -> ()
+  | Arrow (Explicit, None, Var "Unit", Some { effects = [ Var "IO" ]; tails = [ Var "r" ] }, Var "I64") -> ()
   | _ -> Alcotest.fail "expected open effect row"
 
 let open_row_multi_shape () =
@@ -57,14 +57,14 @@ let open_row_multi_shape () =
       ( Explicit,
         None,
         Var "Unit",
-        Some { effects = [ Ap (Var "State", Explicit, Var "I64"); Var "IO" ]; tail = Some (Var "r") },
+        Some { effects = [ Ap (Var "State", Explicit, Var "I64"); Var "IO" ]; tails = [ Var "r" ] },
         Var "I64" ) ->
       ()
   | _ -> Alcotest.fail "expected open multi-effect row"
 
 let open_row_tail_only_shape () =
   match parse_expr "Unit ->{| r} I64" with
-  | Arrow (Explicit, None, Var "Unit", Some { effects = []; tail = Some (Var "r") }, Var "I64") -> ()
+  | Arrow (Explicit, None, Var "Unit", Some { effects = []; tails = [ Var "r" ] }, Var "I64") -> ()
   | _ -> Alcotest.fail "expected tail-only effect row"
 
 let closest_arrow_row_shape () =
@@ -74,7 +74,7 @@ let closest_arrow_row_shape () =
         None,
         Var "I64",
         None,
-        Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tail = None }, Var "I64") ) ->
+        Arrow (Explicit, None, Var "I64", Some { effects = [ Var "IO" ]; tails = [] }, Var "I64") ) ->
       ()
   | _ -> Alcotest.fail "expected the row on its arrow"
 

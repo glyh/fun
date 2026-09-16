@@ -4,7 +4,7 @@ open Elab_common
 
 (* An effect a form performs, as the elaborator records it. *)
 type expr_effect = { core : term; value : value }
-type expr_effects = { effects : expr_effect list; tail : expr_effect option }
+type expr_effects = { effects : expr_effect list; tails : expr_effect list }
 
 (* Where elaboration records what the form being elaborated performs: infer and
    check emit into it as they go, in the one pass. The contexts a form derives
@@ -108,7 +108,7 @@ and macro_runtime = {
       loader = None;
       macro_runtime = None;
       base = None;
-      sink = { performed = { effects = []; tail = None }; stored = [] };
+      sink = { performed = { effects = []; tails = [] }; stored = [] };
       handler_scopes = [];
       scope_captures = [];
       sealed = [];
@@ -277,10 +277,9 @@ and macro_runtime = {
   let pure_call (ctx : t) (ty : value) : bool =
     let rec closed_empty (row : effect_row_value) =
       row.effect_values = []
-      && match Option.map (Nbe.force ctx.metas) row.tail_value with
-         | None -> true
-         | Some (VEffectRow row) -> closed_empty row
-         | Some _ -> false
+      && List.for_all
+           (fun tail -> match Nbe.force ctx.metas tail with VEffectRow row -> closed_empty row | _ -> false)
+           row.tail_values
     in
     match Nbe.force ctx.metas ty with
     | VPi { effects; _ } -> closed_empty (Nbe.eval_effect_row_closure ctx.metas effects (VRigid { lvl = ctx.lvl; spine = [] }))

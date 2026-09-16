@@ -834,7 +834,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                          function of [()], and [v.m()] runs it. *)
                       | result ->
                           let quote v = Nbe.quote ctx.metas (ctx.lvl + 1) v in
-                          let arrow_row : effect_row = { effects = List.map quote row.effect_values; tail = Option.map quote row.tail_value } in
+                          let arrow_row : effect_row = { effects = List.map quote row.effect_values; tails = List.map quote row.tail_values } in
                           ( Lam (Dot (shift_term 1 0 e_core, name)),
                             VPi { explicitness = Explicit; domain = VAtomTy Atom_ty.TUnit;
                                   effects = effect_row_closure ctx.env arrow_row;
@@ -988,7 +988,7 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
         let (body_core, body_ty), performed = collecting ctx (fun ctx -> ops.infer ctx body) in
         let row = Elab_type_expr.elaborate_effect_row ops ctx effects in
         check_effect_subset ctx performed
-          { effect_values = List.map (Ctx.eval ctx) row.effects; tail_value = Option.map (Ctx.eval ctx) row.tail };
+          { effect_values = List.map (Ctx.eval ctx) row.effects; tail_values = List.map (Ctx.eval ctx) row.tails };
         ((body_core, body_ty), row)
       in
       (* The row sits on the innermost arrow, so it is performed once every

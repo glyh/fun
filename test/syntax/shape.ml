@@ -16,7 +16,7 @@ and effect_op = { name : string; input : t; output : t }
 
 and type_decl = { name : string; params : string list; ctors : (string * t list) list }
 
-and effect_row = { effects : t list; tail : t option }
+and effect_row = { effects : t list; tails : t list }
 
 and struct_binding =
   | LetBinding of { name : string; value : t; public : bool; recursive : bool }
@@ -171,7 +171,7 @@ let rec lower_param (p : Syntax.param) : param =
     explicitness = p.explicitness }
 
 and lower_effect_row (eff : Syntax.effect_row) : effect_row =
-  { effects = List.map lower_expr eff.effects; tail = Option.map lower_expr eff.tail }
+  { effects = List.map lower_expr eff.effects; tails = List.map lower_expr eff.tails }
 
 and lower_effect_op (op : Syntax.effect_op) : effect_op =
   { name = op.name; input = lower_expr op.input; output = lower_expr op.output }

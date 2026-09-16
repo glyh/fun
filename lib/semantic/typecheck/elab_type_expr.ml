@@ -75,14 +75,14 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
           row.effects
       in
       let entries, row_vars = List.partition_map Fun.id classified in
-      let written_tail =
-        match row_vars, row.tail with
-        | [], _ -> None
-        | [ var ], None when not row.inferred && entries = [] -> Some var
-        | [ _ ], None when not row.inferred -> raise (ElabError RowVariableAmongEffects)
-        (* ponytail: a row holds one tail (E2); a union of row variables
-           ([->{e1, e2}]) needs multi-tail rows. *)
-        | _ -> raise (ElabError (UnsupportedRowUnion (List.length row_vars)))
+      (* Row variables written among the effects are the row's tails - allowed
+         only when nothing else is written there, so [->{Log, e}] still asks for
+         the bar. *)
+      let written_tails =
+        match row_vars with
+        | [] -> []
+        | _ when row.inferred || entries <> [] || row.tails <> [] -> raise (ElabError RowVariableAmongEffects)
+        | vars -> vars
       in
       let rec check_unique = function
         | [] -> ()
@@ -92,20 +92,20 @@ let elaborate_effect_row ops (ctx : Ctx.t) : Syntax.effect_row option -> effect_
             check_unique rest
       in
       check_unique entries;
-      let tail =
-        if Option.is_some written_tail then written_tail
+      let tails =
+        if written_tails <> [] then written_tails
         else if row.inferred then begin
           let meta = Ctx.fresh_row_meta ctx in
           (match meta with InsertedMeta (id, _) -> Dynarray.add_last ctx.Ctx.metas.written_rows id | _ -> ());
-          Some meta
+          [ meta ]
         end
         else
-          Option.map
+          List.map
             (fun tail_expr ->
               let tail_core, tail_ty = infer_pure ops ctx tail_expr in
               Ctx.unify ctx tail_ty VEffectRowTy;
               tail_core)
-            row.tail
+            row.tails
       in
-      { effects = List.map fst entries; tail }
+      { effects = List.map fst entries; tails }
 

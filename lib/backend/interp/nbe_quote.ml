@@ -81,7 +81,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
       let row_value = ops.eval_effect_row_closure mc effects var in
       let row =
         { effects = List.map (quote ops mc (depth + 1)) row_value.effect_values;
-          tail = Option.map (quote ops mc (depth + 1)) row_value.tail_value }
+          tails = List.map (quote ops mc (depth + 1)) row_value.tail_values }
       in
       Pi
         { explicitness;
@@ -93,7 +93,7 @@ let rec quote ops (mc : MetaContext.t) (depth : lvl) (v : value) : term =
   | VEffectRow row ->
       EffectRowLit
         { effects = List.map (quote ops mc depth) row.effect_values;
-          tail = Option.map (quote ops mc depth) row.tail_value }
+          tails = List.map (quote ops mc depth) row.tail_values }
   | VAtom a -> Atom a
   | VAtomTy t -> AtomTy t
   | VProd elems -> Prod (List.map (quote ops mc depth) elems)
@@ -380,12 +380,19 @@ and conv_effect_rows ops (mc : MetaContext.t) (depth : lvl) (row1 : effect_row_v
        (List.fold_left
           (fun remaining eff -> Option.bind remaining (remove_match eff))
           (Some row2.effect_values) row1.effect_values)
-  && match (row1.tail_value, row2.tail_value) with
-     | None, None -> true
-     | Some (VFlex { spine = []; _ }), None | None, Some (VFlex { spine = []; _ }) -> true
-     | Some (VFlex { spine = []; _ }), Some (VFlex { spine = []; _ }) -> true
-     | Some lhs, Some rhs -> conv ops mc depth lhs rhs
-     | _ -> false
+  && conv_tails ops mc depth row1.tail_values row2.tail_values
+
+(* Tails are a set: an unsolved meta tail may stand for anything, so it matches
+   whatever the other side has left. *)
+and conv_tails ops (mc : MetaContext.t) (depth : lvl) lhs rhs =
+  let flex = function VFlex { spine = []; _ } -> true | _ -> false in
+  match (lhs, rhs) with
+  | [], [] -> true
+  | _ when List.exists flex lhs || List.exists flex rhs -> true
+  | [ lhs ], [ rhs ] -> conv ops mc depth lhs rhs
+  | _ ->
+      List.length lhs = List.length rhs
+      && List.for_all (fun l -> List.exists (fun r -> conv ops mc depth l r) rhs) lhs
 
 and conv_neutral ops (mc : MetaContext.t) (depth : lvl) (n1 : neutral) (n2 : neutral) : bool =
   let heads_eq =

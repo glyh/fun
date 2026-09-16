@@ -464,8 +464,8 @@ and try_prim_reduce (mc : MetaContext.t) (head : head) (frames : frame list) : v
 
 and eval_effect_row_literal (mc : MetaContext.t) (env : env) (row : effect_row) : value =
   let effects = List.map (eval mc env) row.effects in
-  let tail = Option.map (eval mc env) row.tail in
-  VEffectRow { effect_values = effects; tail_value = tail }
+  let tails = List.map (eval mc env) row.tails in
+  VEffectRow (normalize_effect_row_value mc { effect_values = effects; tail_values = tails })
 
 and apply_result (mc : MetaContext.t) (vf : value) (va : value) : result =
   match vf with
@@ -535,17 +535,22 @@ and eval_effect_row_closure (mc : MetaContext.t) (row : effect_row_closure)
   let env = binder :: row.env in
   let row_value =
     { effect_values = List.map (eval mc env) row.effects;
-      tail_value = Option.map (eval mc env) row.tail }
+      tail_values = List.map (eval mc env) row.tails }
   in
   normalize_effect_row_value mc row_value
 
+(* A tail solved to a row is spliced in (its effects join the known ones, its own
+   tails join the tails), so a union of tails disappears as they are solved. *)
 and normalize_effect_row_value (mc : MetaContext.t) (row : effect_row_value) : effect_row_value =
-  match Option.map (force mc) row.tail_value with
-  | Some (VEffectRow tail_row) ->
-      let tail_row = normalize_effect_row_value mc tail_row in
-      { effect_values = row.effect_values @ tail_row.effect_values;
-        tail_value = tail_row.tail_value }
-  | tail_value -> { row with tail_value }
+  List.fold_left
+    (fun acc tail ->
+      match force mc tail with
+      | VEffectRow tail_row ->
+          let tail_row = normalize_effect_row_value mc tail_row in
+          { effect_values = acc.effect_values @ tail_row.effect_values;
+            tail_values = acc.tail_values @ tail_row.tail_values }
+      | forced -> { acc with tail_values = acc.tail_values @ [ forced ] })
+    { row with tail_values = [] } row.tail_values
 
 (* A match on a value with an unknown head: the match waits as its last frame. *)
 and stuck_match env head frames branches : result =
