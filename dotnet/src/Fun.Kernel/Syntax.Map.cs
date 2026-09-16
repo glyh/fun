@@ -136,6 +136,16 @@ public abstract partial record Syntax
             RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
             SyntaxDef d => d with { Name = m.Id(d.Name), Role = m.MapRole(d.Role), Body = Go(d.Body) },
             Instantiate i => i with { Instantiation = m.MapInstantiation(i.Instantiation) },
+            TraitDef t => t with { Name = m.Id(t.Name), Param = m.Id(t.Param), Fields = [.. t.Fields.Select(f => (f.Name, Go(f.Type)))], Body = Go(t.Body) },
+            ImplDef i => i with
+            {
+                Name = i.Name is null ? null : m.Id(i.Name),
+                TraitPath = Go(i.TraitPath),
+                Arg = Go(i.Arg),
+                Fields = [.. i.Fields.Select(f => (f.Name, Go(f.Value)))],
+                Body = Go(i.Body),
+            },
+            TraitBoundSet b => b with { Traits = [.. b.Traits.Select(Go)] },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over {GetType().Name}"),
         };
         return m.Form(mapped);
@@ -166,6 +176,14 @@ public abstract partial record Binding
             SyntaxDecl s => s with { Name = m.Id(s.Name), Role = m.MapRole(s.Role) },
             Instantiate i => i with { Instantiation = m.MapInstantiation(i.Instantiation) },
             Hole h => h with { Name = m.Id(h.Name) },
+            Trait t => t with { Name = m.Id(t.Name), Param = m.Id(t.Param), Fields = [.. t.Fields.Select(f => (f.Name, f.Type.Map(m)))] },
+            Impl i => i with
+            {
+                Name = i.Name is null ? null : m.Id(i.Name),
+                TraitPath = i.TraitPath.Map(m),
+                Arg = i.Arg.Map(m),
+                Fields = i.Fields is { } fields ? [.. fields.Select(f => (f.Name, f.Value.Map(m)))] : null,
+            },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over the binding {GetType().Name}"),
         };
         return m.Binding(mapped);
@@ -193,6 +211,9 @@ public abstract partial record Pattern
             Prod p => p with { Items = [.. p.Items.Select(i => i.Map(m))] },
             Or o => o with { Left = o.Left.Map(m), Right = o.Right.Map(m) },
             Con c => c with { Head = c.Head.Map(m), Args = [.. c.Args.Select(a => a.Map(m))] },
+            AtomType => this,
+            Record r => r with { Type = r.Type.Map(m), Fields = [.. r.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
+            StructType st => st with { Fields = [.. st.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over the pattern {GetType().Name}"),
         };
         return m.Pattern(mapped);

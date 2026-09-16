@@ -45,7 +45,7 @@ public sealed partial class Expander
             if (!existing.Scope.IsSubsetOf(occurrence)) continue;
             if (occurrence.Except(existing.Scope).Values.Any(_introScopes.Contains)) continue;
             if (attaches && existing.Kind == BinderMeaning.Value) continue;
-            throw new ExpandException($"`{name}` is both a syntactic role and a value binder where both are visible");
+            throw new RoleException($"`{name}` is both a syntactic role and a value binder where both are visible");
         }
     }
 

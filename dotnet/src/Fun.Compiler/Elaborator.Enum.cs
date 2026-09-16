@@ -41,16 +41,16 @@ public static partial class Elaborator
         var levels = FirstBoundLevel(ctx) is int firstBound
             ? NamedLevels(ctx, ctx.Enclosing)
                 .Concat(payloads.SelectMany(ps => ps.SelectMany(p => FreeLevels(ctx, p))))
-                .Where(l => l >= firstBound)
+                .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
                 .Distinct()
                 .Order()
                 .ToEquatableArray()
             : [];
 
-        var decl = new NominalDecl("enum",
+        EquatableArray<ConstructorDecl> constructors =
             [.. e.Constructors.Select((c, i) => new ConstructorDecl(c.Name,
-                [.. payloads[i].Select(p => Unify.CloseOver(ctx.Metas, ctx.Width, levels, p))]))],
-            levels.Length);
+                [.. payloads[i].Select(p => Unify.CloseOver(ctx.Metas, ctx.Width, levels, p))]))];
+        var decl = CompletePending(ctx, e, constructors, levels) ?? new NominalDecl("enum", constructors, levels.Length);
         var captures = levels.Select(l => (Term)new Term.Var(Nbe.LevelToIndex(ctx.Width, l))).ToEquatableArray();
         return (new Term.Nominal(decl, captures), Value.VU.Instance);
     }
@@ -231,6 +231,8 @@ public static partial class Elaborator
                 case Pattern.Prod prod: foreach (var i in prod.Items) Pat(i); break;
                 case Pattern.Or o: Pat(o.Left); Pat(o.Right); break;
                 case Pattern.Con c: Go(c.Head); foreach (var a in c.Args) Pat(a); break;
+                case Pattern.Record r: Go(r.Type); foreach (var f in r.Fields) Pat(f.Pattern); break;
+                case Pattern.StructType s: foreach (var f in s.Fields) Pat(f.Pattern); break;
             }
         }
 
@@ -259,19 +261,31 @@ public static partial class Elaborator
                     foreach (var b in m.Branches) { Pat(b.Pattern); Go(b.Body); }
                     break;
                 case Syntax.Enum e: foreach (var c in e.Constructors) foreach (var p in c.Payloads) Go(p); break;
-                case Syntax.Module m:
-                    foreach (var b in m.Bindings)
-                    {
-                        switch (b)
-                        {
-                            case Binding.Let l: Go(l.Value); break;
-                            case Binding.Open o: Go(o.Of); break;
-                            default: throw new NotImplementedException($"not ported yet: the names a {b.GetType().Name} binding uses");
-                        }
-                    }
-                    break;
+                case Syntax.Module m: Bindings(m.Bindings); break;
+                case Syntax.Struct st: Bindings(st.Bindings); break;
+                case Syntax.RecordConstruct r: Go(r.Type); foreach (var (_, v) in r.Fields) Go(v); break;
+                case Syntax.LetRecGroup g: foreach (var member in g.Members) Go(member.Value); Go(g.Body); break;
                 default:
                     throw new NotImplementedException($"not ported yet: the names a {s.GetType().Name} uses");
+            }
+        }
+
+        void Bindings(EquatableArray<Binding> bindings)
+        {
+            foreach (var b in bindings)
+            {
+                switch (b)
+                {
+                    case Binding.Let l: Go(l.Value); break;
+                    case Binding.Open o: Go(o.Of); break;
+                    case Binding.Field f: Go(f.Type); break;
+                    case Binding.RecGroup g: foreach (var member in g.Members) Go(member.Value); break;
+                    case Binding.Method method:
+                        foreach (var p in method.Params) Go(p.Type);
+                        Go(method.Body);
+                        break;
+                    default: throw new NotImplementedException($"not ported yet: the names a {b.GetType().Name} binding uses");
+                }
             }
         }
 

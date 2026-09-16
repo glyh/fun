@@ -13,23 +13,19 @@ public static partial class Elaborator
     private static bool PureCall(Context ctx, Value type) => ctx.Force(type) is Value.VPi;
 
     /// <summary>
-    /// A recursive definition written as a type (<c>rec T = enum { … }</c>, a
-    /// recursive record, or a type former returning one) is not a fixpoint.
-    /// </summary>
-    private static void RejectRecursiveType(Syntax value)
-    {
-        while (value is Syntax.Lam lam) value = lam.Body;
-        if (value is Syntax.Enum or Syntax.Struct)
-            throw new NotImplementedException("not ported yet: recursive type definitions");
-    }
-
-    /// <summary>
     /// A block's <c>rec name [: T] = value</c>: the value is checked seeing its own
     /// name at the written type (or a meta), and becomes a one-member fixpoint.
+    /// A recursive enum or struct type is a type group of one.
     /// </summary>
     private static (Term, Value) InferRecLet(Context ctx, Syntax.Let let)
     {
-        RejectRecursiveType(let.Value);
+        if (KindOf(let.Value) != RecKind.Value)
+        {
+            var member = InferFixpointGroup(ctx, [new RecMember(let.Name, let.Value)])[0];
+            if (let.Type is { } annotation) ctx.Unify(TypeValue(ctx, annotation), member.Type);
+            var (typeBody, typeBodyType) = Infer(ctx.Define(member.Key, member.Type, member.Value), let.Body);
+            return (new Term.Let(ctx.Quote(member.Type), member.Term, typeBody), typeBodyType);
+        }
         var type = let.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
         var body = Check(ctx.Bind(let.Name.Name, type), let.Value, type);
         var fix = new Term.Fix([new FixMember(Label(let.Name.Name), PureCall(ctx, type), body)], 0);
@@ -44,7 +40,11 @@ public static partial class Elaborator
     /// </summary>
     private static (Term, Value) InferRecMember(Context ctx, Binding.Let let)
     {
-        RejectRecursiveType(let.Value is Syntax.Annotated a ? a.Inner : let.Value);
+        if (KindOf(let.Value) != RecKind.Value)
+        {
+            var member = InferFixpointGroup(ctx, [new RecMember(let.Name, let.Value)])[0];
+            return (member.Term, member.Type);
+        }
         var type = ctx.RawMeta();
         var (body, bodyType) = Infer(ctx.Bind(let.Name.Name, type), let.Value);
         ctx.Unify(type, bodyType);
@@ -60,9 +60,14 @@ public static partial class Elaborator
     private static EquatableArray<(string Key, Term Term, Value Type, Value Value)> InferFixpointGroup(
         Context ctx, EquatableArray<RecMember> members)
     {
+        switch (GroupKind(members.Select(m => m.Value)))
+        {
+            case RecKind.Enum: return InferEnumGroup(ctx, members);
+            case RecKind.Struct: return InferStructGroup(ctx, members);
+        }
+
         var typed = members.Select(m =>
         {
-            RejectRecursiveType(m.Value is Syntax.Annotated a ? a.Inner : m.Value);
             return m.Value is Syntax.Annotated annotated
                 ? (m.Name.Name, Body: annotated.Inner, Type: TypeValue(ctx, annotated.Type))
                 : (m.Name.Name, Body: m.Value, Type: ctx.RawMeta());

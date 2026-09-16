@@ -50,10 +50,13 @@ public abstract record Occurrence
     /// at <paramref name="Parent"/>: the tag says which payload types apply.
     /// </summary>
     public sealed record Payload(Occurrence Parent, string Constructor, int Index) : Occurrence;
+
+    /// <summary>The field <paramref name="Name"/> of a record, or of a struct type (the field's type).</summary>
+    public sealed record Field(Occurrence Parent, string Name) : Occurrence;
 }
 
 /// <summary>A compiled match: the tests to run on a scrutinee to choose an arm.</summary>
-public abstract record DecisionTree
+public abstract partial record DecisionTree
 {
     /// <summary>Arm <paramref name="Branch"/> is chosen; its binders sit at <paramref name="Bindings"/>, in source order.</summary>
     public sealed record Leaf(int Branch, EquatableArray<Occurrence> Bindings) : DecisionTree;

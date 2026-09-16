@@ -74,7 +74,7 @@ public static partial class Enforest
         if (prec == Prec.Top || prec == Prec.ArrowRhs) return true;
         if (prec is not Prec.Operand(var outer, var outerRole)) return false;
 
-        ExpandException NoOrder() =>
+        RoleException NoOrder() =>
             new($"`{outer}` and `{symbol}` have no declared order; parenthesise one of them");
 
         switch (outerRole.Order, role.Order)
@@ -88,7 +88,7 @@ public static partial class Enforest
                     {
                         Assoc.Right => true,
                         Assoc.Left => false,
-                        _ => throw new ExpandException(
+                        _ => throw new RoleException(
                             $"`{outer}` and `{symbol}` do not chain: their group {o.Name} is assoc(none); parenthesise one of them"),
                     },
                     _ => throw NoOrder(),

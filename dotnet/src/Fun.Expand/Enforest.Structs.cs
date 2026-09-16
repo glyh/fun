@@ -62,7 +62,10 @@ public static partial class Enforest
         {
             var stmt = DropSeparators(raw);
             if (IsToken(stmt.Head, TokenKind.Impl) || IsToken(stmt.Drop(2).Head, TokenKind.Impl))
-                throw new NotImplementedException("not ported yet: impls in a signature");
+            {
+                bindings.Add(ParseSignatureImpl(stmt));
+                continue;
+            }
             if (NameOf(stmt.Head) is not Id name || !IsToken(stmt.Drop(1).Head, TokenKind.Colon))
                 throw new ExpandException("expected signature field name : type");
             bindings.Add(new Binding.Let(name, ParseAll(stmt.Drop(2)), Public: true, Recursive: false));

@@ -31,3 +31,29 @@ Wave 2 fork. Follow the porting conventions in
 refinement's cost is a known prototype hotspot
 ([type-case-refinement-walks-whole-context](type-case-refinement-walks-whole-context.md)):
 port the rule, not the walk. Effect branches belong to the effects fork.
+
+## Progress (2026-09-16)
+
+Merged from `port/patterns` (`5cf6b9c`, `f076fa5`, merges `796faa6`, `47411cd`; one
+conflict in `Core.cs`: both forks had added the same environment update as
+`Replace` and `With`, kept once as `Replace`). Record patterns `P {x = p, y; _}`
+(missing/unknown/duplicate fields are errors); type-case on the atom types with a
+required fallback, refining a matched type variable in context and expected type;
+struct-type patterns `struct { x : p; _ }`; nominal type heads `Opt(I64)`/`Opt(x)`,
+formers included, matched by instance (E11), arms run in order after the decision
+tree checks exhaustiveness. Newly passing: values core-156; elaborate elab-188–190,
+elab-044, 046, 047; shared `values/type-case-refines-variable` (7),
+`values/type-case-struct-field-type` (3).
+
+**Prototype defect** (ticketed by the integrator):
+[type-case-former-head-arity-from-template](type-case-former-head-arity-from-template.md).
+
+**Open (user):** pattern synonyms are not ported. The prototype substitutes a
+synonym's arguments into its right-hand side by position, not by parameter name,
+and a synonym reached through `open` is `UnknownConstructor`. Undecided: do
+arguments bind by name, and does a synonym resolve through its binder or an open
+like any other name?
+
+**Follow-up:** matching a nominal head evaluates the head term with a nested
+`Eval` (`ponytail:` in `Nbe.Patterns.cs`) rather than a `Kont` frame; its depth is
+the head term's, not the program's call depth.

@@ -65,10 +65,12 @@ public static partial class Unify
                 Solve(mc, width, b.Id, b.Spine, left);
                 return;
 
+            case (Value.VRecursiveOccurrence, _) or (_, Value.VRecursiveOccurrence): RecursiveOccurrences(mc, width, left, right); return;
             case (Value.VNominal or Value.VCon, Value.VNominal or Value.VCon): UnifyNominals(mc, width, left, right); return;
 
             case (Value.VSig a, Value.VSig b): Signatures(mc, width, a, b); return;
-            case (Value.VModule a, Value.VModule b): Modules(mc, width, a, b); return;
+            case (Value.VModule a, Value.VModule b): Modules(mc, width, a, b); ModuleImpls(mc, width, a, b); return;
+            case (Value.VTrait or Value.VTraitDict, Value.VTrait or Value.VTraitDict): UnifyTraits(mc, width, left, right); return;
             case (Value.VStruct a, Value.VStruct b): Structs(mc, width, a, b); return;
             case (Value.VRecord a, Value.VRecord b): Records(mc, width, a, b); return;
 
@@ -167,6 +169,7 @@ public static partial class Unify
             Value.VProd p => new Term.Prod([.. p.Items.Select(Go)]),
             Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(Go)]),
             Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(Go)]),
+            Value.VRecursiveOccurrence o => new Term.RecursiveOccurrence(o.Decl, [.. o.Captures.Select(Go)], [.. o.Args.Select(Go)]),
             Value.VCon c => c.Args.Aggregate((Term)new Term.Dot(Go(c.Nominal), c.Name), (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a))),
             Value.VNeutral n => n.Frames.Aggregate(n.Head switch
             {
@@ -206,12 +209,18 @@ public static partial class Unify
             case Value.VNominal n:
                 foreach (var c in n.Captures) OccursCheck(mc, id, c);
                 return;
+            case Value.VRecursiveOccurrence o:
+                foreach (var v in o.Captures.Concat(o.Args)) OccursCheck(mc, id, v);
+                return;
             case Value.VNeutral n:
                 foreach (var frame in n.Frames)
                     if (frame is Frame.FApp app) OccursCheck(mc, id, app.Arg);
                 return;
             case Value.VModule or Value.VStruct or Value.VRecord or Value.VSig:
                 foreach (var v in Contents(mc, value)) OccursCheck(mc, id, v);
+                return;
+            case Value.VTraitDict dict:
+                foreach (var v in TraitContents(dict)) OccursCheck(mc, id, v);
                 return;
             // A bound variable, a lambda, a universe or an atom holds no meta
             // the check follows (the prototype does not look inside a lambda).

@@ -30,6 +30,9 @@ public sealed partial class Expander
         Pattern.Or o => o with { Left = ExpandPattern(o.Left), Right = ExpandPattern(o.Right) },
         // A constructor's head is an occurrence like any other.
         Pattern.Con c => c with { Head = Expand(c.Head), Args = [.. c.Args.Select(ExpandPattern)] },
+        Pattern.Record r => r with { Type = Expand(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, ExpandPattern(f.Pattern)))] },
+        Pattern.AtomType => pattern,
+        Pattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, ExpandPattern(f.Pattern)))] },
         _ => throw new InvalidOperationException($"unhandled pattern {pattern.GetType().Name}"),
     };
 }

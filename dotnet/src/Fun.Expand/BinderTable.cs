@@ -21,6 +21,13 @@ public sealed record Binder(ScopeSet Scope, string ResolvedName, BinderMeaning K
 public sealed class ExpandException(string message) : Exception(message);
 
 /// <summary>
+/// A role error that is genuine whatever the prelude binds: every binder and
+/// group it names is already resolved (M7, order groups). Unlike an
+/// <see cref="ExpandException"/>, it never stems from a role not yet ported.
+/// </summary>
+public sealed class RoleException(string message) : Exception(message);
+
+/// <summary>
 /// The binder table: every binder of a written name, with the
 /// scope set it was written at.
 /// </summary>

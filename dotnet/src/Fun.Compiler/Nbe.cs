@@ -159,7 +159,10 @@ public static partial class Nbe
 
                     case Term.Nominal { Captures.IsEmpty: true } n: value = new Value.VNominal(n.Decl, []); break;
                     case Term.Nominal n: stack.Push(new Kont.NominalOf(n.Decl)); term = new Term.Prod(n.Captures); continue;
+                    case Term.RecursiveOccurrence o: stack.Push(new Kont.RecursiveOccurrenceOf(o.Decl, o.Captures.Length)); term = new Term.Prod([.. o.Captures, .. o.Args]); continue;
                     case Term.Con con: value = Construct(env, con); break;
+                    case Term.TraitRef t: value = new Value.VTrait(t.Decl); break;
+                    case Term.TraitDictTy dict: term = StartTraitDict(stack, dict); continue;
 
                     case Term.Prod { Items.IsEmpty: true }: value = new Value.VProd([]); break;
                     case Term.ProdTy { Items.IsEmpty: true }: value = new Value.VProdTy([]); break;
@@ -281,7 +284,9 @@ public static partial class Nbe
                     case Kont.ModuleSlot f:
                     {
                         var pushed = f.Env.Push(value);
-                        var entries = f.Slot.Name is { } name
+                        var entries = f.Slot.ImplType is { } implType
+                            ? f.Entries.Add(new ModuleEntry.Impl(f.Slot.Name, f.Slot.Kind, implType, value))
+                            : f.Slot.Name is { } name
                             ? f.Entries.Add(new ModuleEntry.Field(name, f.Slot.Kind, value))
                             : f.Entries;
                         if (!f.RestSlots.IsEmpty)
@@ -301,6 +306,8 @@ public static partial class Nbe
 
                     case Kont.MatchOn f: (env, term) = SelectArm(mc, f.Env, value, f.Match); goto evaluate;
                     case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
+                    case Kont.TraitDictOf f: value = TraitDict(f, value); continue;
+                    case Kont.RecursiveOccurrenceOf f: value = RecursiveOccurrence(f, (Value.VProd)value); continue;
 
                     case Kont.ModuleOpen f:
                     {
@@ -396,6 +403,7 @@ public static partial class Nbe
         {
             OpenMember.Field f => acc.Push(DotValue(module, f.Name)),
             OpenMember.Constructor c => acc.Push(OpenedConstructor(module, c)),
+            OpenMember.Impl i => acc.Push(OpenedImpl(module, i)),
             _ => throw new InvalidOperationException($"unhandled open member {member.GetType().Name}"),
         });
 
@@ -483,14 +491,13 @@ public static partial class Nbe
             Value.VMeta f => QuoteSpine(mc, width, new Term.Meta(f.Id), f.Spine),
             Value.VVar r => QuoteSpine(mc, width, new Term.Var(LevelToIndex(width, r.Level)), r.Spine),
             Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(c => Quote(mc, width, c))]),
+            Value.VRecursiveOccurrence o => QuoteRecursiveOccurrence(mc, width, o),
             Value.VCon c => QuoteConstructed(mc, width, c),
             // Evaluating the module pushes one entry per binding, so the ith
             // binding's term is read i entries further in.
-            Value.VModule m => new Term.Module([.. m.Entries.Select((e, i) => e switch
-            {
-                ModuleEntry.Field f => (BindingTerm)new BindingTerm.Let(f.Name, f.Kind, Quote(mc, width + i, f.Value)),
-                _ => throw new InvalidOperationException($"unhandled module entry {e.GetType().Name}"),
-            })], m.Partial),
+            Value.VModule m => new Term.Module([.. m.Entries.Select((e, i) => QuoteEntry(mc, width + i, e, m.Partial))], m.Partial),
+            Value.VTrait t => new Term.TraitRef(t.Decl),
+            Value.VTraitDict dict => QuoteTraitDict(mc, width, dict),
             Value.VStruct st => QuoteStruct(mc, width, st),
             Value.VRecord r => new Term.RecordConstruct(Quote(mc, width, r.Type), [.. r.Fields.Select(f => (f.Name, Quote(mc, width, f.Value)))]),
             Value.VSig sig => new Term.Sig(Quote(mc, width + 1, ApplyClosure(mc, sig.Body, fresh))),
