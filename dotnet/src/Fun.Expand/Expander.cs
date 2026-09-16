@@ -79,7 +79,7 @@ public sealed partial class Expander
     {
         switch (stx)
         {
-            case Syntax.Atom or Syntax.OpenChoice or Syntax.Import:
+            case Syntax.Atom or Syntax.OpenChoice or Syntax.Import or Syntax.Self or Syntax.SelfType:
                 return stx;
 
             case Syntax.Var v:
@@ -225,6 +225,14 @@ public sealed partial class Expander
                 case Binding.Field f:
                     expanded.Add(f with { Type = Expand(f.Type.AddScope(active)) });
                     break;
+
+                case Binding.Method m:
+                {
+                    var (scope, method) = ExpandMethod((Binding.Method)m.AddScope(active));
+                    expanded.Add(method);
+                    active = active.Union(scope);
+                    break;
+                }
 
                 case var other:
                     throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");

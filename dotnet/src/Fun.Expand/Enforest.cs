@@ -203,6 +203,10 @@ public static partial class Enforest
                         return ParseModuleExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Struct:
                         return ParseStructExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Self:
+                        return (new Syntax.Self(term.Span), rest);
+                    case TokenKind.Word w when w == TokenKind.SelfType:
+                        return (new Syntax.SelfType(term.Span), rest);
                     case TokenKind.Word w when w == TokenKind.Sig:
                         return ParseSigExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Import:

@@ -195,6 +195,8 @@ public static partial class Elaborator
             case Syntax.Struct st: return InferStruct(ctx, st);
             case Syntax.RecordConstruct record: return InferRecordConstruct(ctx, record);
             case Syntax.Sig sig: return InferSig(ctx, sig);
+            case Syntax.Self: return ctx.LocateSelf();
+            case Syntax.SelfType: return (ctx.Quote(ctx.SelfType ?? throw new FunException("unbound variable: Self")), Value.VU.Instance);
 
             case Syntax.Annotated a:
             {
@@ -303,7 +305,7 @@ public static partial class Elaborator
     // both sides read the slot list, so adding it moves no index by hand.
     private static (Term, Value) InferModule(Context ctx, Syntax.Module module)
     {
-        var inner = ctx;
+        var inner = ctx.WithoutSelf();
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
 

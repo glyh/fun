@@ -17,6 +17,12 @@ public abstract partial record Syntax
     /// public member whose value is its type.
     /// </summary>
     public sealed record Sig(EquatableArray<Binding> Bindings, SourceSpan Span) : Syntax(Span);
+
+    /// <summary><c>self</c>: inside a method, the value the method was called on.</summary>
+    public sealed record Self(SourceSpan Span) : Syntax(Span);
+
+    /// <summary><c>Self</c>: inside a struct, the struct being defined, as the fields written so far.</summary>
+    public sealed record SelfType(SourceSpan Span) : Syntax(Span);
 }
 
 public abstract partial record Binding
@@ -26,4 +32,11 @@ public abstract partial record Binding
     /// items after it do not see it.
     /// </summary>
     public sealed record Field(string Name, Syntax Type) : Binding;
+
+    /// <summary>
+    /// <c>[pub] method m(params) [: T] { body }</c>: a function of <c>self</c>, then
+    /// of its parameters. A result type annotates the body. Pure: a method that
+    /// declares no row performs nothing.
+    /// </summary>
+    public sealed record Method(Id Name, EquatableArray<Param> Params, Syntax Body, bool Public) : Binding;
 }
