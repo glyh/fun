@@ -301,6 +301,14 @@ reasons are in the decisions above.
 10. **Shared docs.** A fork does not edit `docs/STATUS.md` or this ticket; it
     reports, and the integrator records.
 
+## Decided (2026-09-16): the prelude's source lives in `dotnet/std/`
+
+The prelude (`std`) is `.fun` source the OCaml prototype holds as string literals
+in `lib/semantic/typecheck/elab_prelude.ml`. The port keeps it as real files,
+`dotnet/std/stage1.fun` and `dotnet/std/stage2.fun`, copied verbatim (user
+decision); the OCaml is left as it is. The OCaml prototype is **not maintained
+once the port is done**, so the two copies are not kept in step long-term.
+
 ## Wave 1 (2026-09-16)
 
 Forked in parallel from `b894c12`+1, one worktree each:
