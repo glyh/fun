@@ -82,6 +82,7 @@ public static partial class Elaborator
         var recursive = ctx.RecursiveLevels.Union(Enumerable.Range(width, group));
         var shapes = members.Select(m => Shape(m.Value)).ToList();
         var decls = shapes.Select(_ => NominalDecl.Declare("enum")).ToList();
+        ctx.Metas.DeclaredNominals.AddRange(decls);
 
         // The members' entries have a width before they have values: predict each
         // member's captures in a context holding stand-ins for them.

@@ -21,6 +21,16 @@ public sealed class MetaContext
     /// <summary>How many metas exist: the id the next one gets.</summary>
     public int Count => _solutions.Count;
 
+    /// <summary>Every nominal declaration made during this elaboration, in order.</summary>
+    public List<NominalDecl> DeclaredNominals { get; } = [];
+
+    /// <summary>
+    /// The generative nominals (E11): declared by a module whose evaluation performs.
+    /// Each maps to the member label it is bound to in that module, or null when it is
+    /// not bound directly as a member.
+    /// </summary>
+    public Dictionary<NominalDecl, string?> GenerativeNominals { get; } = [];
+
     /// <summary>The metas standing for rows written <c>_</c>: one nothing solves is an error, never a default.</summary>
     public List<int> WrittenRows { get; } = [];
 
