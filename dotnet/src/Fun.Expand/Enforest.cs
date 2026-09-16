@@ -201,6 +201,10 @@ public static partial class Enforest
                         return ParseFn(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Module:
                         return ParseModuleExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Struct:
+                        return ParseStructExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Sig:
+                        return ParseSigExpr(term.Span, rest);
                     case TokenKind.Word w:
                         throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
                     case TokenKind.Operator o:
@@ -269,6 +273,13 @@ public static partial class Enforest
                     _ => throw new ExpandException("expected field name or projection after '.'"),
                 };
                 terms = terms.Drop(2);
+                continue;
+            }
+
+            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } record && lhs.Span.End == record.Span.Start
+                && IndexOfToken(new Terms(record.Items), TokenKind.Eq) >= 0)
+            {
+                (lhs, terms) = (ParseRecordConstruct(lhs, record), terms.Tail);
                 continue;
             }
 

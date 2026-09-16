@@ -17,7 +17,7 @@ public static partial class Nbe
     /// A continuation frame: what the machine does with the value it is about to
     /// produce. Distinct from <see cref="Frame"/>, an elimination stuck on a neutral.
     /// </summary>
-    private abstract record Kont
+    private abstract partial record Kont
     {
         /// <summary>The callee is evaluated; evaluate the argument next.</summary>
         public sealed record EvalArg(Environment Environment, Term Arg) : Kont;
@@ -116,8 +116,26 @@ public static partial class Nbe
                         term = open.Of;
                         continue;
 
+                    case Term.Struct st:
+                    {
+                        // A finished struct leaves its StructOf frame for the continuation loop.
+                        var step = StartStruct(stack, env, st);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); continue; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        break;
+                    }
+
+                    case Term.RecordConstruct record:
+                        (env, term) = StartRecord(stack, env, record) is { Env: { } recordEnv, Term: { } recordTerm } ? (recordEnv, recordTerm) : throw new InvalidOperationException("a record starts with its struct");
+                        continue;
+
+                    case Term.Sig sig:
+                        value = new Value.VSig(new Closure(env, sig.Body));
+                        break;
+
                     case Term.Module module:
                     {
+                        if (module.Signature) stack.Push(new Kont.SignatureOf());
                         // The next piece of work is the first slot of the first
                         // binding with any; a module of none is done at once.
                         if (StartBindings(stack, env, module.Bindings, []) is { } next)
@@ -186,6 +204,38 @@ public static partial class Nbe
                     case Kont.DotOf f:
                         value = DotValue(value, f.Name);
                         continue;
+
+                    case Kont.StructOf f:
+                        value = AsStruct(f, value);
+                        continue;
+
+                    case Kont.SignatureOf:
+                        value = AsSignature(value);
+                        continue;
+
+                    case Kont.StructField f:
+                    {
+                        var step = ResumeStructField(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.RecordType f:
+                    {
+                        var step = ResumeRecord(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.RecordField f:
+                    {
+                        var step = ResumeRecordField(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
 
                     case Kont.OpenBody f:
                         (env, term) = (PushOpenMembers(f.Env, value, f.Members), f.Body);
@@ -290,8 +340,9 @@ public static partial class Nbe
     /// </summary>
     public static Value DotValue(Value of, string name) => of switch
     {
-        Value.VModule m => m.Entries.OfType<ModuleEntry.Field>().LastOrDefault(e => e.Name == name)?.Value
-            ?? throw new FunException($"no member `{name}`"),
+        Value.VModule m => VisibleMember(m.Entries, name) ?? throw new FunException($"no member `{name}`"),
+        Value.VStruct st => VisibleMember(st.Entries, name) ?? throw new FunException($"no member `{name}`"),
+        Value.VRecord r => r.Fields.FirstOrDefault(f => f.Name == name) is { Value: { } field } ? field : throw new FunException($"no field `{name}`"),
         Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(new Frame.FDot(name)) },
         Value.VMeta f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FDot(name))),
         Value.VVar r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FDot(name))),
@@ -392,7 +443,10 @@ public static partial class Nbe
             {
                 ModuleEntry.Field f => (BindingTerm)new BindingTerm.Let(f.Name, f.Kind, Quote(mc, width + i, f.Value)),
                 _ => throw new InvalidOperationException($"unhandled module entry {e.GetType().Name}"),
-            })]),
+            })], m.Partial),
+            Value.VStruct st => QuoteStruct(mc, width, st),
+            Value.VRecord r => new Term.RecordConstruct(Quote(mc, width, r.Type), [.. r.Fields.Select(f => (f.Name, Quote(mc, width, f.Value)))]),
+            Value.VSig sig => new Term.Sig(Quote(mc, width + 1, ApplyClosure(mc, sig.Body, fresh))),
             Value.VNeutral n => n.Frames.Aggregate(QuoteHead(width, n.Head), (acc, frame) => frame switch
             {
                 Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a.Arg)),

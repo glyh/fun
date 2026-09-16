@@ -186,18 +186,12 @@ public static partial class Elaborator
             case Syntax.FieldAccess access:
             {
                 var (of, ofType) = Infer(ctx, access.Of);
-                switch (ctx.Force(ofType))
-                {
-                    case Value.VModule module:
-                        var member = module.PublicMember(access.Field)
-                            ?? throw new FunException($"no public member `{access.Field}`");
-                        return (new Term.Dot(of, access.Field), ctx.Force(member.Value));
-                    case Value.VMeta or Value.VVar or Value.VNeutral:
-                        throw new NotImplementedException("not ported yet: a member of a value of unknown type");
-                    default:
-                        throw new FunException($"member access `.{access.Field}` on a non-module");
-                }
+                return InferMember(ctx, of, ofType, access.Field);
             }
+
+            case Syntax.Struct st: return InferStruct(ctx, st);
+            case Syntax.RecordConstruct record: return InferRecordConstruct(ctx, record);
+            case Syntax.Sig sig: return InferSig(ctx, sig);
 
             case Syntax.Annotated a:
             {
@@ -286,7 +280,7 @@ public static partial class Elaborator
             default:
             {
                 var (term, inferred) = Infer(ctx, stx);
-                ctx.Unify(expected, inferred);
+                AgreeWithExpected(ctx, expected, inferred, term);
                 return term;
             }
         }
@@ -423,7 +417,7 @@ public static partial class Elaborator
     }
 
     /// <summary>A written type, as a term. Its own type must be a universe.</summary>
-    private static Term TypeTerm(Context ctx, Syntax stx) => Check(ctx, stx, Value.VU.Instance);
+    private static Term TypeTerm(Context ctx, Syntax stx) => TypeOfExpr(ctx, stx);
 
     private static Value TypeValue(Context ctx, Syntax stx) => ctx.Eval(TypeTerm(ctx, stx));
 }

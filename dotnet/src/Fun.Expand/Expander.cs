@@ -95,6 +95,15 @@ public sealed partial class Expander
             case Syntax.Module m:
                 return m with { Bindings = ExpandBindings(m.Bindings) };
 
+            case Syntax.Struct st:
+                return st with { Bindings = ExpandBindings(st.Bindings) };
+
+            case Syntax.Sig sg:
+                return sg with { Bindings = ExpandBindings(sg.Bindings) };
+
+            case Syntax.RecordConstruct r:
+                return r with { Type = Expand(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Expand(f.Value)))] };
+
             case Syntax.Ap a:
                 return a with { Fn = Expand(a.Fn), Arg = Expand(a.Arg) };
 
@@ -211,6 +220,11 @@ public sealed partial class Expander
                     active = active.Union(scope);
                     break;
                 }
+
+                // A field is a label, not a binder: nothing after it sees it.
+                case Binding.Field f:
+                    expanded.Add(f with { Type = Expand(f.Type.AddScope(active)) });
+                    break;
 
                 case var other:
                     throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");
