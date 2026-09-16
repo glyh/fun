@@ -539,8 +539,9 @@ What remains, in the recommended order:
   results collect; `can` deleted; pure definitions keep `: T`; bounds `[A : {Eq, Show}]`.
   Limit: a result uniting two row variables needs multi-tail rows (E2).
 - [Effects follow-ups from tunneling](tickets/effects-followups-tunneling.md)
-  — `resume` value branch, instance routing, E6 via refs and the pure-branch
-  shape done; open: unsolved `can _` at generalisation, `can any` semantics.
+  (closed) — `resume` value branch, instance routing, E6 through refs and module
+  members, the pure-branch shape, and a written `->{_}` nothing solves is an
+  error naming what to write.
 - [Small follow-ups](tickets/small-followups-2026-09-15.md)
   — refs items 7–10 done (error names the ref, let/block discharge, one-pass
   alias check, `EffectRef` by id); open: `+` on traits needs `+` trait-dispatched.
