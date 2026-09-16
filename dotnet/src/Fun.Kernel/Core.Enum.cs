@@ -17,9 +17,24 @@ public sealed class NominalDecl(string name, EquatableArray<ConstructorDecl> con
     public string Name { get; } = name;
 
     /// <summary>Each constructor's payload types, as terms over the captures (capture <c>i</c> at level <c>i</c>).</summary>
-    public EquatableArray<ConstructorDecl> Constructors { get; } = constructors;
+    public EquatableArray<ConstructorDecl> Constructors { get; private set; } = constructors;
 
-    public int CaptureCount { get; } = captureCount;
+    public int CaptureCount { get; private set; } = captureCount;
+
+    /// <summary>
+    /// Whether the constructors are known. A recursive declaration is minted
+    /// before its payloads are elaborated, since they name it.
+    /// </summary>
+    public bool IsComplete { get; private set; } = true;
+
+    /// <summary>A declaration whose payloads are elaborated after it exists: <see cref="Complete"/> ties the knot.</summary>
+    public static NominalDecl Declare(string name) => new(name, [], 0) { IsComplete = false };
+
+    public void Complete(EquatableArray<ConstructorDecl> constructors, int captureCount)
+    {
+        if (IsComplete) throw new InvalidOperationException($"{this} is already complete");
+        (Constructors, CaptureCount, IsComplete) = (constructors, captureCount, true);
+    }
 
     /// <summary>A constructor by label: the last of that name, as for any member (I3).</summary>
     public ConstructorDecl? Constructor(string name) => Constructors.LastOrDefault(c => c.Name == name);

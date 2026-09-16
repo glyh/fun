@@ -41,16 +41,16 @@ public static partial class Elaborator
         var levels = FirstBoundLevel(ctx) is int firstBound
             ? NamedLevels(ctx, ctx.Enclosing)
                 .Concat(payloads.SelectMany(ps => ps.SelectMany(p => FreeLevels(ctx, p))))
-                .Where(l => l >= firstBound)
+                .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
                 .Distinct()
                 .Order()
                 .ToEquatableArray()
             : [];
 
-        var decl = new NominalDecl("enum",
+        EquatableArray<ConstructorDecl> constructors =
             [.. e.Constructors.Select((c, i) => new ConstructorDecl(c.Name,
-                [.. payloads[i].Select(p => Unify.CloseOver(ctx.Metas, ctx.Width, levels, p))]))],
-            levels.Length);
+                [.. payloads[i].Select(p => Unify.CloseOver(ctx.Metas, ctx.Width, levels, p))]))];
+        var decl = CompletePending(ctx, e, constructors, levels) ?? new NominalDecl("enum", constructors, levels.Length);
         var captures = levels.Select(l => (Term)new Term.Var(Nbe.LevelToIndex(ctx.Width, l))).ToEquatableArray();
         return (new Term.Nominal(decl, captures), Value.VU.Instance);
     }
