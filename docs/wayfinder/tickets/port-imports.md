@@ -3,7 +3,7 @@ title: "Port: imports and compilation units"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -40,3 +40,22 @@ form" (3) and that need nothing else unported.
 ## Other forks
 
 structs, match-enums, implicits, rec run concurrently.
+
+## Resolution (2026-09-16)
+
+Merged from `port/imports` (`3e0843e`). `import "u"` loads a unit, elaborates it
+against the base context with nothing opened (sharing the importer's metas), and
+only its value crosses (`Term.Imported`). `Loader` caches by path, so a unit
+imported twice elaborates once; a cycle is an error; `import "std"` is "not
+ported yet". New shared cases: `imports/import-cycle` (error),
+`imports/unit-does-not-see-importer` (error, I5), `imports/import-twice-at-two-widths`
+(5). C# 27/607 (was 21/604); xUnit 49.
+
+**Follow-ups:**
+- The base context does not bind `stdlib` yet: it arrives with the prelude.
+- `fn name(params)` declarations are rejected ("must be adjacent"):
+  `Enforest.ParseValueDeclStatement` passes the `fn` keyword's span to `ParseFn`
+  where the prototype passes the name's. Handed to the recursive-definitions fork,
+  which owns those declarations; it blocks `values/core-169`.
+- Worktree note for forks: plain `dune test` in a worktree runs the outer repo;
+  use `dune test --root .`.

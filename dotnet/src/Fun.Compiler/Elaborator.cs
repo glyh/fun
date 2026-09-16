@@ -13,7 +13,7 @@ public sealed record Entry(int Level, Value Type);
 /// abstracted over. An entry's type lives in <see cref="Names"/>, keyed by the
 /// resolved name expansion gave its binder.
 /// </summary>
-public sealed record Context(
+public sealed partial record Context(
     Environment Environment,
     int Width,
     EquatableArray<EntryKind> EntryKinds,
@@ -138,10 +138,10 @@ public static partial class Elaborator
     /// Elaborates a program read as an expression. Such a program has nowhere to
     /// write <c>open (import "std")</c>, so it is elaborated inside that open.
     /// </summary>
-    public static Elaborated ElaborateProgram(Syntax program)
+    public static Elaborated ElaborateProgram(Syntax program, Loader? loader = null)
     {
         var metas = new MetaContext();
-        var ctx = BaseContext(metas, preludeOpen: true);
+        var ctx = BaseContext(metas, preludeOpen: true) with { Loader = loader };
         var (term, type) = Infer(ctx, program);
         return new Elaborated(term, type, ctx);
     }
@@ -172,6 +172,9 @@ public static partial class Elaborator
                 var (index, type) = ctx.LocateChoice(choice.Name.Name, choice.Opens, choice.Fallback);
                 return (new Term.Var(index), type);
             }
+
+            case Syntax.Import import:
+                return InferImport(ctx, import);
 
             case Syntax.Module module:
                 return InferModule(ctx, module);
