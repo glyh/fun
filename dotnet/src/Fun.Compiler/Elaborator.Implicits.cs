@@ -52,4 +52,20 @@ public static partial class Elaborator
                 throw new FunException("applying non-function");
         }
     }
+
+    /// <summary>
+    /// A value that is not an implicit lambda, checked against an implicit function
+    /// type: the type's implicit parameter is bound first, as checking a lambda binds
+    /// it, and the value is checked in that scope, where its own implicit arguments
+    /// are inserted against the body (check-against-implicit-type-inserts-first).
+    /// A dictionary parameter is bound as evidence.
+    /// </summary>
+    private static Term CheckUnderImplicit(Context ctx, Syntax stx, Value.VPi pi)
+    {
+        var (inner, entry) = ctx.BindAnonymous(pi.Domain);
+        if (ctx.Force(pi.Domain) is Value.VTraitDict dict)
+            inner = inner.AddEvidence(new TraitEvidence(dict.Decl, dict.Args, entry.Level, dict));
+        var body = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, new Value.VVar(entry.Level, []));
+        return new Term.Lam(Check(inner, stx, body));
+    }
 }

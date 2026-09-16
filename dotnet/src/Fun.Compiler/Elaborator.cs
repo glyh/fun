@@ -300,6 +300,10 @@ public static partial class Elaborator
                 when ctx.Force(rowPi.Domain) is Value.VEffectRowTy && stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }:
                 return CheckUnderImplicitRow(ctx, stx, rowPi);
 
+            case (_, Value.VPi { Explicitness: Explicitness.Implicit } implicitPi)
+                when stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }:
+                return CheckUnderImplicit(ctx, stx, implicitPi);
+
             case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
 
             case (Syntax.Lam lam, Value.VPi pi):
