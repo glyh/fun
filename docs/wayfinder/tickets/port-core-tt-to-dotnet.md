@@ -342,6 +342,19 @@ Forked in parallel from main, one worktree each:
 (need effect rows). Effects adds rows to arrows as an optional, pure-by-default
 member so no other fork's arrow construction changes.
 
+## Wave 3 (2026-09-16)
+
+**At most two implementation forks run at once** (user, 2026-09-16); the rest
+queue. Running: [primitives](port-primitives.md) and
+[the macro runtime interface](port-macro-runtime-interface.md), both prerequisites
+of the prelude. Queued, in order: refs; effects follow-ups (`~>` elaboration,
+method result rows, modules that perform); follow-up verification (the four
+unverified prototype deviations recorded on the structs, export and implicits
+tickets, and the export-then-open constructor bug behind `core-311`); then prelude
+stage 1 once both running forks merge; then procedural macros; then prelude
+stage 2. The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
+wait for a quiet moment with no fork editing `Syntax.cs`.
+
 ## Readiness (2026-09-16)
 
 **The prototype is ready to be ported.** Recorded here so a later session can
