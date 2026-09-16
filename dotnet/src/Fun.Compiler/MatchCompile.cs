@@ -101,7 +101,7 @@ public static class MatchCompile
             // The shape comes from the nominal; a pattern of that tag carries it too.
             var written = m.Rows.Select(r => r.Patterns[0]).OfType<CorePattern.Con>().First(c => c.Name == tag);
             var shape = constructors.FirstOrDefault(c => c.Name == tag) ?? new ConstructorShape(tag, written.TypeParams, written.Args.Length);
-            var sub = SpecializeAt(m, shape.Arity, i => new Occurrence.Child(occurrence, shape.TypeParams + i),
+            var sub = SpecializeAt(m, shape.Arity, i => new Occurrence.Payload(occurrence, tag, shape.TypeParams + i),
                 p => p is CorePattern.Con c && c.Name == tag ? c.Args : null);
             var (tree, missing) = Go(sub, source, domainOf);
             if (missing is not null) return (null, new MissingPattern.Con(tag, missing));
@@ -236,6 +236,7 @@ public static class MatchCompile
     {
         Occurrence.Base => [],
         Occurrence.Child c => Path(c.Parent).Add(c.Index),
+        Occurrence.Payload p => Path(p.Parent).Add(p.Index),
         _ => throw new InvalidOperationException($"unhandled occurrence {o.GetType().Name}"),
     };
 

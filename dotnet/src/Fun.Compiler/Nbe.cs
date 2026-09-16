@@ -132,6 +132,10 @@ public static partial class Nbe
 
                     case Term.Match match: stack.Push(new Kont.MatchOn(env, match)); term = match.Scrutinee; continue;
 
+                    case Term.Nominal { Captures.IsEmpty: true } n: value = new Value.VNominal(n.Decl, []); break;
+                    case Term.Nominal n: stack.Push(new Kont.NominalOf(n.Decl)); term = new Term.Prod(n.Captures); continue;
+                    case Term.Con con: value = Construct(env, con); break;
+
                     case Term.Prod { Items.IsEmpty: true }: value = new Value.VProd([]); break;
                     case Term.ProdTy { Items.IsEmpty: true }: value = new Value.VProdTy([]); break;
 
@@ -216,6 +220,7 @@ public static partial class Nbe
                     }
 
                     case Kont.MatchOn f: (env, term) = SelectArm(mc, f.Env, value, f.Match); goto evaluate;
+                    case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
 
                     case Kont.ModuleOpen f:
                     {
@@ -297,6 +302,7 @@ public static partial class Nbe
     {
         Value.VModule m => m.Entries.OfType<ModuleEntry.Field>().LastOrDefault(e => e.Name == name)?.Value
             ?? throw new FunException($"no member `{name}`"),
+        Value.VNominal n => ConstructorValue(n, name),
         Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(new Frame.FDot(name)) },
         Value.VMeta f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FDot(name))),
         Value.VVar r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FDot(name))),
@@ -308,6 +314,7 @@ public static partial class Nbe
         members.Aggregate(env, (acc, member) => member switch
         {
             OpenMember.Field f => acc.Push(DotValue(module, f.Name)),
+            OpenMember.Constructor c => acc.Push(OpenedConstructor(module, c)),
             _ => throw new InvalidOperationException($"unhandled open member {member.GetType().Name}"),
         });
 
@@ -391,6 +398,8 @@ public static partial class Nbe
             Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(i => Quote(mc, width, i))]),
             Value.VMeta f => QuoteSpine(mc, width, new Term.Meta(f.Id), f.Spine),
             Value.VVar r => QuoteSpine(mc, width, new Term.Var(LevelToIndex(width, r.Level)), r.Spine),
+            Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(c => Quote(mc, width, c))]),
+            Value.VCon c => QuoteConstructed(mc, width, c),
             // Evaluating the module pushes one entry per binding, so the ith
             // binding's term is read i entries further in.
             Value.VModule m => new Term.Module([.. m.Entries.Select((e, i) => e switch

@@ -63,6 +63,8 @@ public static partial class Unify
                 Solve(mc, width, b.Id, b.Spine, left);
                 return;
 
+            case (Value.VNominal or Value.VCon, Value.VNominal or Value.VCon): UnifyNominals(mc, width, left, right); return;
+
             // Module types are compared by their entries once signatures land; until
             // then a mismatch involving one is not known to be a real one.
             case (Value.VModule, _) or (_, Value.VModule):
@@ -158,6 +160,8 @@ public static partial class Unify
             Value.VAtomTy a => new Term.AtomTy(a.Ty),
             Value.VProd p => new Term.Prod([.. p.Items.Select(Go)]),
             Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(Go)]),
+            Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(Go)]),
+            Value.VCon c => c.Args.Aggregate((Term)new Term.Dot(Go(c.Nominal), c.Name), (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a))),
             Value.VNeutral n => n.Frames.Aggregate(n.Head switch
             {
                 Head.HVar h => Var(h.Level),
@@ -192,6 +196,9 @@ public static partial class Unify
                 return;
             case Value.VProdTy p:
                 foreach (var v in p.Items) OccursCheck(mc, id, v);
+                return;
+            case Value.VNominal n:
+                foreach (var c in n.Captures) OccursCheck(mc, id, c);
                 return;
             case Value.VNeutral n:
                 foreach (var frame in n.Frames)

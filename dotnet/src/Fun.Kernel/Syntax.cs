@@ -116,6 +116,7 @@ public abstract partial record Syntax(SourceSpan Span)
             Open o => o with { Of = Go(o.Of), Body = Go(o.Body) },
             OpenChoice c => c with { Name = Mark(c.Name) },
             Match m => m with { Scrutinee = Go(m.Scrutinee), Branches = [.. m.Branches.Select(b => new MatchBranch(b.Pattern.AddScope(scope), Go(b.Body)))] },
+            Enum e => e with { Constructors = [.. e.Constructors.Select(c => c with { Payloads = [.. c.Payloads.Select(Go)] })] },
             _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }

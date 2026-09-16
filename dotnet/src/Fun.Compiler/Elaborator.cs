@@ -180,6 +180,7 @@ public static partial class Elaborator
                 return InferModule(ctx, module);
 
             case Syntax.Match match: return InferMatch(ctx, match);
+            case Syntax.Enum e: return InferEnum(ctx, e);
 
             case Syntax.Open open:
             {
@@ -193,6 +194,7 @@ public static partial class Elaborator
                 var (of, ofType) = Infer(ctx, access.Of);
                 switch (ctx.Force(ofType))
                 {
+                    case Value.VU or Value.VPi when ConstructorMember(ctx, of, ofType, access.Field) is { } constructor: return constructor;
                     case Value.VModule module:
                         var member = module.PublicMember(access.Field)
                             ?? throw new FunException($"no public member `{access.Field}`");
@@ -282,7 +284,7 @@ public static partial class Elaborator
                 // here (lambda-check-ignores-written-parameter-type).
                 if (lam.Param.Type is { } written)
                     ctx.Unify(pi.Domain, TypeValue(ctx, written));
-                var inner = ctx.Bind(lam.Param.Name.Name, pi.Domain);
+                var inner = ctx.Bind(lam.Param.Name.Name, pi.Domain) with { Enclosing = lam.Body };
                 var bodyType = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, new Value.VVar(ctx.Width, []));
                 return new Term.Lam(Check(inner, lam.Body, bodyType));
             }
@@ -311,7 +313,7 @@ public static partial class Elaborator
     // both sides read the slot list, so adding it moves no index by hand.
     private static (Term, Value) InferModule(Context ctx, Syntax.Module module)
     {
-        var inner = ctx;
+        var inner = ctx with { Enclosing = module };
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
 
@@ -376,6 +378,7 @@ public static partial class Elaborator
     private static (Context, Term, EquatableArray<OpenMember>) OpenModule(Context ctx, Syntax of, string label)
     {
         var (term, type) = Infer(ctx, of);
+        if (OpenNominal(ctx, term, type, label) is { } nominal) return nominal;
         if (ctx.Force(type) is not Value.VModule moduleType)
             throw ctx.Force(type) is Value.VMeta or Value.VVar or Value.VNeutral
                 ? new NotImplementedException("not ported yet: opening a value of unknown type")
@@ -405,7 +408,7 @@ public static partial class Elaborator
     private static (Term, Value) InferLam(Context ctx, Syntax.Lam lam)
     {
         var domain = lam.Param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
-        var inner = ctx.Bind(lam.Param.Name.Name, domain);
+        var inner = ctx.Bind(lam.Param.Name.Name, domain) with { Enclosing = lam.Body };
         var (body, bodyType) = Infer(inner, lam.Body);
         var codomain = new Closure(ctx.Environment, inner.Quote(bodyType));
         return (new Term.Lam(body), new Value.VPi(lam.Param.Explicitness, domain, codomain));

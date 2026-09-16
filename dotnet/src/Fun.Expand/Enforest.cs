@@ -202,6 +202,7 @@ public static partial class Enforest
                     case TokenKind.Word w when w == TokenKind.Module:
                         return ParseModuleExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Match: return ParseMatch(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Enum: return ParseEnumExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Import:
                         return ParseImport(term.Span, rest);
                     case TokenKind.Word w:

@@ -38,14 +38,14 @@ public static partial class Elaborator
     private static Value RefineScrutineeType(Context ctx, Value type, EquatableArray<MatchBranch> branches)
     {
         type = ctx.Force(type);
-        if (type is Value.VAtomTy or Value.VProdTy) return type;
+        if (type is Value.VAtomTy or Value.VProdTy or Value.VNominal) return type;
 
         Value? Implied(Pattern p) => p switch
         {
             Pattern.Atom a => new Value.VAtomTy(AtomTypeOf(a.Value)),
             Pattern.Prod prod => new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
-            Pattern.Con => throw new NotImplementedException("not ported yet: constructor patterns"),
+            Pattern.Con c => (ResolveConstructorHead(ctx, c.Head) ?? throw new NotImplementedException(BareConstructorHeadQuestion)).Nominal,
             _ => null,
         };
 
@@ -98,8 +98,25 @@ public static partial class Elaborator
                 return (new CorePattern.Prod([.. items]), binders);
             }
 
-            case Pattern.Con:
-                throw new NotImplementedException("not ported yet: constructor patterns");
+            case Pattern.Con c:
+            {
+                var (nominal, constructor) = ResolveConstructorHead(ctx, c.Head)
+                    ?? throw new NotImplementedException(BareConstructorHeadQuestion);
+                ctx.Unify(type, nominal);
+                if (ctx.Force(type) is not Value.VNominal scrutinee)
+                    throw new InvalidOperationException("a scrutinee unified with a nominal is one");
+                if (c.Args.Length != constructor.Payloads.Length)
+                    throw new FunException($"`{constructor.Name}` takes {constructor.Payloads.Length} payloads, the pattern gives {c.Args.Length}");
+                var args = new List<CorePattern>();
+                var binders = new List<(string, Value)>();
+                foreach (var (arg, argType) in c.Args.Zip(Nbe.PayloadTypes(ctx.Metas, scrutinee, constructor)))
+                {
+                    var (core, argBinders) = ElaboratePattern(ctx, arg, argType);
+                    args.Add(core);
+                    binders.AddRange(argBinders);
+                }
+                return (new CorePattern.Con(constructor.Name, 0, [.. args]), binders);
+            }
 
             default:
                 throw new InvalidOperationException($"unhandled pattern {pattern.GetType().Name}");
@@ -110,6 +127,10 @@ public static partial class Elaborator
     private static Value? TypeAt(Context ctx, Value type, Occurrence occurrence) => occurrence switch
     {
         Occurrence.Base => type,
+        Occurrence.Payload p => TypeAt(ctx, type, p.Parent) is { } parent && ctx.Force(parent) is Value.VNominal n
+                                && n.Decl.Constructor(p.Constructor) is { } constructor
+            ? Nbe.PayloadTypes(ctx.Metas, n, constructor)[p.Index]
+            : null,
         Occurrence.Child c => TypeAt(ctx, type, c.Parent) is { } parent && ctx.Force(parent) is Value.VProdTy tuple
                               && c.Index < tuple.Items.Length
             ? tuple.Items[c.Index]
@@ -122,6 +143,7 @@ public static partial class Elaborator
         : ctx.Force(type) switch
         {
             Value.VAtomTy a => new MatchDomain.AtomDomain(a.Ty),
+            Value.VNominal n => new MatchDomain.Nominal([.. n.Decl.Constructors.Select(c => new ConstructorShape(c.Name, 0, c.Payloads.Length))]),
             _ => MatchDomain.Unknown.Instance,
         };
 

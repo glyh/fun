@@ -52,6 +52,7 @@ public static class Driver
     public static string Describe(Value value) => value switch
     {
         Value.VAtom { Atom: Atom.I64 n } => n.Value.ToString(),
+        Value.VCon c => c.Name,
         _ => value.GetType().Name,
     };
 }

@@ -42,8 +42,14 @@ public abstract record Occurrence
         public static readonly Base Instance = new();
     }
 
-    /// <summary>The <paramref name="Index"/>th element of a tuple, or of a constructor's spine.</summary>
+    /// <summary>The <paramref name="Index"/>th element of a tuple.</summary>
     public sealed record Child(Occurrence Parent, int Index) : Occurrence;
+
+    /// <summary>
+    /// The <paramref name="Index"/>th payload of the constructor <paramref name="Constructor"/>
+    /// at <paramref name="Parent"/>: the tag says which payload types apply.
+    /// </summary>
+    public sealed record Payload(Occurrence Parent, string Constructor, int Index) : Occurrence;
 }
 
 /// <summary>A compiled match: the tests to run on a scrutinee to choose an arm.</summary>

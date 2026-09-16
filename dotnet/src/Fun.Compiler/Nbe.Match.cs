@@ -34,8 +34,15 @@ public static partial class Nbe
                     };
                     continue;
 
-                case DecisionTree.Destruct:
-                    throw new NotImplementedException("not ported yet: matching constructors");
+                case DecisionTree.Destruct destruct:
+                    tree = Force(mc, ValueAt(mc, scrutinee, destruct.At)) switch
+                    {
+                        Value.VCon con => destruct.Cases.FirstOrDefault(c => c.Name == con.Name)?.Tree
+                            ?? destruct.Default
+                            ?? throw new InvalidOperationException($"no arm for constructor `{con.Name}`: the match was checked exhaustive"),
+                        var other => Stuck<DecisionTree>(other),
+                    };
+                    continue;
 
                 default:
                     throw new InvalidOperationException($"unhandled decision tree {tree.GetType().Name}");
@@ -50,6 +57,11 @@ public static partial class Nbe
         Occurrence.Child c => Force(mc, ValueAt(mc, root, c.Parent)) switch
         {
             Value.VProd p => p.Items[c.Index],
+            var other => Stuck<Value>(other),
+        },
+        Occurrence.Payload p => Force(mc, ValueAt(mc, root, p.Parent)) switch
+        {
+            Value.VCon con => con.Args[p.Index],
             var other => Stuck<Value>(other),
         },
         _ => throw new InvalidOperationException($"unhandled occurrence {at.GetType().Name}"),
