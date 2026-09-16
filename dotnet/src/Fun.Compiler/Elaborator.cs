@@ -292,6 +292,8 @@ public static partial class Elaborator
         expected = ctx.Force(expected);
         switch (stx, expected)
         {
+            case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
+
             case (Syntax.Lam lam, Value.VPi pi):
             {
                 if (lam.Param.Explicitness != pi.Explicitness)

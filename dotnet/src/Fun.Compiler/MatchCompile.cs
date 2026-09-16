@@ -11,6 +11,9 @@ public abstract record MatchDomain
 
     public sealed record AtomDomain(AtomTy Ty) : MatchDomain;
 
+    /// <summary>A struct's constructor fields, by label.</summary>
+    public sealed record Record(EquatableArray<string> Fields) : MatchDomain;
+
     public sealed record Unknown : MatchDomain
     {
         public static readonly Unknown Instance = new();
@@ -83,6 +86,12 @@ public static class MatchCompile
 
             case CorePattern.Atom:
                 return CompileSwitch(m, occurrence, source, domainOf);
+
+            case CorePattern.Record or CorePattern.StructType:
+                return Go(SpecializeRecord(m, domainOf(occurrence)), source, domainOf);
+
+            case CorePattern.AtomType or CorePattern.NominalHead:
+                return CompileTypeSwitch(m, occurrence, source, domainOf);
 
             default:
                 throw new InvalidOperationException($"unhandled pattern {first.GetType().Name}");
@@ -210,6 +219,70 @@ public static class MatchCompile
         return new Matrix(header, [.. rows]);
     }
 
+    /// <summary>
+    /// Replaces the first column by one column per field label - the domain's
+    /// and every label a record pattern names, in label order. A record pattern
+    /// contributes its field's pattern, or a wildcard for a field it leaves unnamed.
+    /// </summary>
+    private static Matrix SpecializeRecord(Matrix m, MatchDomain domain)
+    {
+        static EquatableArray<(string Name, CorePattern Pattern)>? FieldsOf(CorePattern p) => p switch
+        {
+            CorePattern.Record r => r.Fields,
+            CorePattern.StructType s => s.Fields,
+            _ => null,
+        };
+        var labels = (domain is MatchDomain.Record r ? r.Fields : [])
+            .Concat(m.Rows.SelectMany(row => FieldsOf(row.Patterns[0]) ?? []).Select(f => f.Name))
+            .Distinct()
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        return SpecializeAt(m, labels.Count, i => new Occurrence.Field(m.Header[0], labels[i]),
+            p => FieldsOf(p) is { } fields
+                ? labels.Select(label => fields.LastOrDefault(f => f.Name == label).Pattern ?? CorePattern.Wild.Instance).ToEquatableArray()
+                : null);
+    }
+
+    /// <summary>
+    /// A type-case column: one case per primitive type or nominal declaration the
+    /// column names, a nominal's parameters becoming child columns. The universe
+    /// of types is open, so the column needs a fallback row.
+    /// </summary>
+    private static (DecisionTree?, MissingPattern?) CompileTypeSwitch(
+        Matrix m, Occurrence occurrence, IReadOnlyList<CorePattern> source, Func<Occurrence, MatchDomain> domainOf)
+    {
+        static TypeKey? KeyOf(CorePattern p) => p switch
+        {
+            CorePattern.AtomType t => new TypeKey.Atom(t.Ty),
+            CorePattern.NominalHead n => new TypeKey.Nominal(n.Decl),
+            _ => null,
+        };
+        var keys = m.Rows.Select(r => KeyOf(r.Patterns[0])).OfType<TypeKey>().Distinct().ToList();
+
+        var cases = new List<TypeCase>();
+        foreach (var key in keys)
+        {
+            var arity = key is TypeKey.Nominal
+                ? m.Rows.Select(r => r.Patterns[0]).OfType<CorePattern.NominalHead>().First(n => new TypeKey.Nominal(n.Decl) == key).Arity
+                : 0;
+            var sub = SpecializeAt(m, arity, i => new Occurrence.Child(occurrence, i),
+                p => KeyOf(p) == key ? (p is CorePattern.NominalHead n ? n.Params : []) : null);
+            var (tree, missing) = Go(sub, source, domainOf);
+            if (missing is not null) return (null, missing);
+            cases.Add(new TypeCase(key, tree!));
+        }
+
+        var dm = DefaultMatrix(m);
+        if (dm.Rows.IsEmpty) return (null, MissingPattern.Wild.Instance);
+        var (fallback, missingDefault) = Go(dm, source, domainOf);
+        if (missingDefault is not null) return (null, missingDefault);
+        return (new DecisionTree.TypeSwitch(occurrence, [.. cases], fallback!), null);
+    }
+
+    /// <summary>Occurrences in the order an arm writes its binders: by path, a field step by its label.</summary>
+    public static IEnumerable<T> InSourceOrder<T>(IEnumerable<T> items, Func<T, Occurrence> occurrenceOf) =>
+        items.OrderBy(i => Path(occurrenceOf(i)), PathComparer.Instance);
+
     /// <summary>The rows that match whatever the first column holds, without it.</summary>
     private static Matrix DefaultMatrix(Matrix m) => new(
         [.. m.Header.Skip(1)],
@@ -232,22 +305,32 @@ public static class MatchCompile
         return [.. row.Bindings.Concat(remaining).OrderBy(Path, PathComparer.Instance)];
     }
 
-    private static ImmutableList<int> Path(Occurrence o) => o switch
+    /// <summary>
+    /// An occurrence's steps from the root: a position for a tuple element or a
+    /// payload, a label for a field. The children of one position are all of one
+    /// kind, so steps at the same depth always compare like with like.
+    /// </summary>
+    private static ImmutableList<(int Index, string Label)> Path(Occurrence o) => o switch
     {
         Occurrence.Base => [],
-        Occurrence.Child c => Path(c.Parent).Add(c.Index),
-        Occurrence.Payload p => Path(p.Parent).Add(p.Index),
+        Occurrence.Child c => Path(c.Parent).Add((c.Index, "")),
+        Occurrence.Payload p => Path(p.Parent).Add((p.Index, "")),
+        Occurrence.Field f => Path(f.Parent).Add((0, f.Name)),
         _ => throw new InvalidOperationException($"unhandled occurrence {o.GetType().Name}"),
     };
 
-    private sealed class PathComparer : IComparer<ImmutableList<int>>
+    private sealed class PathComparer : IComparer<ImmutableList<(int Index, string Label)>>
     {
         public static readonly PathComparer Instance = new();
 
-        public int Compare(ImmutableList<int>? a, ImmutableList<int>? b)
+        public int Compare(ImmutableList<(int Index, string Label)>? a, ImmutableList<(int Index, string Label)>? b)
         {
             for (var i = 0; i < Math.Min(a!.Count, b!.Count); i++)
-                if (a[i] != b[i]) return a[i].CompareTo(b[i]);
+            {
+                if (a[i].Index != b[i].Index) return a[i].Index.CompareTo(b[i].Index);
+                var byLabel = string.CompareOrdinal(a[i].Label, b[i].Label);
+                if (byLabel != 0) return byLabel;
+            }
             return a.Count.CompareTo(b.Count);
         }
     }
