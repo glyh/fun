@@ -9,3 +9,5 @@
 elaborate/elab-049                          lambda-check-ignores-written-parameter-type.md
 elaborate/lambda-param-type-mismatch        lambda-check-ignores-written-parameter-type.md
 elaborate/meta-solution-dependent-spine     meta-solution-renaming-not-lifted-under-binders.md
+elaborate/bare-constructor-pattern-needs-open         bare-constructor-pattern-resolves-by-name.md
+elaborate/bare-constructor-pattern-shadowed-by-value  bare-constructor-pattern-resolves-by-name.md

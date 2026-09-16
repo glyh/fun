@@ -21,8 +21,8 @@ Last updated: after .NET port wave 1, 2026-09-16.
   "Porting conventions"); each wave-1 ticket records its merge and follow-ups.
 - The prelude's source is copied to `dotnet/std/stage{1,2}.fun`; the OCaml
   prototype is not maintained once the port is done.
-- Open: how a bare constructor pattern resolves (by binder, or among the
-  scrutinee's constructors as the prototype does).
+- A bare constructor pattern resolves like any other name (binder or open); the
+  prototype's by-name lookup is ticketed and listed as a divergence.
 
 ### .NET port — slice 1: reader to evaluator (2026-09-16)
 

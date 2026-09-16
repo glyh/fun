@@ -21,9 +21,8 @@ public sealed partial record Context
 
 public static partial class Elaborator
 {
-    private const string BareConstructorHeadQuestion =
-        "not ported yet: a constructor pattern whose head resolves to no constructor " +
-        "(open question: resolve it through its binder, or by name among the scrutinee's constructors as the prototype does)";
+    private const string UnportedConstructorHead =
+        "not ported yet: a constructor pattern head that is a member of a non-nominal";
 
     /// <summary>
     /// <c>enum { … }</c>: a new declaration, whose identity is itself and the
@@ -172,11 +171,18 @@ public static partial class Elaborator
                 return (nominal, constructor);
             }
 
+            // A bare head resolves like any other name - through its binder or an
+            // open - never by name among the scrutinee's constructors (decided
+            // 2026-09-16). A raw `enum`'s constructors are therefore in scope only
+            // through `open`; `type` writes that open. Resolving to anything but a
+            // constructor is an error.
             case Syntax.Var v:
-                return ConstructorEntryAt(ctx, ctx.Locate(v.Id.Name).Index);
+                return ConstructorEntryAt(ctx, ctx.Locate(v.Id.Name).Index)
+                    ?? throw new FunException($"`{Label(v.Id.Name)}` is not a constructor in scope");
 
             case Syntax.OpenChoice choice:
-                return ConstructorEntryAt(ctx, ctx.LocateChoice(choice.Name.Name, choice.Opens, choice.Fallback).Index);
+                return ConstructorEntryAt(ctx, ctx.LocateChoice(choice.Name.Name, choice.Opens, choice.Fallback).Index)
+                    ?? throw new FunException($"`{choice.Name.Name}` is not a constructor in scope");
 
             default:
                 return null;

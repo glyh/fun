@@ -63,11 +63,11 @@ recursive types with type patterns. Newly passing, each checked: values core-061
 108, 124–126, 128–133, 136, elab-153, 154, 156, 157; errors elab-168 (Char/I64),
 elab-170, 171 (non-exhaustive); ok elab-158. C# 89/618; xUnit 73.
 
-**Open question (user):** should a bare constructor pattern resolve through its
-binder, or by name among the scrutinee type's constructors? The prototype does the
-latter: `{ Color = enum { Red, Green }; match (Color.Green) { Red => 1, Green => 2 } }`
-gives 2 with no `open Color`, and with `Red = 5` in scope `Red` is still the
-constructor. The port raises "not ported yet" there until decided.
+**Decided (user, 2026-09-16): B.** A bare constructor pattern resolves like any
+other name, through its binder or an open, never by name among the scrutinee's
+constructors; `type` brings constructors into scope with its `open`, a raw `enum`
+does not. The prototype's by-name lookup is a defect:
+[bare-constructor-pattern-resolves-by-name](bare-constructor-pattern-resolves-by-name.md).
 
 **Not ported, marked so:** stuck matches, type-case, record and struct-type
 patterns, effect branches, `rec` enums, the generative module stamp, and an enum

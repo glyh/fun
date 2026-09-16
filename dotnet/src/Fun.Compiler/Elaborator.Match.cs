@@ -45,7 +45,7 @@ public static partial class Elaborator
             Pattern.Atom a => new Value.VAtomTy(AtomTypeOf(a.Value)),
             Pattern.Prod prod => new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
-            Pattern.Con c => (ResolveConstructorHead(ctx, c.Head) ?? throw new NotImplementedException(BareConstructorHeadQuestion)).Nominal,
+            Pattern.Con c => (ResolveConstructorHead(ctx, c.Head) ?? throw new NotImplementedException(UnportedConstructorHead)).Nominal,
             _ => null,
         };
 
@@ -101,7 +101,7 @@ public static partial class Elaborator
             case Pattern.Con c:
             {
                 var (nominal, constructor) = ResolveConstructorHead(ctx, c.Head)
-                    ?? throw new NotImplementedException(BareConstructorHeadQuestion);
+                    ?? throw new NotImplementedException(UnportedConstructorHead);
                 ctx.Unify(type, nominal);
                 if (ctx.Force(type) is not Value.VNominal scrutinee)
                     throw new InvalidOperationException("a scrutinee unified with a nominal is one");

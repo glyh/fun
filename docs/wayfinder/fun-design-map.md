@@ -559,6 +559,9 @@ What remains, in the recommended order:
 - [Solving a meta applied to a spine fails on a dependent right-hand side](tickets/meta-solution-renaming-not-lifted-under-binders.md)
   — `rename` never lifts its renaming under a binder, so a solution mentioning its
   own binders raises `VarNotInSpine`. Fixed in the C# port only.
+- [A bare constructor pattern resolves by name](tickets/bare-constructor-pattern-resolves-by-name.md)
+  — `Red => …` finds the scrutinee's constructor with no `open`, even over a value
+  named `Red`. Fixed in the C# port only.
 - Port wave 1 (parallel forks): [structs, records, signatures](tickets/port-structs-records-signatures.md),
   [match and enums](tickets/port-match-and-enums.md), [implicit parameters](tickets/port-implicit-parameters.md),
   [recursive definitions](tickets/port-recursive-definitions.md), [imports](tickets/port-imports.md).
