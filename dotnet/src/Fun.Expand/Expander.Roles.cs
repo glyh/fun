@@ -4,6 +4,24 @@ namespace Fun.Expand;
 
 public sealed partial class Expander
 {
+    public Expander() => AddBaseRoles(_bindings);
+
+    /// <summary>
+    /// The compiler-known base roles, always in scope: <c>&lt;-</c> and its order
+    /// group <c>assignment</c> -- weakest (weaker than every group that states no
+    /// relation to it) and non-associative -- and <c>~&gt;</c>, read like <c>-&gt;</c>.
+    /// </summary>
+    private static void AddBaseRoles(BinderTable table)
+    {
+        var assignment = new Order("assignment@base", "assignment", Assoc.None, Weakest: true, [], []);
+        table.Extend("assignment", ScopeSet.Empty, "assignment", BinderMeaning.Role,
+            new Role(Fixity.Prefix, assignment, RoleMeaning.OrderGroup.Instance, SourceSpan.Synthetic, null));
+        table.Extend("<-", ScopeSet.Empty, "<-", BinderMeaning.Role,
+            new Role(Fixity.Infix, assignment, RoleMeaning.AssignRef.Instance, SourceSpan.Synthetic, null));
+        table.Extend("~>", ScopeSet.Empty, "~>", BinderMeaning.Role,
+            new Role(Fixity.Infix, null, RoleMeaning.PolyArrow.Instance, SourceSpan.Synthetic, null));
+    }
+
     /// <summary>Every intro scope an application minted here.</summary>
     private readonly HashSet<int> _introScopes = [];
 

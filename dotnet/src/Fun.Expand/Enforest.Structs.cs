@@ -11,9 +11,10 @@ public static partial class Enforest
     private static (Syntax, Terms) ParseStructExpr(SourceSpan startSpan, Terms terms)
     {
         var (body, rest) = BraceBody("struct", terms);
-        var bindings = new List<Binding>();
-        foreach (var stmt in Statements(new Terms(body.Items)))
-            bindings.AddRange((ParseStructField(stmt) ?? ParseMethod(stmt)) is { } item ? [item] : ParseModuleStatement(stmt));
+        // Read together, each item seeing the roles declared before it.
+        using var _ = _env is null ? null : Reading(_env.RegisteringItems());
+        var bindings = ReadContext(new Terms(body.Items), (stmt, _) =>
+            (ParseStructField(stmt) ?? ParseMethod(stmt)) is { } item ? [item] : ParseModuleStatement(stmt)).SelectMany(b => b);
         return (new Syntax.Struct([.. bindings], SourceSpan.Between(startSpan, body.Span)), rest);
     }
 
