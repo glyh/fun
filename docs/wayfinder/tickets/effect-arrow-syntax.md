@@ -148,32 +148,6 @@ So a use of the alias behaves exactly like writing `Unit ~> I64` in that
 parameter position, and a caller's pure result annotation is rejected rather than
 silently widened.
 
-## Not implemented: a standalone `~>` alias at its use site (2026-09-16)
-
-The minting half landed: `Callback = Unit ~> I64` now elaborates to
-`[e : EffectRow] -> Unit ->{e} I64` (it no longer silently means pure). But a
-*use* of that alias reads it as a **rank-2** type - the value must work for
-every row - which is the opposite of what the ticket asks:
-
-```fun
-Callback = Unit ~> I64;
-app = fn(g : Callback) : I64 { g(()) }     // accepted today; ticket wants an error
-app = fn(g : Callback) ~> I64 { g(()) };
-app(lg)                                     // rejected today (lg is not polymorphic)
-```
-
-For the ticket's behaviour the alias's binder must be **lifted to the enclosing
-definition** (rank 1): `fn(g : Callback)` would bind `e` as an implicit parameter
-of `app`, so `app`'s pure result contradicts `g`'s row and its `~>` result
-collects it. That is an elaborator change (implicit row binders in a parameter's
-annotation are bound by the enclosing lambda instead of instantiated), and it
-decides a language question the ticket does not:
-
-**Does an implicit row binder written inside a parameter's type mean rank 1 (the
-caller chooses the row) or rank 2 (the callee needs a value polymorphic in it)?**
-Today a hand-written `fn(g : [e : EffectRow] -> Unit ->{e} I64)` is rank 2;
-lifting changes that spelling's meaning too, or needs the two to be told apart.
-
 ### Rank of an alias's implicit row binder (grilled 2026-09-16)
 
 An implicit row variable minted by `~>` inside a parameter's type is **rank 1**:
@@ -188,3 +162,33 @@ app = fn(g : Callback) ~> I64 { g(()) }       // ok; app(log_cb) then has {Log}
 A hand-written `fn(g : [e : EffectRow] -> Unit ->{e} I64)` stays rank 2 (the
 callback must work for every row) — writing the binder explicitly is how you ask
 for that.
+
+### Rank 1, implemented (2026-09-16, branch `alias-rank1`)
+
+A type that mints its own row - one with no parameter to collect from, so
+`Callback = Unit ~> I64` - elaborates to a **function of that row**
+(`Elab_poly_arrows.signature` binds it with a type-level lambda), not to a
+polymorphic type. A parameter whose annotation *names* such a type mints the row
+at the definition that takes it (`Elab_type_expr.poly_row_alias` reads what the
+name is bound to; it never elaborates, so a type not yet in scope is simply not
+one), exactly as an inline `~>` does:
+
+```fun
+Callback = Unit ~> I64;
+app = fn(g : Callback) ~> I64 { g(()) };   // [e] -> (Unit ->{e} I64) ->{e} I64
+app(log_cb)                                 // {Log}; a pure callback is fine too
+```
+
+A binder written out in the annotation is left alone and stays rank 2 (a plain
+callback does not fit it). A *name* bound to such a written type is looked
+through like any alias, so `Poly = [e : EffectRow] -> Unit ->{e} I64` used as a
+parameter type is rank 2 only because its own type is `Type`, not `EffectRow ->
+Type`.
+
+**Still open, and not about aliases:** `app = fn(g : Callback) : I64 { g(()) }`
+is accepted, because `: T` does not yet mean "pure result" - it annotates the
+body's value type while the row is inferred from the body. The same holds for
+`bad = fn(u : Unit) : I64 { perform Log.write(1) }`. Enforcing the grilled rule
+(`: T` is the pure form, `->{E} T` / `~> T` the effectful one) is a separate
+change to every definition, with its own migration of any `: T` definition whose
+body performs.

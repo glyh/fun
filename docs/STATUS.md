@@ -52,6 +52,10 @@ Last updated: after the conformance suite, 2026-09-16.
   spliced in (`normalize_effect_row_value`), so a union disappears as its
   variables are solved; a union of two unsolved tails against a concrete row is a
   mismatch, not a guess.
+- A type that mints its own row (`Callback = Unit ~> I64`) is a function of that
+  row; a parameter naming one mints it at the definition that takes it (rank 1),
+  so its caller chooses the effects. A binder written out in the annotation stays
+  rank 2.
 - `~>` (a base role): every function type is read on its own - each parameter's
   type is a signature in its own right, and the chain's **final** arrow carries
   the variables its parameters minted (`Elab_poly_arrows`), so a partial
