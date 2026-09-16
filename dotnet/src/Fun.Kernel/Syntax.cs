@@ -33,7 +33,7 @@ public sealed record EffectRow(
 /// </summary>
 // Only the node kinds the current slice reaches are here; the rest of
 // `Syntax.kind` arrives as conformance cases demand them.
-public abstract record Syntax(SourceSpan Span)
+public abstract partial record Syntax(SourceSpan Span)
 {
     public sealed record Atom(Fun.Kernel.Atom Value, SourceSpan Span) : Syntax(Span);
 
@@ -135,7 +135,7 @@ public abstract record Syntax(SourceSpan Span)
 /// from outside as a member.
 /// </summary>
 // Only the binding kinds the current slice reaches are here.
-public abstract record Binding
+public abstract partial record Binding
 {
     public sealed record Let(Id Name, Syntax Value, bool Public, bool Recursive) : Binding;
 

@@ -559,6 +559,9 @@ What remains, in the recommended order:
 - [Solving a meta applied to a spine fails on a dependent right-hand side](tickets/meta-solution-renaming-not-lifted-under-binders.md)
   — `rename` never lifts its renaming under a binder, so a solution mentioning its
   own binders raises `VarNotInSpine`. Fixed in the C# port only.
+- Port wave 1 (parallel forks): [structs, records, signatures](tickets/port-structs-records-signatures.md),
+  [match and enums](tickets/port-match-and-enums.md), [implicit parameters](tickets/port-implicit-parameters.md),
+  [recursive definitions](tickets/port-recursive-definitions.md), [imports](tickets/port-imports.md).
 - [Checking a lambda ignores its written parameter type](tickets/lambda-check-ignores-written-parameter-type.md)
   — `fn(x : Char) { x }` checks against `I64 -> I64`. Fixed in the C# port only;
   `elab-049` diverges there.

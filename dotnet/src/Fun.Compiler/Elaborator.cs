@@ -115,7 +115,7 @@ public sealed record Context(
 /// Bidirectional elaboration of expanded syntax into core terms: <see cref="Infer"/>
 /// synthesises a type, <see cref="Check"/> verifies against one.
 /// </summary>
-public static class Elaborator
+public static partial class Elaborator
 {
     /// <summary>
     /// The base context: the atom types, as definitions. A program's indices

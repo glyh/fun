@@ -13,7 +13,7 @@ public enum EntryKind { Bound, Defined }
 /// </summary>
 // Only the constructors the current slice reaches are here; the rest of
 // `Core.term` arrives as conformance cases demand them.
-public abstract record Term
+public abstract partial record Term
 {
     public sealed record Var(int Index) : Term;
     public sealed record Lam(Term Body) : Term;
@@ -75,13 +75,13 @@ public abstract record Term
 public enum MemberKind { Public, Private }
 
 /// <summary>What an <c>open</c> pushes: a member by label.</summary>
-public abstract record OpenMember
+public abstract partial record OpenMember
 {
     public sealed record Field(string Name) : OpenMember;
 }
 
 /// <summary>A binding as the core language holds it.</summary>
-public abstract record BindingTerm
+public abstract partial record BindingTerm
 {
     public sealed record Let(string Name, MemberKind Kind, Term Def) : BindingTerm;
 
@@ -109,7 +109,7 @@ public abstract record BindingTerm
 public sealed record Slot(string? Name, MemberKind Kind, SlotSource Source);
 
 /// <summary>Where a slot's payload comes from; each side hangs its own payload on it.</summary>
-public abstract record SlotSource
+public abstract partial record SlotSource
 {
     /// <summary>Evaluate this term in the context so far.</summary>
     public sealed record Def(Term Term) : SlotSource;
@@ -119,7 +119,7 @@ public abstract record SlotSource
 /// The semantic domain. Variables are de Bruijn *levels* -- the distance from
 /// the outermost scope -- so a value stays meaningful as the context grows.
 /// </summary>
-public abstract record Value
+public abstract partial record Value
 {
     public sealed record VLam(Closure Body) : Value;
 
@@ -161,12 +161,12 @@ public abstract record Value
     public sealed record VVar(int Level, EquatableArray<Value> Spine) : Value;
 }
 
-public abstract record ModuleEntry
+public abstract partial record ModuleEntry
 {
     public sealed record Field(string Name, MemberKind Kind, Value Value) : ModuleEntry;
 }
 
-public abstract record Head
+public abstract partial record Head
 {
     public sealed record HVar(int Level) : Head;
     public sealed record HMeta(int Id) : Head;
@@ -174,7 +174,7 @@ public abstract record Head
 }
 
 /// <summary>An elimination waiting on a stuck value.</summary>
-public abstract record Frame
+public abstract partial record Frame
 {
     public sealed record FApp(Value Arg) : Frame;
     public sealed record FProj(int Index) : Frame;

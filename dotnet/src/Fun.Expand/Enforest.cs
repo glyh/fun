@@ -13,7 +13,7 @@ namespace Fun.Expand;
 // the prototype supports but this does not throws by name rather than parsing
 // into something else -- a silently wrong parse is the failure this port is
 // most at risk of.
-public static class Enforest
+public static partial class Enforest
 {
     /// <summary>How tightly the expression being read binds.</summary>
     public enum Prec { Top, ArrowRhs, Tight }

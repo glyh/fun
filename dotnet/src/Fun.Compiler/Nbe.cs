@@ -9,7 +9,7 @@ namespace Fun.Compiler;
 /// call width is bounded by memory, never by the CLR's 1 MB stack, and a
 /// captured continuation will be a slice of that stack.
 /// </summary>
-public static class Nbe
+public static partial class Nbe
 {
     // ---- the machine ------------------------------------------------------
 

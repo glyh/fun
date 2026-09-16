@@ -10,7 +10,7 @@ namespace Fun.Expand;
 /// </summary>
 // Slice 1 has no macros, so the expander takes no IMacroRuntime yet: nothing
 // here can call the elaborator. That parameter arrives with `macro`.
-public sealed class Expander
+public sealed partial class Expander
 {
     private readonly BinderTable _bindings = new();
     private int _scopeCounter;

@@ -7,7 +7,7 @@ namespace Fun.Compiler;
 public sealed class UnifyException(string message) : Exception(message);
 
 /// <summary>Structural unification of values, solving metas as it goes.</summary>
-public static class Unify
+public static partial class Unify
 {
     public static void Values(MetaContext mc, int width, Value left, Value right)
     {

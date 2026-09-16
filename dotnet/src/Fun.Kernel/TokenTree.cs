@@ -8,7 +8,7 @@ public enum Delimiter { Paren, Bracket, Brace }
 /// A raw token. Keyword and punctuation kinds are singletons; the ones that
 /// carry text or a literal are records.
 /// </summary>
-public abstract record TokenKind
+public abstract partial record TokenKind
 {
     public sealed record Ident(string Name) : TokenKind;
     public sealed record Int(long Value) : TokenKind;

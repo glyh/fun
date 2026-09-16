@@ -266,8 +266,51 @@ Defects found while porting, each reproduced in the prototype before filing:
   - `fn(x : Char) { x }` checks against `I64 -> I64`. The port unifies the written
   type with the expected domain; `elaborate/elab-049` diverges.
 
-Next slice candidates: the prelude (stage 1 enums, then stage 2's roles and
-macros) - nearly every remaining case opens it.
+## Porting conventions (2026-09-16)
+
+Every slice and every fork follows these. They are the port's working rules; the
+reasons are in the decisions above.
+
+1. **Spec.** The domain model (`docs/wayfinder/topics/core-tt-domain-model*.md`)
+   and the glossary (`CONTEXT.md`) are definitive; the OCaml prototype is
+   supporting material. Name types and members after the glossary (`Context`,
+   `Environment`, `Width`, `Entry`, `Locate`, `Binding`, `Binder`, `Slot`, `Meta`),
+   never after the prototype's abbreviations.
+2. **Honest runner.** An unported form or path raises `NotImplementedException`
+   ("not ported yet: …"); `FunException` is only for a genuine language error.
+   A missing feature must never make a case expecting `error` pass. When a case
+   starts passing, check it passes for the real reason.
+3. **Machine.** The evaluator never recurses on the native stack per object-level
+   call: a new term that needs a sub-evaluation gets a `Kont` frame. Readback,
+   unification and the elaborator may recurse over structure.
+4. **Slots (I2).** A binding contributes entries only through
+   `BindingTerm.Slots()`, which both the elaborator and the evaluator consume.
+5. **Prototype defects.** Reproduce in OCaml (a temporary conformance case), file
+   a ticket, fix in C# only, add the shared case with the *correct* `.expect`, and
+   list it in `test/conformance/prototype-divergences.txt`.
+6. **Tests.** A source-to-result test is a conformance case, never xUnit; xUnit is
+   for internals (shapes, unifier, machine, kernel).
+7. **Layout for parallel work.** A feature's code goes in its own partial files
+   (`Elaborator.<Feature>.cs`, `Nbe.<Feature>.cs`, `Syntax.<Feature>.cs`,
+   `Core.<Feature>.cs`, `Enforest.<Feature>.cs`, `Expander.<Feature>.cs`); shared
+   dispatch switches get one case line that calls into them.
+8. **Green steps.** Commit in green steps: `dotnet build`, `dotnet test`, the
+   conformance count never drops, and `dune test` stays green (OCaml code is not
+   edited by the port).
+9. **Undecided semantics.** Stop and report with a concrete example; never guess.
+10. **Shared docs.** A fork does not edit `docs/STATUS.md` or this ticket; it
+    reports, and the integrator records.
+
+## Wave 1 (2026-09-16)
+
+Forked in parallel from `b894c12`+1, one worktree each:
+[structs, records, signatures](port-structs-records-signatures.md),
+[match and enums](port-match-and-enums.md),
+[implicit parameters](port-implicit-parameters.md),
+[recursive definitions](port-recursive-definitions.md),
+[imports](port-imports.md). Held: effects (need `match`), refs (need effect
+rows), macros and syntax roles (need the prelude), recursive enums (need both
+match-enums and recursive definitions).
 
 ## Readiness (2026-09-16)
 
