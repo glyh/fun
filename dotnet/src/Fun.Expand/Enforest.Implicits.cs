@@ -2,14 +2,14 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// A bracket group in expression position: <c>[A : Type, B] -&gt; body</c>,
     /// one implicit arrow per binder. A binder written without a type ranges over
     /// <c>Unit</c>, as in the prototype. The codomain reads to the end of the terms.
     /// </summary>
-    private static (Syntax, Terms) ParseBracketPrimary(TokenTree.Group group, Terms rest)
+    private (Syntax, Terms) ParseBracketPrimary(TokenTree.Group group, Terms rest)
     {
         var after = DropSeparators(rest);
         if (!IsToken(after.Head, TokenKind.ThinArrow))
@@ -24,7 +24,7 @@ public static partial class Enforest
     }
 
     /// <summary><c>f[A, B]</c>: implicit arguments, curried. The list must touch its callee.</summary>
-    private static Syntax ParseImplicitApplication(Syntax fn, TokenTree.Group group)
+    private Syntax ParseImplicitApplication(Syntax fn, TokenTree.Group group)
     {
         RequireAdjacent(fn.Span, group.Span, "implicit argument list");
         var span = SourceSpan.Between(fn.Span, group.Span);

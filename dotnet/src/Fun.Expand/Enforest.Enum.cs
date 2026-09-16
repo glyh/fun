@@ -2,10 +2,10 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary><c>enum { Name, Name(Type, …), … }</c>.</summary>
-    private static (Syntax, Terms) ParseEnumExpr(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseEnumExpr(SourceSpan startSpan, Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)

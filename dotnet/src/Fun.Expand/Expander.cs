@@ -186,7 +186,7 @@ public sealed partial class Expander
             {
                 if (ExpandBlockDeclForm(b) is { } declForm) return declForm;
                 Syntax head;
-                using (Reading()) head = Enforest.ParseBlockHead(b.Span, new Terms(b.Terms));
+                head = Reader().ParseBlockHead(b.Span, new Terms(b.Terms));
                 return Expand(head);
             }
 
@@ -226,7 +226,7 @@ public sealed partial class Expander
                     if (!Enforest.DropSeparators(after).IsEmpty) pending.Push((new Binding.Items(after.ToArray()), publish));
                     var marked = new Terms([.. stmt.Select(t => t.AddScope(active))]);
                     EquatableArray<Binding> read;
-                    using (Reading()) read = Enforest.ParseModuleStatement(marked);
+                    read = Reader().ParseModuleStatement(marked);
                     foreach (var b in read.Reverse()) pending.Push((b, publish));
                     break;
                 }

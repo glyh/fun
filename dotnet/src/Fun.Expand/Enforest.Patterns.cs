@@ -2,13 +2,13 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// <c>P {x = p, y; _}</c>'s fields, separated by <c>,</c> or <c>;</c>. A lone
     /// label writes a binder of its name; <c>_</c> makes the pattern partial.
     /// </summary>
-    private static Pattern.Record ParseRecordPattern(Syntax type, TokenTree.Group group)
+    private Pattern.Record ParseRecordPattern(Syntax type, TokenTree.Group group)
     {
         var fields = new List<(string, Pattern)>();
         var partial = false;
@@ -43,7 +43,7 @@ public static partial class Enforest
     /// <c>pattern Name(a, b) = rhs</c>: the name binds a pattern synonym, whose
     /// parameters are binders of <c>rhs</c>. Null when the statement is not one.
     /// </summary>
-    private static (Id Name, Syntax.PatternSynonym Synonym)? ParsePatternSynonym(Terms stmt)
+    private (Id Name, Syntax.PatternSynonym Synonym)? ParsePatternSynonym(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Pattern)) return null;
@@ -70,7 +70,7 @@ public static partial class Enforest
     }
 
     /// <summary>The primitive type a pattern names by its spelling: the prototype's syntactic rule for type-case heads.</summary>
-    private static AtomTy? PrimitiveTypeHead(string name) => name switch
+    private AtomTy? PrimitiveTypeHead(string name) => name switch
     {
         "I64" => AtomTy.I64,
         "Unit" => AtomTy.Unit,
@@ -81,7 +81,7 @@ public static partial class Enforest
     };
 
     /// <summary><c>struct { x : p; _ }</c> after its keyword: each field's type pattern; <c>_</c> makes it partial.</summary>
-    private static (Pattern, Terms) ParseStructTypePattern(Terms rest)
+    private (Pattern, Terms) ParseStructTypePattern(Terms rest)
     {
         rest = DropSeparators(rest);
         if (rest.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)

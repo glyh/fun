@@ -2,14 +2,14 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// <c>trait Name(A) = sig { op : A -&gt; … }</c> (or <c>= module { op = A -&gt; … }</c>):
     /// its name, its one parameter and its operation types. Null when the
     /// statement is not a trait.
     /// </summary>
-    private static (Id Name, Id Param, EquatableArray<(string Name, Syntax Type)> Fields)? ParseTraitStatement(Terms stmt)
+    private (Id Name, Id Param, EquatableArray<(string Name, Syntax Type)> Fields)? ParseTraitStatement(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Trait)) return null;
@@ -37,7 +37,7 @@ public static partial class Enforest
     /// <c>sig { op : T; … }</c> or <c>module { op = T; … }</c>: each operation's type,
     /// which must be a function type.
     /// </summary>
-    private static EquatableArray<(string Name, Syntax Type)> ParseOperationTypes(string what, Terms terms)
+    private EquatableArray<(string Name, Syntax Type)> ParseOperationTypes(string what, Terms terms)
     {
         terms = DropSeparators(terms);
         var isModule = IsToken(terms.Head, TokenKind.Module);
@@ -66,7 +66,7 @@ public static partial class Enforest
     /// optional name, the trait path, its one argument and its operations. Null
     /// when the statement is not an impl.
     /// </summary>
-    private static (Id? Name, Syntax Trait, Syntax Arg, EquatableArray<(string Name, Syntax Value)> Fields)? ParseImplStatement(Terms stmt)
+    private (Id? Name, Syntax Trait, Syntax Arg, EquatableArray<(string Name, Syntax Value)> Fields)? ParseImplStatement(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Impl)) return null;
@@ -93,7 +93,7 @@ public static partial class Enforest
     }
 
     /// <summary><c>[name :] Trait(Arg)</c>: an optional impl name, the trait's path and its one argument.</summary>
-    private static (Id? Name, Syntax Trait, Syntax Arg) ParseImplHead(Terms terms)
+    private (Id? Name, Syntax Trait, Syntax Arg) ParseImplHead(Terms terms)
     {
         terms = DropSeparators(terms);
         Id? name = null;
@@ -117,7 +117,7 @@ public static partial class Enforest
     }
 
     /// <summary>A block statement declaring a trait or an impl, scoped over the rest of the block.</summary>
-    private static Syntax? ParseTraitOrImplStatement(SourceSpan span, Terms stmt, Syntax body)
+    private Syntax? ParseTraitOrImplStatement(SourceSpan span, Terms stmt, Syntax body)
     {
         if (ParseTraitStatement(stmt) is var (name, param, fields))
             return new Syntax.TraitDef(name, param, fields, body, span);
@@ -127,7 +127,7 @@ public static partial class Enforest
     }
 
     /// <summary>A module or struct item declaring a trait or an impl.</summary>
-    private static Binding? ParseTraitOrImplItem(Terms unprefixed, bool isPublic)
+    private Binding? ParseTraitOrImplItem(Terms unprefixed, bool isPublic)
     {
         if (ParseTraitStatement(unprefixed) is var (name, param, fields))
             return new Binding.Trait(name, param, fields, isPublic);
@@ -137,7 +137,7 @@ public static partial class Enforest
     }
 
     /// <summary><c>name : impl Trait(Arg)</c> in a signature: the named impl the module must provide.</summary>
-    private static Binding ParseSignatureImpl(Terms stmt)
+    private Binding ParseSignatureImpl(Terms stmt)
     {
         if (NameOf(stmt.Head) is not Id name || !IsToken(stmt.Drop(1).Head, TokenKind.Colon) || !IsToken(stmt.Drop(2).Head, TokenKind.Impl))
             throw new NotImplementedException("not ported yet: an unnamed impl in a signature");
@@ -146,6 +146,6 @@ public static partial class Enforest
     }
 
     /// <summary><c>{Eq, Show}</c> after an implicit binder's colon: the traits it must implement.</summary>
-    private static Syntax ParseTraitBoundSet(TokenTree.Group group) =>
+    private Syntax ParseTraitBoundSet(TokenTree.Group group) =>
         new Syntax.TraitBoundSet([.. SplitCommas(DropSeparators(new Terms(group.Items))).Select(ParseAll)], group.Span);
 }

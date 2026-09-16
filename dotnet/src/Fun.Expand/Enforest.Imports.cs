@@ -2,10 +2,10 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary><c>import "path"</c>.</summary>
-    private static (Syntax, Terms) ParseImport(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseImport(SourceSpan startSpan, Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Str path } leaf)

@@ -2,13 +2,13 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// <c>effect Name(Params) = sig { op : A -&gt; B; … }</c> (or <c>module { op = A -&gt; B }</c>).
     /// Null when the statement is not an effect declaration.
     /// </summary>
-    private static (Id Name, EquatableArray<Id> Params, EquatableArray<EffectOp> Ops)? ParseEffectDecl(Terms stmt)
+    private (Id Name, EquatableArray<Id> Params, EquatableArray<EffectOp> Ops)? ParseEffectDecl(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Effect)) return null;
@@ -35,7 +35,7 @@ public static partial class Enforest
     }
 
     /// <summary>An effect's operations: each an explicit arrow with no row of its own.</summary>
-    private static EquatableArray<EffectOp> ParseEffectOps(Terms terms)
+    private EquatableArray<EffectOp> ParseEffectOps(Terms terms)
     {
         terms = DropSeparators(terms);
         var signature = IsToken(terms.Head, TokenKind.Sig);
@@ -62,7 +62,7 @@ public static partial class Enforest
         }
     }
 
-    private static EffectOp ParseEffectOp(string name, Syntax type) => type switch
+    private EffectOp ParseEffectOp(string name, Syntax type) => type switch
     {
         Syntax.Arrow { Row: not null } => throw new ExpandException("effect operation types cannot have latent effects"),
         Syntax.Arrow { Explicitness: Explicitness.Explicit } arrow => new EffectOp(name, arrow.Domain, arrow.Codomain),
@@ -71,7 +71,7 @@ public static partial class Enforest
     };
 
     /// <summary><c>perform E.op arg</c>: a dotted path, then the argument, read tightly.</summary>
-    private static (Syntax, Terms) ParsePerform(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParsePerform(SourceSpan startSpan, Terms terms)
     {
         var (operation, rest) = ParseOperationPath(terms);
         var (arg, after) = ParseExprPrec(rest, Prec.Tight);
@@ -82,7 +82,7 @@ public static partial class Enforest
     /// An operation path <c>E.op</c> or <c>M.E.op</c>: a bare head, then members.
     /// The last member is the operation.
     /// </summary>
-    private static (Syntax.FieldAccess, Terms) ParseOperationPath(Terms terms)
+    private (Syntax.FieldAccess, Terms) ParseOperationPath(Terms terms)
     {
         terms = DropSeparators(terms);
         if (NameOf(terms.Head) is not Id head) throw new ExpandException("expected dotted identifier");
@@ -99,7 +99,7 @@ public static partial class Enforest
     }
 
     /// <summary><c>resume(arg)</c> or <c>resume arg</c>.</summary>
-    private static (Syntax, Terms) ParseResume(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseResume(SourceSpan startSpan, Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is TokenTree.Group { Delimiter: Delimiter.Paren } group)
@@ -114,7 +114,7 @@ public static partial class Enforest
     }
 
     /// <summary>An effect branch's head: <c>effect E.op pattern</c>.</summary>
-    private static (Syntax.FieldAccess, Pattern) ParseEffectBranchHead(Terms terms)
+    private (Syntax.FieldAccess, Pattern) ParseEffectBranchHead(Terms terms)
     {
         var (operation, rest) = ParseOperationPath(DropSeparators(terms).Tail);
         return (operation, ParsePattern(rest));
@@ -124,12 +124,12 @@ public static partial class Enforest
     /// A row: <c>E, F</c>, <c>E | r</c>, <c>| r1, r2</c>, <c>_</c> (inferred) or
     /// <c>E | _</c>. An empty row is pure.
     /// </summary>
-    private static EffectRow ParseEffectRow(TokenTree.Group group)
+    private EffectRow ParseEffectRow(TokenTree.Group group)
     {
         var terms = DropSeparators(new Terms(group.Items));
         if (terms.IsEmpty) return new EffectRow([], [], Inferred: false, Polymorphic: false);
 
-        static bool IsWildcard(Terms ts) => DropSeparators(ts) is { Count: 1 } one && NameOf(one.Head) is { Name: "_" };
+        bool IsWildcard(Terms ts) => DropSeparators(ts) is { Count: 1 } one && NameOf(one.Head) is { Name: "_" };
         EquatableArray<Syntax> Entries(Terms ts) =>
             DropSeparators(ts).IsEmpty ? [] : [.. SplitCommas(ts).Select(ParseAll)];
 
@@ -150,17 +150,17 @@ public static partial class Enforest
     /// <c>~&gt;</c>: an arrow whose row its signature decides. It is a base role, so
     /// it is recognised by the role its token resolves to, never by spelling.
     /// </summary>
-    private static bool IsPolyArrow(TokenTree? term) =>
-        _env is not null && term is TokenTree.Leaf leaf && TokenText(leaf) is string symbol
+    private bool IsPolyArrow(TokenTree? term) =>
+        term is TokenTree.Leaf leaf && TokenText(leaf) is string symbol
         && _env.Roles.FindRole(symbol, Fixity.Infix, leaf.Token.Scope) is { Meaning: RoleMeaning.PolyArrow };
 
-    private static EffectRow PolymorphicRow(bool inferred) => new([], [], inferred, Polymorphic: true);
+    private EffectRow PolymorphicRow(bool inferred) => new([], [], inferred, Polymorphic: true);
 
     /// <summary>
     /// An arrow's row, when one is written: <c>-&gt;{E}</c> (a brace group touching
     /// the arrow) or <c>~&gt;</c>. Returns the row and the terms after it.
     /// </summary>
-    private static (EffectRow? Row, Terms After) ParseArrowRow(TokenTree arrow, Terms afterArrow)
+    private (EffectRow? Row, Terms After) ParseArrowRow(TokenTree arrow, Terms afterArrow)
     {
         if (IsPolyArrow(arrow)) return (PolymorphicRow(inferred: false), afterArrow);
         return afterArrow.Head is TokenTree.Group { Delimiter: Delimiter.Brace } row && arrow.Span.End == row.Span.Start
@@ -173,7 +173,7 @@ public static partial class Enforest
     /// when effectful. Brackets decide grouping: the type ends at the first
     /// top-level <c>{ … }</c> after the row.
     /// </summary>
-    private static (Syntax? Type, EffectRow? Row, Terms After) ParseResult(Terms terms)
+    private (Syntax? Type, EffectRow? Row, Terms After) ParseResult(Terms terms)
     {
         var start = DropSeparators(terms);
         EffectRow? row;

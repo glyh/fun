@@ -2,10 +2,10 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary><c>match (scrutinee) { pattern => result, … }</c>.</summary>
-    private static (Syntax, Terms) ParseMatch(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseMatch(SourceSpan startSpan, Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Count < 2
@@ -32,10 +32,10 @@ public static partial class Enforest
     }
 
     /// <summary><c>=&gt;</c> separates a pattern from its result. It lexes as an ordinary operator but is reserved.</summary>
-    private static bool IsFatArrow(TokenTree term) =>
+    private bool IsFatArrow(TokenTree term) =>
         term is TokenTree.Leaf { Token.Kind: TokenKind.Operator { Spelling: "=>" } };
 
-    private static int IndexOf(Terms terms, Func<TokenTree, bool> pred)
+    private int IndexOf(Terms terms, Func<TokenTree, bool> pred)
     {
         for (var i = 0; i < terms.Count; i++) if (pred(terms[i])) return i;
         return -1;
@@ -45,7 +45,7 @@ public static partial class Enforest
     /// A match body's arms. An arm's result ends at the <c>,</c> before the next
     /// arm, or at its <c>}</c> when the result is a brace group.
     /// </summary>
-    private static List<Terms> SplitMatchBranches(Terms terms)
+    private List<Terms> SplitMatchBranches(Terms terms)
     {
         var arms = new List<Terms>();
         while (true)
@@ -87,7 +87,7 @@ public static partial class Enforest
     // ---- patterns ---------------------------------------------------------
 
     /// <summary>A whole pattern: alternatives separated by <c>|</c>.</summary>
-    public static Pattern ParsePattern(Terms terms)
+    public Pattern ParsePattern(Terms terms)
     {
         var bar = IndexOf(terms, t => IsToken(t, TokenKind.Bar));
         if (bar >= 0)
@@ -100,7 +100,7 @@ public static partial class Enforest
         return head;
     }
 
-    private static (Pattern, Terms) ParsePatternAtom(Terms terms)
+    private (Pattern, Terms) ParsePatternAtom(Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree term) throw new ExpandException("expected pattern");
@@ -139,7 +139,7 @@ public static partial class Enforest
     /// A constructor's dotted path, its argument list, or - unless the pattern
     /// began with a group - juxtaposed arguments.
     /// </summary>
-    private static (Pattern, Terms) ParsePatternPostfix(Pattern lhs, Terms terms, bool juxtapose)
+    private (Pattern, Terms) ParsePatternPostfix(Pattern lhs, Terms terms, bool juxtapose)
     {
         while (true)
         {
@@ -195,7 +195,7 @@ public static partial class Enforest
     }
 
     /// <summary>What can begin a juxtaposed constructor argument: an expression start that is a pattern atom.</summary>
-    private static bool IsPatternArgumentStart(TokenTree term) => term switch
+    private bool IsPatternArgumentStart(TokenTree term) => term switch
     {
         TokenTree.Leaf { Token.Kind: TokenKind.Int or TokenKind.Char or TokenKind.Str or TokenKind.Ident } => true,
         TokenTree.Group { Delimiter: Delimiter.Paren } => true,

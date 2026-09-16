@@ -25,8 +25,8 @@ public sealed partial class Expander
     /// <summary>Every intro scope an application minted here.</summary>
     private readonly HashSet<int> _introScopes = [];
 
-    /// <summary>Reads forms with the roles bound so far (M9).</summary>
-    private IDisposable Reading() => Enforest.Reading(EnforestEnv.Lazy(_bindings));
+    /// <summary>An enforester reading forms with the roles bound so far (M9).</summary>
+    private Enforest Reader() => Enforest.Lazy(_bindings);
 
     /// <summary>
     /// M7: a syntactic role never mixes with another binder of its name where
@@ -203,7 +203,7 @@ public sealed partial class Expander
     private Syntax? ExpandBlockDeclForm(Syntax.Block block)
     {
         (Instantiation, Terms)? use;
-        using (Reading()) use = Enforest.BlockDeclForm(new Terms(block.Terms));
+        use = Reader().BlockDeclForm(new Terms(block.Terms));
         if (use is not var (inst, rest)) return null;
 
         Syntax body = rest.IsEmpty ? new Syntax.Atom(Atom.Unit.Instance, block.Span) : new Syntax.Block(rest.ToArray(), rest.Span);
@@ -221,7 +221,7 @@ public sealed partial class Expander
         while (!Enforest.DropSeparators(terms).IsEmpty)
         {
             var (stmt, after) = Enforest.TakeStatement(terms);
-            using (Reading()) read.AddRange(Enforest.ParseModuleStatement(stmt));
+            read.AddRange(Reader().ParseModuleStatement(stmt));
             terms = after;
         }
         return read.SelectMany(BlockDecls);
