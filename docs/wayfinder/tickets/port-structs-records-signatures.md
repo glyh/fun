@@ -3,7 +3,7 @@ title: "Port: structs, record construction and signatures"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -48,3 +48,31 @@ and, for the rest, the next blocker.
 match-enums, implicits, rec, imports run concurrently. Expect them in
 `Syntax.cs`/`Core.cs`/`Enforest.cs`/`Expander.cs`/`Elaborator.cs`/`Nbe.cs`/`Unify.cs`
 dispatch switches only.
+
+## Resolution (2026-09-16)
+
+Merged from `port/structs` (`d946001`, `6049d96`, merge `d6dad02`, `9536c8f`).
+Structs, record construction and field access, signatures, module-type
+unification (width subtyping), opening a signature-typed module, and struct
+methods with `self`/`Self`. 28 cases newly pass, each error case checked for its
+real message: values core-020, 022, 140, 142, 147, 150, 151, 167, elab-125,
+imports/core-177; ok elab-078, 079, 117, 138, 139; error elab-086, 088, 090, 091,
+093–095, 118, 119, 132, 133, 135–137. C# 60/610; xUnit 60.
+
+Fixed on the way, both in slice 2a's C# code: run-time member access ignored
+visibility (`module { pub x = 1; x = 2 }.x` gave 2), and `open m` with
+`m : sig { … }` was rejected as a non-module.
+
+**Follow-ups:**
+- **Unverified prototype deviation (I3):** checking a module's type against a
+  signature takes the *last* member of a name, per domain model I3; the prototype
+  takes the first. Reproduce in OCaml; if confirmed, ticket it (see
+  [dotted-paths-first-match](dotted-paths-first-match.md)), add a shared case and
+  list it in `prototype-divergences.txt`.
+- **Unverified prototype deviation (I2):** `nbe_quote.ml` reads a struct's
+  bindings back all at `depth`, a module's at `depth + i`, though evaluation
+  pushes one entry per binding in both. The port uses `width + i` for both.
+  Reproduce and ticket as above.
+- Not ported, marked so: method calls on a record (`v.m`, `self.m`), effect rows
+  on methods, recursive records, impls and pattern synonyms in structs, `f{ e }`
+  implicit application.

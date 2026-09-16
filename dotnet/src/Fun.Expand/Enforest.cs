@@ -48,6 +48,8 @@ public static partial class Enforest
     /// <summary>A block statement, as the form it makes of the rest of the block.</summary>
     private static Syntax DoStatement(SourceSpan span, Terms stmt, Syntax body)
     {
+        if (ParseRecGroup(stmt) is { } group) return new Syntax.LetRecGroup(group, body, span);
+
         var decl = ParseValueDeclStatement(stmt);
         if (decl is var (name, type, value, recursive))
             return new Syntax.Let(name, type, value, body, recursive, span);
@@ -74,10 +76,11 @@ public static partial class Enforest
         }
 
         // `fn name(params) { body }`
-        if (stmt.Head is TokenTree.Leaf { Token.Kind: var fnKind } fnLeaf && fnKind == TokenKind.Fn
+        if (stmt.Head is TokenTree.Leaf { Token.Kind: var fnKind } && fnKind == TokenKind.Fn
             && NameOf(stmt.Drop(1).Head) is Id fnName)
         {
-            var (value, rest) = ParseFn(fnLeaf.Span, stmt.Drop(2));
+            // The parameter list touches the name, not the `fn` keyword.
+            var (value, rest) = ParseFn(fnName.Span, stmt.Drop(2));
             EnsureNoRest("function declaration", rest);
             return (fnName, null, value, recursive);
         }
@@ -144,6 +147,8 @@ public static partial class Enforest
             return [new Binding.Open(opened, "")];
         }
 
+        if (ParseRecGroup(unprefixed) is { } group) return [new Binding.RecGroup(group, isPublic)];
+
         if (ParseValueDeclStatement(unprefixed) is var (name, type, value, recursive))
         {
             var annotated = type is null ? value : new Syntax.Annotated(value, type, unprefixed.Span);
@@ -203,6 +208,14 @@ public static partial class Enforest
                         return ParseModuleExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Match: return ParseMatch(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Enum: return ParseEnumExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Struct:
+                        return ParseStructExpr(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Self:
+                        return (new Syntax.Self(term.Span), rest);
+                    case TokenKind.Word w when w == TokenKind.SelfType:
+                        return (new Syntax.SelfType(term.Span), rest);
+                    case TokenKind.Word w when w == TokenKind.Sig:
+                        return ParseSigExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Import:
                         return ParseImport(term.Span, rest);
                     case TokenKind.Word w:
@@ -279,6 +292,13 @@ public static partial class Enforest
                 continue;
             }
 
+            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } record && lhs.Span.End == record.Span.Start
+                && IndexOfToken(new Terms(record.Items), TokenKind.Eq) >= 0)
+            {
+                (lhs, terms) = (ParseRecordConstruct(lhs, record), terms.Tail);
+                continue;
+            }
+
             if (term is TokenTree.Group { Delimiter: Delimiter.Bracket } implicitArgs)
             {
                 lhs = ParseImplicitApplication(lhs, implicitArgs);
@@ -286,10 +306,10 @@ public static partial class Enforest
                 continue;
             }
 
-            // `f{ … }`: record construction.
+            // `f{ e }` with no `=`: an implicit argument written in braces.
             if (term is TokenTree.Group { Delimiter: Delimiter.Brace } postfix
                 && lhs.Span.End == postfix.Span.Start)
-                throw new NotImplementedException("not ported yet: record construction");
+                throw new NotImplementedException("not ported yet: an implicit argument written f{ e }");
 
             // An infix operator is a declared role; no role is bound yet.
             if (TokenText(term) is string symbol)

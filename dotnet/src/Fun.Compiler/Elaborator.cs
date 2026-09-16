@@ -102,7 +102,12 @@ public sealed partial record Context(
     {
         try
         {
-            Fun.Compiler.Unify.Values(Metas, Width, expected, inferred);
+            // One request: every step of the unification spends from the same budget.
+            Metas.Budget.Request("a unification", () =>
+            {
+                Fun.Compiler.Unify.Values(Metas, Width, expected, inferred);
+                return true;
+            });
         }
         catch (UnifyException e)
         {
@@ -192,19 +197,17 @@ public static partial class Elaborator
             case Syntax.FieldAccess access:
             {
                 var (of, ofType) = Infer(ctx, access.Of);
-                switch (ctx.Force(ofType))
-                {
-                    case Value.VU or Value.VPi when ConstructorMember(ctx, of, ofType, access.Field) is { } constructor: return constructor;
-                    case Value.VModule module:
-                        var member = module.PublicMember(access.Field)
-                            ?? throw new FunException($"no public member `{access.Field}`");
-                        return (new Term.Dot(of, access.Field), ctx.Force(member.Value));
-                    case Value.VMeta or Value.VVar or Value.VNeutral:
-                        throw new NotImplementedException("not ported yet: a member of a value of unknown type");
-                    default:
-                        throw new FunException($"member access `.{access.Field}` on a non-module");
-                }
+                // A nominal type or type former's members are its constructors.
+                if (ctx.Force(ofType) is Value.VU or Value.VPi && ConstructorMember(ctx, of, ofType, access.Field) is { } constructor)
+                    return constructor;
+                return InferMember(ctx, of, ofType, access.Field);
             }
+
+            case Syntax.Struct st: return InferStruct(ctx, st);
+            case Syntax.RecordConstruct record: return InferRecordConstruct(ctx, record);
+            case Syntax.Sig sig: return InferSig(ctx, sig);
+            case Syntax.Self: return ctx.LocateSelf();
+            case Syntax.SelfType: return (ctx.Quote(ctx.SelfType ?? throw new FunException("unbound variable: Self")), Value.VU.Instance);
 
             case Syntax.Annotated a:
             {
@@ -220,6 +223,12 @@ public static partial class Elaborator
 
             case Syntax.Ap { Explicitness: Explicitness.Implicit } ap:
                 return InferApImplicit(ctx, ap);
+
+            case Syntax.Let { Recursive: true } let:
+                return InferRecLet(ctx, let);
+
+            case Syntax.LetRecGroup group:
+                return InferLetRecGroup(ctx, group);
 
             case Syntax.Let { Recursive: false } let:
             {
@@ -297,7 +306,7 @@ public static partial class Elaborator
             {
                 var (term, inferred) = Infer(ctx, stx);
                 (term, inferred) = InsertImplicitArgs(ctx, term, inferred);
-                ctx.Unify(expected, inferred);
+                AgreeWithExpected(ctx, expected, inferred, term);
                 return term;
             }
         }
@@ -313,7 +322,7 @@ public static partial class Elaborator
     // both sides read the slot list, so adding it moves no index by hand.
     private static (Term, Value) InferModule(Context ctx, Syntax.Module module)
     {
-        var inner = ctx with { Enclosing = module };
+        var inner = ctx.WithoutSelf() with { Enclosing = module };
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
 
@@ -321,9 +330,13 @@ public static partial class Elaborator
         {
             switch (binding)
             {
-                case Binding.Let { Recursive: false } let:
+                case Binding.RecGroup group:
+                    inner = InferRecGroupBinding(inner, group, terms, entries);
+                    break;
+
+                case Binding.Let let:
                 {
-                    var (def, type) = Infer(inner, let.Value);
+                    var (def, type) = let.Recursive ? InferRecMember(inner, let) : Infer(inner, let.Value);
                     var kind = let.Public ? MemberKind.Public : MemberKind.Private;
                     var term = new BindingTerm.Let(Label(let.Name.Name), kind, def);
                     inner = ExtendFromSlots(inner, term, [(let.Name.Name, type)]);
@@ -377,8 +390,10 @@ public static partial class Elaborator
     /// </summary>
     private static (Context, Term, EquatableArray<OpenMember>) OpenModule(Context ctx, Syntax of, string label)
     {
-        var (term, type) = Infer(ctx, of);
-        if (OpenNominal(ctx, term, type, label) is { } nominal) return nominal;
+        var (term, inferred) = Infer(ctx, of);
+        if (OpenNominal(ctx, term, inferred, label) is { } nominal) return nominal;
+        // A signature-typed module (a parameter) opens as the signature gives it.
+        var type = ModuleTypeOf(ctx, inferred, term);
         if (ctx.Force(type) is not Value.VModule moduleType)
             throw ctx.Force(type) is Value.VMeta or Value.VVar or Value.VNeutral
                 ? new NotImplementedException("not ported yet: opening a value of unknown type")
@@ -427,14 +442,23 @@ public static partial class Elaborator
                 return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
             }
             case Value.VMeta or Value.VVar or Value.VNeutral:
-                throw new NotImplementedException("not ported yet: applying a value of unknown function type");
+                return InferApUnknown(ctx, fn, fnType, ap.Arg);
             default:
                 throw new FunException("applying non-function");
         }
     }
 
     /// <summary>A written type, as a term. Its own type must be a universe.</summary>
-    private static Term TypeTerm(Context ctx, Syntax stx) => Check(ctx, stx, Value.VU.Instance);
+    private static Term TypeTerm(Context ctx, Syntax stx) => TypeOfExpr(ctx, stx);
 
-    private static Value TypeValue(Context ctx, Syntax stx) => ctx.Eval(TypeTerm(ctx, stx));
+    /// <summary>
+    /// A written type's value. Reading a type inspects it, so a type computed by a
+    /// divergent call is an evaluation budget error here rather than a deferred one.
+    /// </summary>
+    private static Value TypeValue(Context ctx, Syntax stx)
+    {
+        var value = ctx.Eval(TypeTerm(ctx, stx));
+        ctx.Force(value);
+        return value;
+    }
 }

@@ -61,10 +61,16 @@ public static partial class Nbe
             EquatableArray<BindingTerm> RestBindings, EquatableArray<ModuleEntry> Entries) : Kont;
     }
 
-    public static Value Eval(MetaContext mc, Environment env, Term term)
+    /// <summary>
+    /// Evaluates <paramref name="term"/>: one request under the evaluation budget
+    /// (a nested one spends from the request it is part of).
+    /// </summary>
+    public static Value Eval(MetaContext mc, Environment env, Term term) =>
+        mc.Budget.Request("an evaluation", () => Machine(mc, env, term, new Stack<Kont>()));
+
+    /// <param name="stack">The frames the machine still owes work to, innermost last.</param>
+    private static Value Machine(MetaContext mc, Environment env, Term term, Stack<Kont> stack)
     {
-        // The frames the machine still owes work to, innermost last.
-        var stack = new Stack<Kont>();
 
         while (true)
         {
@@ -77,6 +83,7 @@ public static partial class Nbe
                 {
                     case Term.Var v: value = env[v.Index]; break;
                     case Term.Lam l: value = new Value.VLam(new Closure(env, l.Body)); break;
+                    case Term.Fix fix: value = new Value.VFix(fix.Members, env, fix.Index); break;
                     case Term.U: value = Value.VU.Instance; break;
                     case Term.Atom a: value = new Value.VAtom(a.Value); break;
                     case Term.Imported i: value = i.Value; break;
@@ -117,8 +124,26 @@ public static partial class Nbe
                         term = open.Of;
                         continue;
 
+                    case Term.Struct st:
+                    {
+                        // A finished struct leaves its StructOf frame for the continuation loop.
+                        var step = StartStruct(stack, env, st);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); continue; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        break;
+                    }
+
+                    case Term.RecordConstruct record:
+                        (env, term) = StartRecord(stack, env, record) is { Env: { } recordEnv, Term: { } recordTerm } ? (recordEnv, recordTerm) : throw new InvalidOperationException("a record starts with its struct");
+                        continue;
+
+                    case Term.Sig sig:
+                        value = new Value.VSig(new Closure(env, sig.Body));
+                        break;
+
                     case Term.Module module:
                     {
+                        if (module.Signature) stack.Push(new Kont.SignatureOf());
                         // The next piece of work is the first slot of the first
                         // binding with any; a module of none is done at once.
                         if (StartBindings(stack, env, module.Bindings, []) is { } next)
@@ -160,6 +185,16 @@ public static partial class Nbe
             while (true)
             {
                 if (stack.Count == 0) return value;
+                if (value is Value.VGlued glued && NeedsShape(stack.Peek()))
+                {
+                    if (glued.Unfolded.IsValueCreated)
+                    {
+                        value = glued.Unfolded.Value;
+                        continue;
+                    }
+                    (env, term) = Unfold(mc, stack, glued.Fix, glued.Arg);
+                    goto evaluate;
+                }
                 switch (stack.Pop())
                 {
                     case Kont.EvalArg f:
@@ -167,16 +202,29 @@ public static partial class Nbe
                         (env, term) = (f.Environment, f.Arg);
                         goto evaluate;
 
+                    // Applying a closure or a fixpoint continues the loop in its
+                    // body: this is where native recursion per call would be.
                     case Kont.ApplyTo f:
-                        // Applying a closure continues the loop in its body:
-                        // this is where native recursion per call would be.
-                        if (f.Fn is Value.VLam lam)
+                    {
+                        if (Enter(mc, stack, f.Fn, value, charged: false, out var applied) is { } next)
                         {
-                            (env, term) = (lam.Body.Environment.Push(value), lam.Body.Body);
+                            (env, term) = next;
                             goto evaluate;
                         }
-                        value = ApplyStuck(mc, f.Fn, value);
+                        value = applied ?? throw new InvalidOperationException("an application gave neither a term nor a value");
                         continue;
+                    }
+
+                    case Kont.ApplyArg f:
+                    {
+                        if (Enter(mc, stack, value, f.Arg, f.Charged, out var applied) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = applied ?? throw new InvalidOperationException("an application gave neither a term nor a value");
+                        continue;
+                    }
 
                     case Kont.LetBody f:
                         (env, term) = (f.Environment.Push(value), f.Body);
@@ -193,6 +241,38 @@ public static partial class Nbe
                     case Kont.DotOf f:
                         value = DotValue(value, f.Name);
                         continue;
+
+                    case Kont.StructOf f:
+                        value = AsStruct(f, value);
+                        continue;
+
+                    case Kont.SignatureOf:
+                        value = AsSignature(value);
+                        continue;
+
+                    case Kont.StructField f:
+                    {
+                        var step = ResumeStructField(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.RecordType f:
+                    {
+                        var step = ResumeRecord(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
+
+                    case Kont.RecordField f:
+                    {
+                        var step = ResumeRecordField(stack, f, value);
+                        if (step is { Env: { } e, Term: { } t }) { (env, term) = (e, t); goto evaluate; }
+                        value = step.Value ?? throw new InvalidOperationException("a step with neither a term nor a value");
+                        continue;
+                    }
 
                     case Kont.OpenBody f:
                         (env, term) = (PushOpenMembers(f.Env, value, f.Members), f.Body);
@@ -300,9 +380,10 @@ public static partial class Nbe
     /// </summary>
     public static Value DotValue(Value of, string name) => of switch
     {
-        Value.VModule m => m.Entries.OfType<ModuleEntry.Field>().LastOrDefault(e => e.Name == name)?.Value
-            ?? throw new FunException($"no member `{name}`"),
         Value.VNominal n => ConstructorValue(n, name),
+        Value.VModule m => VisibleMember(m.Entries, name) ?? throw new FunException($"no member `{name}`"),
+        Value.VStruct st => VisibleMember(st.Entries, name) ?? throw new FunException($"no member `{name}`"),
+        Value.VRecord r => r.Fields.FirstOrDefault(f => f.Name == name) is { Value: { } field } ? field : throw new FunException($"no field `{name}`"),
         Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(new Frame.FDot(name)) },
         Value.VMeta f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FDot(name))),
         Value.VVar r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FDot(name))),
@@ -319,15 +400,14 @@ public static partial class Nbe
         });
 
     /// <summary>Applies <paramref name="fn"/> to <paramref name="arg"/>.</summary>
+    // Through the machine, so a call is charged and a fixpoint unfolds exactly as in a program.
     public static Value Apply(MetaContext mc, Value fn, Value arg) =>
-        fn is Value.VLam lam
-            ? Eval(mc, lam.Body.Environment.Push(arg), lam.Body.Body)
-            : ApplyStuck(mc, fn, arg);
+        Eval(mc, Environment.Empty.Push(fn).Push(arg), new Term.Ap(new Term.Var(1), Explicitness.Explicit, new Term.Var(0)));
 
     /// <summary>Application to something that is not a closure: the result is stuck.</summary>
     private static Value ApplyStuck(MetaContext mc, Value fn, Value arg) => Force(mc, fn) switch
     {
-        Value.VLam lam => Eval(mc, lam.Body.Environment.Push(arg), lam.Body.Body),
+        Value.VLam or Value.VFix => Apply(mc, Force(mc, fn), arg),
         Value.VNeutral n => n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) },
         Value.VMeta f => f with { Spine = f.Spine.Add(arg) },
         Value.VVar r => r with { Spine = r.Spine.Add(arg) },
@@ -386,8 +466,12 @@ public static partial class Nbe
     public static Term Quote(MetaContext mc, int width, Value value)
     {
         var fresh = new Value.VVar(width, []);
+        // A deferred call reads back as the call, not its unfolding.
+        if (value is Value.VGlued glued)
+            return new Term.Ap(Quote(mc, width, glued.Fix), Explicitness.Explicit, Quote(mc, width, glued.Arg));
         return Force(mc, value) switch
         {
+            Value.VFix fix => QuoteFix(mc, width, fix),
             Value.VLam lam => new Term.Lam(Quote(mc, width + 1, ApplyClosure(mc, lam.Body, fresh))),
             Value.VPi pi => new Term.Pi(pi.Explicitness, Quote(mc, width, pi.Domain),
                 Quote(mc, width + 1, ApplyClosure(mc, pi.Codomain, fresh))),
@@ -406,7 +490,10 @@ public static partial class Nbe
             {
                 ModuleEntry.Field f => (BindingTerm)new BindingTerm.Let(f.Name, f.Kind, Quote(mc, width + i, f.Value)),
                 _ => throw new InvalidOperationException($"unhandled module entry {e.GetType().Name}"),
-            })]),
+            })], m.Partial),
+            Value.VStruct st => QuoteStruct(mc, width, st),
+            Value.VRecord r => new Term.RecordConstruct(Quote(mc, width, r.Type), [.. r.Fields.Select(f => (f.Name, Quote(mc, width, f.Value)))]),
+            Value.VSig sig => new Term.Sig(Quote(mc, width + 1, ApplyClosure(mc, sig.Body, fresh))),
             Value.VNeutral n => n.Frames.Aggregate(QuoteHead(width, n.Head), (acc, frame) => frame switch
             {
                 Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a.Arg)),
@@ -432,11 +519,24 @@ public static partial class Nbe
     /// <summary>A level as the index it is at <paramref name="width"/> entries.</summary>
     public static int LevelToIndex(int width, int level) => width - level - 1;
 
-    /// <summary>A value with any solved meta at its head resolved away.</summary>
-    public static Value Force(MetaContext mc, Value value)
+    /// <summary>A value with any solved meta or deferred call at its head resolved away.</summary>
+    // One request for the whole loop: a divergent call unfolds to another deferred
+    // call, and a request per unfold would refill the budget forever.
+    public static Value Force(MetaContext mc, Value value) =>
+        value is Value.VMeta or Value.VGlued
+            ? mc.Budget.Request("an evaluation", () => ForceLoop(mc, value))
+            : value;
+
+    private static Value ForceLoop(MetaContext mc, Value value)
     {
-        while (value is Value.VMeta meta && mc.Solution(meta.Id) is { } solution)
-            value = meta.Spine.Aggregate(solution, (f, a) => ApplyStuck(mc, f, a));
-        return value;
+        while (true)
+        {
+            if (value is Value.VMeta meta && mc.Solution(meta.Id) is { } solution)
+                value = meta.Spine.Aggregate(solution, (f, a) => ApplyStuck(mc, f, a));
+            else if (value is Value.VGlued glued)
+                value = glued.Unfolded.Value;
+            else
+                return value;
+        }
     }
 }

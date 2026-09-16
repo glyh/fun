@@ -7,6 +7,9 @@ public sealed class MetaContext
 {
     private readonly List<Value?> _solutions = [];
 
+    /// <summary>The evaluation budget every evaluation under these metas spends from.</summary>
+    public Budget Budget { get; } = new();
+
     public int Fresh()
     {
         _solutions.Add(null);

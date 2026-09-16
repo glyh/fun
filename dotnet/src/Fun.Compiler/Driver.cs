@@ -42,7 +42,8 @@ public static class Driver
 
     /// <summary>Runs an elaborated term. Throws <see cref="FunException"/> if it does not.</summary>
     // The program's indices count the base context's entries, so it runs in that environment.
-    public static Value Run(Elaborated program) => program.Context.Eval(program.Term);
+    public static Value Run(Elaborated program) =>
+        program.Context.Metas.Budget.Run(() => program.Context.Eval(program.Term));
 
     /// <summary>
     /// What a program produced, as far as the conformance suite may observe it:

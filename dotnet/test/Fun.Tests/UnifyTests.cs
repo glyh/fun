@@ -65,4 +65,38 @@ public class UnifyTests
         Assert.Throws<UnifyException>(() =>
             Unify.Values(mc, 5, new Value.VMeta(meta, [x, x]), new Value.VAtomTy(AtomTy.I64)));
     }
+
+    private static ModuleEntry Member(string name, MemberKind kind, AtomTy type) =>
+        new ModuleEntry.Field(name, kind, new Value.VAtomTy(type));
+
+    /// <summary>
+    /// A partial module type (a signature's instance) needs only its own public
+    /// members in the other side; a private member never counts.
+    /// </summary>
+    [Fact]
+    public void PartialModuleTypesAreWidthSubtyped()
+    {
+        var mc = new MetaContext();
+        var wanted = new Value.VModule([Member("x", MemberKind.Public, AtomTy.I64)], Partial: true);
+
+        Unify.Values(mc, 0, wanted, new Value.VModule(
+            [Member("x", MemberKind.Public, AtomTy.I64), Member("y", MemberKind.Public, AtomTy.Char)], Partial: false));
+        Assert.Throws<UnifyException>(() => Unify.Values(mc, 0, wanted,
+            new Value.VModule([Member("x", MemberKind.Private, AtomTy.I64)], Partial: false)));
+        Assert.Throws<UnifyException>(() => Unify.Values(mc, 0, wanted,
+            new Value.VModule([Member("x", MemberKind.Public, AtomTy.Char)], Partial: false)));
+    }
+
+    /// <summary>A field of unknown-typed value asks for any struct holding it: a partial struct.</summary>
+    [Fact]
+    public void PartialStructTypesAreWidthSubtyped()
+    {
+        var mc = new MetaContext();
+        var point = new Value.VStruct(
+            [Member("x", MemberKind.Field, AtomTy.I64), Member("y", MemberKind.Field, AtomTy.I64)], Partial: false);
+
+        Unify.Values(mc, 0, new Value.VStruct([Member("y", MemberKind.Field, AtomTy.I64)], Partial: true), point);
+        Assert.Throws<UnifyException>(() => Unify.Values(mc, 0,
+            new Value.VStruct([Member("x", MemberKind.Field, AtomTy.I64)], Partial: false), point));
+    }
 }
