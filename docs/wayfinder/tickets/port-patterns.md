@@ -48,11 +48,16 @@ elab-044, 046, 047; shared `values/type-case-refines-variable` (7),
 **Prototype defect** (ticketed by the integrator):
 [type-case-former-head-arity-from-template](type-case-former-head-arity-from-template.md).
 
-**Open (user):** pattern synonyms are not ported. The prototype substitutes a
-synonym's arguments into its right-hand side by position, not by parameter name,
-and a synonym reached through `open` is `UnknownConstructor`. Undecided: do
-arguments bind by name, and does a synonym resolve through its binder or an open
-like any other name?
+**Decided (user, 2026-09-16): a synonym's arguments bind by parameter name.**
+`pattern Flip(a, b) = Pt(b, a)` means what its definition says: in
+`match (Pt(10, 20)) { Flip(first, second) => first }`, `first` is `a`, which sits
+in `Pt`'s second slot, so the result is 20. The prototype substitutes by position
+(result 10), which makes the parameter names meaningless: a defect. A synonym's
+head resolves like any other bare pattern head, through its binder or an open
+(the constructor-pattern decision); the prototype's `UnknownConstructor` for a
+synonym reached through `open` is a defect too. Both go in as shared cases with
+the correct result, listed in `prototype-divergences.txt` with a ticket:
+[pattern-synonym-arguments-bind-by-position](pattern-synonym-arguments-bind-by-position.md).
 
 **Follow-up:** matching a nominal head evaluates the head term with a nested
 `Eval` (`ponytail:` in `Nbe.Patterns.cs`) rather than a `Kont` frame; its depth is
