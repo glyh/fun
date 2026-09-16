@@ -309,7 +309,14 @@ in `lib/semantic/typecheck/elab_prelude.ml`. The port keeps it as real files,
 decision); the OCaml is left as it is. The OCaml prototype is **not maintained
 once the port is done**, so the two copies are not kept in step long-term.
 
-## Wave 1 (2026-09-16)
+## Wave 1 (2026-09-16) — merged
+
+All five merged the same day: imports, implicit parameters, structs/records/
+signatures, recursive definitions, match and enums. C# conformance 21/604 →
+89/618; xUnit 44 → 73; OCaml 618 cases, 0 failed, 3 known divergences. Each ticket
+records what landed and its follow-ups. Open for the user: how a bare constructor
+pattern resolves ([match and enums](port-match-and-enums.md)).
+
 
 Forked in parallel from `b894c12`+1, one worktree each:
 [structs, records, signatures](port-structs-records-signatures.md),

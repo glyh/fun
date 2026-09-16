@@ -3,11 +3,26 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after .NET port slice 1, 2026-09-16.
+Last updated: after .NET port wave 1, 2026-09-16.
 
 ---
 
 ## Completed
+
+### .NET port — slice 2a and wave 1 (2026-09-16)
+
+- **89 of 618 conformance cases pass in C#** (73 xUnit). Added since slice 1:
+  first-class modules and `open` with open choices; imports of compilation units
+  (base-anchored, value transport, cycles, elaborate-once); implicit parameters and
+  insertion; structs, record construction, signatures, module-type unification,
+  struct methods; `rec` values and groups with the checker budget and lazy delta;
+  `match` compiled to decision trees, non-recursive enums as nominals (E11).
+- Built by five parallel forks against written conventions (port ticket,
+  "Porting conventions"); each wave-1 ticket records its merge and follow-ups.
+- The prelude's source is copied to `dotnet/std/stage{1,2}.fun`; the OCaml
+  prototype is not maintained once the port is done.
+- Open: how a bare constructor pattern resolves (by binder, or among the
+  scrutinee's constructors as the prototype does).
 
 ### .NET port — slice 1: reader to evaluator (2026-09-16)
 

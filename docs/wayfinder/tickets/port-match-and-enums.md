@@ -3,7 +3,7 @@ title: "Port: match, patterns and (non-recursive) enums"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -49,3 +49,27 @@ and that need nothing else unported.
 
 structs, implicits, rec, imports run concurrently. `rec T = enum { … }` belongs to
 a later ticket once this and the rec fork are merged.
+
+## Resolution (2026-09-16)
+
+Merged from `port/match-enums` (`bf735cd`, `18e4fd8`, merges `51a1c01`, `f4301a2`,
+`59d8230`). A `match` compiles once, at elaboration, to a decision tree over the
+scrutinee's type; exhaustiveness is a result naming a missing value; the
+evaluator walks the tree in a `Kont` frame. Enums are nominals whose identity is
+the declaration plus its captures' values, compared by conversion (E11); their
+constructors are members (`T.C`, `open T`), type formers included; a constructor
+pattern's head resolves through its binder. `Elaborator.Rec.cs` now detects
+recursive types with type patterns. Newly passing, each checked: values core-061,
+108, 124–126, 128–133, 136, elab-153, 154, 156, 157; errors elab-168 (Char/I64),
+elab-170, 171 (non-exhaustive); ok elab-158. C# 89/618; xUnit 73.
+
+**Open question (user):** should a bare constructor pattern resolve through its
+binder, or by name among the scrutinee type's constructors? The prototype does the
+latter: `{ Color = enum { Red, Green }; match (Color.Green) { Red => 1, Green => 2 } }`
+gives 2 with no `open Color`, and with `Red = 5` in scope `Red` is still the
+constructor. The port raises "not ported yet" there until decided.
+
+**Not ported, marked so:** stuck matches, type-case, record and struct-type
+patterns, effect branches, `rec` enums, the generative module stamp, and an enum
+declared in a body that also holds structs, signatures, record construction or
+`rec` groups.
