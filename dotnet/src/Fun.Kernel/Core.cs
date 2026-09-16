@@ -105,13 +105,18 @@ public abstract partial record BindingTerm
     public EquatableArray<Slot>? Slots() => this switch
     {
         Let l => [new Slot(l.Name, l.Kind, new SlotSource.Def(l.Def))],
+        Impl i => [new Slot(i.Name, i.Kind, new SlotSource.Def(i.Def)) { ImplType = i.DictType }],
         Open => null,
         _ => throw new InvalidOperationException($"unhandled binding term {GetType().Name}"),
     };
 }
 
 /// <summary>One entry a binding adds, with the name it exports where it has one.</summary>
-public sealed record Slot(string? Name, MemberKind Kind, SlotSource Source);
+public sealed record Slot(string? Name, MemberKind Kind, SlotSource Source)
+{
+    /// <summary>For an impl's slot, its dictionary type: the entry it exports is an impl, not a field.</summary>
+    public Value? ImplType { get; init; }
+}
 
 /// <summary>Where a slot's payload comes from; each side hangs its own payload on it.</summary>
 public abstract partial record SlotSource
