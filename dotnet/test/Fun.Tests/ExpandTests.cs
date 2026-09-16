@@ -10,11 +10,11 @@ public class ExpandTests
     {
         Syntax.Atom a => a.Value.ToString(),
         Syntax.Var v => v.Id.Name,
-        Syntax.Ap a => $"({Show(a.Fn)} {Show(a.Arg)})",
-        Syntax.Lam l => $"(fn {l.Param.Name.Name}{ShowType(l.Param.Type)} {Show(l.Body)})",
+        Syntax.Ap a => $"({Show(a.Fn)} {Implicit(a.Explicitness, Show(a.Arg))})",
+        Syntax.Lam l => $"(fn {Implicit(l.Param.Explicitness, l.Param.Name.Name + ShowType(l.Param.Type))} {Show(l.Body)})",
         Syntax.Let l => $"(let {l.Name.Name}{ShowType(l.Type)} {Show(l.Value)} {Show(l.Body)})",
         Syntax.Annotated a => $"({Show(a.Inner)} : {Show(a.Type)})",
-        Syntax.Arrow a => $"({(a.Name is null ? "" : a.Name.Name + " : ")}{Show(a.Domain)} -> {Show(a.Codomain)})",
+        Syntax.Arrow a => $"({Implicit(a.Explicitness, (a.Name is null ? "" : a.Name.Name + " : ") + Show(a.Domain))} -> {Show(a.Codomain)})",
         Syntax.Prod p => $"(tuple {string.Join(" ", p.Items.Select(Show))})",
         Syntax.Proj p => $"({Show(p.Of)}.{p.Index})",
         Syntax.FieldAccess f => $"({Show(f.Of)}.{f.Field})",
@@ -28,6 +28,10 @@ public class ExpandTests
     };
 
     private static string ShowType(Syntax? t) => t is null ? "" : $" : {Show(t)}";
+
+    /// <summary>An implicit binder, argument or domain is bracketed, as written.</summary>
+    private static string Implicit(Explicitness explicitness, string shown) =>
+        explicitness == Explicitness.Implicit ? $"[{shown}]" : shown;
 
     private static string ShowBinding(Binding b) => b switch
     {
@@ -65,11 +69,27 @@ public class ExpandTests
         Assert.Equal(expected, Show(Expander.ExpandExpr(source)));
 
     [Theory]
+    // Implicit parameters precede the explicit ones; each is a binder the rest sees.
+    [InlineData("fn[A : Type](a : A) { a }", "(fn [A#0 : Type] (fn a#1 : A#0 a#1))")]
+    [InlineData("fn[A : Type] { 1 }", "(fn [A#0 : Type] 1)")]
+    // `[A : Type] -> …` is one implicit arrow per binder, its name scoping over the rest.
+    [InlineData("[A : Type, B : Type] -> A -> B", "([A#0 : Type] -> ([B#1 : Type] -> (A#0 -> B#1)))")]
+    // A result type needs every parameter's type, implicit ones included.
+    [InlineData("fn[A : Type](a : A) : A { a }", "((fn [A#0 : Type] (fn a#1 : A#0 a#1)) : ([A#2 : Type] -> (a#3 : A#2 -> A#2)))")]
+    // `f[I64]` supplies an implicit argument; it may be followed by an explicit call.
+    [InlineData("f[I64, Unit](1)", "(((f [I64]) [Unit]) 1)")]
+    public void ExpandsImplicits(string source, string expected) =>
+        Assert.Equal(expected, Show(Expander.ExpandExpr(source)));
+
+    [Theory]
     // Whitespace application is not the language.
     [InlineData("f (1)", "function call must be adjacent to the callee; whitespace application is not supported")]
     [InlineData("{ }", "empty block")]
     [InlineData("{ x = ; 1 }", "missing value for binding: x")]
     [InlineData("fn { 1 }", "fn requires at least one parameter list")]
+    [InlineData("fn[]() { 1 }", "empty implicit parameter list")]
+    [InlineData("f [I64]", "implicit argument list must be adjacent to the callee; whitespace application is not supported")]
+    [InlineData("fn [A : Type](a) { a }", "implicit fn parameter list must be adjacent to the callee; whitespace application is not supported")]
     public void Rejects(string source, string message) =>
         Assert.Equal(message, Assert.Throws<ExpandException>(() => Expander.ExpandExpr(source)).Message);
 
@@ -79,6 +99,7 @@ public class ExpandTests
     [Theory]
     [InlineData("1 + 2", "not ported yet: the infix operator `+`")]
     [InlineData("match (x) { }", "not ported yet: the `match` form")]
+    [InlineData("fn[A : {Eq}](a : A) { a }", "not ported yet: trait bounds")]
     public void RejectsUnported(string source, string message) =>
         Assert.Equal(message, Assert.Throws<NotImplementedException>(() => Expander.ExpandExpr(source)).Message);
 }

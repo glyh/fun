@@ -79,6 +79,7 @@ public static partial class Nbe
                     case Term.Lam l: value = new Value.VLam(new Closure(env, l.Body)); break;
                     case Term.U: value = Value.VU.Instance; break;
                     case Term.Atom a: value = new Value.VAtom(a.Value); break;
+                    case Term.Imported i: value = i.Value; break;
                     case Term.AtomTy a: value = new Value.VAtomTy(a.Ty); break;
                     case Term.Prim p:
                         value = new Value.VNeutral(Value.VU.Instance, new Head.HPrim(p.Name), []);

@@ -94,7 +94,7 @@ public abstract partial record Syntax(SourceSpan Span)
 
         return this switch
         {
-            Atom => this,
+            Atom or Import => this,
             Var v => v with { Id = Mark(v.Id) },
             Ap a => a with { Fn = Go(a.Fn), Arg = Go(a.Arg) },
             Lam l => l with { Param = MarkParam(l.Param, scope), Body = Go(l.Body) },

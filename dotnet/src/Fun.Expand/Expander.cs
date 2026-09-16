@@ -79,7 +79,7 @@ public sealed partial class Expander
     {
         switch (stx)
         {
-            case Syntax.Atom or Syntax.OpenChoice:
+            case Syntax.Atom or Syntax.OpenChoice or Syntax.Import:
                 return stx;
 
             case Syntax.Var v:
