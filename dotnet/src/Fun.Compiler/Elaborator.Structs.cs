@@ -151,8 +151,10 @@ public static partial class Elaborator
     {
         var (type, typeType) = Infer(ctx, record.Type);
         (type, typeType) = InsertImplicitArgs(ctx, type, typeType);
-        if (ctx.Force(typeType) is not Value.VStruct structType)
-            throw ctx.Force(typeType) is Value.VPi or Value.VMeta or Value.VVar or Value.VNeutral
+        // A recursive occurrence is a type of type `Type`: its shape is its unfolding.
+        var shape = ctx.Force(typeType) is Value.VU ? Nbe.Unfold(ctx.Metas, ctx.Eval(type)) : Nbe.Unfold(ctx.Metas, typeType);
+        if (shape is not Value.VStruct structType)
+            throw shape is Value.VPi or Value.VMeta or Value.VVar or Value.VNeutral or Value.VRecursiveOccurrence
                 ? new NotImplementedException("not ported yet: record construction through an explicit type former or a type of unknown shape")
                 : new FunException("record construction of a non-struct");
 
@@ -204,7 +206,7 @@ public static partial class Elaborator
     private static (Term, Value) InferMember(Context ctx, Term of, Value ofType, string name)
     {
         var dot = new Term.Dot(of, name);
-        switch (ctx.Force(ModuleTypeOf(ctx, ofType, of)))
+        switch (Nbe.Unfold(ctx.Metas, ModuleTypeOf(ctx, ofType, of)))
         {
             case Value.VModule module:
                 var member = module.PublicMember(name) ?? throw new FunException($"no public member `{name}`");
@@ -285,7 +287,7 @@ public static partial class Elaborator
 
     private static bool IsTypeLike(Context ctx, Value value) => ctx.Force(value) switch
     {
-        Value.VU or Value.VAtomTy or Value.VPi or Value.VProdTy or Value.VSig => true,
+        Value.VU or Value.VAtomTy or Value.VPi or Value.VProdTy or Value.VSig or Value.VRecursiveOccurrence => true,
         Value.VModule { Partial: true } m => m.Entries.OfType<ModuleEntry.Field>().All(f => f.Kind switch
         {
             MemberKind.Public => IsTypeLike(ctx, f.Value),

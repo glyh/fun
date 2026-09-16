@@ -155,6 +155,79 @@ public static partial class Elaborator
         return body;
     }
 
+    /// <summary>
+    /// A group of recursive struct types: <c>rec L = struct { … }</c>, a former
+    /// <c>rec L = fn(A : Type) { struct { … } }</c>, or <c>rec A = … and B = …</c>.
+    /// Each binding mints a declaration; every member's body sees every member's
+    /// name as a recursive occurrence of it (a function of the parameters to one)
+    /// capturing what the enclosing scope names (E11). Member <c>i</c> elaborates
+    /// where its binding sits, after the members before it are pushed, and its core
+    /// binds the occurrences itself; its finished value is what an occurrence of it
+    /// unfolds to.
+    /// </summary>
+    private static EquatableArray<(string Key, Term Term, Value Type, Value Value)> InferStructGroup(
+        Context ctx, EquatableArray<RecMember> members)
+    {
+        var width = ctx.Width;
+        var group = members.Length;
+        var decls = members.Select(m => new RecordDecl(Label(m.Name.Name))).ToList();
+        var arities = members.Select(m => Lambdas(m.Value).Count).ToList();
+        var types = members.Select(m => ctx.Eval(FormerType(Lambdas(m.Value)))).ToList();
+        var levels = FirstBoundLevel(ctx) is int firstBound
+            ? NamedLevels(ctx, ctx.Enclosing)
+                .Where(l => l >= firstBound && l < width && !ctx.RecursiveLevels.Contains(l))
+                .Distinct()
+                .Order()
+                .ToEquatableArray()
+            : [];
+
+        var results = new List<(string, Term, Value, Value)>();
+        var at = ctx;
+        for (var i = 0; i < group; i++)
+        {
+            // The occurrences, bound on top of the members already pushed.
+            var start = at.Width;
+            var inner = Enumerable.Range(0, group).Aggregate(at, (c, j) =>
+                c.Define(members[j].Name.Name, types[j], c.Eval(OccurrenceTerm(decls[j], arities[j], levels, c.Width))))
+                with { RecursiveLevels = at.RecursiveLevels.Union(Enumerable.Range(start, group)) };
+
+            var (body, type) = Infer(inner, members[i].Value);
+            var core = Enumerable.Range(0, group).Reverse().Aggregate(body, (acc, j) =>
+                new Term.Let(Nbe.Quote(ctx.Metas, start + j, types[j]), OccurrenceTerm(decls[j], arities[j], levels, start + j), acc));
+
+            var value = at.Eval(core);
+            decls[i].Finish(at.Environment, core, levels);
+            results.Add((members[i].Name.Name, core, type, value));
+            at = at.Define(members[i].Name.Name, type, value);
+        }
+        return [.. results];
+    }
+
+    private static List<Syntax.Lam> Lambdas(Syntax value)
+    {
+        if (value is Syntax.Annotated a) value = a.Inner;
+        var lambdas = new List<Syntax.Lam>();
+        while (value is Syntax.Lam lam)
+        {
+            lambdas.Add(lam);
+            value = lam.Body;
+        }
+        return lambdas;
+    }
+
+    /// <summary>
+    /// <c>fn(A…) { occurrence(A…) }</c>, as a term at width <paramref name="at"/>:
+    /// each captured level is the variable it is there.
+    /// </summary>
+    private static Term OccurrenceTerm(RecordDecl decl, int arity, EquatableArray<int> levels, int at)
+    {
+        Term body = new Term.RecursiveOccurrence(decl,
+            [.. levels.Select(l => (Term)new Term.Var(Nbe.LevelToIndex(at + arity, l)))],
+            [.. Enumerable.Range(0, arity).Select(k => (Term)new Term.Var(arity - 1 - k))]);
+        for (var j = 0; j < arity; j++) body = new Term.Lam(body);
+        return body;
+    }
+
     /// <summary>A former's type: a <c>Type</c> parameter per lambda, then <c>Type</c>.</summary>
     private static Term FormerType(List<Syntax.Lam> lambdas) =>
         Enumerable.Reverse(lambdas).Aggregate((Term)Term.U.Instance,

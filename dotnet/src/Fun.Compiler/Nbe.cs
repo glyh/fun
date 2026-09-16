@@ -159,6 +159,7 @@ public static partial class Nbe
 
                     case Term.Nominal { Captures.IsEmpty: true } n: value = new Value.VNominal(n.Decl, []); break;
                     case Term.Nominal n: stack.Push(new Kont.NominalOf(n.Decl)); term = new Term.Prod(n.Captures); continue;
+                    case Term.RecursiveOccurrence o: stack.Push(new Kont.RecursiveOccurrenceOf(o.Decl, o.Captures.Length)); term = new Term.Prod([.. o.Captures, .. o.Args]); continue;
                     case Term.Con con: value = Construct(env, con); break;
 
                     case Term.Prod { Items.IsEmpty: true }: value = new Value.VProd([]); break;
@@ -301,6 +302,7 @@ public static partial class Nbe
 
                     case Kont.MatchOn f: (env, term) = SelectArm(mc, f.Env, value, f.Match); goto evaluate;
                     case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
+                    case Kont.RecursiveOccurrenceOf f: value = RecursiveOccurrence(f, (Value.VProd)value); continue;
 
                     case Kont.ModuleOpen f:
                     {
@@ -483,6 +485,7 @@ public static partial class Nbe
             Value.VMeta f => QuoteSpine(mc, width, new Term.Meta(f.Id), f.Spine),
             Value.VVar r => QuoteSpine(mc, width, new Term.Var(LevelToIndex(width, r.Level)), r.Spine),
             Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(c => Quote(mc, width, c))]),
+            Value.VRecursiveOccurrence o => QuoteRecursiveOccurrence(mc, width, o),
             Value.VCon c => QuoteConstructed(mc, width, c),
             // Evaluating the module pushes one entry per binding, so the ith
             // binding's term is read i entries further in.
