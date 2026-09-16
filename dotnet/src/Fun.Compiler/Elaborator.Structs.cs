@@ -175,12 +175,10 @@ public static partial class Elaborator
         }, row);
     }
 
-    /// <summary>
-    /// A method's declared row, read with every parameter bound. <c>~&gt; T</c> on a
-    /// definition is inferred from the body, as <c>-&gt;{_} T</c> is.
-    /// </summary>
-    private static RowTerm MethodRow(Context ctx, EffectRow? row) =>
-        ElaborateRow(ctx, row is { Polymorphic: true } ? row with { Polymorphic = false, Inferred = true } : row);
+    /// <summary>A method's declared row, read with every parameter bound.</summary>
+    // `~> T` on a method result is not a signature, so it is rejected as the prototype
+    // does (PolyArrowOutsideSignature); whether a method may infer its row that way is undecided.
+    private static RowTerm MethodRow(Context ctx, EffectRow? row) => ElaborateRow(ctx, row);
 
     /// <summary>
     /// The row an arrow of a method carries: the declared row on the innermost one

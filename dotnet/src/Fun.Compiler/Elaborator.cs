@@ -229,6 +229,7 @@ public static partial class Elaborator
                 return (Check(ctx, a.Inner, type), type);
             }
 
+            case Syntax.Lam lam when LambdaHasPoly(ctx, lam): return Infer(ctx, PolyLambda(ctx, lam));
             case Syntax.Lam lam:
                 return InferLam(ctx, lam);
 
@@ -258,6 +259,8 @@ public static partial class Elaborator
                 var (bodyTerm, bodyType) = Infer(body, let.Body);
                 return (new Term.Let(ctx.Quote(valueType), valueTerm, bodyTerm), bodyType);
             }
+
+            case Syntax.Arrow poly when HasPoly(ctx, poly): return Infer(ctx, PolySignature(ctx, poly));
 
             case Syntax.Arrow { Explicitness: Explicitness.Implicit, Name: not null, Row: null } bounded
                 when TraitBounds(ctx, bounded.Domain) is { } traits:
@@ -299,6 +302,11 @@ public static partial class Elaborator
         expected = ctx.Force(expected);
         switch (stx, expected)
         {
+            case (Syntax.Lam lam, _) when LambdaHasPoly(ctx, lam): return Check(ctx, PolyLambda(ctx, lam), expected);
+            case (_, Value.VPi { Explicitness: Explicitness.Implicit } rowPi)
+                when ctx.Force(rowPi.Domain) is Value.VEffectRowTy && stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }:
+                return CheckUnderImplicitRow(ctx, stx, rowPi);
+
             case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
 
             case (Syntax.Lam lam, Value.VPi pi):
