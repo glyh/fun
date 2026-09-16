@@ -87,6 +87,7 @@ public static partial class Nbe
                     case Term.U: value = Value.VU.Instance; break;
                     case Term.Atom a: value = new Value.VAtom(a.Value); break;
                     case Term.Imported i: value = i.Value; break;
+                    case Term.PatternSynonym s: value = s.Synonym; break;
                     case Term.AtomTy a: value = new Value.VAtomTy(a.Ty); break;
                     case Term.Prim p:
                         value = new Value.VNeutral(Value.VU.Instance, new Head.HPrim(p.Name), []);
@@ -491,6 +492,7 @@ public static partial class Nbe
             Value.VMeta f => QuoteSpine(mc, width, new Term.Meta(f.Id), f.Spine),
             Value.VVar r => QuoteSpine(mc, width, new Term.Var(LevelToIndex(width, r.Level)), r.Spine),
             Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(c => Quote(mc, width, c))]),
+            Value.VPatternSynonym s => new Term.PatternSynonym(s),
             Value.VRecursiveOccurrence o => QuoteRecursiveOccurrence(mc, width, o),
             Value.VCon c => QuoteConstructed(mc, width, c),
             // Evaluating the module pushes one entry per binding, so the ith

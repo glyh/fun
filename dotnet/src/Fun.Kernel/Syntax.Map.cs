@@ -146,6 +146,7 @@ public abstract partial record Syntax
                 Body = Go(i.Body),
             },
             TraitBoundSet b => b with { Traits = [.. b.Traits.Select(Go)] },
+            PatternSynonym s => s with { Params = [.. s.Params.Select(m.Id)], Rhs = s.Rhs.Map(m) },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over {GetType().Name}"),
         };
         return m.Form(mapped);
@@ -211,7 +212,7 @@ public abstract partial record Pattern
             Prod p => p with { Items = [.. p.Items.Select(i => i.Map(m))] },
             Or o => o with { Left = o.Left.Map(m), Right = o.Right.Map(m) },
             Con c => c with { Head = c.Head.Map(m), Args = [.. c.Args.Select(a => a.Map(m))] },
-            AtomType => this,
+            AtomType or SynonymParam => this,
             Record r => r with { Type = r.Type.Map(m), Fields = [.. r.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
             StructType st => st with { Fields = [.. st.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over the pattern {GetType().Name}"),

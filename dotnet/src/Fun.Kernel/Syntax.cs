@@ -117,6 +117,7 @@ public abstract partial record Syntax(SourceSpan Span)
             OpenChoice c => c with { Name = Mark(c.Name) },
             Match m => m with { Scrutinee = Go(m.Scrutinee), Branches = [.. m.Branches.Select(b => new MatchBranch(b.Pattern.AddScope(scope), Go(b.Body)))] },
             Enum e => e with { Constructors = [.. e.Constructors.Select(c => c with { Payloads = [.. c.Payloads.Select(Go)] })] },
+            PatternSynonym s => s with { Params = [.. s.Params.Select(Mark)], Rhs = s.Rhs.AddScope(scope) },
             LetRecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))], Body = Go(g.Body) },
             Struct st => st with { Bindings = [.. st.Bindings.Select(b => b.AddScope(scope))] },
             Sig sg => sg with { Bindings = [.. sg.Bindings.Select(b => b.AddScope(scope))] },

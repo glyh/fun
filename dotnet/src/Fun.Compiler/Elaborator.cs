@@ -189,6 +189,7 @@ public static partial class Elaborator
             case Syntax.ImplDef impl: return InferImplDef(ctx, impl);
             case Syntax.TraitBoundSet: throw new FunException("a {…} bound lists traits");
             case Syntax.Enum e: return InferEnum(ctx, e);
+            case Syntax.PatternSynonym s: return InferPatternSynonym(ctx, s);
 
             case Syntax.Open open:
             {

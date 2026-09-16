@@ -33,6 +33,7 @@ public sealed partial class Expander
         Pattern.Record r => r with { Type = Expand(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, ExpandPattern(f.Pattern)))] },
         Pattern.AtomType => pattern,
         Pattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, ExpandPattern(f.Pattern)))] },
+        Pattern.SynonymParam => pattern,
         _ => throw new InvalidOperationException($"unhandled pattern {pattern.GetType().Name}"),
     };
 }

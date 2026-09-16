@@ -1,7 +1,22 @@
 namespace Fun.Kernel;
 
+public abstract partial record Syntax
+{
+    /// <summary>
+    /// A pattern synonym's definition: <paramref name="Rhs"/>, over binders named
+    /// by <paramref name="Params"/>. A use binds each argument by parameter name.
+    /// </summary>
+    public sealed record PatternSynonym(EquatableArray<Id> Params, Pattern Rhs, SourceSpan Span) : Syntax(Span);
+}
+
 public abstract partial record Pattern
 {
+    /// <summary>
+    /// A synonym's parameter, by position in its parameter list: elaboration puts
+    /// it where the definition's right-hand side binds that parameter.
+    /// </summary>
+    public sealed record SynonymParam(int Index) : Pattern;
+
     /// <summary>
     /// <c>P {x = p, y, _}</c>: a record of the struct <paramref name="Type"/>, each
     /// named field matched by its pattern. <c>{y}</c> is <c>{y = y}</c>, a binder

@@ -39,6 +39,36 @@ public static partial class Enforest
         return new Pattern.Record(type, [.. fields], partial);
     }
 
+    /// <summary>
+    /// <c>pattern Name(a, b) = rhs</c>: the name binds a pattern synonym, whose
+    /// parameters are binders of <c>rhs</c>. Null when the statement is not one.
+    /// </summary>
+    private static (Id Name, Syntax.PatternSynonym Synonym)? ParsePatternSynonym(Terms stmt)
+    {
+        stmt = DropSeparators(stmt);
+        if (!IsToken(stmt.Head, TokenKind.Pattern)) return null;
+        if (NameOf(stmt.Drop(1).Head) is not Id name)
+            throw new ExpandException("a pattern synonym is written pattern Name(params) = pattern");
+
+        var rest = stmt.Drop(2);
+        var parameters = new List<Id>();
+        if (rest.Head is TokenTree.Group { Delimiter: Delimiter.Paren } group)
+        {
+            var items = DropSeparators(new Terms(group.Items));
+            if (!items.IsEmpty)
+                foreach (var part in SplitCommas(items))
+                    parameters.Add(DropSeparators(part) is [var only] && NameOf(only) is Id p
+                        ? p
+                        : throw new ExpandException("a pattern synonym's parameters are names"));
+            rest = rest.Tail;
+        }
+        if (!IsToken(rest.Head, TokenKind.Eq))
+            throw new ExpandException("a pattern synonym is written pattern Name(params) = pattern");
+
+        var rhs = ParsePattern(rest.Tail);
+        return (name, new Syntax.PatternSynonym([.. parameters], rhs, stmt.Span));
+    }
+
     /// <summary>The primitive type a pattern names by its spelling: the prototype's syntactic rule for type-case heads.</summary>
     private static AtomTy? PrimitiveTypeHead(string name) => name switch
     {

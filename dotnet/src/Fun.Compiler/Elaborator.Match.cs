@@ -62,6 +62,7 @@ public static partial class Elaborator
             Pattern.Atom a => new Value.VAtomTy(AtomTypeOf(a.Value)),
             Pattern.Prod prod => new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
+            Pattern.Con c when SynonymAt(ctx, c.Head) is { } synonym => synonym.ScrutineeType,
             // A head naming a type makes this a type-case: the scrutinee is a type.
             Pattern.Con c => TypeHead(ctx, c.Head) is not null
                 ? Value.VU.Instance
@@ -120,6 +121,12 @@ public static partial class Elaborator
                 }
                 return (new CorePattern.Prod([.. items]), binders);
             }
+
+            case Pattern.Con c when SynonymAt(ctx, c.Head) is { } synonym:
+                return ElaborateSynonymUse(ctx, c, synonym, type);
+
+            case Pattern.SynonymParam p:
+                return (new CorePattern.SynonymParam(p.Index), [($"{SynonymParamPrefix}{p.Index}", type)]);
 
             case Pattern.Con c when ctx.Force(type) is Value.VU:
                 return ElaborateNominalHeadPattern(ctx, c);

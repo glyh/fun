@@ -63,6 +63,8 @@ public static partial class Enforest
 
         if (ParseRoleDecl(stmt) is var (roleName, role)) return new Syntax.SyntaxDef(roleName, role, body, span);
 
+        if (ParsePatternSynonym(stmt) is var (synName, synonym)) return new Syntax.Let(synName, null, synonym, body, false, span);
+
         var decl = ParseValueDeclStatement(stmt);
         if (decl is var (name, type, value, recursive))
             return new Syntax.Let(name, type, value, body, recursive, span);
@@ -172,6 +174,8 @@ public static partial class Enforest
         }
 
         if (ParseRecGroup(unprefixed) is { } group) return [new Binding.RecGroup(group, isPublic)];
+
+        if (ParsePatternSynonym(unprefixed) is var (synName, synonym)) return [new Binding.Let(synName, synonym, isPublic, false)];
 
         if (ParseValueDeclStatement(unprefixed) is var (name, type, value, recursive))
         {

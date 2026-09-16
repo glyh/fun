@@ -5,6 +5,9 @@ public abstract partial record CorePattern
     /// <summary>A record's fields, by label, in the order written.</summary>
     public sealed record Record(EquatableArray<(string Name, CorePattern Pattern)> Fields, bool Partial) : CorePattern;
 
+    /// <summary>A pattern synonym's parameter <paramref name="Index"/>, replaced by the use's argument.</summary>
+    public sealed record SynonymParam(int Index) : CorePattern;
+
     /// <summary>A primitive type head.</summary>
     public sealed record AtomType(AtomTy Ty) : CorePattern;
 
@@ -30,6 +33,30 @@ public abstract partial record CorePattern
         Record r => r.Fields.Any(f => f.Pattern.NeedsDirectMatch()),
         _ => false,
     };
+}
+
+public abstract partial record Term
+{
+    /// <summary>A pattern synonym: a closed value, as its definition elaborated it.</summary>
+    public sealed record PatternSynonym(Value.VPatternSynonym Synonym) : Term;
+}
+
+public abstract partial record Value
+{
+    /// <summary>
+    /// A pattern synonym: <paramref name="Rhs"/> matches a scrutinee of
+    /// <paramref name="ScrutineeType"/>, with <see cref="CorePattern.SynonymParam"/>
+    /// where each parameter sits. <paramref name="Params"/> gives each parameter's
+    /// type, in the order the parameters sit in the scrutinee - the order their
+    /// binders come out in.
+    /// </summary>
+    // Compared by reference: two synonyms are the same only if they are one definition.
+    public sealed record VPatternSynonym(
+        int Arity, CorePattern Rhs, Value ScrutineeType, EquatableArray<(int Index, Value Type)> Params) : Value
+    {
+        public bool Equals(VPatternSynonym? other) => ReferenceEquals(this, other);
+        public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
+    }
 }
 
 /// <summary>A type-case key: a primitive type, or a nominal declaration.</summary>

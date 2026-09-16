@@ -101,6 +101,7 @@ public sealed partial class Expander
 
             // Constructor names are labels of the type, not binders.
             case Syntax.Enum e: return e with { Constructors = [.. e.Constructors.Select(c => c with { Payloads = [.. c.Payloads.Select(Expand)] })] };
+            case Syntax.PatternSynonym s: return ExpandPatternSynonym(s);
 
             case Syntax.LetRecGroup g:
                 return ExpandLetRecGroup(g);

@@ -261,6 +261,7 @@ public static partial class Elaborator
                     foreach (var b in m.Branches) { Pat(b.Pattern); Go(b.Body); }
                     break;
                 case Syntax.Enum e: foreach (var c in e.Constructors) foreach (var p in c.Payloads) Go(p); break;
+                case Syntax.PatternSynonym synonym: Pat(synonym.Rhs); break;
                 case Syntax.Module m: Bindings(m.Bindings); break;
                 case Syntax.Struct st: Bindings(st.Bindings); break;
                 case Syntax.RecordConstruct r: Go(r.Type); foreach (var (_, v) in r.Fields) Go(v); break;
