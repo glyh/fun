@@ -9,7 +9,22 @@ public sealed partial record Context
     /// The function body or module the context is elaborating inside: a nominal
     /// declared here captures what it names (E11).
     /// </summary>
-    public Syntax? Enclosing { get; init; }
+    public Syntax? Enclosing
+    {
+        get;
+        init
+        {
+            field = value;
+            EnclosingWidth = Width;
+        }
+    }
+
+    /// <summary>
+    /// The width where <see cref="Enclosing"/> starts. The names it uses are resolved
+    /// there, as the prototype's enclosing scope is: an entry the module itself pushes
+    /// later - a member, rigid when its value performs - is not captured by name.
+    /// </summary>
+    public int EnclosingWidth { get; private init; }
 
     /// <summary>
     /// The entries an <c>open</c> of a nominal pushed, by level: which constructor
@@ -51,6 +66,7 @@ public static partial class Elaborator
             [.. e.Constructors.Select((c, i) => new ConstructorDecl(c.Name,
                 [.. payloads[i].Select(p => Unify.CloseOver(ctx.Metas, ctx.Width, levels, p))]))];
         var decl = CompletePending(ctx, e, constructors, levels) ?? new NominalDecl("enum", constructors, levels.Length);
+        ctx.Metas.DeclaredNominals.Add(decl);
         var captures = levels.Select(l => (Term)new Term.Var(Nbe.LevelToIndex(ctx.Width, l))).ToEquatableArray();
         return (new Term.Nominal(decl, captures), Value.VU.Instance);
     }
@@ -203,7 +219,10 @@ public static partial class Elaborator
         return null;
     }
 
-    /// <summary>The levels of the context's entries that the names written in <paramref name="stx"/> locate.</summary>
+    /// <summary>
+    /// The levels of the context's entries that the names written in <paramref name="stx"/>
+    /// locate, among those that exist where the enclosing module or body starts.
+    /// </summary>
     private static IEnumerable<int> NamedLevels(Context ctx, Syntax? stx)
     {
         var found = new List<int>();
@@ -266,6 +285,9 @@ public static partial class Elaborator
                 case Syntax.Struct st: Bindings(st.Bindings); break;
                 case Syntax.RecordConstruct r: Go(r.Type); foreach (var (_, v) in r.Fields) Go(v); break;
                 case Syntax.LetRecGroup g: foreach (var member in g.Members) Go(member.Value); Go(g.Body); break;
+                case Syntax.RefNew r: Go(r.Arg); break;
+                case Syntax.RefGet r: Go(r.Ref); break;
+                case Syntax.RefSet r: Go(r.Ref); Go(r.Value); break;
                 default:
                     throw new NotImplementedException($"not ported yet: the names a {s.GetType().Name} uses");
             }
@@ -291,7 +313,7 @@ public static partial class Elaborator
         }
 
         Go(stx);
-        return found;
+        return found.Where(l => l < ctx.EnclosingWidth);
     }
 
     /// <summary>The levels below the context's width that a value's bound variables stand at.</summary>

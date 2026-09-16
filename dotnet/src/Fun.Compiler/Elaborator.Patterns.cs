@@ -195,6 +195,9 @@ public static partial class Elaborator
             ?? throw new FunException("a type-case head must name a type");
         if (pattern.Args.Length != arity)
             throw new FunException($"this type takes {arity} parameters, the pattern gives {pattern.Args.Length}");
+        // Two evaluations of a generative module differ only by their run-time stamp.
+        if (ctx.Metas.GenerativeNominals.ContainsKey(nominal.Decl))
+            throw new NotImplementedException("not ported yet: type-case on a generative nominal (run-time module stamps)");
 
         var parameters = new List<CorePattern>();
         var binders = new List<(string, Value)>();

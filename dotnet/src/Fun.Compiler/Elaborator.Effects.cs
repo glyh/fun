@@ -149,7 +149,9 @@ public static partial class Elaborator
     private static RowTerm ElaborateRow(Context ctx, EffectRow? row)
     {
         if (row is null) return RowTerm.Pure;
-        if (row.Polymorphic) throw new NotImplementedException("not ported yet: ~> arrows");
+        // A `~>` is rewritten where it sits in a signature (Elaborator.PolyArrows); one
+        // that reaches here is outside any signature.
+        if (row.Polymorphic) throw new FunException("a ~> arrow outside a signature: its row has nowhere to come from");
 
         var effects = new List<(Term Term, Value Value)>();
         var rowVariables = new List<Term>();

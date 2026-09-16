@@ -211,12 +211,15 @@ public static partial class Elaborator
 
             case Syntax.FieldAccess access:
             {
-                var (of, ofType) = Infer(ctx, access.Of);
+                var ((of, ofType), headPerformed) = Collecting(ctx, c => Infer(c, access.Of));
+                Emit(ctx, headPerformed);
                 if (TraitOf(ctx, of, ofType) is { } trait) return TraitMethod(ctx, trait, access.Field);
                 // A nominal type or type former's members are its constructors.
                 if (ctx.Force(ofType) is Value.VU or Value.VPi && ConstructorMember(ctx, of, ofType, access.Field) is { } constructor)
                     return constructor;
-                return InferMember(ctx, of, ofType, access.Field);
+                var member = InferMember(ctx, of, ofType, access.Field);
+                CheckGenerativeEscape(ctx, headPerformed, access.Field, member.Item2);
+                return member;
             }
 
             case Syntax.Struct st: return InferStruct(ctx, st);
@@ -231,6 +234,7 @@ public static partial class Elaborator
                 return (Check(ctx, a.Inner, type), type);
             }
 
+            case Syntax.Lam lam when LambdaHasPoly(ctx, lam): return Infer(ctx, PolyLambda(ctx, lam));
             case Syntax.Lam lam:
                 return InferLam(ctx, lam);
 
@@ -248,6 +252,8 @@ public static partial class Elaborator
 
             case Syntax.Let { Recursive: false } let:
                 return Discharging(ctx, c => InferLet(c, let));
+
+            case Syntax.Arrow poly when HasPoly(ctx, poly): return Infer(ctx, PolySignature(ctx, poly));
 
             case Syntax.Arrow { Explicitness: Explicitness.Implicit, Name: not null, Row: null } bounded
                 when TraitBounds(ctx, bounded.Domain) is { } traits:
@@ -289,6 +295,11 @@ public static partial class Elaborator
         expected = ctx.Force(expected);
         switch (stx, expected)
         {
+            case (Syntax.Lam lam, _) when LambdaHasPoly(ctx, lam): return Check(ctx, PolyLambda(ctx, lam), expected);
+            case (_, Value.VPi { Explicitness: Explicitness.Implicit } rowPi)
+                when ctx.Force(rowPi.Domain) is Value.VEffectRowTy && stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }:
+                return CheckUnderImplicitRow(ctx, stx, rowPi);
+
             case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
 
             case (Syntax.Lam lam, Value.VPi pi):
@@ -335,9 +346,13 @@ public static partial class Elaborator
     /// </summary>
     // ponytail: no module stamp slot yet; it arrives with nominals (E11), and
     // both sides read the slot list, so adding it moves no index by hand.
-    private static (Term, Value) InferModule(Context ctx, Syntax.Module module)
+    private static (Term, Value) InferModule(Context ctx, Syntax.Module module) =>
+        Generative(ctx, c => InferModuleBindings(c, module));
+
+    private static (Term, Value, IReadOnlyList<BindingTerm>) InferModuleBindings(Context ctx, Syntax.Module module)
     {
         var inner = ctx.WithoutSelf() with { Enclosing = module };
+        var performingMember = false;
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
         var clashes = new ExportClashes();
@@ -370,11 +385,15 @@ public static partial class Elaborator
                 case Binding.Let let:
                 {
                     var ((def, type), performed) = Collecting(inner, c => let.Recursive ? InferRecMember(c, let) : Infer(c, let.Value));
-                    // ponytail: a module whose evaluation performs is generative (E11), which is not ported.
-                    if (!performed.IsEmpty) throw new NotImplementedException("not ported yet: a module binding that performs");
+                    Emit(inner, performed);
                     var kind = let.Public ? MemberKind.Public : MemberKind.Private;
                     var term = new BindingTerm.Let(Label(let.Name.Name), kind, def);
-                    inner = ExtendFromSlots(inner, term, [(let.Name.Name, type)]);
+                    // A value that performs is not known at check time (E4): its binder is a rigid
+                    // entry, whose type seals what a generative module declared (E11).
+                    if (!performed.IsEmpty) (type, performingMember) = (Seal(inner, type), true);
+                    inner = performed.IsEmpty
+                        ? ExtendFromSlots(inner, term, [(let.Name.Name, type)])
+                        : BindFromSlots(inner, term, [(let.Name.Name, type)]);
                     terms.Add(term);
                     entries.Add(new ModuleEntry.Field(term.Name, kind, type));
                     break;
@@ -394,7 +413,11 @@ public static partial class Elaborator
             clashes.Check(binding, entries.Skip(before));
         }
 
-        return (new Term.Module([.. terms]), new Value.VModule([.. entries], Partial: false));
+        // A member whose value performed is a rigid entry of the module: no member's type may name it.
+        if (performingMember)
+            foreach (var field in entries.OfType<ModuleEntry.Field>())
+                CheckSealedStays(inner, ctx.Width, inner.Width, field.Name, field.Value);
+        return (new Term.Module([.. terms]), new Value.VModule([.. entries], Partial: false), terms);
     }
 
     /// <summary>
@@ -417,6 +440,18 @@ public static partial class Elaborator
             ctx = ctx.Define(payloads[i].Key, payloads[i].Type, value);
         }
         return ctx;
+    }
+
+    /// <summary>
+    /// Pushes a binding's slots as bound entries: their values are not known at check
+    /// time. Same slot list, so the same width, as <see cref="ExtendFromSlots"/>.
+    /// </summary>
+    private static Context BindFromSlots(Context ctx, BindingTerm binding, EquatableArray<(string Key, Value Type)> payloads)
+    {
+        var slots = binding.Slots() ?? throw new InvalidOperationException("an open has no slot list");
+        if (slots.Length != payloads.Length)
+            throw new InvalidOperationException($"{slots.Length} slots against {payloads.Length} payloads");
+        return payloads.Aggregate(ctx, (c, p) => c.Bind(p.Key, p.Type));
     }
 
     /// <summary>
@@ -479,8 +514,9 @@ public static partial class Elaborator
         // A value is known in the body only when evaluating it performs nothing (E4).
         var body = performed.IsEmpty
             ? ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm))
-            : ctx.Bind(let.Name.Name, valueType);
+            : ctx.Bind(let.Name.Name, Seal(ctx, valueType));
         var (bodyTerm, bodyType) = Infer(body, let.Body);
+        if (!performed.IsEmpty) CheckSealedStays(body, ctx.Width, body.Width, let.Name.Name, bodyType);
         return (new Term.Let(ctx.Quote(valueType), valueTerm, bodyTerm), bodyType);
     }
 

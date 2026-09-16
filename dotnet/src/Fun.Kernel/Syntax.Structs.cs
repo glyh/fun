@@ -38,5 +38,10 @@ public abstract partial record Binding
     /// of its parameters. A result type annotates the body. Pure: a method that
     /// declares no row performs nothing.
     /// </summary>
-    public sealed record Method(Id Name, EquatableArray<Param> Params, Syntax Body, bool Public) : Binding;
+    /// <remarks>
+    /// <paramref name="Row"/> is the row its result declares (<c>-&gt;{E} T</c>); none
+    /// means the method is pure (E3). It is read in the parameters' scope and sits
+    /// on the innermost arrow.
+    /// </remarks>
+    public sealed record Method(Id Name, EquatableArray<Param> Params, Syntax Body, bool Public, EffectRow? Row = null) : Binding;
 }
