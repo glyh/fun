@@ -67,7 +67,7 @@ public static partial class Nbe
 
     private static Value AsSignature(Value module) =>
         module is Value.VModule m
-            ? m with { Partial = true }
+            ? m with { Entries = [.. m.Entries.Select(AsSignatureEntry)], Partial = true }
             : throw new InvalidOperationException("a signature's bindings did not build a module");
 
     private static Step StartRecord(Stack<Kont> stack, Environment env, Term.RecordConstruct record)
@@ -94,7 +94,17 @@ public static partial class Nbe
 
     /// <summary>The last visible member of that name (I3).</summary>
     private static Value? VisibleMember(EquatableArray<ModuleEntry> entries, string name) =>
-        entries.OfType<ModuleEntry.Field>().LastOrDefault(e => e.Name == name && Visible(e.Kind))?.Value;
+        entries.LastOrDefault(e => e switch
+        {
+            ModuleEntry.Field f => f.Name == name && Visible(f.Kind),
+            ModuleEntry.Impl i => i.Name == name && Visible(i.Kind),
+            _ => false,
+        }) switch
+        {
+            ModuleEntry.Field f => f.Value,
+            ModuleEntry.Impl i => i.Value,
+            _ => null,
+        };
 
     /// <summary>
     /// A struct reads back as its constructor fields, at the struct's own width,
@@ -102,11 +112,11 @@ public static partial class Nbe
     /// </summary>
     private static Term QuoteStruct(MetaContext mc, int width, Value.VStruct st)
     {
-        var fields = st.Entries.OfType<ModuleEntry.Field>().ToList();
-        var bindings = fields.Where(f => f.Kind != MemberKind.Field).ToList();
+        var fields = st.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Field).ToList();
+        var bindings = st.Entries.Where(e => e is not ModuleEntry.Field { Kind: MemberKind.Field }).ToList();
         return new Term.Struct(
-            [.. fields.Where(f => f.Kind == MemberKind.Field).Select(f => (f.Name, Quote(mc, width, f.Value)))],
-            [.. bindings.Select((f, i) => (BindingTerm)new BindingTerm.Let(f.Name, f.Kind, Quote(mc, width + i, f.Value)))],
+            [.. fields.Select(f => (f.Name, Quote(mc, width, f.Value)))],
+            [.. bindings.Select((e, i) => QuoteEntry(mc, width + i, e, partial: false))],
             st.Partial);
     }
 }

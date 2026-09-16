@@ -15,13 +15,19 @@ public static partial class Elaborator
     /// <paramref name="type"/>, so a use of an implicit function meets the
     /// explicit parameter behind them.
     /// </summary>
-    // Trait dictionaries are resolved here too once traits are ported; a domain
-    // cannot be a dictionary type before then.
+    // A dictionary domain is resolved from evidence instead; insertion stops at one
+    // not resolvable yet, for the application to resolve after its argument.
     private static (Term, Value) InsertImplicitArgs(Context ctx, Term term, Value type)
     {
         while (ctx.Force(type) is Value.VPi { Explicitness: Explicitness.Implicit } pi)
         {
-            var arg = FreshMeta(ctx);
+            Term arg;
+            if (ctx.Force(pi.Domain) is Value.VTraitDict dict)
+            {
+                if (ResolveEvidence(ctx, dict.Decl, dict.Args) is not { } evidence) break;
+                arg = evidence.Term;
+            }
+            else arg = FreshMeta(ctx);
             term = new Term.Ap(term, Explicitness.Implicit, arg);
             type = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ctx.Eval(arg));
         }

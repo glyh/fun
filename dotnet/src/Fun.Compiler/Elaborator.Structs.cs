@@ -67,6 +67,15 @@ public static partial class Elaborator
                     break;
                 }
 
+                case Binding.Impl impl:
+                {
+                    var (after, term, entry) = ElaborateImplItem(ctx, impl);
+                    ctx = after;
+                    bindings.Add(term);
+                    if (impl.Public) members.Add(entry);
+                    break;
+                }
+
                 default:
                     throw new NotImplementedException($"not ported yet: the struct item {item.GetType().Name}");
             }
@@ -177,6 +186,11 @@ public static partial class Elaborator
 
         foreach (var binding in sig.Bindings)
         {
+            if (binding is Binding.Impl { Fields: null } required)
+            {
+                inner = InferSignatureImpl(inner, self, required, bindings);
+                continue;
+            }
             if (binding is not Binding.Let let)
                 throw new NotImplementedException($"not ported yet: the signature item {binding.GetType().Name}");
             var (typeTerm, typeType) = Infer(inner, let.Value);
@@ -187,7 +201,12 @@ public static partial class Elaborator
             inner = inner.Define(let.Name.Name, type, Nbe.DotValue(self, label));
         }
 
-        RejectDuplicates(bindings.Select(b => ((BindingTerm.Let)b).Name));
+        RejectDuplicates(bindings.Select(b => b switch
+        {
+            BindingTerm.Let l => l.Name,
+            BindingTerm.Impl { Name: { } name } => name,
+            _ => throw new InvalidOperationException($"unhandled signature binding {b.GetType().Name}"),
+        }));
         return (new Term.Sig(new Term.Module([.. bindings], Signature: true)), Value.VU.Instance);
     }
 
@@ -202,6 +221,10 @@ public static partial class Elaborator
         switch (ctx.Force(ModuleTypeOf(ctx, ofType, of)))
         {
             case Value.VModule module:
+                // A named public impl is a member too: its type is its dictionary type.
+                if (module.PublicMember(name) is null
+                    && module.Entries.OfType<ModuleEntry.Impl>().LastOrDefault(i => i.Name == name && i.Kind == MemberKind.Public) is { } named)
+                    return (dot, ctx.Force(named.DictType));
                 var member = module.PublicMember(name) ?? throw new FunException($"no public member `{name}`");
                 return (dot, ctx.Force(member.Value));
 
