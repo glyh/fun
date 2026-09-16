@@ -59,5 +59,5 @@ captured the module's own earlier members, which broke sealing.
 **Not ported:** the run-time module stamp (a type-case head on a generative nominal,
 generative type formers and generative rec-enum groups are "not ported yet").
 
-**Open (user):** may a method infer its row with `method m() ~> T`? The prototype
-rejects it (`PolyArrowOutsideSignature`) and so does the port.
+**Decided (user, 2026-09-17):** a method may infer its row with `method m() ~> T` —
+[method-cannot-infer-row-with-poly-arrow](method-cannot-infer-row-with-poly-arrow.md).
