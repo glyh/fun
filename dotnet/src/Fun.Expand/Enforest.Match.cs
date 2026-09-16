@@ -19,7 +19,10 @@ public static partial class Enforest
             if (arrow < 0) throw new ExpandException("match arm requires => between pattern and result");
             var pattern = Slice(arm, 0, arrow);
             if (IsToken(DropSeparators(pattern).Head, TokenKind.Effect))
-                throw new NotImplementedException("not ported yet: effect branches");
+            {
+                var (operation, argument) = ParseEffectBranchHead(pattern);
+                return new MatchBranch(argument, ParseAll(arm.Drop(arrow + 1))) { Operation = operation };
+            }
             return new MatchBranch(ParsePattern(pattern), ParseAll(arm.Drop(arrow + 1)));
         }).ToEquatableArray();
         if (branches.IsEmpty) throw new ExpandException("match requires at least one arm");

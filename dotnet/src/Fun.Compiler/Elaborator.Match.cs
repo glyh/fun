@@ -12,6 +12,8 @@ public static partial class Elaborator
     /// </summary>
     private static (Term, Value) InferMatch(Context ctx, Syntax.Match match)
     {
+        if (match.Branches.Any(b => b.Operation is not null))
+            throw new NotImplementedException("not ported yet: effect branches");
         var (scrutinee, scrutineeType) = Infer(ctx, match.Scrutinee);
         scrutineeType = RefineScrutineeType(ctx, scrutineeType, match.Branches);
         var resultType = ctx.RawMeta();
