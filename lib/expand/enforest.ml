@@ -445,7 +445,6 @@ and parse_primary env terms =
           (atom ~span:term.span (Atom.String s), rest)
       | Token { kind = Char c; _ } -> (atom ~span:term.span (Atom.Char c), rest)
       | Token { kind = Unit; _ } -> (unit ~span:term.span (), rest)
-      | Token { kind = KwUnit; _ } -> (var_of term "Unit", rest)
       | Token { kind = KwSelf; _ } -> (stx ~span:term.span Syntax.Self, rest)
       | Token { kind = KwSelfType; _ } ->
           (stx ~span:term.span Syntax.SelfType, rest)

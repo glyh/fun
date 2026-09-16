@@ -10,7 +10,6 @@ let parse_pat_terms, parse_pat_prefix =
         | Token { kind = Int n; _ } -> (Syntax.PatAtom (Atom.I64 n), rest)
         | Token { kind = Char c; _ } -> (Syntax.PatAtom (Atom.Char c), rest)
         | Token { kind = Unit; _ } -> (Syntax.PatAtom Atom.Unit, rest)
-        | Token { kind = KwUnit; _ } -> (Syntax.PatType Atom_ty.TUnit, rest)
         | Token { kind = Ident name; _ } ->
             let pat =
               match name with

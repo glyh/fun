@@ -11,14 +11,10 @@ type token_kind =
   | Unit
   | KwLet
   | KwFun
-  | KwThen
   | KwSig
   | KwFn
   | KwDo
-  | KwEnd
-  | KwElse
   | KwMatch
-  | KwWith
   | KwEffect
   | KwModule
   | KwStruct
@@ -39,7 +35,6 @@ type token_kind =
   | KwPerform
   | KwResume
   | KwMethod
-  | KwUnit
   | LParen
   | RParen
   | LBracket
@@ -99,12 +94,12 @@ let group delimiter items span = { datum = Group (delimiter, items, span); span 
 (* Every keyword and punctuation token by its spelling, both ways: reflection
    carries these tokens as their spelling (M9). *)
 let keyword_spellings =
-  [ (KwLet, "let"); (KwFun, "fun"); (KwThen, "then"); (KwSig, "sig"); (KwFn, "fn"); (KwDo, "do");
-    (KwEnd, "end"); (KwElse, "else"); (KwMatch, "match"); (KwWith, "with"); (KwEffect, "effect");
+  [ (KwLet, "let"); (KwFun, "fun"); (KwSig, "sig"); (KwFn, "fn"); (KwDo, "do");
+    (KwMatch, "match"); (KwEffect, "effect");
     (KwModule, "module"); (KwStruct, "struct"); (KwEnum, "enum"); (KwImpl, "impl"); (KwTrait, "trait");
     (KwPub, "pub"); (KwImport, "import"); (KwOpen, "open"); (KwExport, "export"); (KwMacro, "macro"); (KwPattern, "pattern");
     (KwSelf, "self"); (KwSelfType, "Self"); (KwRef, "ref"); (KwDeref, "deref"); (KwRec, "rec");
-    (KwPerform, "perform"); (KwResume, "resume"); (KwMethod, "method"); (KwUnit, "Unit") ]
+    (KwPerform, "perform"); (KwResume, "resume"); (KwMethod, "method") ]
 
 let punct_spellings =
   [ (LParen, "("); (RParen, ")"); (LBracket, "["); (RBracket, "]"); (LBrace, "{"); (RBrace, "}");
