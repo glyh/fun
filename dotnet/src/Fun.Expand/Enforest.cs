@@ -52,6 +52,9 @@ public static class Enforest
         if (decl is var (name, type, value, recursive))
             return new Syntax.Let(name, type, value, body, recursive, span);
 
+        if (ParseOpenStatement(stmt) is { } opened)
+            return new Syntax.Open(opened, body, "", span);
+
         // Not a binding: the statement is an expression whose value is discarded.
         return new Syntax.Let(new Id("_", span), null, ParseAll(stmt), body, false, span);
     }
@@ -101,6 +104,64 @@ public static class Enforest
         return (name, type, ParseAll(valueTerms), recursive);
     }
 
+    // ---- modules ----------------------------------------------------------
+
+    /// <summary>
+    /// <c>module { items }</c>. The items stay unread: expansion reads them one
+    /// form at a time, so an item can bind the syntax the ones after it are read with.
+    /// </summary>
+    private static (Syntax, Terms) ParseModuleExpr(SourceSpan startSpan, Terms terms)
+    {
+        terms = DropSeparators(terms);
+        if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
+            throw new ExpandException("module is written module { … }");
+        return (new Syntax.Module([new Binding.Items(body.Items)], SourceSpan.Between(startSpan, body.Span)), terms.Tail);
+    }
+
+    /// <summary><c>open e</c>: the module expression, or null when the statement is not an open.</summary>
+    private static Syntax? ParseOpenStatement(Terms stmt)
+    {
+        stmt = DropSeparators(stmt);
+        if (!IsToken(stmt.Head, TokenKind.Open)) return null;
+        return ParseAll(stmt.Tail);
+    }
+
+    /// <summary>
+    /// One module item: <c>[pub] name [: T] = value</c>, <c>[pub] fn name(…) { … }</c>
+    /// or <c>open e</c>. A typed binding's value is annotated with its type.
+    /// </summary>
+    public static EquatableArray<Binding> ParseModuleStatement(Terms stmt)
+    {
+        stmt = DropSeparators(stmt);
+        if (stmt.IsEmpty) return [];
+
+        var isPublic = IsToken(stmt.Head, TokenKind.Pub);
+        var unprefixed = isPublic ? stmt.Tail : stmt;
+
+        if (ParseOpenStatement(unprefixed) is { } opened)
+        {
+            if (isPublic) throw new ExpandException("open is not a public item");
+            return [new Binding.Open(opened, "")];
+        }
+
+        if (ParseValueDeclStatement(unprefixed) is var (name, type, value, recursive))
+        {
+            var annotated = type is null ? value : new Syntax.Annotated(value, type, unprefixed.Span);
+            return [new Binding.Let(name, annotated, isPublic, recursive)];
+        }
+
+        throw new NotImplementedException(
+            $"not ported yet: module item starting `{(unprefixed.Head is { } head ? Describe(head) : "(empty)")}`");
+    }
+
+    private static string Describe(TokenTree term) => term switch
+    {
+        TokenTree.Leaf l => l.Token.Kind.Text(),
+        TokenTree.Group { Delimiter: Delimiter.Paren } => "(...)",
+        TokenTree.Group { Delimiter: Delimiter.Bracket } => "[...]",
+        _ => "{...}",
+    };
+
     // ---- expressions ------------------------------------------------------
 
     /// <summary>Reads one expression and requires that it consumed every term.</summary>
@@ -138,6 +199,8 @@ public static class Enforest
                         return (new Syntax.Var(new Id(i.Name, term.Span, token.Scope)), rest);
                     case TokenKind.Word w when w == TokenKind.Fn:
                         return ParseFn(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Module:
+                        return ParseModuleExpr(term.Span, rest);
                     case TokenKind.Word w:
                         throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
                     case TokenKind.Operator o:
@@ -379,7 +442,7 @@ public static class Enforest
         return parts;
     }
 
-    private static bool IsToken(TokenTree term, TokenKind kind) =>
+    private static bool IsToken(TokenTree? term, TokenKind kind) =>
         term is TokenTree.Leaf { Token.Kind: var k } && k == kind;
 
     private static int IndexOfToken(Terms terms, TokenKind kind)

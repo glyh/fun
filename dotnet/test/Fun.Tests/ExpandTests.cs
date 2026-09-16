@@ -19,10 +19,22 @@ public class ExpandTests
         Syntax.Proj p => $"({Show(p.Of)}.{p.Index})",
         Syntax.FieldAccess f => $"({Show(f.Of)}.{f.Field})",
         Syntax.Block => "<block>",
+        // A name no binder took and no open may supply is located in the base context.
+        Syntax.OpenChoice { Opens.IsEmpty: true, Fallback: null } c => c.Name.Name,
+        Syntax.OpenChoice c => $"(choice {c.Name.Name} [{string.Join(" ", c.Opens)}] {c.Fallback ?? "-"})",
+        Syntax.Module m => $"(module{string.Concat(m.Bindings.Select(b => " " + ShowBinding(b)))})",
+        Syntax.Open o => $"(open {Show(o.Of)} {o.Label} {Show(o.Body)})",
         _ => throw new InvalidOperationException(s.GetType().Name),
     };
 
     private static string ShowType(Syntax? t) => t is null ? "" : $" : {Show(t)}";
+
+    private static string ShowBinding(Binding b) => b switch
+    {
+        Binding.Let l => $"({(l.Public ? "pub " : "")}{l.Name.Name} {Show(l.Value)})",
+        Binding.Open o => $"(open {Show(o.Of)} {o.Label})",
+        _ => throw new InvalidOperationException(b.GetType().Name),
+    };
 
     [Theory]
     [InlineData("42", "42")]
@@ -43,6 +55,12 @@ public class ExpandTests
     [InlineData("f(1, 2)", "((f 1) 2)")]
     [InlineData("{ 1; 2 }", "(let _#0 1 2)")]
     [InlineData("(1, 2).0", "((tuple 1 2).0)")]
+    // Module items see the items before them; an open's region makes a bare name an open choice.
+    [InlineData("module { a = 1; pub b = a }", "(module (a#0 1) (pub b#1 a#0))")]
+    // `y` is inside the open and its binder is not: the open is tried first, the binder is the fallback.
+    [InlineData("{ M = module { pub y = 5 }; y = 1; open M; y }", "(let M#0 (module (pub y#1 5)) (let y#2 1 (open M#0 open:3 (choice y [open:3] y#2))))")]
+    // `y`'s binder is inside the open, so it shadows the open.
+    [InlineData("{ M = module { pub y = 5 }; open M; y = 1; y }", "(let M#0 (module (pub y#1 5)) (open M#0 open:2 (let y#2 1 y#2)))")]
     public void Expands(string source, string expected) =>
         Assert.Equal(expected, Show(Expander.ExpandExpr(source)));
 

@@ -58,6 +58,23 @@ public abstract record Syntax(SourceSpan Span)
     public sealed record Proj(Syntax Of, int Index, SourceSpan Span) : Syntax(Span);
     public sealed record FieldAccess(Syntax Of, string Field, SourceSpan Span) : Syntax(Span);
 
+    /// <summary>A first-class module: its bindings, in source order.</summary>
+    public sealed record Module(EquatableArray<Binding> Bindings, SourceSpan Span) : Syntax(Span);
+
+    /// <summary>
+    /// <c>open m; body</c>. <paramref name="Label"/> names this open so an open
+    /// choice can refer to it: empty until expansion assigns one.
+    /// </summary>
+    public sealed record Open(Syntax Of, Syntax Body, string Label, SourceSpan Span) : Syntax(Span);
+
+    /// <summary>
+    /// Produced only by expansion: a bare name some open may supply. Elaboration
+    /// takes the first of <paramref name="Opens"/> (innermost first) that has
+    /// the member, else the binder <paramref name="Fallback"/> names, else the
+    /// base context.
+    /// </summary>
+    public sealed record OpenChoice(Id Name, EquatableArray<string> Opens, string? Fallback) : Syntax(Name.Span);
+
     /// <summary>
     /// A <c>{ … }</c> body not read yet: its statements are enforested one form
     /// at a time as expansion reaches them, so a declaration in the block can
@@ -95,6 +112,9 @@ public abstract record Syntax(SourceSpan Span)
             Proj p => p with { Of = Go(p.Of) },
             FieldAccess f => f with { Of = Go(f.Of) },
             Block b => b with { Terms = [.. b.Terms.Select(t => t.AddScope(scope))] },
+            Module m => m with { Bindings = [.. m.Bindings.Select(b => b.AddScope(scope))] },
+            Open o => o with { Of = Go(o.Of), Body = Go(o.Body) },
+            OpenChoice c => c with { Name = Mark(c.Name) },
             _ => throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
@@ -108,4 +128,31 @@ public abstract record Syntax(SourceSpan Span)
             Effects = [.. row.Effects.Select(e => e.AddScope(scope))],
             Tails = [.. row.Tails.Select(t => t.AddScope(scope))],
         };
+}
+
+/// <summary>
+/// One item written inside a module or struct. A named public binding is reached
+/// from outside as a member.
+/// </summary>
+// Only the binding kinds the current slice reaches are here.
+public abstract record Binding
+{
+    public sealed record Let(Id Name, Syntax Value, bool Public, bool Recursive) : Binding;
+
+    /// <summary><c>open m</c>: scopes over the bindings after it. It adds no member.</summary>
+    public sealed record Open(Syntax Of, string Label) : Binding;
+
+    /// <summary>
+    /// Items not read yet: a module's remaining statements, enforested one form
+    /// at a time as expansion reaches them.
+    /// </summary>
+    public sealed record Items(EquatableArray<TokenTree> Terms) : Binding;
+
+    public Binding AddScope(ScopeSet scope) => this switch
+    {
+        Let l => l with { Name = l.Name with { Scope = l.Name.Scope.Union(scope) }, Value = l.Value.AddScope(scope) },
+        Open o => o with { Of = o.Of.AddScope(scope) },
+        Items i => i with { Terms = [.. i.Terms.Select(t => t.AddScope(scope))] },
+        _ => throw new InvalidOperationException($"unhandled binding {GetType().Name}"),
+    };
 }

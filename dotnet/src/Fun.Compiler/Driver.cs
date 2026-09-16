@@ -6,7 +6,7 @@ namespace Fun.Compiler;
 public sealed class FunException(string message) : Exception(message);
 
 /// <summary>A program checked and ready to run, with the context it was checked in.</summary>
-public sealed record Elaborated(Term Term, Value Type, Ctx Context);
+public sealed record Elaborated(Term Term, Value Type, Context Context);
 
 /// <summary>
 /// The pipeline as the REPL runs it: source to a checked term, then to a value.

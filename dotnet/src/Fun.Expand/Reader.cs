@@ -98,12 +98,12 @@ public static class Reader
 
         private void SkipBlockComment()
         {
-            var depth = 0;
+            var width = 0;
             while (true)
             {
                 if (AtEnd) throw new ReaderException("unterminated block comment");
-                if (Looking("#|")) { depth++; Bump(2); }
-                else if (Looking("|#")) { depth--; Bump(2); if (depth == 0) return; }
+                if (Looking("#|")) { width++; Bump(2); }
+                else if (Looking("|#")) { width--; Bump(2); if (width == 0) return; }
                 else Bump();
             }
         }

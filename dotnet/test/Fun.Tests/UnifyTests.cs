@@ -6,7 +6,7 @@ namespace Fun.Tests;
 public class UnifyTests
 {
     private static Value Pi(Term domain, Term codomain) =>
-        Nbe.Eval(new MetaContext(), Env.Empty, new Term.Pi(Explicitness.Explicit, domain, codomain));
+        Nbe.Eval(new MetaContext(), Environment.Empty, new Term.Pi(Explicitness.Explicit, domain, codomain));
 
     /// <summary>
     /// <c>?0[x] = (T : Type) -&gt; T -&gt; T</c>: the solution mentions its own
@@ -18,11 +18,11 @@ public class UnifyTests
     {
         var mc = new MetaContext();
         var meta = mc.Fresh();
-        var x = new Value.VRigid(5, []);
+        var x = new Value.VVar(5, []);
         var dependent = new Term.Pi(Explicitness.Explicit, Term.U.Instance,
             new Term.Pi(Explicitness.Explicit, new Term.Var(0), new Term.Var(1)));
 
-        Unify.Values(mc, 6, new Value.VFlex(meta, [x]), Nbe.Eval(mc, Env.Empty, dependent));
+        Unify.Values(mc, 6, new Value.VMeta(meta, [x]), Nbe.Eval(mc, Environment.Empty, dependent));
 
         // The solution is `fn(_) { (T : Type) -> T -> T }`: applied to x, it reads back as the type.
         var solved = Nbe.Apply(mc, mc.Solution(meta)!, x);
@@ -38,8 +38,8 @@ public class UnifyTests
 
         // ?0[#2, #4] = (#4, #2)
         Unify.Values(mc, 5,
-            new Value.VFlex(meta, [new Value.VRigid(2, []), new Value.VRigid(4, [])]),
-            new Value.VProdTy([new Value.VRigid(4, []), new Value.VRigid(2, [])]));
+            new Value.VMeta(meta, [new Value.VVar(2, []), new Value.VVar(4, [])]),
+            new Value.VProdTy([new Value.VVar(4, []), new Value.VVar(2, [])]));
 
         Assert.Equal(new Term.Lam(new Term.Lam(new Term.ProdTy([new Term.Var(0), new Term.Var(1)]))),
             Nbe.Quote(mc, 0, mc.Solution(meta)!));
@@ -52,7 +52,7 @@ public class UnifyTests
         var meta = mc.Fresh();
 
         Assert.Throws<UnifyException>(() =>
-            Unify.Values(mc, 5, new Value.VFlex(meta, [new Value.VRigid(2, [])]), new Value.VRigid(3, [])));
+            Unify.Values(mc, 5, new Value.VMeta(meta, [new Value.VVar(2, [])]), new Value.VVar(3, [])));
     }
 
     [Fact]
@@ -60,9 +60,9 @@ public class UnifyTests
     {
         var mc = new MetaContext();
         var meta = mc.Fresh();
-        var x = new Value.VRigid(2, []);
+        var x = new Value.VVar(2, []);
 
         Assert.Throws<UnifyException>(() =>
-            Unify.Values(mc, 5, new Value.VFlex(meta, [x, x]), new Value.VAtomTy(AtomTy.I64)));
+            Unify.Values(mc, 5, new Value.VMeta(meta, [x, x]), new Value.VAtomTy(AtomTy.I64)));
     }
 }

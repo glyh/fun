@@ -12,9 +12,12 @@ namespace Fun.Expand;
 // here can call the elaborator. That parameter arrives with `macro`.
 public sealed class Expander
 {
-    private readonly BindingTable _bindings = new();
+    private readonly BinderTable _bindings = new();
     private int _scopeCounter;
     private int _resolvedNameCounter;
+
+    /// <summary>Every open entered so far: the scope it adds to its region, and its label.</summary>
+    private readonly List<(int Scope, string Label)> _opens = [];
 
     public static Syntax ExpandExpr(string source, string? file = null) =>
         new Expander().Expand(Enforest.ParseExpr(source, file));
@@ -41,19 +44,56 @@ public sealed class Expander
         return (scope, resolved);
     }
 
+    /// <summary>
+    /// Enters an open: a fresh scope marks its region, and a label names it so an
+    /// open choice can refer to it.
+    /// </summary>
+    private (ScopeSet Scope, string Label) EnterOpen()
+    {
+        var scope = _scopeCounter++;
+        var label = $"open:{scope}";
+        _opens.Add((scope, label));
+        return (ScopeSet.Singleton(scope), label);
+    }
+
+    /// <summary>
+    /// A bare name: the binder it resolves to, or -- when an open might supply it
+    /// -- an open choice. An open is a candidate when the name is inside it and
+    /// its binder, if any, is not: a binder inside the open shadows it.
+    /// </summary>
+    private Syntax ResolveOccurrence(Syntax.Var v)
+    {
+        if (v.Id.Name.Contains('#')) return v;
+        var binder = _bindings.Resolve(v.Id);
+        var opens = _opens
+            .Where(o => v.Id.Scope.Contains(o.Scope) && (binder is null || !binder.Scope.Contains(o.Scope)))
+            .OrderByDescending(o => o.Scope)
+            .Select(o => o.Label)
+            .ToEquatableArray();
+        return binder is not null && opens.IsEmpty
+            ? v with { Id = v.Id with { Name = binder.ResolvedName } }
+            : new Syntax.OpenChoice(v.Id, opens, binder?.ResolvedName);
+    }
+
     public Syntax Expand(Syntax stx)
     {
         switch (stx)
         {
-            case Syntax.Atom:
+            case Syntax.Atom or Syntax.OpenChoice:
                 return stx;
 
             case Syntax.Var v:
-                // An unbound name stays as written: the elaborator reports it
-                // against the base context, which knows the primitives.
-                return _bindings.Resolve(v.Id) is { } info
-                    ? v with { Id = v.Id with { Name = info.ResolvedName } }
-                    : stx;
+                return ResolveOccurrence(v);
+
+            case Syntax.Open o:
+            {
+                var of = Expand(o.Of);
+                var (scope, label) = EnterOpen();
+                return o with { Of = of, Body = Expand(o.Body.AddScope(scope)), Label = label };
+            }
+
+            case Syntax.Module m:
+                return m with { Bindings = ExpandBindings(m.Bindings) };
 
             case Syntax.Ap a:
                 return a with { Fn = Expand(a.Fn), Arg = Expand(a.Arg) };
@@ -126,6 +166,57 @@ public sealed class Expander
             default:
                 throw new NotImplementedException($"not ported yet: expanding {stx.GetType().Name}");
         }
+    }
+
+    /// <summary>
+    /// A binding list, in order. Unread items are read one statement at a time;
+    /// each binding takes the scopes of every binding before it, so it sees them,
+    /// and nothing before it sees it.
+    /// </summary>
+    private EquatableArray<Binding> ExpandBindings(EquatableArray<Binding> bindings)
+    {
+        var pending = new Stack<Binding>(bindings.Reverse());
+        var expanded = new List<Binding>();
+        var active = ScopeSet.Empty;
+
+        while (pending.Count > 0)
+        {
+            switch (pending.Pop())
+            {
+                case Binding.Items items:
+                {
+                    var (stmt, after) = Enforest.TakeStatement(new Terms(items.Terms));
+                    if (!Enforest.DropSeparators(after).IsEmpty) pending.Push(new Binding.Items(after.ToArray()));
+                    var marked = new Terms([.. stmt.Select(t => t.AddScope(active))]);
+                    foreach (var read in Enforest.ParseModuleStatement(marked).Reverse()) pending.Push(read);
+                    break;
+                }
+
+                case Binding.Let l:
+                {
+                    l = (Binding.Let)l.AddScope(active);
+                    var (scope, resolved) = Bind(l.Name);
+                    var value = Expand(l.Recursive ? l.Value.AddScope(scope) : l.Value);
+                    expanded.Add(l with { Name = Rename(l.Name, scope, resolved), Value = value });
+                    active = active.Union(scope);
+                    break;
+                }
+
+                case Binding.Open o:
+                {
+                    o = (Binding.Open)o.AddScope(active);
+                    var of = Expand(o.Of);
+                    var (scope, label) = EnterOpen();
+                    expanded.Add(o with { Of = of, Label = label });
+                    active = active.Union(scope);
+                    break;
+                }
+
+                case var other:
+                    throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");
+            }
+        }
+        return [.. expanded];
     }
 
     private static Id Rename(Id name, ScopeSet scope, string resolved) =>

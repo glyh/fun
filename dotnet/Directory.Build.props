@@ -8,4 +8,8 @@
          compiler must enforce what the OCaml `match` enforces today. -->
     <WarningsAsErrors>Nullable</WarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The glossary's Environment (a context's value column), not System.Environment. -->
+    <Using Include="Fun.Kernel.Environment" Alias="Environment" />
+  </ItemGroup>
 </Project>

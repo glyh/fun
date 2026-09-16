@@ -19,7 +19,7 @@ public class NbeTests
         for (var i = 0; i < 1_000_000; i++)
             term = new Term.Ap(Id, Explicitness.Explicit, term);
 
-        var value = Nbe.Eval(new MetaContext(), Env.Empty, term);
+        var value = Nbe.Eval(new MetaContext(), Environment.Empty, term);
 
         Assert.Equal(new Value.VAtom(new Atom.I64(42)), value);
     }
@@ -32,7 +32,7 @@ public class NbeTests
             new Term.Let(Term.U.Instance, new Term.Atom(new Atom.I64(2)),
                 new Term.Prod([new Term.Var(1), new Term.Var(0)])));
 
-        var value = Assert.IsType<Value.VProd>(Nbe.Eval(new MetaContext(), Env.Empty, term));
+        var value = Assert.IsType<Value.VProd>(Nbe.Eval(new MetaContext(), Environment.Empty, term));
 
         Assert.Equal<Value>([new Value.VAtom(new Atom.I64(1)), new Value.VAtom(new Atom.I64(2))], value.Items);
     }
@@ -44,6 +44,6 @@ public class NbeTests
         var term = new Term.Lam(new Term.Lam(new Term.Var(1)));
         var mc = new MetaContext();
 
-        Assert.Equal(term, Nbe.Quote(mc, 0, Nbe.Eval(mc, Env.Empty, term)));
+        Assert.Equal(term, Nbe.Quote(mc, 0, Nbe.Eval(mc, Environment.Empty, term)));
     }
 }

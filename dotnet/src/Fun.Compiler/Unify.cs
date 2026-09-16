@@ -6,14 +6,14 @@ namespace Fun.Compiler;
 /// <summary>Two types that do not unify.</summary>
 public sealed class UnifyException(string message) : Exception(message);
 
-/// <summary>Structural unification of values, solving metavariables as it goes.</summary>
+/// <summary>Structural unification of values, solving metas as it goes.</summary>
 public static class Unify
 {
-    public static void Values(MetaContext mc, int depth, Value left, Value right)
+    public static void Values(MetaContext mc, int width, Value left, Value right)
     {
         left = Nbe.Force(mc, left);
         right = Nbe.Force(mc, right);
-        var fresh = new Value.VRigid(depth, []);
+        var fresh = new Value.VVar(width, []);
 
         switch (left, right)
         {
@@ -25,62 +25,67 @@ public static class Unify
                 return;
 
             case (Value.VPi a, Value.VPi b) when a.Explicitness == b.Explicitness:
-                Values(mc, depth, a.Domain, b.Domain);
-                Values(mc, depth + 1,
+                Values(mc, width, a.Domain, b.Domain);
+                Values(mc, width + 1,
                     Nbe.ApplyClosure(mc, a.Codomain, fresh), Nbe.ApplyClosure(mc, b.Codomain, fresh));
                 return;
 
             case (Value.VLam a, Value.VLam b):
-                Values(mc, depth + 1, Nbe.ApplyClosure(mc, a.Body, fresh), Nbe.ApplyClosure(mc, b.Body, fresh));
+                Values(mc, width + 1, Nbe.ApplyClosure(mc, a.Body, fresh), Nbe.ApplyClosure(mc, b.Body, fresh));
                 return;
 
             // Eta: a function equals a lambda when they agree on a fresh argument.
             case (Value.VLam a, _):
-                Values(mc, depth + 1, Nbe.ApplyClosure(mc, a.Body, fresh), Nbe.Apply(mc, right, fresh));
+                Values(mc, width + 1, Nbe.ApplyClosure(mc, a.Body, fresh), Nbe.Apply(mc, right, fresh));
                 return;
             case (_, Value.VLam b):
-                Values(mc, depth + 1, Nbe.Apply(mc, left, fresh), Nbe.ApplyClosure(mc, b.Body, fresh));
+                Values(mc, width + 1, Nbe.Apply(mc, left, fresh), Nbe.ApplyClosure(mc, b.Body, fresh));
                 return;
 
             case (Value.VProd a, Value.VProd b):
-                Pairwise(mc, depth, a.Items, b.Items);
+                Pairwise(mc, width, a.Items, b.Items);
                 return;
             case (Value.VProdTy a, Value.VProdTy b):
-                Pairwise(mc, depth, a.Items, b.Items);
+                Pairwise(mc, width, a.Items, b.Items);
                 return;
 
-            case (Value.VRigid a, Value.VRigid b) when a.Level == b.Level:
-                Pairwise(mc, depth, a.Spine, b.Spine);
+            case (Value.VVar a, Value.VVar b) when a.Level == b.Level:
+                Pairwise(mc, width, a.Spine, b.Spine);
                 return;
 
-            case (Value.VFlex a, Value.VFlex b) when a.Id == b.Id:
-                Pairwise(mc, depth, a.Spine, b.Spine);
+            case (Value.VMeta a, Value.VMeta b) when a.Id == b.Id:
+                Pairwise(mc, width, a.Spine, b.Spine);
                 return;
-            case (Value.VFlex a, _):
-                Solve(mc, depth, a.Id, a.Spine, right);
+            case (Value.VMeta a, _):
+                Solve(mc, width, a.Id, a.Spine, right);
                 return;
-            case (_, Value.VFlex b):
-                Solve(mc, depth, b.Id, b.Spine, left);
+            case (_, Value.VMeta b):
+                Solve(mc, width, b.Id, b.Spine, left);
                 return;
+
+            // Module types are compared by their entries once signatures land; until
+            // then a mismatch involving one is not known to be a real one.
+            case (Value.VModule, _) or (_, Value.VModule):
+                throw new NotImplementedException("not ported yet: unifying module types");
 
             default:
                 throw new UnifyException($"cannot unify {left.GetType().Name} with {right.GetType().Name}");
         }
     }
 
-    private static void Pairwise(MetaContext mc, int depth, EquatableArray<Value> a, EquatableArray<Value> b)
+    private static void Pairwise(MetaContext mc, int width, EquatableArray<Value> a, EquatableArray<Value> b)
     {
         if (a.Length != b.Length) throw new UnifyException("length mismatch");
-        for (var i = 0; i < a.Length; i++) Values(mc, depth, a[i], b[i]);
+        for (var i = 0; i < a.Length; i++) Values(mc, width, a[i], b[i]);
     }
 
     /// <summary>
-    /// Solves <c>?id[spine] = rhs</c> at <paramref name="depth"/> entries. With an
+    /// Solves <c>?id[spine] = rhs</c> at <paramref name="width"/> entries. With an
     /// empty spine the meta abstracts over nothing, so its solution is the value
     /// itself, after an occurs check. Otherwise the spine must be distinct bound
     /// variables, and the solution is <c>rhs</c> abstracted over them.
     /// </summary>
-    private static void Solve(MetaContext mc, int depth, int id, EquatableArray<Value> spine, Value rhs)
+    private static void Solve(MetaContext mc, int width, int id, EquatableArray<Value> spine, Value rhs)
     {
         if (spine.IsEmpty)
         {
@@ -89,10 +94,10 @@ public static class Unify
             return;
         }
 
-        var renaming = Invert(mc, depth, spine);
+        var renaming = Invert(mc, width, spine);
         Term body = Rename(mc, id, renaming, rhs);
         for (var i = 0; i < spine.Length; i++) body = new Term.Lam(body);
-        mc.Solve(id, Nbe.Eval(mc, Env.Empty, body));
+        mc.Solve(id, Nbe.Eval(mc, Environment.Empty, body));
     }
 
     /// <summary>
@@ -111,18 +116,18 @@ public static class Unify
     }
 
     /// <summary>The renaming a pattern spine denotes: each argument a distinct bound variable.</summary>
-    private static Renaming Invert(MetaContext mc, int depth, EquatableArray<Value> spine)
+    private static Renaming Invert(MetaContext mc, int width, EquatableArray<Value> spine)
     {
         var levels = ImmutableDictionary<int, int>.Empty;
         for (var i = 0; i < spine.Length; i++)
         {
-            if (Nbe.Force(mc, spine[i]) is not Value.VRigid { Spine.IsEmpty: true } rigid)
-                throw new UnifyException("a metavariable's spine argument is not a variable");
-            if (levels.ContainsKey(rigid.Level))
-                throw new UnifyException("a metavariable's spine repeats a variable");
-            levels = levels.Add(rigid.Level, i);
+            if (Nbe.Force(mc, spine[i]) is not Value.VVar { Spine.IsEmpty: true } variable)
+                throw new UnifyException("a meta's spine argument is not a variable");
+            if (levels.ContainsKey(variable.Level))
+                throw new UnifyException("a meta's spine repeats a variable");
+            levels = levels.Add(variable.Level, i);
         }
-        return new Renaming(spine.Length, depth, levels);
+        return new Renaming(spine.Length, width, levels);
     }
 
     /// <summary>
@@ -135,16 +140,16 @@ public static class Unify
         Term Go(Value v) => Rename(mc, id, ren, v);
         Term Var(int level) => ren.Levels.TryGetValue(level, out var target)
             ? new Term.Var(Nbe.LevelToIndex(ren.Dom, target))
-            : throw new UnifyException("a variable escapes its scope in a metavariable's solution");
+            : throw new UnifyException("a variable outside the meta's spine escapes into its solution");
         Term Spine(Term head, EquatableArray<Value> spine) =>
             spine.Aggregate(head, (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a)));
-        var fresh = new Value.VRigid(ren.Cod, []);
+        var fresh = new Value.VVar(ren.Cod, []);
 
         return Nbe.Force(mc, value) switch
         {
-            Value.VFlex f when f.Id == id => throw new UnifyException("occurs check: a metavariable in its own solution"),
-            Value.VFlex f => Spine(new Term.Meta(f.Id), f.Spine),
-            Value.VRigid r => Spine(Var(r.Level), r.Spine),
+            Value.VMeta f when f.Id == id => throw new UnifyException("occurs check: a meta in its own solution"),
+            Value.VMeta f => Spine(new Term.Meta(f.Id), f.Spine),
+            Value.VVar r => Spine(Var(r.Level), r.Spine),
             Value.VLam lam => new Term.Lam(Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, lam.Body, fresh))),
             Value.VPi pi => new Term.Pi(pi.Explicitness, Go(pi.Domain),
                 Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, pi.Codomain, fresh))),
@@ -156,7 +161,7 @@ public static class Unify
             Value.VNeutral n => n.Frames.Aggregate(n.Head switch
             {
                 Head.HVar h => Var(h.Level),
-                Head.HMeta h when h.Id == id => throw new UnifyException("occurs check: a metavariable in its own solution"),
+                Head.HMeta h when h.Id == id => throw new UnifyException("occurs check: a meta in its own solution"),
                 Head.HMeta h => new Term.Meta(h.Id),
                 Head.HPrim h => new Term.Prim(h.Name),
                 _ => throw new InvalidOperationException($"unhandled head {n.Head.GetType().Name}"),
@@ -174,13 +179,13 @@ public static class Unify
     {
         switch (Nbe.Force(mc, value))
         {
-            case Value.VFlex f:
-                if (f.Id == id) throw new UnifyException("occurs check: a metavariable in its own solution");
+            case Value.VMeta f:
+                if (f.Id == id) throw new UnifyException("occurs check: a meta in its own solution");
                 foreach (var v in f.Spine) OccursCheck(mc, id, v);
                 return;
             case Value.VPi pi:
                 OccursCheck(mc, id, pi.Domain);
-                OccursCheck(mc, id, Nbe.ApplyClosure(mc, pi.Codomain, new Value.VRigid(0, [])));
+                OccursCheck(mc, id, Nbe.ApplyClosure(mc, pi.Codomain, new Value.VVar(0, [])));
                 return;
             case Value.VProd p:
                 foreach (var v in p.Items) OccursCheck(mc, id, v);
@@ -192,7 +197,7 @@ public static class Unify
                 foreach (var frame in n.Frames)
                     if (frame is Frame.FApp app) OccursCheck(mc, id, app.Arg);
                 return;
-            // A rigid variable, a lambda, a universe or an atom holds no meta
+            // A bound variable, a lambda, a universe or an atom holds no meta
             // the check follows (the prototype does not look inside a lambda).
             default:
                 return;

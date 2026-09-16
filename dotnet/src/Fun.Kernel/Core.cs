@@ -3,9 +3,9 @@ using System.Collections.Immutable;
 namespace Fun.Kernel;
 
 /// <summary>Whether an entry was introduced by a binder or by a definition.</summary>
-// It is the mask a metavariable is abstracted over: the solver abstracts only
+// It is the mask a meta is abstracted over: the solver abstracts only
 // over entries whose value is unknown.
-public enum Bd { Bound, Defined }
+public enum EntryKind { Bound, Defined }
 
 /// <summary>
 /// The core language: what elaboration produces and the evaluator runs.
@@ -39,22 +39,80 @@ public abstract record Term
     public sealed record ProdTy(EquatableArray<Term> Items) : Term;
     public sealed record Proj(Term Of, int Index) : Term;
 
+    /// <summary><c>e.name</c>: a member, by label. The last member of that name wins (I3).</summary>
+    public sealed record Dot(Term Of, string Name) : Term;
+
+    /// <summary>A module: each binding pushes its slots, and later bindings read earlier ones.</summary>
+    public sealed record Module(EquatableArray<BindingTerm> Bindings) : Term;
+
+    /// <summary>
+    /// <c>open m in body</c>: pushes each of <paramref name="Members"/>, in order,
+    /// before the body. Which members those are was decided from the module's type.
+    /// </summary>
+    public sealed record Open(Term Of, EquatableArray<OpenMember> Members, Term Body) : Term;
+
     /// <summary>A primitive, by name. It evaluates to a neutral headed by itself.</summary>
     public sealed record Prim(string Name) : Term;
 
     /// <summary>
-    /// A residual metavariable, written by readback when it hits one still
+    /// A residual meta, written by readback when it hits one still
     /// unsolved. The elaborator creates <see cref="InsertedMeta"/> instead.
     /// </summary>
     public sealed record Meta(int Id) : Term;
 
     /// <summary>
-    /// A fresh metavariable as created. <paramref name="Bds"/> records, per
+    /// A fresh meta as created. <paramref name="EntryKinds"/> records, per
     /// entry in scope, whether it was introduced by a binder or a definition;
     /// evaluation applies the meta to every bound one, so the solver abstracts
     /// only over entries whose value is unknown.
     /// </summary>
-    public sealed record InsertedMeta(int Id, EquatableArray<Bd> Bds) : Term;
+    public sealed record InsertedMeta(int Id, EquatableArray<EntryKind> EntryKinds) : Term;
+}
+
+/// <summary>A member's visibility from outside its container.</summary>
+// The prototype's `struct_field_kind` also has Field, Method and PrivateMethod,
+// which arrive with structs.
+public enum MemberKind { Public, Private }
+
+/// <summary>What an <c>open</c> pushes: a member by label.</summary>
+public abstract record OpenMember
+{
+    public sealed record Field(string Name) : OpenMember;
+}
+
+/// <summary>A binding as the core language holds it.</summary>
+public abstract record BindingTerm
+{
+    public sealed record Let(string Name, MemberKind Kind, Term Def) : BindingTerm;
+
+    /// <summary>
+    /// An open inside a binding list. It adds no member; it pushes the opened
+    /// members so the indices of the bindings after it line up.
+    /// </summary>
+    public sealed record Open(Term Of, EquatableArray<OpenMember> Members) : BindingTerm;
+
+    /// <summary>
+    /// What this binding contributes to a context, one slot per entry, in order.
+    /// The elaborator and the evaluator both push exactly these (I2). Null for an
+    /// open: its width is the opened module's public member count, known only
+    /// once the module is elaborated, and carried by the term.
+    /// </summary>
+    public EquatableArray<Slot>? Slots() => this switch
+    {
+        Let l => [new Slot(l.Name, l.Kind, new SlotSource.Def(l.Def))],
+        Open => null,
+        _ => throw new InvalidOperationException($"unhandled binding term {GetType().Name}"),
+    };
+}
+
+/// <summary>One entry a binding adds, with the name it exports where it has one.</summary>
+public sealed record Slot(string? Name, MemberKind Kind, SlotSource Source);
+
+/// <summary>Where a slot's payload comes from; each side hangs its own payload on it.</summary>
+public abstract record SlotSource
+{
+    /// <summary>Evaluate this term in the context so far.</summary>
+    public sealed record Def(Term Term) : SlotSource;
 }
 
 /// <summary>
@@ -78,17 +136,34 @@ public abstract record Value
     public sealed record VProdTy(EquatableArray<Value> Items) : Value;
 
     /// <summary>
+    /// A module, or a module's type. Entries keep binding order; a dotted path
+    /// takes the last entry of its name (I3). As a type, each entry holds its
+    /// member's type.
+    /// </summary>
+    public sealed record VModule(EquatableArray<ModuleEntry> Entries, bool Partial) : Value
+    {
+        /// <summary>The last entry named <paramref name="name"/> that is visible from outside.</summary>
+        public ModuleEntry.Field? PublicMember(string name) =>
+            Entries.OfType<ModuleEntry.Field>().LastOrDefault(e => e.Name == name && e.Kind == MemberKind.Public);
+    }
+
+    /// <summary>
     /// A stuck computation: a primitive under elimination frames. Three kinds of
     /// stuck want three strategies, which is why they are three constructors --
     /// this one decomposes head and frames.
     /// </summary>
     public sealed record VNeutral(Value Ty, Head Head, EquatableArray<Frame> Frames) : Value;
 
-    /// <summary>A metavariable applied to a spine; unification solves it.</summary>
-    public sealed record VFlex(int Id, EquatableArray<Value> Spine) : Value;
+    /// <summary>A meta applied to a spine; unification solves it.</summary>
+    public sealed record VMeta(int Id, EquatableArray<Value> Spine) : Value;
 
     /// <summary>A bound variable applied to arguments; unification compares levels.</summary>
-    public sealed record VRigid(int Level, EquatableArray<Value> Spine) : Value;
+    public sealed record VVar(int Level, EquatableArray<Value> Spine) : Value;
+}
+
+public abstract record ModuleEntry
+{
+    public sealed record Field(string Name, MemberKind Kind, Value Value) : ModuleEntry;
 }
 
 public abstract record Head
@@ -103,27 +178,28 @@ public abstract record Frame
 {
     public sealed record FApp(Value Arg) : Frame;
     public sealed record FProj(int Index) : Frame;
+    public sealed record FDot(string Name) : Frame;
 }
 
 /// <summary>A term under the environment it was written in.</summary>
-public sealed record Closure(Env Env, Term Body);
+public sealed record Closure(Environment Environment, Term Body);
 
 /// <summary>
 /// A scope's values, innermost first. The elaborator keeps this and its
-/// <see cref="Bd"/> mask exactly the same length as its level; a term's de
+/// <see cref="EntryKind"/> mask exactly the same length as its level; a term's de
 /// Bruijn index counts entries here, so pushing a different number of entries
 /// than the elaborator did is wrong quietly rather than loudly.
 /// </summary>
-public sealed class Env
+public sealed class Environment
 {
     private readonly ImmutableList<Value> _values;
 
-    private Env(ImmutableList<Value> values) => _values = values;
+    private Environment(ImmutableList<Value> values) => _values = values;
 
-    public static readonly Env Empty = new(ImmutableList<Value>.Empty);
+    public static readonly Environment Empty = new(ImmutableList<Value>.Empty);
 
     /// <summary>This scope with <paramref name="value"/> as its innermost entry.</summary>
-    public Env Push(Value value) => new(_values.Insert(0, value));
+    public Environment Push(Value value) => new(_values.Insert(0, value));
 
     /// <summary>The entry a de Bruijn index names.</summary>
     public Value this[int index] => _values[index];

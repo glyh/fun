@@ -6,7 +6,7 @@ namespace Fun.Compiler;
 /// <summary>
 /// Normalisation by evaluation. Evaluation is a loop over a heap-allocated
 /// stack of frames, not native recursion per object-level call: a program's
-/// call depth is bounded by memory, never by the CLR's 1 MB stack, and a
+/// call width is bounded by memory, never by the CLR's 1 MB stack, and a
 /// captured continuation will be a slice of that stack.
 /// </summary>
 public static class Nbe
@@ -20,26 +20,48 @@ public static class Nbe
     private abstract record Kont
     {
         /// <summary>The callee is evaluated; evaluate the argument next.</summary>
-        public sealed record EvalArg(Env Env, Term Arg) : Kont;
+        public sealed record EvalArg(Environment Environment, Term Arg) : Kont;
 
         /// <summary>The argument is evaluated; apply the callee to it.</summary>
         public sealed record ApplyTo(Value Fn) : Kont;
 
         /// <summary>The definition is evaluated; push it and run the body.</summary>
-        public sealed record LetBody(Env Env, Term Body) : Kont;
+        public sealed record LetBody(Environment Environment, Term Body) : Kont;
 
-        /// <summary>The domain is evaluated; close the codomain over the scope.</summary>
-        public sealed record PiCodomain(Explicitness Explicitness, Env Env, Term Codomain) : Kont;
+        /// <summary>The domain is evaluated; close the codomain over the environment.</summary>
+        public sealed record PiCodomain(Explicitness Explicitness, Environment Environment, Term Codomain) : Kont;
 
         /// <summary>One tuple element is evaluated; carry on with the rest.</summary>
-        public sealed record ProdItems(Env Env, EquatableArray<Term> Rest, EquatableArray<Value> Done, bool IsType)
+        public sealed record ProdItems(Environment Environment, EquatableArray<Term> Rest, EquatableArray<Value> Done, bool IsType)
             : Kont;
 
         /// <summary>The tuple is evaluated; take its nth element.</summary>
         public sealed record ProjOf(int Index) : Kont;
+
+        /// <summary>The container is evaluated; take its member.</summary>
+        public sealed record DotOf(string Name) : Kont;
+
+        /// <summary>The module is evaluated; push its members and run the body.</summary>
+        public sealed record OpenBody(Environment Env, EquatableArray<OpenMember> Members, Term Body) : Kont;
+
+        /// <summary>
+        /// A slot of a module's binding is evaluated: push it, then carry on with
+        /// the binding's remaining slots and the module's remaining bindings.
+        /// </summary>
+        public sealed record ModuleSlot(
+            Environment Env, Slot Slot, EquatableArray<Slot> RestSlots,
+            EquatableArray<BindingTerm> RestBindings, EquatableArray<ModuleEntry> Entries) : Kont;
+
+        /// <summary>A module whose bindings are all pushed: build its value.</summary>
+        public sealed record ModuleDone(EquatableArray<ModuleEntry> Entries) : Kont;
+
+        /// <summary>A module's open is evaluated: push its members, then carry on.</summary>
+        public sealed record ModuleOpen(
+            Environment Env, EquatableArray<OpenMember> Members,
+            EquatableArray<BindingTerm> RestBindings, EquatableArray<ModuleEntry> Entries) : Kont;
     }
 
-    public static Value Eval(MetaContext mc, Env env, Term term)
+    public static Value Eval(MetaContext mc, Environment env, Term term)
     {
         // The frames the machine still owes work to, innermost last.
         var stack = new Stack<Kont>();
@@ -62,7 +84,7 @@ public static class Nbe
                         value = new Value.VNeutral(Value.VU.Instance, new Head.HPrim(p.Name), []);
                         break;
                     case Term.Meta m: value = Meta(mc, m.Id); break;
-                    case Term.InsertedMeta m: value = InsertedMeta(mc, env, m.Id, m.Bds); break;
+                    case Term.InsertedMeta m: value = InsertedMeta(mc, env, m.Id, m.EntryKinds); break;
 
                     case Term.Ap ap:
                         stack.Push(new Kont.EvalArg(env, ap.Arg));
@@ -83,6 +105,29 @@ public static class Nbe
                         stack.Push(new Kont.ProjOf(proj.Index));
                         term = proj.Of;
                         continue;
+
+                    case Term.Dot dot:
+                        stack.Push(new Kont.DotOf(dot.Name));
+                        term = dot.Of;
+                        continue;
+
+                    case Term.Open open:
+                        stack.Push(new Kont.OpenBody(env, open.Members, open.Body));
+                        term = open.Of;
+                        continue;
+
+                    case Term.Module module:
+                    {
+                        // The next piece of work is the first slot of the first
+                        // binding with any; a module of none is done at once.
+                        if (StartBindings(stack, env, module.Bindings, []) is { } next)
+                        {
+                            (env, term) = next;
+                            continue;
+                        }
+                        value = FinishModule(stack);
+                        break;
+                    }
 
                     case Term.Prod { Items.IsEmpty: true }: value = new Value.VProd([]); break;
                     case Term.ProdTy { Items.IsEmpty: true }: value = new Value.VProdTy([]); break;
@@ -112,7 +157,7 @@ public static class Nbe
                 {
                     case Kont.EvalArg f:
                         stack.Push(new Kont.ApplyTo(value));
-                        (env, term) = (f.Env, f.Arg);
+                        (env, term) = (f.Environment, f.Arg);
                         goto evaluate;
 
                     case Kont.ApplyTo f:
@@ -120,23 +165,65 @@ public static class Nbe
                         // this is where native recursion per call would be.
                         if (f.Fn is Value.VLam lam)
                         {
-                            (env, term) = (lam.Body.Env.Push(value), lam.Body.Body);
+                            (env, term) = (lam.Body.Environment.Push(value), lam.Body.Body);
                             goto evaluate;
                         }
                         value = ApplyStuck(mc, f.Fn, value);
                         continue;
 
                     case Kont.LetBody f:
-                        (env, term) = (f.Env.Push(value), f.Body);
+                        (env, term) = (f.Environment.Push(value), f.Body);
                         goto evaluate;
 
                     case Kont.PiCodomain f:
-                        value = new Value.VPi(f.Explicitness, value, new Closure(f.Env, f.Codomain));
+                        value = new Value.VPi(f.Explicitness, value, new Closure(f.Environment, f.Codomain));
                         continue;
 
                     case Kont.ProjOf f:
                         value = Project(value, f.Index);
                         continue;
+
+                    case Kont.DotOf f:
+                        value = DotValue(value, f.Name);
+                        continue;
+
+                    case Kont.OpenBody f:
+                        (env, term) = (PushOpenMembers(f.Env, value, f.Members), f.Body);
+                        goto evaluate;
+
+                    case Kont.ModuleSlot f:
+                    {
+                        var pushed = f.Env.Push(value);
+                        var entries = f.Slot.Name is { } name
+                            ? f.Entries.Add(new ModuleEntry.Field(name, f.Slot.Kind, value))
+                            : f.Entries;
+                        if (!f.RestSlots.IsEmpty)
+                        {
+                            stack.Push(f with { Env = pushed, Slot = f.RestSlots[0], RestSlots = f.RestSlots.RemoveAt(0), Entries = entries });
+                            (env, term) = (pushed, Def(f.RestSlots[0]));
+                            goto evaluate;
+                        }
+                        if (StartBindings(stack, pushed, f.RestBindings, entries) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = FinishModule(stack);
+                        continue;
+                    }
+
+                    case Kont.ModuleOpen f:
+                    {
+                        var pushed = PushOpenMembers(f.Env, value, f.Members);
+                        if (StartBindings(stack, pushed, f.RestBindings, f.Entries) is { } next)
+                        {
+                            (env, term) = next;
+                            goto evaluate;
+                        }
+                        value = FinishModule(stack);
+                        continue;
+                    }
+
 
                     case Kont.ProdItems f:
                     {
@@ -147,7 +234,7 @@ public static class Nbe
                             continue;
                         }
                         stack.Push(f with { Rest = f.Rest.RemoveAt(0), Done = done });
-                        (env, term) = (f.Env, f.Rest[0]);
+                        (env, term) = (f.Environment, f.Rest[0]);
                         goto evaluate;
                     }
                 }
@@ -157,19 +244,81 @@ public static class Nbe
         }
     }
 
+    /// <summary>
+    /// Pushes the frame for a module's next binding and returns the term to
+    /// evaluate for it, or pushes the finished module and returns null. A binding
+    /// pushes exactly its slots (I2); an open pushes its members.
+    /// </summary>
+    private static (Environment, Term)? StartBindings(
+        Stack<Kont> stack, Environment env, EquatableArray<BindingTerm> bindings, EquatableArray<ModuleEntry> entries)
+    {
+        if (bindings.IsEmpty)
+        {
+            stack.Push(new Kont.ModuleDone(entries));
+            return null;
+        }
+        var binding = bindings[0];
+        var rest = bindings.RemoveAt(0);
+        switch (binding)
+        {
+            case BindingTerm.Open open:
+                stack.Push(new Kont.ModuleOpen(env, open.Members, rest, entries));
+                return (env, open.Of);
+            default:
+                var slots = binding.Slots() ?? throw new InvalidOperationException("a binding with no slot list");
+                if (slots.IsEmpty) return StartBindings(stack, env, rest, entries);
+                stack.Push(new Kont.ModuleSlot(env, slots[0], slots.RemoveAt(0), rest, entries));
+                return (env, Def(slots[0]));
+        }
+    }
+
+    /// <summary>Pops the finished module <see cref="StartBindings"/> left on the stack.</summary>
+    private static Value FinishModule(Stack<Kont> stack) =>
+        stack.Pop() is Kont.ModuleDone done
+            ? new Value.VModule(done.Entries, Partial: false)
+            : throw new InvalidOperationException("a module finished without its frame");
+
+    private static Term Def(Slot slot) => slot.Source switch
+    {
+        SlotSource.Def d => d.Term,
+        _ => throw new InvalidOperationException($"unhandled slot source {slot.Source.GetType().Name}"),
+    };
+
+    /// <summary>
+    /// A container's member by label: the last entry of that name (I3). Stuck on
+    /// a neutral container.
+    /// </summary>
+    public static Value DotValue(Value of, string name) => of switch
+    {
+        Value.VModule m => m.Entries.OfType<ModuleEntry.Field>().LastOrDefault(e => e.Name == name)?.Value
+            ?? throw new FunException($"no member `{name}`"),
+        Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(new Frame.FDot(name)) },
+        Value.VMeta f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FDot(name))),
+        Value.VVar r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FDot(name))),
+        _ => throw new FunException($"member access `.{name}` on a non-module"),
+    };
+
+    /// <summary>Pushes each opened member, in order, projected from the module.</summary>
+    public static Environment PushOpenMembers(Environment env, Value module, EquatableArray<OpenMember> members) =>
+        members.Aggregate(env, (acc, member) => member switch
+        {
+            OpenMember.Field f => acc.Push(DotValue(module, f.Name)),
+            _ => throw new InvalidOperationException($"unhandled open member {member.GetType().Name}"),
+        });
+
     /// <summary>Applies <paramref name="fn"/> to <paramref name="arg"/>.</summary>
     public static Value Apply(MetaContext mc, Value fn, Value arg) =>
         fn is Value.VLam lam
-            ? Eval(mc, lam.Body.Env.Push(arg), lam.Body.Body)
+            ? Eval(mc, lam.Body.Environment.Push(arg), lam.Body.Body)
             : ApplyStuck(mc, fn, arg);
 
     /// <summary>Application to something that is not a closure: the result is stuck.</summary>
     private static Value ApplyStuck(MetaContext mc, Value fn, Value arg) => Force(mc, fn) switch
     {
-        Value.VLam lam => Eval(mc, lam.Body.Env.Push(arg), lam.Body.Body),
+        Value.VLam lam => Eval(mc, lam.Body.Environment.Push(arg), lam.Body.Body),
         Value.VNeutral n => n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) },
-        Value.VFlex f => f with { Spine = f.Spine.Add(arg) },
-        Value.VRigid r => r with { Spine = r.Spine.Add(arg) },
+        Value.VMeta f => f with { Spine = f.Spine.Add(arg) },
+        Value.VVar r => r with { Spine = r.Spine.Add(arg) },
         var other => throw new FunException($"applying non-function: {other.GetType().Name}"),
     };
 
@@ -177,39 +326,39 @@ public static class Nbe
         ty is Value.VPi pi ? ApplyClosure(mc, pi.Codomain, arg) : Value.VU.Instance;
 
     public static Value ApplyClosure(MetaContext mc, Closure closure, Value arg) =>
-        Eval(mc, closure.Env.Push(arg), closure.Body);
+        Eval(mc, closure.Environment.Push(arg), closure.Body);
 
     private static Value Project(Value of, int index) => of switch
     {
         Value.VProd p => p.Items[index],
         Value.VProdTy p => p.Items[index],
         Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(new Frame.FProj(index)) },
-        Value.VFlex f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FProj(index))),
-        Value.VRigid r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FProj(index))),
+        Value.VMeta f => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(f.Id), Spine(f.Spine).Add(new Frame.FProj(index))),
+        Value.VVar r => new Value.VNeutral(Value.VU.Instance, new Head.HVar(r.Level), Spine(r.Spine).Add(new Frame.FProj(index))),
         _ => throw new FunException("projection of a non-tuple"),
     };
 
     private static EquatableArray<Frame> Spine(EquatableArray<Value> spine) =>
         [.. spine.Select(v => (Frame)new Frame.FApp(v))];
 
-    // ---- metavariables ----------------------------------------------------
+    // ---- metas ----------------------------------------------------
 
     private static Value Meta(MetaContext mc, int id) =>
-        mc.Solution(id) ?? new Value.VFlex(id, []);
+        mc.Solution(id) ?? new Value.VMeta(id, []);
 
     /// <summary>
-    /// A metavariable as the elaborator created it: applied to every entry in
-    /// scope that a binder introduced, skipping the ones a definition did,
+    /// A meta as the elaborator created it: applied to every entry in
+    /// the context that is a bound entry, skipping the defined ones,
     /// whose values are already known.
     /// </summary>
-    private static Value InsertedMeta(MetaContext mc, Env env, int id, EquatableArray<Bd> bds)
+    private static Value InsertedMeta(MetaContext mc, Environment env, int id, EquatableArray<EntryKind> kinds)
     {
-        if (bds.Length != env.Count)
+        if (kinds.Length != env.Count)
             throw new InvalidOperationException(
-                $"bd mask length mismatch: {bds.Length} entries against an environment of {env.Count}");
+                $"bd mask length mismatch: {kinds.Length} entries against an environment of {env.Count}");
         var value = Meta(mc, id);
-        for (var i = bds.Length - 1; i >= 0; i--)
-            if (bds[i] == Bd.Bound)
+        for (var i = kinds.Length - 1; i >= 0; i--)
+            if (kinds[i] == EntryKind.Bound)
                 value = ApplyStuck(mc, value, env[i]);
         return value;
     }
@@ -217,55 +366,63 @@ public static class Nbe
     // ---- readback ---------------------------------------------------------
 
     /// <summary>
-    /// Reads a value back as a term at <paramref name="depth"/> entries, turning
+    /// Reads a value back as a term at <paramref name="width"/> entries, turning
     /// levels back into indices.
     /// </summary>
-    // Recurses natively: its depth is the value's structure (a type), never a
-    // program's call depth.
-    public static Term Quote(MetaContext mc, int depth, Value value)
+    // Recurses natively: its width is the value's structure (a type), never a
+    // program's call width.
+    public static Term Quote(MetaContext mc, int width, Value value)
     {
-        var fresh = new Value.VRigid(depth, []);
+        var fresh = new Value.VVar(width, []);
         return Force(mc, value) switch
         {
-            Value.VLam lam => new Term.Lam(Quote(mc, depth + 1, ApplyClosure(mc, lam.Body, fresh))),
-            Value.VPi pi => new Term.Pi(pi.Explicitness, Quote(mc, depth, pi.Domain),
-                Quote(mc, depth + 1, ApplyClosure(mc, pi.Codomain, fresh))),
+            Value.VLam lam => new Term.Lam(Quote(mc, width + 1, ApplyClosure(mc, lam.Body, fresh))),
+            Value.VPi pi => new Term.Pi(pi.Explicitness, Quote(mc, width, pi.Domain),
+                Quote(mc, width + 1, ApplyClosure(mc, pi.Codomain, fresh))),
             Value.VU => Term.U.Instance,
             Value.VAtom a => new Term.Atom(a.Atom),
             Value.VAtomTy a => new Term.AtomTy(a.Ty),
-            Value.VProd p => new Term.Prod([.. p.Items.Select(i => Quote(mc, depth, i))]),
-            Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(i => Quote(mc, depth, i))]),
-            Value.VFlex f => QuoteSpine(mc, depth, new Term.Meta(f.Id), f.Spine),
-            Value.VRigid r => QuoteSpine(mc, depth, new Term.Var(LevelToIndex(depth, r.Level)), r.Spine),
-            Value.VNeutral n => n.Frames.Aggregate(QuoteHead(depth, n.Head), (acc, frame) => frame switch
+            Value.VProd p => new Term.Prod([.. p.Items.Select(i => Quote(mc, width, i))]),
+            Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(i => Quote(mc, width, i))]),
+            Value.VMeta f => QuoteSpine(mc, width, new Term.Meta(f.Id), f.Spine),
+            Value.VVar r => QuoteSpine(mc, width, new Term.Var(LevelToIndex(width, r.Level)), r.Spine),
+            // Evaluating the module pushes one entry per binding, so the ith
+            // binding's term is read i entries further in.
+            Value.VModule m => new Term.Module([.. m.Entries.Select((e, i) => e switch
             {
-                Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, depth, a.Arg)),
+                ModuleEntry.Field f => (BindingTerm)new BindingTerm.Let(f.Name, f.Kind, Quote(mc, width + i, f.Value)),
+                _ => throw new InvalidOperationException($"unhandled module entry {e.GetType().Name}"),
+            })]),
+            Value.VNeutral n => n.Frames.Aggregate(QuoteHead(width, n.Head), (acc, frame) => frame switch
+            {
+                Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a.Arg)),
                 Frame.FProj p => new Term.Proj(acc, p.Index),
+                Frame.FDot d => new Term.Dot(acc, d.Name),
                 _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
             }),
             var other => throw new NotImplementedException($"not ported yet: reading back {other.GetType().Name}"),
         };
     }
 
-    private static Term QuoteSpine(MetaContext mc, int depth, Term head, EquatableArray<Value> spine) =>
-        spine.Aggregate(head, (acc, v) => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, depth, v)));
+    private static Term QuoteSpine(MetaContext mc, int width, Term head, EquatableArray<Value> spine) =>
+        spine.Aggregate(head, (acc, v) => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, v)));
 
-    private static Term QuoteHead(int depth, Head head) => head switch
+    private static Term QuoteHead(int width, Head head) => head switch
     {
-        Head.HVar v => new Term.Var(LevelToIndex(depth, v.Level)),
+        Head.HVar v => new Term.Var(LevelToIndex(width, v.Level)),
         Head.HMeta m => new Term.Meta(m.Id),
         Head.HPrim p => new Term.Prim(p.Name),
         _ => throw new InvalidOperationException($"unhandled head {head.GetType().Name}"),
     };
 
-    /// <summary>A level as the index it is at <paramref name="depth"/> entries.</summary>
-    public static int LevelToIndex(int depth, int level) => depth - level - 1;
+    /// <summary>A level as the index it is at <paramref name="width"/> entries.</summary>
+    public static int LevelToIndex(int width, int level) => width - level - 1;
 
-    /// <summary>A value with any solved metavariable at its head resolved away.</summary>
+    /// <summary>A value with any solved meta at its head resolved away.</summary>
     public static Value Force(MetaContext mc, Value value)
     {
-        while (value is Value.VFlex flex && mc.Solution(flex.Id) is { } solution)
-            value = flex.Spine.Aggregate(solution, (f, a) => ApplyStuck(mc, f, a));
+        while (value is Value.VMeta meta && mc.Solution(meta.Id) is { } solution)
+            value = meta.Spine.Aggregate(solution, (f, a) => ApplyStuck(mc, f, a));
         return value;
     }
 }

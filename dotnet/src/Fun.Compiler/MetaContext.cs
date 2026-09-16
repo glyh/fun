@@ -2,7 +2,7 @@ using Fun.Kernel;
 
 namespace Fun.Compiler;
 
-/// <summary>The metavariables of one elaboration, and what they have been solved to.</summary>
+/// <summary>The metas of one elaboration, and what they have been solved to.</summary>
 public sealed class MetaContext
 {
     private readonly List<Value?> _solutions = [];
@@ -18,7 +18,7 @@ public sealed class MetaContext
     public void Solve(int id, Value value)
     {
         if (_solutions[id] is not null)
-            throw new InvalidOperationException($"metavariable ?{id} is already solved");
+            throw new InvalidOperationException($"meta ?{id} is already solved");
         _solutions[id] = value;
     }
 }
