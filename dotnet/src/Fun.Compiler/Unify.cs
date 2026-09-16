@@ -182,6 +182,11 @@ public static partial class Unify
             Value.VAtomTy a => new Term.AtomTy(a.Ty),
             Value.VProd p => new Term.Prod([.. p.Items.Select(Go)]),
             Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(Go)]),
+            // Constructor fields read back at the struct's own width (as Nbe.QuoteStruct
+            // does), so they need no lift; a binding sits entries further in.
+            Value.VStruct { Entries: var entries } st when entries.All(e => e is ModuleEntry.Field { Kind: MemberKind.Field }) =>
+                new Term.Struct([.. entries.Cast<ModuleEntry.Field>().Select(f => (f.Name, Go(f.Value)))], [], st.Partial),
+            Value.VRefTy r => new Term.RefTy(Go(r.Heap), Go(r.Element)),
             Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(Go)]),
             Value.VRecursiveOccurrence o => new Term.RecursiveOccurrence(o.Decl, [.. o.Captures.Select(Go)], [.. o.Args.Select(Go)]),
             Value.VCon c => c.Args.Aggregate((Term)new Term.Dot(Go(c.Nominal), c.Name), (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a))),
