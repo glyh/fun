@@ -214,6 +214,9 @@ public static partial class Elaborator
             case Syntax.Ap { Explicitness: Explicitness.Explicit } ap:
                 return InferAp(ctx, ap);
 
+            case Syntax.Ap { Explicitness: Explicitness.Implicit } ap:
+                return InferApImplicit(ctx, ap);
+
             case Syntax.Let { Recursive: false } let:
             {
                 Term valueTerm;
@@ -289,6 +292,7 @@ public static partial class Elaborator
             default:
             {
                 var (term, inferred) = Infer(ctx, stx);
+                (term, inferred) = InsertImplicitArgs(ctx, term, inferred);
                 ctx.Unify(expected, inferred);
                 return term;
             }
@@ -408,6 +412,7 @@ public static partial class Elaborator
     private static (Term, Value) InferAp(Context ctx, Syntax.Ap ap)
     {
         var (fn, fnType) = Infer(ctx, ap.Fn);
+        (fn, fnType) = InsertImplicitArgs(ctx, fn, fnType);
         switch (ctx.Force(fnType))
         {
             case Value.VPi { Explicitness: Explicitness.Explicit } pi:
@@ -416,8 +421,6 @@ public static partial class Elaborator
                 var result = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ctx.Eval(arg));
                 return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
             }
-            case Value.VPi:
-                throw new NotImplementedException("not ported yet: implicit argument insertion");
             case Value.VMeta or Value.VVar or Value.VNeutral:
                 throw new NotImplementedException("not ported yet: applying a value of unknown function type");
             default:
