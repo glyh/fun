@@ -294,10 +294,11 @@ let escape_guard ctx =
     end
   in
   (* Error translation, not dispatch: a branch closure rejected because another
-     branch fixed its row to one without a handled effect is that escape. *)
+     branch fixed its row to one without a handled effect is that escape -
+     whether the fixed row left the effect unhandled or made the result pure. *)
   let within handled elaborate_branches =
     try elaborate_branches ()
-    with ElabError (UnhandledEffects names) as err -> (
+    with ElabError ((UnhandledEffects names | EffectsInPureResult names)) as err -> (
       let handled_names =
         List.map (fun v -> (Debug.pp_value_short metas v, v)) handled
       in
