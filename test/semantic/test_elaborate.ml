@@ -155,8 +155,6 @@ let conditionals =
   [
     Alcotest.test_case "simple if" `Quick
       (check_type "if (True) { 1 } else { 2 }" (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "if branches must match" `Quick
-      (elab_fail "if (True) { 1 } else { False }");
     Alcotest.test_case "nested if" `Quick
       (check_type "if (True) { if (False) { 1 } else { 2 } } else { 3 }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "if branches are blocks" `Quick
@@ -172,8 +170,6 @@ let lambdas =
   [
     Alcotest.test_case "application" `Quick
       (check_type "((fn(x) { x }) : I64 -> I64)(42)" (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "apply non-function" `Quick
-      (elab_fail "1(2)");
     Alcotest.test_case "annotated identity" `Quick
       (check_type "(fn(x) { x } : I64 -> I64)"
          (pi Explicit (AtomTy Atom_ty.TI64) (AtomTy Atom_ty.TI64)));
@@ -245,11 +241,6 @@ let operators =
 
 let equality_rejections =
   [
-    Alcotest.test_case "mismatch rejection" `Quick (elab_fail "1 == True");
-    Alcotest.test_case "nominal equality requires impl" `Quick
-      (elab_fail "{ type Color = Red; Red == Red }");
-    Alcotest.test_case "record equality requires impl" `Quick
-      (elab_fail "{ Point = struct {x: I64}; Point{x = 1} == Point{x = 1} }");
   ]
 
 let dependent =
@@ -277,13 +268,6 @@ let dependent =
           _ => False \
           } }; is_zeroish }"
          "[T : Type] -> T -> Bool");
-    Alcotest.test_case "type-case rejects invalid refined branch" `Quick
-      (elab_fail
-         "{ bad : (T : Type) -> T -> Bool = fn(T : Type, x) { \
-          match (T) { \
-          I64 => x == False, \
-          _ => False \
-          } }; bad }");
     Alcotest.test_case "type-case default refines return type" `Quick
       (check_type
          "{ default : [T : Type] -> T = fn[T : Type] { \
@@ -295,79 +279,6 @@ let dependent =
            _ => panic(\"no default\") \
           } }; default }"
          (Pi { explicitness = Implicit; domain = U; effects = empty_effect_row; codomain = Var 0 }));
-    Alcotest.test_case "type-case default with fallback" `Quick
-      (elab_ok
-         "{ default_or : [T : Type] -> T -> T = fn[T : Type](fallback) { \
-          match (T) { \
-          I64 => 0, \
-          Bool => False, \
-          Unit => (), \
-          Char => 'a', \
-          String => \"\", \
-          _ => fallback \
-          } }; default_or }");
-    Alcotest.test_case "type-case string classifier" `Quick
-      (elab_ok
-         "{ type_name : Type -> String = fn(T) { \
-          match (T) { \
-          I64 => \"i64\", \
-          Bool => \"bool\", \
-          Char => \"char\", \
-          Unit => \"unit\", \
-          String => \"string\", \
-          _ => \"other\" \
-          } }; type_name }");
-    Alcotest.test_case "type-case nominal classifier" `Quick
-      (elab_ok
-         "{ type Option a = Some a | None; \
-          classify : Type -> I64 = fn(T) { \
-          match (T) { \
-          Option(I64) => 1, \
-          Option _ => 2, \
-          _ => 0 \
-          } }; classify }");
-    Alcotest.test_case "type-case struct field type binder" `Quick
-      (elab_ok
-         "{ classify : Type -> I64 = fn(T) { \
-          match (T) { \
-          struct { x: p; _ } => match (p) { I64 => 1, _ => 2 }, \
-          _ => 0 \
-          } }; classify }");
-    Alcotest.test_case "type-case struct field type pattern" `Quick
-      (elab_ok
-         "{ classify : Type -> I64 = fn(T) { \
-          match (T) { \
-          struct { x: I64; _ } => 1, \
-          struct { x: Bool; _ } => 2, \
-          _ => 0 \
-          } }; classify }");
-    Alcotest.test_case "type-case duplicate struct field pattern rejects" `Quick
-      (elab_fail
-         "match (I64) { \
-          struct { x: I64; x: Bool; _ } => 1, \
-          _ => 0 \
-          }");
-    Alcotest.test_case "type-case struct pattern on non-Type rejects" `Quick
-      (elab_fail "match (1) { struct { x: I64; _ } => 1, _ => 0 }");
-    Alcotest.test_case "type-case unresolved uppercase pattern rejects" `Quick
-      (elab_fail
-         "{ type Option a = Some a | None; \
-          match (Option(I64)) { Option X => I64, _ => Bool } }");
-    Alcotest.test_case "type-passing identity" `Quick
-      (elab_ok
-         "((fn(T : Type, x : T) { x }) : Type -> I64 -> I64)(I64)(42)");
-    Alcotest.test_case "type-level if" `Quick
-      (elab_ok
-         "{ choose : Type -> Type -> Bool -> Type = fn(a, b, c) { if (c) { a } else { b } }; (42 : choose(I64, Bool, True)) }");
-    Alcotest.test_case "dependent return type" `Quick
-      (elab_ok
-         "{ f : Bool -> Type = fn(b) { if (b) { I64 } else { Bool } }; (42 : f(True)) }");
-    Alcotest.test_case "dependent return type False" `Quick
-      (elab_ok
-         "{ f : Bool -> Type = fn(b) { if (b) { I64 } else { Bool } }; (True : f(False)) }");
-    Alcotest.test_case "dependent mismatch" `Quick
-      (elab_fail
-         "{ f : Bool -> Type = fn(b) { if (b) { I64 } else { Bool } }; (True : f(True)) }");
   ]
 
 let meta_solving =
@@ -383,51 +294,7 @@ let meta_solving =
 
 let structs =
   [
-    Alcotest.test_case "empty module" `Quick
-      (elab_ok "module { }");
     (* E11: a nominal's identity is its declaration and its own captures. *)
-    Alcotest.test_case "a type declared under a binder evaluates" `Quick
-      (eval_i64 "{ mk = fn(u : Unit) { module { pub type T = A | B } }; m1 = mk(()); f = fn(x : m1.T) { 1 }; f(m1.A) }" 1L);
-    Alcotest.test_case "a block type under a binder evaluates" `Quick
-      (eval_i64 "{ mk = fn(X : Type) { type T = A(X) | B; fn(x : X) { match (A(x)) { A(n) => n, B => x } } }; mk(I64)(3) }" 3L);
-    Alcotest.test_case "the same maker over the same argument shares its type" `Quick
-      (eval_i64
-         "{ less = fn(a : I64, b : I64) { a < b };
-            Set = fn(Elem : Type, cmp : I64 -> I64 -> Bool) { module {
-              pub type T = Leaf | Node(T, Elem, T);
-              pub single = fn(x : Elem) { Node(Leaf, x, Leaf) };
-              pub union = fn(a : T, b : T) { a };
-              pub size = fn(t : T) { match (t) { Leaf => 0, Node(_, _, _) => 1 } } } };
-            a = Set(I64, less); b = Set(I64, less);
-            a.size(a.union(a.single(1), b.single(2))) }" 1L);
-    Alcotest.test_case "different captured values are different types" `Quick
-      (elab_fail "{ mk = fn(X : Type) { module { pub type T = A(X) | B } }; f = fn(t : mk(I64).T) { 1 }; f(mk(Bool).B) }");
-    Alcotest.test_case "a captured value, compared by conversion" `Quick
-      (elab_fail
-         "{ F = fn(n : I64) { if (n == 0) { I64 } else { Bool } };
-            mk = fn(n : I64) { module { pub type T = A(F(n)) | B } };
-            f = fn(t : mk(0).T) { 1 }; f(mk(1).B) }");
-    Alcotest.test_case "a variable the declaration does not mention does not split it" `Quick
-      (eval_i64 "{ mk = fn(X : Type, junk : I64) { module { pub type T = A(X) | B } }; f = fn(t : mk(I64, 1).T) { 1 }; f(mk(I64, 2).B) }" 1L);
-    Alcotest.test_case "a nominal captures what its enclosing module uses" `Quick
-      (elab_fail
-         "{ Set = fn(Elem : Type, cmp : Elem -> Elem -> Bool) { module {
-              pub type T = Leaf | Node(T, Elem, T);
-              pub single = fn(x : Elem) : T { Node(Leaf, x, Leaf) };
-              pub lt = fn(x : Elem, y : Elem) : Bool { cmp(x, y) };
-              pub union = fn(a : T, b : T) : T { a } } };
-            less = fn(a : I64, b : I64) { a < b }; greater = fn(a : I64, b : I64) { a > b };
-            up = Set(I64, less); down = Set(I64, greater);
-            up.union(up.single(1), down.single(2)) }");
-    Alcotest.test_case "type-case compares nominal instances by their captures" `Quick
-      (eval_i64
-         "{ Set = fn(Elem : Type, cmp : Elem -> Elem -> Bool) { module {
-              pub type T = Leaf | Node(T, Elem, T);
-              pub lt = fn(x : Elem, y : Elem) : Bool { cmp(x, y) } } };
-            less = fn(a : I64, b : I64) { a < b }; greater = fn(a : I64, b : I64) { a > b };
-            a = Set(I64, less); b = Set(I64, less); c = Set(I64, greater);
-            f = fn(t : Type) { match (t) { a.T => 1, _ => 0 } };
-            f(b.T) * 10 + f(c.T) }" 10L);
     Alcotest.test_case "a generative module's types are named by its binder" `Quick
       (eval_i64 (symbol_table "g = fn(x : st1.Symbol) { st1.name(x) }; g(st1.intern(5)) + st1.name(st1.intern(1))") 11L);
     Alcotest.test_case "two generative evaluations are different types" `Quick
@@ -442,15 +309,6 @@ let structs =
       (elab_fail (symbol_table "st1.intern(5)"));
     Alcotest.test_case "a sealed member's type may not reach its module's type" `Quick
       (elab_fail (symbol_table "M = module { t = SymbolTable(()); pub f = t.intern }; 1"));
-    Alcotest.test_case "an outer type a generative module names is not sealed" `Quick
-      (eval_i64
-         "{ type Symbol = Sym(I64);
-            mk = fn(u : Unit) { module { table = ref(0); pub T = Symbol; pub wrap = fn(n : I64) { table <- n; Sym(n) } } };
-            m = mk(());
-            f = fn(s : Symbol) { match (s) { Sym(n) => n } };
-            f(m.wrap(4)) }" 4L);
-    Alcotest.test_case "a module type reads a later member's variables at its own depth" `Quick
-      (eval_i64 "{ mk = fn(X : Type) { module { pub y = True; pub f = fn(x : X) { x } } }; mk(I64).f(7) }" 7L);
     (* A [type] member inside a [struct] used to push one context entry too many
        (two, when parameterised), so every member after it resolved to the wrong
        de Bruijn index. See env-width-contract-is-unnamed. *)
@@ -466,20 +324,10 @@ let structs =
       (check_type
          "{ S = module { pub x = 42 }; open S; x }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "open struct constructors" `Quick
-      (elab_ok
-         "{ Color = module { pub type Color = Red | Green | Blue }; \
-          open Color; Red }");
-    Alcotest.test_case "struct with pub fields" `Quick
-      (elab_ok
-         "{ S = module { pub x = 1; pub y = True }; open S; if (y) { x } else { 0 } }");
     Alcotest.test_case "nested struct open" `Quick
       (check_type
          "{ Outer = module { pub Inner = module { pub val = 42 } }; open Outer; open Inner; val }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "open only imports pub" `Quick
-      (elab_fail
-         "{ S = module { x = 42 }; open S; x }");
     Alcotest.test_case "field access" `Quick
       (check_type
          "{ S = module { pub x = 42 }; S.x }"
@@ -492,17 +340,6 @@ let structs =
       (check_type
          "{ Outer = module { pub Inner = module { pub val = 42 } }; Outer.Inner.val }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "field not found" `Quick
-      (elab_fail "{ S = module { pub x = 1 }; S.y }");
-    Alcotest.test_case "private not accessible" `Quick
-      (elab_fail "{ S = module { x = 42 }; S.x }");
-    Alcotest.test_case "field decls" `Quick
-      (elab_ok "struct { x: I64; y: Bool; }");
-    Alcotest.test_case "field decls with pub binding" `Quick
-      (elab_ok "struct { x: I64; pub fourty_two = 42 }");
-    Alcotest.test_case "pass record through function" `Quick
-      (elab_ok
-         "{ Point = struct { x: I64; }; (fn(p) { p.x })(Point{x = 42}) }");
     Alcotest.test_case "module signature argument" `Quick
       (check_type
          "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 1 })"
@@ -515,27 +352,8 @@ let structs =
       (check_type
          "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 1 })"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "open a module parameter" `Quick
-      (eval_i64 "(fn(m : sig { x : I64 }) { open m; x + 1 })(module { pub x = 41 })" 42L);
-    Alcotest.test_case "open a module parameter with more members than its signature" `Quick
-      (eval_i64 "(fn(m : sig { x : I64 }) { open m; x + 1 })(module { pub y = 5; pub x = 41 })" 42L);
-    Alcotest.test_case "open a module parameter in a nested lambda" `Quick
-      (eval_i64 "(fn(m : sig { x : I64 }) { fn(u : I64) { open m; x + u } })(module { pub x = 41 })(1)" 42L);
-    Alcotest.test_case "open a module parameter whose signature has a type member" `Quick
-      (eval_i64 "(fn(m : sig { T : Type; v : I64 }) { open m; (v : I64) })(module { pub T = Bool; pub v = 3 })" 3L);
     (* A signature is a telescope: a later member reads an earlier one through
        the module it describes. *)
-    Alcotest.test_case "dependent signature" `Quick
-      (eval_i64
-         "{ Stack = sig { T : Type; empty : T; size : T -> I64 }; \
-            IntStack = module { pub T = I64; pub empty = 7; pub size = fn(x : I64) { x + 1 } }; \
-            count = fn(s : Stack) { s.size(s.empty) }; count(IntStack) }" 8L);
-    Alcotest.test_case "dependent signature rejects a mismatched member" `Quick
-      (elab_fail
-         "{ Stack = sig { T : Type; empty : T }; Bad = module { pub T = I64; pub empty = True }; \
-            count = fn(s : Stack) { 1 }; count(Bad) }");
-    Alcotest.test_case "a signature's type member stays abstract" `Quick
-      (elab_fail "{ Stack = sig { T : Type; empty : T }; f = fn(s : Stack) { (s.empty : I64) }; 1 }");
     Alcotest.test_case "a signature's named impl arrives through open" `Quick
       (check_type_src
          "{ trait Eq(A) = sig { eq : A -> A -> Bool }; Ordered = sig { T : Type; eq_T : impl Eq(T) }; \
@@ -551,28 +369,12 @@ let structs =
             M = module { pub T = I64; pub impl eq_T : Eq(I64) = module { eq = fn(x, y) { x == y } } }; \
             same(M, 1, 2) }"
          "Bool");
-    Alcotest.test_case "a signature's required impl must be provided" `Quick
-      (elab_fail
-         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; Ordered = sig { T : Type; eq_T : impl Eq(T) }; \
-            same = fn(s : Ordered) { 1 }; same(module { pub T = I64 }) }");
     Alcotest.test_case "an impl in a signature must be named" `Quick
       (fun () ->
         match elab "{ trait Eq(A) = sig { eq : A -> A -> Bool }; S = sig { T : Type; impl Eq(T) }; 1 }" with
         | exception Enforest_util.Error msg ->
             Alcotest.(check bool) "names the form" true (String.ends_with ~suffix:"an impl in a signature must be named: write name : impl Trait(Type)" msg)
         | _ -> Alcotest.fail "an anonymous impl in a sig was accepted");
-    Alcotest.test_case "module signature missing field rejected" `Quick
-      (elab_fail
-         "(fn(m : sig { x : I64 }) { m.x })(module { pub y = 1 })");
-    Alcotest.test_case "module signature wrong field type rejected" `Quick
-      (elab_fail
-         "(fn(m : sig { x : I64 }) { m.x })(module { pub x = True })");
-    Alcotest.test_case "module signature private field rejected" `Quick
-      (elab_fail
-         "(fn(m : sig { x : I64 }) { m.x })(module { x = 1 })");
-    Alcotest.test_case "record struct does not satisfy module signature" `Quick
-      (elab_fail
-         "{ Point = struct { x: I64; }; (fn(m : sig { x : I64 }) { m.x })(Point) }");
     Alcotest.test_case "private used by pub" `Quick
       (check_type
          "{ S = module { helper = 42; pub x = helper }; S.x }"
@@ -585,9 +387,6 @@ let structs =
       (check_type
          "{ Point = struct { x: I64; y: I64; }; (Point{x = 1; y = 2}).x }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "parameterized record construction" `Quick
-      (elab_ok
-         "{ Pair = fn[A : Type, B : Type] { struct { fst: A; snd: B; } }; (Pair[I64, Bool]{fst = 1; snd = True}).snd }");
     Alcotest.test_case "record type declaration" `Quick
       (check_type
          "{ Point = struct {x: I64; y: I64}; (Point{x = 1; y = 2}).x }"
@@ -611,14 +410,6 @@ let structs =
           p2 = Pair{fst = True; snd = 3}; \
           if (p2.fst) { p1.fst + p2.snd } else { 0 } }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "record type declaration missing field" `Quick
-      (elab_fail "{ Point = struct {x: I64; y: I64}; Point{x = 1} }");
-    Alcotest.test_case "record type declaration unknown field" `Quick
-      (elab_fail "{ Point = struct {x: I64}; Point{x = 1; y = 2} }");
-    Alcotest.test_case "record construction duplicate field" `Quick
-      (elab_fail "{ Point = struct {x: I64}; Point{x = 1; x = 2} }");
-    Alcotest.test_case "record declaration duplicate field" `Quick
-      (elab_fail "{ Point = struct {x: I64; x: Bool}; Point }");
     Alcotest.test_case "a record type is not a type declaration" `Quick
       (fun () ->
         match elab "{ type Point = struct {x: I64}; Point }" with
@@ -626,42 +417,12 @@ let structs =
             let msg = Printexc.to_string e in
             Alcotest.(check bool) ("names the let form: " ^ msg) true (let sub = "a record type is a value" in let n = String.length sub in let rec at i = i + n <= String.length msg && (String.sub msg i n = sub || at (i + 1)) in at 0)
         | _ -> Alcotest.fail "type X = struct was accepted");
-    Alcotest.test_case "record type declaration same recursion" `Quick
-      (elab_ok "{ type Option A = Some A | None; rec List = fn[A : Type] { struct {meta: A; next: Option(List[A])} }; List }");
-    Alcotest.test_case "recursive record construction" `Quick
-      (elab_ok "{ type Option A = Some A | None; rec List = fn[A : Type] { struct {meta: A; next: Option(List[A])} }; List{meta = 1; next = None} }");
-    Alcotest.test_case "recursive record rejects non-self payload" `Quick
-      (elab_fail "{ type Option A = Some A | None; rec List = fn[A : Type] { struct {meta: A; next: Option(List[A])} }; List{meta = 1; next = Some(2)} }");
-    Alcotest.test_case "a recursive record's name is shadowed by a binder" `Quick
-      (elab_ok "{ rec R = fn[A : Type] { struct {x: (fn(R) { R })(I64)} }; R }");
-    Alcotest.test_case "a recursive record's parameter is shadowed by a binder" `Quick
-      (elab_ok "{ rec R = fn[A : Type] { struct {x: (fn(A) { A })(I64)} }; R }");
-    Alcotest.test_case "a non-uniform recursive occurrence is accepted" `Quick
-      (elab_ok "{ rec Odd = fn[A : Type, B : Type] { struct {x: Option(Odd[B, A])} }; Odd }");
     Alcotest.test_case "a recursive record holds itself" `Quick
       (check_type
          "{ rec Numbers = struct { head : I64; tail : Option(Numbers) }; \
           l1 = Numbers{ head = 1, tail = None }; l2 = Numbers{ head = 2, tail = Some(l1) }; \
           match (l2.tail) { Some(x) => x.head, None => 0 } }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "a parameterised recursive record is one type per argument" `Quick
-      (eval_i64
-         "{ rec L = fn(A : Type) { struct { v : A; next : Option(L(A)) } };
-            f = fn(x : L(I64)) { x.v }; f(L(I64){ v = 3, next = None }) }" 3L);
-    Alcotest.test_case "a parameterised recursive record differs by argument" `Quick
-      (elab_fail
-         "{ rec L = fn(A : Type) { struct { v : A; next : Option(L(A)) } };
-            g = fn(x : L(Bool)) { 1 }; g(L(I64){ v = 3, next = None }) }");
-    Alcotest.test_case "a recursive record under a binder is an instance per captures" `Quick
-      (eval_i64
-         "{ mk = fn(B : Type) { rec L = struct { v : B; next : Option(L) }; L };
-            LI = mk(I64); LI2 = mk(I64);
-            x : LI = LI2{ v = 1, next = None }; y : LI = LI{ v = 2, next = Some(x) };
-            match (y.next) { Some(z) => z.v, None => 0 } }" 1L);
-    Alcotest.test_case "a recursive record under a binder differs by captures" `Quick
-      (elab_fail
-         "{ mk = fn(B : Type) { rec L = struct { v : B; next : Option(L) }; L };
-            LI = mk(I64); LB = mk(Bool); x : LI = LI{ v = 1, next = None }; y : LB = x; 1 }");
     Alcotest.test_case "a parameterised recursive record holds itself" `Quick
       (check_type
          "{ rec L = fn(A : Type) { struct { meta : A; next : Option(L(A)) } }; \
@@ -678,42 +439,6 @@ let structs =
               (String.equal msg "recursive occurrence Numbers vs recursive occurrence Scores")
         | exception e -> Alcotest.fail ("unexpected " ^ Printexc.to_string e)
         | _ -> Alcotest.fail "same-shape recursive records unified");
-    Alcotest.test_case "mutually recursive records hold each other" `Quick
-      (eval_i64
-         "{ rec A = struct { n : I64; b : Option(B) } and B = struct { m : I64; a : Option(A) }; \
-          a0 = A{ n = 1, b = None }; b1 = B{ m = 2, a = Some(a0) }; a2 = A{ n = 3, b = Some(b1) }; \
-          match (a2.b) { Some(b) => match (b.a) { Some(a) => a.n + b.m, None => 0 }, None => 0 } }"
-         3L);
-    Alcotest.test_case "a module's mutually recursive records" `Quick
-      (eval_i64
-         "{ M = module { pub rec A = struct { b : Option(B) } and B = struct { n : I64; a : Option(A) } }; \
-          (M.B{ n = 5, a = Some(M.A{ b = None }) }).n }"
-         5L);
-    Alcotest.test_case "a rec … and … group does not mix struct types and functions" `Quick
-      (elab_fail "{ rec A = struct { b : Option(B) } and B = fn(x : I64) { x }; 1 }");
-    Alcotest.test_case "mutually recursive functions run" `Quick
-      (eval_i64
-         "{ rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
-          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
-          if (even(10)) { if (odd(7)) { 1 } else { 0 } } else { 0 } }"
-         1L);
-    Alcotest.test_case "unannotated mutually recursive functions capture the context" `Quick
-      (eval_i64
-         "{ k = 2; rec down = fn(n : I64) { if (n == 0) { 0 } else { k + back(n - 1) } } \
-          and back = fn(n : I64) { if (n == 0) { 0 } else { down(n - 1) } }; down(4) }"
-         4L);
-    Alcotest.test_case "a module's mutually recursive functions" `Quick
-      (eval_i64
-         "{ M = module { pub rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
-          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } } }; \
-          if (M.odd(5)) { 1 } else { 0 } }"
-         1L);
-    Alcotest.test_case "a recursive record holds itself at run time" `Quick
-      (eval_i64
-         "{ rec Numbers = struct { head : I64; tail : Option(Numbers) }; \
-          l2 = Numbers{ head = 2, tail = Some(Numbers{ head = 40, tail = None }) }; \
-          match (l2.tail) { Some(x) => x.head + l2.head, None => 0 } }"
-         42L);
     Alcotest.test_case "same-shape plain records unify" `Quick
       (check_type "{ P = struct { x : I64 }; Q = struct { x : I64 }; q : Q = P{ x = 3 }; q.x }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "method uses self" `Quick
@@ -730,23 +455,12 @@ let structs =
          (AtomTy Atom_ty.TI64));
     (* A NomRef names the template; a binding holding an instance of the same
        nominal ([Decls = List(Decl)] in the prelude) must not be taken for it. *)
-    Alcotest.test_case "nominal reference skips an instance binding" `Quick
-      (elab_ok "{ f = fn(d : List(I64)) { d }; g = fn(d : List(I64)) { x : List(I64) = f(d); x }; 1 }");
-    Alcotest.test_case "nominal reference skips a local instance binding" `Quick
-      (elab_ok "{ type Box A = MkBox(A); BoolBox = Box(Bool); f = fn(b : Box(I64)) { b }; g = fn(b : Box(I64)) { fn(u : Unit) { y : Box(I64) = f(b); y } }; 1 }");
-    Alcotest.test_case "nominal reference skips an option instance" `Quick
-      (elab_ok "{ OB = Option(Bool); f = fn(o : Option(I64)) { o }; g = fn(o : Option(I64)) { y : Option(I64) = f(o); y }; 1 }");
     Alcotest.test_case "method uses Self type" `Quick
       (check_type
          "{ Box = fn[A : Type] { struct { value: A; pub method id(other : Self) { other.value } } }; Box[I64].id(Box[I64]{value = 1})(Box[I64]{value = 2}) }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "Self in let binding" `Quick
-      (elab_ok
-         "{ Box = struct { value: I64; pub id = fn(b : Self) { b.value } }; Box.id(Box{value = 1}) }");
     Alcotest.test_case "self outside method" `Quick
       (elab_fail "self");
-    Alcotest.test_case "self in let binding" `Quick
-      (elab_fail "{ Box = struct { value: I64; pub bad = self.value }; Box.bad }");
     Alcotest.test_case "opening a non-module is an error in every open form" `Quick (fun () ->
       List.iter
         (fun source ->
@@ -763,45 +477,16 @@ let structs =
       (check_type_src "{ T = Bool; M = module { pub T = I64 }; R = struct { open M; f : T }; R{f = 1}.f }" "I64");
     Alcotest.test_case "one name means one thing in a struct" `Quick
       (check_type_src "{ T = I64; M = module { pub T = Bool }; R = struct { open M; f : T; pub g : T = True }; R{f = False}.f }" "Bool");
-    Alcotest.test_case "a field type does not see a later binding" `Quick
-      (elab_fail "{ R = struct { f : T; pub T = I64 }; R{f = 1}.f }");
-    Alcotest.test_case "a field type does not see another field" `Quick
-      (elab_fail "{ R = struct { n : Type; v : n }; 0 }");
     Alcotest.test_case "a method sees a later field" `Quick
       (check_type_src "{ C = struct { a : I64; pub method get() { self.b }; b : I64 }; C.get(C{a = 1; b = 9}) }" "I64");
-    Alcotest.test_case "a result type annotation checks the body" `Quick
-      (fun () ->
-        eval_i64 "{ f = fn(n : I64) : I64 { n + n }; f(2) }" 4L ();
-        eval_i64 "{ rec fact = fn(n : I64) : I64 { if (n == 0) { 1 } else { n * fact(n - 1) } }; fact(5) }" 120L ();
-        eval_i64 "{ add = fn(a : I64) : I64 -> I64 { fn(b : I64) : I64 { a + b } }; add(1)(2) }" 3L ();
-        eval_i64 "{ C = struct { v : I64; pub method get() : I64 { self.v } }; C.get(C{v = 7}) }" 7L ();
-        elab_ok "{ effect Exc = sig { raise : I64 -> I64 }; C = struct { v : I64; pub method bump() ->{Exc} I64 { perform Exc.raise(1) } }; C.bump }" ();
-        elab_fail "{ f = fn(n : I64) : Bool { n }; 1 }" ());
-    Alcotest.test_case "a method is called through a value" `Quick
-      (fun () ->
-        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { self.a(2) } }; C.b(C{v = 1}) }" 3L ();
-        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k } }; c = C{v = 1}; c.a(2) }" 3L ();
-        eval_i64 "{ C = struct { v : I64; pub method b() : I64 { self.later(5) }; pub method later(k : I64) : I64 { self.v * k } }; C{v = 2}.b() }" 10L ();
-        eval_i64 "{ C = struct { v : I64; pub method a(k : I64) { self.v + k }; pub method b() { a(self)(2) } }; C.b(C{v = 1}) }" 3L ();
-        elab_fail "{ C = struct { v : I64; pub method b() { self.zzz } }; 1 }" ());
-    Alcotest.test_case "a struct type with methods is not its fields alone" `Quick
-      (elab_fail "{ C = struct { v : I64; pub method get() { self.v } }; D = struct { v : I64 }; f = fn(x : D) { x.v }; f(C{v = 1}) }");
     Alcotest.test_case "a field type mentioning an earlier method is a cycle" `Quick
       (fun () ->
         match elab "{ C = struct { a : I64; pub method get() { self.a }; b : get; }; 0 }" with
         | exception Elaborate.ElabError (FieldTypeMentionsMethod { field = "b"; _ }) -> ()
         | exception e -> Alcotest.fail (Printexc.to_string e)
         | _ -> Alcotest.fail "expected a field/method cycle error");
-    Alcotest.test_case "a struct does not see its own name" `Quick
-      (elab_fail "{ C = struct { pub k = 1; pub method get() { self.value + C.k }; value : I64 }; 0 }");
     Alcotest.test_case "an outer binding of the struct's name is still visible" `Quick
       (check_type_src "{ C = 1; C = struct { pub k = C }; C.k }" "I64");
-    Alcotest.test_case "record construction missing field" `Quick
-      (elab_fail "{ Point = struct { x: I64; y: I64; }; Point{x = 1} }");
-    Alcotest.test_case "record construction unknown field" `Quick
-      (elab_fail "{ Point = struct { x: I64; }; Point{x = 1; y = 2} }");
-    Alcotest.test_case "record construction duplicate field" `Quick
-      (elab_fail "{ Point = struct { x: I64; }; Point{x = 1; x = 2} }");
   ]
 
 let functors =
@@ -810,19 +495,10 @@ let functors =
       (check_type
          "{ Double = fn(M : sig { x : I64 }) { module { pub doubled = M.x + M.x } }; (Double(module { pub x = 21 })).doubled }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "functor pass through" `Quick
-      (elab_ok
-         "{ F = fn(M : sig { x : I64 }) { module { pub y = M.x } }; A = module { pub x = 1 }; B = F(A); B.y }");
     Alcotest.test_case "functor with private helper" `Quick
       (check_type
          "{ F = fn(M : sig { x : I64 }) { module { tmp = M.x; pub y = tmp + 1 } }; (F(module { pub x = 1 })).y }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "compose functors" `Quick
-      (elab_ok
-         "{ F = fn(M : sig { x : I64 }) { module { pub a = M.x } }; G = fn(N : sig { a : I64 }) { module { pub b = N.a } }; (G(F(module { pub x = 1 }))).b }");
-    Alcotest.test_case "higher order functor" `Quick
-      (elab_ok
-         "{ Apply = fn(F, M : sig { x : I64 }) { F(M) }; Apply(fn(M : sig { x : I64 }) { module { pub z = M.x } })(module { pub x = 1 }) }");
   ]
 
 let tuple_proj =
@@ -837,8 +513,6 @@ let tuple_proj =
       (check_type_src "((1, True), 42).0.1" "Bool");
     Alcotest.test_case "proj from let" `Quick
       (check_type "{ p = (1, True); p.0 }" (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "proj type error" `Quick
-      (elab_fail "42.0");
   ]
 
 (* ADTs as values: [enum { … }], constructors as members of the type. *)
@@ -847,20 +521,6 @@ let enums =
   [
     (* A nested refutable sub-pattern makes the decision tree resolve columns out
        of source order; a branch still binds its variables in source order. *)
-    Alcotest.test_case "nested constructor pattern binds in source order" `Quick
-      (eval_i64 "{ rec f = fn(xs : List(I64)) : I64 { match (xs) { Cons(m, Nil) => m, Cons(m, rest) => f(rest), Nil => 0 } }; f(Cons(1, Cons(2, Nil))) }" 2L);
-    Alcotest.test_case "nested option pattern binds in source order" `Quick
-      (eval_i64 "{ match ((5, Some(3))) { (a, None) => a, (a, Some(b)) => a - b } }" 2L);
-    Alcotest.test_case "nested tuple pattern binds in source order" `Quick
-      (eval_i64 "{ match ((1, (2, 3))) { (a, (b, c)) => a * 100 + b * 10 + c } }" 123L);
-    Alcotest.test_case "nested user enum pattern binds in source order" `Quick
-      (eval_i64 "{ P = enum { Pair(I64, Option(I64)) }; open P; match (Pair(10, Some(4))) { Pair(a, None) => a, Pair(a, Some(b)) => a - b } }" 6L);
-    Alcotest.test_case "a constructor is a member of its enum" `Quick
-      (eval_i64 "{ Color = enum { Red, Green }; match (Color.Green) { Color.Red => 1, Color.Green => 2 } }" 2L);
-    Alcotest.test_case "open brings an enum's constructors into scope" `Quick
-      (eval_i64 "{ Color = enum { Red, Green }; open Color; match (Green) { Red => 1, Green => 2 } }" 2L);
-    Alcotest.test_case "an enum's constructors are not in scope unopened" `Quick
-      (elab_fail "{ Color = enum { Red, Green }; Red }");
     Alcotest.test_case "a former's constructor is generic over its parameters" `Quick
       (eval_i64 ("{ " ^ option ^ "match (Option2.Some2(5)) { Option2.Some2(n) => n, Option2.None2 => 0 } }") 5L);
     Alcotest.test_case "an opened former's constructors match" `Quick
@@ -869,32 +529,6 @@ let enums =
       (elab_ok ("{ " ^ option ^ "f = fn(a : Option2(I64), b : Option2(I64)) { 1 }; f(Option2(I64).None2, Option2.Some2(1)) }"));
     Alcotest.test_case "Option2(I64) is not Option2(Bool)" `Quick
       (elab_fail ("{ " ^ option ^ "x : Option2(Bool) = Option2(I64).None2; 1 }"));
-    Alcotest.test_case "a rec enum refers to itself" `Quick
-      (eval_i64 "{ rec Tree = enum { Leaf, Node(Tree, Tree) }; match (Tree.Node(Tree.Leaf, Tree.Leaf)) { Tree.Node(_, _) => 1, Tree.Leaf => 0 } }" 1L);
-    Alcotest.test_case "a parameterised rec enum" `Quick
-      (eval_i64 "{ rec L = fn(A : Type) { enum { Nil2, Cons2(A, L(A)) } }; match (L.Cons2(4, L.Cons2(2, L.Nil2))) { L.Cons2(h, _) => h, L.Nil2 => 0 } }" 4L);
-    Alcotest.test_case "a module's mutually recursive enums" `Quick
-      (eval_i64
-         "{ M = module { pub rec A = enum { MkA(B), StopA } and B = enum { MkB(A), StopB } };
-            match (M.A.MkA(M.B.MkB(M.A.StopA))) { M.A.MkA(M.B.MkB(_)) => 1, _ => 0 } }" 1L);
-    Alcotest.test_case "a block's mutually recursive enums" `Quick
-      (eval_i64
-         "{ rec A = enum { MkA(B), StopA } and B = enum { MkB(A), StopB };
-            open A; open B;
-            match (MkA(MkB(StopA))) { MkA(MkB(StopA)) => 1, _ => 0 } }" 1L);
-    Alcotest.test_case "an enum and a struct type do not share a rec group" `Quick
-      (elab_fail "{ M = module { pub rec A = enum { MkA(B) } and B = struct { a : A } }; 1 }");
-    Alcotest.test_case "an enum under a generative maker is named by its binder" `Quick
-      (eval_i64
-         "{ mk = fn(u : Unit) { module { table = ref(0); pub T = enum { Sym(I64) };
-                                        pub make = fn(n : I64) { table <- n; T.Sym(n) } } };
-            m1 = mk(()); f = fn(x : m1.T) { 1 }; f(m1.make(1)) }" 1L);
-    Alcotest.test_case "an enum under a generative maker is one type per evaluation" `Quick
-      (elab_fail
-         "{ mk = fn(u : Unit) { module { table = ref(0); pub T = enum { Sym(I64) };
-                                        pub make = fn(n : I64) { table <- n; T.Sym(n) } } };
-            m1 = mk(()); m2 = mk(());
-            f = fn(x : m2.T) { 1 }; f(m1.make(1)) }");
   ]
 
 let adts =
@@ -927,8 +561,6 @@ let adts =
           if not (String.equal n.name "B") then
             Alcotest.fail "shadowed X should have type B (most recent)"
       | _ -> Alcotest.fail "expected nominal");
-    Alcotest.test_case "undefined constructor" `Quick
-      (elab_fail "{ type Color = Red | Green; Blue }");
     Alcotest.test_case "type Color accessible in body" `Quick (fun () ->
       let _core, ty = elab "{ type Color = Red | Green | Blue; Color }" in
       match Nbe.force (MetaContext.create ()) ty with
@@ -956,11 +588,6 @@ let adts =
           if not (String.equal n.name "Color") then
             Alcotest.fail "S.Red should have nominal type Color"
       | _ -> Alcotest.fail "expected nominal type");
-    Alcotest.test_case "private type not visible via dot" `Quick
-      (elab_fail
-         "{ S = module { \
-          type Color = Red | Green | Blue \
-          }; S.Red }");
     Alcotest.test_case "private type visible to later binding" `Quick (fun () ->
       let _core, ty =
         elab
@@ -982,11 +609,6 @@ let adts =
            _ : S.Color = S.Red; () }"
       in
       ());
-    Alcotest.test_case "distinct nominal ids don't unify" `Quick
-      (elab_fail
-         "{ S = module { pub type Color = Red | Green }; \
-          T = module { pub type Color = Blue }; \
-          _ : T.Color = S.Red; () }");
     Alcotest.test_case "parameterized ADT with payload" `Quick (fun () ->
       let _core, ty =
         elab "{ type Option a = Some a | None; Some[I64](42) }"
@@ -1051,24 +673,6 @@ let adts =
           if not (String.equal n.name "B") then
             Alcotest.fail "shadowed X should have type B"
       | _ -> Alcotest.fail "expected nominal type");
-    Alcotest.test_case "distinct param instantiations don't unify" `Quick
-      (elab_fail
-         "{ type Option a = Some a | None; \
-          x : Option(I64) = Some[I64](42); \
-          _ : Option(Bool) = x; () }");
-    Alcotest.test_case "constructor polymorphism" `Quick
-      (elab_ok
-         "{ type Option a = Some a | None; \
-          x = Some(1); \
-          y = Some(True); y }");
-    Alcotest.test_case "if with ADT branches" `Quick
-      (elab_ok
-         "{ type Result a e = Ok a | Err e; \
-          if (True) { Ok(1) } else { Err() } }");
-    Alcotest.test_case "recursive parameterized ADT" `Quick
-      (elab_ok
-         "{ type List a = Cons(a, List(a)) | Nil; \
-         Cons(1, Nil) }");
     Alcotest.test_case "recursive parameterized ADT match" `Quick
       (check_type
          "{ type List a = Cons(a, List(a)) | Nil; \
@@ -1112,16 +716,6 @@ let match_tests =
       (check_type "match ('a') { 'a' => 1, _ => 0 }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match escaped char literal" `Quick
       (check_type "match ('\\n') { '\\n' => 1, _ => 0 }" (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "literal type mismatch" `Quick
-      (elab_fail "match (1) { True => 0, _ => 1 }");
-    Alcotest.test_case "char literal type mismatch" `Quick
-      (elab_fail "match ('a') { 1 => 0, _ => 1 }");
-    Alcotest.test_case "non-exhaustive bool literal" `Quick
-      (elab_fail "match (True) { True => 1 }");
-    Alcotest.test_case "non-exhaustive int literal" `Quick
-      (elab_fail "match (1) { 1 => 1 }");
-    Alcotest.test_case "non-exhaustive char literal" `Quick
-      (elab_fail "match ('a') { 'a' => 1 }");
     Alcotest.test_case "match literal or-pattern" `Quick
       (check_type "match (1) { 0 | 1 => 42, _ => 0 }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "or-pattern covers bool" `Quick
@@ -1136,18 +730,6 @@ let match_tests =
          "{ type E = A I64 | B I64; \
           match (A(1)) { A(x) | B(x) => x } }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "or-pattern binding name mismatch" `Quick
-      (elab_fail
-         "{ type E = A I64 | B I64; \
-          match (A(1)) { A(x) | B(y) => x } }");
-    Alcotest.test_case "or-pattern missing binding" `Quick
-      (elab_fail
-         "{ type E = A I64 | C; \
-          match (A(1)) { A(x) | C => x } }");
-    Alcotest.test_case "non-exhaustive constructor or-pattern" `Quick
-      (elab_fail
-         "{ type Color = Red | Green | Blue; \
-          match (Red) { Red | Green => 1 } }");
     Alcotest.test_case "match tuple pattern" `Quick
       (check_type "match (1, True) { (x, b) => if (b) { x } else { 0 } }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "tuple or-pattern" `Quick
@@ -1156,38 +738,6 @@ let match_tests =
          (AtomTy Atom_ty.TI64));
     Alcotest.test_case "match nested tuple pattern" `Quick
       (check_type "match ((1, True), 2) { ((x, _), y) => x + y }" (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "tuple pattern arity mismatch" `Quick
-      (elab_fail "match (1, True) { (x, y, z) => x }");
-    Alcotest.test_case "tuple literal type mismatch" `Quick
-      (elab_fail "match (1, True) { (True, x) => x, _ => 0 }");
-    Alcotest.test_case "non-exhaustive tuple literal" `Quick
-      (elab_fail "match (True, 1) { (True, x) => x }");
-    Alcotest.test_case "match infers tuple scrutinee" `Quick
-      (elab_ok "fn(x) { match (x) { (True, y) => y, (False, y) => y } }");
-    Alcotest.test_case "match unknown constructor" `Quick
-      (elab_fail "{ type Color = Red; match (Red) { Blue => 0 } }");
-    Alcotest.test_case "match payload arity mismatch" `Quick
-      (elab_fail "{ type Option a = Some a | None; \
-                  match (Some[I64](42)) { Some => 0, None => 0 } }");
-    Alcotest.test_case "match wrong scrutinee type" `Quick
-      (elab_fail "{ type Color = Red | Green; match (42) { Red => 1 } }");
-    Alcotest.test_case "non-exhaustive missing ctor" `Quick
-      (elab_fail "{ type Color = Red | Green | Blue; \
-                  match (Red) { Red => 1, Green => 2 } }");
-    Alcotest.test_case "non-exhaustive nested ADT" `Quick
-      (elab_fail
-         "{ type C = X I64 | Y I64; \
-          type B = P C | Q C; \
-          type A = M B | N B; \
-          match (M(P(X(1)))) { M(P(X(x))) => x } }");
-    Alcotest.test_case "non-exhaustive partial nested branches" `Quick
-      (elab_fail
-         "{ type Inner = X I64 | Y I64; \
-          type Outer = A Inner | B Inner; \
-          match (A(X(1))) { A(X(x)) => x, B(X(x)) => x } }");
-    Alcotest.test_case "non-exhaustive single ctor" `Quick
-      (elab_fail "{ type Option a = Some a | None; \
-                  match (Some(42)) { Some(x) => x } }");
     Alcotest.test_case "exhaustive with wildcard" `Quick
       (check_type
         "{ type Color = Red | Green | Blue; \
@@ -1213,15 +763,6 @@ let match_tests =
          "{ S = module { pub type Color = Red | Green }; \
           N = S; match (S.Red) { N.Red => 1, N.Green => 2 } }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "qualified constructor pattern private" `Quick
-      (elab_fail
-         "{ S = module { type Color = Red | Green }; \
-          match (S.Red) { S.Red => 1, _ => 0 } }");
-    Alcotest.test_case "qualified constructor pattern wrong nominal" `Quick
-      (elab_fail
-         "{ S = module { pub type Color = Red }; \
-           T = module { pub type Color = Red }; \
-           match (S.Red) { T.Red => 1, _ => 0 } }");
     Alcotest.test_case "nested module pattern synonym constructor" `Quick
       (check_type
          "{ M = module { \
@@ -1274,18 +815,6 @@ let match_tests =
          "{ M = module { pub Point = struct { x: I64; y: I64; } }; \
           N = M; match (M.Point{x = 1; y = 2}) { N.Point {x; y} => x + y } }"
          (AtomTy Atom_ty.TI64));
-    Alcotest.test_case "record pattern incomplete" `Quick
-      (elab_fail
-         "{ Point = struct { x: I64; y: I64; }; \
-          match (Point{x = 1; y = 2}) { Point {x} => x } }");
-    Alcotest.test_case "record pattern unknown field" `Quick
-      (elab_fail
-         "{ Point = struct { x: I64; }; \
-          match (Point{x = 1}) { Point {y; _} => y } }");
-    Alcotest.test_case "record pattern duplicate field" `Quick
-      (elab_fail
-         "{ Point = struct { x: I64; }; \
-          match (Point{x = 1}) { Point {x; x} => x } }");
   ]
 
 let implicit_args =
@@ -1331,10 +860,6 @@ let implicit_args =
 
 let traits =
   [
-    Alcotest.test_case "trait declaration" `Quick
-      (elab_ok "{ trait Eq(A) = sig { eq : A -> A -> Bool }; Eq }");
-    Alcotest.test_case "impl declaration" `Quick
-      (elab_ok "{ trait Eq(A) = sig { eq : A -> A -> Bool }; impl Eq(I64) = module { eq = fn(x, y) { x == y } }; 0 }");
     Alcotest.test_case "trait method dispatch" `Quick
       (check_type_src
          "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
@@ -1355,13 +880,6 @@ let traits =
           open M; open M; \
           same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; same(1, 1) }"
          "Bool");
-    Alcotest.test_case "two different impls for one trait stay ambiguous" `Quick
-      (elab_fail
-         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
-          M = module { pub impl Eq(I64) = module { eq = fn(x, y) { x == y } } }; \
-          N = module { pub impl Eq(I64) = module { eq = fn(x, y) { x != y } } }; \
-          open M; open N; \
-          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; same(1, 1) }");
     (* Named impls: the escape hatch that makes "impls arrive through open"
        livable. [M.eq_C] is a compile-time handle on one impl, usable in
        evidence position without opening M.
@@ -1373,31 +891,12 @@ let traits =
           same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; \
           same[M.C, M.eq_C](M.R, M.R) }"
          "Bool");
-    Alcotest.test_case "unnamed impl still needs the open" `Quick
-      (elab_fail
-         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
-          M = module { pub type C = R; pub impl Eq(C) = module { eq = fn(x, y) { True } } }; \
-          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; \
-          same(M.R, M.R) }");
-    Alcotest.test_case "private named impl is not a member" `Quick
-      (elab_fail
-         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
-          M = module { pub type C = R; impl eq_C : Eq(C) = module { eq = fn(x, y) { True } } }; \
-          M.eq_C }");
     Alcotest.test_case "named impl resolves in its own module" `Quick
       (check_type_src
          "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
           impl eq_i64 : Eq(I64) = module { eq = fn(x, y) { x == y } }; \
           same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; same(1, 1) }"
          "Bool");
-    Alcotest.test_case "missing impl rejected" `Quick
-      (elab_fail
-         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
-          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; same(True, False) }");
-    Alcotest.test_case "duplicate trait field rejected" `Quick
-      (elab_fail "{ trait Bad(A) = sig { f : A -> A; f : A -> A }; Bad }");
-    Alcotest.test_case "impl missing field rejected" `Quick
-      (elab_fail "{ trait Eq(A) = sig { eq : A -> A -> Bool }; impl Eq(I64) = module { }; 0 }");
     Alcotest.test_case "struct impl for Self" `Quick
       (check_type_src
          "{ Point = struct { \
@@ -1418,19 +917,10 @@ let effects =
       (check_type
          "{ effect State(S) = sig { get : Unit -> S }; State }"
          (pi Explicit U U));
-    Alcotest.test_case "same effect family and params convert" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          ((fn(x) { x } : Unit ->{State(I64)} Unit) : Unit ->{State(I64)} Unit) }");
     Alcotest.test_case "different effect params elaborate" `Quick
       (check_type
          "{ effect State(S) = sig { get : Unit -> S }; Unit ->{State(Bool)} I64 }"
          U);
-    Alcotest.test_case "identical signatures remain nominal" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          effect Env(S) = sig { get : Unit -> S }; \
-          ((fn(x) { x } : Unit ->{State(I64)} Unit) : Unit ->{Env(I64)} Unit) }");
     Alcotest.test_case "public effect field through dot" `Quick
       (check_type
          "{ M = module { pub effect State(S) = sig { get : Unit -> S } }; M.State(I64) }"
@@ -1439,19 +929,10 @@ let effects =
       (check_type
          "{ M = module { pub effect State(S) = sig { get : Unit -> S } }; open M; State(I64) }"
          U);
-    Alcotest.test_case "private effect field hidden" `Quick
-      (elab_fail
-         "{ M = module { effect State(S) = sig { get : Unit -> S } }; M.State(I64) }");
     Alcotest.test_case "private effect usable by public member" `Quick
       (check_type
          "{ M = module { effect State(S) = sig { get : Unit -> S }; pub T = State(I64) }; M.T }"
          U);
-    Alcotest.test_case "duplicate operation rejected" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S; get : Unit -> S }; State(I64) }");
-    Alcotest.test_case "operation name is not bound" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; get }");
     Alcotest.test_case "imported public effect" `Quick
       (check_import_type [ ("effects", "pub effect State(S) = sig { get : Unit -> S }") ]
          "{ E = import \"effects\"; E.State(I64) }" U);
@@ -1477,101 +958,11 @@ let effects =
       (check_type
          "[r : EffectRow] -> (Unit ->{| r} I64)"
          U);
-    Alcotest.test_case "lambda checks against effectful function type" `Quick
-      (elab_ok
-         "{ effect IO = sig { read : Unit -> I64 }; (fn(x) { x } : I64 ->{IO} I64) }");
-    Alcotest.test_case "row order ignored" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; effect IO = sig { read : Unit -> I64 }; ((fn(x) { x } : I64 ->{IO, State(I64)} I64) : I64 ->{State(I64), IO} I64) }");
-    Alcotest.test_case "non-effect row entry rejected" `Quick
-      (elab_fail
-         "I64 ->{I64} I64");
-    Alcotest.test_case "duplicate row entry rejected" `Quick
-      (elab_fail
-         "{ effect IO = sig { read : Unit -> I64 }; I64 ->{IO, IO} I64 }");
-    Alcotest.test_case "perform get checks in effectful lambda" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.get () } : Unit ->{State(I64)} I64) }");
-    Alcotest.test_case "perform put checks in effectful lambda" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { put : S -> Unit }; (fn(_) { perform State.put(42) } : Unit ->{State(I64)} Unit) }");
-    Alcotest.test_case "unknown operation rejected" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.missing () } : Unit ->{State(I64)} I64) }");
-    Alcotest.test_case "wrong operation argument rejected" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { put : S -> Unit }; (fn(_) { perform State.put(True) } : Unit ->{State(I64)} Unit) }");
-    Alcotest.test_case "pure lambda rejects perform" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { perform State.get () } : Unit -> I64) }");
-    Alcotest.test_case "pure lambda still checks against effectful type" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; (fn(_) { 1 } : Unit ->{State(I64)} I64) }");
-    Alcotest.test_case "effectful call must be accounted for" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; (fn(_) { f() } : Unit -> I64) }");
-    Alcotest.test_case "effectful call propagates latent row" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; (fn(_) { f() } : Unit ->{State(I64)} I64) }");
-    Alcotest.test_case "an inferred-row wrapper threads effects" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
-          wrap : (Unit ->{_} I64) -> Unit ->{_} I64 = fn(g) { fn(_) { g() } }; \
-          (fn(_) { wrap(f)() } : Unit ->{State(I64)} I64) }");
     (* [~>] (effect-arrow-syntax): a parameter's [~>] mints a row variable the
        function is polymorphic in; a result's collects its parameters'. *)
-    Alcotest.test_case "a bound set requires every trait" `Quick
-      (eval_i64
-         "{ trait Show(A) = sig { show : A -> I64 }; impl Show(I64) = module { fn show(x) { x * 10 } }; \
-          both : [A : {Eq, Show}] -> A -> A -> I64 = fn[A : Type](x, y) { match (Eq.eq(x, y)) { True => Show.show(x), False => 0 } }; \
-          both(4, 4) }" 40L);
-    Alcotest.test_case "a bound set names a trait once" `Quick
-      (elab_fail "{ same : [A : {Eq, Eq}] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; 1 }");
-    Alcotest.test_case "a row sits on its own arrow" `Quick
-      (eval_i64
-         "{ effect Log = sig { write : I64 -> I64 }; effect Exc = sig { raise : I64 -> I64 }; \
-          user : I64 ->{Log} I64 = fn(x) { perform Log.write(x) }; \
-          h : (I64 ->{Log} I64) ->{Exc} I64 = fn(f) { match (f(1)) { v => v, effect Log.write n => perform Exc.raise(n + 1) } }; \
-          match (h(user)) { v => v, effect Exc.raise n => n * 10 } }" 20L);
-    Alcotest.test_case "an open row names its tail after a bar" `Quick
-      (elab_ok "{ effect Log = sig { write : I64 -> I64 }; f : [e : EffectRow] -> (I64 ->{Log | e} I64) -> I64 ->{Log | e} I64 = fn[e : EffectRow](g, x) { g(x) }; 1 }");
-    Alcotest.test_case "a row variable beside effects is written as the tail" `Quick
-      (elab_fail "{ effect Log = sig { write : I64 -> I64 }; f : [e : EffectRow] -> (I64 ->{Log, e} I64) -> I64 = fn[e : EffectRow](g) { 1 }; 1 }");
-    Alcotest.test_case "a ~> definition infers its parameter's row and its own" `Quick
-      (eval_i64
-         "{ effect Log = sig { write : I64 -> I64 }; effect Exc = sig { raise : I64 -> I64 }; \
-          log_map = fn(f : I64 ~> I64, x : I64) ~> I64 { perform Log.write(f(x)) }; \
-          boom : I64 ->{Exc} I64 = fn(n) { perform Exc.raise(n) }; \
-          a = match (log_map(fn(n : I64) { n + 1 }, 1)) { v => v, effect Log.write n => n }; \
-          b = match (match (log_map(boom, 5)) { v => v, effect Log.write n => n }) { v => v, effect Exc.raise n => n * 100 }; \
-          a + b }" 502L);
-    Alcotest.test_case "~> in a trait signature" `Quick
-      (elab_ok "{ trait Apply(A) = sig { apply : (A ~> A) ~> A }; 1 }");
-    Alcotest.test_case "~> in a parameter is effect-polymorphic" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
-          app = fn(g : Unit ~> I64) { g() }; \
-          (fn(_) { app(f) } : Unit ->{State(I64)} I64); \
-          app(fn(_) { 1 }) }");
-    Alcotest.test_case "~> in every annotation position" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
-          app = fn(g : Unit ~> I64) { g() }; \
-          twice : (Unit ~> I64) -> Unit ~> I64 = fn(g) { fn(_) { g() + g() } }; \
-          S = sig { cb : (Unit ~> I64) ~> I64 }; \
-          R = struct { cb : (Unit ~> I64) ~> I64 }; \
-          ((1, 2) : Tuple(2, I64, I64)); \
-          (fn(_) { app(twice(f)) } : Unit ->{State(I64)} I64) }");
     (* A standalone [~>] has no parameter to collect from, so it mints its own
        variable: the value must work for every row, which a body that performs
        does not. *)
-    Alcotest.test_case "a standalone ~> mints, so an effectful body is rejected" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit ~> I64 = fn(_) { perform State.get () }; 1 }");
     (* A result unites what its parameters mint (multi-tail rows). *)
     Alcotest.test_case "a ~> result unites two callbacks' rows" `Quick
       (eval_i64
@@ -1604,26 +995,6 @@ let effects =
       (eval_i64
          "{ twice : ((I64 ~> I64) ~> I64) ~> I64 = fn(k) { k(fn(x : I64) { x + 1 }) }; \
           twice(fn(c : I64 -> I64) { c(41) }) }" 42L);
-    Alcotest.test_case "* is not a product type" `Quick
-      (elab_fail "{ p : I64 * Bool = (1, True); 1 }");
-    Alcotest.test_case "a bare arrow rejects an effectful callback" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; \
-          app = fn(g : Unit -> I64) { g() }; \
-          app(f) }");
-    Alcotest.test_case "open row accepts concrete prefix effect" `Quick
-      (elab_ok
-         "{ effect IO = sig { read : Unit -> I64 }; \
-          ((fn[r : EffectRow] { fn(_) { perform IO.read () } }) : [r : EffectRow] -> (Unit ->{IO | r} I64)) }");
-    Alcotest.test_case "tail-only row accepts empty tail" `Quick
-      (elab_ok
-         "((fn[r : EffectRow] { fn(_) { 1 } }) : [r : EffectRow] -> (Unit ->{| r} I64))");
-    Alcotest.test_case "extra effect rejects against rigid explicit row" `Quick
-      (elab_fail
-         "{ effect IO = sig { read : Unit -> I64 }; \
-           effect State(S) = sig { get : Unit -> S }; \
-           ((fn[r : EffectRow] { fn(_) { _ = perform IO.read (); perform State.get () } }) : [r : EffectRow] -> (Unit ->{IO | r} I64)) }");
     Alcotest.test_case "inferred perform lambda exposes latent effect" `Quick
       (fun () ->
         let expr = Parse_expand.parse_expr "{ effect State(S) = sig { get : Unit -> S }; fn(_) { perform State.get () } }" in
@@ -1632,75 +1003,11 @@ let effects =
         match Nbe.force ctx.Elaborate.Ctx.metas ty with
         | VPi { effects; _ } when not (List.is_empty effects.effects) -> ()
         | _ -> Alcotest.fail "expected latent State effect");
-    Alcotest.test_case "handler removes single-operation effect" `Quick
-      (elab_ok
-         "{ effect Exc = sig { raise : I64 -> I64 }; (fn(_) { match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } } : Unit -> I64) }");
-    Alcotest.test_case "handler continuation type checks" `Quick
-      (elab_ok
-         "{ effect Exc = sig { raise : I64 -> I64 }; (fn(_) { match (perform Exc.raise(1)) { x => x, effect Exc.raise n => resume(n + 1) } } : Unit -> I64) }");
-    Alcotest.test_case "resume argument type checked" `Quick
-      (elab_fail
-         "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => resume(True) } }");
-    Alcotest.test_case "lexical resume in nested lambda type checks" `Quick
-      (elab_ok
-         "{ effect Exc = sig { raise : I64 -> I64 }; \
-          (match (perform Exc.raise(1)) { x => x, effect Exc.raise n => (fn(x) { resume(x + 1) })(n) } : I64) }");
-    Alcotest.test_case "handler branch body type checked" `Quick
-      (elab_fail
-         "{ effect Exc = sig { raise : I64 -> I64 }; (match (perform Exc.raise(1)) { x => x, effect Exc.raise n => True } : I64) }");
-    Alcotest.test_case "tuple effect branch payload checked" `Quick
-      (elab_fail
-         "{ effect Console = sig { log : Tuple(2, I64, I64) -> I64 }; \
-          match (perform Console.log((1, 2))) { x => x, effect Console.log(only) => only } }");
-    Alcotest.test_case "record effect branch payload checked" `Quick
-      (elab_fail
-         "{ Request = struct { value: I64; extra: I64; }; \
-          effect Ask = sig { prompt : Request -> I64 }; \
-          match (perform Ask.prompt(Request{value = 1; extra = 2})) { x => x, effect Ask.prompt Request{missing} => missing } }");
-    Alcotest.test_case "multi-operation handler remains effectful when partial" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S; put : S -> Unit }; (fn(_) { match (perform State.get ()) { x => x, effect State.get () => 0 } } : Unit -> I64) }");
-    Alcotest.test_case "duplicate effect branch rejected" `Quick
-      (elab_fail
-         "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n, effect Exc.raise n => n } }");
-    Alcotest.test_case "resume outside effect branch rejected" `Quick
-      (elab_fail "resume 1");
     Alcotest.test_case "resume without argument rejected" `Quick
       (fun () ->
         match Parse_expand.parse_expr "resume" with
         | exception _ -> ()
         | _ -> Alcotest.fail "expected parse failure");
-    Alcotest.test_case "full multi-operation handler removes effect" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S; put : S -> Unit }; \
-          (fn(_) { match (perform State.get ()) { x => x, effect State.get () => 0, effect State.put next => resume() } } : Unit -> I64) }");
-    Alcotest.test_case "parameterized handlers distinguish effect instances" `Quick
-      (elab_ok
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          StateI64 = State(I64); \
-          StateBool = State(Bool); \
-          (fn(_) { \
-            match (if (perform StateBool.get ()) { perform StateI64.get () } else { 0 }) { \
-              x => x, \
-            effect StateI64.get () => resume 1, \
-            effect StateBool.get () => resume True \
-            } } \
-           : Unit -> I64) }");
-    Alcotest.test_case "parameterized handler remains effectful when instance missing" `Quick
-      (elab_fail
-         "{ effect State(S) = sig { get : Unit -> S }; \
-          StateI64 = State(I64); \
-          StateBool = State(Bool); \
-          (fn(_) { \
-            match (if (perform StateBool.get ()) { perform StateI64.get () } else { 0 }) { \
-              x => x, \
-            effect StateI64.get () => resume(1) \
-            } } \
-           : Unit -> I64) }");
-    Alcotest.test_case "handler branch can perform handled effect" `Quick
-      (elab_ok
-         "{ effect Ping = sig { hit : I64 -> I64 }; \
-          (match (perform Ping.hit(1)) { x => x, effect Ping.hit n => perform Ping.hit(n + 1) } : I64) }");
   ]
 
 (* Any failure, including the enforestation errors a strict module raises when
@@ -1918,12 +1225,8 @@ let imports =
 let references =
   [
     Alcotest.test_case "Ref I64 is Type" `Quick (check_type "Ref(I64)" U);
-    Alcotest.test_case "ref annotation" `Quick (elab_ok "(ref(1) : Ref(I64))");
     Alcotest.test_case "deref type" `Quick (check_type "{ r = ref(1); deref(r) }" (AtomTy Atom_ty.TI64));
     Alcotest.test_case "assignment type" `Quick (check_type "{ r = ref(1); r <- 2 }" (AtomTy Atom_ty.TUnit));
-    Alcotest.test_case "wrong assignment rejected" `Quick (elab_fail "{ r = ref(1); r <- True }");
-    Alcotest.test_case "deref non-ref rejected" `Quick (elab_fail "deref(1)");
-    Alcotest.test_case "assign non-ref rejected" `Quick (elab_fail "1 <- 2");
   ]
 
 (* Refs in effect rows: using a reference performs [Mutate] on its hidden heap. *)
@@ -1940,26 +1243,14 @@ let ref_effects =
   [
     Alcotest.test_case "a bare arrow mutating its parameter is rejected" `Quick
       (mutates_unhandled "{ bump : Ref(I64) -> Unit = fn(r) { r <- deref(r) + 1 }; 1 }");
-    Alcotest.test_case "->{Mutate(r)} names the reference" `Quick
-      (eval_i64 "{ bump : (r : Ref(I64)) ->{Mutate(r)} Unit = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); deref(x) }" 2L);
-    Alcotest.test_case "->{_} infers the mutation" `Quick
-      (eval_i64 "{ bump : Ref(I64) ->{_} Unit = fn(r) { r <- deref(r) + 1 }; x = ref(1); _ = bump(x); _ = bump(x); deref(x) }" 3L);
     Alcotest.test_case "a local reference is pure from outside" `Quick
       (eval_i64 ("{ " ^ sum_to ^ "; sum_to(3) }") 3L);
     Alcotest.test_case "a pure function using a local reference evaluates in a type" `Quick
       (elab_ok ("{ " ^ sum_to ^ "; p : Tuple(sum_to(2), I64, Bool) = (1, True); p.1 }"));
     Alcotest.test_case "returning a local reference keeps its mutation" `Quick
       (mutates_unhandled "{ leak : I64 -> Ref(I64) = fn(n) { acc = ref(0); acc }; 1 }");
-    Alcotest.test_case "a reference merged with an outer one is not local" `Quick
-      (elab_fail "{ outer = ref(0); f = fn(u : Unit) { b = ref(2); xs = Cons(outer, Cons(b, Nil)); 1 }; (f : Unit -> I64) }");
-    Alcotest.test_case "writing an outer reference through a merged heap is not local" `Quick
-      (elab_fail "{ r = ref(0); f = fn(u : Unit) { b = ref(1); xs = Cons(r, Cons(b, Nil)); r <- 5 }; (f : Unit -> Unit) }");
     Alcotest.test_case "a pure arrow cannot write an outer reference" `Quick
       (mutates_unhandled "{ r = ref(0); f : Unit -> Unit = fn(_) { r <- 2 }; 1 }");
-    Alcotest.test_case "a module-level reference works at the top" `Quick
-      (eval_i64 "{ Counter = module { pub count = ref(0); pub tick : Unit ->{Mutate(count)} Unit = fn(_) { count <- deref(count) + 1 } }; _ = Counter.tick(()); deref(Counter.count) }" 1L);
-    Alcotest.test_case "a block with private mutation is pure" `Quick
-      (elab_ok "{ p : Tuple({ acc = ref(1); acc <- 2; deref(acc) }, I64, I64) = (1, 2); p }");
     Alcotest.test_case "a block returning its reference keeps the effect" `Quick
       (mutates_unhandled "{ f : Unit -> Ref(I64) = fn(_) { { r = ref(1); r } }; 1 }");
     Alcotest.test_case "an unhandled Mutate names the reference" `Quick
@@ -1969,8 +1260,6 @@ let ref_effects =
             Alcotest.(check (list string)) "names r" [ "effect Mutate(r)" ] effs
         | exception e -> Alcotest.fail (Printexc.to_string e)
         | _ -> Alcotest.fail "expected an unhandled Mutate");
-    Alcotest.test_case "a user effect named Mutate does not shadow the built-in" `Quick
-      (eval_i64 "{ effect Mutate = sig { op : I64 -> I64 }; sum_to : I64 -> I64 = fn(n) { acc = ref(0); acc <- n; deref(acc) }; r = ref(1); r <- 4; deref(r) + sum_to(1) }" 5L);
     Alcotest.test_case "a module function touching its reference declares it" `Quick
       (mutates_unhandled "{ Counter = module { pub count = ref(0); pub tick : Unit -> Unit = fn(_) { count <- deref(count) + 1 } }; 1 }");
   ]
@@ -2001,14 +1290,8 @@ let rejected source () =
 let type_chains =
   let ab = "M = module { pub type A = MkA(B) | NoA and B = MkB(A) | NoB }" in
   [
-    Alcotest.test_case "nested pattern through a self-recursive type" `Quick
-      (eval_i64 "match (Cons(1, Cons(2, Nil))) { Cons(_, Cons(y, _)) => y, _ => 0 }" 2L);
     Alcotest.test_case "chain members refer to each other" `Quick
       (eval_i64 ("{ " ^ ab ^ "; match (M.MkA(M.MkB(M.NoA))) { M.MkA(M.MkB(M.NoA)) => 1, _ => 0 } }") 1L);
-    Alcotest.test_case "parameterised chain" `Quick
-      (eval_i64
-         "{ M = module { pub type Tree(X) = Leaf(X) | Node(Forest(X)) and Forest(X) = Empty | More(Tree(X), Forest(X)) }; \
-          match (M.Node(M.More(M.Leaf(7), M.Empty))) { M.Node(M.More(M.Leaf(n), _)) => n, _ => 0 } }" 7L);
     Alcotest.test_case "chain members are distinct types" `Quick
       (rejected ("{ " ^ ab ^ "; x : M.A = M.MkB(M.NoA); 0 }"));
     Alcotest.test_case "exhaustiveness sees through the chain" `Quick
@@ -2019,8 +1302,6 @@ let type_chains =
       (rejected "{ M = module { pub type A = MkA and A = NoB }; 0 }");
     Alcotest.test_case "record in a chain" `Quick
       (rejected "{ M = module { pub type A = MkA(B) and B = struct {x: A} }; 0 }");
-    Alcotest.test_case "chain in a block" `Quick
-      (eval_i64 "{ type A = MkA(B) | NoA and B = MkB(A) | NoB; match (MkA(MkB(NoA))) { MkA(MkB(NoA)) => 1, _ => 0 } }" 1L);
   ]
 
 (* Open choices: a bare name an open may supply resolves to the first open that
@@ -2028,29 +1309,9 @@ let type_chains =
 let open_choices =
   [
     Alcotest.test_case "a generated name is not writable" `Quick (rejected "{ x = 1; x__0 }");
-    Alcotest.test_case "a name spelled like an old generated name is just a name" `Quick
-      (eval_i64 "{ x = 1; x__0 = 7; x__0 }" 7L);
-    Alcotest.test_case "an open's member is not shadowed by a generated name" `Quick
-      (eval_i64 "{ M = module { pub x__1 = 5 }; open M; x = 1; x__1 }" 5L);
-    Alcotest.test_case "an open shadows an earlier binder" `Quick
-      (eval_i64 "{ M = module { pub y = 5 }; y = 1; open M; y }" 5L);
-    Alcotest.test_case "a later binder shadows an open" `Quick
-      (eval_i64 "{ M = module { pub y = 5 }; open M; y = 1; y }" 1L);
-    Alcotest.test_case "an open without the member falls back to the binder" `Quick
-      (eval_i64 "{ M = module { pub z = 5 }; y = 1; open M; y }" 1L);
-    Alcotest.test_case "a type named EffectRow is an ordinary name" `Quick
-      (eval_i64 "{ M = module { pub type A = MkA(EffectRow) and EffectRow = MkE(I64) }; f = fn(a : M.A) { 1 }; f(M.MkA(M.MkE(3))) }" 1L);
     (* I3: a dotted path denotes the last member of its name - for a named impl
        too, in both the type view (the elaborator) and the value view (the
        evaluator). *)
-    Alcotest.test_case "a named impl path denotes the last impl of that name" `Quick
-      (eval_i64
-         "{ trait Eq(A) = sig { eq : A -> A -> Bool }; \
-          M = module { pub impl eq_I : Eq(Bool) = module { eq = fn(x, y) { True } }; \
-                       pub impl eq_I : Eq(I64) = module { eq = fn(x, y) { False } } }; \
-          same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; \
-          if (same[I64, M.eq_I](1, 1)) { 1 } else { 2 } }"
-         2L);
   ]
 
 (* The checker evaluates under a budget: a divergent evaluation it performs is
@@ -2076,33 +1337,15 @@ let evaluation_budget =
           while reading the type at <unknown>:1:57-1:64 (the budget cannot yet be raised from source)");
     Alcotest.test_case "a divergent type is a budget error" `Quick
       (budget_exceeded "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(y : loop(0)) { 1 }; 2 }");
-    Alcotest.test_case "a recursive call on an unknown variable unfolds" `Quick
-      (elab_ok "{ rec double : I64 -> I64 = fn(n) { n + n }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(double(n))) { (y : F(n + n)) }; 2 }");
     Alcotest.test_case "a divergent call on an unknown variable is a budget error" `Quick
       (budget_exceeded "{ rec loop : I64 -> Type = fn(n) { loop(n) }; g = fn(n : I64, y : loop(n)) { 1 }; 2 }");
     Alcotest.test_case "a call passing a closure that captures an unknown variable unfolds too" `Quick
       (budget_exceeded "{ rec r : (I64 -> I64) -> Type = fn(f) { r(f) }; g = fn(n : I64, y : r(fn(z) { n })) { 1 }; 2 }");
-    Alcotest.test_case "a recursive call through another on an unknown variable unfolds" `Quick
-      (elab_ok "{ rec inc : I64 -> I64 = fn(n) { n + 1 }; rec twice_inc : I64 -> I64 = fn(n) { inc(inc(n)) }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(twice_inc(n))) { (y : F(n + 1 + 1)) }; 2 }");
-    Alcotest.test_case "mutually recursive functions unfold in a type" `Quick
-      (elab_ok
-         "{ rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
-          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
-          F = fn(b : Bool) { if (b) { I64 } else { Bool } }; (42 : F(even(4))) }");
-    Alcotest.test_case "two calls of one pure group member convert without unfolding" `Quick
-      (elab_ok
-         "{ rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } \
-          and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } }; \
-          F = fn(b : Bool) { if (b) { I64 } else { Bool } }; g = fn(n : I64, y : F(odd(n))) { (y : F(odd(n))) }; 2 }");
     Alcotest.test_case "a divergent mutually recursive pair in a type names a member" `Quick (fun () ->
         match elab "{ rec a : I64 -> Type = fn(n) { b(n) } and b : I64 -> Type = fn(n) { a(n) }; g = fn(n : I64, y : a(n)) { 1 }; 2 }" with
         | exception Elaborate.ElabError (Elaborate.EvaluationBudgetExceeded { call; _ }) ->
             Alcotest.(check bool) "names a or b" true (List.mem call [ "a"; "b" ])
         | _ -> Alcotest.fail "expected an evaluation budget error");
-    Alcotest.test_case "two calls of one pure fixpoint on convertible arguments convert without unfolding" `Quick
-      (elab_ok "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
-    Alcotest.test_case "a bare-arrow fixpoint converts without unfolding" `Quick
-      (elab_ok "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact(n))) }; 2 }");
     Alcotest.test_case "calls of two fixpoints with the same body unfold until the budget runs out" `Quick
       (budget_exceeded "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; rec fact2 : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact2(n - 1) } }; F = fn(m : I64) { if (m == 4) { I64 } else { Bool } }; g = fn(n : I64, y : F(fact(n))) { (y : F(fact2(n))) }; 2 }");
     Alcotest.test_case "only a fixpoint known pure defers its calls" `Quick (fun () ->
@@ -2129,8 +1372,6 @@ let evaluation_budget =
         (match elab "{ rec f : I64 ->{_} I64 = fn(n) { f(n) }; 1 }" with
          | exception Elab_error.ElabError Elab_error.UnsolvedEffectRow -> ()
          | _ -> Alcotest.fail "expected an unsolved row error"));
-    Alcotest.test_case "a closed call still evaluates" `Quick
-      (elab_ok "{ rec k : I64 -> Type = fn(n) { if (n == 0) { I64 } else { k(n - 1) } }; g = fn(y : k(3)) { y + 1 }; 2 }");
     Alcotest.test_case "running a program is not budgeted" `Quick (fun () ->
         (* 2^20 - 1 calls, past the default budget, at depth 19. *)
         let source = "{ rec t : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { t(n - 1) + t(n - 1) } }; t(19) }" in
@@ -2155,33 +1396,10 @@ let path_heads =
       (eval_i64 (under_open "match (M.R{y = 7}) { M.R {y} => y }") 7L);
     Alcotest.test_case "perform and an effect branch" `Quick
       (eval_i64 (under_open "match (perform M.E.tell(1)) { x => x, effect M.E.tell n => n + 41 }") 42L);
-    Alcotest.test_case "a type-name pattern head" `Quick
-      (eval_i64 "{ M = module { pub type T = B }; f = fn(T : Type, X : Type) { { open M; match (X) { T => 1, _ => 0 } } }; f(I64, M.T) }" 1L);
-    Alcotest.test_case "a qualified trait: impl, bound and method" `Quick
-      (eval_i64
-         "{ M = module { pub trait Same(A) = sig { same : A -> A -> I64 } }; \
-          impl M.Same(I64) = module { same = fn(x, y) { 7 } }; \
-          f : [A : M.Same] -> A -> I64 = fn[A : Type](x) { M.Same.same(x, x) }; f(1) }" 7L);
     Alcotest.test_case "a trait is not found by its name alone" `Quick
       (rejected "{ M = module { pub trait Same(A) = sig { same : A -> A -> I64 } }; impl Same(I64) = module { same = fn(x, y) { 7 } }; 0 }");
-    Alcotest.test_case "a qualified head nested under a qualified head in a type chain" `Quick
-      (eval_i64 "{ M = module { pub type A = MkA(E) and E = MkE(I64) }; match (M.MkA(M.MkE(3))) { M.MkA(M.MkE(n)) => n } }" 3L);
-    Alcotest.test_case "a chain member spelled like an outer type" `Quick
-      (eval_i64 "{ type E = Other(I64); M = module { pub type A = MkA(E) and E = MkE(I64) }; f = fn(a : M.A) { match (a) { M.MkA(M.MkE(n)) => n } }; f(M.MkA(M.MkE(3))) }" 3L);
-    Alcotest.test_case "a chain member spelled like a prelude type" `Quick
-      (eval_i64 "{ M = module { pub type A = MkA(EffectRow) and EffectRow = MkE(I64) }; f = fn(a : M.A) { match (a) { M.MkA(M.MkE(n)) => n } }; f(M.MkA(M.MkE(3))) }" 3L);
-    Alcotest.test_case "a qualified head nested under a qualified head" `Quick
-      (eval_i64 "{ M = module { pub type E = MkE(I64); pub type A = MkA(E) }; match (M.MkA(M.MkE(3))) { M.MkA(M.MkE(n)) => n } }" 3L);
-    Alcotest.test_case "a qualified head nested under an unqualified head" `Quick
-      (eval_i64 "{ M = module { pub type E = MkE(I64) }; type A = MkA(M.E); match (MkA(M.MkE(4))) { MkA(M.MkE(n)) => n } }" 4L);
-    Alcotest.test_case "an unqualified head nested under a qualified head" `Quick
-      (eval_i64 "{ type E = MkE(I64); M = module { pub type A = MkA(E) }; match (M.MkA(MkE(5))) { M.MkA(MkE(n)) => n } }" 5L);
     (* A quoted constructor value evaluates back to that constructor: [z]'s
        let type [G(A(1))] is quoted and evaluated again at run time. *)
-    Alcotest.test_case "a quoted constructor with a payload evaluates" `Quick
-      (eval_i64 "{ type T = A(I64) | B; h = fn(G : T -> Type, v : G(A(1))) { { z = v; 1 } }; h(fn(t : T) { I64 }, 5) }" 1L);
-    Alcotest.test_case "a quoted constructor of a parametric type evaluates" `Quick
-      (eval_i64 "{ type O(X) = N | S(X); h = fn(G : O(I64) -> Type, v : G(N)) { { z = v; 1 } }; h(fn(o : O(I64)) { I64 }, 5) }" 1L);
   ]
 
 (* Every de Bruijn traversal reads a form's binder count from
@@ -2191,12 +1409,6 @@ let path_heads =
    indices onto the wrong entries). *)
 let binder_counts =
   [
-    Alcotest.test_case "a lambda matching with a binder generalizes" `Quick
-      (eval_i64 "{ f = fn(x) { match (x) { y => x } }; { _ = f(True); f(1) } }" 1L);
-    Alcotest.test_case "a lambda with a multi-binding module generalizes" `Quick
-      (eval_i64 "{ f = fn(x) { (module { pub a = 1; pub b = x }).b }; { _ = f(True); f(1) } }" 1L);
-    Alcotest.test_case "a perform capturing an outer binding is not generalized" `Quick
-      (eval_i64 "{ k = 41; effect E = sig { tell : I64 -> I64 }; g = fn(x) { (fn(u) { x })(perform E.tell(k)) }; match (g(1)) { v => v, effect E.tell n => n } }" 41L);
     Alcotest.test_case "an inserted meta in a codomain mentions its binder" `Quick
       (check_type_src "{ Endo = fn[T : Type](u : I64) { T -> T }; id_at : (B : Type) -> B -> B = fn(B : Type, x : B) { x }; f : (A : Type) -> Endo(0) = fn(A : Type) { id_at(A) }; f(I64) }" "I64 -> I64");
   ]

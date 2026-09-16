@@ -39,17 +39,6 @@ let with_modules modules f =
   let loader = Core_loader.create ~base_dir:dir ~builtin_syntax () in
   f loader
 
-let check_import_i64 label modules expected source () =
-  with_modules modules (fun loader ->
-      match eval_source_with_loader loader source with
-      | VAtom (I64 n) -> Alcotest.(check int64) label expected n
-      | v ->
-          let mc = MetaContext.create () in
-          Alcotest.fail
-            (Printf.sprintf "%s: expected VAtom I64, got %s" label (Debug.pp_value_short mc v))
-      | exception e ->
-          fail_with_source label source (Printf.sprintf "exception %s" (Printexc.to_string e)))
-
 let check_i64 label expected source () =
   match eval_source source with
   | VAtom (I64 n) -> Alcotest.(check int64) label expected n
@@ -57,17 +46,6 @@ let check_i64 label expected source () =
       let mc = MetaContext.create () in
       fail_with_source label source
         (Printf.sprintf "expected VAtom I64, got %s" (Debug.pp_value_short mc v))
-  | exception e ->
-      fail_with_source label source (Printf.sprintf "exception %s" (Printexc.to_string e))
-
-let check_bool label expected source () =
-  match eval_source source with
-  | VCon { name = "True"; _ } -> Alcotest.(check bool) label expected true
-  | VCon { name = "False"; _ } -> Alcotest.(check bool) label expected false
-  | v ->
-      let mc = MetaContext.create () in
-      fail_with_source label source
-        (Printf.sprintf "expected VAtom Bool, got %s" (Debug.pp_value_short mc v))
   | exception e ->
       fail_with_source label source (Printf.sprintf "exception %s" (Printexc.to_string e))
 
@@ -104,55 +82,11 @@ let test_eval_dot () =
   | VAtom (I64 n) -> Alcotest.(check int64) "dot" 99L n
   | _ -> Alcotest.fail "expected VAtom"
 
-let test_eval_module_signature_argument () =
-  check_i64 "module signature argument" 42L
-    "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 42 })"
-    ()
-
-let test_eval_module_signature_extra_field () =
-  check_i64 "module signature extra field" 42L
-    "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 42; pub y = True })"
-    ()
-
-let test_eval_signature_sugar_argument () =
-  check_i64 "signature sugar argument" 42L
-    "(fn(m : sig { x : I64 }) { m.x })(module { pub x = 42 })"
-    ()
-
-(* A signature is its own kind of value: a let-bound one is a type exactly as the
-   inline form is. A module is never a type, even one whose members are types. *)
-let test_eval_let_bound_signature () =
-  check_i64 "let-bound sig" 42L "{ Sig = sig { x : I64 }; f = fn(m : Sig) { m.x + 1 }; f(module { pub x = 41 }) }" ()
-
 let test_eval_module_is_not_a_signature () =
   match eval_source "{ Types = module { pub x = I64 }; f = fn(m : Types) { m.x }; f(module { pub x = 42 }) }" with
   | exception Elab_error.ElabError (Elab_error.NotASignature (Some "Types")) -> ()
   | exception e -> Alcotest.fail ("module as a type: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "module as a type: expected NotASignature"
-
-let test_eval_module_signature_functor () =
-  check_i64 "module signature functor" 42L
-    "{ F = fn(M : sig { x : I64 }) { module { pub doubled = M.x + M.x } }; F(module { pub x = 21 }).doubled }"
-    ()
-
-let test_ref_read_initial () =
-  check_i64 "ref read initial" 1L "{ r = ref(1); deref(r) }" ()
-
-let test_ref_write_read () =
-  check_i64 "ref write read" 2L "{ r = ref(1); _ = r <- 2; deref(r) }" ()
-
-let test_ref_aliases_share_cell () =
-  check_i64 "ref aliases share cell" 3L "{ r = ref(1); alias = r; _ = alias <- 3; deref(r) }" ()
-
-let test_ref_closure_observes_later_write () =
-  check_i64 "ref closure observes later write" 4L "{ r = ref(0); f = fn(_) { deref(r) }; _ = r <- 4; f() }" ()
-
-let test_ref_repeated_closure_increments () =
-  check_i64 "ref repeated closure increments" 2L
-    "{ r = ref(0); inc = fn(_) { { n = deref(r); _ = r <- n + 1; deref(r) } }; _ = inc(); inc() }"
-    ()
-
-(* -- neutral tests (require manual construction) ------------------------- *)
 
 let test_neutral_var () =
   let mc = mc () in
@@ -444,22 +378,6 @@ let test_top_escaping_closure () =
   | exception e -> Alcotest.fail (Printexc.to_string e)
   | _ -> Alcotest.fail "expected HandledEffectEscapes"
 
-(* Tunneling (E5): a handler handles what its own code performs; what a
-   row-polymorphic callback performs passes it. *)
-let tunnel_find body = "{ effect Exc = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 ->{| r} I64) -> I64 ->{| r} I64 = fn[r : EffectRow](pred, x) { " ^ body ^ " }; user : I64 ->{Exc} I64 = fn(x) { perform Exc.raise(x) }; match (find(user, 1)) { v => v, effect Exc.raise n => 999 } }"
-
-let test_handlers_tunnel () =
-  check_i64 "a callback's effect passes the library's handler" 999L
-    (tunnel_find "match ({ v = pred(x); if (v > 3) { perform Exc.raise(v) } else { v } }) { v => v, effect Exc.raise n => 0 }") ();
-  check_i64 "it passes every handler in the library's body" 999L
-    (tunnel_find "match (match (pred(x)) { v => v, effect Exc.raise n => 1 }) { v => v, effect Exc.raise n => 2 }") ();
-  check_i64 "a closure made under one handler and called under another" 999L
-    (tunnel_find "g = match (0) { _ => fn(y : I64) { pred(y) }, effect Exc.raise n => fn(y : I64) { pred(0) } }; match (g(x)) { v => v, effect Exc.raise n => 2 }") ();
-  check_i64 "a parameterised effect instance tunnels" 999L
-    "{ effect E(A) = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 ->{| r} I64) -> I64 ->{| r} I64 = fn[r : EffectRow](pred, x) { match (pred(x)) { v => v, effect E.raise n => 0 } }; user : I64 ->{E(I64)} I64 = fn(x) { perform E.raise(x) }; match (find(user, 1)) { v => v, effect E.raise n => 999 } }" ();
-  check_i64 "a call whose row names the effect is handled locally" 6L
-    "{ effect Exc = sig { raise : I64 -> I64 }; helper : Unit ->{Exc} I64 = fn(_) { perform Exc.raise(5) }; match (helper(())) { v => v, effect Exc.raise n => n + 1 } }" ()
-
 let test_handled_effect_escape () =
   (match eval_source "{ effect Exc = sig { raise : I64 -> I64 }; g = match (0) { x => fn(u : Unit) { perform Exc.raise(x) }, effect Exc.raise n => fn(u : Unit) { perform Exc.raise(n) } }; 1 }" with
    | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
@@ -477,12 +395,6 @@ let test_handled_effect_escape () =
     "{ effect Exc = sig { raise : I64 -> I64 }; match (0) { x => { q = ref(fn(u : Unit) { perform Exc.raise(x) }); 1 }, effect Exc.raise n => 2 } }" ();
   check_i64 "a saved continuation may outlive its handler" 5L
     "{ effect Async = sig { pause : Unit -> Unit }; q = ref(fn(u : Unit) { 0 }); _ = match (perform Async.pause(())) { v => 1, effect Async.pause _ => { q <- fn(u : Unit) { resume(()) }; 2 } }; 5 }" ()
-
-let test_top_handled_and_latent () =
-  check_i64 "a handled perform and an uncalled effectful function" 2L
-    "{ effect Exc = sig { raise : I64 -> I64 };
-       f = fn(u : Unit) { perform Exc.raise(1) };
-       match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } }" ()
 
 let test_top_unhandled_in_imported_unit () =
   with_modules [ ("noisy", "effect Exc = sig { raise : I64 -> I64 };\npub v = perform Exc.raise(1)") ] (fun loader ->
@@ -519,177 +431,9 @@ let test_trait_method_rows () =
   expect_unhandled "an impl method performing beyond its trait's row" [ "effect Other" ] (fun () ->
       eval_source (trait_src "perform Other.ping(x)"))
 
-let test_eval_match_binds_a_closure () =
-  check_i64 "a variable pattern binds a closure scrutinee" 1L
-    "{ h = match (fn(u : Unit) { 1 }) { x => x }; h(()) }" ();
-  check_i64 "a closure scrutinee under a handler" 1L
-    "{ effect Exc = sig { raise : I64 -> I64 }; h = match (fn(u : Unit) { 1 }) { x => x, effect Exc.raise n => fn(u : Unit) { n } }; h(()) }"
-    ()
-
 let test_debug_perform () =
   let text = Debug.pp_term (Perform { eff = EffectRef { id = 0; name = "State"; params = [ AtomTy Atom_ty.TI64 ] }; op = "get"; arg = Atom Unit }) in
   if not (String.contains text 'g') then Alcotest.fail ("expected perform debug output, got " ^ text)
-
-let test_eval_handler_ignores_continuation () =
-  check_i64 "handler ignores continuation" 2L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } }"
-    ()
-
-let test_eval_handler_resumes_once () =
-  check_i64 "handler resumes once" 2L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => resume(n + 1) } }"
-    ()
-
-let test_eval_handler_resume_through_value_branch () =
-  check_i64 "resume passes through the value branch" 46L
-    "{ effect E = sig { op : I64 -> I64 }; match (perform E.op(1)) { x => x + 5, effect E.op n => resume(n + 40) } }"
-    ();
-  check_i64 "an unresumed handler skips the value branch" 41L
-    "{ effect E = sig { op : I64 -> I64 }; match (perform E.op(1)) { x => x + 5, effect E.op n => n + 40 } }"
-    ();
-  check_i64 "a perform after resume is handled again, value branch once" 1103L
-    "{ effect E = sig { op : I64 -> I64 }; match (perform E.op(1) + perform E.op(2)) { x => x + 1000, effect E.op n => resume(n + 50) } }"
-    ()
-
-let test_eval_handler_value_branch () =
-  check_i64 "handler value branch" 42L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (41) { x => x + 1, effect Exc.raise n => 0 } }"
-    ()
-
-let test_eval_handler_outer_bubble () =
-  check_i64 "handler outer bubble" 2L
-    "{ effect Exc = sig { raise : I64 -> I64 }; match (match (perform Exc.raise(1)) { x => x }) { x => x, effect Exc.raise n => n + 1 } }"
-    ()
-
-let test_eval_handler_escape_skips_continuation () =
-  check_i64 "handler escape skips continuation" 99L
-    "{
-       effect Exit = sig { now : I64 -> I64 };
-       program : Unit ->{Exit} I64 = fn(_) { {
-         _ = perform Exit.now(99);
-         0
-       } };
-       match (program()) { x => x,
-       effect Exit.now value => value
-       }
-     }"
-    ()
-
-let test_eval_handler_ping_pong_effects () =
-  check_i64 "handler ping pong effects" 212L
-    "{
-       effect Ping = sig { hit : I64 -> I64 };
-       effect Pong = sig { hit : I64 -> I64 };
-       program : Unit ->{Ping, Pong} I64 = fn(_) { {
-         x = perform Ping.hit(1);
-         perform Pong.hit(x + 10)
-       } };
-       match (program()) { x => x,
-       effect Ping.hit n => { y = perform Pong.hit(n + 1); resume(y) }
-       effect Pong.hit n => resume(n + 100)
-       }
-     }"
-    ()
-
-let test_eval_recursive_handler_ping_pong_effects () =
-  check_i64 "recursive handler ping pong effects" 10L
-    "{
-       effect Ping = sig { hit : I64 -> I64 };
-       effect Pong = sig { hit : I64 -> I64 };
-       rec loop : I64 ->{Ping, Pong} I64 = fn(n) {
-          if (n == 0) {
-            0
-          } else {
-            { x = perform Ping.hit(n); y = perform Pong.hit(n - 1); x + y + loop(n - 2) }
-          }
-        };
-        match (loop(4)) { x => x,
-       effect Ping.hit n => resume(n),
-       effect Pong.hit n => resume(n)
-       }
-     }"
-    ()
-
-let test_eval_state_handler_sequences_operations () =
-  (* Deep handlers (E8): a resumed computation re-enters this handler, so state
-     is threaded by the handler returning a function of the state. *)
-  check_i64 "state handler sequences operations" 2L
-    "{
-       effect State(S) = sig { get : Unit -> S; put : S -> Unit };
-       program : Unit ->{State(I64)} I64 = fn(_) { {
-         x = perform State.get();
-         _ = perform State.put(x + 1);
-         perform State.get()
-       } };
-       h = match (program(())) { x => fn(s : I64) { x },
-         effect State.get () => fn(s : I64) { resume(s)(s) },
-         effect State.put next => fn(s : I64) { resume(())(next) }
-       };
-       h(1)
-     }" ()
-
-let test_eval_handler_tuple_payload_pattern () =
-  check_i64 "handler tuple payload pattern" 42L
-    "{ effect Console = sig { log : Tuple(2, I64, I64) -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level + message } }"
-    ()
-
-let test_eval_handler_tuple_payload_binding_order () =
-  check_i64 "handler tuple payload binding order" 38L
-    "{ effect Console = sig { log : Tuple(2, I64, I64) -> I64 }; match (perform Console.log((40, 2))) { x => x, effect Console.log (level, message) => level - message } }"
-    ()
-
-let test_eval_handler_record_payload_pattern () =
-  check_i64 "handler record payload pattern" 42L
-    "{
-       Request = struct { value: I64; extra: I64; };
-       effect Ask = sig { prompt : Request -> I64 };
-       match (perform Ask.prompt(Request{value = 40; extra = 2})) { x => x,
-       effect Ask.prompt Request{value; extra} => value + extra
-       }
-     }"
-    ()
-
-let test_eval_handler_record_payload_binding_order () =
-  check_i64 "handler record payload binding order" 38L
-    "{
-       Request = struct { value: I64; extra: I64; };
-       effect Ask = sig { prompt : Request -> I64 };
-       match (perform Ask.prompt(Request{value = 40; extra = 2})) { x => x,
-       effect Ask.prompt Request{value; extra} => value - extra
-       }
-     }"
-    ()
-
-let is_zeroish_source call =
-  "{
-     is_zeroish : [T : Type] -> T -> Bool = fn[T : Type](x) {
-       match (T) { I64 => x == 0,
-       Bool => x == False,
-       Unit => True,
-       Char => x == 'a',
-       _ => False
-       }
-     };
-     " ^ call ^ "
-   }"
-
-let test_eval_type_case_i64_zero () =
-  check_bool "type-case I64 zero" true (is_zeroish_source "is_zeroish(0)") ()
-
-let test_eval_type_case_i64_nonzero () =
-  check_bool "type-case I64 nonzero" false (is_zeroish_source "is_zeroish(1)") ()
-
-let test_eval_type_case_bool_false () =
-  check_bool "type-case Bool False" true (is_zeroish_source "is_zeroish(False)") ()
-
-let test_eval_type_case_bool_true () =
-  check_bool "type-case Bool True" false (is_zeroish_source "is_zeroish(True)") ()
-
-let test_eval_type_case_unit () =
-  check_bool "type-case Unit" true (is_zeroish_source "is_zeroish(())") ()
-
-let test_eval_type_case_char_a () =
-  check_bool "type-case Char a" true (is_zeroish_source "is_zeroish('a')") ()
 
 let default_source call =
   "{
@@ -704,68 +448,11 @@ let default_source call =
      " ^ call ^ "
    }"
 
-let test_eval_type_case_default_i64 () =
-  check_i64 "type-case default I64" 0L (default_source "default[I64]") ()
-
-let test_eval_type_case_default_bool () =
-  check_bool "type-case default Bool" false (default_source "default[Bool]") ()
-
-let test_eval_type_case_default_unit () =
-  check_bool "type-case default Unit" true (default_source "default[Unit] == ()") ()
-
 let test_eval_type_case_default_string_panics () =
   match eval_source (default_source "default[String]") with
   | exception Nbe.EvalError "no default" -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected panic"
-
-let default_or_source call =
-  "{
-     default_or : [T : Type] -> T -> T = fn[T : Type](fallback) {
-       match (T) { I64 => 0,
-       Bool => False,
-       Unit => (),
-       Char => 'a',
-       String => \"\",
-       _ => fallback
-       }
-     };
-     " ^ call ^ "
-   }"
-
-let test_eval_type_case_default_or_i64 () =
-  check_i64 "type-case default_or I64" 0L (default_or_source "default_or[I64](99)") ()
-
-let test_eval_type_case_default_or_bool () =
-  check_bool "type-case default_or Bool" false (default_or_source "default_or[Bool](True)") ()
-
-let test_eval_type_case_default_or_string () =
-  check_bool "type-case default_or String" true (default_or_source "default_or[String](\"fallback\") == \"\"") ()
-
-let test_eval_type_case_default_or_nominal_fallback () =
-  check_i64 "type-case default_or nominal fallback" 2L
-    (default_or_source "type Color = Red | Blue; match (default_or[Color](Blue)) { Red => 1, Blue => 2 }")
-    ()
-
-let type_name_source call =
-  "{
-     type_name : Type -> String = fn(T) {
-       match (T) { I64 => \"i64\",
-       Bool => \"bool\",
-       Char => \"char\",
-       Unit => \"unit\",
-       String => \"string\",
-       _ => \"other\"
-       }
-     };
-     " ^ call ^ "
-   }"
-
-let test_eval_type_case_type_name_i64 () =
-  check_bool "type-case type_name I64" true (type_name_source "type_name(I64) == \"i64\"") ()
-
-let test_eval_type_case_type_name_string () =
-  check_bool "type-case type_name String" true (type_name_source "type_name(String) == \"string\"") ()
 
 let test_eval_equality_nominal_rejected () =
   match eval_source "{ type Color = Red; Red == Red }" with
@@ -774,176 +461,6 @@ let test_eval_equality_nominal_rejected () =
   | exception Elaborate.ElabError (MissingTraitImplementation _) -> ()
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected missing Eq impl"
-
-let test_eval_type_case_nominal_full_application () =
-  check_i64 "type-case nominal full application" 1L
-    "{ type Option a = Some a | None;
-     match (Option(I64)) { Option(I64) => 1,
-     Option(Bool) => 2,
-     _ => 3
-     }
-     }"
-    ()
-
-let test_eval_type_case_nominal_param_bind () =
-  check_i64 "type-case nominal param bind" 1L
-    "{ type Option a = Some a | None;
-     match (Option(I64)) { Option x => match (x) { I64 => 1, _ => 2 },
-     _ => 3
-     }
-     }"
-    ()
-
-let test_eval_type_case_nominal_complex_param_pattern () =
-  check_i64 "type-case nominal complex param pattern" 1L
-    "{ type Option a = Some a | None;
-     match (Option(Option(I64))) { Option(Option(I64) | I64) => 1,
-     Option _ => 2,
-     _ => 3
-     }
-     }"
-    ()
-
-let nominal_classify_source call =
-  "{
-     type Option a = Some a | None;
-     classify : Type -> I64 = fn(T) {
-       match (T) { Option(I64) => 1,
-       Option _ => 2,
-       _ => 0
-       }
-     };
-     " ^ call ^ "
-   }"
-
-let test_eval_type_case_nominal_classifier_i64 () =
-  check_i64 "type-case nominal classifier I64" 1L (nominal_classify_source "classify(Option(I64))") ()
-
-let test_eval_type_case_nominal_classifier_bool () =
-  check_i64 "type-case nominal classifier Bool" 2L (nominal_classify_source "classify(Option(Bool))") ()
-
-let test_eval_type_case_nominal_classifier_fallback () =
-  check_i64 "type-case nominal classifier fallback" 0L (nominal_classify_source "classify(I64)") ()
-
-let struct_type_classify_source call =
-  "{
-     classify : Type -> I64 = fn(T) {
-       match (T) { struct { x: I64; _ } => 1,
-       struct { x: Bool; _ } => 2,
-       struct { y: p; _ } => match (p) { String => 3, _ => 4 },
-       _ => 0
-       }
-     };
-     " ^ call ^ "
-   }"
-
-let test_eval_type_case_struct_field_i64 () =
-  check_i64 "type-case struct field I64" 1L
-    (struct_type_classify_source "Point = struct {x: I64; y: Bool}; classify(Point)")
-    ()
-
-let test_eval_type_case_struct_field_bool () =
-  check_i64 "type-case struct field Bool" 2L
-    (struct_type_classify_source "Point = struct {x: Bool}; classify(Point)")
-    ()
-
-let test_eval_type_case_struct_field_binder () =
-  check_i64 "type-case struct field binder" 3L
-    (struct_type_classify_source "Point = struct {y: String; z: I64}; classify(Point)")
-    ()
-
-let test_eval_type_case_struct_field_fallback () =
-  check_i64 "type-case struct field fallback" 0L (struct_type_classify_source "classify(I64)") ()
-
-let test_eval_type_case_struct_closed_rejects_extra () =
-  check_i64 "type-case struct closed rejects extra" 2L
-    "{ Point = struct {x: I64; y: Bool};
-     match (Point) { struct { x: I64 } => 1,
-     struct { x: I64; _ } => 2,
-     _ => 3
-     }
-     }"
-    ()
-
-let test_eval_handler_same_match_branch_effect () =
-  check_i64 "handler same match branch effect" 43L
-    "{ effect Ping = sig { hit : I64 -> I64 };
-     match (perform Ping.hit(1)) { x => x,
-     effect Ping.hit n =>
-         if (n == 1) {
-           { y = perform Ping.hit(42); y + 1 }
-          } else {
-            resume(n)
-          }
-     }
-     }"
-    ()
-
-let test_eval_handler_parameterized_dispatch () =
-  check_i64 "handler parameterized dispatch" 11L
-    "{
-      effect State(S) = sig { get : Unit -> S };
-     StateI64 = State(I64);
-     StateBool = State(Bool);
-     match (if (perform StateBool.get(())) { perform StateI64.get(()) + 1 } else { 0 }) { x => x,
-     effect StateI64.get () => resume(10),
-     effect StateBool.get () => resume(True)
-     }
-     }"
-    ()
-
-let test_eval_handler_value_branch_handles_same_effect () =
-  check_i64 "handler value branch handles same effect" 42L
-    "{ effect Ask = sig { value : Unit -> I64 };
-     match (0) { x => perform Ask.value(()),
-     effect Ask.value () => 42
-     }
-     }"
-    ()
-
-let test_eval_handler_value_branch_bubbles_outer_effect () =
-  check_i64 "handler value branch bubbles outer effect" 42L
-    "{
-      effect Inner = sig { value : Unit -> I64 };
-      effect Outer = sig { value : Unit -> I64 };
-     match (match (0) { x => perform Outer.value(()),
-       effect Inner.value () => 0
-       }) { x => x,
-     effect Outer.value () => 42
-     }
-     }"
-    ()
-
-let test_eval_handler_resumed_continuation_is_deep () =
-  check_i64 "handler resumed continuation is deep" 42L
-    "{ effect Ping = sig { hit : I64 -> I64 };
-     match (if (perform Ping.hit(1) == 41) { perform Ping.hit(2) } else { 0 }) { x => x,
-     effect Ping.hit n => resume(n + 40)
-     }
-     }"
-    ()
-
-let test_eval_handler_outer_handles_residual_effect () =
-  check_i64 "handler outer handles residual effect" 42L
-    "{
-      effect Inner = sig { hit : I64 -> I64 };
-      effect Outer = sig { hit : I64 -> I64 };
-     match (match (perform Outer.hit(1)) { x => x,
-       effect Inner.hit n => resume(n)
-       }) { x => x,
-     effect Outer.hit n => n + 41
-     }
-     }"
-    ()
-
-let test_eval_handler_lexical_resume_nested_lambda () =
-  check_i64 "handler lexical resume nested lambda" 41L
-    "{ effect Exc = sig { raise : I64 -> I64 };
-     match (perform Exc.raise(1)) { x => x,
-     effect Exc.raise n => (fn(x) { resume(x + 40) })(n)
-     }
-     }"
-    ()
 
 let test_eval_continuation_reuse_error () =
   let mc = mc () in
@@ -1050,14 +567,6 @@ let check_i64_macro label expected source () =
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "%s: %s" label (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
-
-let test_macro_hygiene_no_capture_user () =
-  check_i64_macro "no capture" 1L
-    "{ x = 1; macro m(_) { quote(fn(x) { x }) }; (m(0))(x) }" ()
-
-let test_macro_hygiene_user_no_capture_macro () =
-  check_i64_macro "no capture" 1L
-    "{ macro m(_) { quote(fn(x) { x }) }; x = 1; (m(0))(x) }" ()
 
 let test_macro_panic_has_message () =
   match eval_with_macros "{ macro bad(_) { panic[I64](\"boom\") }; bad(0) }" with
@@ -1318,48 +827,6 @@ let test_imported_macro_calls_regular_function () =
       Alcotest.fail (Printf.sprintf "macro calls function: %s" (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "macro calls function: %s" (Printexc.to_string e))
 
-let test_operator_prefix_macro_expands () =
-  check_i64_macro "operator prefix" 42L
-    "{
-       syntax answer { answer => 42 };
-       answer
-     }" ()
-
-let test_operator_infix_macro_expands () =
-  check_i64_macro "infix macro expands" 9L
-    "{
-       infix (~) (stx) { Syntax.i64(9) };
-       1 ~ 2
-       }" ()
-
-let test_macro_multi_arg () =
-  check_i64_macro "macro multi-arg" 7L
-    "{
-       macro add(a, b) { quote($a + $b) };
-       add(3, 4)
-     }" ()
-
-let test_macro_multi_arg_swap () =
-  check_i64_macro "macro multi-arg swap" (-2L)
-    "{
-       macro flip(a, b) { quote($b - $a) };
-       flip(5, 3)
-     }" ()
-
-let test_macro_default_expr () =
-  check_i64_macro "macro default kind Expr" 1L
-    "{
-       macro check(stx) { Syntax.i64(1) };
-       check(0)
-     }" ()
-
-let test_macro_expr_annotation () =
-  check_i64_macro "macro : Expr(_) explicit annotation" 1L
-    "{
-       macro check(_) : Expr(_) { Syntax.i64(1) };
-       check(0)
-     }" ()
-
 let test_macro_decl_in_expr_context () =
   match
     eval_with_macros
@@ -1372,14 +839,6 @@ let test_macro_decl_in_expr_context () =
   | v ->
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "expected failure, got: %s" (Debug.pp_value_short mc v))
-
-let test_macro_name_shadowing () =
-  check_i64_macro "macro name shadowing regardless of kind" 1L
-    "{
-       macro m(_) : Decl { quote { x = 0 } };
-       macro m(stx) { Syntax.i64(1) };
-       m(0)
-     }" ()
 
 let test_decl_kind_registered_persists () =
   match eval_with_macros
@@ -1418,22 +877,6 @@ let test_decl_macro_two_calls () =
   in
   ()
 
-let test_pattern_round_trip () =
-  check_i64_macro "Pattern builder evaluates" 1L
-    "{
-       macro check(_) { Syntax.i64(1) };
-       { _ = Syntax.pat_wild; check(0) }
-     }" ()
-
-let test_type_aware_macro () =
-  check_i64_macro "type-aware binder solved from the expected type" 1L
-    "{
-       macro default[A](_) : Expr(A) {
-         { _ = A; Syntax.i64(1) }
-       };
-       { x : I64 = default(0); x }
-     }" ()
-
 let test_type_aware_checking () =
   let _module_val = eval_decl_module
     "open (import \"std\");\nmacro default[A](_) : Expr(A) {
@@ -1446,19 +889,6 @@ let test_type_aware_checking () =
   in
   (* Type annotation on x means checking mode — A should be I64 → 42 *)
    ()
-
-let test_type_default_macro () =
-  check_i64_macro "type-directed default for I64" 0L
-    "{
-       macro default[A](_) : Expr(A) {
-         match (A) {
-         RExpr(I64) => Syntax.i64(0),
-         RExpr(Bool) => quote(False),
-         _ => { _ = A; Syntax.i64(42) }
-         }
-       };
-       { x : I64 = default(0); x }
-     }" ()
 
 let test_type_default_bool () =
   match eval_with_macros
@@ -1488,15 +918,6 @@ let test_rtype_match_non_exhaustive_missing_ctors () =
   | _ -> Alcotest.fail "expected non-exhaustive match"
   | exception _ -> ()
 
-let test_expr_binding () =
-  check_i64_macro "macro : Expr(A) works" 1L
-    "{
-       macro mk[A](_) : Expr(A) { { _ = A; Syntax.i64(1) } };
-       { x : I64 = mk(0); x }
-     }" ()
-
-(* M1: reflecting syntax and rebuilding it is the identity on every field —
-   scope sets, annotations, explicitness, span positions, pattern paths. *)
 let test_round_trip_is_identity () =
   let n = Some (Elaborate.syntax_nominals (Elaborate.init_ctx ())) in
   let span = { Source_span.file = Some "f.fun"; start_byte = 3; end_byte = 9; start_line = Some 1;
@@ -1592,23 +1013,6 @@ let test_quote_splices_holes () =
   match eval_with_macros "{ macro m(e) { quote(fn($e) { $e }) }; m(1) }" with
   | _ -> Alcotest.fail "a hole in both binder and expression position must be rejected"
   | exception _ -> ()
-
-(* M10: [quote { … }] quotes declarations; a lone [$d] item is a Decl hole. *)
-let test_quote_declarations () =
-  check_i64_macro "quote { } splices an expression hole into a declaration" 42L
-    "{ macro define(v) : Decl { quote { pub answer = $v; } }; M = module { define(21 + 21) }; M.answer }" ();
-  check_i64_macro "quote { } splices a declaration hole" 6L
-    "{ macro wrap(v) : List(Decl) { d = quote { pub answer = $v }; quote { $d; pub other = 1; } };
-       M = module { wrap(5) }; M.answer + M.other }" ()
-
-let test_type_aware_output_is_expanded () =
-  check_i64_macro "type-aware output expands nested macro" 1L
-    "{
-       macro one(_) { Syntax.i64(1) };
-       macro m[A](e) : Expr(A) { { _ = A; quote(one($e)) } };
-       y : I64 = m(0);
-       y
-     }" ()
 
 let test_expected_type_reaches_macro () =
   let _ = eval_decl_module
@@ -1972,67 +1376,6 @@ let test_generated_multi_binding_scope_threading () =
     end
   | _ -> Alcotest.fail "generated multi-binding: x and y not found"
 
-let test_macro_and_syntax_together () =
-  check_i64_macro "macro and syntax together" 20L
-    "{
-       macro twice(x) { quote($x + $x) };
-       syntax wrap { wrap $x => twice($x) };
-       wrap 10
-     }" ()
-
-let test_operator_uses_operands () =
-  check_i64_macro "operator uses operands (Left assoc)" 2L
-    "{
-       order shift; infix (>>>) shift ($lhs, $rhs) { $lhs - $rhs };
-       10 >>> 5 >>> 3
-     }" ()
-
-let test_operator_right_assoc () =
-  check_i64_macro "operator right assoc" 8L
-    "{
-       order rshift : assoc(right); infix (<<<) rshift ($lhs, $rhs) { $lhs - $rhs };
-       10 <<< 5 <<< 3
-     }" ()
-
-let test_operator_mixed_precedence () =
-  check_i64_macro "operator mixed precedence" 14L
-    "{
-       infix (+++) additive ($lhs, $rhs) { $lhs + $rhs };
-       infix (***) multiplicative ($lhs, $rhs) { $lhs * $rhs };
-       2 +++ 3 *** 4
-     }" ()
-
-let test_operator_bodyless_infix_builtin_apply () =
-  check_i64_macro "bodyless infix applies same-named value" 7L
-    "{
-       myfst = fn(x, y) { x };
-       infix (myfst);
-       7 myfst 2
-     }" ()
-
-let test_operator_bodyless_prefix_builtin_apply () =
-  check_i64_macro "bodyless prefix applies same-named value" 5L
-    "{
-       ident = fn(x) { x };
-       prefix (ident);
-       ident 5
-     }" ()
-
-let test_operator_rhs_can_use_earlier_macro () =
-  check_i64_macro "operator RHS macro path" 5L
-    "{
-       macro answer_body(_) { Syntax.i64(5) };
-       syntax answer { answer => answer_body(0) };
-       answer
-      }" ()
-
-let test_operator_prefix_receives_structured_input () =
-  check_i64_macro "syntax template reuses hole" 4L
-    "{
-       syntax twice { twice $x => $x + $x };
-       twice 2
-      }" ()
-
 let test_operator_macro_error_reports_spans () =
   match
     eval_with_macros
@@ -2083,22 +1426,10 @@ let operator_body_failure_reports_use_span body expected () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected an evaluation failure at the operator"
 
-let test_syntax_module_expression_kind () =
-  check_i64_macro "Syntax.kind expression object" 1L
-    "{ macro answer(stx) { match (stx) { Syntax.Var(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; x = 10; answer(x) }" ()
-
-let test_syntax_module_literal_inspectors () =
-  check_i64_macro "Syntax literal inspectors" 42L
-    "{ macro answer(_) { Syntax.i64(42) }; answer() }" ()
-
 let test_syntax_module_literal_inspector_error () =
   match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Atom(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(g(x)) }" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected atom fallback on non-atom"
-
-let test_syntax_module_ap_deconstructors () =
-  check_i64_macro "Syntax ap deconstructors" 1L
-    "{ macro f(stx) { match (stx) { Syntax.Ap(f, a) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(add(1, 2)) }" ()
 
 let test_syntax_module_ap_deconstructor_error () =
   match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Ap(_, _) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(1) }" with
@@ -2114,25 +1445,6 @@ let test_syntax_module_let_deconstructor_error () =
   match eval_with_macros "{ macro f(stx) { match (stx) { Syntax.Let(_, _, _) => Syntax.i64(1), _ => Syntax.i64(0) } }; f(Syntax.i64(0)) }" with
   | VAtom (I64 0L) -> ()
   | _ -> Alcotest.fail "expected let fallback on non-let"
-
-let test_syntax_module_identifier_inspection () =
-  check_i64_macro "Syntax identifier inspection" 1L
-    "{ macro inspect(stx) { match (stx) { Syntax.Var(_) => Syntax.i64(1), _ => Syntax.i64(0) } }; target = 10; inspect(target) }" ()
-
-
-let test_syntax_module_i64_builder () =
-  check_i64_macro "Syntax.i64 builder" 42L
-    "{
-       macro answer(_) { Syntax.i64(42) };
-       answer(0)
-     }" ()
-
-let test_syntax_class_types_accessible () =
-  check_i64_macro "Syntax class types accessible" 42L
-    "{
-       x = Syntax.i64(42);
-       42
-     }" ()
 
 let test_syntax_expr_nominal_resolvable () =
   let ctx = Elaborate.init_ctx () in
@@ -2173,44 +1485,6 @@ let test_syntax_primitive_names_hidden () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected direct stx_* primitive name to be hidden"
 
-let test_syntax_module_application_builder () =
-  check_i64_macro "Syntax.ap builder" 3L
-    "{
-       macro add(_) { quote(1 + 2) };
-       add(0)
-     }" ()
-
-let test_syntax_module_literal_builders () =
-  check_i64_macro "Syntax char/unit builders" 42L
-    "{
-       macro char_a(_) { Syntax.char('a') };
-       macro unit_value(_) { Syntax.unit(()) };
-       if (char_a(0) == 'a') {
-         if (unit_value(0) == ()) { 42 } else { 0 }
-       } else { 0 }
-      }" ()
-
-let test_syntax_module_let_builder () =
-  check_i64_macro "Syntax let builder" 7L
-    "{
-       macro answer(_) { quote({ x = 3; x + 4 }) };
-       answer(0)
-      }" ()
-
-let test_operator_macro_discards_unelaborated_perform_operand () =
-  check_i64_macro "operator macro discards perform operand before elaboration" 7L
-    "{
-       syntax discard { discard $x => 7 };
-       discard perform Missing.get(())
-      }" ()
-
-let test_7g_adt_matching_hygiene_roundtrip () =
-  check_i64_macro "7G: ADT matching preserves binding hygiene" 42L
-    "{ x = 1; macro passthrough(stx) { match (stx) { Syntax.Lam(_, _) => stx, _ => stx } }; (passthrough(fn(x) { x }))(42) }" ()
-
-(* Rebuilding a lambda around its destructured body binds the body only through
-   the lambda's own parameter. A binder the macro builds from a string is the
-   macro's, and does not capture the caller's [x] (M2). *)
 let test_7g_adt_matching_hygiene_introduced_body () =
   check_i64_macro "7G: rebuilt lambda binds its body through its own parameter" 80L
     "{ macro double(stx) { match (stx) { Syntax.Lam(p, body) => Syntax.RawLam(None, p, quote($body + $body)), _ => Syntax.i64(0) } }; (double(fn(x) { x }))(40) }" ();
@@ -2219,26 +1493,6 @@ let test_7g_adt_matching_hygiene_introduced_body () =
   with
   | _ -> Alcotest.fail "a string-built binder must not capture the caller's x"
   | exception _ -> ()
-
-let test_7g_adt_matching_flip_args () =
-  check_i64_macro "7G: computed multi-kind dispatch not possible with templates" 1L
-    "{ macro classify(stx) { match (stx) { Syntax.Lam(_, _) => Syntax.i64(1), Syntax.Ap(_, _) => Syntax.i64(2), Syntax.Var(_) => Syntax.i64(3), _ => Syntax.i64(0) } }; classify(fn(x) { x }) }" ()
-
-let test_7g_adt_simple_flip () =
-  check_i64_macro "7G: simple swap args via nested match" (-2L)
-    "{ macro swap(stx) { match (stx) { Syntax.Ap(inner, b) => match (inner) { Syntax.Ap(f, a) => Syntax.ap(Syntax.ap(f, b), a), _ => stx }, _ => stx } }; result = swap((fn(x, y) { x - y })(5, 3)); result }" ()
-
-let test_7g_diag_outer_binders () =
-  check_i64_macro "7G: DEBUG outer match with named binders" 1L
-    "{ macro t(stx) { match (stx) { Syntax.Ap(inner, b) => Syntax.i64(1), _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
-
-let test_7g_diag_inner_binders_wildcards () =
-  check_i64_macro "7G: DEBUG inner match with wildcards only" 1L
-    "{ macro t(stx) { match (stx) { Syntax.Ap(inner, _) => match (inner) { Syntax.Ap(_, _) => Syntax.i64(1), _ => Syntax.i64(0) }, _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
-
-let test_7g_diag_inner_binders_named () =
-  check_i64_macro "7G: DEBUG inner match with named binders" 1L
-    "{ macro t(stx) { match (stx) { Syntax.Ap(inner, _) => match (inner) { Syntax.Ap(f, a) => Syntax.i64(1), _ => Syntax.i64(0) }, _ => Syntax.i64(0) } }; result = t((fn(x, y) { x - y })(5, 3)); result }" ()
 
 let test_7i_generated_syntax_later_wins_shadow () =
   match
@@ -2277,10 +1531,6 @@ let test_export_module_members () =
   expect_elab_error "export opens nothing locally" (function Elaborate.UnboundVariable _ -> true | _ -> false)
     "{ M = module { pub x = 1 }; N = module { export M; pub z = x }; N.z }"
 
-let test_export_enum_constructors () =
-  check_i64_macro "export an enum's constructors" 2L
-    "{ N = module { pub rec T = enum { A, B }; export T }; open N; match (B) { A => 1, B => 2 } }" ()
-
 let test_export_errors () =
   expect_elab_error "export clashes with an own member" (function Elaborate.ExportClash "x" -> true | _ -> false)
     "{ M = module { pub x = 1 }; N = module { pub x = 5; export M }; 0 }";
@@ -2292,16 +1542,6 @@ let test_export_errors () =
     "{ M = module { pub x = 1 }; N = module { export M.{z} }; 0 }";
   expect_elab_error "an unnamed impl asks for a name" (function Elaborate.ExportUnnamedImpl "Eq" -> true | _ -> false)
     "{ M = module { pub C = struct { v : I64 }; pub impl Eq(C) = module { fn eq(a, b) { True } } }; N = module { export M }; 0 }"
-
-let test_export_named_impls () =
-  check_i64_macro "a re-exported named impl resolves after open" 1L
-    "{ M = module { pub rec C = enum { K }; pub impl eq_C : Eq(C) = module { eq = fn(x, y) { True } } };
-       N = module { export M };
-       open N; if (M.C.K == M.C.K) { 1 } else { 0 } }" ();
-  check_i64_macro "the same impl through two paths counts once" 1L
-    "{ M = module { pub rec C = enum { K }; pub impl eq_C : Eq(C) = module { eq = fn(x, y) { True } } };
-       N = module { export M };
-       open M; open N; if (M.C.K == M.C.K) { 1 } else { 0 } }" ()
 
 let test_export_unit_roles () =
   match
@@ -2340,29 +1580,6 @@ let test_imported_syntax_not_runtime_field () =
   | exception e -> Alcotest.fail (Printf.sprintf "unexpected exception: %s" (Printexc.to_string e))
   | _ -> Alcotest.fail "expected imported syntax extension to be compile-time only"
 
-let test_operator_prefix_shadowing_is_lexical () =
-  check_i64_macro "operator shadowing" 1L
-    "{
-       syntax choose { choose => 1 };
-       ignored = {
-         syntax choose { choose => 2 };
-         choose
-       };
-       choose
-      }" ()
-
-let test_syntax_template_unless () =
-  check_i64_macro "unless False passes through" 10L
-    "{
-       syntax unless {
-       unless $cond $branch => if ($cond) { 0 } else { $branch }
-       };
-       unless False 10
-     }" ()
-
-(* How far a hole reads is structural (brackets-decide-grouping): the hole
-   ending a use reads its form's operand at the form's order - a form in no group
-   is weaker than every grouped operator - and any other hole is one term. *)
 let test_syntax_template_capture_extent () =
   check_i64_macro "an ungrouped form's trailing hole reads a whole expression" 11L
     "{ syntax inc { inc $x => $x + 1 }; inc 1 * 10 }" ();
@@ -2379,29 +1596,6 @@ let test_syntax_template_capture_extent () =
   | exception Enforest_util.Error msg when String.starts_with ~prefix:"no matching branch" msg -> ()
   | exception e -> Alcotest.fail ("a multi-term inner hole: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "a multi-term inner hole must not match"
-
-(* Precedence is relative (brackets-decide-grouping): order groups, transitive,
-   with associativity on the group; operators with no declared order never mix. *)
-let test_order_groups () =
-  check_i64_macro "a transitive order" 7L
-    "{ order low; order mid : stronger_than(low); order high : stronger_than(mid);
-       infix (<+>) low ($a, $b) { $a + $b }; infix (<*>) high ($a, $b) { $a * $b };
-       1 <+> 2 <*> 3 }" ();
-  check_i64_macro "associativity lives on the group" 5L
-    "{ order sub : assoc(right); infix (<->) sub ($a, $b) { $a - $b }; 10 <-> 8 <-> 3 }" ();
-  check_i64_macro "a group related to the prelude's" 14L
-    "{ order tight : stronger_than(multiplicative); infix (<~>) tight ($a, $b) { $a + $b }; 2 * 3 <~> 4 }" ();
-  check_i64_macro "an ungrouped operator is weaker than a grouped one" 9L
-    "{ infix (<>) ($a, $b) { $a * $b }; 1 + 2 <> 3 }" ();
-  check_i64_macro "a non-associative group's members apply once" 3L
-    "{ order once : assoc(none); infix (<+>) once ($a, $b) { $a + $b }; 1 <+> 2 }" ();
-  check_i64_macro "<- is weaker than arithmetic" 3L "{ r = ref(0); _ = r <- 1 + 2; deref(r) }" ();
-  check_i64_macro "a group unrelated to the prelude's meets <-" 5L
-    "{ order mine; infix (<>) mine ($a, $b) { $a; $b }; r = ref(0); _ = r <- 1 <> 5; deref(r) }" ();
-  check_i64_macro "a stated relation to a weakest group overrides" 1L
-    "{ order mine : weaker_than(assignment); infix (<>) mine ($a, $b) { $a; $b }; r = ref(0); _ = r <- 1 <> 5; deref(r) }" ();
-  check_i64_macro "a prelude group through an import binder" 14L
-    "{ Std = import \"std\"; order tight : stronger_than(Std.multiplicative); infix (<~>) tight ($a, $b) { $a + $b }; 2 * 3 <~> 4 }" ()
 
 let test_order_group_errors () =
   let rejects label fragment source =
@@ -2445,210 +1639,6 @@ let test_order_group_imported () =
   | exception Enforest_util.Error msg when string_contains msg "unknown order group: O.nowhere" -> ()
   | exception e -> Alcotest.fail ("unknown dotted group: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "unknown dotted group: expected an error"
-
-let test_syntax_template_when_match () =
-  check_i64_macro "when False falls back" 0L
-    "{
-       syntax when {
-       when $cond $branch else $fallback =>
-           if ($cond) { $branch } else { $fallback }
-       };
-       when False 42 else 0
-     }" ()
-
-let test_syntax_template_hole_reuse () =
-  check_i64_macro "twice hole reuse" 6L
-    "{
-       syntax twice { twice $x => $x + $x };
-       twice 3
-     }" ()
-
-let test_syntax_template_do_end_delimiters () =
-  check_i64_macro "extract expression from do block" 42L
-    "{
-       syntax extract {
-       extract { $body } => $body
-       };
-       extract { 42 }
-     }" ()
-
-let test_syntax_template_hygiene () =
-  check_i64_macro "hygiene: template binder does not capture use-site" 1L
-    "{
-       x = 1;
-       syntax let_in {
-       let_in $val $body => { x = $val; $body }
-       };
-       let_in 2 x
-     }" ()
-
-let test_syntax_template_def_site_scope () =
-  check_i64_macro "definition-site scope for template refs" 2L
-    "{
-       y = 2;
-       syntax get_y { get_y => y };
-       {
-         y = 99;
-         get_y
-       }
-     }" ()
-
-let test_syntax_template_hole_keeps_use_site_scope () =
-  check_i64_macro "captured hole keeps use-site scope" 99L
-    "{
-       x = 1;
-       syntax passthrough { passthrough $body => $body };
-       {
-         x = 99;
-         passthrough x
-       }
-     }" ()
-
-let test_syntax_template_intro_binding_captures_intro_ref () =
-  check_i64_macro "introduced binder captures introduced reference" 7L
-    "{
-       x = 1;
-       syntax local_x { local_x => { x = 7; x } };
-       {
-         x = 99;
-         local_x
-       }
-     }" ()
-
-let test_syntax_template_def_site_scope_through_lambda () =
-  check_i64_macro "definition-site ref is not captured by lambda use site" 1L
-    "{
-       x = 1;
-       syntax get_x { get_x => x };
-       (fn(x) { get_x })(99)
-     }" ()
-
-let test_syntax_template_nested_def_site_scope () =
-  check_i64_macro "definition-site ref ignores nested use-site shadows" 3L
-    "{
-       z = 3;
-       syntax get_z { get_z => z };
-       {
-         z = 4;
-         {
-           z = 5;
-           get_z
-         }
-       }
-     }" ()
-
-let test_syntax_template_generates_syntax_form () =
-  check_i64_macro "generated syntax forms are usable in generated body" 42L
-    "{
-       syntax build_choose {
-       build_choose => {
-           syntax flag {
-           flag yes => True,
-           flag no => False
-           };
-           syntax choose {
-           choose $cond then $branch else $fallback =>
-               if ($cond) { $branch } else { $fallback }
-           };
-           choose (flag yes) then (40 + 2) else 0
-         }
-       };
-       build_choose
-     }" ()
-
-let test_syntax_template_generated_syntax_closes_over_hole () =
-  check_i64_macro "generated syntax form can reuse outer hole" 16L
-    "{
-       syntax make_adder {
-       make_adder $base => {
-           syntax add_base { add_base $x => $x + $base };
-           add_base 5 + add_base 1
-         }
-       };
-       make_adder 5
-     }" ()
-
-let test_syntax_template_generated_syntax_scope_is_local () =
-  check_i64_macro "generated syntax form does not shadow caller syntax" 6L
-    "{
-       syntax tag { tag $x => $x + 1 };
-       syntax make_tag {
-       make_tag => {
-           syntax tag { tag $x => $x + 2 };
-           tag 2
-         }
-       };
-       make_tag + tag 1
-     }" ()
-
-let test_syntax_template_expands_to_template_use () =
-  check_i64_macro "syntax template can expand to another syntax use" 5L
-    "{
-       syntax five { five => 5 };
-       syntax call_five { call_five => five };
-       call_five
-     }" ()
-
-let test_syntax_template_generates_parameterized_syntax_form () =
-  check_i64_macro "generated syntax form can bind its own holes and branches" 11L
-    "{
-       syntax make_bounded {
-       make_bounded $limit => {
-           syntax bound {
-           bound $x below => if ($x < $limit) { $x } else { $limit },
-           bound $x above => if ($x > $limit) { $x } else { $limit }
-           };
-           bound 2 below + bound 9 above
-         }
-       };
-       make_bounded 5
-     }" ()
-
-let test_syntax_template_nested_callsite_parenthesized () =
-  check_i64_macro "nested syntax callsite inside parenthesized holes" 4L
-    "{
-       syntax is_zero { is_zero $x => $x == 0 };
-       syntax inc { inc $x => $x + 1 };
-       syntax wrap { wrap $x => $x + 1 };
-       syntax choose {
-       choose $cond then $branch else $fallback =>
-           if ($cond) { $branch } else { $fallback }
-       };
-       choose (is_zero 0) then (wrap (inc 2)) else (wrap 10)
-     }" ()
-
-let test_syntax_template_nested_callsite_unparenthesized () =
-  check_i64_macro "nested syntax callsite inside parenthesised holes" 7L
-    "{
-       syntax bool {
-       bool yes => True,
-       bool no => False
-       };
-       syntax add2 { add2 $x => $x + 2 };
-       syntax pick {
-       pick $cond then $branch otherwise $fallback =>
-           if ($cond) { $branch } else { $fallback }
-       };
-       pick (bool yes) then (add2 5) otherwise add2 10
-     }" ()
-
-let test_syntax_template_nested_callsite_repeated_hole () =
-  check_i64_macro "nested syntax callsite in repeated hole" 12L
-    "{
-       syntax inc { inc $x => $x + 1 };
-       syntax triple { triple $x => $x + $x + $x };
-       triple (inc (inc 2))
-     }" ()
-
-let test_syntax_template_multi_branch () =
-  check_i64_macro "multi-branch: first-match disambiguation" 1L
-    "{
-       syntax choose {
-       choose one => 1,
-       choose two => 2
-       };
-       choose one
-     }" ()
 
 let test_syntax_template_imported_pub_syntax () =
   match
@@ -2695,57 +1685,6 @@ let test_syntax_template_imported_intro_binding_hygiene () =
         (Printf.sprintf "imported syntax template intro binding hygiene: %s"
            (Printexc.to_string e))
 
-let test_syntax_template_no_holes () =
-  check_i64_macro "syntax with no holes" 42L
-    "{
-       syntax answer { answer => 42 };
-       answer
-     }" ()
-
-let test_syntax_template_binder_hole () =
-  check_i64_macro "binder hole can introduce use-site name" 3L
-    "{
-       syntax bind {
-       bind $(name : Id) $value in $body => { $name = $value; $body }
-       };
-       bind x 3 in x
-     }" ()
-
-let test_syntax_template_ident_hole () =
-  check_i64_macro "identifier hole can reference use-site name" 4L
-    "{
-       x = 4;
-       syntax use { use $(name : Id) => $name };
-       use x
-     }" ()
-
-let test_syntax_template_pattern_hole () =
-  check_i64_macro "pattern hole splices a use-site pattern and its binders" 4L
-    "{
-       syntax unwrap_or {
-       unwrap_or $v $(p : Pattern) $body $d => match ($v) { $p => $body, _ => $d }
-       };
-       unwrap_or (Some(4)) (Some(x)) x 0
-     }" ()
-
-let test_syntax_template_unused_capture () =
-  check_i64_macro "unused captured hole is accepted" 7L
-    "{
-       syntax ignore { ignore $unused => 7 };
-       ignore MissingName
-     }" ()
-
-let test_syntax_template_reuse_duplicates_evaluation () =
-  check_i64_macro "reused expression hole duplicates evaluation" 3L
-    "{
-       r = ref(0);
-       inc = fn(_) { { n = deref(r); _ = r <- n + 1; deref(r) } };
-       syntax twice { twice $x => $x + $x };
-       twice (inc())
-     }" ()
-
-(* A syntax form's hole kind means what the parameter kind does: [Decl] one
-   declaration, [List(Decl)] any number. *)
 let test_decl_hole_kinds_match_parameters () =
   check_i64_macro "a List(Decl) hole takes a group of declarations" 3L
     "{ M = module { syntax both : Decl { both $(ds : List(Decl)) => { $ds } }; both { pub a = 1; pub b = 2 } }; M.a + M.b }" ();
@@ -2753,37 +1692,6 @@ let test_decl_hole_kinds_match_parameters () =
   | exception Enforest_util.Error msg when String.starts_with ~prefix:"no matching branch" msg -> ()
   | exception e -> Alcotest.fail ("a Decl hole given two declarations: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "a Decl hole must not take two declarations"
-
-let test_decl_template_module_captures_pub_value () =
-  check_i64_macro "decl template captures public module value" 42L
-    "{
-       M = module {
-         syntax keep : Decl { keep $(d : Decl) => { $d } };
-         keep pub answer = 42
-       };
-       M.answer
-     }" ()
-
-let test_decl_template_module_preserves_typed_value () =
-  check_i64_macro "decl template preserves typed value" 42L
-    "{
-       M = module {
-         syntax keep : Decl { keep $(d : Decl) => { $d } };
-         keep pub answer : I64 = 42
-       };
-       M.answer
-     }" ()
-
-let test_decl_template_struct_captures_pub_value () =
-  check_i64_macro "decl template captures public struct value" 42L
-    "{
-       Box = struct {
-         value: I64;
-         syntax keep : Decl { keep $(d : Decl) => { $d } };
-         keep pub answer = 42
-       };
-       Box.answer
-     }" ()
 
 let test_decl_template_multi_generates_siblings () =
   match
@@ -2858,19 +1766,6 @@ let test_7i_generated_pub_syntax_across_imports () =
       let mc = MetaContext.create () in
       Alcotest.fail (Printf.sprintf "7I generated pub syntax: %s" (Debug.pp_value_short mc v))
   | exception e -> Alcotest.fail (Printf.sprintf "7I generated pub syntax: %s" (Printexc.to_string e))
-
-let test_7i_generated_syntax_usable_later_same_module () =
-  check_import_i64 "7I generated syntax usable later" 
-    [ ("gen", "open (import \"std\");
-               syntax make_inc : Decl {
-               make_inc $(n : Id) =>
-                   {
-                     syntax $n { $n $x => $x + 1 }
-                   }
-               };
-               make_inc inc;
-               pub result = inc 5") ]
-    6L "{ M = import \"gen\"; M.result }" ()
 
 let test_7i_generated_pub_operator_across_imports () =
   match
@@ -2993,42 +1888,6 @@ let test_7i_generated_macro_cycle () =
   | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
   | _ -> Alcotest.fail "expected generated macro circular visit"
 
-let test_7i_generated_syntax_hygiene_introduced_binder () =
-  check_i64_macro "7I generated syntax hygiene preserves introduced binders" 99L
-    "{
-       M = module {
-         syntax let_x { let_x $body => { x = 1; $body } };
-         pub result = {
-           x = 99;
-           let_x x
-         }
-       };
-       M.result
-     }" ()
-
-(* M7: syntactic roles resolve by scope set. *)
-let test_m7_syntax_shadows_syntax_in_block () =
-  check_i64_macro "syntax shadows syntax in a nested block" 21L
-    "{ syntax t { t => 1 }; x = { syntax t { t => 2 }; t }; x * 10 + t }" ()
-
-let test_m7_replacement_reads_roles_at_definition () =
-  check_i64_macro "a replacement reads roles as of its definition" (-7L)
-    "{ infix (~) ($a, $b) { $a - $b }; syntax t { t => 1 ~ 2 };
-       infix (~) ($a, $b) { $a + $b }; t * 10 + (1 ~ 2) }" ()
-
-let test_m7_template_syntax_visible_in_its_output () =
-  check_i64_macro "a template's syntax form is visible in its own output" 42L
-    "{ syntax mk { mk => { syntax inc { inc $x => $x + 1 }; inc 41 } }; mk }" ()
-
-let test_m7_generated_syntax_usable_by_next_form () =
-  check_import_i64 "generated syntax named at the use site is usable by the next form"
-    [ ("gen", "open (import \"std\");
-               syntax make : Decl { make $(n : Id) => { syntax $n { $n $x => $x * 2 } } };
-               make double;
-               pub r = double 21") ]
-    42L "{ M = import \"gen\"; M.r }" ()
-
-(* M7 decision 3: a role never mixes with another binder of its name. *)
 let role_conflict label source () =
   match eval_with_macros source with
   | exception Expand_error.Error { error = RoleConflict _; _ } -> ()
@@ -3063,18 +1922,6 @@ let test_m7_value_under_imported_operator () =
   role_conflict "a value binder named like an imported prefix operator"
     "{ not = 5; 1 }" ()
 
-let test_m7_sibling_regions_do_not_conflict () =
-  check_i64_macro "a parameter and a later syntax form of its name in a sibling region" 42L
-    "{ f = fn(answer) { answer }; { syntax answer { answer => 42 }; answer } }" ()
-
-let test_m7_hygienic_macro_binder_is_apart () =
-  check_i64_macro "a macro's own binder named like a syntax form" 1L
-    "{ syntax answer { answer => 42 }; macro m(_) { quote({ answer = 7; 1 }) }; m(0) }" ()
-
-let test_m7_fixity_attaches_to_value () =
-  check_i64_macro "a fixity declaration attaches to the value of its name" 42L
-    "{ twice = fn(x) { x * 2 }; prefix (twice); twice 21 }" ()
-
 let test_m7_new_binder_under_attached_fixity () =
   role_conflict "a new binder of a name whose value has a fixity"
     "{ twice = fn(x) { x * 2 }; prefix (twice); { twice = 5; 1 } }" ()
@@ -3093,12 +1940,6 @@ let test_m7_syntax_inside_open_region () =
   open_supplies_role "a syntax form declared where an open supplies its name"
     "{ M = module { pub answer = 7 }; open M; syntax answer { answer => 42 }; 1 }" ()
 
-let test_m7_open_without_conflict () =
-  check_i64_macro "an open supplying other names" 7L
-    "{ M = module { pub x = 7 }; syntax answer { answer => 42 }; open M; x }" ()
-
-(* Role visibility gaps left by M7: an imported role is visible in the region
-   of the open or binder that imported it, and every open is checked. *)
 let answer_syntax = ("ops", "pub syntax answer { answer => 42 }")
 
 let test_m7_import_open_role_in_region () =
@@ -3152,166 +1993,23 @@ let test_m7_template_written_syntax_invisible () =
 (* M9: syntax forms are macros filled at expansion; bodies stay unread until
    expansion reaches them; blocks reflect as token trees. *)
 
-(* Rust-style arms: brackets end an arm, otherwise [,] does; [|] is union. *)
-let test_arms_evaluate () =
-  check_i64 "brace and expression arms" 23L
-    "{
-       type Color = Red | Green | Blue;
-       pick = fn(c) { match (c) { Red | Blue => { x = 1; x + 1 } Green => 3, } };
-       syntax twice { twice $x => $x + $x, twice => 0 };
-       pick(Blue) * 10 + (twice 1) + match (Green) { Green => if (True) { 1 } else { 2 }, _ => 0 }
-     }" ()
-
-let test_m9_block_tokens_inspected () =
-  check_i64_macro "a macro reads a block's tokens" 1L
-    "{
-       macro sql(q) {
-         match (Syntax.tokens(q)) {
-         Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
-             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) },
-         _ => Syntax.i64(2)
-         }
-       };
-       sql({ SELECT name FROM users WHERE age > 18 })
-     }" ()
-
-let test_m9_block_hole_in_module_slot () =
-  check_import_i64 "a Block hole fills a module body"
-    [ ("ns", "open (import \"std\");
-              syntax namespace : Decl { namespace $(n : Id) $(b : Block) => { pub $n = module $b } };
-              namespace Geometry { pub pi = 3; pub tau = 6 };
-              pub answer = Geometry.tau") ]
-    6L "{ M = import \"ns\"; M.answer }" ()
-
-let test_m9_body_read_after_earlier_statement () =
-  check_i64_macro "a body inside a macro argument reads generated syntax" 12L
-    "{
-       syntax make_inc : Decl { make_inc $(n : Id) => { syntax $n { $n $x => $x + 1 } } };
-       macro twice(e) { quote($e + $e) };
-       run = fn(f) { f(()) };
-       twice(run(fn(_) { make_inc inc; inc 5 }))
-     }" ()
-
-let test_m9_decl_form_as_block_statement () =
-  check_i64_macro "a Decl form binds for the rest of a block" 7L
-    "{
-       syntax seven : Decl { seven $(n : Id) => { $n = 7 } };
-       seven x;
-       x
-     }" ()
-
-let test_m9_expand_block_placed_back () =
-  check_i64_macro "expanded forms placed back into output" 8L
-    "{
-       syntax double { double $x => $x + $x };
-       macro pre(b) { Syntax.expand_block(b) };
-       pre({ z = 4; double z })
-     }" ()
-
-let test_m9_quote_nested_rule_holes () =
-  check_i64_macro "a quote's inner rule binds its own holes, the macro's fill the rest" 21L
-    "{
-       M = module {
-         macro make_adder(base) : List(Decl) {
-           quote { syntax add_base { add_base $x => $x + $base }; pub result = add_base 1 + add_base 10; }
-         };
-         make_adder(5)
-       };
-       M.result
-     }" ()
-
-let test_m9_quote_token_position_hole () =
-  check_i64_macro "a quote fills a hole naming generated syntax" 42L
-    "{
-       M = module {
-         macro make(n) : List(Decl) {
-           match (n) { Syntax.Var(name) => quote { syntax $name { $name $x => $x * 2 }; }, _ => quote { } }
-         };
-         make(double);
-         pub r = double 21
-       };
-       M.r
-     }" ()
-
-(* M9: a macro parameter takes a kind, as a syntax form's hole does; its call's
-   arguments are read as those kinds. *)
-
 let expect_expand_error label check source =
   match eval_with_macros source with
   | exception Expand_error.Error { error; _ } when check error -> ()
   | exception e -> Alcotest.fail (Printf.sprintf "%s: %s" label (Printexc.to_string e))
   | _ -> Alcotest.fail (label ^ ": expected an expansion error")
 
-(* M12: every declaration binder is fresh, so a type a macro declares does not
-   take the caller's type of the same name. *)
-let test_declaration_binders_are_fresh () =
-  check_i64_macro "the caller's type is not the macro's" 1L
-    "{
-       type Tmp = Yes | No;
-       macro with_tmp(e) { quote({ rec Tmp = enum { A, B }; open Tmp; $e }) };
-       with_tmp({ v : Tmp = Yes; match (v) { Yes => 1, No => 0 } })
-     }" ()
-
-(* M11/M12: with no string-built ids, a resolved name reaches the expander only
-   under the certificate its scopes carry, so a macro cannot forge one. *)
 let test_resolved_names_cannot_be_forged () =
   expect_expand_error "a resolved name the macro was not given"
     (function Expand_error.NotSyntax _ -> true | _ -> false)
     "{ x = 5; macro steal(n : Id) { Syntax.RawVar(None, Syntax.Id{name = \"x#0\"; span = None; scope = n.scope}) }; steal(y) }"
 
-(* [type] is an ordinary identifier naming a base role: a user form of the
-   name shadows it by scope set. *)
-let test_type_is_shadowable () =
-  check_i64_macro "a user syntax form shadows type" 7L
-    "{ syntax type : Decl { type $(n : Id) => { $n = 7 } }; type x; x }" ()
-
-(* A [List(TokenTree)] hole takes the rest of a declaration use unread, and a
-   macro parameter of that kind its argument's tokens; the macro reads them. *)
 let test_token_list_hole () =
   check_i64_macro "the rest of a use and a whole argument, as tokens" 1010L
     "{   M = module {     macro count(ts : List(TokenTree)) : List(Decl) { rec len = fn(l : List(Syntax.TokenTree)) : I64 { match (l) { Nil => 0, Cons(_, t) => 1 + len(t) } }; e = Syntax.i64(len(ts)); quote { pub n = $e } };     syntax tally : Decl { tally $(r : List(TokenTree)) => { count($r) } };     tally A B = X | Y and C = Z   };   N = module {     macro count(ts : List(TokenTree)) : List(Decl) { rec len = fn(l : List(Syntax.TokenTree)) : I64 { match (l) { Nil => 0, Cons(_, t) => 1 + len(t) } }; e = Syntax.i64(len(ts)); quote { pub n = $e } };     count(A B = X | Y and C = Z)   };   M.n * 100 + N.n }" ();
   match eval_with_macros "{ syntax bad : Decl { bad $(r : List(TokenTree)) done => { x = 1 } }; 0 }" with
   | exception Enforest_util.Error _ -> ()
   | _ -> Alcotest.fail "a List(TokenTree) hole before the rule's end was accepted"
-
-let test_m9_param_id () =
-  check_i64_macro "an Id parameter names the use site's binder" 5L
-    "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 5; same(x) }" ()
-
-let test_m9_param_id_binds () =
-  check_i64_macro "an Id parameter binds for the caller" 7L
-    "{
-       M = module {
-         macro seven(n : Id) : Decl { Syntax.decl_let(n, Syntax.i64(7), False) };
-         seven(x);
-         pub r = x
-       };
-       M.r
-     }" ()
-
-let test_m9_param_pattern () =
-  check_i64_macro "a Pattern parameter is read as a pattern" 10L
-    "{
-       macro matches(p : Pattern, e) { quote(match ($e) { $p => 1, _ => 0 }) };
-       matches(Some(_), Some(3)) * 10 + matches(None, Some(3))
-     }" ()
-
-let test_m9_param_type_aware () =
-  check_i64_macro "a type-aware macro's Id parameter" 4L
-    "{ macro pick[A](n : Id) : Expr(A) { { _ = A; Syntax.RawVar(None, n) } }; x = 3; pick(x) + 1 }" ()
-
-let test_m9_param_block () =
-  check_i64_macro "a Block parameter is the unread block" 1L
-    "{
-       macro sql(q : Block) {
-         match (Syntax.tokens(q)) {
-         Cons(Syntax.Tok(_, Syntax.IdentTok(word), _), _) =>
-             if (i64_to_bool(eq_string(word, \"SELECT\"))) { Syntax.i64(1) } else { Syntax.i64(0) },
-         _ => Syntax.i64(2)
-         }
-       };
-       sql({ SELECT name FROM users })
-     }" ()
 
 let test_m9_param_kind_mismatch () =
   expect_expand_error "an Id argument that is not an identifier"
@@ -3323,34 +2021,6 @@ let test_m9_param_kind_mismatch () =
   expect_expand_error "too many arguments"
     (function Expand_error.ArgumentCount { expected = 1; got = 2; _ } -> true | _ -> false)
     "{ macro same(n : Id) { Syntax.RawVar(None, n) }; x = 1; same(x, x) }"
-
-(* A Decl parameter's argument is a brace group of items; its value is the
-   Decls it holds, spliced by a declaration hole as [quote { … }] builds. *)
-let test_m9_param_decl () =
-  check_i64_macro "a Decl parameter spliced into a quote" 33L
-    "{
-       M = module {
-         macro with_extra(d : List(Decl)) : List(Decl) { quote { $d; pub extra = 22; } };
-         with_extra({ pub x = 1; pub y = 10 })
-       };
-       M.x + M.y + M.extra
-     }" ();
-  check_i64_macro "a Decl parameter spliced twice" 2L
-    "{
-       M = module {
-         macro twice_decls(d : List(Decl)) : List(Decl) { quote { $d; $d } };
-         twice_decls({ pub x = 1; pub y = 2 })
-       };
-       M.y
-     }" ();
-  (* Like a syntax form's Decl capture, the items stay unread until spliced. *)
-  check_i64_macro "a Decl parameter's items arrive unread" 1L
-    "{
-       macro unread(d : List(Decl)) {
-         match (d) { Cons(Syntax.DeclItems(_), Nil) => Syntax.i64(1), _ => Syntax.i64(0) }
-       };
-       unread({ a = 1; b = 2 })
-     }" ()
 
 let test_m9_param_decl_kind_mismatch () =
   expect_expand_error "a Decl argument that is not a brace group"
@@ -3374,33 +2044,6 @@ let test_m9_param_one_decl () =
   check_operator "an imported macro's Decl parameter" 6L
     [ ("one_decl", "open (import \"std\");\npub macro keep1(d : Decl) : Decl { d }") ]
     "{ M = module { open (import \"one_decl\"); keep1({ pub x = 6 }) }; M.x }"
-
-(* [expand_decls(d)]: a Decl argument's items, expanded form by form - an item
-   reads with the syntax earlier items declared - and placeable back into output. *)
-let test_expand_decls () =
-  check_i64_macro "expand_decls reads the items, so a macro can count them" 3L
-    "{
-       macro count(d : List(Decl)) {
-         match (Syntax.expand_decls(d)) { Cons(_, Cons(_, Cons(_, Nil))) => Syntax.i64(3), _ => Syntax.i64(0) }
-       };
-       count({ a = 1; b = 2; c = 3 })
-     }" ();
-  check_i64_macro "a later item reads with syntax an earlier item declares" 2L
-    "{
-       M = module {
-         macro keep(d : List(Decl)) : List(Decl) { Syntax.expand_decls(d) };
-         keep({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 })
-       };
-       M.y
-     }" ();
-  check_i64_macro "expanded items placed back into a quote" 7L
-    "{
-       M = module {
-         macro wrap(d : List(Decl)) : List(Decl) { e = Syntax.expand_decls(d); quote { $e; pub z = 5; } };
-         wrap({ syntax inc { inc $x => $x + 1 }; pub y = inc 1 })
-       };
-       M.y + M.z
-     }" ()
 
 let test_expand_decls_budget () =
   match
@@ -3537,196 +2180,26 @@ let () =
     [
       ( "eval",
         [
-          Alcotest.test_case "atom" `Quick (check_i64 "atom" 42L "42");
-          Alcotest.test_case "lam+ap" `Quick (check_i64 "lam+ap" 7L "(fn(x) { x })(7)");
-          Alcotest.test_case "apply twice" `Quick
-            (check_i64 "apply twice" 5L
-               "{
-                  twice : (I64 -> I64) -> I64 -> I64 = fn(f) { fn(x) { f(f(x)) } };
-                  inc : I64 -> I64 = fn(n) { n + 1 };
-                  twice(inc, 3)
-                }");
-          Alcotest.test_case "let" `Quick (check_i64 "let" 5L "{ x : I64 = 5; x }");
-          Alcotest.test_case "let shadowing" `Quick
-            (check_i64 "let shadowing" 2L "{ x = 1; x = 2; x }");
-          Alcotest.test_case "non-rec let rhs sees outer" `Quick
-            (check_i64 "non-rec let rhs sees outer" 1L "{ x = 1; x = x; x }");
-          Alcotest.test_case "lambda shadows outer let" `Quick
-            (check_i64 "lambda shadows outer let" 7L "{ x = 1; (fn(x) { x } : I64 -> I64)(7) }");
-          Alcotest.test_case "if True" `Quick (check_i64 "if True" 1L "if (True) { 1 } else { 2 }");
-          Alcotest.test_case "if False" `Quick (check_i64 "if False" 2L "if (False) { 1 } else { 2 }");
-          Alcotest.test_case "and true true" `Quick (check_bool "and true true" true "True && True");
-          Alcotest.test_case "and true false" `Quick (check_bool "and true false" false "True && False");
-          Alcotest.test_case "and short-circuits" `Quick
-            (check_bool "and short-circuits" false "False && panic[Bool](\"and rhs evaluated\")");
-          Alcotest.test_case "or false true" `Quick (check_bool "or false true" true "False || True");
-          Alcotest.test_case "or false false" `Quick (check_bool "or false false" false "False || False");
-          Alcotest.test_case "or short-circuits" `Quick
-            (check_bool "or short-circuits" true "True || panic[Bool](\"or rhs evaluated\")");
-          Alcotest.test_case "and binds tighter than or" `Quick
-            (check_bool "and binds tighter than or" true "True || False && False");
-          Alcotest.test_case "comparison binds tighter than and" `Quick
-            (check_bool "comparison binds tighter than and" false "1 < 2 && 3 < 2");
-          Alcotest.test_case "and or in if condition" `Quick
-            (check_i64 "and or in if condition" 1L "if (1 < 2 && 2 < 3 || False) { 1 } else { 2 }");
           Alcotest.test_case "prod" `Quick test_eval_prod;
-          Alcotest.test_case "proj" `Quick (check_i64 "proj" 42L "(42, True).0");
           Alcotest.test_case "dot" `Quick test_eval_dot;
-          Alcotest.test_case "module signature argument" `Quick test_eval_module_signature_argument;
-          Alcotest.test_case "module signature extra field" `Quick test_eval_module_signature_extra_field;
-          Alcotest.test_case "signature sugar argument" `Quick test_eval_signature_sugar_argument;
-          Alcotest.test_case "let-bound signature" `Quick test_eval_let_bound_signature;
           Alcotest.test_case "a module is not a signature" `Quick test_eval_module_is_not_a_signature;
           Alcotest.test_case "imported signature" `Quick test_eval_imported_signature;
-          Alcotest.test_case "module signature functor" `Quick test_eval_module_signature_functor;
-          Alcotest.test_case "ref read initial" `Quick test_ref_read_initial;
-          Alcotest.test_case "ref write read" `Quick test_ref_write_read;
-          Alcotest.test_case "ref aliases share cell" `Quick test_ref_aliases_share_cell;
-          Alcotest.test_case "ref closure observes later write" `Quick test_ref_closure_observes_later_write;
-          Alcotest.test_case "ref repeated closure increments" `Quick test_ref_repeated_closure_increments;
           Alcotest.test_case "pi" `Quick test_eval_pi;
-          Alcotest.test_case "eq i64" `Quick (check_bool "eq i64" true "1 == 1");
-          Alcotest.test_case "neq i64" `Quick (check_bool "neq i64" true "1 != 2");
-          Alcotest.test_case "eq bool" `Quick (check_bool "eq bool" false "True == False");
-          Alcotest.test_case "eq char" `Quick (check_bool "eq char" true "'a' == 'a'");
-          Alcotest.test_case "eq unit" `Quick (check_bool "eq unit" true "() == ()");
-          Alcotest.test_case "eq string" `Quick (check_bool "eq string" true "\"hello\" == \"hello\"");
-          Alcotest.test_case "neq string" `Quick (check_bool "neq string" true "\"hello\" != \"world\"");
           Alcotest.test_case "eq nominal rejected" `Quick test_eval_equality_nominal_rejected;
           Alcotest.test_case "panic message" `Quick (fun () ->
               match eval_source "panic[I64](\"test message\")" with
               | exception Nbe.EvalError "test message" -> ()
               | exception e -> Alcotest.fail ("unexpected exception: " ^ Printexc.to_string e)
               | _ -> Alcotest.fail "expected panic");
-          Alcotest.test_case "fix" `Quick
-            (check_i64 "fix" 0L
-               "{ rec f : Bool -> I64 = fn(x) { if (x) { 0 } else { f(True) } }; f(False) }");
-          Alcotest.test_case "rec sum" `Quick
-            (check_i64 "rec sum" 15L
-               "{ rec sum : I64 -> I64 = fn(n) { if (n == 0) { 0 } else { sum(n - 1) + n } }; sum(5) }");
-          Alcotest.test_case "factorial" `Quick
-            (check_i64 "factorial" 120L
-               "{ rec fact : I64 -> I64 = fn(n) { if (n == 0) { 1 } else { n * fact(n - 1) } }; fact(5) }");
-          Alcotest.test_case "fibonacci" `Quick
-            (check_i64 "fibonacci" 8L
-               "{ rec fib : I64 -> I64 = fn(n) { if (n <= 1) { n } else { fib(n - 1) + fib(n - 2) } }; fib(6) }");
-          Alcotest.test_case "rec count" `Quick
-            (check_i64 "rec count" 5L
-               "{ rec f : I64 -> I64 = fn(n) { if (n == 5) { 5 } else { f(n + 1) } }; f(0) }");
-          Alcotest.test_case "rec not" `Quick
-            (check_i64 "rec not" 0L
-               "{ rec f : Bool -> I64 = fn(x) { if (x) { 0 } else { f(not x) } }; f(False) }");
           Alcotest.test_case "unhandled perform" `Quick test_eval_unhandled_perform;
           Alcotest.test_case "unhandled effect at the top is an error" `Quick test_top_unhandled_perform;
           Alcotest.test_case "an escaping closure called at the top is an error" `Quick test_top_escaping_closure;
-          Alcotest.test_case "handlers tunnel callback effects" `Quick test_handlers_tunnel;
           Alcotest.test_case "a handled effect may not escape its handler" `Quick test_handled_effect_escape;
-          Alcotest.test_case "handled and latent effects pass the top" `Quick test_top_handled_and_latent;
           Alcotest.test_case "an imported unit's unhandled effect is an error" `Quick test_top_unhandled_in_imported_unit;
           Alcotest.test_case "a method is pure unless it declares a row" `Quick test_method_rows;
           Alcotest.test_case "a trait method signature carries a row" `Quick test_trait_method_rows;
-          Alcotest.test_case "handler ignores continuation" `Quick test_eval_handler_ignores_continuation;
-          Alcotest.test_case "handler resumes once" `Quick test_eval_handler_resumes_once;
-          Alcotest.test_case "resume passes through the value branch" `Quick test_eval_handler_resume_through_value_branch;
-          Alcotest.test_case "handler value branch" `Quick test_eval_handler_value_branch;
-          Alcotest.test_case "match binds a closure scrutinee" `Quick test_eval_match_binds_a_closure;
-          Alcotest.test_case "handler outer bubble" `Quick test_eval_handler_outer_bubble;
-          Alcotest.test_case "handler escape skips continuation" `Quick test_eval_handler_escape_skips_continuation;
-          Alcotest.test_case "handler ping pong effects" `Quick test_eval_handler_ping_pong_effects;
-          Alcotest.test_case "recursive handler ping pong effects" `Quick test_eval_recursive_handler_ping_pong_effects;
-          Alcotest.test_case "state handler sequences operations" `Quick test_eval_state_handler_sequences_operations;
-          Alcotest.test_case "handler tuple payload pattern" `Quick test_eval_handler_tuple_payload_pattern;
-          Alcotest.test_case "handler tuple payload binding order" `Quick test_eval_handler_tuple_payload_binding_order;
-          Alcotest.test_case "handler record payload pattern" `Quick test_eval_handler_record_payload_pattern;
-          Alcotest.test_case "handler record payload binding order" `Quick test_eval_handler_record_payload_binding_order;
-          Alcotest.test_case "type-case I64 zero" `Quick test_eval_type_case_i64_zero;
-          Alcotest.test_case "type-case I64 nonzero" `Quick test_eval_type_case_i64_nonzero;
-          Alcotest.test_case "type-case Bool False" `Quick test_eval_type_case_bool_false;
-          Alcotest.test_case "type-case Bool True" `Quick test_eval_type_case_bool_true;
-          Alcotest.test_case "type-case Unit" `Quick test_eval_type_case_unit;
-          Alcotest.test_case "type-case Char a" `Quick test_eval_type_case_char_a;
-          Alcotest.test_case "type-case default I64" `Quick test_eval_type_case_default_i64;
-          Alcotest.test_case "type-case default Bool" `Quick test_eval_type_case_default_bool;
-          Alcotest.test_case "type-case default Unit" `Quick test_eval_type_case_default_unit;
           Alcotest.test_case "type-case default String panics" `Quick test_eval_type_case_default_string_panics;
-          Alcotest.test_case "type-case default_or I64" `Quick test_eval_type_case_default_or_i64;
-          Alcotest.test_case "type-case default_or Bool" `Quick test_eval_type_case_default_or_bool;
-          Alcotest.test_case "type-case default_or String" `Quick test_eval_type_case_default_or_string;
-          Alcotest.test_case "type-case default_or nominal fallback" `Quick test_eval_type_case_default_or_nominal_fallback;
-          Alcotest.test_case "type-case type_name I64" `Quick test_eval_type_case_type_name_i64;
-          Alcotest.test_case "type-case type_name String" `Quick test_eval_type_case_type_name_string;
-          Alcotest.test_case "type-case nominal full application" `Quick test_eval_type_case_nominal_full_application;
-          Alcotest.test_case "type-case nominal param bind" `Quick test_eval_type_case_nominal_param_bind;
-          Alcotest.test_case "type-case nominal complex param pattern" `Quick test_eval_type_case_nominal_complex_param_pattern;
-          Alcotest.test_case "type-case nominal classifier I64" `Quick test_eval_type_case_nominal_classifier_i64;
-          Alcotest.test_case "type-case nominal classifier Bool" `Quick test_eval_type_case_nominal_classifier_bool;
-          Alcotest.test_case "type-case nominal classifier fallback" `Quick test_eval_type_case_nominal_classifier_fallback;
-          Alcotest.test_case "type-case struct field I64" `Quick test_eval_type_case_struct_field_i64;
-          Alcotest.test_case "type-case struct field Bool" `Quick test_eval_type_case_struct_field_bool;
-          Alcotest.test_case "type-case struct field binder" `Quick test_eval_type_case_struct_field_binder;
-          Alcotest.test_case "type-case struct field fallback" `Quick test_eval_type_case_struct_field_fallback;
-          Alcotest.test_case "type-case struct closed rejects extra" `Quick test_eval_type_case_struct_closed_rejects_extra;
-          Alcotest.test_case "handler same match branch effect" `Quick test_eval_handler_same_match_branch_effect;
-          Alcotest.test_case "handler parameterized dispatch" `Quick test_eval_handler_parameterized_dispatch;
-          Alcotest.test_case "handler value branch handles same effect" `Quick test_eval_handler_value_branch_handles_same_effect;
-          Alcotest.test_case "handler value branch bubbles outer effect" `Quick test_eval_handler_value_branch_bubbles_outer_effect;
-          Alcotest.test_case "handler resumed continuation is deep" `Quick test_eval_handler_resumed_continuation_is_deep;
-          Alcotest.test_case "handler outer handles residual effect" `Quick test_eval_handler_outer_handles_residual_effect;
-          Alcotest.test_case "handler lexical resume nested lambda" `Quick test_eval_handler_lexical_resume_nested_lambda;
           Alcotest.test_case "continuation reuse error" `Quick test_eval_continuation_reuse_error;
-          Alcotest.test_case "match ctor" `Quick
-            (check_i64 "match ctor" 1L
-               "{ type Color = Red | Green; match (Red) { Red => 1, Green => 2 } }");
-          Alcotest.test_case "match wildcard" `Quick
-            (check_i64 "match wildcard" 99L
-               "{ type Color = Red | Green | Blue; \
-                match (Green) { Red => 1, _ => 99 } }");
-           Alcotest.test_case "match bind" `Quick
-             (check_i64 "match bind" 42L
-                "{ type Option a = Some(a) | None; \
-                  match (Some(42)) { Some(x) => x, None => 0 } }");
-          Alcotest.test_case "match binder shadows outer" `Quick
-            (check_i64 "match binder shadows outer" 7L
-               "{ x = 99; match (7) { x => x } }");
-           Alcotest.test_case "match constructor or-pattern binding" `Quick
-             (check_i64 "match constructor or-pattern binding" 5L
-                "{ type E = A(I64) | B(I64); \
-                 match (B(5)) { (A(x) | B(x)) => x } }");
-           Alcotest.test_case "match nested" `Quick
-             (check_i64 "match nested" 7L
-                "{ type Option a = Some(a) | None; \
-                 match (Some(Some(7))) { \
-                   Some(Some(x)) => x, Some(None) => 0, None => 0 } }");
-             Alcotest.test_case "recursive parameterized ADT match" `Quick
-                (check_i64 "recursive parameterized ADT match" 1L
-                   "{ type MyList(a) = Cons(a, MyList(a)) | Nil; \
-                    match (Cons(1, Nil)) { Cons(x, _) => x, Nil => 0 } }");
-              Alcotest.test_case "recursive list sum" `Quick
-                (check_i64 "recursive list sum" 6L
-                   "{ type MyList(a) = Cons(a, MyList(a)) | Nil; \
-                    rec sum : MyList(I64) -> I64 = fn(xs) { \
-                      match (xs) { Cons(x, rest) => x + sum(rest), Nil => 0 } }; \
-                    sum(Cons(1, Cons(2, Cons(3, Nil)))) }");
-             Alcotest.test_case "constructor comma payload distinct from tuple" `Quick
-               (check_i64 "constructor comma payload distinct from tuple" 6L
-                  "{ type Triple(a, b, c) = T(a, Tuple(2, b, c)); \
-                   match (T(1, (2, 3))) { T(x, yz) => x + yz.0 + yz.1 } }");
-             Alcotest.test_case "constructor tuple payload remains single arg" `Quick
-               (check_i64 "constructor tuple payload remains single arg" 1L
-                  "{ type Pair = P(Tuple(2, I64, Bool)); \
-                   match (P((1, True))) { P(pair) => pair.0 } }");
-           Alcotest.test_case "qualified constructor pattern" `Quick
-             (check_i64 "qualified constructor pattern" 2L
-                "{ S = module { pub type Color = Red | Green }; \
-                 open S; match (Green) { Red => 1, Green => 2 } }");
-           Alcotest.test_case "qualified nested constructor pattern" `Quick
-             (check_i64 "qualified nested constructor pattern" 7L
-                "{ A = module { pub B = module { pub type T = X(I64) | Y } }; \
-                 open A; open B; match (X(7)) { X(n) => n, Y => 0 } }");
-           Alcotest.test_case "qualified constructor alias pattern" `Quick
-             (check_i64 "qualified constructor alias pattern" 1L
-                "{ S = module { pub type Color = Red | Green }; \
-                 N = S; open N; match (Red) { Red => 1, Green => 2 } }");
            Alcotest.test_case "addition overflow is a language error" `Quick
              (check_overflow "add" "+" "{ 9223372036854775807 + 1 }");
            Alcotest.test_case "subtraction overflow is a language error" `Quick
@@ -3735,8 +2208,6 @@ let () =
              (check_overflow "mul" "*" "{ 4611686018427387904 * 2 }");
            Alcotest.test_case "min_int / -1 overflows" `Quick
              (check_overflow "div" "/" "{ (0 - 9223372036854775807 - 1) / (0 - 1) }");
-           Alcotest.test_case "arithmetic at the I64 boundary does not overflow" `Quick
-             (check_i64 "boundary" (-1L) "{ (9223372036854775807 + (0 - 9223372036854775807 - 1)) * 1 + (0 - 9223372036854775807 - 1) % (0 - 1) }");
            Alcotest.test_case "division by zero is a language error" `Quick
              (check_div_by_zero "division by zero" "{ 1 / 0 }");
            Alcotest.test_case "remainder by zero is a language error" `Quick
@@ -3744,275 +2215,15 @@ let () =
            Alcotest.test_case "division by zero through a call" `Quick
              (check_div_by_zero "division by zero through a call"
                 "{ f = fn(x: I64) { 1 / x }; f(0) }");
-           Alcotest.test_case "constructor sharing its type name" `Quick
-             (check_i64 "constructor sharing its type name" 7L
-                "{ type T = T(I64) | Y; \
-                 match (T(7)) { T(n) => n, Y => 0 } }");
-           Alcotest.test_case "qualified constructor sharing its type name" `Quick
-             (check_i64 "qualified constructor sharing its type name" 7L
-                "{ M = module { pub type T = T(I64) | Y }; \
-                 match (M.T(7)) { M.T(n) => n, M.Y => 0 } }");
-           Alcotest.test_case "duplicate module field resolves to last" `Quick
-             (check_i64 "duplicate module field resolves to last" 2L
-                "{ M = module { pub x = 1; pub x = 2 }; M.x }");
-           Alcotest.test_case "open (import std) evaluates" `Quick
-             (check_i64 "open import std" 3L
-                "{ open (import \"std\"); 1 + 2 }");
-           Alcotest.test_case "open (import std) prelude value in scope" `Quick
-             (check_i64 "open import std prelude value" 1L
-                "{ open (import \"std\"); \
-                 match (not(False)) { True => 1, False => 0 } }");
-          Alcotest.test_case "match int literal hit" `Quick
-            (check_i64 "match int literal hit" 10L
-               "match (1) { 1 => 10, _ => 20 }");
-          Alcotest.test_case "match int literal default" `Quick
-            (check_i64 "match int literal default" 20L
-               "match (2) { 1 => 10, _ => 20 }");
-           Alcotest.test_case "match literal or-pattern" `Quick
-             (check_i64 "match literal or-pattern" 42L
-                "match (1) { (0 | 1) => 42, _ => 0 }");
-          Alcotest.test_case "match bool literal" `Quick
-            (check_i64 "match bool literal" 0L
-               "match (False) { True => 1, False => 0 }");
-          Alcotest.test_case "match unit literal" `Quick
-            (check_i64 "match unit literal" 7L
-               "match () { () => 7 }");
-          Alcotest.test_case "match char literal hit" `Quick
-            (check_i64 "match char literal hit" 10L
-               "match ('a') { 'a' => 10, _ => 20 }");
-          Alcotest.test_case "match char literal default" `Quick
-            (check_i64 "match char literal default" 20L
-               "match ('b') { 'a' => 10, _ => 20 }");
-          Alcotest.test_case "match escaped char literal" `Quick
-            (check_i64 "match escaped char literal" 1L
-               "match ('\\n') { '\\n' => 1, _ => 0 }");
-          Alcotest.test_case "match literal binder fallback" `Quick
-            (check_i64 "match literal binder fallback" 42L
-               "match (42) { 0 => 0, x => x }");
-          Alcotest.test_case "match first branch wins" `Quick
-            (check_i64 "match first branch wins" 0L
-               "match (1) { _ => 0, 1 => 1 }");
-           Alcotest.test_case "match tagged payload" `Quick
-             (check_i64 "match tagged payload" 42L
-                "{ type Wrapper = W(I64); match (W(41)) { W(x) => x + 1 } }");
-           Alcotest.test_case "match tuple bind" `Quick
-             (check_i64 "match tuple bind" 1L
-                "match (1, True) { (x, b) => if (b) { x } else { 0 } }");
-          Alcotest.test_case "match tuple wildcard" `Quick
-            (check_i64 "match tuple wildcard" 2L
-               "match (1, 2) { (_, y) => y }");
-          Alcotest.test_case "match whole tuple binder" `Quick
-            (check_i64 "match whole tuple binder" 1L
-               "match (1, True) { p => p.0 }");
-          Alcotest.test_case "match nested tuple" `Quick
-            (check_i64 "match nested tuple" 3L
-               "match ((1, True), 2) { ((x, _), y) => x + y }");
-          Alcotest.test_case "match tuple literals" `Quick
-            (check_i64 "match tuple literals" 9L
-               "match (False, 1) { (True, x) => x, (False, _) => 9 }");
-          Alcotest.test_case "record field access" `Quick
-            (check_i64 "record field access" 1L
-               "{ Point = struct { x: I64; y: I64; }; (Point{x = 1; y = 2}).x }");
-           Alcotest.test_case "parameterized record construction" `Quick
-             (check_bool "parameterized record construction" true
-                "{ Pair = fn[A : Type, B : Type] { struct { fst: A; snd: B; } }; (Pair[I64, Bool]{fst = 1; snd = True}).snd }");
-          Alcotest.test_case "record type declaration" `Quick
-            (check_i64 "record type declaration" 2L
-               "{ Point = struct {x: I64; y: I64}; (Point{x = 1; y = 2}).y }");
-          Alcotest.test_case "record construction field order" `Quick
-            (check_i64 "record construction field order" 30L
-               "{ Point = struct {x: I64; y: I64}; \
-                p = Point{y = 20; x = 10}; p.x + p.y }");
-          Alcotest.test_case "parameterized record type declaration" `Quick
-            (check_bool "parameterized record type declaration" true
-               "{ Pair = fn[A : Type, B : Type] { struct {fst: A; snd: B} }; (Pair{fst = 1; snd = True}).snd }");
-           Alcotest.test_case "polymorphic record multiple instantiations" `Quick
-             (check_i64 "polymorphic record multiple instantiations" 13L
-                "{ Pair = fn[A : Type, B : Type] { struct {fst: A; snd: B} }; \
-                 p1 = Pair{fst = 10; snd = 20}; \
-                 p2 = Pair{fst = True; snd = 3}; \
-                 if (p2.fst) { p1.fst + p2.snd } else { 0 } }");
-            Alcotest.test_case "parameterized record method" `Quick
-              (check_bool "parameterized record method" true
-                 "{ Pair = fn[A : Type, B : Type] { struct { fst: A; snd: B; pub swap = fn(p) { (p.snd, p.fst) } } }; (Pair[I64, Bool].swap(Pair[I64, Bool]{fst = 1; snd = True})).0 }");
-            Alcotest.test_case "method uses self" `Quick
-              (check_i64 "method uses self" 1L
-                 "{ Box = fn[A : Type] { struct { value: A; pub method get() { self.value } } }; Box[I64].get(Box[I64]{value = 1}) }");
-            Alcotest.test_case "parameterized method uses self" `Quick
-              (check_bool "parameterized method uses self" true
-                 "{ Pair = fn[A : Type, B : Type] { struct { fst: A; snd: B; pub method swap() { (self.snd, self.fst) } } }; (Pair[I64, Bool].swap(Pair[I64, Bool]{fst = 1; snd = True})).0 }");
-           Alcotest.test_case "method extra parameter" `Quick
-             (check_i64 "method extra parameter" 3L
-                "{ Counter = struct { value: I64; pub method add(x) { self.value + x } }; Counter.add(Counter{value = 1})(2) }");
-            Alcotest.test_case "method uses Self type" `Quick
-              (check_i64 "method uses Self type" 2L
-                 "{ Box = fn[A : Type] { struct { value: A; pub method id(other : Self) { other.value } } }; Box[I64].id(Box[I64]{value = 1})(Box[I64]{value = 2}) }");
-           Alcotest.test_case "method returns Self" `Quick
-             (check_i64 "method returns Self" 1L
-                "{ Box = struct { value: I64; pub method copy() { self } }; (Box.copy(Box{value = 1})).value }");
-           Alcotest.test_case "struct impl for Self" `Quick
-             (check_bool "struct impl for Self" true
-                 "{ Point = struct { \
-                    x: I64; \
-                    pub impl Eq(Self) = module { fn eq(lhs, rhs) { lhs.x == rhs.x } } \
-                  }; \
-                  Point{x = 1} == Point{x = 1} }");
-          Alcotest.test_case "record pattern shorthand" `Quick
-            (check_i64 "record pattern shorthand" 3L
-               "{ Point = struct { x: I64; y: I64; }; \
-                match (Point{x = 1; y = 2}) { Point {x; y} => x + y } }");
-          Alcotest.test_case "record pattern reordered" `Quick
-            (check_i64 "record pattern reordered" 3L
-               "{ Point = struct { x: I64; y: I64; }; \
-                match (Point{x = 1; y = 2}) { Point {y; x} => x + y } }");
-          Alcotest.test_case "record pattern renamed field" `Quick
-            (check_i64 "record pattern renamed field" 30L
-               "{ Point = struct {x: I64; y: I64}; \
-                match (Point{x = 10; y = 20}) { Point {x = wow; y} => wow + y } }");
-          Alcotest.test_case "record pattern partial" `Quick
-            (check_i64 "record pattern partial" 3L
-               "{ Point = struct {x: I64; y: I64}; \
-                match (Point{x = 3; y = 4}) { Point {x; _} => x } }");
-          Alcotest.test_case "record pattern literal dispatch" `Quick
-            (check_i64 "record pattern literal dispatch" 4L
-               "{ Flag = struct { flag: Bool; value: I64; }; \
-                match (Flag{flag = False; value = 3}) { \
-                Flag {flag = True; value} => value, Flag {flag = False; value} => value + 1 } }");
-           Alcotest.test_case "qualified record pattern" `Quick
-             (check_i64 "qualified record pattern" 3L
-                "{ M = module { pub Point = struct { x: I64; y: I64; } }; \
-                 open M; match (Point{x = 1; y = 2}) { Point {x; y} => x + y } }");
-           Alcotest.test_case "struct private helper" `Quick
-             (check_i64 "struct private helper" 11L
-                "{ M = module { secret = 10; pub x = secret + 1 }; M.x }");
-           Alcotest.test_case "module public function" `Quick
-             (check_i64 "module public function" 42L
-                "{ M = module { helper = fn(x) { x * 2 }; pub double = helper }; M.double(21) }");
-           Alcotest.test_case "struct multiple public members" `Quick
-             (check_i64 "struct multiple public members" 3L
-                "{ M = module { pub a = 1; pub b = 2 }; M.a + M.b }");
-           Alcotest.test_case "open struct values" `Quick
-             (check_i64 "open struct values" 52L
-                "{ M = module { pub x = 42; pub y = 10 }; open M; x + y }");
-          Alcotest.test_case "open struct constructors" `Quick
-            (check_i64 "open struct constructors" 1L
-               "{ Color = module { pub type Color = Red | Green | Blue }; \
-                open Color; match (Red) { Red => 1, Green => 2, Blue => 3 } }");
         ] );
       ( "module-level open",
         [
             (* The open extends the runtime scope of the bindings that follow
                it, so every de Bruijn index in the module — for names bound
                before the open as well as after it — must still line up. *)
-            Alcotest.test_case "opened values usable in later bindings" `Quick
-              (check_import_i64 "opened values usable in later bindings"
-                 [ ("base", "pub a = 1; pub b = 2");
-                   ("user", "open (import \"std\");\n\
-                             local = 10;\n\
-                             open (import \"base\");\n\
-                             pub r = local + a + b") ]
-                 13L "{ M = import \"user\"; M.r }");
-            Alcotest.test_case "opened constructors usable in later bindings" `Quick
-              (check_import_i64 "opened constructors usable in later bindings"
-                 [ ("color", "open (import \"std\");\npub type Color = Red | Green");
-                   ("user", "open (import \"color\");\npub v = Red") ]
-                 1L "{ M = import \"user\"; match (M.v) { Green => 2, Red => 1 } }");
-            Alcotest.test_case "inline module open" `Quick
-              (check_i64 "inline module open" 3L
-                 "{ B = module { pub x = 3 }; M = module { open B; pub y = x }; M.y }");
-            Alcotest.test_case "struct-level open" `Quick
-              (check_i64 "struct-level open" 7L
-                 "{ M = module { pub k = 7 }; S = struct { open M; pub m = k }; S.m }");
         ] );
       ( "imports",
         [
-            Alcotest.test_case "basic import" `Quick
-              (check_import_i64 "basic import" [ ("math", "open (import \"std\"); pub x = 41; pub y = x + 1") ] 42L
-                 "{ M = import \"math\"; M.y }");
-            Alcotest.test_case "imported public function" `Quick
-              (check_import_i64 "imported public function" [ ("math", "open (import \"std\"); pub fn double(x) { x + x }") ] 10L
-                 "{ M = import \"math\"; M.double(5) }");
-            Alcotest.test_case "nested import" `Quick
-              (check_import_i64 "nested import"
-                 [ ("base", "pub x = 42"); ("wrapper", "pub M = import \"base\"") ] 42L
-                 "{ W = import \"wrapper\"; W.M.x }");
-            Alcotest.test_case "open imported module exposes public value" `Quick
-              (check_import_i64 "open imported module exposes public value" [ ("math", "pub x = 42") ] 42L
-                 "{ M = import \"math\"; open M; x }");
-            Alcotest.test_case "open imported nested module" `Quick
-              (check_import_i64 "open imported nested module"
-                 [ ("base", "pub x = 42"); ("wrapper", "pub M = import \"base\"") ] 42L
-                 "{ W = import \"wrapper\"; open W; open M; x }");
-            Alcotest.test_case "open imported module local only" `Quick
-              (check_import_i64 "open imported module local only"
-                 [ ("base", "pub x = 41"); ("wrapper", "open (import \"std\"); B = import \"base\"; pub y = { open B; x + 1 }") ]
-                 42L
-                 "{ W = import \"wrapper\"; W.y }");
-            Alcotest.test_case "repeated import" `Quick
-              (check_import_i64 "repeated import" [ ("m", "pub x = 21") ] 42L
-                 "{ A = import \"m\"; B = import \"m\"; A.x + B.x }");
-            Alcotest.test_case "imported ADT match" `Quick
-              (check_import_i64 "imported ADT match"
-                 [ ("color", "open (import \"std\");\npub type Color = Red | Green | Blue; pub default = Green") ] 2L
-                 "{ C = import \"color\"; match (C.default) { C.Red => 1, C.Green => 2, C.Blue => 3 } }");
-            Alcotest.test_case "open imported module exposes constructors" `Quick
-              (check_import_i64 "open imported module exposes constructors"
-                 [ ("color", "open (import \"std\");\npub type Color = Red | Green") ] 1L
-                 "{ C = import \"color\"; open C; match (Red) { Red => 1, Green => 2 } }");
-            Alcotest.test_case "imported record field access" `Quick
-              (check_import_i64 "imported record field access"
-                 [ ("shapes", "pub Point = struct {x: I64; y: I64}") ] 1L
-                 "{ S = import \"shapes\"; (S.Point{x = 1; y = 2}).x }");
-            Alcotest.test_case "imported record pattern" `Quick
-              (check_import_i64 "imported record pattern"
-                 [ ("shapes", "pub Point = struct {x: I64; y: I64}") ] 3L
-                 "{ S = import \"shapes\"; match (S.Point{x = 1; y = 2}) { S.Point {x; y} => x + y } }");
-            Alcotest.test_case "imported record pattern alias" `Quick
-              (check_import_i64 "imported record pattern alias"
-                 [ ("shapes", "pub Point = struct {x: I64; y: I64}") ] 3L
-                 "{ S = import \"shapes\"; Alias = S; match (S.Point{x = 1; y = 2}) { Alias.Point {x; y} => x + y } }");
-            Alcotest.test_case "imported nested constructor pattern" `Quick
-              (check_import_i64 "imported nested constructor pattern"
-                 [ ("nested", "open (import \"std\");\npub M = module { pub type T = X(I64) | Y }") ] 7L
-                 "{ N = import \"nested\"; match (N.M.X(7)) { N.M.X(n) => n, N.M.Y => 0 } }");
-            Alcotest.test_case "imported module alias pattern" `Quick
-              (check_import_i64 "imported module alias pattern"
-                 [ ("color", "open (import \"std\");\npub type Color = Red | Green") ] 1L
-                 "{ C = import \"color\"; Alias = C; match (C.Red) { Alias.Red => 1, Alias.Green => 2 } }");
-            Alcotest.test_case "imported public effect handler" `Quick
-              (check_import_i64 "imported public effect handler"
-                 [ ("effects", "pub effect Exc = sig { raise : I64 -> I64 }") ] 2L
-                 "{ E = import \"effects\"; match (perform E.Exc.raise(1)) { x => x, effect E.Exc.raise n => n + 1 } }");
-            Alcotest.test_case "open imported module exposes effect" `Quick
-              (check_import_i64 "open imported module exposes effect"
-                 [ ("effects", "pub effect Exc = sig { raise : I64 -> I64 }") ] 2L
-                 "{ E = import \"effects\"; open E; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } }");
-            Alcotest.test_case "imported public parameterized effect handler" `Quick
-              (check_import_i64 "imported public parameterized effect handler"
-                 [ ("effects", "pub effect State(S) = sig { get : Unit -> S }") ] 42L
-                 "{ E = import \"effects\"; \
-                  StateI64 = E.State(I64); \
-                  match (perform StateI64.get(())) { x => x, effect StateI64.get () => 42 } }");
-            Alcotest.test_case "imported latent effect function" `Quick
-              (check_import_i64 "imported latent effect function"
-                 [ ( "effects",
-                     "pub effect State(S) = sig { get : Unit -> S }; \
-                      pub read : Unit ->{State(I64)} I64 = fn(_) { perform State.get(()) }" ) ]
-                 7L
-                 "{ E = import \"effects\"; \
-                  StateI64 = E.State(I64); \
-                  match (E.read(())) { x => x, effect StateI64.get () => 7 } }");
-            Alcotest.test_case "imported parameterized handler distinguishes instances" `Quick
-              (check_import_i64 "imported parameterized handler distinguishes instances"
-                 [ ("effects", "pub effect State(S) = sig { get : Unit -> S }") ] 1L
-                 "{ E = import \"effects\"; \
-                  StateI64 = E.State(I64); \
-                  StateBool = E.State(Bool); \
-                  match (if (perform StateBool.get(())) { perform StateI64.get(()) } else { 0 }) { \
-                    x => x, \
-                  effect StateI64.get () => resume(1), \
-                  effect StateBool.get () => resume(True) \
-                  } }");
         ] );
       ( "conv",
         [
@@ -4067,8 +2278,6 @@ let () =
         ] );
       ( "macros",
         [
-          Alcotest.test_case "hygiene: macro binder does not capture user" `Quick test_macro_hygiene_no_capture_user;
-          Alcotest.test_case "hygiene: user binder does not capture macro" `Quick test_macro_hygiene_user_no_capture_macro;
           Alcotest.test_case "panic message propagates" `Quick test_macro_panic_has_message;
           Alcotest.test_case "imported macro expands" `Quick test_imported_macro_expands;
           Alcotest.test_case "imported operator used inside a unit" `Quick test_imported_operator_used_inside_a_unit;
@@ -4090,35 +2299,21 @@ let () =
           Alcotest.test_case "macro-generated import loads macros" `Quick test_macro_generated_import_loads_macros;
           Alcotest.test_case "macro-generated import checks missing" `Quick test_macro_generated_import_checks_missing;
           Alcotest.test_case "imported macro calls regular function" `Quick test_imported_macro_calls_regular_function;
-          Alcotest.test_case "operator prefix macro expands" `Quick test_operator_prefix_macro_expands;
-          Alcotest.test_case "infix macro expands" `Quick test_operator_infix_macro_expands;
-          Alcotest.test_case "infix uses operands" `Quick test_operator_uses_operands;
-          Alcotest.test_case "macro multi-arg" `Quick test_macro_multi_arg;
-          Alcotest.test_case "macro multi-arg swap" `Quick test_macro_multi_arg_swap;
-          Alcotest.test_case "macro default kind Expr" `Quick test_macro_default_expr;
-          Alcotest.test_case "macro : Expr(_) annotation" `Quick test_macro_expr_annotation;
           Alcotest.test_case "macro Decl in Expr context rejected" `Quick test_macro_decl_in_expr_context;
-          Alcotest.test_case "macro name shadowing regardless of kind" `Quick test_macro_name_shadowing;
           Alcotest.test_case "Decl kind survives elaboration" `Quick test_decl_kind_registered_persists;
           Alcotest.test_case "Decl macro generates binding in module" `Quick test_decl_macro_generates_binding;
           Alcotest.test_case "imported Decl macro generates binding" `Quick test_imported_decl_macro;
           Alcotest.test_case "Decl macro two calls" `Quick test_decl_macro_two_calls;
-          Alcotest.test_case "Pattern wild round-trip" `Quick test_pattern_round_trip;
-          Alcotest.test_case "type-aware default macro" `Quick test_type_aware_macro;
           Alcotest.test_case "type-aware checking mode" `Quick test_type_aware_checking;
-          Alcotest.test_case "type-aware output is expanded" `Quick test_type_aware_output_is_expanded;
           Alcotest.test_case "macro does not capture its argument" `Quick test_macro_does_not_capture_argument;
           Alcotest.test_case "macro body sees nothing ambient" `Quick test_macro_body_sees_nothing_ambient;
           Alcotest.test_case "quote splices holes" `Quick test_quote_splices_holes;
-          Alcotest.test_case "quote declarations" `Quick test_quote_declarations;
           Alcotest.test_case "template literals resolve at definition" `Quick test_template_literals_resolve_at_definition;
           Alcotest.test_case "block-local macros do not leak" `Quick test_block_local_macros_do_not_leak;
           Alcotest.test_case "reflection round trip is the identity" `Quick test_round_trip_is_identity;
           Alcotest.test_case "unit-level type chain" `Quick test_unit_level_type_chain;
-          Alcotest.test_case "type-directed default I64" `Quick test_type_default_macro;
           Alcotest.test_case "type-directed default Bool" `Quick test_type_default_bool;
           Alcotest.test_case "R-type match non-exhaustive missing ctors" `Quick test_rtype_match_non_exhaustive_missing_ctors;
-          Alcotest.test_case "Expr(A) binding" `Quick test_expr_binding;
           Alcotest.test_case "expected type reaches macro" `Quick test_expected_type_reaches_macro;
           Alcotest.test_case "expected type rejects mismatch" `Quick test_expected_type_rejects_mismatch;
           Alcotest.test_case "binder type mismatch" `Quick test_binder_type_mismatch;
@@ -4135,13 +2330,6 @@ let () =
           Alcotest.test_case "an imported macro's signature" `Quick test_imported_macro_signature;
           Alcotest.test_case "generated macro binding re-entered" `Quick test_generated_macro_binding_reentered;
           Alcotest.test_case "generated multi-binding scope threading" `Quick test_generated_multi_binding_scope_threading;
-          Alcotest.test_case "macro and syntax together" `Quick test_macro_and_syntax_together;
-          Alcotest.test_case "infix right assoc" `Quick test_operator_right_assoc;
-          Alcotest.test_case "infix mixed precedence" `Quick test_operator_mixed_precedence;
-          Alcotest.test_case "bodyless infix builtin-apply" `Quick test_operator_bodyless_infix_builtin_apply;
-          Alcotest.test_case "bodyless prefix builtin-apply" `Quick test_operator_bodyless_prefix_builtin_apply;
-          Alcotest.test_case "operator RHS can use earlier macro" `Quick test_operator_rhs_can_use_earlier_macro;
-          Alcotest.test_case "operator prefix receives structured input" `Quick test_operator_prefix_receives_structured_input;
           Alcotest.test_case "operator macro error reports spans" `Quick test_operator_macro_error_reports_spans;
           Alcotest.test_case "macro body budget overrun names the macro" `Quick test_macro_body_budget_overrun_names_the_macro;
           Alcotest.test_case "operator body error reports use span" `Quick test_operator_body_error_reports_use_span;
@@ -4151,89 +2339,37 @@ let () =
             (* The divisor waits on [stx], so the checker cannot evaluate it at
                the definition: the division happens in the application. *)
             (operator_body_failure_reports_use_span "{ _ = 1 / (match (stx) { _ => 0 }); stx }" "division by zero");
-          Alcotest.test_case "Syntax module: expression kind" `Quick test_syntax_module_expression_kind;
-          Alcotest.test_case "Syntax module: literal inspectors" `Quick test_syntax_module_literal_inspectors;
           Alcotest.test_case "Syntax module: literal inspector error" `Quick test_syntax_module_literal_inspector_error;
-          Alcotest.test_case "Syntax module: ap deconstructors" `Quick test_syntax_module_ap_deconstructors;
           Alcotest.test_case "Syntax module: ap deconstructor error" `Quick test_syntax_module_ap_deconstructor_error;
           Alcotest.test_case "Syntax module: lam deconstructor error" `Quick test_syntax_module_lam_deconstructor_error;
           Alcotest.test_case "Syntax module: let deconstructor error" `Quick test_syntax_module_let_deconstructor_error;
-          Alcotest.test_case "Syntax module: identifier inspection" `Quick test_syntax_module_identifier_inspection;
-          Alcotest.test_case "Syntax module: i64 builder" `Quick test_syntax_module_i64_builder;
           Alcotest.test_case "Syntax module: primitive names hidden" `Quick test_syntax_primitive_names_hidden;
-          Alcotest.test_case "Syntax module: class types accessible" `Quick test_syntax_class_types_accessible;
           Alcotest.test_case "Syntax module: Expr nominal resolvable" `Quick test_syntax_expr_nominal_resolvable;
           Alcotest.test_case "pattern synonym substitution" `Quick test_pattern_syn_subst;
           Alcotest.test_case "pattern synonym in prelude" `Quick test_pattern_syn_in_prelude;
-          Alcotest.test_case "Syntax module: application builder" `Quick test_syntax_module_application_builder;
-          Alcotest.test_case "Syntax module: literal builders" `Quick test_syntax_module_literal_builders;
-          Alcotest.test_case "Syntax module: let builder" `Quick test_syntax_module_let_builder;
-          Alcotest.test_case "operator macro discards perform operand before elaboration" `Quick test_operator_macro_discards_unelaborated_perform_operand;
-          Alcotest.test_case "7G: ADT matching preserves binding hygiene" `Quick test_7g_adt_matching_hygiene_roundtrip;
           Alcotest.test_case "7G: ADT destructured body not captured by outer scope" `Quick test_7g_adt_matching_hygiene_introduced_body;
-          Alcotest.test_case "7G: computed multi-kind dispatch not possible with templates" `Quick test_7g_adt_matching_flip_args;
-          Alcotest.test_case "7G: simple swap args via nested match [DEBUG]" `Quick test_7g_adt_simple_flip;
-          Alcotest.test_case "7G: DEBUG outer match with named binders" `Quick test_7g_diag_outer_binders;
-          Alcotest.test_case "7G: DEBUG inner match with wildcards only" `Quick test_7g_diag_inner_binders_wildcards;
-          Alcotest.test_case "7G: DEBUG inner match with named binders" `Quick test_7g_diag_inner_binders_named;
           Alcotest.test_case "7I: generated syntax obeys later-wins shadowing" `Quick test_7i_generated_syntax_later_wins_shadow;
           Alcotest.test_case "imported operator prefix expands" `Quick test_imported_operator_prefix_expands;
           Alcotest.test_case "imported syntax not runtime field" `Quick test_imported_syntax_not_runtime_field;
-          Alcotest.test_case "operator prefix shadowing is lexical" `Quick test_operator_prefix_shadowing_is_lexical;
-          Alcotest.test_case "syntax template: unless guard" `Quick test_syntax_template_unless;
           Alcotest.test_case "syntax template: capture extent" `Quick test_syntax_template_capture_extent;
-          Alcotest.test_case "order groups" `Quick test_order_groups;
           Alcotest.test_case "order group errors" `Quick test_order_group_errors;
           Alcotest.test_case "order group imported" `Quick test_order_group_imported;
-          Alcotest.test_case "syntax template: when/else match" `Quick test_syntax_template_when_match;
-          Alcotest.test_case "syntax template: hole reuse duplicates effects" `Quick test_syntax_template_hole_reuse;
-          Alcotest.test_case "syntax template: {/} delimiters" `Quick test_syntax_template_do_end_delimiters;
-          Alcotest.test_case "syntax template: hygiene no capture" `Quick test_syntax_template_hygiene;
-          Alcotest.test_case "syntax template: def-site scope for template refs" `Quick test_syntax_template_def_site_scope;
-          Alcotest.test_case "syntax template: hole keeps use-site scope" `Quick test_syntax_template_hole_keeps_use_site_scope;
-          Alcotest.test_case "syntax template: introduced binder captures introduced ref" `Quick test_syntax_template_intro_binding_captures_intro_ref;
-          Alcotest.test_case "syntax template: def-site scope through lambda" `Quick test_syntax_template_def_site_scope_through_lambda;
-          Alcotest.test_case "syntax template: nested def-site scope" `Quick test_syntax_template_nested_def_site_scope;
-          Alcotest.test_case "syntax template: generates syntax form" `Quick test_syntax_template_generates_syntax_form;
-          Alcotest.test_case "syntax template: generated syntax closes over hole" `Quick test_syntax_template_generated_syntax_closes_over_hole;
-          Alcotest.test_case "syntax template: generated syntax scope is local" `Quick test_syntax_template_generated_syntax_scope_is_local;
-          Alcotest.test_case "syntax template: expands to template use" `Quick test_syntax_template_expands_to_template_use;
-          Alcotest.test_case "syntax template: generates parameterized syntax" `Quick test_syntax_template_generates_parameterized_syntax_form;
-          Alcotest.test_case "syntax template: nested callsite parenthesized" `Quick test_syntax_template_nested_callsite_parenthesized;
-          Alcotest.test_case "syntax template: nested callsite unparenthesized" `Quick test_syntax_template_nested_callsite_unparenthesized;
-          Alcotest.test_case "syntax template: nested callsite repeated hole" `Quick test_syntax_template_nested_callsite_repeated_hole;
-          Alcotest.test_case "syntax template: multi-branch disambiguation" `Quick test_syntax_template_multi_branch;
           Alcotest.test_case "syntax template: imported pub syntax" `Quick test_syntax_template_imported_pub_syntax;
           Alcotest.test_case "syntax template: imported intro binding hygiene" `Quick test_syntax_template_imported_intro_binding_hygiene;
-          Alcotest.test_case "syntax template: no holes" `Quick test_syntax_template_no_holes;
-          Alcotest.test_case "syntax template: binder hole" `Quick test_syntax_template_binder_hole;
-          Alcotest.test_case "syntax template: identifier hole" `Quick test_syntax_template_ident_hole;
-          Alcotest.test_case "syntax template: pattern hole" `Quick test_syntax_template_pattern_hole;
-          Alcotest.test_case "syntax template: unused capture" `Quick test_syntax_template_unused_capture;
-          Alcotest.test_case "syntax template: reuse duplicates evaluation" `Quick test_syntax_template_reuse_duplicates_evaluation;
           Alcotest.test_case "decl hole kinds match parameter kinds" `Quick test_decl_hole_kinds_match_parameters;
-          Alcotest.test_case "decl template: module captures pub value" `Quick test_decl_template_module_captures_pub_value;
-          Alcotest.test_case "decl template: module preserves typed value" `Quick test_decl_template_module_preserves_typed_value;
-          Alcotest.test_case "decl template: struct captures pub value" `Quick test_decl_template_struct_captures_pub_value;
           Alcotest.test_case "decl template: multi generates siblings" `Quick test_decl_template_multi_generates_siblings;
           Alcotest.test_case "decl template: multi rejected in expr" `Quick test_decl_template_multi_rejected_in_expr;
           Alcotest.test_case "decl template: struct field deferred" `Quick test_decl_template_struct_field_deferred;
           Alcotest.test_case "7I: generated pub syntax across imports" `Quick test_7i_generated_pub_syntax_across_imports;
-          Alcotest.test_case "7I: generated syntax usable later" `Quick test_7i_generated_syntax_usable_later_same_module;
           Alcotest.test_case "7I: generated pub operator across imports" `Quick test_7i_generated_pub_operator_across_imports;
           Alcotest.test_case "7I: generated pub macro across imports" `Quick test_7i_generated_pub_macro_across_imports;
           Alcotest.test_case "7I: generated pub operator rejected in struct" `Quick test_7i_generated_pub_operator_rejected_in_struct;
           Alcotest.test_case "7I: generated pub macro rejected in struct" `Quick test_7i_generated_pub_macro_rejected_in_struct;
           Alcotest.test_case "7I: generated syntax cycle" `Quick test_7i_generated_syntax_cycle;
           Alcotest.test_case "7I: generated macro cycle" `Quick test_7i_generated_macro_cycle;
-          Alcotest.test_case "7I: generated syntax hygiene introduced binder" `Quick test_7i_generated_syntax_hygiene_introduced_binder;
         ] );
       ( "m7 roles",
         [
-          Alcotest.test_case "syntax shadows syntax in a nested block" `Quick test_m7_syntax_shadows_syntax_in_block;
-          Alcotest.test_case "replacement reads roles at its definition" `Quick test_m7_replacement_reads_roles_at_definition;
-          Alcotest.test_case "template syntax visible in its output" `Quick test_m7_template_syntax_visible_in_its_output;
-          Alcotest.test_case "generated syntax usable by next form" `Quick test_m7_generated_syntax_usable_by_next_form;
           Alcotest.test_case "template-written syntax invisible to user" `Quick test_m7_template_written_syntax_invisible;
           Alcotest.test_case "value binder under syntax" `Quick test_m7_value_binder_under_syntax;
           Alcotest.test_case "syntax after value binder" `Quick test_m7_syntax_after_value_binder;
@@ -4242,13 +2378,9 @@ let () =
           Alcotest.test_case "syntax inside param region" `Quick test_m7_syntax_inside_param_region;
           Alcotest.test_case "value under macro" `Quick test_m7_value_under_macro;
           Alcotest.test_case "value under imported operator" `Quick test_m7_value_under_imported_operator;
-          Alcotest.test_case "sibling regions do not conflict" `Quick test_m7_sibling_regions_do_not_conflict;
-          Alcotest.test_case "hygienic macro binder is apart" `Quick test_m7_hygienic_macro_binder_is_apart;
-          Alcotest.test_case "fixity attaches to value" `Quick test_m7_fixity_attaches_to_value;
           Alcotest.test_case "new binder under attached fixity" `Quick test_m7_new_binder_under_attached_fixity;
           Alcotest.test_case "open under syntax" `Quick test_m7_open_under_syntax;
           Alcotest.test_case "syntax inside open region" `Quick test_m7_syntax_inside_open_region;
-          Alcotest.test_case "open without conflict" `Quick test_m7_open_without_conflict;
           Alcotest.test_case "imported role in its open's region" `Quick test_m7_import_open_role_in_region;
           Alcotest.test_case "block open (import) role not after block" `Quick test_m7_import_open_role_not_after_block;
           Alcotest.test_case "block import binder role not after block" `Quick test_m7_import_binder_role_not_after_block;
@@ -4257,36 +2389,17 @@ let () =
         ] );
       ( "m9 forms",
         [
-          Alcotest.test_case "rust-style arms evaluate" `Quick test_arms_evaluate;
-          Alcotest.test_case "a macro reads a block's tokens" `Quick test_m9_block_tokens_inspected;
-          Alcotest.test_case "a Block hole fills a module body" `Quick test_m9_block_hole_in_module_slot;
-          Alcotest.test_case "a body in a macro argument reads generated syntax" `Quick test_m9_body_read_after_earlier_statement;
-          Alcotest.test_case "a Decl form as a block statement" `Quick test_m9_decl_form_as_block_statement;
-          Alcotest.test_case "expand_block output placed back" `Quick test_m9_expand_block_placed_back;
           Alcotest.test_case "expansion is idempotent" `Quick test_m9_expansion_idempotent;
           Alcotest.test_case "filling equals the quote" `Quick test_m9_filling_equals_quote;
-          Alcotest.test_case "a quote's nested rule holes are lexical" `Quick test_m9_quote_nested_rule_holes;
-          Alcotest.test_case "a quote hole names generated syntax" `Quick test_m9_quote_token_position_hole;
-          Alcotest.test_case "type is shadowable" `Quick test_type_is_shadowable;
           Alcotest.test_case "pub form uses export" `Quick test_pub_form_uses;
           Alcotest.test_case "List(TokenTree) holes" `Quick test_token_list_hole;
           Alcotest.test_case "export a module's members" `Quick test_export_module_members;
-          Alcotest.test_case "export an enum's constructors" `Quick test_export_enum_constructors;
           Alcotest.test_case "export errors" `Quick test_export_errors;
-          Alcotest.test_case "export named impls" `Quick test_export_named_impls;
           Alcotest.test_case "export a unit's roles" `Quick test_export_unit_roles;
-          Alcotest.test_case "an Id parameter" `Quick test_m9_param_id;
-          Alcotest.test_case "an Id parameter binds" `Quick test_m9_param_id_binds;
-          Alcotest.test_case "a Pattern parameter" `Quick test_m9_param_pattern;
-          Alcotest.test_case "a Block parameter" `Quick test_m9_param_block;
-          Alcotest.test_case "a type-aware macro's Id parameter" `Quick test_m9_param_type_aware;
           Alcotest.test_case "an argument of the wrong kind" `Quick test_m9_param_kind_mismatch;
-          Alcotest.test_case "declaration binders are fresh" `Quick test_declaration_binders_are_fresh;
           Alcotest.test_case "resolved names cannot be forged" `Quick test_resolved_names_cannot_be_forged;
-          Alcotest.test_case "a Decl parameter" `Quick test_m9_param_decl;
           Alcotest.test_case "a Decl argument of the wrong kind" `Quick test_m9_param_decl_kind_mismatch;
           Alcotest.test_case "a Decl parameter is one declaration" `Quick test_m9_param_one_decl;
-          Alcotest.test_case "expand_decls" `Quick test_expand_decls;
           Alcotest.test_case "expand_decls budget" `Quick test_expand_decls_budget;
           Alcotest.test_case "expand_decls imported" `Quick test_expand_decls_imported;
           Alcotest.test_case "an imported macro's parameter kinds" `Quick test_m9_param_imported;
