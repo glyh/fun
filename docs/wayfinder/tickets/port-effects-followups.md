@@ -3,7 +3,7 @@ title: "Port: effects follow-ups — ~> arrows, method result rows, modules that
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -36,3 +36,28 @@ Wave 3 fork. Follow the porting conventions in
 [nominal-identity-applicative-by-purity](nominal-identity-applicative-by-purity.md),
 `STATUS.md` "Effects on the arrow; `~>`; bound sets"; the effects fork's merge
 record in [port-effects](port-effects.md).
+
+## Resolution (2026-09-16)
+
+Merged from `port/effects-followups` (`7d6d9d3`, `640d1cf`, `1e3007d`, merge `a34f58b`).
+Method rows `->{E} T` / `->{_} T` sit on the innermost arrow, read with the
+parameters bound; a method with no row is pure (E3). `~>` ported into
+`Elaborator.PolyArrows.cs` (parameters mint row variables, the final arrow collects
+them, an alias `Callback = Unit ~> I64` is rank 1, a written binder rank 2; checking
+against an implicit row parameter binds it; `~>` outside a signature is an error).
+A performing module makes its nominals generative and a performing member or `let`
+gets a sealed type (`m1.make : I64 -> m1.T`), with escape checks. `Term.Map`
+generalises `Shift`. Newly passing: alias-rank2-written, elab-223, 224, 226,
+pure-colon-alias, alias-rank1-pure, elab-126, elab-165, 166; shared
+`method-without-row-is-pure`, `generative-type-escapes-unnamed-module`,
+`generative-type-escapes-its-binder` (agree with the prototype). C# 247/669; xUnit 123.
+
+**Capture rule corrected:** a nominal captures only names that exist where its
+enclosing module or body starts (the prototype's `enclosing_scope`); it had also
+captured the module's own earlier members, which broke sealing.
+
+**Not ported:** the run-time module stamp (a type-case head on a generative nominal,
+generative type formers and generative rec-enum groups are "not ported yet").
+
+**Open (user):** may a method infer its row with `method m() ~> T`? The prototype
+rejects it (`PolyArrowOutsideSignature`) and so does the port.
