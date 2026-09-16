@@ -3,11 +3,27 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after .NET port wave 2, 2026-09-16.
+Last updated: after .NET port prelude stage 1, 2026-09-17.
 
 ---
 
 ## Completed
+
+### .NET port — wave 3: prelude stage 1 (2026-09-17)
+
+- **334 of 672 conformance cases pass in C#** (131 xUnit), up from 206/650. Added:
+  primitives (one table, checked I64); the expander's `IMacroRuntime` with roles
+  through imports; references (`Mutate` rows, heap discharge, E6 through stores);
+  `~>` arrows, method rows, generative modules; prelude stage 1 elaborated from
+  `dotnet/std/stage1.fun`, bound as `stdlib`, opened around every program;
+  let-generalisation; both conformance runners now evaluate `error` cases.
+- User rulings this wave, each ticketed as a prototype defect and listed in
+  `prototype-divergences.txt` (13 in all): checking against an implicit function
+  type binds first; `panic` with an unknown message stays stuck; a reference
+  operation infers `Ref`; a method may infer its row with `~>` (in progress); a
+  signature check takes the last member (I3).
+- Remaining walls: prelude stage 2 — operators (171), `type` (~89) — and
+  procedural macros (54).
 
 ### .NET port — wave 2 (2026-09-16)
 
