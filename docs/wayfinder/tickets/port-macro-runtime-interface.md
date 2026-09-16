@@ -3,7 +3,7 @@ title: "Port: the expander's macro runtime interface, and roles through imports"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -39,3 +39,31 @@ injected capability"; domain model I4c, I4e ("the elaborator's expander handle i
 a capability, not a context"), I5 (a unit elaborates against the base context);
 `docs/wayfinder/topics/core-tt-domain-model-macros.md`;
 [expander-handle-is-a-capability-not-a-context](expander-handle-is-a-capability-not-a-context.md).
+
+## Resolution (2026-09-16)
+
+Merged from `port/macro-runtime` (`3681ddc`, `54ed17d`, `178ca23`, merge `107a91c`).
+`IMacroRuntime` is declared in `Fun.Expand`, implemented by `Loader`, required by
+the expander's constructor (no optional callbacks, no `MissingCallback`). An
+`import` loads its unit's syntax where it is written; a unit is expanded once, by
+its own expander, and that expansion is reused to elaborate it. A unit's public
+roles bind only inside the open or binder that imported it; names a unit's syntax
+form introduces can resolve to that unit's members; `OpenSuppliesRole` is
+enforced; `export M` re-exports a unit's roles; `stronger_than(M.g)` finds a group
+through a unit. `Enforest` is an instance class carrying its `EnforestEnv`; the
+thread-static environment is gone. 7 new shared cases agree with the prototype
+(`import-open-role-in-region`, `import-binder-role-in-region`,
+`order-group-through-unit-path`, `imported-form-names-unit-member`,
+`import-open-supplies-unit-role`, `open-supplies-role`,
+`open-supplies-role-declared-in-region`); `import-open-role-not-after-region` is
+honestly "not ported yet" (the name could be a prelude name). C# 214/658; xUnit 114.
+
+**Scope change:** no separate runtime-free syntax-exports entry point was built.
+Units are expanded once through the loader, so nothing needs a pass that expands
+without a runtime, and the case the decision guarded against — an expander
+constructed with nothing injected — cannot occur. Add the entry point if something
+comes to need it.
+
+**Follow-ups:** the interface's macro members (elaborate and apply a macro) join it
+with procedural macros; order groups through nested unit paths (`M.N.g`) are "not
+ported yet".
