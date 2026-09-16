@@ -2,24 +2,24 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// <c>struct { items }</c>. Its items are read here, in order: <c>name : Type</c>
     /// is a constructor field, anything else a binding as in a module.
     /// </summary>
-    private static (Syntax, Terms) ParseStructExpr(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseStructExpr(SourceSpan startSpan, Terms terms)
     {
         var (body, rest) = BraceBody("struct", terms);
         // Read together, each item seeing the roles declared before it.
-        using var _ = _env is null ? null : Reading(_env.RegisteringItems());
-        var bindings = ReadContext(new Terms(body.Items), (stmt, _) =>
-            (ParseStructField(stmt) ?? ParseMethod(stmt)) is { } item ? [item] : ParseModuleStatement(stmt)).SelectMany(b => b);
+        var items = new Enforest(_env.RegisteringItems());
+        var bindings = items.ReadContext(new Terms(body.Items), (stmt, _) =>
+            (items.ParseStructField(stmt) ?? items.ParseMethod(stmt)) is { } item ? [item] : items.ParseModuleStatement(stmt)).SelectMany(b => b);
         return (new Syntax.Struct([.. bindings], SourceSpan.Between(startSpan, body.Span)), rest);
     }
 
     /// <summary><c>name : Type</c> with no <c>=</c> in the type: a constructor field.</summary>
-    private static Binding? ParseStructField(Terms stmt)
+    private Binding? ParseStructField(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (stmt.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident name } || !IsToken(stmt.Drop(1).Head, TokenKind.Colon))
@@ -33,7 +33,7 @@ public static partial class Enforest
     /// <c>[pub] method name(params) [: T] { body }</c>. Unlike <c>fn()</c>, an empty
     /// parameter list binds nothing: the method is a function of <c>self</c> alone.
     /// </summary>
-    private static Binding? ParseMethod(Terms stmt)
+    private Binding? ParseMethod(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         var isPublic = IsToken(stmt.Head, TokenKind.Pub);
@@ -54,7 +54,7 @@ public static partial class Enforest
     }
 
     /// <summary><c>sig { name : Type; … }</c>: each item a public member whose value is its type.</summary>
-    private static (Syntax, Terms) ParseSigExpr(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseSigExpr(SourceSpan startSpan, Terms terms)
     {
         var (body, rest) = BraceBody("sig", terms);
         var bindings = new List<Binding>();
@@ -74,7 +74,7 @@ public static partial class Enforest
     }
 
     /// <summary><c>P{x = 1; y = 2}</c>: fields separated by <c>;</c> or <c>,</c>.</summary>
-    private static Syntax ParseRecordConstruct(Syntax type, TokenTree.Group group)
+    private Syntax ParseRecordConstruct(Syntax type, TokenTree.Group group)
     {
         var fields = new List<(string, Syntax)>();
         foreach (var raw in Statements(new Terms(group.Items)))
@@ -87,7 +87,7 @@ public static partial class Enforest
         return new Syntax.RecordConstruct(type, [.. fields], SourceSpan.Between(type.Span, group.Span));
     }
 
-    private static (TokenTree.Group Body, Terms After) BraceBody(string what, Terms terms)
+    private (TokenTree.Group Body, Terms After) BraceBody(string what, Terms terms)
     {
         terms = DropSeparators(terms);
         return terms.Head is TokenTree.Group { Delimiter: Delimiter.Brace } body
@@ -96,7 +96,7 @@ public static partial class Enforest
     }
 
     /// <summary>A body's statements, split at top-level <c>;</c> and <c>,</c>; empty ones dropped.</summary>
-    private static IEnumerable<Terms> Statements(Terms terms)
+    private IEnumerable<Terms> Statements(Terms terms)
     {
         while (true)
         {

@@ -8,9 +8,14 @@ namespace Fun.Expand;
 /// replacement) reads it completely where it is written, against a copy of the
 /// table, registering each role it declares for the statements after it (M10).
 /// </summary>
-public sealed class EnforestEnv(BinderTable roles, bool eager, bool registers, EquatableArray<string> holes)
+public sealed class EnforestEnv(
+    BinderTable roles, Func<Syntax, EquatableArray<(string Name, Role Role)>?> unitRoles,
+    bool eager, bool registers, EquatableArray<string> holes)
 {
     public BinderTable Roles { get; } = roles;
+
+    /// <summary>The roles the unit an expression denotes exports; null when it denotes no unit.</summary>
+    public Func<Syntax, EquatableArray<(string Name, Role Role)>?> UnitRoles { get; } = unitRoles;
 
     /// <summary>Quoted syntax: blocks and module items are read now, not left for expansion.</summary>
     public bool Eager { get; } = eager;
@@ -24,40 +29,36 @@ public sealed class EnforestEnv(BinderTable roles, bool eager, bool registers, E
     /// <summary>Roles registered while reading, so a statement that declared one scopes it over the statements after it.</summary>
     public int Declared { get; set; }
 
-    public static EnforestEnv Lazy(BinderTable roles) => new(roles, eager: false, registers: false, []);
+    public static EnforestEnv Lazy(BinderTable roles, Func<Syntax, EquatableArray<(string Name, Role Role)>?> unitRoles) =>
+        new(roles, unitRoles, eager: false, registers: false, []);
 
     public EnforestEnv Quoted(IEnumerable<string> holes) =>
-        Eager ? new(Roles, true, true, [.. holes, .. Holes]) { Declared = Declared } : new(Roles.Copy(), true, true, [.. holes]);
+        Eager
+            ? new(Roles, UnitRoles, true, true, [.. holes, .. Holes]) { Declared = Declared }
+            : new(Roles.Copy(), UnitRoles, true, true, [.. holes]);
 
     /// <summary>A struct's items are read together, each seeing the roles declared before it.</summary>
-    public EnforestEnv RegisteringItems() => Registers ? this : new(Roles.Copy(), Eager, true, Holes);
+    public EnforestEnv RegisteringItems() => Registers ? this : new(Roles.Copy(), UnitRoles, Eager, true, Holes);
 }
 
-public static partial class Enforest
+/// <summary>
+/// Enforestation reads with an environment: the roles in scope, and whether it is
+/// reading quoted syntax now or leaving bodies for expansion. Reading with another
+/// environment is reading with another enforester, never a swapped ambient one.
+/// </summary>
+public sealed partial class Enforest(EnforestEnv env)
 {
-    // ponytail: the reading environment is ambient rather than a parameter of
-    // every Parse* method, so wave-2 forks editing those signatures do not
-    // conflict; thread it explicitly once they have merged.
-    [ThreadStatic] private static EnforestEnv? _env;
+    private readonly EnforestEnv _env = env;
 
-    /// <summary>Reads the forms parsed inside the returned scope with <paramref name="env"/>.</summary>
-    public static IDisposable Reading(EnforestEnv env)
-    {
-        var saved = _env;
-        _env = env;
-        return new Restore(() => _env = saved);
-    }
-
-    private sealed class Restore(Action restore) : IDisposable
-    {
-        public void Dispose() => restore();
-    }
+    /// <summary>An enforester reading with the roles of <paramref name="roles"/>, as expansion reaches each form.</summary>
+    public static Enforest Lazy(BinderTable roles, Func<Syntax, EquatableArray<(string Name, Role Role)>?> unitRoles) =>
+        new(EnforestEnv.Lazy(roles, unitRoles));
 
     // Scopes the enforester mints for the statements of quoted syntax count
     // down from -1, apart from the expander's.
-    [ThreadStatic] private static int _quotedScope;
+    private static int _quotedScope;
 
-    private static ScopeSet FreshQuotedScope() => ScopeSet.Singleton(--_quotedScope);
+    private static ScopeSet FreshQuotedScope() => ScopeSet.Singleton(Interlocked.Decrement(ref _quotedScope));
 
     private static int _orderCounter;
 
@@ -69,7 +70,7 @@ public static partial class Enforest
     /// than the operator the operand belongs to -- by their groups' declared
     /// order, never a guess.
     /// </summary>
-    private static bool Continues(Prec prec, string symbol, Role role)
+    private bool Continues(Prec prec, string symbol, Role role)
     {
         if (prec == Prec.Top || prec == Prec.ArrowRhs) return true;
         if (prec is not Prec.Operand(var outer, var outerRole)) return false;
@@ -105,9 +106,9 @@ public static partial class Enforest
     /// A token with a prefix role at the head of an expression: a syntax form's
     /// use, or a fixity-only prefix call. Null when the token has no prefix role.
     /// </summary>
-    private static (Syntax, Terms)? PrefixRoleUse(TokenTree term, Terms rest)
+    private (Syntax, Terms)? PrefixRoleUse(TokenTree term, Terms rest)
     {
-        if (_env is null || TokenText(term) is not string name || term is not TokenTree.Leaf leaf) return null;
+        if (TokenText(term) is not string name || term is not TokenTree.Leaf leaf) return null;
         if (_env.Roles.FindRole(name, Fixity.Prefix, leaf.Token.Scope) is not { } role) return null;
 
         var id = new Id(name, term.Span, leaf.Token.Scope);
@@ -136,9 +137,9 @@ public static partial class Enforest
     /// token has no infix role, or its role does not continue at
     /// <paramref name="prec"/>, so the expression ends before it.
     /// </summary>
-    private static (Syntax, Terms)? InfixRoleUse(Syntax lhs, TokenTree term, Terms rest, Prec prec)
+    private (Syntax, Terms)? InfixRoleUse(Syntax lhs, TokenTree term, Terms rest, Prec prec)
     {
-        if (_env is null || TokenText(term) is not string symbol || term is not TokenTree.Leaf leaf) return null;
+        if (TokenText(term) is not string symbol || term is not TokenTree.Leaf leaf) return null;
         if (_env.Roles.FindRole(symbol, Fixity.Infix, leaf.Token.Scope) is not { } role) return null;
         if (role.Meaning is RoleMeaning.PolyArrow)
             throw new NotImplementedException("not ported yet: the polymorphic arrow `~>`");
@@ -169,17 +170,17 @@ public static partial class Enforest
     /// A statement that uses a <c>: Decl</c> syntax form: the use, and the
     /// statements after it. Null when the statement's head names no declaration form.
     /// </summary>
-    public static (Instantiation, Terms)? BlockDeclForm(Terms terms)
+    public (Instantiation, Terms)? BlockDeclForm(Terms terms)
     {
         var (stmt, rest) = TakeStatement(terms);
         if (rest.IsEmpty) return null;
         return DeclFormUse(stmt) is { } inst ? (inst, rest) : null;
     }
 
-    private static Instantiation? DeclFormUse(Terms stmt)
+    private Instantiation? DeclFormUse(Terms stmt)
     {
         stmt = DropSeparators(stmt);
-        if (_env is null || stmt.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident head } token } headTerm) return null;
+        if (stmt.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident head } token } headTerm) return null;
         if (_env.Roles.FindRole(head.Name, Fixity.Prefix, token.Scope) is not { Meaning: RoleMeaning.Rules { Kind: FormKind.Decl } rules } role)
             return null;
         var (inst, rest) = InstantiateForm(new Id(head.Name, headTerm.Span, token.Scope), rules.Kind, FormKind.Decl,
@@ -196,7 +197,7 @@ public static partial class Enforest
     /// <c>order name [: clauses]</c>: the binder it declares and its role. Null
     /// when the statement declares none.
     /// </summary>
-    private static (Id Name, Role Role)? ParseRoleDecl(Terms stmt)
+    private (Id Name, Role Role)? ParseRoleDecl(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (stmt.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: var keyword } }) return null;
@@ -249,18 +250,18 @@ public static partial class Enforest
     }
 
     /// <summary>Reading quoted syntax, a declared role is registered as it is read; otherwise expansion registers it (M7).</summary>
-    private static (Id, Role) DeclareRole(Id name, Role role)
+    private (Id, Role) DeclareRole(Id name, Role role)
     {
-        if (_env is { Registers: true } env)
+        if (_env.Registers)
         {
-            env.Roles.Extend(name.Name, name.Scope, name.Name, BinderMeaning.Role, role);
-            env.Declared++;
+            _env.Roles.Extend(name.Name, name.Scope, name.Name, BinderMeaning.Role, role);
+            _env.Declared++;
         }
         return (name, role);
     }
 
     /// <summary>The declared operator's name: an id spanning its parenthesised symbol.</summary>
-    private static Id OperatorSymbol(string keyword, TokenTree.Group group)
+    private Id OperatorSymbol(string keyword, TokenTree.Group group)
     {
         var items = DropSeparators(new Terms(group.Items));
         if (items.Count == 1 && TokenText(items[0]) is "=>")
@@ -271,7 +272,7 @@ public static partial class Enforest
     }
 
     /// <summary>The group an operator or form joins, written after its name: null when it joins none.</summary>
-    private static (Order?, Terms) ParseJoinedOrder(Terms terms)
+    private (Order?, Terms) ParseJoinedOrder(Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is TokenTree.Leaf { Token.Kind: TokenKind.Int })
@@ -283,7 +284,7 @@ public static partial class Enforest
     }
 
     /// <summary>The terms naming one group at the front -- <c>g</c> or <c>M.N.g</c> -- and the terms after them.</summary>
-    private static (Terms, Terms) TakeOrderRef(Terms terms)
+    private (Terms, Terms) TakeOrderRef(Terms terms)
     {
         var n = 1;
         while (n + 1 < terms.Count && IsToken(terms[n], TokenKind.Dot) && terms[n + 1] is TokenTree.Leaf { Token.Kind: TokenKind.Ident })
@@ -292,21 +293,28 @@ public static partial class Enforest
     }
 
     /// <summary>An order group named where a declaration names it: a bare name resolves by scope set, like any binder.</summary>
-    private static Order ResolveOrder(Terms reference)
+    private Order ResolveOrder(Terms reference)
     {
-        if (reference.Count != 1)
-            throw new NotImplementedException("not ported yet: an order group named through a unit's path");
         var leaf = (TokenTree.Leaf)reference[0];
         var name = ((TokenKind.Ident)leaf.Token.Kind).Name;
-        return _env?.Roles.FindOrder(name, leaf.Token.Scope)
-            ?? throw new ExpandException($"unknown order group: {name}");
+        if (reference.Count == 1)
+            return _env.Roles.FindOrder(name, leaf.Token.Scope)
+                ?? throw new ExpandException($"unknown order group: {name}");
+
+        // `M.g`: `g` among the roles the unit `M` denotes exports.
+        if (reference.Count != 3)
+            throw new NotImplementedException("not ported yet: an order group named through a unit member's path");
+        var group = ((TokenKind.Ident)((TokenTree.Leaf)reference[2]).Token.Kind).Name;
+        var unit = new Syntax.Var(new Id(name, leaf.Span, leaf.Token.Scope));
+        return (_env.UnitRoles(unit) ?? []).FirstOrDefault(r => r.Name == group && r.Role.Meaning is RoleMeaning.OrderGroup).Role?.Order
+            ?? throw new ExpandException($"unknown order group: {name}.{group}");
     }
 
     /// <summary>
     /// <c>order name : stronger_than(g, …) weaker_than(g, …) weakest assoc(left|right|none)</c>:
     /// precedence is relative, and a declaration that would make the order cyclic is an error.
     /// </summary>
-    private static Role ParseOrderDecl(Id name, Terms clauses)
+    private Role ParseOrderDecl(Id name, Terms clauses)
     {
         var stronger = new List<Order>();
         var weaker = new List<Order>();
@@ -366,12 +374,12 @@ public static partial class Enforest
     }
 
     /// <summary><c>($a, $b) { body }</c> after an infix declaration: a template, not a procedural macro.</summary>
-    private static bool IsOperatorTemplate(Terms value) =>
+    private bool IsOperatorTemplate(Terms value) =>
         DropSeparators(value).Head is TokenTree.Group { Delimiter: Delimiter.Paren } group
         && DropSeparators(new Terms(group.Items)).Head is TokenTree.Leaf { Token.Kind: TokenKind.Operator { Spelling: "$" } };
 
     /// <summary><c>infix (op) g ($lhs, $rhs) { body }</c>: one rule, <c>$lhs op $rhs</c>, whose replacement is the brace group.</summary>
-    private static Role ParseOperatorTemplate(Id symbol, Order? order, Terms value)
+    private Role ParseOperatorTemplate(Id symbol, Order? order, Terms value)
     {
         value = DropSeparators(value);
         var paramsGroup = (TokenTree.Group)value.Head!;
@@ -396,9 +404,9 @@ public static partial class Enforest
 
     // ---- rules --------------------------------------------------------------
 
-    private static EquatableArray<Rule> ParseRules(string head, FormKind kind, Terms body)
+    private EquatableArray<Rule> ParseRules(string head, FormKind kind, Terms body)
     {
-        var available = _env?.Holes ?? [];
+        var available = _env.Holes;
         var rules = new List<Rule>();
         foreach (var ruleTerms in SplitMatchBranches(body))
         {
@@ -416,20 +424,20 @@ public static partial class Enforest
     }
 
     /// <summary>A replacement, read as quoted syntax with <paramref name="holes"/> the captures it may use.</summary>
-    private static Replacement ParseReplacement(FormKind kind, IEnumerable<string> holes, Terms terms)
+    private Replacement ParseReplacement(FormKind kind, IEnumerable<string> holes, Terms terms)
     {
-        using var _ = Reading((_env ?? EnforestEnv.Lazy(new BinderTable())).Quoted(holes));
-        if (kind == FormKind.Expr) return new Replacement.Expr(ParseAll(terms));
+        var quoted = new Enforest(_env.Quoted(holes));
+        if (kind == FormKind.Expr) return new Replacement.Expr(quoted.ParseAll(terms));
         if (DropSeparators(terms) is not [TokenTree.Group { Delimiter: Delimiter.Brace } body])
             throw new ExpandException("a Decl syntax form's replacement is written { declarations }");
-        return new Replacement.Decls(ReadItemsNow(new Terms(body.Items)));
+        return new Replacement.Decls(quoted.ReadItemsNow(new Terms(body.Items)));
     }
 
     /// <summary>
     /// <c>$x</c> as two tokens, rewritten to one identifier spelled <c>$x</c> --
     /// <c>$</c> cannot begin a source identifier -- so quoted syntax parses as written.
     /// </summary>
-    private static Terms RewriteHoles(Terms terms)
+    private Terms RewriteHoles(Terms terms)
     {
         var output = new List<TokenTree>();
         for (var i = 0; i < terms.Count; i++)
@@ -448,10 +456,10 @@ public static partial class Enforest
     }
 
     /// <summary>The hole an identifier spelled <c>$x</c> names.</summary>
-    private static string? HoleName(TokenTree term) =>
+    private string? HoleName(TokenTree term) =>
         term is TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: ['$', _, ..] name } } ? name[1..] : null;
 
-    private static EquatableArray<RulePart> ParseRulePattern(Terms terms)
+    private EquatableArray<RulePart> ParseRulePattern(Terms terms)
     {
         terms = DropSeparators(terms);
         // The head is a literal: a hole written there, in a rule a replacement
@@ -461,7 +469,7 @@ public static partial class Enforest
         return ParsePatternParts(terms);
     }
 
-    private static EquatableArray<RulePart> ParsePatternParts(Terms terms)
+    private EquatableArray<RulePart> ParsePatternParts(Terms terms)
     {
         var parts = new List<RulePart>();
         terms = DropSeparators(terms);
@@ -487,7 +495,7 @@ public static partial class Enforest
     }
 
     /// <summary><c>$(name : Kind)</c>, kinds written as their reflection types.</summary>
-    private static RulePart.Hole ParseAnnotatedHole(TokenTree.Group group)
+    private RulePart.Hole ParseAnnotatedHole(TokenTree.Group group)
     {
         var items = DropSeparators(new Terms(group.Items));
         if (items.Count >= 3 && items[0] is TokenTree.Leaf { Token.Kind: TokenKind.Ident name } && IsToken(items[1], TokenKind.Colon))
@@ -518,7 +526,7 @@ public static partial class Enforest
         throw new ExpandException("expected template hole annotation $(name : Kind)");
     }
 
-    private static EquatableArray<string> PatternHoles(EquatableArray<RulePart> parts)
+    private EquatableArray<string> PatternHoles(EquatableArray<RulePart> parts)
     {
         var holes = new List<string>();
         void Go(IEnumerable<RulePart> ps)
@@ -543,14 +551,14 @@ public static partial class Enforest
     /// Every hole a replacement uses must be a capture of its rule or of an
     /// enclosing one; a rule the replacement itself declares binds its own.
     /// </summary>
-    private static void CheckReplacementHoles(IEnumerable<string> bound, Terms replacement)
+    private void CheckReplacementHoles(IEnumerable<string> bound, Terms replacement)
     {
         var boundSet = bound.ToHashSet();
         foreach (var hole in ReplacementHoles(boundSet, replacement))
             throw new ExpandException($"unbound syntax template hole in replacement: {hole}");
     }
 
-    private static IEnumerable<string> ReplacementHoles(HashSet<string> bound, Terms terms)
+    private IEnumerable<string> ReplacementHoles(HashSet<string> bound, Terms terms)
     {
         for (var i = 0; i < terms.Count; i++)
         {
@@ -587,7 +595,7 @@ public static partial class Enforest
     }
 
     /// <summary>A <c>List(TokenTree)</c> hole takes the rest of a declaration use: its rule's last part, outside any group.</summary>
-    private static void CheckTokenHoles(FormKind kind, EquatableArray<Rule> rules)
+    private void CheckTokenHoles(FormKind kind, EquatableArray<Rule> rules)
     {
         static string? Inside(RulePart p) => p switch
         {
@@ -607,7 +615,7 @@ public static partial class Enforest
         }
     }
 
-    private static string? Spelling(TokenTree term) => term switch
+    private string? Spelling(TokenTree term) => term switch
     {
         TokenTree.Leaf { Token.Kind: TokenKind.Ident i } => i.Name,
         TokenTree.Leaf { Token.Kind: TokenKind.Operator o } => o.Spelling,
@@ -615,7 +623,7 @@ public static partial class Enforest
         _ => null,
     };
 
-    private static bool SameLiteral(TokenTree expected, TokenTree actual) => (expected, actual) switch
+    private bool SameLiteral(TokenTree expected, TokenTree actual) => (expected, actual) switch
     {
         (TokenTree.Leaf { Token.Kind: TokenKind.Int a }, TokenTree.Leaf { Token.Kind: TokenKind.Int b }) => a.Value == b.Value,
         (TokenTree.Leaf { Token.Kind: TokenKind.Char a }, TokenTree.Leaf { Token.Kind: TokenKind.Char b }) => a.Value == b.Value,
@@ -627,7 +635,7 @@ public static partial class Enforest
     // ---- instantiation ------------------------------------------------------
 
     /// <summary>A syntax form's use: the first rule whose pattern matches, and what its holes captured.</summary>
-    private static (Instantiation, Terms) InstantiateForm(
+    private (Instantiation, Terms) InstantiateForm(
         Id form, FormKind kind, FormKind position, string? fromUnit, EquatableArray<Rule> rules, Terms terms, Prec trailing)
     {
         // M8: a syntax form is used only where its kind's position is.
@@ -646,12 +654,12 @@ public static partial class Enforest
     /// </summary>
     private enum Extent { Trailing, ToSeparator, OneTerm }
 
-    private static Extent ExtentAfter(EquatableArray<RulePart> parts, int next) =>
+    private Extent ExtentAfter(EquatableArray<RulePart> parts, int next) =>
         next >= parts.Length ? Extent.Trailing
         : parts[next] is RulePart.Literal { Term: var t } && (IsToken(t, TokenKind.Comma) || IsSeparator(t)) ? Extent.ToSeparator
         : Extent.OneTerm;
 
-    private static (List<(string, Capture)>, Terms)? MatchParts(
+    private (List<(string, Capture)>, Terms)? MatchParts(
         EquatableArray<RulePart> parts, int index, Terms input, List<(string, Capture)> captures, bool whole, Prec trailing)
     {
         if (index >= parts.Length)
@@ -688,7 +696,7 @@ public static partial class Enforest
 
                     case HoleKind.Block:
                         if (input.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } block) return null;
-                        return Continue(input.Tail, (hole.Name, _env is { Eager: true }
+                        return Continue(input.Tail, (hole.Name, _env.Eager
                             ? new Capture.Expr(ParseAll(new Terms([block])))
                             : new Capture.Block(block.Items)));
 
@@ -754,30 +762,30 @@ public static partial class Enforest
     /// A statement that declared a role adds a fresh scope to the statements after
     /// it, so the role is visible after it and neither before it nor outside.
     /// </summary>
-    private static List<T> ReadContext<T>(Terms terms, Func<Terms, bool, T> read)
+    private List<T> ReadContext<T>(Terms terms, Func<Terms, bool, T> read)
     {
         var results = new List<T>();
         while (true)
         {
             var (stmt, after) = TakeStatement(terms);
             var rest = DropSeparators(after);
-            var declared = _env?.Declared ?? 0;
+            var declared = _env.Declared;
             if (!stmt.IsEmpty) results.Add(read(stmt, rest.IsEmpty));
             if (rest.IsEmpty) return results;
-            if ((_env?.Declared ?? 0) != declared)
+            if (_env.Declared != declared)
                 rest = new Terms([.. rest.Select(t => t.AddScope(FreshQuotedScope()))]);
             terms = rest;
         }
     }
 
     /// <summary>Module items read now, as quoted syntax is.</summary>
-    private static EquatableArray<Binding> ReadItemsNow(Terms items) =>
+    private EquatableArray<Binding> ReadItemsNow(Terms items) =>
         [.. ReadContext(items, (stmt, _) => ParseModuleStatement(stmt)).SelectMany(b => b)];
 
     /// <summary>A <c>{ … }</c> body: left unread for expansion, or read now when reading quoted syntax.</summary>
-    private static Syntax ReadBlock(EquatableArray<TokenTree> items, SourceSpan span)
+    private Syntax ReadBlock(EquatableArray<TokenTree> items, SourceSpan span)
     {
-        if (_env is not { Eager: true }) return new Syntax.Block(items, span);
+        if (!_env.Eager) return new Syntax.Block(items, span);
 
         var terms = new Terms(items);
         var discards = items.Length > 0 && IsSeparator(items[^1]);
@@ -795,7 +803,7 @@ public static partial class Enforest
     private static readonly Syntax EagerBodyPlaceholder = new Syntax.Atom(Atom.Unit.Instance, SourceSpan.Synthetic);
 
     /// <summary>A statement's form, read before the statements after it, given the body it scopes over.</summary>
-    private static Syntax WithBody(Syntax statement, Syntax body) => statement switch
+    private Syntax WithBody(Syntax statement, Syntax body) => statement switch
     {
         Syntax.Let l => l with { Body = body },
         Syntax.LetRecGroup g => g with { Body = body },

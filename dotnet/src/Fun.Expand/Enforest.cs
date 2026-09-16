@@ -13,7 +13,7 @@ namespace Fun.Expand;
 // the prototype supports but this does not throws by name rather than parsing
 // into something else -- a silently wrong parse is the failure this port is
 // most at risk of.
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// Where an expression is read, which decides what may continue it: after
@@ -43,7 +43,7 @@ public static partial class Enforest
     /// rest, which stays unread until expansion reaches it. A trailing <c>;</c>
     /// discards the body's value.
     /// </summary>
-    public static Syntax ParseBlockHead(SourceSpan span, Terms terms)
+    public Syntax ParseBlockHead(SourceSpan span, Terms terms)
     {
         var (stmt, rest) = TakeStatement(terms);
         if (stmt.IsEmpty) throw new ExpandException("empty block");
@@ -57,7 +57,7 @@ public static partial class Enforest
     }
 
     /// <summary>A block statement, as the form it makes of the rest of the block.</summary>
-    private static Syntax DoStatement(SourceSpan span, Terms stmt, Syntax body)
+    private Syntax DoStatement(SourceSpan span, Terms stmt, Syntax body)
     {
         if (ParseRecGroup(stmt) is { } group) return new Syntax.LetRecGroup(group, body, span);
 
@@ -84,7 +84,7 @@ public static partial class Enforest
     /// <c>name = value</c>, <c>name : T = value</c>, <c>rec name = value</c> or
     /// <c>fn name(params) { … }</c>. Null when the statement binds nothing.
     /// </summary>
-    private static (Id Name, Syntax? Type, Syntax Value, bool Recursive)? ParseValueDeclStatement(Terms stmt)
+    private (Id Name, Syntax? Type, Syntax Value, bool Recursive)? ParseValueDeclStatement(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         var recursive = false;
@@ -132,17 +132,17 @@ public static partial class Enforest
     /// <c>module { items }</c>. The items stay unread: expansion reads them one
     /// form at a time, so an item can bind the syntax the ones after it are read with.
     /// </summary>
-    private static (Syntax, Terms) ParseModuleExpr(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseModuleExpr(SourceSpan startSpan, Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
             throw new ExpandException("module is written module { … }");
-        EquatableArray<Binding> items = _env is { Eager: true } ? ReadItemsNow(new Terms(body.Items)) : [new Binding.Items(body.Items)];
+        EquatableArray<Binding> items = _env.Eager ? ReadItemsNow(new Terms(body.Items)) : [new Binding.Items(body.Items)];
         return (new Syntax.Module(items, SourceSpan.Between(startSpan, body.Span)), terms.Tail);
     }
 
     /// <summary><c>open e</c>: the module expression, or null when the statement is not an open.</summary>
-    private static Syntax? ParseOpenStatement(Terms stmt)
+    private Syntax? ParseOpenStatement(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Open)) return null;
@@ -153,7 +153,7 @@ public static partial class Enforest
     /// One module item: <c>[pub] name [: T] = value</c>, <c>[pub] fn name(…) { … }</c>
     /// or <c>open e</c>. A typed binding's value is annotated with its type.
     /// </summary>
-    public static EquatableArray<Binding> ParseModuleStatement(Terms stmt)
+    public EquatableArray<Binding> ParseModuleStatement(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (stmt.IsEmpty) return [];
@@ -194,7 +194,7 @@ public static partial class Enforest
             $"not ported yet: module item starting `{(unprefixed.Head is { } head ? Describe(head) : "(empty)")}`");
     }
 
-    private static string Describe(TokenTree term) => term switch
+    private string Describe(TokenTree term) => term switch
     {
         TokenTree.Leaf l => l.Token.Kind.Text(),
         TokenTree.Group { Delimiter: Delimiter.Paren } => "(...)",
@@ -205,20 +205,20 @@ public static partial class Enforest
     // ---- expressions ------------------------------------------------------
 
     /// <summary>Reads one expression and requires that it consumed every term.</summary>
-    public static Syntax ParseAll(Terms terms)
+    public Syntax ParseAll(Terms terms)
     {
         var (expr, rest) = ParseExprPrec(terms, Prec.Top);
         EnsureNoRest("expression", rest);
         return expr;
     }
 
-    public static (Syntax, Terms) ParseExprPrec(Terms terms, Prec prec)
+    public (Syntax, Terms) ParseExprPrec(Terms terms, Prec prec)
     {
         var (lhs, rest) = ParsePrimary(terms);
         return ParsePostfix(lhs, rest, prec);
     }
 
-    private static (Syntax, Terms) ParsePrimary(Terms terms)
+    private (Syntax, Terms) ParsePrimary(Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree term) throw new ExpandException("expected expression");
@@ -254,7 +254,7 @@ public static partial class Enforest
                     case TokenKind.Word w when w == TokenKind.Sig:
                         return ParseSigExpr(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Import:
-                        return ParseImport(term.Span, rest);
+                        return ParseImport(term.Span, token.Scope, rest);
                     case TokenKind.Word w when w == TokenKind.Perform: return ParsePerform(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Resume: return ParseResume(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Ref: return ParseRef(term.Span, rest);
@@ -275,7 +275,7 @@ public static partial class Enforest
         throw new ExpandException("unexpected token in expression");
     }
 
-    private static (Syntax, Terms) ParsePostfix(Syntax lhs, Terms terms, Prec prec)
+    private (Syntax, Terms) ParsePostfix(Syntax lhs, Terms terms, Prec prec)
     {
         while (true)
         {
@@ -358,7 +358,7 @@ public static partial class Enforest
             if (TokenText(term) is string symbol)
             {
                 if (InfixRoleUse(lhs, term, terms.Tail, prec) is var (use, afterUse)) { (lhs, terms) = (use, afterUse); continue; }
-                if (_env?.Roles.FindRole(symbol, Fixity.Infix, ((TokenTree.Leaf)term).Token.Scope) is not null
+                if (_env.Roles.FindRole(symbol, Fixity.Infix, ((TokenTree.Leaf)term).Token.Scope) is not null
                     || term is TokenTree.Leaf { Token.Kind: TokenKind.Ident }) return (lhs, terms);
                 throw new NotImplementedException($"not ported yet: the infix operator `{symbol}`");
             }
@@ -367,7 +367,7 @@ public static partial class Enforest
         }
     }
 
-    private static Syntax ParseGroupExpr(TokenTree.Group group)
+    private Syntax ParseGroupExpr(TokenTree.Group group)
     {
         var items = DropSeparators(new Terms(group.Items));
         switch (group.Delimiter)
@@ -400,7 +400,7 @@ public static partial class Enforest
     /// per parameter. <c>fn(x) : T { … }</c> annotates the whole function with
     /// its arrow type, so the body is checked against <c>T</c>.
     /// </summary>
-    private static (Syntax, Terms) ParseFn(SourceSpan startSpan, Terms terms)
+    private (Syntax, Terms) ParseFn(SourceSpan startSpan, Terms terms)
     {
         // `fn[A : Type](x : A)`: an implicit list, then an explicit one, each
         // touching what precedes it. Either may be absent, not both.
@@ -437,7 +437,7 @@ public static partial class Enforest
         return (value, rest);
     }
 
-    private static EquatableArray<Param> ParseParamGroup(Terms items, Explicitness explicitness)
+    private EquatableArray<Param> ParseParamGroup(Terms items, Explicitness explicitness)
     {
         items = DropSeparators(items);
         if (items.IsEmpty)
@@ -448,7 +448,7 @@ public static partial class Enforest
         return [.. SplitCommas(items).Select(item => ParseParamItem(item, explicitness))];
     }
 
-    private static Param ParseParamItem(Terms terms, Explicitness explicitness)
+    private Param ParseParamItem(Terms terms, Explicitness explicitness)
     {
         terms = DropSeparators(terms);
         if (NameOf(terms.Head) is not Id name)
@@ -469,14 +469,14 @@ public static partial class Enforest
     /// ends at the first top-level <c>{ … }</c>, so a type holding braces is
     /// parenthesised.
     /// </summary>
-    private static (Syntax?, Terms) ParseResultType(Terms terms)
+    private (Syntax?, Terms) ParseResultType(Terms terms)
     {
         var (type, row, rest) = ParseResult(terms);
         if (row is not null) throw new NotImplementedException("not ported yet: an effect row on a method result");
         return (type, rest);
     }
 
-    private static (Syntax, Terms, SourceSpan) ParseBody(Terms terms)
+    private (Syntax, Terms, SourceSpan) ParseBody(Terms terms)
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } group)
@@ -488,7 +488,7 @@ public static partial class Enforest
     /// <c>fn(p1 : A, …) : T</c>'s type: one arrow per parameter. Every parameter
     /// needs its type, since the annotation states the whole function's.
     /// </summary>
-    private static Syntax FunctionType(SourceSpan span, EquatableArray<Param> parameters, Syntax result, EffectRow? row)
+    private Syntax FunctionType(SourceSpan span, EquatableArray<Param> parameters, Syntax result, EffectRow? row)
     {
         if (parameters.IsEmpty) throw new ExpandException("a result type needs a parameter list");
         var type = result;
@@ -506,9 +506,9 @@ public static partial class Enforest
 
     // ---- term helpers -----------------------------------------------------
 
-    private static Syntax Unit(SourceSpan span) => new Syntax.Atom(Atom.Unit.Instance, span);
+    private Syntax Unit(SourceSpan span) => new Syntax.Atom(Atom.Unit.Instance, span);
 
-    private static Syntax UnitType(SourceSpan span) => new Syntax.Var(new Id("Unit", span));
+    private Syntax UnitType(SourceSpan span) => new Syntax.Var(new Id("Unit", span));
 
     private static bool IsSeparator(TokenTree term) =>
         term is TokenTree.Leaf { Token.Kind: var k } && k == TokenKind.Semi;
@@ -529,7 +529,7 @@ public static partial class Enforest
         return (TakeTerms(terms, n), terms.Drop(n));
     }
 
-    private static List<Terms> SplitCommas(Terms terms)
+    private List<Terms> SplitCommas(Terms terms)
     {
         var parts = new List<Terms>();
         var start = 0;
@@ -546,7 +546,7 @@ public static partial class Enforest
     private static bool IsToken(TokenTree? term, TokenKind kind) =>
         term is TokenTree.Leaf { Token.Kind: var k } && k == kind;
 
-    private static int IndexOfToken(Terms terms, TokenKind kind)
+    private int IndexOfToken(Terms terms, TokenKind kind)
     {
         for (var i = 0; i < terms.Count; i++) if (IsToken(terms[i], kind)) return i;
         return -1;
@@ -562,12 +562,12 @@ public static partial class Enforest
     }
 
     /// <summary>The name a term binds, when it is a bare identifier.</summary>
-    private static Id? NameOf(TokenTree? term) =>
+    private Id? NameOf(TokenTree? term) =>
         term is TokenTree.Leaf { Token: { Kind: TokenKind.Ident i } t }
             ? new Id(i.Name, term.Span, t.Scope)
             : null;
 
-    private static string? TokenText(TokenTree term) => term switch
+    private string? TokenText(TokenTree term) => term switch
     {
         TokenTree.Leaf { Token.Kind: TokenKind.Ident i } => i.Name,
         TokenTree.Leaf { Token.Kind: TokenKind.Operator o } => o.Spelling,
@@ -578,13 +578,13 @@ public static partial class Enforest
     /// A call's argument list must touch its callee: whitespace application is
     /// not the language.
     /// </summary>
-    private static void RequireAdjacent(SourceSpan lhs, SourceSpan rhs, string what)
+    private void RequireAdjacent(SourceSpan lhs, SourceSpan rhs, string what)
     {
         if (!lhs.IsSynthetic && !rhs.IsSynthetic && lhs.End != rhs.Start)
             throw new ExpandException($"{what} must be adjacent to the callee; whitespace application is not supported");
     }
 
-    private static void EnsureNoRest(string what, Terms rest)
+    private void EnsureNoRest(string what, Terms rest)
     {
         if (!DropSeparators(rest).IsEmpty) throw new ExpandException($"{what} has trailing terms");
     }

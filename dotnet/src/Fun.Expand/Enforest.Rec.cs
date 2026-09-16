@@ -2,14 +2,14 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// <c>rec a = … and b : T = …</c>: every member, a typed one's value annotated
     /// with its type. Null unless the statement is a <c>rec</c> with at least two
     /// members; a single <c>rec</c> is an ordinary recursive binding.
     /// </summary>
-    private static EquatableArray<RecMember>? ParseRecGroup(Terms stmt)
+    private EquatableArray<RecMember>? ParseRecGroup(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Rec)) return null;
@@ -28,7 +28,7 @@ public static partial class Enforest
     }
 
     /// <summary>The statement split at every top-level <c>and</c>.</summary>
-    private static List<Terms> SplitOnAnd(Terms terms)
+    private List<Terms> SplitOnAnd(Terms terms)
     {
         var segments = new List<Terms>();
         var start = 0;

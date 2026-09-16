@@ -2,13 +2,13 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-public static partial class Enforest
+public sealed partial class Enforest
 {
     /// <summary>
     /// <c>export M</c> or <c>export M.{a, b}</c>, the selection being a trailing
     /// <c>.{ … }</c>. Null when the statement is not an export.
     /// </summary>
-    private static Binding.Export? ParseExportStatement(bool isPublic, Terms stmt)
+    private Binding.Export? ParseExportStatement(bool isPublic, Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Export)) return null;

@@ -72,7 +72,7 @@ public class ExpandTests
     // `[A : {Eq, Show}]`: an implicit binder's bound set; each trait is an occurrence.
     [InlineData("fn[A : {Eq, Show}](a : A) { a }", "(fn [A#0 : {Eq, Show}] (fn a#1 : A#0 a#1))")]
     public void Expands(string source, string expected) =>
-        Assert.Equal(expected, Show(Expander.ExpandExpr(source)));
+        Assert.Equal(expected, Show(Expander.ExpandExpr(source, new Fun.Compiler.Loader(new Dictionary<string, string>()))));
 
     [Theory]
     // Implicit parameters precede the explicit ones; each is a binder the rest sees.
@@ -85,7 +85,7 @@ public class ExpandTests
     // `f[I64]` supplies an implicit argument; it may be followed by an explicit call.
     [InlineData("f[I64, Unit](1)", "(((f [I64]) [Unit]) 1)")]
     public void ExpandsImplicits(string source, string expected) =>
-        Assert.Equal(expected, Show(Expander.ExpandExpr(source)));
+        Assert.Equal(expected, Show(Expander.ExpandExpr(source, new Fun.Compiler.Loader(new Dictionary<string, string>()))));
 
     [Theory]
     // Whitespace application is not the language.
@@ -97,7 +97,7 @@ public class ExpandTests
     [InlineData("f [I64]", "implicit argument list must be adjacent to the callee; whitespace application is not supported")]
     [InlineData("fn [A : Type](a) { a }", "implicit fn parameter list must be adjacent to the callee; whitespace application is not supported")]
     public void Rejects(string source, string message) =>
-        Assert.Equal(message, Assert.Throws<ExpandException>(() => Expander.ExpandExpr(source)).Message);
+        Assert.Equal(message, Assert.Throws<ExpandException>(() => Expander.ExpandExpr(source, new Fun.Compiler.Loader(new Dictionary<string, string>()))).Message);
 
     // Unported forms name themselves rather than parsing into something else, and
     // are never an ordinary error: a conformance case expecting `error` must not
@@ -106,5 +106,5 @@ public class ExpandTests
     [InlineData("1 + 2", "not ported yet: the infix operator `+`")]
     [InlineData("macro m(x) { x }", "not ported yet: the `macro` form")]
     public void RejectsUnported(string source, string message) =>
-        Assert.Equal(message, Assert.Throws<NotImplementedException>(() => Expander.ExpandExpr(source)).Message);
+        Assert.Equal(message, Assert.Throws<NotImplementedException>(() => Expander.ExpandExpr(source, new Fun.Compiler.Loader(new Dictionary<string, string>()))).Message);
 }

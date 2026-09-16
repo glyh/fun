@@ -65,7 +65,14 @@ public abstract partial record Syntax(SourceSpan Span)
     /// <c>open m; body</c>. <paramref name="Label"/> names this open so an open
     /// choice can refer to it: empty until expansion assigns one.
     /// </summary>
-    public sealed record Open(Syntax Of, Syntax Body, string Label, SourceSpan Span) : Syntax(Span);
+    public sealed record Open(Syntax Of, Syntax Body, string Label, SourceSpan Span) : Syntax(Span)
+    {
+        /// <summary>
+        /// The syntactic roles visible in this open's region, set by expansion: an
+        /// open may not supply a member of one of these names (M7).
+        /// </summary>
+        public EquatableArray<string> RolesInRegion { get; init; } = [];
+    }
 
     /// <summary>
     /// Produced only by expansion: a bare name some open may supply. Elaboration
@@ -94,7 +101,8 @@ public abstract partial record Syntax(SourceSpan Span)
 
         return this switch
         {
-            Atom or Import or Self or SelfType => this,
+            Import i => i with { Scope = i.Scope.Union(scope) },
+            Atom or Self or SelfType => this,
             Var v => v with { Id = Mark(v.Id) },
             Ap a => a with { Fn = Go(a.Fn), Arg = Go(a.Arg) },
             Lam l => l with { Param = MarkParam(l.Param, scope), Body = Go(l.Body) },
@@ -149,7 +157,11 @@ public abstract partial record Binding
     public sealed record Let(Id Name, Syntax Value, bool Public, bool Recursive) : Binding;
 
     /// <summary><c>open m</c>: scopes over the bindings after it. It adds no member.</summary>
-    public sealed record Open(Syntax Of, string Label) : Binding;
+    public sealed record Open(Syntax Of, string Label) : Binding
+    {
+        /// <summary>The syntactic roles visible in this open's region (see <see cref="Syntax.Open.RolesInRegion"/>).</summary>
+        public EquatableArray<string> RolesInRegion { get; init; } = [];
+    }
 
     /// <summary>
     /// Items not read yet: a module's remaining statements, enforested one form

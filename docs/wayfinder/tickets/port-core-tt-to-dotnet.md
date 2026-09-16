@@ -347,8 +347,9 @@ member so no other fork's arrow construction changes.
 **At most two implementation forks run at once** (user, 2026-09-16); the rest
 queue. Running: [primitives](port-primitives.md) and
 [the macro runtime interface](port-macro-runtime-interface.md), both prerequisites
-of the prelude. Primitives merged (`5f16665`). Queued, in order: refs; effects follow-ups (`~>` elaboration,
-method result rows, modules that perform); follow-up verification (the four
+of the prelude. Primitives merged (`5f16665`); the macro runtime interface merged
+(`107a91c`); refs running; [effects follow-ups](port-effects-followups.md) running.
+Queued, in order: follow-up verification (the four
 unverified prototype deviations recorded on the structs, export and implicits
 tickets, the export-then-open constructor bug behind `core-311`, and making both
 conformance runners evaluate an `error` case that elaborates, as `cases/README.md`

@@ -43,6 +43,10 @@ public sealed class BinderTable
         existing.Insert(0, new Binder(scope, resolvedName, kind, role));
     }
 
+    /// <summary>Every binder, with its written name.</summary>
+    public IEnumerable<(string Name, Binder Binder)> All() =>
+        _bindings.SelectMany(entry => entry.Value.Select(binder => (entry.Key, binder)));
+
     /// <summary>Every binder of a written name, most recent first.</summary>
     public IReadOnlyList<Binder> Candidates(string name) =>
         _bindings.TryGetValue(name, out var found) ? found : [];
