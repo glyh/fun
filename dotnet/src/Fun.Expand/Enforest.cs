@@ -141,6 +141,8 @@ public static partial class Enforest
         var isPublic = IsToken(stmt.Head, TokenKind.Pub);
         var unprefixed = isPublic ? stmt.Tail : stmt;
 
+        if (ParseExportStatement(isPublic, unprefixed) is { } export) return [export];
+
         if (ParseOpenStatement(unprefixed) is { } opened)
         {
             if (isPublic) throw new ExpandException("open is not a public item");

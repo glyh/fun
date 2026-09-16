@@ -325,11 +325,17 @@ public static partial class Elaborator
         var inner = ctx.WithoutSelf() with { Enclosing = module };
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
+        var clashes = new ExportClashes();
 
         foreach (var binding in module.Bindings)
         {
+            var before = entries.Count;
             switch (binding)
             {
+                case Binding.Export export:
+                    inner = InferExport(inner, export, terms, entries);
+                    break;
+
                 case Binding.RecGroup group:
                     inner = InferRecGroupBinding(inner, group, terms, entries);
                     break;
@@ -356,6 +362,7 @@ public static partial class Elaborator
                 default:
                     throw new NotImplementedException($"not ported yet: elaborating the binding {binding.GetType().Name}");
             }
+            clashes.Check(binding, entries.Skip(before));
         }
 
         return (new Term.Module([.. terms]), new Value.VModule([.. entries], Partial: false));
