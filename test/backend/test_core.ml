@@ -469,6 +469,10 @@ let test_handled_effect_escape () =
    | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
    | exception e -> Alcotest.fail (Printexc.to_string e)
    | _ -> Alcotest.fail "expected HandledEffectEscapes through an outer ref");
+  (match eval_source "{ effect Exc = sig { raise : I64 -> I64 }; g = match (0) { x => module { pub f = fn(u : Unit) { perform Exc.raise(x) } }, effect Exc.raise n => module { pub f = fn(u : Unit) { perform Exc.raise(n) } } }; 1 }" with
+   | exception Elaborate.ElabError (HandledEffectEscapes "Exc") -> ()
+   | exception e -> Alcotest.fail (Printexc.to_string e)
+   | _ -> Alcotest.fail "expected HandledEffectEscapes through a module member");
   check_i64 "a local ref may hold a handled closure" 1L
     "{ effect Exc = sig { raise : I64 -> I64 }; match (0) { x => { q = ref(fn(u : Unit) { perform Exc.raise(x) }); 1 }, effect Exc.raise n => 2 } }" ();
   check_i64 "a saved continuation may outlive its handler" 5L

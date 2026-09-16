@@ -79,7 +79,7 @@ let string_of_elab_error = function
   | ExpectedEffect -> "ExpectedEffect"
   | PolyArrowOutsideSignature -> "PolyArrowOutsideSignature: ~> is read where it sits in a signature (a parameter or result position)"
   | RowVariableAmongEffects -> "RowVariableAmongEffects: a row variable next to effects is the row's tail; write {Log | e}"
-  | UnsolvedEffectRow -> "UnsolvedEffectRow: can't infer the effects of a ->{_} arrow; write ->{…} or a pure ->"
+  | UnsolvedEffectRow -> "UnsolvedEffectRow: can't infer the effects of a ->{_} arrow; write ->{…}, a pure ->, or ~> to pass the caller's effects through"
   | DuplicateEffect -> "DuplicateEffect"
   | DuplicateEffectBranch n -> "DuplicateEffectBranch \"" ^ n ^ "\""
   | UnknownEffectOperation n -> "UnknownEffectOperation \"" ^ n ^ "\""

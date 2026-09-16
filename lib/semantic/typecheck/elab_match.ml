@@ -278,7 +278,13 @@ let escape_guard ctx =
     | VNominal { captures; params; _ } -> List.find_map (escaping handled lvl) (captures @ params)
     | VRefTy (_, elem) -> escaping handled lvl elem
     | VStruct { entries; _ } ->
-        List.find_map (function StructField (_, _, t) -> escaping handled lvl t | StructImpl _ -> None) entries
+        List.find_map
+          (function StructField (_, _, t) -> escaping handled lvl t | StructImpl (_, _, dict, _) -> escaping handled lvl dict)
+          entries
+    | VModule { entries; _ } ->
+        List.find_map
+          (function ModuleField (_, _, t) -> escaping handled lvl t | ModuleImpl (_, _, dict, _) -> escaping handled lvl dict)
+          entries
     | _ -> None
   in
   let escapes name = raise (ElabError (HandledEffectEscapes name)) in
@@ -298,7 +304,7 @@ let escape_guard ctx =
      whether the fixed row left the effect unhandled or made the result pure. *)
   let within handled elaborate_branches =
     try elaborate_branches ()
-    with ElabError ((UnhandledEffects names | EffectsInPureResult names)) as err -> (
+    with ElabError (UnhandledEffects names | EffectsInPureResult names) as err -> (
       let handled_names =
         List.map (fun v -> (Debug.pp_value_short metas v, v)) handled
       in

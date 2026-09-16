@@ -3,7 +3,9 @@ title: Effects follow-ups from the tunneling run
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-16
+resolution: All five items done. Item 4's routing half fell out of instance routing; a written ->{_} nothing solves is UnsolvedEffectRow at the end of an entry, naming ->{…} / -> / ~>. The E6 escape check was re-checked after instance routing and extended to module entries and impl dictionary types.
 assignee:
 blocked_by:
 ---
@@ -36,31 +38,43 @@ blocked_by:
    through references, so references cover it.
 4. **An unsolved meta row tail counts as open**, so the call tunnels. **Grilled
    2026-09-15: an error** — an effect row still unsolved where it decides routing
-   (or at generalisation) asks for an annotation: "can't infer the effects of `g`;
-   write `can {…}` or `can {}`". No default.
+   (or at generalisation) asks for an annotation. No default.
    **Routing part resolved by the item 2 design**: routing is decided at run time
    by instance, so an unsolved tail no longer changes which handler catches a
-   request. **Generalisation part and `can any`: not implemented — open
-   questions** (see below).
+   request. **Done 2026-09-16**: a written `->{_}` that nothing solved by the end
+   of an entry (an expression or a unit's bindings) is `UnsolvedEffectRow`,
+   naming what to write instead (`->{…}`, a pure `->`, or `~>`); the check scans
+   the rows that entry created (`Elab_effects.require_handled_at_entry`). A pure
+   body still solves a written `_` to empty, and a `~>`-minted variable is a
+   binder, not an unsolved row.
 5. **Wrong error in one E6 shape**: when the other branch returns a pure closure,
    the rejection is `UnhandledEffects`, not `HandledEffectEscapes`.
    **Fixed 2026-09-15**: an `UnhandledEffects` raised while a match's branches
    elaborate that names an instance the match handles is reported as
    `HandledEffectEscapes`.
+   **Extended 2026-09-16**: enforcing "`: T` is a pure result"
+   ([effect-arrow-syntax](effect-arrow-syntax.md)) made the same shape raise
+   `EffectsInPureResult` instead, which slipped past that translation (`main` was
+   red on "an escaping closure called at the top is an error"). Both errors are
+   now translated.
    **Superseded (2026-09-16):** `can any` / `->{any}` was dropped; see effect-arrow-syntax.
-## Open questions from the effects-followups run (2026-09-15)
 
-- **An unsolved `can _` in a let-bound lambda's parameter.** Making an unsolved
-  row tail an error at generalisation rejects two existing tests:
-  ```fun
-  Callback = Unit ~> I64;
-  app = fn(g : Callback) { g() };          // g's row: nothing determines _
-  f : Unit ~> I64 = fn(_) { perform State.get () };
-  ```
-  Should `_` there be generalised into an implicit row parameter (effect
-  polymorphism, `app : [r] -> (Unit -> I64 can {| r}) -> I64 can {| r}`), or be
-  the decided error? Also: `Callback = Unit ~> I64` evaluates its meta once, so
-  every use of `Callback` shares one row.
-- **What `can any` means at a call.** `f : Unit -> I64 can any` — may it be called
-  where the caller's row is closed (then the call performs "anything" and the
-  caller must be `can any` too), and does a handler discharge any part of it?
+## Closed questions (2026-09-16)
+
+- **An unsolved row in a let-bound lambda's parameter** — answered by
+  [effect-arrow-syntax](effect-arrow-syntax.md): `~>` mints a rank-1 row variable
+  bound at the enclosing definition, so `app = fn(g : Callback) ~> I64 { g() }`
+  is polymorphic rather than unsolved, and only a written `->{_}` nothing
+  determines is the error.
+- **What `can any` means at a call** — `can any` / `->{any}` was dropped.
+
+## Escape check, re-checked after tunneling by instance (2026-09-16)
+
+`Elab_match.escape_guard` walks a match's result type and anything stored into a
+non-local reference. It missed **module entries**: a match returning a module
+whose member's row named a handled effect passed (`VStruct` was walked,
+`VModule` was not). Fixed in `eb5e072`; impl dictionary types are walked in both,
+so the traversal is total over entry kinds. Remaining shape, not reachable today:
+a result type that is a `VSig` closure is not opened (it needs the module value),
+and a trait impl cannot widen its row past its trait's signature, so no test
+exposes either.
