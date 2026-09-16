@@ -18,6 +18,9 @@ public sealed class MetaContext
 
     public Value? Solution(int id) => _solutions[id];
 
+    /// <summary>The metas standing for rows written <c>_</c>: one nothing solves is an error, never a default.</summary>
+    public List<int> WrittenRows { get; } = [];
+
     /// <summary>The solutions as they stand, to undo a trial unification with <see cref="Restore"/>.</summary>
     public Value?[] Snapshot() => [.. _solutions];
 

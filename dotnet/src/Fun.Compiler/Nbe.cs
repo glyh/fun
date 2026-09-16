@@ -158,7 +158,7 @@ public static partial class Nbe
                         break;
                     }
 
-                    case Term.EffectRowTy or Term.EffectRowLit or Term.Effect or Term.EffectDef or Term.Perform or Term.Tunnel
+                    case Term.EffectRowTy or Term.EffectRowLit or Term.Effect or Term.EffectDecl or Term.Perform or Term.Tunnel
                         or Term.Match { EffectBranches.IsEmpty: false }:
                         if (StartEffects(mc, stack, env, term, out var effectValue) is { } effectStep) { (env, term) = effectStep; continue; }
                         value = effectValue!;

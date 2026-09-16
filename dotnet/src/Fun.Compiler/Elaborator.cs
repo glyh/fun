@@ -136,6 +136,7 @@ public static partial class Elaborator
                  })
             ctx = ctx.Define(name, Value.VU.Instance, new Value.VAtomTy(ty));
         ctx = ctx.Define("Type", Value.VU.Instance, Value.VU.Instance);
+        ctx = ctx.Define("EffectRow", Value.VU.Instance, Value.VEffectRowTy.Instance);
         return ctx with { BaseNames = ctx.Names };
     }
 
@@ -147,7 +148,9 @@ public static partial class Elaborator
     {
         var metas = new MetaContext();
         var ctx = BaseContext(metas, preludeOpen: true) with { Loader = loader };
-        var (term, type) = Infer(ctx, program);
+        // A program's entry leaves nothing unhandled: that is an error, not a run-time crash.
+        var ((term, type), performed) = Collecting(ctx, c => Infer(c, program));
+        RequireHandledAtEntry(ctx, performed, since: 0);
         return new Elaborated(term, type, ctx);
     }
 
@@ -185,6 +188,9 @@ public static partial class Elaborator
                 return InferModule(ctx, module);
 
             case Syntax.Match match: return InferMatch(ctx, match);
+            case Syntax.EffectDef def: return InferEffectDef(ctx, def);
+            case Syntax.Perform perform: return InferPerform(ctx, perform);
+            case Syntax.Resume resume: return InferResume(ctx, resume);
             case Syntax.Enum e: return InferEnum(ctx, e);
 
             case Syntax.Open open:
@@ -232,29 +238,26 @@ public static partial class Elaborator
 
             case Syntax.Let { Recursive: false } let:
             {
-                Term valueTerm;
-                Value valueType;
-                if (let.Type is { } written)
-                {
-                    valueType = TypeValue(ctx, written);
-                    valueTerm = Check(ctx, let.Value, valueType);
-                }
-                else
-                {
-                    (valueTerm, valueType) = Infer(ctx, let.Value);
-                }
+                var writtenType = let.Type is { } written ? TypeValue(ctx, written) : null;
+                var ((valueTerm, valueType), performed) = Collecting(ctx, c =>
+                    writtenType is null ? Infer(c, let.Value) : (Check(c, let.Value, writtenType), writtenType));
+                Emit(ctx, performed);
                 // ponytail: no let-generalisation yet; the prototype generalises here.
-                var body = ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm));
+                // A value is known in the body only when evaluating it performs nothing (E4).
+                var body = performed.IsEmpty
+                    ? ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm))
+                    : ctx.Bind(let.Name.Name, valueType);
                 var (bodyTerm, bodyType) = Infer(body, let.Body);
                 return (new Term.Let(ctx.Quote(valueType), valueTerm, bodyTerm), bodyType);
             }
 
-            case Syntax.Arrow { Row: null } arrow:
+            case Syntax.Arrow arrow:
             {
                 var domain = TypeTerm(ctx, arrow.Domain);
                 var inner = ctx.Bind(arrow.Name?.Name ?? "_", ctx.Eval(domain));
+                var row = ElaborateRow(inner, arrow.Row);
                 var codomain = TypeTerm(inner, arrow.Codomain);
-                return (new Term.Pi(arrow.Explicitness, domain, codomain), Value.VU.Instance);
+                return (new Term.Pi(arrow.Explicitness, domain, codomain) { Row = row }, Value.VU.Instance);
             }
 
             case Syntax.Prod prod:
@@ -293,9 +296,13 @@ public static partial class Elaborator
                 // here (lambda-check-ignores-written-parameter-type).
                 if (lam.Param.Type is { } written)
                     ctx.Unify(pi.Domain, TypeValue(ctx, written));
-                var inner = ctx.Bind(lam.Param.Name.Name, pi.Domain) with { Enclosing = lam.Body };
-                var bodyType = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, new Value.VVar(ctx.Width, []));
-                return new Term.Lam(Check(inner, lam.Body, bodyType));
+                var binder = new Value.VVar(ctx.Width, []);
+                var inner = ctx.Bind(lam.Param.Name.Name, pi.Domain) with { Enclosing = lam.Body, HandlerScopes = [] };
+                var bodyType = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, binder);
+                // The body performs within the row the function type declares; a bare arrow's is empty.
+                var (body, performed) = Collecting(inner, c => Check(c, lam.Body, bodyType));
+                CheckEffectSubset(inner, performed, Nbe.EvalRowClosure(ctx.Metas, pi.Row, binder), inFunction: true);
+                return new Term.Lam(body);
             }
 
             case (Syntax.Prod prod, Value.VProdTy tuple):
@@ -334,9 +341,15 @@ public static partial class Elaborator
                     inner = InferRecGroupBinding(inner, group, terms, entries);
                     break;
 
+                case Binding.Effect effect:
+                    inner = InferEffectBinding(inner, effect, terms, entries);
+                    break;
+
                 case Binding.Let let:
                 {
-                    var (def, type) = let.Recursive ? InferRecMember(inner, let) : Infer(inner, let.Value);
+                    var ((def, type), performed) = Collecting(inner, c => let.Recursive ? InferRecMember(c, let) : Infer(c, let.Value));
+                    // ponytail: a module whose evaluation performs is generative (E11), which is not ported.
+                    if (!performed.IsEmpty) throw new NotImplementedException("not ported yet: a module binding that performs");
                     var kind = let.Public ? MemberKind.Public : MemberKind.Private;
                     var term = new BindingTerm.Let(Label(let.Name.Name), kind, def);
                     inner = ExtendFromSlots(inner, term, [(let.Name.Name, type)]);
@@ -423,10 +436,14 @@ public static partial class Elaborator
     private static (Term, Value) InferLam(Context ctx, Syntax.Lam lam)
     {
         var domain = lam.Param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
-        var inner = ctx.Bind(lam.Param.Name.Name, domain) with { Enclosing = lam.Body };
-        var (body, bodyType) = Infer(inner, lam.Body);
+        var inner = ctx.Bind(lam.Param.Name.Name, domain) with { Enclosing = lam.Body, HandlerScopes = [] };
+        var ((body, bodyType), performed) = Collecting(inner, c => Infer(c, lam.Body));
         var codomain = new Closure(ctx.Environment, inner.Quote(bodyType));
-        return (new Term.Lam(body), new Value.VPi(lam.Param.Explicitness, domain, codomain));
+        var row = RowOf(inner, performed);
+        return (new Term.Lam(body), new Value.VPi(lam.Param.Explicitness, domain, codomain)
+        {
+            Row = row.IsPure ? RowClosure.Pure : new RowClosure(ctx.Environment, row),
+        });
     }
 
     private static (Term, Value) InferAp(Context ctx, Syntax.Ap ap)
@@ -437,9 +454,10 @@ public static partial class Elaborator
         {
             case Value.VPi { Explicitness: Explicitness.Explicit } pi:
             {
-                var arg = Check(ctx, ap.Arg, pi.Domain);
-                var result = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ctx.Eval(arg));
-                return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
+                var (arg, argEffects) = Collecting(ctx, c => Check(c, ap.Arg, pi.Domain));
+                Emit(ctx, argEffects);
+                var result = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, ArgumentValue(ctx, arg, argEffects));
+                return (EmitLatent(ctx, pi, new Term.Ap(fn, Explicitness.Explicit, arg)), ctx.Force(result));
             }
             case Value.VMeta or Value.VVar or Value.VNeutral:
                 return InferApUnknown(ctx, fn, fnType, ap.Arg);
@@ -449,7 +467,7 @@ public static partial class Elaborator
     }
 
     /// <summary>A written type, as a term. Its own type must be a universe.</summary>
-    private static Term TypeTerm(Context ctx, Syntax stx) => TypeOfExpr(ctx, stx);
+    private static Term TypeTerm(Context ctx, Syntax stx) => Pure(ctx, c => TypeOfExpr(c, stx));
 
     /// <summary>
     /// A written type's value. Reading a type inspects it, so a type computed by a

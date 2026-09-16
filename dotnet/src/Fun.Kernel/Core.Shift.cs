@@ -24,7 +24,16 @@ public abstract partial record Term
             Lam l => new Lam(Go(l.Body, 1)),
             Ap a => a with { Fn = Go(a.Fn), Arg = Go(a.Arg) },
             Let l => new Let(Go(l.Type), Go(l.Def), Go(l.Body, 1)),
-            Pi p => p with { Domain = Go(p.Domain), Codomain = Go(p.Codomain, 1) },
+            Pi p => p with
+            {
+                Domain = Go(p.Domain),
+                Codomain = Go(p.Codomain, 1),
+                Row = new RowTerm([.. p.Row.Effects.Select(e => Go(e, 1))], [.. p.Row.Tails.Select(t => Go(t, 1))]),
+            },
+            EffectRowTy or EffectDecl => this,
+            EffectRowLit r => new EffectRowLit(new RowTerm([.. r.Row.Effects.Select(e => Go(e))], [.. r.Row.Tails.Select(t => Go(t))])),
+            Effect e => e with { Params = [.. e.Params.Select(p => Go(p))] },
+            Perform p => p with { Instance = Go(p.Instance), Arg = Go(p.Arg) },
             Prod p => new Prod([.. p.Items.Select(i => Go(i))]),
             ProdTy p => new ProdTy([.. p.Items.Select(i => Go(i))]),
             Proj p => p with { Of = Go(p.Of) },

@@ -8,9 +8,7 @@ public static partial class Elaborator
     /// Whether a call of a function of type <paramref name="type"/> is known pure,
     /// so the checker may defer it (lazy delta). An unsolved type is not known pure.
     /// </summary>
-    // Arrows carry no effect row in the port yet, and a bare arrow is pure; once
-    // rows are ported this must read the row as closed and empty.
-    private static bool PureCall(Context ctx, Value type) => ctx.Force(type) is Value.VPi;
+    private static bool PureCall(Context ctx, Value type) => ctx.Force(type) is Value.VPi { Row.Row.IsPure: true };
 
     /// <summary>
     /// A recursive definition written as a type (<c>rec T = enum { … }</c>, a

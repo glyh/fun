@@ -26,7 +26,9 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources)
             // Strict: the base context with nothing opened, sharing the importer's
             // metas so a meta the unit leaves unsolved stays meaningful to it.
             var ctx = Elaborator.BaseContext(metas, preludeOpen: false) with { Loader = this };
-            var (term, type) = Elaborator.Infer(ctx, unit);
+            var sink = new EffectSink();
+            var (term, type) = Elaborator.Infer(ctx with { Sink = sink }, unit);
+            Elaborator.RequireHandledAtEntry(ctx, sink, since: 0);
             return _loaded[path] = (ctx.Eval(term), type);
         }
         finally

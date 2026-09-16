@@ -48,8 +48,9 @@ public static partial class Nbe
             case Term.Effect e:
                 value = new Value.VEffect(e.Family, e.Environment, [.. e.Params.Select(p => Eval(mc, env, p))]);
                 return null;
-            case Term.EffectDef def:
-                return (env.Push(new Value.VEffect(def.Family, env, [])), def.Body);
+            case Term.EffectDecl decl:
+                value = new Value.VEffect(decl.Family, env, []);
+                return null;
             case Term.Perform perform:
                 stack.Push(new Kont.PerformOn(env, perform.Op, perform.Arg));
                 return (env, perform.Instance);
@@ -99,6 +100,10 @@ public static partial class Nbe
                     break;
             }
         }
+        // The checker only evaluates terms that perform nothing; reaching here while
+        // checking means a check-time evaluation site was not ported with that guard.
+        if (mc.Budget.Checking)
+            throw new NotImplementedException($"not ported yet: the checker evaluated a term that performs {Describe(instance)}.{op}");
         throw new FunException($"unhandled effect: {Describe(instance)}.{op}");
     }
 

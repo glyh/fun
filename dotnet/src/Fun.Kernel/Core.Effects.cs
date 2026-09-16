@@ -37,10 +37,11 @@ public abstract partial record Term
     public sealed record EffectRowLit(RowTerm Row) : Term;
 
     /// <summary>
-    /// An effect family declared in a block: pushes the family, its operations
-    /// closed over the environment here, then runs the body.
+    /// An effect family's declaration: evaluates to the family with no parameters
+    /// applied, its operations closed over the environment it is evaluated in. A
+    /// block binds it with a <see cref="Let"/>, a module with a slot.
     /// </summary>
-    public sealed record EffectDef(EffectFamily Family, Term Body) : Term;
+    public sealed record EffectDecl(EffectFamily Family) : Term;
 
     /// <summary>
     /// An effect instance: <paramref name="Family"/> closed over
