@@ -1,0 +1,2 @@
+# a closure made under one handler and called under another
+{ effect Exc = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 ->{| r} I64) -> I64 ->{| r} I64 = fn[r : EffectRow](pred, x) { g = match (0) { _ => fn(y : I64) { pred(y) }, effect Exc.raise n => fn(y : I64) { pred(0) } }; match (g(x)) { v => v, effect Exc.raise n => 2 } }; user : I64 ->{Exc} I64 = fn(x) { perform Exc.raise(x) }; match (find(user, 1)) { v => v, effect Exc.raise n => 999 } }

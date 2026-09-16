@@ -1,0 +1,2 @@
+# it passes every handler in the library's body
+{ effect Exc = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 ->{| r} I64) -> I64 ->{| r} I64 = fn[r : EffectRow](pred, x) { match (match (pred(x)) { v => v, effect Exc.raise n => 1 }) { v => v, effect Exc.raise n => 2 } }; user : I64 ->{Exc} I64 = fn(x) { perform Exc.raise(x) }; match (find(user, 1)) { v => v, effect Exc.raise n => 999 } }

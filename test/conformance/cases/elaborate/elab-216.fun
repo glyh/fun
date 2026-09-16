@@ -1,0 +1,1 @@
+{ effect State(S) = sig { get : Unit -> S }; f : Unit ->{State(I64)} I64 = fn(_) { perform State.get () }; wrap : (Unit ->{_} I64) -> Unit ->{_} I64 = fn(g) { fn(_) { g() } }; (fn(_) { wrap(f)() } : Unit ->{State(I64)} I64) }

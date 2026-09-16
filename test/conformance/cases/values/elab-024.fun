@@ -1,0 +1,1 @@
+{ M = module { pub type T = A | B; pub R = struct {x: I64}; pub effect E = sig { ask : I64 -> I64 } }; N = module { pub M = module { pub type T = C | D; pub R = struct {y: I64}; pub effect E = sig { tell : I64 -> I64 } } }; open N; match (perform M.E.tell(1)) { x => x, effect M.E.tell n => n + 41 } }

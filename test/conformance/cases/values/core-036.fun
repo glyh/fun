@@ -1,0 +1,2 @@
+# neq string
+"hello" != "world"

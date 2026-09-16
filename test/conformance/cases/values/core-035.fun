@@ -1,0 +1,2 @@
+# eq string
+"hello" == "hello"

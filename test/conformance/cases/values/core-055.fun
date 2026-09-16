@@ -1,0 +1,2 @@
+# handler ignores continuation
+{ effect Exc = sig { raise : I64 -> I64 }; match (perform Exc.raise(1)) { x => x, effect Exc.raise n => n + 1 } }

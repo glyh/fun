@@ -1,0 +1,1 @@
+{ trait Eq(A) = sig { eq : A -> A -> Bool }; M = module { pub impl eq_I : Eq(Bool) = module { eq = fn(x, y) { True } }; pub impl eq_I : Eq(I64) = module { eq = fn(x, y) { False } } }; same : [A : Eq] -> A -> A -> Bool = fn[A : Type](x, y) { Eq.eq(x, y) }; if (same[I64, M.eq_I](1, 1)) { 1 } else { 2 } }

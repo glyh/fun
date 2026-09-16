@@ -1,0 +1,1 @@
+{ trait Show(A) = sig { show : A -> I64 }; impl Show(I64) = module { fn show(x) { x * 10 } }; both : [A : {Eq, Show}] -> A -> A -> I64 = fn[A : Type](x, y) { match (Eq.eq(x, y)) { True => Show.show(x), False => 0 } }; both(4, 4) }

@@ -1,0 +1,1 @@
+{ effect State(S) = sig { get : Unit -> S }; StateI64 = State(I64); StateBool = State(Bool); (fn(_) { match (if (perform StateBool.get ()) { perform StateI64.get () } else { 0 }) { x => x, effect StateI64.get () => resume(1) } } : Unit -> I64) }

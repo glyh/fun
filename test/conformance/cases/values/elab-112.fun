@@ -1,0 +1,1 @@
+{ M = module { pub rec even : I64 -> Bool = fn(n) { if (n == 0) { True } else { odd(n - 1) } } and odd : I64 -> Bool = fn(n) { if (n == 0) { False } else { even(n - 1) } } }; if (M.odd(5)) { 1 } else { 0 } }

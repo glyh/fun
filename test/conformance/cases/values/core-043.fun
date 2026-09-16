@@ -1,0 +1,2 @@
+# a callback's effect passes the library's handler
+{ effect Exc = sig { raise : I64 -> I64 }; find : [r : EffectRow] -> (I64 ->{| r} I64) -> I64 ->{| r} I64 = fn[r : EffectRow](pred, x) { match ({ v = pred(x); if (v > 3) { perform Exc.raise(v) } else { v } }) { v => v, effect Exc.raise n => 0 } }; user : I64 ->{Exc} I64 = fn(x) { perform Exc.raise(x) }; match (find(user, 1)) { v => v, effect Exc.raise n => 999 } }

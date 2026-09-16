@@ -1,0 +1,1 @@
+{ effect Log = sig { write : I64 -> I64 }; effect Exc = sig { raise : I64 -> I64 }; user : I64 ->{Log} I64 = fn(x) { perform Log.write(x) }; h : (I64 ->{Log} I64) ->{Exc} I64 = fn(f) { match (f(1)) { v => v, effect Log.write n => perform Exc.raise(n + 1) } }; match (h(user)) { v => v, effect Exc.raise n => n * 10 } }

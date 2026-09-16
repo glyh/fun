@@ -1,0 +1,1 @@
+{ rec A = struct { n : I64; b : Option(B) } and B = struct { m : I64; a : Option(A) }; a0 = A{ n = 1, b = None }; b1 = B{ m = 2, a = Some(a0) }; a2 = A{ n = 3, b = Some(b1) }; match (a2.b) { Some(b) => match (b.a) { Some(a) => a.n + b.m, None => 0 }, None => 0 } }

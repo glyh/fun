@@ -1,0 +1,1 @@
+{ effect IO = sig { read : Unit -> I64 }; effect State(S) = sig { get : Unit -> S }; ((fn[r : EffectRow] { fn(_) { _ = perform IO.read (); perform State.get () } }) : [r : EffectRow] -> (Unit ->{IO | r} I64)) }

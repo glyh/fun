@@ -1,0 +1,13 @@
+(test
+ (name run_conformance)
+ (deps
+  (source_tree cases))
+ (libraries
+  core_tt_kernel
+  core_tt_syntax
+  core_tt_expand
+  core_tt_loader
+  core_tt_typecheck
+  core_tt_interp)
+ (preprocess
+  (pps ppx_deriving.std)))

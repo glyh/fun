@@ -1,0 +1,1 @@
+{ type Color = Red | Green | Blue; match (Red) { Red => 1, Green => 2 } }

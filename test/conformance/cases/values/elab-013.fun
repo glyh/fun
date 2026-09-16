@@ -1,0 +1,1 @@
+{ M = module { pub type Tree(X) = Leaf(X) | Node(Forest(X)) and Forest(X) = Empty | More(Tree(X), Forest(X)) }; match (M.Node(M.More(M.Leaf(7), M.Empty))) { M.Node(M.More(M.Leaf(n), _)) => n, _ => 0 } }

@@ -1,0 +1,1 @@
+{ Stack = sig { T : Type; empty : T; size : T -> I64 }; IntStack = module { pub T = I64; pub empty = 7; pub size = fn(x : I64) { x + 1 } }; count = fn(s : Stack) { s.size(s.empty) }; count(IntStack) }
