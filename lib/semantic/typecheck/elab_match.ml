@@ -278,7 +278,13 @@ let escape_guard ctx =
     | VNominal { captures; params; _ } -> List.find_map (escaping handled lvl) (captures @ params)
     | VRefTy (_, elem) -> escaping handled lvl elem
     | VStruct { entries; _ } ->
-        List.find_map (function StructField (_, _, t) -> escaping handled lvl t | StructImpl _ -> None) entries
+        List.find_map
+          (function StructField (_, _, t) -> escaping handled lvl t | StructImpl (_, _, dict, _) -> escaping handled lvl dict)
+          entries
+    | VModule { entries; _ } ->
+        List.find_map
+          (function ModuleField (_, _, t) -> escaping handled lvl t | ModuleImpl (_, _, dict, _) -> escaping handled lvl dict)
+          entries
     | _ -> None
   in
   let escapes name = raise (ElabError (HandledEffectEscapes name)) in
