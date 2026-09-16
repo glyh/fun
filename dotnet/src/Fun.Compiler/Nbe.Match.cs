@@ -64,6 +64,11 @@ public static partial class Nbe
             Value.VCon con => con.Args[p.Index],
             var other => Stuck<Value>(other),
         },
+        Occurrence.Field f => Force(mc, ValueAt(mc, root, f.Parent)) switch
+        {
+            Value.VRecord record => record.Fields.Last(field => field.Name == f.Name).Value,
+            var other => Stuck<Value>(other),
+        },
         _ => throw new InvalidOperationException($"unhandled occurrence {at.GetType().Name}"),
     };
 

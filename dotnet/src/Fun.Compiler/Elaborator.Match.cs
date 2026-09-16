@@ -46,6 +46,7 @@ public static partial class Elaborator
             Pattern.Prod prod => new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
             Pattern.Con c => (ResolveConstructorHead(ctx, c.Head) ?? throw new NotImplementedException(UnportedConstructorHead)).Nominal,
+            Pattern.Record r => RecordPatternType(ctx, r),
             _ => null,
         };
 
@@ -118,6 +119,9 @@ public static partial class Elaborator
                 return (new CorePattern.Con(constructor.Name, 0, [.. args]), binders);
             }
 
+            case Pattern.Record r:
+                return ElaborateRecordPattern(ctx, r, type);
+
             default:
                 throw new InvalidOperationException($"unhandled pattern {pattern.GetType().Name}");
         }
@@ -135,6 +139,9 @@ public static partial class Elaborator
                               && c.Index < tuple.Items.Length
             ? tuple.Items[c.Index]
             : null,
+        Occurrence.Field f => TypeAt(ctx, type, f.Parent) is { } parent && ctx.Force(parent) is Value.VStruct st
+            ? FieldType(st, f.Name)
+            : null,
         _ => throw new InvalidOperationException($"unhandled occurrence {occurrence.GetType().Name}"),
     };
 
@@ -144,6 +151,7 @@ public static partial class Elaborator
         {
             Value.VAtomTy a => new MatchDomain.AtomDomain(a.Ty),
             Value.VNominal n => new MatchDomain.Nominal([.. n.Decl.Constructors.Select(c => new ConstructorShape(c.Name, 0, c.Payloads.Length))]),
+            Value.VStruct st => new MatchDomain.Record([.. st.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Field).Select(f => f.Name).Distinct()]),
             _ => MatchDomain.Unknown.Instance,
         };
 

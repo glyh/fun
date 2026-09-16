@@ -231,6 +231,7 @@ public static partial class Elaborator
                 case Pattern.Prod prod: foreach (var i in prod.Items) Pat(i); break;
                 case Pattern.Or o: Pat(o.Left); Pat(o.Right); break;
                 case Pattern.Con c: Go(c.Head); foreach (var a in c.Args) Pat(a); break;
+                case Pattern.Record r: Go(r.Type); foreach (var f in r.Fields) Pat(f.Pattern); break;
             }
         }
 

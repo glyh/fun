@@ -11,6 +11,9 @@ public abstract record MatchDomain
 
     public sealed record AtomDomain(AtomTy Ty) : MatchDomain;
 
+    /// <summary>A struct's constructor fields, by label.</summary>
+    public sealed record Record(EquatableArray<string> Fields) : MatchDomain;
+
     public sealed record Unknown : MatchDomain
     {
         public static readonly Unknown Instance = new();
@@ -83,6 +86,9 @@ public static class MatchCompile
 
             case CorePattern.Atom:
                 return CompileSwitch(m, occurrence, source, domainOf);
+
+            case CorePattern.Record:
+                return Go(SpecializeRecord(m, domainOf(occurrence)), source, domainOf);
 
             default:
                 throw new InvalidOperationException($"unhandled pattern {first.GetType().Name}");
@@ -210,6 +216,24 @@ public static class MatchCompile
         return new Matrix(header, [.. rows]);
     }
 
+    /// <summary>
+    /// Replaces the first column by one column per field label - the domain's
+    /// and every label a record pattern names, in label order. A record pattern
+    /// contributes its field's pattern, or a wildcard for a field it leaves unnamed.
+    /// </summary>
+    private static Matrix SpecializeRecord(Matrix m, MatchDomain domain)
+    {
+        var labels = (domain is MatchDomain.Record r ? r.Fields : [])
+            .Concat(m.Rows.Select(row => row.Patterns[0]).OfType<CorePattern.Record>().SelectMany(p => p.Fields.Select(f => f.Name)))
+            .Distinct()
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        return SpecializeAt(m, labels.Count, i => new Occurrence.Field(m.Header[0], labels[i]),
+            p => p is CorePattern.Record record
+                ? labels.Select(label => record.Fields.LastOrDefault(f => f.Name == label).Pattern ?? CorePattern.Wild.Instance).ToEquatableArray()
+                : null);
+    }
+
     /// <summary>The rows that match whatever the first column holds, without it.</summary>
     private static Matrix DefaultMatrix(Matrix m) => new(
         [.. m.Header.Skip(1)],
@@ -232,22 +256,32 @@ public static class MatchCompile
         return [.. row.Bindings.Concat(remaining).OrderBy(Path, PathComparer.Instance)];
     }
 
-    private static ImmutableList<int> Path(Occurrence o) => o switch
+    /// <summary>
+    /// An occurrence's steps from the root: a position for a tuple element or a
+    /// payload, a label for a field. The children of one position are all of one
+    /// kind, so steps at the same depth always compare like with like.
+    /// </summary>
+    private static ImmutableList<(int Index, string Label)> Path(Occurrence o) => o switch
     {
         Occurrence.Base => [],
-        Occurrence.Child c => Path(c.Parent).Add(c.Index),
-        Occurrence.Payload p => Path(p.Parent).Add(p.Index),
+        Occurrence.Child c => Path(c.Parent).Add((c.Index, "")),
+        Occurrence.Payload p => Path(p.Parent).Add((p.Index, "")),
+        Occurrence.Field f => Path(f.Parent).Add((0, f.Name)),
         _ => throw new InvalidOperationException($"unhandled occurrence {o.GetType().Name}"),
     };
 
-    private sealed class PathComparer : IComparer<ImmutableList<int>>
+    private sealed class PathComparer : IComparer<ImmutableList<(int Index, string Label)>>
     {
         public static readonly PathComparer Instance = new();
 
-        public int Compare(ImmutableList<int>? a, ImmutableList<int>? b)
+        public int Compare(ImmutableList<(int Index, string Label)>? a, ImmutableList<(int Index, string Label)>? b)
         {
             for (var i = 0; i < Math.Min(a!.Count, b!.Count); i++)
-                if (a[i] != b[i]) return a[i].CompareTo(b[i]);
+            {
+                if (a[i].Index != b[i].Index) return a[i].Index.CompareTo(b[i].Index);
+                var byLabel = string.CompareOrdinal(a[i].Label, b[i].Label);
+                if (byLabel != 0) return byLabel;
+            }
             return a.Count.CompareTo(b.Count);
         }
     }

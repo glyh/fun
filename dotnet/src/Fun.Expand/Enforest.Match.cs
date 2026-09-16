@@ -170,8 +170,15 @@ public static partial class Enforest
                 continue;
             }
 
-            if (term is TokenTree.Group { Delimiter: Delimiter.Brace })
-                throw new NotImplementedException("not ported yet: record patterns");
+            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } fields)
+            {
+                lhs = lhs is Pattern.Con { Args.IsEmpty: true } c
+                    ? ParseRecordPattern(c.Head, fields)
+                    : throw new ExpandException("record pattern fields must follow a type name");
+                terms = terms.Tail;
+                juxtapose = false;
+                continue;
+            }
 
             if (juxtapose && lhs is Pattern.Con con && IsPatternArgumentStart(term))
             {
