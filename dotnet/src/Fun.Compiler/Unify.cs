@@ -81,6 +81,9 @@ public static partial class Unify
 
             case (Value.VNeutral a, Value.VNeutral b): Neutrals(mc, width, a, b); return;
 
+            case (Value.VRefTy a, Value.VRefTy b): Values(mc, width, a.Heap, b.Heap); Values(mc, width, a.Element, b.Element); return;
+            case (Value.VRef a, Value.VRef b) when ReferenceEquals(a.Cell, b.Cell): return;
+
             case (Value.VFix a, Value.VFix b):
                 FixBodies(mc, width, a, b);
                 return;
@@ -201,48 +204,40 @@ public static partial class Unify
 
     private static void OccursCheck(MetaContext mc, int id, Value value)
     {
-        switch (Nbe.Force(mc, value))
+        if (Mentions(mc, id, value)) throw new UnifyException("occurs check: a meta in its own solution");
+    }
+
+    /// <summary>
+    /// Whether the unsolved meta <paramref name="id"/> occurs in <paramref name="value"/>:
+    /// the occurs check, and discharge's test of whether a heap is visible in a type.
+    /// </summary>
+    public static bool Mentions(MetaContext mc, int id, Value value)
+    {
+        bool Go(Value v) => Mentions(mc, id, v);
+        var fresh = new Value.VVar(0, []);
+        return Nbe.Force(mc, value) switch
         {
-            case Value.VMeta f:
-                if (f.Id == id) throw new UnifyException("occurs check: a meta in its own solution");
-                foreach (var v in f.Spine) OccursCheck(mc, id, v);
-                return;
-            case Value.VPi pi:
-                OccursCheck(mc, id, pi.Domain);
-                OccursCheck(mc, id, Nbe.ApplyClosure(mc, pi.Codomain, new Value.VVar(0, [])));
-                return;
-            case Value.VProd p:
-                foreach (var v in p.Items) OccursCheck(mc, id, v);
-                return;
-            case Value.VProdTy p:
-                foreach (var v in p.Items) OccursCheck(mc, id, v);
-                return;
-            case Value.VNominal n:
-                foreach (var c in n.Captures) OccursCheck(mc, id, c);
-                return;
-            case Value.VEffectRow row:
-                foreach (var v in row.Effects.Concat(row.Tails)) OccursCheck(mc, id, v);
-                return;
-            case Value.VEffect e:
-                foreach (var p in e.Params) OccursCheck(mc, id, p);
-                return;
-            case Value.VRecursiveOccurrence o:
-                foreach (var v in o.Captures.Concat(o.Args)) OccursCheck(mc, id, v);
-                return;
-            case Value.VNeutral n:
-                foreach (var frame in n.Frames)
-                    if (frame is Frame.FApp app) OccursCheck(mc, id, app.Arg);
-                return;
-            case Value.VModule or Value.VStruct or Value.VRecord or Value.VSig:
-                foreach (var v in Contents(mc, value)) OccursCheck(mc, id, v);
-                return;
-            case Value.VTraitDict dict:
-                foreach (var v in TraitContents(dict)) OccursCheck(mc, id, v);
-                return;
+            Value.VMeta f => f.Id == id || f.Spine.Any(Go),
+            Value.VPi pi => Go(pi.Domain) || Go(Nbe.ApplyClosure(mc, pi.Codomain, fresh))
+                            || Go(Nbe.EvalRowClosure(mc, pi.Row, fresh)),
+            Value.VProd p => p.Items.Any(Go),
+            Value.VProdTy p => p.Items.Any(Go),
+            Value.VNominal n => n.Captures.Any(Go),
+            Value.VEffectRow row => row.Effects.Concat(row.Tails).Any(Go),
+            Value.VEffect e => e.Params.Any(Go),
+            Value.VRefTy r => Go(r.Heap) || Go(r.Element),
+            Value.VRecursiveOccurrence o => o.Captures.Concat(o.Args).Any(Go),
+            Value.VNeutral n => n.Frames.Any(frame => frame switch
+            {
+                Frame.FApp app => Go(app.Arg),
+                Frame.FRefSet set => Go(set.Value),
+                _ => false,
+            }),
+            Value.VModule or Value.VStruct or Value.VRecord or Value.VSig => Contents(mc, value).Any(Go),
+            Value.VTraitDict dict => TraitContents(dict).Any(Go),
             // A bound variable, a lambda, a universe or an atom holds no meta
             // the check follows (the prototype does not look inside a lambda).
-            default:
-                return;
-        }
+            _ => false,
+        };
     }
 }

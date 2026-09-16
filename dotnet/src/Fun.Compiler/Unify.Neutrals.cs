@@ -16,7 +16,10 @@ public static partial class Unify
                 case (Frame.FApp x, Frame.FApp y): Values(mc, width, x.Arg, y.Arg); break;
                 case (Frame.FProj x, Frame.FProj y) when x.Index == y.Index: break;
                 case (Frame.FDot x, Frame.FDot y) when x.Name == y.Name: break;
-                case (Frame.FApp or Frame.FProj or Frame.FDot, Frame.FApp or Frame.FProj or Frame.FDot):
+                case (Frame.FRefGet, Frame.FRefGet): break;
+                case (Frame.FRefSet x, Frame.FRefSet y): Values(mc, width, x.Value, y.Value); break;
+                case (Frame.FApp or Frame.FProj or Frame.FDot or Frame.FRefGet or Frame.FRefSet,
+                      Frame.FApp or Frame.FProj or Frame.FDot or Frame.FRefGet or Frame.FRefSet):
                     throw new UnifyException("stuck computations with different eliminations");
                 default:
                     throw new NotImplementedException($"not ported yet: unifying stuck {a.Frames[i].GetType().Name} frames");

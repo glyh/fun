@@ -348,12 +348,8 @@ member so no other fork's arrow construction changes.
 queue. Running: [primitives](port-primitives.md) and
 [the macro runtime interface](port-macro-runtime-interface.md), both prerequisites
 of the prelude. Primitives merged (`5f16665`); the macro runtime interface merged
-(`107a91c`); refs running; [effects follow-ups](port-effects-followups.md) running.
-Queued, in order: follow-up verification (the four
-unverified prototype deviations recorded on the structs, export and implicits
-tickets, the export-then-open constructor bug behind `core-311`, and making both
-conformance runners evaluate an `error` case that elaborates, as `cases/README.md`
-already specifies); then prelude
+(`107a91c`); refs merged (`4fd4b6a`); [effects follow-ups](port-effects-followups.md)
+and [follow-up verification](port-followup-verification.md) running. Queued, in order: prelude
 stage 1 once both running forks merge; then procedural macros; then prelude
 stage 2. The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
 wait for a quiet moment with no fork editing `Syntax.cs`.

@@ -18,6 +18,9 @@ public sealed class MetaContext
 
     public Value? Solution(int id) => _solutions[id];
 
+    /// <summary>How many metas exist: the id the next one gets.</summary>
+    public int Count => _solutions.Count;
+
     /// <summary>The metas standing for rows written <c>_</c>: one nothing solves is an error, never a default.</summary>
     public List<int> WrittenRows { get; } = [];
 

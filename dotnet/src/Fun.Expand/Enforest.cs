@@ -257,6 +257,8 @@ public sealed partial class Enforest
                         return ParseImport(term.Span, token.Scope, rest);
                     case TokenKind.Word w when w == TokenKind.Perform: return ParsePerform(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Resume: return ParseResume(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Ref: return ParseRef(term.Span, rest);
+                    case TokenKind.Word w when w == TokenKind.Deref: return ParseDeref(term.Span, rest);
                     case TokenKind.Word w:
                         throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
                     case TokenKind.Operator o:

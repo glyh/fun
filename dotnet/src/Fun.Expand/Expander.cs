@@ -97,6 +97,9 @@ public sealed partial class Expander
 
             case Syntax.Match m: return ExpandMatch(m);
             case Syntax.EffectDef or Syntax.Perform or Syntax.Resume: return ExpandEffects(stx)!;
+            case Syntax.RefNew n: return n with { Arg = Expand(n.Arg) };
+            case Syntax.RefGet g: return g with { Ref = Expand(g.Ref) };
+            case Syntax.RefSet r: return r with { Ref = Expand(r.Ref), Value = Expand(r.Value) };
             case Syntax.TraitDef or Syntax.ImplDef or Syntax.TraitBoundSet: return ExpandTraits(stx);
 
             // Constructor names are labels of the type, not binders.

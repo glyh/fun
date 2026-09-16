@@ -13,6 +13,14 @@ public sealed class EffectSink
 {
     public List<Value> Effects { get; } = [];
     public List<Value> Tails { get; } = [];
+
+    /// <summary>
+    /// What was stored into references, as (heap, stored type): a store is a way a
+    /// value leaves a handler's scope (E6). Unlike effects, stores reach the
+    /// enclosing sink whatever collects them.
+    /// </summary>
+    public List<(Value Heap, Value Type)> Stored { get; } = [];
+
     public bool IsEmpty => Effects.Count == 0 && Tails.Count == 0;
 }
 
@@ -52,7 +60,9 @@ public static partial class Elaborator
     private static (T, EffectSink) Collecting<T>(Context ctx, Func<Context, T> elaborate)
     {
         var sink = new EffectSink();
-        return (elaborate(ctx with { Sink = sink }), sink);
+        var result = elaborate(ctx with { Sink = sink });
+        ctx.Sink.Stored.AddRange(sink.Stored);
+        return (result, sink);
     }
 
     /// <summary>A form that must perform nothing - a type is evaluated at check time (E4).</summary>
@@ -71,7 +81,7 @@ public static partial class Elaborator
 
     private static FunException Unhandled(Context ctx, IEnumerable<Value> effects, bool inFunction)
     {
-        var names = string.Join(", ", effects.Select(e => ctx.Force(e) is Value.VEffect v ? v.Family.Name : e.GetType().Name));
+        var names = string.Join(", ", effects.Select(e => ctx.Force(e) is Value.VEffect v ? DescribeEffect(ctx, v) : e.GetType().Name));
         return new FunException(inFunction
             ? $"effects in a pure result: {names}; write ->{{E}} T or ~> T"
             : $"unhandled effects: {names}");
@@ -81,10 +91,11 @@ public static partial class Elaborator
     /// A program's entry, or a unit's: it performs nothing the runtime handles, and
     /// every row written <c>_</c> since <paramref name="since"/> is solved.
     /// </summary>
-    // ponytail: the runtime's handler discharges heap effects, which arrive with refs.
+    // The runtime's handler around the entry discharges Mutate on any heap, so
+    // top-level references work.
     public static void RequireHandledAtEntry(Context ctx, EffectSink performed, int since)
     {
-        RequireEmpty(ctx, performed);
+        RequireEmpty(ctx, WithoutMutation(performed));
         foreach (var id in ctx.Metas.WrittenRows)
             if (id >= since && ctx.Metas.Solution(id) is null)
                 throw new FunException("an effect row written _ is never solved: write the row");
@@ -379,6 +390,8 @@ public static partial class Elaborator
                     return Escaping(level, pi.Domain) ?? Escaping(level + 1, Nbe.ApplyClosure(ctx.Metas, pi.Codomain, x));
                 case Value.VProdTy p:
                     return p.Items.Select(i => Escaping(level, i)).FirstOrDefault(n => n is not null);
+                case Value.VRefTy r:
+                    return Escaping(level, r.Element);
                 case Value.VModule m:
                     return m.Entries.OfType<ModuleEntry.Field>().Select(f => Escaping(level, f.Value)).FirstOrDefault(n => n is not null);
                 default:

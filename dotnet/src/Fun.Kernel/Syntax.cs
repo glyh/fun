@@ -132,7 +132,7 @@ public abstract partial record Syntax(SourceSpan Span)
             RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
             SyntaxDef or Instantiate => Map(SyntaxMapper.OfIds(Mark)),
             TraitDef or ImplDef or TraitBoundSet => AddScopeTraits(scope),
-            _ => AddScopeEffects(scope) ?? throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
+            _ => AddScopeEffects(scope) ?? AddScopeRefs(scope) ?? throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
         };
     }
 
