@@ -713,7 +713,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           check_sealed_stays ctx.metas ~inner:ctx.lvl ~depth:ctx'.Ctx.lvl ~name:(Syntax.label name) body_ty;
         (Let (ty_term, gen_val_core, body_core), body_ty)
       end
-  | Lam _ when Elab_poly_arrows.lambda_has_poly expr -> ops.infer ctx (Elab_poly_arrows.lambda expr)
+  | Lam _ when Elab_poly_arrows.lambda_has_poly ~alias:(Elab_type_expr.poly_row_alias ctx) expr ->
+      ops.infer ctx (Elab_poly_arrows.lambda ~alias:(Elab_type_expr.poly_row_alias ctx) expr)
   | Lam (param, body) -> infer_lam ops ctx param body
   | Annotated { inner; typ } ->
       let _ty_core, _ty_ty, ty_val = ops.type_value_of_expr ctx typ in
@@ -737,7 +738,8 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
           elems
       in
       (ProdTy core_elems, VU)
-  | Arrow _ when Elab_poly_arrows.has_poly expr -> ops.infer ctx (Elab_poly_arrows.signature expr)
+  | Arrow _ when Elab_poly_arrows.has_poly ~alias:(Elab_type_expr.poly_row_alias ctx) expr ->
+      ops.infer ctx (Elab_poly_arrows.signature ~alias:(Elab_type_expr.poly_row_alias ctx) expr)
   | Arrow (Explicitness.Implicit, Some { name; _ }, a, effects, b) -> (
       match trait_bounds_opt ctx a with
       | Some trait_infos ->

@@ -22,6 +22,31 @@ let type_value_of_expr ops ctx (expr : Syntax.t) =
   check_type_like ctx ty value;
   (core, ty, value)
 
+(* A parameter's type that names a [~>] alias ([Callback = Unit ~> I64], whose
+   value takes its row implicitly): its binder is rank 1, so the definition
+   taking the parameter mints it (effect-arrow-syntax). Only a name is looked
+   through, and by reading what it is bound to - never by elaborating, which a
+   type not yet in scope would not survive. A binder written out in the
+   annotation stays rank 2: writing it is how a rank-2 callback is asked for. *)
+let poly_row_alias (ctx : Ctx.t) (ty : Syntax.t) =
+  let bound =
+    match ty.kind with
+    | Syntax.Var id -> Ctx.lookup_opt ctx id.Syntax.name
+    | Syntax.OpenChoice { name; opens; fallback } -> Ctx.lookup_choice_opt ctx name.Syntax.name { opens; fallback }
+    | _ -> None
+  in
+  match bound with
+  | Some (_, ty) -> (
+      (* A type awaiting a row: [EffectRow] in, a type out. *)
+      match Nbe.force ctx.Ctx.metas ty with
+      | VPi { explicitness = Implicit; domain; codomain; _ } ->
+          (match Nbe.force ctx.Ctx.metas domain with VEffectRowTy -> true | _ -> false)
+          && (match Nbe.force ctx.Ctx.metas (Nbe.closure_apply ctx.Ctx.metas codomain (Ctx.raw_meta ctx)) with
+              | VU -> true
+              | _ -> false)
+      | _ -> false)
+  | None -> false
+
 (* [sig { T : Type; empty : T; ord_T : impl Ord(T) }]: a signature value, its own
    kind of value, distinct from a module. It is a telescope over the module it
    describes: elaborated under a binder for that module ([self]), each member is

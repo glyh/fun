@@ -17,7 +17,8 @@ open Elab_ops
 let check ops (ctx : Ctx.t) (expr : Syntax.t) (expected : value) : term =
   let expected = Nbe.force ctx.metas expected in
   match (expr.kind, expected) with
-  | Lam _, _ when Elab_poly_arrows.lambda_has_poly expr -> ops.check ctx (Elab_poly_arrows.lambda expr) expected
+  | Lam _, _ when Elab_poly_arrows.lambda_has_poly ~alias:(Elab_type_expr.poly_row_alias ctx) expr ->
+      ops.check ctx (Elab_poly_arrows.lambda ~alias:(Elab_type_expr.poly_row_alias ctx) expr) expected
   (* An implicit row parameter the term does not bind itself: bound here, as
      [~>]'s row variables are (effect-arrow-syntax). *)
   | _, VPi { explicitness = Implicit; domain; codomain; _ }
