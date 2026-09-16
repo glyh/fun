@@ -568,6 +568,8 @@ What remains, in the recommended order:
   — `Opt(x)` on a `fn(A) { enum … }` former is `PatternArityMismatch`. Fixed in the C# port only.
 - [Pattern synonym arguments bind by position](tickets/pattern-synonym-arguments-bind-by-position.md)
   — `Flip(a, b) = Pt(b, a)` binds its use by position; a synonym through `open` is unknown. Fixed in the C# port only.
+- [Checking a module against a signature takes the first member of a name](tickets/signature-check-takes-first-member.md)
+  — `sig { x : I64 }` against `module { pub x = 'a'; pub x = 1 }` fails on the first `x`. Fixed in the C# port only.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),

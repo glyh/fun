@@ -15,3 +15,4 @@ values/rec-record-field-of-own-type             recursive-record-field-of-own-ty
 values/type-case-former-parameter              type-case-former-head-arity-from-template.md
 values/pattern-synonym-binds-by-name           pattern-synonym-arguments-bind-by-position.md
 values/pattern-synonym-through-open            pattern-synonym-arguments-bind-by-position.md
+values/signature-check-takes-last-member        signature-check-takes-first-member.md
