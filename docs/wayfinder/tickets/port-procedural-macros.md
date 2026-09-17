@@ -53,3 +53,34 @@ Use-site scope); closed tickets
 
 The 54 cases blocked on "the `macro` form", and the prelude stage 2 source
 (`dotnet/std/stage2.fun`) — its `type` macro is what the next ticket needs.
+
+## Progress (2026-09-17)
+
+Merged from `port/macros` (`6456100`, `7a80ebd`, merge `18adb74`, `0282e17`,
+`34306ea`, `489a24c`). All five steps: reflection over the prelude's `Syntax`
+nominals, macro definitions and calls (expression and declaration position,
+annotations, provisional macros), quoted syntax with holes, the runtime
+(`IMacroRuntime` macro members, the budget as fuel, `expand_block`/`expand_decls`,
+macros exported from units and delivered by `open`), and type-aware macros. 46
+cases newly pass, each checked in both runners: 32 macro definition/call/quote
+cases, 7 type-aware (core-198, 199, 202, 211, 212, 215, 216), and 7 new shared cases
+(`imports/port-macro-open`, `-member`, `-private`; `macros/port-typed-unsolved-binder`,
+`-argument-mismatch`, `-output-mismatch`, `-expected-mismatch`). The old per-file
+`AddScope` traversals are gone in favour of `Syntax.Map`. C# 386/685; xUnit 168.
+
+**Not done (ticket stays open):**
+- **A macro body cannot see its unit's earlier top-level bindings.** The decided rule
+  (M3: a macro is compiled "as of its definition") requires it; the prototype gets it
+  by elaborating each top-level binding right after it expands
+  (`Macro_driver.run_with`). The port expands a whole unit, then elaborates it, so
+  `stage2.fun`'s `type_decls` fails (`unbound variable: List`, and its calls to
+  earlier helpers). Needs unit expansion and elaboration interleaved per binding,
+  through the macro runtime interface.
+- **Operator macros** (`infix (~) (stx) { … }`, `core-190`), and stage 2's
+  `pub infix (&&) …` declarations: not built.
+- **Open (user):** `core-210`, `core-214` match on bare `RExpr(…)`, a constructor of
+  the prelude's `Syntax.R`; under the bare-constructor ruling it is unbound (C#
+  rejects them), and the prototype passes only through its by-name lookup.
+
+**Stopgap (`ponytail:`):** a typed macro argument is elaborated twice (once to solve
+the binders, again where the output places it); the prototype reuses the first.
