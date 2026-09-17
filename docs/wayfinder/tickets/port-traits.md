@@ -48,7 +48,8 @@ and new shared cases `values/trait-bounded-call` (8),
 other 15 trait cases now stop at the prelude. C# 109/636; xUnit 79.
 
 **Follow-ups:**
-- `Trait.op` takes the innermost impl of the trait whatever its argument, as the
-  prototype does (`ponytail:` in the code). Revisit against the traits design.
+- `Trait.op` takes the innermost impl of the trait whatever its argument —
+  **decided (user, 2026-09-17): resolve by the argument's type**,
+  [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md).
 - Re-exporting impls through `export` is not ported (`core-312`, `core-313`, which
   are first blocked on the prelude's `==` and `if`).
