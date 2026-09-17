@@ -22,6 +22,10 @@ public class MacroTests
     [InlineData("{ macro m(n : Id) { Syntax.RawVar(None, n) }; m(1) }", "macro m takes Id here")]
     [InlineData("{ macro m(_) { 5 }; m(0) }", "macro m did not return syntax")]
     [InlineData("{ macro m(x) { quote(fn($x) { $x }) }; 1 }", "the quote hole $x stands in positions of different kinds")]
+    [InlineData("{ macro d[A](_) : Expr(A) { { _ = A; Syntax.i64(1) } }; d(0) }", "the type binder A of macro d is not solved at its call")]
+    [InlineData("{ macro m(x : Expr(I64)) : Expr(I64) { x }; m(True) }", "type mismatch in the argument x of macro m: ")]
+    [InlineData("{ macro m(_) : Expr(I64) { quote(True) }; m(0) }", "type mismatch in the output of macro m: ")]
+    [InlineData("{ macro m(_) : Expr(I64) { Syntax.i64(1) }; x : Bool = m(0); x }", "type mismatch: ")]
     public void ACallIsCheckedBeforeTheMacroRuns(string source, string message) =>
         Assert.StartsWith(message, Assert.IsType<FunException>(Failure(source)).Message);
 

@@ -250,6 +250,17 @@ public sealed partial class Expander
     private MacroExpansion Expansion() => new(Expand, ExpandDeclsApart);
 
     /// <summary>
+    /// A call the elaborator applies (a macro whose signature promises types): one
+    /// application's hygiene around <paramref name="run"/>, which runs the macro on the
+    /// arguments as received; returns its output expanded in place (M6).
+    /// </summary>
+    public Syntax ApplyTyped(EquatableArray<Capture> args, Func<EquatableArray<Capture>, MacroExpansion, Syntax> run)
+    {
+        var app = NewApplication(null);
+        return Expand(run([.. args.Select(app.Receive.MapCapture)], Expansion()).Map(app.Emit));
+    }
+
+    /// <summary>
     /// A macro's call in expression position: applied now, its output expanded in place
     /// (M6) -- or, for a macro whose signature promises types, left for the elaborator,
     /// its expression arguments travelling as syntax.

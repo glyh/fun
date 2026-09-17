@@ -12,7 +12,7 @@ namespace Fun.Compiler;
 /// </summary>
 public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacroRuntime
 {
-    private readonly Dictionary<string, (Syntax Unit, UnitSyntax Syntax)> _expanded = [];
+    private readonly Dictionary<string, (Syntax Unit, UnitSyntax Syntax, Expander Expander)> _expanded = [];
     private readonly HashSet<string> _expanding = [];
     private readonly Dictionary<string, (Value Value, Value Type)> _loaded = [];
     private readonly HashSet<string> _active = [];
@@ -20,7 +20,7 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
     public UnitSyntax LoadSyntax(string path) => path == Prelude.Path ? Prelude.Syntax : Expanded(path).Syntax;
 
     /// <summary>A unit expanded by its own expander, which this loader serves in turn.</summary>
-    private (Syntax Unit, UnitSyntax Syntax) Expanded(string path)
+    private (Syntax Unit, UnitSyntax Syntax, Expander Expander) Expanded(string path)
     {
         if (_expanded.TryGetValue(path, out var expanded)) return expanded;
         if (!sources.TryGetValue(path, out var source)) throw new FunException($"import not found: \"{path}\"");
@@ -29,7 +29,7 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
         {
             var expander = new Expander(this);
             var unit = expander.Expand(Enforest.ParseUnit(source, path));
-            return _expanded[path] = (unit, expander.SyntaxExports);
+            return _expanded[path] = (unit, expander.SyntaxExports, expander);
         }
         finally
         {
@@ -98,13 +98,13 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
         // Elaborated once per process; the importer's metas are seeded from the prelude's.
         if (path == Prelude.Path) return Prelude.Unit;
         if (_loaded.TryGetValue(path, out var loaded)) return loaded;
-        var (unit, _) = Expanded(path);
+        var (unit, _, expander) = Expanded(path);
         if (!_active.Add(path)) throw new FunException($"circular import: \"{path}\"");
         try
         {
             // Strict: the base context with nothing opened, sharing the importer's
             // metas so a meta the unit leaves unsolved stays meaningful to it.
-            var ctx = Elaborator.BaseContext(metas, preludeOpen: false) with { Loader = this };
+            var ctx = Elaborator.BaseContext(metas, preludeOpen: false) with { Loader = this, Expander = expander };
             var since = metas.Count;
             var sink = new EffectSink();
             var (term, type) = Elaborator.Infer(ctx with { Sink = sink }, unit);

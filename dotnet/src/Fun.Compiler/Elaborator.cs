@@ -169,10 +169,10 @@ public static partial class Elaborator
     /// Elaborates a program read as an expression. Such a program has nowhere to
     /// write <c>open (import "std")</c>, so it is elaborated inside that open.
     /// </summary>
-    public static Elaborated ElaborateProgram(Syntax program, Loader? loader = null)
+    public static Elaborated ElaborateProgram(Syntax program, Loader? loader = null, Fun.Expand.Expander? expander = null)
     {
         var metas = new MetaContext();
-        var ctx = BaseContext(metas, preludeOpen: true) with { Loader = loader };
+        var ctx = BaseContext(metas, preludeOpen: true) with { Loader = loader, Expander = expander };
         // A program's entry leaves nothing unhandled: that is an error, not a run-time crash.
         var ((term, type), performed) = Collecting(ctx, c => Infer(c, program));
         RequireHandledAtEntry(ctx, performed, since: 0);
@@ -223,7 +223,7 @@ public static partial class Elaborator
             case Syntax.Enum e: return InferEnum(ctx, e);
             case Syntax.PatternSynonym s: return InferPatternSynonym(ctx, s);
             case Syntax.Quote or Syntax.QuoteDecls: return InferQuote(ctx, stx);
-            case Syntax.MacroCall: throw new NotImplementedException("not ported yet: a type-aware macro's call");
+            case Syntax.MacroCall call: return ApplyTypedMacro(ctx, call, null);
 
             case Syntax.Open open:
             {
@@ -328,6 +328,7 @@ public static partial class Elaborator
                 return CheckUnderImplicit(ctx, stx, implicitPi);
 
             case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
+            case (Syntax.MacroCall call, _): return ApplyTypedMacro(ctx, call, expected).Item1;
             case (Syntax.QuoteDecls quote, _) when CheckQuoteDecl(ctx, quote, expected) is { } decl: return decl;
 
             case (Syntax.Lam lam, Value.VPi pi):
