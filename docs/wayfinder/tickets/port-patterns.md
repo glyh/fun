@@ -76,10 +76,8 @@ listed in `prototype-divergences.txt`; `values/pattern-synonym-agrees` (3) agree
 C# 206/650; xUnit 90.
 
 **Follow-ups:**
-- **Block synonyms are a C#-only form.** The prototype has no `pattern` block
-  statement (`unexpected token in expression`); the port accepts one because this
-  ticket's scope said "blocks and modules". No shared case covers it. Decide
-  whether a block may declare a synonym (a binding in a block is otherwise legal)
-  or remove it from the port.
+- **Block synonyms are decided (user, 2026-09-17): kept.** A block may declare a
+  synonym like any other declaration; the prototype's gap is
+  [pattern-synonym-not-a-block-declaration](pattern-synonym-not-a-block-declaration.md).
 - Still "not ported yet": synonyms whose pattern does not fix the scrutinee or
   parameter types, and synonyms over a type-case pattern.

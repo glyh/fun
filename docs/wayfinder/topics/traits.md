@@ -35,7 +35,9 @@ encode_key : [A : Eq + Jsonable] -> A -> String = ...
 - Compile-time specialization and dictionary erasure are optimizations, not initial semantics.
 - Trait methods are called with qualified syntax such as `Eq.eq(x, y)`.
 - Implementations are resolved from lexical/imported scope.
-- Multiple matching implementations in scope are an ambiguity error.
+- Among the implementations in scope that match a use, the **most precise** one is
+  chosen (decided 2026-09-17, see "Resolution" below); no unique most precise one is
+  an ambiguity error.
 
 ## Current prototype status
 
@@ -210,11 +212,25 @@ by:
 - selecting a hidden in-scope dictionary or concrete impl;
 - elaborating the operation call as a projection/application from the dictionary.
 
-Ambiguity rules:
+Resolution (decided 2026-09-17, replacing "multiple matching impls: ambiguity error"):
 
-- zero matching impls: elaboration error;
-- exactly one matching impl: select it;
-- multiple matching impls: ambiguity error.
+1. **Candidates** are the impls in scope whose trait arguments match the use's
+   arguments (the trait at the argument types: `Size.size(Some(5))` asks for
+   `Size(Option(I64))`), for a qualified call `Trait.op(…)` and a bound `[A : Trait]`
+   alike.
+2. Impl P is **more precise** than impl Q when P's arguments are an instance of Q's:
+   Q's own type variables can be filled in to give P's arguments, and not the
+   reverse. `Size(Option(I64))` is more precise than `Size(Option(A))`.
+3. The candidate more precise than every other is chosen. Zero candidates is an
+   error; candidates with no unique most precise one
+   (`impl Pair(A, I64)` and `impl Pair(I64, B)` at `Pair(I64, I64)`) are an ambiguity
+   error; two identical impls stay an ambiguity error.
+4. While the use's argument types are not yet known (unsolved metas), the choice
+   waits; if they are still unknown when elaboration of the unit ends, it is an
+   error ("cannot choose an impl").
+5. Lexical nearness never breaks a tie: only precision decides.
+
+Tickets: [trait-op-takes-innermost-impl](../tickets/trait-op-takes-innermost-impl.md).
 
 ## Phase 7: Imports and lexical scope
 

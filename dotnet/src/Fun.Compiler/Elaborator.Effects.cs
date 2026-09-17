@@ -95,6 +95,7 @@ public static partial class Elaborator
     // top-level references work.
     public static void RequireHandledAtEntry(Context ctx, EffectSink performed, int since)
     {
+        ResolvePendingEvidence(ctx.Metas, since);
         RequireEmpty(ctx, WithoutMutation(performed));
         foreach (var id in ctx.Metas.WrittenRows)
             if (id >= since && ctx.Metas.Solution(id) is null)

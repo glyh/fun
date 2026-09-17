@@ -9,6 +9,13 @@ namespace Fun.Compiler;
 /// </summary>
 public sealed record TraitEvidence(TraitDecl Trait, EquatableArray<Value> Args, int Level, Value Type);
 
+/// <summary>
+/// A dictionary chosen later: <see cref="Meta"/> stands for the impl of
+/// <see cref="Trait"/> at <see cref="Args"/>, resolved in <see cref="Context"/> once
+/// the arguments are known, at the latest when the unit's elaboration ends.
+/// </summary>
+public sealed record PendingEvidence(int Meta, Context Context, TraitDecl Trait, EquatableArray<Value> Args);
+
 public sealed partial record Context
 {
     /// <summary>
@@ -226,10 +233,15 @@ public static partial class Elaborator
     }
 
     /// <summary>
-    /// The impl in scope for <paramref name="trait"/> at <paramref name="args"/>:
-    /// evidence whose arguments convert, and a struct argument's own public impls.
-    /// Null when there is none; more than one is an ambiguity.
+    /// The impl in scope for <paramref name="trait"/> at <paramref name="args"/>
+    /// (traits.md, "Resolution"): evidence whose arguments convert, and a struct
+    /// argument's own public impls. Null when there is none; lexical nearness never
+    /// breaks a tie, so more than one is an ambiguity.
     /// </summary>
+    // Rule 2's precision order needs no code yet: an impl has no type variables of its
+    // own (its arguments are concrete types or binders in scope), so every candidate is
+    // an instance of every other and none is more precise. Order candidates by one-way
+    // instance matching once impls can be generic.
     private static (Term Term, Value Type)? ResolveEvidence(Context ctx, TraitDecl trait, EquatableArray<Value> args)
     {
         bool Same(EquatableArray<Value> a, EquatableArray<Value> b) =>
@@ -254,6 +266,46 @@ public static partial class Elaborator
         };
     }
 
+    /// <summary>
+    /// The dictionary for <paramref name="trait"/> at <paramref name="args"/>: the impl
+    /// chosen now, or - while an argument is not yet known - a meta the choice fills
+    /// once it is (<see cref="ResolvePendingEvidence"/>). A known argument with no impl
+    /// is an error.
+    /// </summary>
+    private static Term Evidence(Context ctx, TraitDecl trait, EquatableArray<Value> args)
+    {
+        if (ResolveEvidence(ctx, trait, args) is { } found) return found.Term;
+        if (!args.Any(a => Unresolved(ctx, a))) throw new FunException($"missing implementation of `{trait.Name}`");
+        var meta = ctx.Metas.Fresh();
+        ctx.Metas.PendingEvidence.Add(new PendingEvidence(meta, ctx, trait, args));
+        return new Term.InsertedMeta(meta, ctx.EntryKinds);
+    }
+
+    /// <summary>
+    /// The choices that waited on argument types, made now that elaboration of the
+    /// unit has ended: each argument is known and one impl matches, or it is an error.
+    /// Only the choices this unit made (metas from <paramref name="since"/>) must be
+    /// settled; an importer's pending choices wait for the importer.
+    /// </summary>
+    public static void ResolvePendingEvidence(MetaContext metas, int since)
+    {
+        foreach (var pending in metas.PendingEvidence.Where(p => p.Meta >= since).ToList())
+        {
+            metas.PendingEvidence.Remove(pending);
+            var ctx = pending.Context;
+            var found = ResolveEvidence(ctx, pending.Trait, pending.Args)
+                ?? throw new FunException(pending.Args.Any(a => ctx.Force(a) is Value.VMeta)
+                    ? $"cannot choose an implementation of `{pending.Trait.Name}`: its argument type is never known"
+                    : $"missing implementation of `{pending.Trait.Name}`");
+            // The chosen dictionary is one value whatever the meta is applied to (levels
+            // are stable), so its solution ignores the spine: a lambda per bound entry.
+            Term solution = new Term.Imported(ctx.Eval(found.Term));
+            foreach (var kind in ctx.EntryKinds)
+                if (kind == EntryKind.Bound) solution = new Term.Lam(solution);
+            metas.Solve(pending.Meta, Nbe.Eval(metas, Environment.Empty, solution));
+        }
+    }
+
     /// <summary>Whether an argument is not yet known well enough to say no impl exists for it.</summary>
     private static bool Unresolved(Context ctx, Value arg) => ctx.Force(arg) is Value.VMeta or Value.VVar or Value.VNeutral;
 
@@ -262,18 +314,20 @@ public static partial class Elaborator
         ctx.Force(type) is Value.VU && ctx.Force(ctx.Eval(term)) is Value.VTrait trait ? trait.Decl : null;
 
     /// <summary>
-    /// <c>Trait.op</c>: the operation of the innermost evidence for the trait, at
-    /// that dictionary's type.
+    /// <c>Trait.op</c>: generic over the trait's argument, taking the dictionary for it
+    /// as a hidden argument - <c>[A : Type] -&gt; [Trait(A)] -&gt; op's type at A</c> - so
+    /// the impl is chosen at the use's argument type exactly as a bound's is.
     /// </summary>
-    // ponytail: takes the innermost evidence for the trait whatever its arguments,
-    // as the prototype does; resolve by argument type if two impls must coexist.
     private static (Term, Value) TraitMethod(Context ctx, TraitDecl trait, string name)
     {
-        var evidence = ctx.Evidence.FirstOrDefault(e => ReferenceEquals(e.Trait, trait))
-            ?? throw new FunException($"missing implementation of `{trait.Name}`");
-        if (ctx.Force(evidence.Type) is not Value.VTraitDict dict || dict.Operations.All(o => o.Name != name))
-            throw new FunException($"unknown trait method `{name}`");
-        return (new Term.Dot(new Term.Var(Nbe.LevelToIndex(ctx.Width, evidence.Level)), name), ctx.Force(dict.Operations.Last(o => o.Name == name).Type));
+        var arg = new Value.VVar(ctx.Width, []);
+        var dictType = new Value.VTraitDict(trait, [arg], Nbe.OperationTypes(ctx.Metas, trait, arg));
+        if (dictType.Operations.All(o => o.Name != name)) throw new FunException($"unknown trait method `{name}`");
+        var opType = dictType.Operations.Last(o => o.Name == name).Type;
+        var type = new Term.Pi(Explicitness.Implicit, Term.U.Instance,
+            new Term.Pi(Explicitness.Implicit, Nbe.Quote(ctx.Metas, ctx.Width + 1, dictType),
+                Nbe.Quote(ctx.Metas, ctx.Width + 2, opType)));
+        return (new Term.Lam(new Term.Lam(new Term.Dot(new Term.Var(0), name))), ctx.Eval(type));
     }
 
     /// <summary>
@@ -295,13 +349,7 @@ public static partial class Elaborator
 
         var arg = Check(ctx, argSyntax, explicitPi.Domain);
         foreach (var dict in pending)
-        {
-            var evidence = ResolveEvidence(ctx, dict.Decl, dict.Args)?.Term
-                ?? (dict.Args.Any(a => Unresolved(ctx, a))
-                    ? FreshMeta(ctx)
-                    : throw new FunException($"missing implementation of `{dict.Decl.Name}`"));
-            fn = new Term.Ap(fn, Explicitness.Implicit, evidence);
-        }
+            fn = new Term.Ap(fn, Explicitness.Implicit, Evidence(ctx, dict.Decl, dict.Args));
         var result = Nbe.ApplyClosure(ctx.Metas, explicitPi.Codomain, ctx.Eval(arg));
         return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
     }

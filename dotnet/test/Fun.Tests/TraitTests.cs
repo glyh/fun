@@ -44,4 +44,29 @@ public class TraitTests
     [Fact]
     public void AnImplMustGiveEveryOperation() =>
         Assert.Equal("missing trait field `size`", Elaborate("{ " + Size + "impl Size(I64) = module { }; 0 }"));
+
+    private const string TwoImpls = "impl Size(I64) = module { size = fn(n) { 1 } }; impl Size(Char) = module { size = fn(c) { 2 } }; ";
+
+    /// <summary><c>Trait.op</c> chooses by the argument's type, not by which impl is nearest.</summary>
+    [Fact]
+    public void TraitOpChoosesByArgumentType() =>
+        Assert.Equal("1", Run("{ " + Size + TwoImpls + "Size.size(5) }"));
+
+    /// <summary>Nearness never breaks a tie: <c>Trait.op</c> meets the same ambiguity a bound does.</summary>
+    [Fact]
+    public void NearnessDoesNotBreakATie() =>
+        Assert.Equal("ambiguous implementation of `Size`",
+            Elaborate("{ " + Size + "impl Size(I64) = module { size = fn(n) { 1 } }; "
+                + "M = module { pub impl Size(I64) = module { size = fn(n) { 2 } } }; open M; Size.size(5) }"));
+
+    /// <summary>A choice waits for an argument type the rest of the unit solves.</summary>
+    [Fact]
+    public void AChoiceWaitsForItsArgumentType() =>
+        Assert.Equal("2", Run("{ " + Size + TwoImpls + "(fn(x) { Size.size(x) })('c') }"));
+
+    /// <summary>An argument type nothing ever solves is an error at the end of the unit, never a guess.</summary>
+    [Fact]
+    public void AnArgumentTypeNeverKnownIsAnError() =>
+        Assert.Equal("cannot choose an implementation of `Size`: its argument type is never known",
+            Elaborate("{ " + Size + TwoImpls + "(fn(x) { Size.size(x) }) }"));
 }
