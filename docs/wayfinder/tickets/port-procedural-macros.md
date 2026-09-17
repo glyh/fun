@@ -78,9 +78,10 @@ cases, 7 type-aware (core-198, 199, 202, 211, 212, 215, 216), and 7 new shared c
   through the macro runtime interface.
 - **Operator macros** (`infix (~) (stx) { … }`, `core-190`), and stage 2's
   `pub infix (&&) …` declarations: not built.
-- **Open (user):** `core-210`, `core-214` match on bare `RExpr(…)`, a constructor of
-  the prelude's `Syntax.R`; under the bare-constructor ruling it is unbound (C#
-  rejects them), and the prototype passes only through its by-name lookup.
+- **Decided (user, 2026-09-17):** `core-210` and `core-214` matched on a bare
+  `RExpr(…)`, unbound under the bare-constructor ruling; both now write
+  `Syntax.RExpr(…)`, keeping what they test (type-aware macros). Both pass in the
+  prototype; in C# `core-210` passes and `core-214` waits on the prelude's `+`.
 
 **Stopgap (`ponytail:`):** a typed macro argument is elaborated twice (once to solve
 the binders, again where the output places it); the prototype reuses the first.
