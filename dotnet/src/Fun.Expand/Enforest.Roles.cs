@@ -126,7 +126,10 @@ public sealed partial class Enforest(EnforestEnv env)
                 return (new Syntax.Ap(new Syntax.Var(id), Explicitness.Explicit, rhs, SourceSpan.Between(term.Span, rhs.Span)), after);
             }
             case RoleMeaning.CallMacro:
-                throw new NotImplementedException($"not ported yet: the procedural operator macro `{name}`");
+            {
+                var (rhs, after) = ParseExprPrec(rest, new Prec.Operand(name, role));
+                return (new Syntax.OperatorUse(id, Fixity.Prefix, [rhs], role.DeclaredAt, role.FromUnit, SourceSpan.Between(term.Span, rhs.Span)), after);
+            }
             default:
                 throw new ExpandException($"not a prefix form: {name}");
         }
@@ -160,7 +163,7 @@ public sealed partial class Enforest(EnforestEnv env)
             },
             RoleMeaning.Rules => throw new ExpandException($"an infix syntax form has one rule: {symbol}"),
             RoleMeaning.AssignRef => new Syntax.RefSet(lhs, rhs, span),
-            RoleMeaning.CallMacro => throw new NotImplementedException($"not ported yet: the procedural operator macro `{symbol}`"),
+            RoleMeaning.CallMacro => new Syntax.OperatorUse(id, Fixity.Infix, [lhs, rhs], role.DeclaredAt, role.FromUnit, span),
             _ => throw new ExpandException($"not an infix operator: {symbol}"),
         };
         return (use, after);
@@ -195,9 +198,39 @@ public sealed partial class Enforest(EnforestEnv env)
     /// <c>syntax name [: Decl] [group] { rules }</c>, <c>infix (op) [group]
     /// [($a, $b) { body }]</c>, <c>prefix (op) [group]</c> or
     /// <c>order name [: clauses]</c>: the binder it declares and its role. Null
-    /// when the statement declares none.
+    /// when the statement declares none. An <c>infix</c> whose body is not a template is
+    /// a procedural operator macro: its role calls the macro <paramref name="Macro"/>
+    /// declares under the same name.
     /// </summary>
-    private (Id Name, Role Role)? ParseRoleDecl(Terms stmt)
+    private (Id Name, Role Role, Syntax? Macro)? ParseRoleDecl(Terms stmt) =>
+        ParseOperatorMacroDecl(stmt) ?? (ParseRoleOnlyDecl(stmt) is var (name, role) ? (name, role, null) : null);
+
+    /// <summary>
+    /// <c>infix (op) [group] (params) { body }</c>: a role that calls the macro of its
+    /// name, and that macro, a function of its parameters. Null for any other statement.
+    /// </summary>
+    private (Id, Role, Syntax?)? ParseOperatorMacroDecl(Terms stmt)
+    {
+        stmt = DropSeparators(stmt);
+        if (stmt.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "infix" } } infix
+            || stmt.Drop(1).Head is not TokenTree.Group { Delimiter: Delimiter.Paren } symbolGroup) return null;
+        var (order, value) = ParseJoinedOrder(stmt.Drop(2));
+        if (DropSeparators(value).IsEmpty || IsOperatorTemplate(value)) return null;
+
+        var name = OperatorSymbol("infix", symbolGroup);
+        value = DropSeparators(value);
+        var parameters = value.Head is TokenTree.Group { Delimiter: Delimiter.Paren } group
+            ? ParseParamGroup(new Terms(group.Items), Explicitness.Explicit)
+            : [];
+        var (body, rest, bodySpan) = ParseBody(value.Head is TokenTree.Group { Delimiter: Delimiter.Paren } ? value.Tail : value);
+        EnsureNoRest("operator macro", rest);
+        var span = SourceSpan.Between(infix.Span, bodySpan);
+        var macro = parameters.Reverse().Aggregate(body, (acc, p) => new Syntax.Lam(p, acc, span));
+        var (declared, role) = DeclareRole(name, new Role(Fixity.Infix, order, RoleMeaning.CallMacro.Instance, name.Span, null));
+        return (declared, role, macro);
+    }
+
+    private (Id Name, Role Role)? ParseRoleOnlyDecl(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (stmt.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: var keyword } }) return null;
@@ -212,8 +245,7 @@ public sealed partial class Enforest(EnforestEnv env)
                 if (DropSeparators(value).IsEmpty)
                     return DeclareRole(name, new Role(fixity, order, RoleMeaning.ApplyValue.Instance, name.Span, null));
                 if (fixity == Fixity.Prefix) throw new ExpandException("prefix operator with a body is not supported");
-                if (!IsOperatorTemplate(value))
-                    throw new NotImplementedException($"not ported yet: the procedural operator macro `{name.Name}`");
+                // A body that is not a template was read by ParseOperatorMacroDecl.
                 return DeclareRole(name, ParseOperatorTemplate(name, order, value));
             }
 

@@ -165,6 +165,7 @@ public abstract partial record Syntax
             RefSet r => r with { Ref = Go(r.Ref), Value = Go(r.Value) },
             MacroDef d => d with { Name = m.Id(d.Name), Value = Go(d.Value), Body = Go(d.Body), Output = GoOpt(d.Output) },
             MacroCall c => c with { Head = Go(c.Head), Args = [.. c.Args.Select(m.MapCapture)] },
+            OperatorUse u => u with { Operator = m.Id(u.Operator), Operands = [.. u.Operands.Select(Go)] },
             Quote q => q with { Template = Go(q.Template), Holes = [.. q.Holes.Select(h => (h.Hole, Go(h.Value)))] },
             QuoteDecls q => q with { Items = [.. q.Items.Select(b => b.Map(m))], Holes = [.. q.Holes.Select(h => (h.Hole, Go(h.Value)))] },
             Stx x => x with { Inner = Go(x.Inner) },

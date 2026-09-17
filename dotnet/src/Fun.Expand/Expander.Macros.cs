@@ -35,7 +35,8 @@ public sealed partial class Expander
         var (compiled, signature) = Compiled(value, kind, output);
         var (kinds, withKinds) = ParameterKinds(compiled);
 
-        CheckRoleMixing(name.Name, name.Scope, isRole: false, attaches: false, group: false);
+        // A macro is a syntactic role's sort of binder (M7): it mixes with values, not roles.
+        CheckRoleMixing(name.Name, name.Scope, isRole: true, attaches: false, group: false);
         var scope = FreshScope();
         var resolved = FreshResolvedName(name.Name);
         _bindings.Extend(name.Name, name.Scope.Union(scope), resolved, BinderMeaning.Macro, macroParams: kinds);
@@ -279,6 +280,33 @@ public sealed partial class Expander
 
         var app = NewApplication(null);
         var output = _runtime.ApplyExpr(Label(key), entry, [.. call.Args.Select(app.Receive.MapCapture)], Expansion());
+        return Expand(output.Map(app.Emit));
+    }
+
+    /// <summary>
+    /// A use of an operator whose role calls a macro: the macro of the operator's name,
+    /// applied now and its output expanded in place (M6). A prefix use hands the macro
+    /// its operand, an infix use its two operands when the macro takes two, and
+    /// otherwise the whole use as syntax.
+    /// </summary>
+    private Syntax ExpandOperatorUse(Syntax.OperatorUse use)
+    {
+        var head = new Syntax.Var(use.Operator);
+        if (MacroKey(head) is not { } key)
+            throw new ExpandException($"`{use.Operator.Name}` is an operator macro with no macro of its name");
+        var arity = _macros.GetValueOrDefault(key)?.Params.Length ?? 0;
+        EquatableArray<Syntax> operands = use.Operands switch
+        {
+            [var only] => [only],
+            [_, _] when arity >= 2 => use.Operands,
+            _ => [use],
+        };
+        var entry = EntryFor(key, head, FormKind.Expr, operands.Length);
+        if (entry.Signature is not null)
+            throw new NotImplementedException($"not ported yet: a type-aware operator macro `{use.Operator.Name}`");
+
+        var app = NewApplication(null);
+        var output = _runtime.ApplyExpr(Label(key), entry, [.. operands.Select(o => app.Receive.MapCapture(new Capture.Expr(o)))], Expansion());
         return Expand(output.Map(app.Emit));
     }
 

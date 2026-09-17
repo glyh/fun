@@ -203,6 +203,7 @@ public sealed partial class Expander
             case Syntax.MacroDef d:
                 return Expand(d.Body.AddScope(DefineMacro(d.Name, d.Value, d.Kind, d.Output, isPublic: false)));
             case Syntax.MacroCall call: return ExpandMacroCall(call);
+            case Syntax.OperatorUse use: return ExpandOperatorUse(use);
             case Syntax.Quote or Syntax.QuoteDecls: return ExpandQuote(stx);
             // A typed macro's argument, and one its output placed where the call elaborated it: left for the elaborator.
             case Syntax.Stx or Syntax.Elaborated: return stx;

@@ -29,6 +29,15 @@ public abstract partial record Syntax
     public sealed record MacroCall(Syntax Head, EquatableArray<Capture> Args, SourceSpan Span) : Syntax(Span);
 
     /// <summary>
+    /// A use of an operator whose role calls the procedural macro of its name
+    /// (<c>infix (~) (stx) { … }</c>). A macro taking two operands is applied to them; a
+    /// macro taking one receives this whole use, as the prelude's <c>RawOperatorUse</c>.
+    /// <paramref name="FromUnit"/> is the unit that supplied the operator, if imported.
+    /// </summary>
+    public sealed record OperatorUse(Id Operator, Fixity Fixity, EquatableArray<Syntax> Operands, SourceSpan DeclaredAt, string? FromUnit, SourceSpan Span)
+        : Syntax(Span);
+
+    /// <summary>
     /// <c>quote(…)</c>: syntax written literally in a macro body. Each hole <c>$x</c>
     /// stands in <paramref name="Template"/> as an id spelled <c>"$x"</c> -- <c>$</c>
     /// cannot begin a source identifier -- and in <paramref name="Holes"/> as the

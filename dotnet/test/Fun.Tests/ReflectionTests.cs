@@ -53,6 +53,17 @@ public class ReflectionTests
         Assert.Equal(program.Map(Normal), R.ReadExpr(R.ReflectExpr(program))?.Map(Normal));
     }
 
+    /// <summary>An operator macro receives its whole use: operator, fixity, operands, spans and unit.</summary>
+    [Fact]
+    public void AnOperatorUseRoundTrips()
+    {
+        var span = SourceSpan.Make(3, 8, "t.fun", 1, 3, 1, 8);
+        var use = new Syntax.OperatorUse(new Id("~", span, ScopeSet.Of([4])), Fixity.Infix,
+            [new Syntax.Atom(new Atom.I64(1), span), new Syntax.Atom(new Atom.I64(2), span)],
+            SourceSpan.Make(0, 2, "t.fun", 1, 0, 1, 2), "u", span);
+        Assert.Equal(use.Map(Normal), R.ReadExpr(R.ReflectExpr(use))?.Map(Normal));
+    }
+
     [Fact]
     public void AnUnreadBlockRoundTripsWithItsTokensAndScopes()
     {

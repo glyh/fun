@@ -67,7 +67,9 @@ public sealed partial class Enforest
     {
         if (ParseRecGroup(stmt) is { } group) return new Syntax.LetRecGroup(group, body, span);
 
-        if (ParseRoleDecl(stmt) is var (roleName, role)) return new Syntax.SyntaxDef(roleName, role, body, span);
+        if (ParseRoleDecl(stmt) is var (roleName, role, operatorMacro))
+            return new Syntax.SyntaxDef(roleName, role,
+                operatorMacro is null ? body : new Syntax.MacroDef(roleName, operatorMacro, body, null, null, span), span);
 
         if (ParseMacroDecl(stmt) is var (macroName, macroValue, macroKind, macroOutput))
             return new Syntax.MacroDef(macroName, macroValue, body, macroKind, macroOutput, span);
@@ -174,7 +176,10 @@ public sealed partial class Enforest
         var unprefixed = isPublic ? stmt.Tail : stmt;
 
         if (DeclFormUse(unprefixed) is { } declUse) return [new Binding.Instantiate(declUse, isPublic)];
-        if (ParseRoleDecl(unprefixed) is var (roleName, role)) return [new Binding.SyntaxDecl(roleName, role, isPublic)];
+        if (ParseRoleDecl(unprefixed) is var (roleName, role, operatorMacro))
+            return operatorMacro is null
+                ? [new Binding.SyntaxDecl(roleName, role, isPublic)]
+                : [new Binding.SyntaxDecl(roleName, role, isPublic), new Binding.Macro(roleName, operatorMacro, isPublic, null, null)];
 
         if (ParseExportStatement(isPublic, unprefixed) is { } export) return [export];
 

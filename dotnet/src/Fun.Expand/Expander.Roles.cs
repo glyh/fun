@@ -39,7 +39,8 @@ public sealed partial class Expander
         if (group) return;
         foreach (var existing in _bindings.Candidates(name))
         {
-            if (existing.IsGroup || (existing.Kind == BinderMeaning.Role) == isRole) continue;
+            // A syntax form, operator or macro is a role's sort of binder (M7); only a value is not.
+            if (existing.IsGroup || (existing.Kind != BinderMeaning.Value) == isRole) continue;
             if (!existing.Scope.IsSubsetOf(occurrence)) continue;
             if (occurrence.Except(existing.Scope).Values.Any(_introScopes.Contains)) continue;
             if (attaches && existing.Kind == BinderMeaning.Value) continue;

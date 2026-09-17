@@ -277,6 +277,8 @@ public sealed class Reflection
             Syntax.Instantiate i => E("RawInstantiate", ReflectId(i.Instantiation.Form), RuleVal(i.Instantiation.Rule),
                 Captures(i.Instantiation.Captures), Option(i.Instantiation.FromUnit, Str)),
             Syntax.MacroCall c => E("RawMacroCall", X(c.Head), List(c.Args, ReflectCaptured)),
+            Syntax.OperatorUse u => E("RawOperatorUse", ReflectId(u.Operator), FixityVal(u.Fixity), List(u.Operands, X),
+                Span(u.DeclaredAt), Span(u.Span), Option(u.FromUnit, Str)),
             _ => throw new NotImplementedException($"not ported yet: reflecting the form {stx.GetType().Name}"),
         };
     }
@@ -750,7 +752,13 @@ public sealed class Reflection
                 return ReadInstantiation(args[0], args[1], args[2], args[3]) is { } inst ? new Syntax.Instantiate(inst, span) : null;
             case ("RawMacroCall", 2):
                 return X(args[0]) is { } head && ReadList(args[1], ReadCaptured) is { } cargs ? new Syntax.MacroCall(head, cargs, span) : null;
-            case ("RawTypeDef", _) or ("RawOperatorUse", _):
+            case ("RawOperatorUse", 6):
+            {
+                if (ReadId(args[0]) is not { } operatorId || ReadFixity(args[1]) is not { } fx || ReadList(args[2], X) is not { } operands) return null;
+                if (ReadSpan(args[3]) is not { } declared || ReadSpan(args[4]) is not { } used || ReadOption(args[5], ReadStr) is not (true, var unit)) return null;
+                return new Syntax.OperatorUse(operatorId, fx, operands, declared, unit, used);
+            }
+            case ("RawTypeDef", _):
                 throw new NotImplementedException($"not ported yet: reading the reflected form {name}");
             default:
                 return null;
