@@ -297,7 +297,12 @@ public static partial class Elaborator
                 ?? throw new FunException(pending.Args.Any(a => ctx.Force(a) is Value.VMeta)
                     ? $"cannot choose an implementation of `{pending.Trait.Name}`: its argument type is never known"
                     : $"missing implementation of `{pending.Trait.Name}`");
-            ctx.Unify(ctx.Eval(new Term.InsertedMeta(pending.Meta, ctx.EntryKinds)), ctx.Eval(found.Term));
+            // The chosen dictionary is one value whatever the meta is applied to (levels
+            // are stable), so its solution ignores the spine: a lambda per bound entry.
+            Term solution = new Term.Imported(ctx.Eval(found.Term));
+            foreach (var kind in ctx.EntryKinds)
+                if (kind == EntryKind.Bound) solution = new Term.Lam(solution);
+            metas.Solve(pending.Meta, Nbe.Eval(metas, Environment.Empty, solution));
         }
     }
 
