@@ -53,13 +53,15 @@ public sealed partial class Expander
 
     /// <summary>
     /// Enters an open of <paramref name="of"/>: a fresh scope marks its region, and a
-    /// label names it -- the unit's own for an import. The roles visible where it is
+    /// label names it -- the unit's own for an import, or for a handle bound to one
+    /// (<c>Core = import "std"; open Core</c>), so the ids a unit's syntax form
+    /// introduces find that unit's members through it. The roles visible where it is
     /// written are noted against it, except an imported unit's own, opened with it.
     /// </summary>
     private (ScopeSet Scope, string Label) EnterOpen(Syntax of)
     {
         var scope = _scopeCounter++;
-        var label = of is Syntax.Import i ? UnitOpenLabel(i.Path) : $"open:{scope}";
+        var label = UnitPathOf(of) is { } path ? UnitOpenLabel(path) : $"open:{scope}";
         var occurrence = Occurrence(of);
         foreach (var binder in _bindings.All())
             if (binder.Binder.Kind != BinderMeaning.Value && !binder.Binder.IsGroup
