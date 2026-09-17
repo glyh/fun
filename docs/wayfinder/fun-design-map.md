@@ -587,6 +587,8 @@ What remains, in the recommended order:
   — decided a block may declare one. The C# port already does.
 - [`Trait.op` takes the innermost impl whatever its argument](tickets/trait-op-takes-innermost-impl.md)
   — decided it resolves by the argument's type. To fix in the C# port only.
+- [Opening a handle on a unit is not an open of that unit](tickets/unit-handle-open-not-a-unit-open.md)
+  — `V = import "v"; open V` does not deliver names `v`'s forms introduce. Fixed in the C# port only.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),

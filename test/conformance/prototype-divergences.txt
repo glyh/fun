@@ -24,3 +24,4 @@ values/pattern-synonym-in-block                pattern-synonym-not-a-block-decla
 values/trait-op-resolves-by-argument          trait-op-takes-innermost-impl.md
 values/trait-impl-per-argument                trait-op-takes-innermost-impl.md
 elaborate/trait-op-nearness-no-tiebreak       trait-op-takes-innermost-impl.md
+imports/unit-handle-open-form-member           unit-handle-open-not-a-unit-open.md

@@ -3,7 +3,7 @@ title: "Port: interleave a unit's expansion and elaboration; operator macros"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -41,3 +41,27 @@ Wave 3 fork. Follow the porting conventions in
 domain model I4c–I4e and I5, glossary **Provisional macro**, **Type-aware macro**,
 **Expansion position**; the macros merge record in
 [port-procedural-macros](port-procedural-macros.md).
+
+## Resolution (2026-09-17)
+
+Merged from `port/interleaving` (`74fa314`, `4d303f1`, `b933e0b`, `e255f36`, head
+`7905031`). A match on an unknown value waits as a neutral `FMatch` frame;
+`V = import "v"; open V` is an open of unit `v` (`unit:v`); `Expander.ExpandUnit`
+hands each top-level binding to `IMacroRuntime.Advance`, which a per-unit
+`UnitRuntime` elaborates (`Elaborator.ElaborateBinding` shared), so a macro compiles
+as of its definition; `pub (<) = …` binders parse; procedural operator macros
+(`infix (~) (stx) { … }`) with an `OperatorUse` form that reflects as
+`RawOperatorUse` and round-trips; a macro binder counts as a role for role mixing
+(M7). **`stage2.fun` compiles** as a unit importing `std`
+(`InterleavingTests.Stage2CompilesAsAUnit`); binding it as the prelude is next. New
+shared cases: `imports/unit-macro-sees-earlier-binding` (5),
+`imports/unit-macro-not-later-binding` (error), `values/stuck-match-in-type` (5) —
+agreeing with the prototype — and `imports/unit-handle-open-form-member` (3), a
+prototype defect ([unit-handle-open-not-a-unit-open](unit-handle-open-not-a-unit-open.md)).
+`macros/core-190` passes. C# 393/689; xUnit 172.
+
+**Not done:** retiring the double elaboration of typed macro arguments — typed
+arguments are elaborated at the call inside the elaborator, not at a unit's top
+level, so interleaving does not make the first result reusable (`ponytail:` stays).
+**Scope:** only a unit's top level advances, not a block's statements: a macro body
+sees no local binder (glossary), and the prototype advances only units.

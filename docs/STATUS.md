@@ -3,11 +3,25 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after .NET port prelude stage 1, 2026-09-17.
+Last updated: after .NET port macros and interleaving, 2026-09-17.
 
 ---
 
 ## Completed
+
+### .NET port — procedural macros and interleaving (2026-09-17)
+
+- **393 of 689 conformance cases pass in C#** (172 xUnit), up from 334/672. Added:
+  procedural macros (reflection over the prelude's `Syntax`, definitions and calls,
+  quotes, the runtime, type-aware macros, operator macros); a unit's expansion and
+  elaboration interleaved per top-level binding, so a macro compiles as of its
+  definition; impl resolution by argument type; a method's `~>` row; stuck matches.
+- `dotnet/std/stage2.fun` now compiles as a unit; binding it as the prelude is next
+  (operators ~171 cases, `type` ~89).
+- User rulings this round, each ticketed: impls resolve to the most precise matching
+  one (`traits.md` "Resolution"; nothing to order until impls can be generic); a block
+  may declare a pattern synonym; `core-210`/`core-214` qualify `Syntax.RExpr`. Open
+  design ticket: a local open expression `M.(e)`. 19 known prototype divergences.
 
 ### .NET port — wave 3: prelude stage 1 (2026-09-17)
 
