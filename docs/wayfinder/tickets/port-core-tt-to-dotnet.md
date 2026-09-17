@@ -350,8 +350,9 @@ queue. Running: [primitives](port-primitives.md) and
 of the prelude. Primitives merged (`5f16665`); the macro runtime interface merged
 (`107a91c`); refs merged (`4fd4b6a`); [effects follow-ups](port-effects-followups.md)
 and [follow-up verification](port-followup-verification.md) merged. [Prelude stage 1](port-prelude-stage1.md)
-and the verification rulings merged. A method's `~>` row merged. Running: [procedural macros](port-procedural-macros.md),
-[trait op by argument](trait-op-takes-innermost-impl.md). Queued: prelude stage 2. The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
+and the verification rulings merged. A method's `~>` row, impl resolution by argument and procedural macros merged.
+Running: [unit interleaving and operator macros](port-unit-interleaving.md). Queued:
+prelude stage 2. The deferred cleanups (the `Syntax.AddScope` / `Syntax.Map` duplicate)
 wait for a quiet moment with no fork editing `Syntax.cs`.
 
 ## Readiness (2026-09-16)
