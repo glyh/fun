@@ -46,6 +46,13 @@ public interface IMacroRuntime
     /// </summary>
     UnitSyntax LoadSyntax(string path);
 
+    /// <summary>
+    /// A compilation unit's top-level binding, just expanded. It is elaborated into the
+    /// unit's context as of here, so a macro defined after it compiles against it (M3):
+    /// expansion and elaboration interleave one binding at a time.
+    /// </summary>
+    void Advance(Binding expanded);
+
     /// <summary>A macro's expanded definition, elaborated where it is defined and evaluated: the macro.</summary>
     Value CompileMacro(Syntax definition);
 

@@ -389,56 +389,7 @@ public static partial class Elaborator
         foreach (var binding in module.Bindings)
         {
             var before = entries.Count;
-            switch (binding)
-            {
-                case Binding.Export export:
-                    inner = InferExport(inner, export, terms, entries);
-                    break;
-
-                case Binding.RecGroup group:
-                    inner = InferRecGroupBinding(inner, group, terms, entries);
-                    break;
-
-                case Binding.Effect effect:
-                    inner = InferEffectBinding(inner, effect, terms, entries);
-                    break;
-
-                case Binding.Trait trait:
-                    inner = InferTraitBinding(inner, trait, terms, entries);
-                    break;
-
-                case Binding.Impl impl:
-                    inner = InferImplBinding(inner, impl, terms, entries);
-                    break;
-
-                case Binding.Let let:
-                {
-                    var ((def, type), performed) = Collecting(inner, c => let.Recursive ? InferRecMember(c, let) : Infer(c, let.Value));
-                    Emit(inner, performed);
-                    var kind = let.Public ? MemberKind.Public : MemberKind.Private;
-                    var term = new BindingTerm.Let(Label(let.Name.Name), kind, def);
-                    // A value that performs is not known at check time (E4): its binder is a rigid
-                    // entry, whose type seals what a generative module declared (E11).
-                    if (!performed.IsEmpty) (type, performingMember) = (Seal(inner, type), true);
-                    inner = performed.IsEmpty
-                        ? ExtendFromSlots(inner, term, [(let.Name.Name, type)])
-                        : BindFromSlots(inner, term, [(let.Name.Name, type)]);
-                    terms.Add(term);
-                    entries.Add(new ModuleEntry.Field(term.Name, kind, type));
-                    break;
-                }
-
-                case Binding.Open open:
-                {
-                    var (after, of, members) = OpenModule(inner, open.Of, open.Label, open.RolesInRegion);
-                    inner = after;
-                    terms.Add(new BindingTerm.Open(of, members));
-                    break;
-                }
-
-                default:
-                    throw new NotImplementedException($"not ported yet: elaborating the binding {binding.GetType().Name}");
-            }
+            inner = ElaborateBinding(inner, binding, terms, entries, ref performingMember);
             clashes.Check(binding, entries.Skip(before));
         }
 
@@ -447,6 +398,68 @@ public static partial class Elaborator
             foreach (var field in entries.OfType<ModuleEntry.Field>())
                 CheckSealedStays(inner, ctx.Width, inner.Width, field.Name, field.Value);
         return (new Term.Module([.. terms]), new Value.VModule([.. entries], Partial: false), terms);
+    }
+
+    /// <summary>
+    /// One binding of a module, elaborated in the context the bindings before it built:
+    /// its terms and entries are appended, and the context it pushed is returned.
+    /// </summary>
+    private static Context ElaborateBinding(Context inner, Binding binding, List<BindingTerm> terms, List<ModuleEntry> entries, ref bool performingMember)
+    {
+        switch (binding)
+        {
+            case Binding.Export export:
+                return InferExport(inner, export, terms, entries);
+
+            case Binding.RecGroup group:
+                return InferRecGroupBinding(inner, group, terms, entries);
+
+            case Binding.Effect effect:
+                return InferEffectBinding(inner, effect, terms, entries);
+
+            case Binding.Trait trait:
+                return InferTraitBinding(inner, trait, terms, entries);
+
+            case Binding.Impl impl:
+                return InferImplBinding(inner, impl, terms, entries);
+
+            case Binding.Let let:
+            {
+                var ((def, type), performed) = Collecting(inner, c => let.Recursive ? InferRecMember(c, let) : Infer(c, let.Value));
+                Emit(inner, performed);
+                var kind = let.Public ? MemberKind.Public : MemberKind.Private;
+                var term = new BindingTerm.Let(Label(let.Name.Name), kind, def);
+                // A value that performs is not known at check time (E4): its binder is a rigid
+                // entry, whose type seals what a generative module declared (E11).
+                if (!performed.IsEmpty) (type, performingMember) = (Seal(inner, type), true);
+                terms.Add(term);
+                entries.Add(new ModuleEntry.Field(term.Name, kind, type));
+                return performed.IsEmpty
+                    ? ExtendFromSlots(inner, term, [(let.Name.Name, type)])
+                    : BindFromSlots(inner, term, [(let.Name.Name, type)]);
+            }
+
+            case Binding.Open open:
+            {
+                var (after, of, members) = OpenModule(inner, open.Of, open.Label, open.RolesInRegion);
+                terms.Add(new BindingTerm.Open(of, members));
+                return after;
+            }
+
+            default:
+                throw new NotImplementedException($"not ported yet: elaborating the binding {binding.GetType().Name}");
+        }
+    }
+
+    /// <summary>
+    /// A unit's top-level binding, just expanded, elaborated into the unit's context as
+    /// of here: what a macro defined after it compiles against (M3). The whole unit is
+    /// elaborated again once it is expanded; this context only serves macro definitions.
+    /// </summary>
+    internal static Context AdvanceUnit(Context unit, Binding binding)
+    {
+        var performing = false;
+        return ElaborateBinding(unit, binding, [], [], ref performing);
     }
 
     /// <summary>

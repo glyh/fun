@@ -113,7 +113,7 @@ public sealed partial class Enforest
             return (fnName, null, value, recursive);
         }
 
-        if (NameOf(stmt.Head) is not Id name) return null;
+        if (BindingNameOf(stmt.Head) is not Id name) return null;
 
         var afterName = stmt.Tail;
         var eq = IndexOfToken(afterName, TokenKind.Eq);
@@ -583,6 +583,19 @@ public sealed partial class Enforest
         term is TokenTree.Leaf { Token: { Kind: TokenKind.Ident i } t }
             ? new Id(i.Name, term.Span, t.Scope)
             : null;
+
+    /// <summary>
+    /// The name a binding binds: a bare identifier, or an operator or identifier in
+    /// parentheses (<c>(&lt;) = …</c>), which binds the value of that spelling.
+    /// </summary>
+    private Id? BindingNameOf(TokenTree? term) => term switch
+    {
+        TokenTree.Group { Delimiter: Delimiter.Paren, Items: [TokenTree.Leaf { Token: { Kind: TokenKind.Operator o } t } inner] }
+            => new Id(o.Spelling, inner.Span, t.Scope),
+        TokenTree.Group { Delimiter: Delimiter.Paren, Items: [TokenTree.Leaf { Token.Kind: TokenKind.Ident } inner] }
+            => NameOf(inner),
+        _ => NameOf(term),
+    };
 
     private string? TokenText(TokenTree term) => term switch
     {

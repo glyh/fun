@@ -81,8 +81,9 @@ public static class Prelude
     private static Stage LoadStage1()
     {
         // Stage 1 imports nothing, so its expander's loader has no units to serve.
-        var expander = new Expander(new Loader(new Dictionary<string, string>()));
-        var unit = expander.Expand(Enforest.ParseUnit(Source("stage1.fun"), "std/stage1.fun"));
+        var loader = new Loader(new Dictionary<string, string>());
+        var expander = new Expander(new UnitRuntime(loader, () => Elaborator.BuiltinContext(new MetaContext(), preludeOpen: false) with { Loader = loader }));
+        var unit = expander.ExpandUnit(Enforest.ParseUnit(Source("stage1.fun"), "std/stage1.fun"));
         var metas = new MetaContext();
         var ctx = Elaborator.BuiltinContext(metas, preludeOpen: false);
         var sink = new EffectSink();

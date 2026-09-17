@@ -27,8 +27,8 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
         if (!_expanding.Add(path)) throw new FunException($"circular import: \"{path}\"");
         try
         {
-            var expander = new Expander(this);
-            var unit = expander.Expand(Enforest.ParseUnit(source, path));
+            var expander = new Expander(new UnitRuntime(this));
+            var unit = expander.ExpandUnit(Enforest.ParseUnit(source, path));
             return _expanded[path] = (unit, expander.SyntaxExports, expander);
         }
         finally
@@ -51,20 +51,25 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
     /// Where a macro is compiled: the base context, nothing opened. The expander wraps a
     /// definition in the unit opens around it, so a body sees exactly its definition site.
     /// </summary>
-    private Context MacroBase => _macroBase ??= Elaborator.BaseContext(_macroMetas, preludeOpen: false) with { Loader = this };
+    internal Context MacroBase => _macroBase ??= Elaborator.BaseContext(_macroMetas, preludeOpen: false) with { Loader = this };
 
-    private (Value Value, Value Type) Compile(Syntax syntax)
+    /// <summary>Elaborates and evaluates a macro's definition or signature in <paramref name="site"/>.</summary>
+    internal Value Compile(Context site, Syntax syntax)
     {
-        var since = _macroMetas.Count;
+        var since = site.Metas.Count;
         var sink = new EffectSink();
-        var (term, type) = Elaborator.Infer(MacroBase with { Sink = sink }, syntax);
-        Elaborator.RequireHandledAtEntry(MacroBase, sink, since);
-        return (MacroBase.Eval(term), type);
+        var (term, _) = Elaborator.Infer(site with { Sink = sink }, syntax);
+        Elaborator.RequireHandledAtEntry(site, sink, since);
+        return site.Eval(term);
     }
 
-    public Value CompileMacro(Syntax definition) => Compile(definition).Value;
+    /// <summary>A program is not a unit: it has no top level that advances.</summary>
+    public void Advance(Binding expanded) =>
+        throw new InvalidOperationException("only a compilation unit's top level advances");
 
-    public Value CompileSignature(Syntax signature) => Compile(signature).Value;
+    public Value CompileMacro(Syntax definition) => Compile(MacroBase, definition);
+
+    public Value CompileSignature(Syntax signature) => Compile(MacroBase, signature);
 
     public Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion) =>
         ApplyMacro(macro, entry.Value, [], args, expansion, output =>

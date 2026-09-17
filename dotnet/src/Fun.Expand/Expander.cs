@@ -217,7 +217,16 @@ public sealed partial class Expander
     /// each binding takes the scopes of every binding before it, so it sees them,
     /// and nothing before it sees it.
     /// </summary>
-    private EquatableArray<Binding> ExpandBindings(EquatableArray<Binding> bindings)
+    /// <summary>
+    /// A compilation unit: its top-level bindings, each handed to the runtime to
+    /// elaborate as soon as it is expanded, so a macro defined after it compiles
+    /// against it (M3). Nested binding lists do not advance the unit.
+    /// </summary>
+    public Syntax ExpandUnit(Syntax unit) => unit is Syntax.Module m
+        ? m with { Bindings = ExpandBindings(m.Bindings, advanceUnit: true) }
+        : throw new InvalidOperationException("a compilation unit is a module");
+
+    private EquatableArray<Binding> ExpandBindings(EquatableArray<Binding> bindings, bool advanceUnit = false)
     {
         // Each pending binding carries whether a `pub` form use published it.
         var pending = new Stack<(Binding Binding, bool Publish)>(bindings.Reverse().Select(b => (b, false)));
@@ -228,6 +237,16 @@ public sealed partial class Expander
         {
             var (next, publish) = pending.Pop();
             if (publish) next = Publish(next);
+            var before = expanded.Count;
+            ExpandBinding(next, publish);
+            if (advanceUnit)
+                for (var i = before; i < expanded.Count; i++) _runtime.Advance(expanded[i]);
+        }
+        // An open's region is the rest of the list: what it may not supply is known now.
+        return [.. expanded.Select(b => b is Binding.Open o ? o with { RolesInRegion = RolesInRegion(o.Label) } : b)];
+
+        void ExpandBinding(Binding next, bool publish)
+        {
             switch (next)
             {
                 case Binding.Items items:
@@ -337,8 +356,6 @@ public sealed partial class Expander
                     throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");
             }
         }
-        // An open's region is the rest of the list: what it may not supply is known now.
-        return [.. expanded.Select(b => b is Binding.Open o ? o with { RolesInRegion = RolesInRegion(o.Label) } : b)];
     }
 
     private static Id Rename(Id name, ScopeSet scope, string resolved) =>
