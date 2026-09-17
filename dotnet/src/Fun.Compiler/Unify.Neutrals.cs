@@ -18,8 +18,18 @@ public static partial class Unify
                 case (Frame.FDot x, Frame.FDot y) when x.Name == y.Name: break;
                 case (Frame.FRefGet, Frame.FRefGet): break;
                 case (Frame.FRefSet x, Frame.FRefSet y): Values(mc, width, x.Value, y.Value); break;
-                case (Frame.FApp or Frame.FProj or Frame.FDot or Frame.FRefGet or Frame.FRefSet,
-                      Frame.FApp or Frame.FProj or Frame.FDot or Frame.FRefGet or Frame.FRefSet):
+                // Two stuck matches agree when they test alike and every arm's result does.
+                case (Frame.FMatch x, Frame.FMatch y)
+                    when x.Match.Tree == y.Match.Tree && x.Match.Bodies.Length == y.Match.Bodies.Length:
+                    for (var arm = 0; arm < x.Match.Bodies.Length; arm++)
+                    {
+                        var (left, binders) = Nbe.OpenArm(mc, width, x, arm);
+                        var (right, _) = Nbe.OpenArm(mc, width, y, arm);
+                        Values(mc, width + binders, left, right);
+                    }
+                    break;
+                case (Frame.FApp or Frame.FProj or Frame.FDot or Frame.FRefGet or Frame.FRefSet or Frame.FMatch,
+                      Frame.FApp or Frame.FProj or Frame.FDot or Frame.FRefGet or Frame.FRefSet or Frame.FMatch):
                     throw new UnifyException("stuck computations with different eliminations");
                 default:
                     throw new NotImplementedException($"not ported yet: unifying stuck {a.Frames[i].GetType().Name} frames");

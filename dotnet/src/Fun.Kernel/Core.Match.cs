@@ -77,5 +77,14 @@ public abstract partial record DecisionTree
     public sealed record Switch(Occurrence At, EquatableArray<SwitchCase> Cases, DecisionTree Default) : DecisionTree;
 }
 
+public abstract partial record Frame
+{
+    /// <summary>
+    /// A match waiting on a value whose head is unknown: its arms stay closed over
+    /// <paramref name="Env"/>, each under its own binders.
+    /// </summary>
+    public sealed record FMatch(Environment Env, Term.Match Match) : Frame;
+}
+
 public sealed record DestructCase(string Name, DecisionTree Tree);
 public sealed record SwitchCase(Atom Key, DecisionTree Tree);

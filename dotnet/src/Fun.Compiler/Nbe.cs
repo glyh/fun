@@ -339,7 +339,10 @@ public static partial class Nbe
                         continue;
                     }
 
-                    case Kont.MatchOn f: (env, term) = SelectArm(mc, f.Env, value, f.Match); goto evaluate;
+                    case Kont.MatchOn f:
+                        if (StuckMatch(mc, value, f.Env, f.Match) is { } stuck) { value = stuck; continue; }
+                        (env, term) = SelectArm(mc, f.Env, value, f.Match);
+                        goto evaluate;
                     case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
                     case Kont.QuoteFill f: value = FillQuote(f, value); continue;
                     case Kont.TraitDictOf f: value = TraitDict(f, value); continue;
@@ -552,6 +555,7 @@ public static partial class Nbe
                 Frame.FDot d => new Term.Dot(acc, d.Name),
                 Frame.FRefGet => new Term.RefGet(acc),
                 Frame.FRefSet s => new Term.RefSet(acc, Quote(mc, width, s.Value)),
+                Frame.FMatch m => QuoteStuckMatch(mc, width, acc, m),
                 _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
             }),
             var other => throw new NotImplementedException($"not ported yet: reading back {other.GetType().Name}"),
