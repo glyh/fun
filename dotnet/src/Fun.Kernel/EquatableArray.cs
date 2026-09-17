@@ -31,6 +31,9 @@ public readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>, IReadO
     public EquatableArray<T> Insert(int index, T item) => new(Items.Insert(index, item));
     public EquatableArray<T> RemoveAt(int index) => new(Items.RemoveAt(index));
 
+    /// <summary>The <paramref name="length"/> items from <paramref name="start"/>: what a list pattern's <c>..</c> slice takes.</summary>
+    public EquatableArray<T> Slice(int start, int length) => new(Items.Slice(start, length));
+
     public bool Equals(EquatableArray<T> other) => Items.SequenceEqual(other.Items);
     public override bool Equals(object? obj) => obj is EquatableArray<T> other && Equals(other);
     public override int GetHashCode() => Items.Aggregate(0, (h, item) => HashCode.Combine(h, item));

@@ -163,6 +163,13 @@ public abstract partial record Syntax
             RefNew n => n with { Arg = Go(n.Arg) },
             RefGet g => g with { Ref = Go(g.Ref) },
             RefSet r => r with { Ref = Go(r.Ref), Value = Go(r.Value) },
+            MacroDef d => d with { Name = m.Id(d.Name), Value = Go(d.Value), Body = Go(d.Body), Output = GoOpt(d.Output) },
+            MacroCall c => c with { Head = Go(c.Head), Args = [.. c.Args.Select(m.MapCapture)] },
+            Quote q => q with { Template = Go(q.Template), Holes = [.. q.Holes.Select(h => (h.Hole, Go(h.Value)))] },
+            QuoteDecls q => q with { Items = [.. q.Items.Select(b => b.Map(m))], Holes = [.. q.Holes.Select(h => (h.Hole, Go(h.Value)))] },
+            Stx x => x with { Inner = Go(x.Inner) },
+            // Written after expansion, where its form was already elaborated: left alone.
+            Elaborated => this,
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over {GetType().Name}"),
         };
         return m.Form(mapped);
@@ -212,6 +219,8 @@ public abstract partial record Binding
                 Arg = i.Arg.Map(m),
                 Fields = i.Fields is { } fields ? [.. fields.Select(f => (f.Name, f.Value.Map(m)))] : null,
             },
+            Macro ma => ma with { Name = m.Id(ma.Name), Value = ma.Value.Map(m), Output = ma.Output?.Map(m) },
+            MacroCall c => c with { Head = c.Head.Map(m), Args = [.. c.Args.Select(m.MapCapture)] },
             _ => throw new NotImplementedException($"not ported yet: a syntax traversal over the binding {GetType().Name}"),
         };
         return m.Binding(mapped);
@@ -224,6 +233,7 @@ public abstract partial record Binding
         RecGroup g => g with { Members = [.. g.Members.Select(x => x with { Name = f(x.Name) })] },
         Method me => me with { Name = f(me.Name) },
         SyntaxDecl s => s with { Name = f(s.Name) },
+        Macro ma => ma with { Name = f(ma.Name) },
         _ => this,
     };
 }
