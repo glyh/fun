@@ -352,6 +352,11 @@ every defect below is an invariant with no name in the source.
 
 ### Language and macro work
 
+- [A local open expression, `M.(expr)`](tickets/local-open-expression.md) — (open,
+  grilling) OCaml's `M.(e)`; would expand to the existing `Open`. Undecided: path-only
+  left side, parentheses vs braces (`M.{…}` is export selection), pattern and type
+  position, shadowing warnings.
+
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
   increment 1 (Bool + `if`) landed; increment 2 (2026-09-16) deleted five unused

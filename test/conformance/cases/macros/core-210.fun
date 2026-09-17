@@ -2,8 +2,8 @@
 {
        macro default[A](_) : Expr(A) {
          match (A) {
-         RExpr(I64) => Syntax.i64(0),
-         RExpr(Bool) => quote(False),
+         Syntax.RExpr(I64) => Syntax.i64(0),
+         Syntax.RExpr(Bool) => quote(False),
          _ => { _ = A; Syntax.i64(42) }
          }
        };
