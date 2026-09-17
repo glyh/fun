@@ -809,6 +809,7 @@ public sealed partial class Enforest(EnforestEnv env)
         Syntax.LetRecGroup g => g with { Body = body },
         Syntax.Open o => o with { Body = body },
         Syntax.SyntaxDef d => d with { Body = body },
+        Syntax.MacroDef d => d with { Body = body },
         _ => throw new NotImplementedException($"not ported yet: reading the statement {statement.GetType().Name} as quoted syntax"),
     };
 }

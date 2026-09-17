@@ -10,7 +10,12 @@ namespace Fun.Compiler;
 /// program names: it is reached only through another primitive's type.
 /// </summary>
 public sealed record PrimitiveDeclaration(
-    string Name, Value? Type, Func<EquatableArray<Frame>, Value?> Reduce);
+    string Name, Value? Type, Func<MetaContext, EquatableArray<Frame>, Value?> Reduce)
+{
+    /// <summary>A primitive that reduces on its arguments alone.</summary>
+    public PrimitiveDeclaration(string name, Value? type, Func<EquatableArray<Frame>, Value?> reduce)
+        : this(name, type, (_, frames) => reduce(frames)) { }
+}
 
 /// <summary>
 /// The one declaration of every primitive (unify-primitive-declaration.md). The base
@@ -59,8 +64,8 @@ public static class Primitives
 
         // expand_block[Syntax.Expr](b), expand_decls[Syntax.Decls](d): typed in the
         // prelude's Syntax module; they run only inside a macro application.
-        new("expand_block", OverType(new Term.Pi(Explicitness.Explicit, new Term.Var(0), new Term.Var(1))), MacroRuntime("expand_block")),
-        new("expand_decls", OverType(new Term.Pi(Explicitness.Explicit, new Term.Var(0), new Term.Var(1))), MacroRuntime("expand_decls")),
+        new("expand_block", OverType(new Term.Pi(Explicitness.Explicit, new Term.Var(0), new Term.Var(1))), MacroRuntime("expand_block", a => a.ExpandBlock)),
+        new("expand_decls", OverType(new Term.Pi(Explicitness.Explicit, new Term.Var(0), new Term.Var(1))), MacroRuntime("expand_decls", a => a.ExpandDecls)),
 
         // Tuple : (n : I64) -> tuple_arity(n); Tuple(n, T1, ..., Tn) is the flat product.
         new(Tuple, Arrow(new Value.VAtomTy(AtomTy.I64),
@@ -72,8 +77,8 @@ public static class Primitives
         Declarations.ToDictionary(d => d.Name);
 
     /// <summary>The application of primitive <paramref name="name"/> to <paramref name="frames"/>, or null while stuck.</summary>
-    public static Value? Reduce(string name, EquatableArray<Frame> frames) =>
-        ByName.TryGetValue(name, out var declaration) ? declaration.Reduce(frames) : null;
+    public static Value? Reduce(MetaContext mc, string name, EquatableArray<Frame> frames) =>
+        ByName.TryGetValue(name, out var declaration) ? declaration.Reduce(mc, frames) : null;
 
     // ---- reducers -----------------------------------------------------------
 
@@ -146,9 +151,11 @@ public static class Primitives
             : null;
 
     /// <summary>Asks the running macro application to expand its argument; stuck on an unknown one.</summary>
-    private static Func<EquatableArray<Frame>, Value?> MacroRuntime(string name) => frames =>
-        frames.Length == 2 && frames[1] is Frame.FApp { Arg: not (Value.VVar or Value.VMeta or Value.VNeutral) }
-            ? throw new NotImplementedException($"not ported yet: `{name}`, which needs the macro runtime")
+    private static Func<MetaContext, EquatableArray<Frame>, Value?> MacroRuntime(string name, Func<MacroApplication, Func<Value, Value>> expand) =>
+        (mc, frames) => frames.Length == 2 && frames[1] is Frame.FApp { Arg: not (Value.VVar or Value.VMeta or Value.VNeutral) } arg
+            ? mc.Budget.Application is { } application
+                ? expand(application)(arg.Arg)
+                : throw new FunException($"`{name}` runs only inside a macro application")
             : null;
 
     /// <summary><c>tuple_arity(n)</c>: <c>Type</c> after no more arguments, else <c>Type -&gt; tuple_arity(n - 1)</c>.</summary>

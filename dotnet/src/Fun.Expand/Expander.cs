@@ -10,7 +10,7 @@ namespace Fun.Expand;
 /// </summary>
 public sealed partial class Expander
 {
-    private readonly BinderTable _bindings = new();
+    private BinderTable _bindings = new();
     private int _scopeCounter;
     private int _resolvedNameCounter;
 
@@ -118,7 +118,7 @@ public sealed partial class Expander
                 return r with { Type = Expand(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Expand(f.Value)))] };
 
             case Syntax.Ap a:
-                return a with { Fn = Expand(a.Fn), Arg = Expand(a.Arg) };
+                return ExpandMacroApplication(a) ?? a with { Fn = Expand(a.Fn), Arg = Expand(a.Arg) };
 
             case Syntax.Annotated a:
                 return a with { Inner = Expand(a.Inner), Type = Expand(a.Type) };
@@ -200,6 +200,13 @@ public sealed partial class Expander
             case Syntax.Instantiate use:
                 return ExpandInstantiate(use);
 
+            case Syntax.MacroDef d:
+                return Expand(d.Body.AddScope(DefineMacro(d.Name, d.Value, d.Kind, d.Output, isPublic: false)));
+            case Syntax.MacroCall call: return ExpandMacroCall(call);
+            case Syntax.Quote or Syntax.QuoteDecls: return ExpandQuote(stx);
+            // A typed macro's argument, and one its output placed where the call elaborated it: left for the elaborator.
+            case Syntax.Stx or Syntax.Elaborated: return stx;
+
             default:
                 throw new NotImplementedException($"not ported yet: expanding {stx.GetType().Name}");
         }
@@ -252,6 +259,21 @@ public sealed partial class Expander
 
                 case Binding.Hole hole:
                     throw new ExpandException($"an unfilled declaration hole {hole.Name.Name}");
+
+                // A macro binds for the items after it; it contributes no member.
+                case Binding.Macro macro:
+                {
+                    macro = (Binding.Macro)macro.AddScope(active);
+                    active = active.Union(DefineMacro(macro.Name, macro.Value, macro.Kind, macro.Output, macro.Public));
+                    break;
+                }
+
+                case Binding.MacroCall call:
+                {
+                    var returned = ApplyDeclMacro((Binding.MacroCall)call.AddScope(active));
+                    foreach (var b in returned.Reverse()) pending.Push((b, publish || call.Public));
+                    break;
+                }
 
                 case Binding.Let l:
                 {

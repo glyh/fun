@@ -222,6 +222,8 @@ public static partial class Elaborator
             case Syntax.TraitBoundSet: throw new FunException("a {…} bound lists traits");
             case Syntax.Enum e: return InferEnum(ctx, e);
             case Syntax.PatternSynonym s: return InferPatternSynonym(ctx, s);
+            case Syntax.Quote or Syntax.QuoteDecls: return InferQuote(ctx, stx);
+            case Syntax.MacroCall: throw new NotImplementedException("not ported yet: a type-aware macro's call");
 
             case Syntax.Open open:
             {
@@ -326,6 +328,7 @@ public static partial class Elaborator
                 return CheckUnderImplicit(ctx, stx, implicitPi);
 
             case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
+            case (Syntax.QuoteDecls quote, _) when CheckQuoteDecl(ctx, quote, expected) is { } decl: return decl;
 
             case (Syntax.Lam lam, Value.VPi pi):
             {

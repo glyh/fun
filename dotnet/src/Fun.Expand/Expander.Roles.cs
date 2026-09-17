@@ -107,14 +107,7 @@ public sealed partial class Expander
         if (inst.Rule.Replacement is not Replacement.Decls decls)
             throw new ExpandException($"syntax form {inst.Form.Name} returns an expression where declarations go");
         var fill = Fill(captures);
-        return [.. SpliceDeclHoles(captures, decls.Bindings.Select(b => b.Map(fill))).Select(b =>
-        {
-            var flipped = b.Map(app.Emit);
-            // A declaration returned into a definition context binds for the rest
-            // of it, so its binders lose the use-site scope (Flatt 2016); unread
-            // items do too, on every token, whichever turns out a binder.
-            return flipped is Binding.Items ? flipped.Map(app.PruneUseSite) : flipped.MapBinders(app.PruneUseSite.Id);
-        })];
+        return [.. SpliceDeclHoles(captures, decls.Bindings.Select(b => b.Map(fill))).Select(b => EmitBinding(app, b))];
     }
 
     private static Dictionary<string, Capture> Receive(Application app, Instantiation inst) =>
@@ -225,6 +218,7 @@ public sealed partial class Expander
     /// <summary>A block's declarations as the private declarations that scope over the rest: unread items are read.</summary>
     private IEnumerable<Binding> BlockDecls(Binding binding)
     {
+        if (binding is Binding.MacroCall call) return ApplyDeclMacro(call).SelectMany(BlockDecls);
         if (binding is not Binding.Items items) return [binding];
         var read = new List<Binding>();
         var terms = new Terms(items.Terms);
@@ -243,6 +237,7 @@ public sealed partial class Expander
         Binding.Let { Public: false } l => new Syntax.Let(l.Name, null, l.Value, body, l.Recursive, body.Span),
         Binding.RecGroup { Public: false } g => new Syntax.LetRecGroup(g.Members, body, body.Span),
         Binding.SyntaxDecl { Public: false } s => new Syntax.SyntaxDef(s.Name, s.Role, body, body.Span),
+        Binding.Macro { Public: false } m => new Syntax.MacroDef(m.Name, m.Value, body, m.Kind, m.Output, body.Span),
         Binding.Open o => new Syntax.Open(o.Of, body, o.Label, body.Span),
         _ => throw new ExpandException("a declaration syntax form in a block writes only private lets, opens and syntax"),
     };
@@ -255,6 +250,12 @@ public sealed partial class Expander
         Binding.Method m => m with { Public = true },
         Binding.SyntaxDecl s => s with { Public = true },
         Binding.Instantiate i => i with { Public = true },
+        Binding.Macro m => m with { Public = true },
+        Binding.MacroCall c => c with { Public = true },
+        Binding.Effect e => e with { Public = true },
+        Binding.Trait t => t with { Public = true },
+        Binding.Impl i => i with { Public = true },
+        Binding.Export e => e with { Public = true },
         _ => binding,
     };
 }

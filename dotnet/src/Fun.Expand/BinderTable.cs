@@ -11,7 +11,7 @@ namespace Fun.Expand;
 public enum BinderMeaning { Value, Macro, Role }
 
 /// <summary>A binder: its scope set, its resolved name, what it means, and a role binder's role.</summary>
-public sealed record Binder(ScopeSet Scope, string ResolvedName, BinderMeaning Kind, Role? Role = null)
+public sealed record Binder(ScopeSet Scope, string ResolvedName, BinderMeaning Kind, Role? Role = null, EquatableArray<HoleKind>? MacroParams = null)
 {
     /// <summary>An order group's name is a role binder of its own sort: it never mixes with another binder of its name.</summary>
     public bool IsGroup => Role?.Meaning is RoleMeaning.OrderGroup;
@@ -37,10 +37,10 @@ public sealed class BinderTable
     // the innermost.
     private readonly Dictionary<string, List<Binder>> _bindings = [];
 
-    public void Extend(string name, ScopeSet scope, string resolvedName, BinderMeaning kind = BinderMeaning.Value, Role? role = null)
+    public void Extend(string name, ScopeSet scope, string resolvedName, BinderMeaning kind = BinderMeaning.Value, Role? role = null, EquatableArray<HoleKind>? macroParams = null)
     {
         if (!_bindings.TryGetValue(name, out var existing)) _bindings[name] = existing = [];
-        existing.Insert(0, new Binder(scope, resolvedName, kind, role));
+        existing.Insert(0, new Binder(scope, resolvedName, kind, role, macroParams));
     }
 
     /// <summary>Every binder, with its written name.</summary>

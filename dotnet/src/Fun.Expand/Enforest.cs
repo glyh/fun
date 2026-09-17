@@ -69,6 +69,9 @@ public sealed partial class Enforest
 
         if (ParseRoleDecl(stmt) is var (roleName, role)) return new Syntax.SyntaxDef(roleName, role, body, span);
 
+        if (ParseMacroDecl(stmt) is var (macroName, macroValue, macroKind, macroOutput))
+            return new Syntax.MacroDef(macroName, macroValue, body, macroKind, macroOutput, span);
+
         if (ParsePatternSynonym(stmt) is var (synName, synonym)) return new Syntax.Let(synName, null, synonym, body, false, span);
 
         var decl = ParseValueDeclStatement(stmt);
@@ -175,6 +178,10 @@ public sealed partial class Enforest
 
         if (ParseExportStatement(isPublic, unprefixed) is { } export) return [export];
 
+        if (ParseMacroDecl(unprefixed) is var (macroName, macroValue, macroKind, macroOutput))
+            return [new Binding.Macro(macroName, macroValue, isPublic, macroKind, macroOutput)];
+        if (ParseMacroCallItem(unprefixed, isPublic) is { } macroCall) return [macroCall];
+
         if (ParseOpenStatement(unprefixed) is { } opened)
         {
             if (isPublic) throw new ExpandException("open is not a public item");
@@ -231,6 +238,7 @@ public sealed partial class Enforest
         var rest = terms.Tail;
 
         if (PrefixRoleUse(term, rest) is var (roleUse, afterRoleUse)) return (roleUse, afterRoleUse);
+        if (ParseQuote(term, rest) is var (quote, afterQuote)) return (quote, afterQuote);
 
         switch (term)
         {
@@ -315,6 +323,11 @@ public sealed partial class Enforest
             {
                 RequireAdjacent(lhs.Span, call.Span, "function call");
                 var callSpan = SourceSpan.Between(lhs.Span, call.Span);
+                if (MacroCallArgs(lhs, call) is { } macroArgs)
+                {
+                    (lhs, terms) = (new Syntax.MacroCall(lhs, macroArgs, callSpan), terms.Tail);
+                    continue;
+                }
                 var items = new Terms(call.Items);
                 var args = DropSeparators(items).IsEmpty
                     ? [Unit(call.Span)]
@@ -411,8 +424,24 @@ public sealed partial class Enforest
     /// </summary>
     private (Syntax, Terms) ParseFn(SourceSpan startSpan, Terms terms)
     {
-        // `fn[A : Type](x : A)`: an implicit list, then an explicit one, each
-        // touching what precedes it. Either may be absent, not both.
+        var (parameters, afterParams) = ParseFnParams(startSpan, terms);
+        var (result, row, afterResult) = ParseResult(afterParams);
+        var (body, rest, bodySpan) = ParseBody(afterResult);
+        var span = SourceSpan.Between(startSpan, bodySpan);
+
+        var lam = parameters.Reverse().Aggregate(body, (acc, p) => new Syntax.Lam(p, acc, span));
+        var value = result is null
+            ? lam
+            : new Syntax.Annotated(lam, FunctionType(span, parameters, result, row), span);
+        return (value, rest);
+    }
+
+    /// <summary>
+    /// A function's parameter lists: an implicit list, then an explicit one, each
+    /// touching what precedes it. Either may be absent, not both.
+    /// </summary>
+    private (EquatableArray<Param>, Terms) ParseFnParams(SourceSpan startSpan, Terms terms)
+    {
         terms = DropSeparators(terms);
         EquatableArray<Param> implicits = [];
         var previous = startSpan;
@@ -434,16 +463,7 @@ public sealed partial class Enforest
         else if (implicits.IsEmpty)
             throw new ExpandException("fn requires at least one parameter list");
 
-        EquatableArray<Param> parameters = [.. implicits, .. explicits];
-        var (result, row, afterResult) = ParseResult(terms);
-        var (body, rest, bodySpan) = ParseBody(afterResult);
-        var span = SourceSpan.Between(startSpan, bodySpan);
-
-        var lam = parameters.Reverse().Aggregate(body, (acc, p) => new Syntax.Lam(p, acc, span));
-        var value = result is null
-            ? lam
-            : new Syntax.Annotated(lam, FunctionType(span, parameters, result, row), span);
-        return (value, rest);
+        return ([.. implicits, .. explicits], terms);
     }
 
     private EquatableArray<Param> ParseParamGroup(Terms items, Explicitness explicitness)

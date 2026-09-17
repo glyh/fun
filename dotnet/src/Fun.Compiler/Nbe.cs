@@ -170,6 +170,11 @@ public static partial class Nbe
 
                     case Term.Nominal { Captures.IsEmpty: true } n: value = new Value.VNominal(n.Decl, []); break;
                     case Term.Nominal n: stack.Push(new Kont.NominalOf(n.Decl)); term = new Term.Prod(n.Captures); continue;
+                    case Term.Quote { Holes.IsEmpty: true } q: value = q.Template; break;
+                    case Term.Quote q:
+                        stack.Push(new Kont.QuoteFill(q.Template, [.. q.Holes.Select(h => h.Hole)]));
+                        term = new Term.Prod([.. q.Holes.Select(h => h.Value)]);
+                        continue;
                     case Term.RecursiveOccurrence o: stack.Push(new Kont.RecursiveOccurrenceOf(o.Decl, o.Captures.Length)); term = new Term.Prod([.. o.Captures, .. o.Args]); continue;
                     case Term.Con con: value = Construct(env, con); break;
                     case Term.TraitRef t: value = new Value.VTrait(t.Decl); break;
@@ -336,6 +341,7 @@ public static partial class Nbe
 
                     case Kont.MatchOn f: (env, term) = SelectArm(mc, f.Env, value, f.Match); goto evaluate;
                     case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
+                    case Kont.QuoteFill f: value = FillQuote(f, value); continue;
                     case Kont.TraitDictOf f: value = TraitDict(f, value); continue;
                     case Kont.RefKont f: value = FinishRef(f, value); continue;
                     case Kont.RecursiveOccurrenceOf f: value = RecursiveOccurrence(f, (Value.VProd)value); continue;
@@ -447,7 +453,7 @@ public static partial class Nbe
     private static Value ApplyStuck(MetaContext mc, Value fn, Value arg) => Force(mc, fn) switch
     {
         Value.VLam or Value.VFix => Apply(mc, Force(mc, fn), arg),
-        Value.VNeutral n => ReduceNeutral(n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) }),
+        Value.VNeutral n => ReduceNeutral(mc, n with { Ty = ApplyTy(mc, n.Ty, arg), Frames = n.Frames.Add(new Frame.FApp(arg)) }),
         Value.VMeta f => f with { Spine = f.Spine.Add(arg) },
         Value.VVar r => r with { Spine = r.Spine.Add(arg) },
         Value.VEffect e => e with { Params = e.Params.Add(arg) },

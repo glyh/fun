@@ -182,6 +182,9 @@ public static partial class Elaborator
             case Syntax.FieldAccess access:
             {
                 var (of, ofType) = Infer(ctx, access.Of);
+                // `M.C`, where `C` is a constructor exported into the module `M`.
+                if (ctx.Force(ofType) is Value.VModule module && module.PublicMember(access.Field) is { Constructor: { } mark })
+                    return Instantiate(ctx, mark.Type, mark.TypeType) is { } exported ? (exported, mark.Constructor) : null;
                 if (Instantiate(ctx, ctx.Eval(of), ofType) is not { } nominal) return null;
                 var constructor = nominal.Decl.Constructor(access.Field) ?? throw new FunException($"unknown constructor `{access.Field}`");
                 return (nominal, constructor);

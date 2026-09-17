@@ -46,6 +46,30 @@ public sealed class Budget
         }
     }
 
+    /// <summary>The innermost macro application running under this budget, answering <c>expand_block</c> and <c>expand_decls</c>.</summary>
+    public MacroApplication? Application { get; private set; }
+
+    /// <summary>
+    /// A macro application is a call (M5): it spends one step, and its body and the
+    /// expansion of its output spend from the same request, so a nest of applications
+    /// is bounded as a whole, breadth included.
+    /// </summary>
+    public T MacroApplication<T>(MacroApplication application, Func<T> work) =>
+        Request($"the application of macro '{application.Macro}'", () =>
+        {
+            var outer = Application;
+            Application = application;
+            try
+            {
+                Spend($"macro '{application.Macro}'");
+                return work();
+            }
+            finally
+            {
+                Application = outer;
+            }
+        });
+
     /// <summary>
     /// Spends one step on <paramref name="call"/>. A fixpoint unfold names itself, so an
     /// overrun in a divergent evaluation names the definition it keeps calling.
@@ -60,3 +84,9 @@ public sealed class Budget
         _remaining--;
     }
 }
+
+/// <summary>
+/// A running macro application: <c>expand_block</c> and <c>expand_decls</c>, which
+/// expand a reflected block or declaration list where the application runs (M9).
+/// </summary>
+public sealed record MacroApplication(string Macro, Func<Kernel.Value, Kernel.Value> ExpandBlock, Func<Kernel.Value, Kernel.Value> ExpandDecls);

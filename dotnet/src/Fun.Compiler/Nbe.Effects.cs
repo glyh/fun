@@ -102,7 +102,7 @@ public static partial class Nbe
         }
         // The checker only evaluates terms that perform nothing; reaching here while
         // checking means a check-time evaluation site was not ported with that guard.
-        if (mc.Budget.Checking)
+        if (mc.Budget.Checking && mc.Budget.Application is null)
             throw new NotImplementedException($"not ported yet: the checker evaluated a term that performs {Describe(instance)}.{op}");
         throw new FunException($"unhandled effect: {Describe(instance)}.{op}");
     }

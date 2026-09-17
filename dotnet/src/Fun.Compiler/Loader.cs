@@ -37,6 +37,62 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
         }
     }
 
+    // ---- the macro runtime ------------------------------------------------------
+
+    /// <summary>
+    /// The metas macros are compiled and run with. An application solves nothing its
+    /// caller needs, and all of this loader's expansions spend from its one budget.
+    /// </summary>
+    private readonly MetaContext _macroMetas = new();
+
+    private Context? _macroBase;
+
+    /// <summary>
+    /// Where a macro is compiled: the base context, nothing opened. The expander wraps a
+    /// definition in the unit opens around it, so a body sees exactly its definition site.
+    /// </summary>
+    private Context MacroBase => _macroBase ??= Elaborator.BaseContext(_macroMetas, preludeOpen: false) with { Loader = this };
+
+    private (Value Value, Value Type) Compile(Syntax syntax)
+    {
+        var since = _macroMetas.Count;
+        var sink = new EffectSink();
+        var (term, type) = Elaborator.Infer(MacroBase with { Sink = sink }, syntax);
+        Elaborator.RequireHandledAtEntry(MacroBase, sink, since);
+        return (MacroBase.Eval(term), type);
+    }
+
+    public Value CompileMacro(Syntax definition) => Compile(definition).Value;
+
+    public Value CompileSignature(Syntax signature) => Compile(signature).Value;
+
+    public Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion) =>
+        ApplyMacro(macro, entry.Value, [], args, expansion, output =>
+            Reflection.OfPrelude.ReadExpr(output) ?? throw new FunException($"macro {macro} did not return syntax"));
+
+    public EquatableArray<Binding> ApplyDecls(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion) =>
+        ApplyMacro(macro, entry.Value, [], args, expansion, output =>
+            Reflection.OfPrelude.ReadDeclOutput(output) ?? throw new FunException($"macro {macro} did not return declarations"));
+
+    /// <summary>
+    /// Applies <paramref name="macro"/> to its type binders' solutions, each as the
+    /// reflected type it was solved to, then to each argument as the value of its kind,
+    /// under the budget (M5); <paramref name="read"/> reads its output back.
+    /// </summary>
+    internal T ApplyMacro<T>(string macro, Value fn, IEnumerable<Value> types, EquatableArray<Capture> args, MacroExpansion expansion, Func<Value, T> read)
+    {
+        var r = Reflection.OfPrelude;
+        var application = new MacroApplication(macro,
+            v => r.ReflectExpr(expansion.ExpandBlock(r.ReadExpr(v) ?? throw new FunException($"expand_block in macro {macro}: not syntax"))),
+            v => r.ReflectDecls(expansion.ExpandDecls(r.ReadDeclOutput(v) ?? throw new FunException($"expand_decls in macro {macro}: not declarations"))));
+        return _macroMetas.Budget.MacroApplication(application, () =>
+        {
+            foreach (var type in types) fn = Nbe.Apply(_macroMetas, fn, r.ReflectType(type));
+            foreach (var arg in args) fn = Nbe.Apply(_macroMetas, fn, r.ReflectCapture(arg));
+            return read(fn);
+        });
+    }
+
     public (Value Value, Value Type) Load(string path, MetaContext metas)
     {
         // Elaborated once per process; the importer's metas are seeded from the prelude's.

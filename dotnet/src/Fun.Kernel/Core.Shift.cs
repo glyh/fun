@@ -48,6 +48,8 @@ public abstract partial record Term
             RefGet r => new RefGet(Go(r.Ref)),
             RefSet r => new RefSet(Go(r.Ref), Go(r.Value)),
             Prod p => new Prod([.. p.Items.Select(i => Go(i))]),
+            // The template is a closed value; only the holes are terms of this context.
+            Quote q => q with { Holes = [.. q.Holes.Select(h => (h.Hole, Go(h.Value)))] },
             ProdTy p => new ProdTy([.. p.Items.Select(i => Go(i))]),
             Proj p => p with { Of = Go(p.Of) },
             Dot d => d with { Of = Go(d.Of) },

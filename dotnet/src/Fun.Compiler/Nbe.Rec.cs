@@ -32,7 +32,8 @@ public static partial class Nbe
 
             // While checking, a call of a known-pure fixpoint is deferred: conversion
             // compares two such calls by their arguments before unfolding either.
-            case Value.VFix fix when fix.Member.Pure && mc.Budget.Checking:
+            // A macro application runs its body like a program: its result is read at once.
+            case Value.VFix fix when fix.Member.Pure && mc.Budget.Checking && mc.Budget.Application is null:
                 result = new Value.VGlued(fix, arg, new Lazy<Value>(() => UnfoldCall(mc, fix, arg)));
                 return null;
 

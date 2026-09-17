@@ -70,9 +70,11 @@ public class PrimitivesTests
         Assert.IsType<Value.VNeutral>(Apply(Prim("panic"), Value.VU.Instance, new Value.VVar(0, [])));
     }
 
+    /// <summary>expand_block and expand_decls answer the macro application they run in; outside one there is none.</summary>
     [Fact]
-    public void MacroRuntimePrimitivesAreNotPortedYet() =>
-        Assert.Throws<NotImplementedException>(() => Apply(Prim("expand_block"), Value.VU.Instance, I64(0)));
+    public void MacroRuntimePrimitivesRunOnlyInsideAnApplication() =>
+        Assert.Equal("`expand_block` runs only inside a macro application",
+            Assert.Throws<FunException>(() => Apply(Prim("expand_block"), Value.VU.Instance, I64(0))).Message);
 
     /// <summary>
     /// The shared cases values/runtime-i64-overflow and runtime-division-by-zero
