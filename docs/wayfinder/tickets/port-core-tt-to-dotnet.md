@@ -1,8 +1,8 @@
 ---
-title: Port core_tt to .NET (F#/C#)
+title: Port core_tt to .NET (C#)
 parent: ../fun-design-map.md
 labels:
-  - wayfinder:grilling
+  - wayfinder:task
 status: open
 assignee:
 blocked_by:
@@ -27,11 +27,71 @@ blocked_by:
   - macro-annotation-constraints-mean-nothing.md
 ---
 
-# Port `core_tt` to .NET (F#/C#)
+# Port `core_tt` to .NET (C#)
+
+## Handover (2026-09-17) — start here
+
+**State.** The port is under way in `dotnet/` and **paused by the user** at a clean
+point: `main` is `1453609`+, no forks running, no worktrees left. C#: **393 of 689**
+conformance cases pass, **172/172** xUnit. OCaml: 689 cases, 0 failed, **19 known
+prototype divergences** (`test/conformance/prototype-divergences.txt`). History of
+each step is in the waves below and in each `port-*.md` ticket's Resolution.
+
+**Verify first:**
+```
+cd dotnet && dotnet build -v q --nologo && timeout 300 dotnet test test/Fun.Tests --nologo -v q \
+  && timeout 300 dotnet run --project test/Fun.Conformance --no-build | tail -1
+cd .. && dune test && dune test test/conformance
+```
+
+**How the work runs** (user preferences, also in memory):
+- The domain model and `CONTEXT.md` are the spec; the OCaml prototype is supporting
+  material and is not maintained after the port. A prototype defect: reproduce it,
+  ticket it, fix it in C# only, add the shared case with the correct `.expect`, list
+  it in `prototype-divergences.txt`.
+- Work fans out to fork subagents in worktrees (`fork-and-integrate` skill), **at most
+  two implementation forks at once**; the parent integrates (merges, runs both
+  suites, tickets follow-ups, asks the user). Every fork follows
+  [Porting conventions](#porting-conventions-2026-09-16).
+- The user decides semantics: ask one question at a time, with a concrete example
+  and a recommendation, and record the ruling on disk before a fork reads it.
+
+**What blocks the remaining 296 cases** (first blocker, 2026-09-17): prelude
+operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (95,
+"prelude syntax roles"), two stage-2 names, and one C# bug (below).
+
+**Next, in order:**
+1. **Prelude stage 2** — bind `dotnet/std/stage2.fun` (which already *compiles* as a
+   unit, `InterleavingTests.Stage2CompilesAsAUnit`) as the prelude: `stdlib` becomes
+   stage 2 (re-exporting stage 1), its roles (`type`, operators, `&&`/`||`) and
+   macros reach programs through the program's `open (import "std")`, and the
+   Driver's stage-2 "not ported yet" rules (`Prelude.cs`, `Driver.cs`: names read from
+   `stage2.fun`, and the token-spelling rule for enforest errors) are **deleted**, so
+   every remaining failure becomes an honest pass or error. Expect the largest single
+   jump in the count. Write its ticket first (`port-prelude-stage2.md`).
+2. **C# bug, `imports/core-301`:** a syntax form's template `module $b` (a Block hole
+   after `module`) fails with the *language* error "module is written module { … }".
+   `Enforest.ParseModuleExpr` must accept a Block hole there, as the prototype's
+   `parse_module_expr` does. Small; can ride with stage 2.
+3. Triage whatever stage 2 leaves failing into tickets; keep asking the user on
+   undecided rules.
+
+**Open for the user (not blocking):**
+- [local-open-expression](local-open-expression.md): `M.(e)` — path-only left side,
+  pattern/type position, shadowing warning.
+- Generic impls (`impl Size(Option(A))`): needed before the "most precise impl" order
+  ([traits.md "Resolution"](../topics/traits.md)) has anything to order; recorded on
+  [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md).
+- Unverified deviation on [prelude stage 1](port-prelude-stage1.md): generalising
+  several metas at once.
+
+**Known stopgaps (`ponytail:` in code):** a typed macro argument is elaborated twice;
+matching a nominal head evaluates its head with a nested `Eval`; the run-time module
+stamp for generative modules is not built (type-case heads on generative nominals,
+generative formers and rec groups are "not ported yet").
 
 **Blockers (2026-09-16): none open.** Every ticket in `blocked_by` is closed; E11
-(nominal identity) was the last. What remains before starting is the stability
-signal below and the two decisions taken at port start.
+(nominal identity) was the last.
 
 ## Question
 
@@ -342,7 +402,7 @@ Forked in parallel from main, one worktree each:
 (need effect rows). Effects adds rows to arrows as an optional, pure-by-default
 member so no other fork's arrow construction changes.
 
-## Wave 3 (2026-09-16)
+## Wave 3 (2026-09-16 – 2026-09-17) — merged, paused
 
 **At most two implementation forks run at once** (user, 2026-09-16); the rest
 queue. Running: [primitives](port-primitives.md) and
