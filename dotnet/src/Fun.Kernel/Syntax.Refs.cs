@@ -11,11 +11,4 @@ public abstract partial record Syntax
     /// <summary><c>r &lt;- e</c>: stores <c>e</c> in the reference.</summary>
     public sealed record RefSet(Syntax Ref, Syntax Value, SourceSpan Span) : Syntax(Span);
 
-    private Syntax? AddScopeRefs(ScopeSet scope) => this switch
-    {
-        RefNew n => n with { Arg = n.Arg.AddScope(scope) },
-        RefGet g => g with { Ref = g.Ref.AddScope(scope) },
-        RefSet s => s with { Ref = s.Ref.AddScope(scope), Value = s.Value.AddScope(scope) },
-        _ => null,
-    };
 }

@@ -8,9 +8,6 @@ namespace Fun.Kernel;
 /// A syntax form's use and the rules a declaration writes are what filling a
 /// template has to treat specially.
 /// </summary>
-// ponytail: Syntax.AddScope is still its own traversal because every wave-2 fork
-// adds cases to it concurrently; fold it into Map (AddScope = Map(adding scope))
-// once they have merged, so there is one traversal (surface model S4).
 public sealed class SyntaxMapper
 {
     public Func<Id, Id> Id { get; init; } = id => id;
@@ -33,6 +30,9 @@ public sealed class SyntaxMapper
 
     /// <summary>Every identifier through <paramref name="id"/>, nothing else.</summary>
     public static SyntaxMapper OfIds(Func<Id, Id> id) => new() { Id = id };
+
+    /// <summary><paramref name="scope"/> added to every identifier and unread token: how a binder marks its body.</summary>
+    public static SyntaxMapper Adding(ScopeSet scope) => OfIds(id => id with { Scope = id.Scope.Union(scope) });
 
     public static Rule MapRuleDefault(SyntaxMapper m, Rule rule)
     {

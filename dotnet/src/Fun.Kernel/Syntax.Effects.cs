@@ -22,19 +22,6 @@ public abstract partial record Syntax
     /// <summary><c>resume(arg)</c>: lexically scoped to an effect branch (E9).</summary>
     public sealed record Resume(Syntax Arg, SourceSpan Span) : Syntax(Span);
 
-    private Syntax? AddScopeEffects(ScopeSet scope) => this switch
-    {
-        EffectDef d => d with
-        {
-            Name = d.Name with { Scope = d.Name.Scope.Union(scope) },
-            Params = [.. d.Params.Select(p => p with { Scope = p.Scope.Union(scope) })],
-            Ops = [.. d.Ops.Select(o => o with { Input = o.Input.AddScope(scope), Output = o.Output.AddScope(scope) })],
-            Body = d.Body.AddScope(scope),
-        },
-        Perform p => p with { Operation = (FieldAccess)p.Operation.AddScope(scope), Arg = p.Arg.AddScope(scope) },
-        Resume r => r with { Arg = r.Arg.AddScope(scope) },
-        _ => null,
-    };
 }
 
 public abstract partial record Binding

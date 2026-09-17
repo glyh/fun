@@ -42,18 +42,7 @@ public abstract partial record Pattern
     /// </summary>
     public sealed record Con(Syntax Head, EquatableArray<Pattern> Args) : Pattern;
 
-    public Pattern AddScope(ScopeSet scope) => this switch
-    {
-        Wild or Atom => this,
-        Bind b => b with { Name = b.Name with { Scope = b.Name.Scope.Union(scope) } },
-        Prod p => p with { Items = [.. p.Items.Select(i => i.AddScope(scope))] },
-        Or o => o with { Left = o.Left.AddScope(scope), Right = o.Right.AddScope(scope) },
-        Con c => c with { Head = c.Head.AddScope(scope), Args = [.. c.Args.Select(a => a.AddScope(scope))] },
-        Record r => r with { Type = r.Type.AddScope(scope), Fields = [.. r.Fields.Select(f => (f.Name, f.Pattern.AddScope(scope)))] },
-        AtomType or SynonymParam => this,
-        StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, f.Pattern.AddScope(scope)))] },
-        _ => throw new InvalidOperationException($"unhandled pattern {GetType().Name}"),
-    };
+    public Pattern AddScope(ScopeSet scope) => Map(SyntaxMapper.Adding(scope));
 
     /// <summary>
     /// The binders the pattern writes, each name once, in source order - both

@@ -93,58 +93,7 @@ public abstract partial record Syntax(SourceSpan Span)
     /// Adds <paramref name="scope"/> to every identifier and unread token in the
     /// tree -- how a binder marks its body as being inside it.
     /// </summary>
-    public Syntax AddScope(ScopeSet scope)
-    {
-        Id Mark(Id id) => id with { Scope = id.Scope.Union(scope) };
-        Syntax Go(Syntax s) => s.AddScope(scope);
-        Syntax? GoOpt(Syntax? s) => s?.AddScope(scope);
-
-        return this switch
-        {
-            Import i => i with { Scope = i.Scope.Union(scope) },
-            Atom or Self or SelfType => this,
-            Var v => v with { Id = Mark(v.Id) },
-            Ap a => a with { Fn = Go(a.Fn), Arg = Go(a.Arg) },
-            Lam l => l with { Param = MarkParam(l.Param, scope), Body = Go(l.Body) },
-            Let l => l with { Name = Mark(l.Name), Type = GoOpt(l.Type), Value = Go(l.Value), Body = Go(l.Body) },
-            Annotated a => a with { Inner = Go(a.Inner), Type = Go(a.Type) },
-            Arrow a => a with
-            {
-                Name = a.Name is null ? null : Mark(a.Name),
-                Domain = Go(a.Domain),
-                Row = MarkRow(a.Row, scope),
-                Codomain = Go(a.Codomain),
-            },
-            Prod p => p with { Items = [.. p.Items.Select(Go)] },
-            ProdTy p => p with { Items = [.. p.Items.Select(Go)] },
-            Proj p => p with { Of = Go(p.Of) },
-            FieldAccess f => f with { Of = Go(f.Of) },
-            Block b => b with { Terms = [.. b.Terms.Select(t => t.AddScope(scope))] },
-            Module m => m with { Bindings = [.. m.Bindings.Select(b => b.AddScope(scope))] },
-            Open o => o with { Of = Go(o.Of), Body = Go(o.Body) },
-            OpenChoice c => c with { Name = Mark(c.Name) },
-            Match m => m with { Scrutinee = Go(m.Scrutinee), Branches = [.. m.Branches.Select(b => b with { Pattern = b.Pattern.AddScope(scope), Body = Go(b.Body), Operation = (FieldAccess?)b.Operation?.AddScope(scope) })] },
-            Enum e => e with { Constructors = [.. e.Constructors.Select(c => c with { Payloads = [.. c.Payloads.Select(Go)] })] },
-            PatternSynonym s => s with { Params = [.. s.Params.Select(Mark)], Rhs = s.Rhs.AddScope(scope) },
-            LetRecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))], Body = Go(g.Body) },
-            Struct st => st with { Bindings = [.. st.Bindings.Select(b => b.AddScope(scope))] },
-            Sig sg => sg with { Bindings = [.. sg.Bindings.Select(b => b.AddScope(scope))] },
-            RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
-            SyntaxDef or Instantiate => Map(SyntaxMapper.OfIds(Mark)),
-            TraitDef or ImplDef or TraitBoundSet => AddScopeTraits(scope),
-            _ => AddScopeEffects(scope) ?? AddScopeRefs(scope) ?? throw new InvalidOperationException($"unhandled syntax {GetType().Name}"),
-        };
-    }
-
-    private static Param MarkParam(Param p, ScopeSet scope) =>
-        p with { Name = p.Name with { Scope = p.Name.Scope.Union(scope) }, Type = p.Type?.AddScope(scope) };
-
-    internal static EffectRow? MarkRow(EffectRow? row, ScopeSet scope) =>
-        row is null ? null : row with
-        {
-            Effects = [.. row.Effects.Select(e => e.AddScope(scope))],
-            Tails = [.. row.Tails.Select(t => t.AddScope(scope))],
-        };
+    public Syntax AddScope(ScopeSet scope) => Map(SyntaxMapper.Adding(scope));
 }
 
 /// <summary>
@@ -169,29 +118,5 @@ public abstract partial record Binding
     /// </summary>
     public sealed record Items(EquatableArray<TokenTree> Terms) : Binding;
 
-    public Binding AddScope(ScopeSet scope) => this switch
-    {
-        Let l => l with { Name = l.Name with { Scope = l.Name.Scope.Union(scope) }, Value = l.Value.AddScope(scope) },
-        Open o => o with { Of = o.Of.AddScope(scope) },
-        Export e => e with { Of = e.Of.AddScope(scope) },
-        SyntaxDecl or Instantiate or Hole => Map(SyntaxMapper.OfIds(id => id with { Scope = id.Scope.Union(scope) })),
-        Items i => i with { Terms = [.. i.Terms.Select(t => t.AddScope(scope))] },
-        RecGroup g => g with { Members = [.. g.Members.Select(m => m.AddScope(scope))] },
-        Field f => f with { Type = f.Type.AddScope(scope) },
-        Effect e => e with
-        {
-            Name = e.Name with { Scope = e.Name.Scope.Union(scope) },
-            Params = [.. e.Params.Select(p => p with { Scope = p.Scope.Union(scope) })],
-            Ops = [.. e.Ops.Select(o => o with { Input = o.Input.AddScope(scope), Output = o.Output.AddScope(scope) })],
-        },
-        Method m => m with
-        {
-            Name = m.Name with { Scope = m.Name.Scope.Union(scope) },
-            Params = [.. m.Params.Select(p => p with { Name = p.Name with { Scope = p.Name.Scope.Union(scope) }, Type = p.Type?.AddScope(scope) })],
-            Body = m.Body.AddScope(scope),
-            Row = Syntax.MarkRow(m.Row, scope),
-        },
-        Trait or Impl => AddScopeTraits(scope),
-        _ => throw new InvalidOperationException($"unhandled binding {GetType().Name}"),
-    };
+    public Binding AddScope(ScopeSet scope) => Map(SyntaxMapper.Adding(scope));
 }
