@@ -87,7 +87,7 @@ public sealed partial class Expander
             {
                 var of = Expand(o.Of);
                 var (scope, label) = EnterOpen(o.Of);
-                ImportRoles(of, Occurrence(o.Of), scope);
+                ImportRoles(of, Occurrence(o.Of), scope, opened: true);
                 var body = Expand(o.Body.AddScope(scope));
                 return o with { Of = of, Body = body, Label = label, RolesInRegion = RolesInRegion(label) };
             }
@@ -291,7 +291,7 @@ public sealed partial class Expander
                     o = (Binding.Open)o.AddScope(active);
                     var of = Expand(o.Of);
                     var (scope, label) = EnterOpen(o.Of);
-                    ImportRoles(of, Occurrence(o.Of), scope);
+                    ImportRoles(of, Occurrence(o.Of), scope, opened: true);
                     expanded.Add(o with { Of = of, Label = label });
                     active = active.Union(scope);
                     break;

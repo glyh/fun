@@ -203,13 +203,34 @@ public sealed partial class Expander
 
     // ---- calls ------------------------------------------------------------------
 
-    /// <summary>The macro a head names: its resolved name, when its binder is a macro's.</summary>
-    private string? MacroKey(Syntax head) => head switch
+    /// <summary>
+    /// The macro a head names, by its key: a binder's resolved name; <c>M.m</c> where
+    /// <c>M</c> denotes a unit exporting <c>m</c>; or, for an id no binder took that a
+    /// form imported from a unit introduced, that unit's macro of its name.
+    /// </summary>
+    private string? MacroKey(Syntax head)
     {
-        Syntax.Var { Id.Name: var n } when n.Contains('#') => _macros.ContainsKey(n) || _provisional.Contains(n) ? n : null,
-        Syntax.Var { Id: var id } => _bindings.Resolve(id) is { Kind: BinderMeaning.Macro } binder ? binder.ResolvedName : null,
-        _ => null,
-    };
+        switch (head)
+        {
+            case Syntax.Var { Id.Name: var n } when n.Contains('#'):
+                return _macros.ContainsKey(n) || _provisional.Contains(n) || UnitMacroOfKey(n) ? n : null;
+            case Syntax.Var { Id: var id }:
+                if (_bindings.Resolve(id) is { } binder)
+                    return binder.Kind == BinderMeaning.Macro && (_macros.ContainsKey(binder.ResolvedName) || _provisional.Contains(binder.ResolvedName) || UnitMacroOfKey(binder.ResolvedName)) ? binder.ResolvedName : null;
+                foreach (var scope in id.Scope.Values)
+                    if (_introScopeUnits.TryGetValue(scope, out var unit) && UnitMacro(unit, id.Name) is not null)
+                        return UnitMacroKey(unit, id.Name);
+                return null;
+            case Syntax.FieldAccess { Of: var of, Field: var name } when UnitPathOf(of) is { } path:
+                return UnitMacro(path, name) is not null ? UnitMacroKey(path, name) : null;
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>Whether <paramref name="key"/> is a unit macro's key, registering the macro when it is.</summary>
+    private bool UnitMacroOfKey(string key) =>
+        key.IndexOf("#unit:", StringComparison.Ordinal) is var at and >= 0 && UnitMacro(key[(at + "#unit:".Length)..], key[..at]) is not null;
 
     private MacroEntry EntryFor(string key, Syntax head, FormKind position, int argumentCount)
     {
@@ -241,7 +262,7 @@ public sealed partial class Expander
         if (entry.Signature is not null)
             return call with
             {
-                Head = ((Syntax.Var)call.Head) with { Id = ((Syntax.Var)call.Head).Id with { Name = key } },
+                Head = new Syntax.Var(new Id(key, call.Head.Span)),
                 Args = [.. call.Args.Select(a => a is Capture.Expr e ? new Capture.Expr(new Syntax.Stx(e.Syntax, e.Syntax.Span)) : a)],
             };
 

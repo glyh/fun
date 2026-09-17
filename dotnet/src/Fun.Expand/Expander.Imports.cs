@@ -24,7 +24,7 @@ public sealed partial class Expander
     }
 
     /// <summary>The public roles this expansion declared or re-exported: a unit's syntax exports.</summary>
-    public UnitSyntax SyntaxExports => new([.. _syntaxExports]);
+    public UnitSyntax SyntaxExports => new([.. _syntaxExports]) { Macros = [.. _macroExports] };
 
     /// <summary>The label of an open of <c>import "path"</c>: every such open names the same unit.</summary>
     public static string UnitOpenLabel(string path) => $"unit:{path}";
@@ -94,7 +94,7 @@ public sealed partial class Expander
     /// that imported it (M7). The unit's scopes mean nothing here, so they are dropped;
     /// the ids a role's replacement introduces mean the unit's names instead.
     /// </summary>
-    private void ImportRoles(Syntax of, ScopeSet written, ScopeSet region)
+    private void ImportRoles(Syntax of, ScopeSet written, ScopeSet region, bool opened = false)
     {
         if (of is not Syntax.Import import) return;
         var roles = _runtime.LoadSyntax(import.Path).Roles;
@@ -102,6 +102,26 @@ public sealed partial class Expander
         var unscoped = SyntaxMapper.OfIds(id => id with { Scope = ScopeSet.Empty });
         foreach (var (name, role) in roles)
             BindRoleAt(name, written, region, UnitOpenLabel(import.Path), unscoped.MapRole(role) with { FromUnit = import.Path });
+        // A unit's macros are members of it: an open binds them bare in its region, a handle reaches them as M.m.
+        if (opened)
+            foreach (var (name, macro) in _runtime.LoadSyntax(import.Path).Macros)
+                _bindings.Extend(name, written.Union(region), UnitMacroKey(import.Path, name), BinderMeaning.Macro, macroParams: macro.Params);
+    }
+
+    /// <summary>
+    /// The key a unit's macro is known by here: a resolved name no source can spell,
+    /// the same for every import of the unit.
+    /// </summary>
+    private static string UnitMacroKey(string path, string name) => $"{name}#unit:{path}";
+
+    /// <summary>A unit's public macro, by its key, registered where it is first reached.</summary>
+    private MacroEntry? UnitMacro(string path, string name)
+    {
+        var key = UnitMacroKey(path, name);
+        if (_macros.TryGetValue(key, out var known)) return known;
+        var exported = _runtime.LoadSyntax(path).Macros.FirstOrDefault(m => m.Name == name).Macro;
+        if (exported is not null) _macros[key] = exported;
+        return exported;
     }
 
     /// <summary>A unit exporting two roles of one name, fixity and sort is ambiguous wherever it is imported.</summary>
