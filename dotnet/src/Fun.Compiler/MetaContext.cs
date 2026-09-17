@@ -31,6 +31,9 @@ public sealed class MetaContext
     /// </summary>
     public Dictionary<NominalDecl, string?> GenerativeNominals { get; } = [];
 
+    /// <summary>Impl choices waiting on argument types (traits.md, "Resolution", rule 4).</summary>
+    public List<PendingEvidence> PendingEvidence { get; } = [];
+
     /// <summary>The metas standing for rows written <c>_</c>: one nothing solves is an error, never a default.</summary>
     public List<int> WrittenRows { get; } = [];
 

@@ -49,9 +49,11 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
             // Strict: the base context with nothing opened, sharing the importer's
             // metas so a meta the unit leaves unsolved stays meaningful to it.
             var ctx = Elaborator.BaseContext(metas, preludeOpen: false) with { Loader = this };
+            var since = metas.Count;
             var sink = new EffectSink();
             var (term, type) = Elaborator.Infer(ctx with { Sink = sink }, unit);
-            Elaborator.RequireHandledAtEntry(ctx, sink, since: 0);
+            // Only what this unit left open is its to settle; the importer's waits.
+            Elaborator.RequireHandledAtEntry(ctx, sink, since);
             return _loaded[path] = (ctx.Eval(term), type);
         }
         finally
