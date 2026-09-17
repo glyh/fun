@@ -38,3 +38,20 @@ note in `Elaborator.Traits.cs`); the prototype keeps the defect.
 `test/conformance/prototype-divergences.txt`. The implementing fork adds cases for
 precision (a generic and a specific impl), incomparable candidates (ambiguity) and
 waiting on unknown argument types.
+
+## Fixed in the port (2026-09-17)
+
+Merged from `port/impl-precision` (`b3c168f`, `9614dc6`). `Trait.op` and bounds share
+one resolution path by argument type (rules 1, 3, 5); a choice with unknown argument
+types waits until the end of its unit, then fails with "cannot choose an
+implementation" (rule 4). Shared cases: `values/trait-op-resolves-by-argument` (1),
+`values/trait-impl-per-argument` (2), `elaborate/trait-op-nearness-no-tiebreak`
+(error) — all failing in the prototype and listed; `values/trait-choice-waits-for-argument`
+(7) agrees. C# 340/678; xUnit 135.
+
+**Rule 2 has nothing to order yet.** An impl today has no type variables of its own
+(`impl Size(I64)`; `impl Eq(T)` names a `T` already in scope), so any two matching
+impls are instances of each other and more than one match is an ambiguity. The
+precision order applies once impls can be generic — `impl Size(Option(A))` with its
+own `A` — which is a language feature not yet designed (syntax, and how an impl's own
+variables are bound). `ResolveEvidence` marks where candidates get ordered.

@@ -22,3 +22,5 @@ values/deref-infers-reference                  deref-of-unknown-type-is-not-a-re
 values/method-poly-arrow-infers-row           method-cannot-infer-row-with-poly-arrow.md
 values/pattern-synonym-in-block                pattern-synonym-not-a-block-declaration.md
 values/trait-op-resolves-by-argument          trait-op-takes-innermost-impl.md
+values/trait-impl-per-argument                trait-op-takes-innermost-impl.md
+elaborate/trait-op-nearness-no-tiebreak       trait-op-takes-innermost-impl.md
