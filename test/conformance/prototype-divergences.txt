@@ -19,3 +19,4 @@ values/signature-check-takes-last-member        signature-check-takes-first-memb
 values/check-against-implicit-type             check-against-implicit-type-inserts-first.md
 values/panic-unknown-message-in-type           panic-with-unknown-message-fails-checking.md
 values/deref-infers-reference                  deref-of-unknown-type-is-not-a-reference.md
+values/method-poly-arrow-infers-row           method-cannot-infer-row-with-poly-arrow.md

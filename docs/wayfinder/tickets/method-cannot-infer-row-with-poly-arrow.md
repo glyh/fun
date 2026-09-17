@@ -27,3 +27,12 @@ prototype rejects it with `PolyArrowOutsideSignature`, and so does the port toda
 
 A shared case where a method written `~> T` performs and is handled, listed in
 `test/conformance/prototype-divergences.txt`.
+
+## Fixed in the port (2026-09-17)
+
+Merged from `port/method-poly-arrow` (`d731f6a`, merge `7948d44`):
+`Elaborator.Structs.MethodRow` reads a method's final `~> T` as a definition's.
+`values/method-poly-arrow-infers-row` (5) passes in C# (and fails with the old error
+when the fix is removed); the prototype fails it with `PolyArrowOutsideSignature`,
+and it is listed in `prototype-divergences.txt`. Not covered by the ruling: `~>` in a
+method's *parameter* types still raises the same error.
