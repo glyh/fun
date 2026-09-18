@@ -83,6 +83,11 @@ public sealed partial class Enforest
         if (ParseOpenStatement(stmt) is { } opened)
             return new Syntax.Open(opened, body, "", span);
 
+        // A block exports nothing, so a written `export` is nobody's intent. (A
+        // generated one is dropped at the block site instead; Expander.DeclOver.)
+        if (IsToken(stmt.Head, TokenKind.Export))
+            throw new ExpandException("export is a module item; a block declares only private lets, opens and syntax");
+
         if (ParseEffectDecl(stmt) is var (effectName, effectParams, ops))
             return new Syntax.EffectDef(effectName, effectParams, ops, body, span);
         if (ParseTraitOrImplStatement(span, stmt, body) is { } declared) return declared;

@@ -196,12 +196,12 @@ public static partial class Unify
                 Head.HMeta h when h.Id == id => throw new UnifyException("occurs check: a meta in its own solution"),
                 Head.HMeta h => new Term.Meta(h.Id),
                 Head.HPrim h => new Term.Prim(h.Name),
-                _ => throw new InvalidOperationException($"unhandled head {n.Head.GetType().Name}"),
+                _ => throw new NotImplementedException($"not ported yet: renaming a {n.Head.GetType().Name} head"),
             }, (acc, frame) => frame switch
             {
                 Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Go(a.Arg)),
                 Frame.FProj p => new Term.Proj(acc, p.Index),
-                _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
+                _ => throw new NotImplementedException($"not ported yet: renaming a {frame.GetType().Name} frame"),
             }),
             var other => throw new NotImplementedException($"not ported yet: solving to {other.GetType().Name}"),
         };

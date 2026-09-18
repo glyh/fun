@@ -246,8 +246,15 @@ public sealed partial class Expander
         Binding.RecGroup { Public: false } g => new Syntax.LetRecGroup(g.Members, body, body.Span),
         Binding.SyntaxDecl { Public: false } s => new Syntax.SyntaxDef(s.Name, s.Role, body, body.Span),
         Binding.Macro { Public: false } m => new Syntax.MacroDef(m.Name, m.Value, body, m.Kind, m.Output, body.Span),
+        Binding.Effect { Public: false } e => new Syntax.EffectDef(e.Name, e.Params, e.Ops, body, body.Span),
+        Binding.Trait { Public: false } t => new Syntax.TraitDef(t.Name, t.Param, t.Fields, body, body.Span),
+        Binding.Impl { Public: false, Fields: { } fields } i => new Syntax.ImplDef(i.Name, i.TraitPath, i.Arg, fields, body, body.Span),
         Binding.Open o => new Syntax.Open(o.Of, body, o.Label, body.Span),
-        _ => throw new ExpandException("a declaration syntax form in a block writes only private lets, opens and syntax"),
+        // A generated export is dropped: the site decides what each item a
+        // declaration macro emits means there, and a block exports nothing. A
+        // written one never reaches here -- the block statement parser rejects it.
+        Binding.Export { Public: false } => body,
+        _ => throw new ExpandException("a declaration syntax form in a block writes only private lets, types, effects, traits, impls, opens, macros and syntax"),
     };
 
     /// <summary><c>pub</c> on a declaration form's use publishes every declaration it returns.</summary>

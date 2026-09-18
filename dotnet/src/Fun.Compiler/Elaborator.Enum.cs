@@ -304,6 +304,7 @@ public static partial class Elaborator
                 {
                     case Binding.Let l: Go(l.Value); break;
                     case Binding.Open o: Go(o.Of); break;
+                    case Binding.Export e: Go(e.Of); break;
                     case Binding.Field f: Go(f.Type); break;
                     case Binding.RecGroup g: foreach (var member in g.Members) Go(member.Value); break;
                     case Binding.Method method:
