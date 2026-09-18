@@ -55,3 +55,52 @@ impls are instances of each other and more than one match is an ambiguity. The
 precision order applies once impls can be generic — `impl Size(Option(A))` with its
 own `A` — which is a language feature not yet designed (syntax, and how an impl's own
 variables are bound). `ResolveEvidence` marks where candidates get ordered.
+
+## Grilled (2026-09-18): generic impls — implicit binding
+
+Rule 2's precision order has nothing to order until impls can be generic. Decided:
+
+**A free name in an impl's head binds, with no declaration.**
+
+```
+trait Size(A) = sig { size : A -> I64 };
+impl Size(I64) = module { size = fn(n) { 1 } };
+impl Size(Option(A)) = module { size = fn(o) { 2 } };   -- A is this impl's own
+Size.size(Some(5))                                       -- 2; Option(A) is the precise match
+```
+
+**Why implicit, not a binder list.** An impl's head is *matched* against the use's
+argument types, and a free name in a pattern already binds without declaration
+(`match (c) { Some(a) => a }`; `pub pattern Var(name) = Expr.RawVar(_, name)` in
+`std/stage1.fun`). Declaring impl variables would make the head the one matched
+position in the language that needs them declared.
+
+**Rejected: `impl[A] Size(Option(A))`.** `[…]` means *omittable at application* —
+`fn[A : Type](lhs, rhs)`, `[A : Eq] -> A -> A -> Bool` (`std/stage2.fun:23`). An impl
+is never applied; its variables are solved by matching. Borrowing the bracket would
+give it a second meaning. `impl(A) …` was also rejected: `(…)` after a keyword or a
+defined name means that thing's parameters (`trait Size(A)`, `type Option(A)` →
+`rec Option = fn(A : Type) { … }`), and an impl's parens belong to the trait it
+applies.
+
+**Cost accepted.** `impl Size(Optoin(A))` is a typo that silently becomes a generic
+impl over two fresh variables; it never matches, and the error surfaces at the use
+("cannot choose an implementation"), not at the definition. Diagnostics are deferred.
+
+**Ambiguity fails, unchanged (rule 3).** Incomparable heads are an error:
+
+```
+trait Conv(A, B) = sig { conv : A -> B };
+impl Conv(I64, B) = module { … };     -- any B
+impl Conv(A, Bool) = module { … };    -- any A
+Conv.conv(5) : Bool                    -- both match, neither is an instance of the
+                                       -- other: "cannot choose an implementation"
+```
+
+A blanket head is *not* ambiguity: `Option(A)` is an instance of `_`, so it is
+strictly more precise and wins.
+
+**Deferred to [pattern-headed impls](pattern-headed-impls.md)** (decided 2026-09-18,
+split): pattern synonyms as heads, or-patterns, blanket `_`, and changing
+`Syntax.Decl.DeclImpl`'s arguments from `List(Expr)` to `List(Pattern)`. Nothing needs
+them yet; this ticket only needs a head that binds its free names.

@@ -79,9 +79,12 @@ operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (
    undecided rules.
 
 **Open for the user (not blocking):**
-- Generic impls (`impl Size(Option(A))`): needed before the "most precise impl" order
-  ([traits.md "Resolution"](../topics/traits.md)) has anything to order; recorded on
-  [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md).
+- Generic impls (`impl Size(Option(A))`): **decided 2026-09-18** — a free name in an
+  impl head binds, on pattern grounds; ambiguity still fails. Written up on
+  [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md) "Grilled
+  (2026-09-18)"; ready to implement, not yet forked. The rest of the idea (synonym
+  heads, or-patterns, blanket `_`, `DeclImpl` args as patterns) is split off to
+  [pattern-headed-impls](pattern-headed-impls.md) and is not blocking.
 - Unverified deviation on [prelude stage 1](port-prelude-stage1.md): generalising
   several metas at once.
 
