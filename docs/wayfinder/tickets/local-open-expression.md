@@ -3,7 +3,7 @@ title: A local open expression, M.(expr)
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -55,3 +55,21 @@ after `open`), this is where the form would be used most.
 
 The port: the form is a surface addition that expands to an existing construct.
 Decide before the prelude or library code starts relying on it.
+
+## Resolution (2026-09-18) — not adopted
+
+**Ruling: B, do not adopt `M.(e)`.** A block already opens a module for one
+expression (`{ open M; e }`), and that is the whole of what the form would add: it
+expands to the existing `Open` term and introduces no meaning a block does not
+already have. A second spelling for one construct is the flexibility this language
+trades away for consistency.
+
+Cost accepted: the enum-match idiom stays double-braced —
+`fn(c) { { open Color; match (c) { Red => 1, Green => 2 } } }` — in the prelude and
+in library code. If that grows into a real irritant once stage 2's library code is
+written against the bare-constructor rule, reopen this ticket with the call sites as
+evidence; the grammar (`e.(…)`) stays free until then.
+
+Closed without deciding the sub-questions it raised, which only exist if the form
+does: path-only vs arbitrary left side, pattern and type position, and whether a
+shadowing warning is wanted.
