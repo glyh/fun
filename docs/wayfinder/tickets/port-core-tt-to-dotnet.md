@@ -69,10 +69,12 @@ operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (
    `stage2.fun`, and the token-spelling rule for enforest errors) are **deleted**, so
    every remaining failure becomes an honest pass or error. Expect the largest single
    jump in the count. Write its ticket first (`port-prelude-stage2.md`).
-2. **C# bug, `imports/core-301`:** a syntax form's template `module $b` (a Block hole
-   after `module`) fails with the *language* error "module is written module { … }".
-   `Enforest.ParseModuleExpr` must accept a Block hole there, as the prototype's
-   `parse_module_expr` does. Small; can ride with stage 2.
+2. ~~**C# bug, `imports/core-301`:** a syntax form's template `module $b` (a Block
+   hole after `module`) fails with the *language* error "module is written module
+   { … }".~~ **Done 2026-09-18** (`268c355`): `Enforest.ParseModuleExpr` now takes the
+   prototype's eager-hole branch (`parse_module_expr`, `enforest.ml:385`) before it
+   requires a brace group. 392 → **393/689**, xUnit 172/172. (The 2026-09-17 handover's
+   "393 before" was off by one; the merge base actually measured 392.)
 3. Triage whatever stage 2 leaves failing into tickets; keep asking the user on
    undecided rules.
 

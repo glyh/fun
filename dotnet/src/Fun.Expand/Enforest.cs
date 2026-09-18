@@ -146,6 +146,10 @@ public sealed partial class Enforest
     private (Syntax, Terms) ParseModuleExpr(SourceSpan startSpan, Terms terms)
     {
         terms = DropSeparators(terms);
+        // `module $b` in quoted syntax: the hole stands for the whole body.
+        if (_env.Eager && terms.Head is { } hole && HoleName(hole) is not null)
+            return (new Syntax.Module([new Binding.Items([hole])], SourceSpan.Between(startSpan, hole.Span)),
+                terms.Tail);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
             throw new ExpandException("module is written module { … }");
         EquatableArray<Binding> items = _env.Eager ? ReadItemsNow(new Terms(body.Items)) : [new Binding.Items(body.Items)];
