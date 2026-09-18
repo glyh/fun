@@ -79,8 +79,6 @@ operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (
    undecided rules.
 
 **Open for the user (not blocking):**
-- [local-open-expression](local-open-expression.md): `M.(e)` — path-only left side,
-  pattern/type position, shadowing warning.
 - Generic impls (`impl Size(Option(A))`): needed before the "most precise impl" order
   ([traits.md "Resolution"](../topics/traits.md)) has anything to order; recorded on
   [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md).
