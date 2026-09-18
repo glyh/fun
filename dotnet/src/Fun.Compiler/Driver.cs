@@ -36,14 +36,8 @@ public static class Driver
         {
             throw new FunException(e.Message);
         }
-        // Stage 2's syntax roles (`type`, operators, order groups) are not ported, and
-        // the enforester reads every statement against the roles in scope, so an
-        // enforest error is known to be genuine only where no token spells one of
-        // them. Otherwise reporting it would pass an `error` case for a missing form.
         catch (Fun.Expand.ExpandException e)
         {
-            if (Prelude.SpellsStage2Name([source, .. units.Values]))
-                throw new NotImplementedException($"not ported yet: prelude syntax roles (enforest said: {e.Message})");
             throw new FunException(e.Message);
         }
     }

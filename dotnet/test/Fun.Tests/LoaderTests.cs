@@ -44,7 +44,7 @@ public class LoaderTests
         var first = With().Load("std", new MetaContext());
         Assert.Same(first.Value, With().Load("std", new MetaContext()).Value);
 
-        var ctx = Elaborator.BaseContext(new MetaContext(), preludeOpen: false);
+        var ctx = Elaborator.BaseContext(new MetaContext());
         var (index, _) = ctx.Locate("stdlib");
         Assert.Same(first.Value, ctx.Environment[index]);
     }
@@ -54,7 +54,7 @@ public class LoaderTests
     public void ABaseContextsMetasFollowThePreludes()
     {
         var metas = new MetaContext();
-        Elaborator.BaseContext(metas, preludeOpen: false);
+        Elaborator.BaseContext(metas);
         Assert.True(metas.Count > 0);
         Assert.Equal(metas.Count, metas.Fresh());
     }

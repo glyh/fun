@@ -18,8 +18,7 @@ public sealed partial record Context(
     int Width,
     EquatableArray<EntryKind> EntryKinds,
     ImmutableDictionary<string, Entry> Names,
-    MetaContext Metas,
-    bool PreludeOpen)
+    MetaContext Metas)
 {
     /// <summary>Each open entered, by label, with the members it brought in. An open choice locates a name here.</summary>
     public ImmutableDictionary<string, ImmutableDictionary<string, Entry>> Opened { get; init; } =
@@ -28,8 +27,8 @@ public sealed partial record Context(
     /// <summary>The base context's names: where an open choice with no candidate and no binder is located.</summary>
     public ImmutableDictionary<string, Entry> BaseNames { get; init; } = ImmutableDictionary<string, Entry>.Empty;
 
-    public static Context Empty(MetaContext metas, bool preludeOpen) =>
-        new(Environment.Empty, 0, [], ImmutableDictionary<string, Entry>.Empty, metas, preludeOpen);
+    public static Context Empty(MetaContext metas) =>
+        new(Environment.Empty, 0, [], ImmutableDictionary<string, Entry>.Empty, metas);
 
     /// <summary>Pushes a defined entry no name reaches directly: an opened member, located through its open.</summary>
     public (Context, Entry) DefineAnonymous(Value type, Value value) =>
@@ -60,9 +59,7 @@ public sealed partial record Context(
 
     /// <summary>
     /// The entry a name denotes: a binder by the resolved name expansion gave
-    /// it, else the base context. Inside the prelude's open a name the base
-    /// lacks may be one of `std`'s members, which are not ported, so it is not
-    /// yet known to be unbound.
+    /// it, else the base context.
     /// </summary>
     // Checking the base before `std` gives the prototype's answer (opens first,
     // then the base) only while `std` rebinds no base-context name, which holds
@@ -70,20 +67,12 @@ public sealed partial record Context(
     public (int Index, Value Type) Locate(string name)
     {
         if (Names.TryGetValue(name, out var entry)) return At(entry);
-        throw Unbound(name, PreludeOpen);
+        throw Unbound(name);
     }
 
-    /// <summary>
-    /// A name nothing supplies. Where the prelude is open, it may be one stage 2
-    /// publishes, which is not ported: then it is not yet known to be unbound.
-    /// </summary>
-    private static Exception Unbound(string name, bool preludeOpen)
-    {
-        var written = name.IndexOf('#') is var i and >= 0 ? name[..i] : name;
-        return preludeOpen && Prelude.Stage2Names.Contains(written)
-            ? new NotImplementedException($"not ported yet: `{written}` from the prelude")
-            : new FunException($"unbound variable: {written}");
-    }
+    /// <summary>A name nothing supplies.</summary>
+    private static Exception Unbound(string name) =>
+        new FunException($"unbound variable: {(name.IndexOf('#') is var i and >= 0 ? name[..i] : name)}");
 
     /// <summary>
     /// An open choice: the first candidate open that has the member, else the
@@ -96,7 +85,7 @@ public sealed partial record Context(
                 return At(member);
         if (fallback is not null) return Locate(fallback);
         if (BaseNames.TryGetValue(name, out var based)) return At(based);
-        throw Unbound(name, PreludeOpen || opens.Contains(Fun.Expand.Expander.UnitOpenLabel(Prelude.Path)));
+        throw Unbound(name);
     }
 
     private (int Index, Value Type) At(Entry entry) => (Nbe.LevelToIndex(Width, entry.Level), entry.Type);
@@ -136,20 +125,23 @@ public static partial class Elaborator
     /// The base context every compilation unit elaborates against: the builtins and
     /// the prelude bound as <c>stdlib</c> - bound, not opened. A program's indices
     /// count these entries, so it runs in this context's environment.
+    /// <paramref name="prelude"/> is the unit that <c>stdlib</c> names: <c>"std"</c>
+    /// for everything but the prelude's own stages (<see cref="Prelude.Stage1Path"/>
+    /// for stage 2, and null for stage 1, which has only the builtins).
     /// </summary>
-    public static Context BaseContext(MetaContext metas, bool preludeOpen)
+    public static Context BaseContext(MetaContext metas, string? prelude = Prelude.Path)
     {
-        metas.SeedFrom(Prelude.Metas);
-        var ctx = BuiltinContext(metas, preludeOpen);
-        var (value, type) = Prelude.Unit;
-        ctx = ctx.Define(Prelude.Binding, type, value);
+        if (prelude is null) return BuiltinContext(metas);
+        var stage = Prelude.Of(prelude);
+        metas.SeedFrom(stage.Metas);
+        var ctx = BuiltinContext(metas).Define(Prelude.Binding, stage.Type, stage.Value);
         return ctx with { BaseNames = ctx.Names };
     }
 
     /// <summary>The atom types, the primitives and the reference entries: what the prelude itself elaborates against.</summary>
-    public static Context BuiltinContext(MetaContext metas, bool preludeOpen)
+    private static Context BuiltinContext(MetaContext metas)
     {
-        var ctx = Context.Empty(metas, preludeOpen);
+        var ctx = Context.Empty(metas);
         foreach (var (name, ty) in new (string, AtomTy)[]
                  {
                      ("I64", AtomTy.I64), ("Unit", AtomTy.Unit), ("Char", AtomTy.Char),
@@ -172,7 +164,7 @@ public static partial class Elaborator
     public static Elaborated ElaborateProgram(Syntax program, Loader? loader = null, Fun.Expand.Expander? expander = null)
     {
         var metas = new MetaContext();
-        var ctx = BaseContext(metas, preludeOpen: true) with { Loader = loader, Expander = expander };
+        var ctx = BaseContext(metas) with { Loader = loader, Expander = expander };
         // A program's entry leaves nothing unhandled: that is an error, not a run-time crash.
         var ((term, type), performed) = Collecting(ctx, c => Infer(c, program));
         RequireHandledAtEntry(ctx, performed, since: 0);

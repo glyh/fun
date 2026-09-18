@@ -4,72 +4,40 @@ using Fun.Kernel;
 namespace Fun.Compiler;
 
 /// <summary>
-/// The prelude (`std`): stage 1 of <c>dotnet/std</c>, elaborated once per process
-/// against the builtins alone, and bound in the base context as <c>stdlib</c>
-/// (glossary: Base context, Prelude). Stage 2 is not ported.
+/// The prelude (<c>std</c>): stage 2 of <c>dotnet/std</c>, which imports stage 1 as a
+/// unit of its own (<see cref="Stage1Path"/>) and re-exports it. Each stage is
+/// elaborated once per process - stage 1 against the builtins alone, stage 2 against
+/// the builtins with stage 1 bound as <c>stdlib</c> - and the base context binds
+/// stage 2 as <c>stdlib</c> (glossary: Base context, Prelude; bound, not opened).
 /// </summary>
 public static class Prelude
 {
     public const string Path = "std";
+
+    /// <summary>
+    /// Stage 1's own unit name. <c>"std"</c> means stage 2 and nothing else, so stage 2
+    /// reaches stage 1 by this name instead (port-only: the prototype has no unit loader
+    /// and so no collision).
+    /// </summary>
+    public const string Stage1Path = "std/stage1";
+
     public const string Binding = "stdlib";
 
-    private sealed record Stage(MetaContext Metas, Value Value, Value Type, UnitSyntax Syntax);
+    internal sealed record Stage(MetaContext Metas, Value Value, Value Type, UnitSyntax Syntax);
 
-    private static readonly Lazy<Stage> Stage1 = new(LoadStage1);
+    private static readonly Lazy<Stage> Stage1 = new(() => Load("stage1.fun", std: null));
+    private static readonly Lazy<Stage> Stage2 = new(() => Load("stage2.fun", std: Stage1Path));
 
-    /// <summary>The metas the prelude was elaborated with; every base context is seeded from them.</summary>
-    internal static MetaContext Metas => Stage1.Value.Metas;
-
-    public static (Value Value, Value Type) Unit => (Stage1.Value.Value, Stage1.Value.Type);
-
-    /// <summary>The prelude's syntax exports: the roles an open of <c>import "std"</c> brings.</summary>
-    public static UnitSyntax Syntax => Stage1.Value.Syntax;
-
-    private static readonly Lazy<HashSet<string>> Stage2 = new(() => PublicNames(Source("stage2.fun")));
+    /// <summary>The stage a loader serving <paramref name="path"/> as its prelude hands out.</summary>
+    internal static Stage Of(string path) => path == Stage1Path ? Stage1.Value : Stage2.Value;
 
     /// <summary>
-    /// Every name stage 2 publishes - values, operators, order groups, traits, macros,
-    /// syntax forms - read off its source. Stage 2 is not ported, so a name or role in
-    /// this set that nothing supplies is "not ported yet"; any other is really missing.
+    /// What reflection reads the <c>Syntax</c> module off. It is declared in stage 1,
+    /// which stage 2 only re-exports, and stage 2's metas extend stage 1's - so stage 1
+    /// is the prelude's <c>Syntax</c> module, and reading it does not wait on stage 2,
+    /// whose own body quotes while it is still being elaborated.
     /// </summary>
-    public static IReadOnlySet<string> Stage2Names => Stage2.Value;
-
-    /// <summary>Whether any token of <paramref name="sources"/> spells a name stage 2 publishes.</summary>
-    public static bool SpellsStage2Name(IEnumerable<string> sources) =>
-        sources.Any(s => Reader.Scan(s).Any(t => t.Kind switch
-        {
-            TokenKind.Ident i => Stage2Names.Contains(i.Name),
-            TokenKind.Operator o => Stage2Names.Contains(o.Spelling),
-            _ => false,
-        }));
-
-    /// <summary>
-    /// The names a unit's top-level <c>pub</c> items bind: <c>pub x</c>, <c>pub (op)</c>,
-    /// and the name after <c>order</c>, <c>infix</c>, <c>prefix</c>, <c>syntax</c>,
-    /// <c>trait</c> or <c>macro</c>. <c>pub impl</c> binds none.
-    /// </summary>
-    private static HashSet<string> PublicNames(string source)
-    {
-        var items = Reader.Read(source);
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        for (var i = 0; i + 1 < items.Length; i++)
-        {
-            if (items[i] is not TokenTree.Leaf { Token.Kind: var pub } || pub != TokenKind.Pub) continue;
-            var j = i + 1;
-            while (j < items.Length && items[j] is TokenTree.Leaf { Token.Kind: var k }
-                   && (k is TokenKind.Ident { Name: "order" or "infix" or "prefix" or "syntax" } || k == TokenKind.Trait || k == TokenKind.Macro))
-                j++;
-            var name = j < items.Length ? items[j] switch
-            {
-                TokenTree.Leaf { Token.Kind: TokenKind.Ident id } => id.Name,
-                TokenTree.Group { Delimiter: Delimiter.Paren, Items: [TokenTree.Leaf { Token.Kind: TokenKind.Operator op }] } => op.Spelling,
-                TokenTree.Group { Delimiter: Delimiter.Paren, Items: [TokenTree.Leaf { Token.Kind: TokenKind.Ident id }] } => id.Name,
-                _ => null,
-            } : null;
-            if (name is not null) names.Add(name);
-        }
-        return names;
-    }
+    internal static Stage SyntaxStage => Stage1.Value;
 
     public static string Source(string file)
     {
@@ -78,14 +46,19 @@ public static class Prelude
         return new StreamReader(stream).ReadToEnd();
     }
 
-    private static Stage LoadStage1()
+    /// <summary>
+    /// Elaborates one stage as a compilation unit. <paramref name="std"/> is the prelude
+    /// its own imports see - none for stage 1, stage 1 for stage 2 - and one meta context
+    /// serves its expansion, its macros and its elaboration, so the metas in the values
+    /// it exports mean the same wherever they are later seeded.
+    /// </summary>
+    private static Stage Load(string file, string? std)
     {
-        // Stage 1 imports nothing, so its expander's loader has no units to serve.
-        var loader = new Loader(new Dictionary<string, string>());
-        var expander = new Expander(new UnitRuntime(loader, () => Elaborator.BuiltinContext(new MetaContext(), preludeOpen: false) with { Loader = loader }));
-        var unit = expander.ExpandUnit(Enforest.ParseUnit(Source("stage1.fun"), "std/stage1.fun"));
         var metas = new MetaContext();
-        var ctx = Elaborator.BuiltinContext(metas, preludeOpen: false);
+        var loader = new Loader(new Dictionary<string, string>(), std, metas);
+        var expander = new Expander(new UnitRuntime(loader));
+        var unit = expander.ExpandUnit(Enforest.ParseUnit(Source(file), $"std/{file}"));
+        var ctx = loader.MacroBase with { Expander = expander };
         var sink = new EffectSink();
         var (term, type) = Elaborator.Infer(ctx with { Sink = sink }, unit);
         Elaborator.RequireHandledAtEntry(ctx, sink, since: 0);
