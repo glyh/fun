@@ -178,6 +178,13 @@ public sealed partial class Expander
                 : pattern,
             Rule = FillRule,
             UsedRule = FillRule,
+            // A hole written as a macro's whole argument takes the captured tokens.
+            Capture = capture => capture switch
+            {
+                Capture.Expr { Syntax: Syntax.Var v } => Find(v.Id.Name) as Capture.Tokens,
+                Capture.Tokens { Terms: [TokenTree.Leaf { Token.Kind: TokenKind.Ident i }] } => Find(i.Name) as Capture.Tokens,
+                _ => null,
+            },
         };
     }
 
