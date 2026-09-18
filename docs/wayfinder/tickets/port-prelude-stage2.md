@@ -75,3 +75,26 @@ Whatever stage 2 leaves failing gets triaged into tickets — not fixed in this
 commit. Group the residue by error text and file one ticket per cause. A prototype
 defect found on the way is reproduced, ticketed, fixed **in C# only**, and listed in
 `test/conformance/prototype-divergences.txt`.
+
+## Grilled (2026-09-18)
+
+**`stage2.fun`'s own import of stage 1.** `dotnet/std/stage2.fun` opens with
+`Core = import "std"; export Core; open Core;` — it imports stage 1 under the same
+unit name `"std"` that stage 2 is about to become, so once `"std"` resolves to
+stage 2 that line points at itself.
+
+**Ruling: stage 1 gets its own unit name.** `"std"` means stage 2 and nothing else;
+stage 2 reaches stage 1 through a distinct name (`"std/stage1"`, or whatever spelling
+the loader's unit keys already use — pick the one consistent with `Prelude.Path` and
+`Loader`, and say which in the resolution). One unit name, one unit.
+
+Rejected: resolving `"std"` per asker (stage 1 to stage 2, stage 2 to programs). That
+makes `import "std"` mean two different units depending on who writes it — a rule with
+no name in the glossary, and the exact kind of unwritten invariant
+[domain-model-core-tt](domain-model-core-tt.md) exists to stop the port from
+inheriting.
+
+Cost accepted: this one line of `dotnet/std/stage2.fun` diverges from the prototype's
+`Elab_prelude.stage2_source`, which has no unit loader and so has no such collision.
+Note the divergence in the resolution; it is a port-only difference, not a language
+change, so it does not belong in `prototype-divergences.txt`.
