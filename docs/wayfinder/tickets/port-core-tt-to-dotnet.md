@@ -31,7 +31,7 @@ blocked_by:
 
 ## Handover (2026-09-17) — start here
 
-**State (updated 2026-09-18).** C#: **630 of 689** conformance cases pass, **168/168**
+**State (updated 2026-09-18).** C#: **677 of 690** conformance cases pass, **168/168**
 xUnit; `dune test` and `dune test test/conformance` green. Stage 2 is the prelude and
 every stage-2 stopgap is gone. What remains is triaged in
 [port-stage2-residue](port-stage2-residue.md).
@@ -84,7 +84,8 @@ operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (
    inside a block write an `export`? Ask the user before forking that family.
    `macros/core-308` (expected 1010, got 110) was the only silently wrong answer and is
    **fixed** (`b8bf5bb`): it took 19 more cases with it, closing the residue's item 2.
-   611 → **630/689**, 59 failures left.
+   611 → 630/689. Then the `export` family (residue items 1 and 3, `ac86a56`) →
+   **677 of 690**, **13 failures left**, each a singleton or near-singleton.
 
 **Open for the user (not blocking):**
 - Generic impls (`impl Size(Option(A))`): **decided 2026-09-18** — a free name in an
