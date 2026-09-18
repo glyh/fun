@@ -10,14 +10,26 @@ namespace Fun.Compiler;
 /// it imports and opens; that is what makes caching it by path sound, and why a unit
 /// imported twice is expanded and elaborated once.
 /// </summary>
-public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacroRuntime
+/// <param name="prelude">
+/// The unit name <c>stdlib</c> is served under: <c>"std"</c> for a program, and for the
+/// prelude's own stages the stage below (<see cref="Prelude.Stage1Path"/>, or none).
+/// </param>
+/// <param name="macroMetas">
+/// The metas macros are compiled and run with; the prelude passes its own so that a
+/// macro it exports and the values it exports speak of the same metas.
+/// </param>
+public sealed class Loader(
+    IReadOnlyDictionary<string, string> sources,
+    string? prelude = Prelude.Path,
+    MetaContext? macroMetas = null) : IMacroRuntime
 {
     private readonly Dictionary<string, (Syntax Unit, UnitSyntax Syntax, Expander Expander)> _expanded = [];
     private readonly HashSet<string> _expanding = [];
     private readonly Dictionary<string, (Value Value, Value Type)> _loaded = [];
     private readonly HashSet<string> _active = [];
 
-    public UnitSyntax LoadSyntax(string path) => path == Prelude.Path ? Prelude.Syntax : Expanded(path).Syntax;
+    public UnitSyntax LoadSyntax(string path) =>
+        path == prelude ? Prelude.Of(path).Syntax : Expanded(path).Syntax;
 
     /// <summary>A unit expanded by its own expander, which this loader serves in turn.</summary>
     private (Syntax Unit, UnitSyntax Syntax, Expander Expander) Expanded(string path)
@@ -42,8 +54,17 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
     /// <summary>
     /// The metas macros are compiled and run with. An application solves nothing its
     /// caller needs, and all of this loader's expansions spend from its one budget.
+    /// They are seeded from the prelude's up front, not when a macro is first compiled:
+    /// a macro the prelude exports is applied here without anything of this loader's
+    /// being compiled first, and its value speaks of the prelude's metas.
     /// </summary>
-    private readonly MetaContext _macroMetas = new();
+    private readonly MetaContext _macroMetas = Seeded(macroMetas ?? new(), prelude);
+
+    private static MetaContext Seeded(MetaContext metas, string? prelude)
+    {
+        if (prelude is not null) metas.SeedFrom(Prelude.Of(prelude).Metas);
+        return metas;
+    }
 
     private Context? _macroBase;
 
@@ -51,7 +72,7 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
     /// Where a macro is compiled: the base context, nothing opened. The expander wraps a
     /// definition in the unit opens around it, so a body sees exactly its definition site.
     /// </summary>
-    internal Context MacroBase => _macroBase ??= Elaborator.BaseContext(_macroMetas, preludeOpen: false) with { Loader = this };
+    internal Context MacroBase => _macroBase ??= Elaborator.BaseContext(_macroMetas, prelude) with { Loader = this };
 
     /// <summary>Elaborates and evaluates a macro's definition or signature in <paramref name="site"/>.</summary>
     internal Value Compile(Context site, Syntax syntax)
@@ -101,7 +122,7 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
     public (Value Value, Value Type) Load(string path, MetaContext metas)
     {
         // Elaborated once per process; the importer's metas are seeded from the prelude's.
-        if (path == Prelude.Path) return Prelude.Unit;
+        if (path == prelude) return (Prelude.Of(path).Value, Prelude.Of(path).Type);
         if (_loaded.TryGetValue(path, out var loaded)) return loaded;
         var (unit, _, expander) = Expanded(path);
         if (!_active.Add(path)) throw new FunException($"circular import: \"{path}\"");
@@ -109,7 +130,7 @@ public sealed class Loader(IReadOnlyDictionary<string, string> sources) : IMacro
         {
             // Strict: the base context with nothing opened, sharing the importer's
             // metas so a meta the unit leaves unsolved stays meaningful to it.
-            var ctx = Elaborator.BaseContext(metas, preludeOpen: false) with { Loader = this, Expander = expander };
+            var ctx = Elaborator.BaseContext(metas, prelude) with { Loader = this, Expander = expander };
             var since = metas.Count;
             var sink = new EffectSink();
             var (term, type) = Elaborator.Infer(ctx with { Sink = sink }, unit);

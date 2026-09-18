@@ -1,4 +1,4 @@
-Core = import "std";
+Core = import "std/stage1";
 export Core;
 open Core;
 pub not = fn(b) { match (b) { True => False, False => True } };

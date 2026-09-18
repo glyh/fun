@@ -64,7 +64,7 @@ public sealed class Reflection
     }
 
     private static readonly Lazy<Reflection> PreludeReflection =
-        new(() => new Reflection(Prelude.Metas, Prelude.Unit.Value));
+        new(() => new Reflection(Prelude.SyntaxStage.Metas, Prelude.SyntaxStage.Value));
 
     /// <summary>Reflection over the prelude's <c>Syntax</c> module.</summary>
     public static Reflection OfPrelude => PreludeReflection.Value;
