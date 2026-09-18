@@ -31,9 +31,13 @@ blocked_by:
 
 ## Handover (2026-09-17) — start here
 
-**State.** The port is under way in `dotnet/` and **paused by the user** at a clean
-point: `main` is `1453609`+, no forks running, no worktrees left. C#: **393 of 689**
-conformance cases pass, **172/172** xUnit. OCaml: 689 cases, 0 failed, **19 known
+**State (updated 2026-09-18).** C#: **611 of 689** conformance cases pass, **168/168**
+xUnit; `dune test` and `dune test test/conformance` green. Stage 2 is the prelude and
+every stage-2 stopgap is gone. What remains is triaged in
+[port-stage2-residue](port-stage2-residue.md).
+
+*Previous pause (2026-09-17).* `main` was `1453609`+, C# **393 of 689**, **172/172**
+xUnit. OCaml: 689 cases, 0 failed, **19 known
 prototype divergences** (`test/conformance/prototype-divergences.txt`). History of
 each step is in the waves below and in each `port-*.md` ticket's Resolution.
 
@@ -61,22 +65,25 @@ operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (
 "prelude syntax roles"), two stage-2 names, and one C# bug (below).
 
 **Next, in order:**
-1. **Prelude stage 2** — bind `dotnet/std/stage2.fun` (which already *compiles* as a
-   unit, `InterleavingTests.Stage2CompilesAsAUnit`) as the prelude: `stdlib` becomes
-   stage 2 (re-exporting stage 1), its roles (`type`, operators, `&&`/`||`) and
-   macros reach programs through the program's `open (import "std")`, and the
-   Driver's stage-2 "not ported yet" rules (`Prelude.cs`, `Driver.cs`: names read from
-   `stage2.fun`, and the token-spelling rule for enforest errors) are **deleted**, so
-   every remaining failure becomes an honest pass or error. Expect the largest single
-   jump in the count. Write its ticket first (`port-prelude-stage2.md`).
+1. ~~**Prelude stage 2**~~ **Done 2026-09-18** ([port-prelude-stage2](port-prelude-stage2.md),
+   merged from `port/prelude-stage2`). `stdlib` and `import "std"` are stage 2, which
+   imports stage 1 as `"std/stage1"` and re-exports it; every stage-2 stopgap deleted.
+   393 → **611/689**; the "the infix operator …" (199) and "prelude syntax roles" (95)
+   groups are gone. xUnit 172 → 168 (four cases pinned to the deleted stopgap; two
+   added). Recorded there: reflection anchors on stage 1, and a loader seeds its macro
+   metas from its prelude stage at construction.
 2. ~~**C# bug, `imports/core-301`:** a syntax form's template `module $b` (a Block
    hole after `module`) fails with the *language* error "module is written module
    { … }".~~ **Done 2026-09-18** (`268c355`): `Enforest.ParseModuleExpr` now takes the
    prototype's eager-hole branch (`parse_module_expr`, `enforest.ml:385`) before it
    requires a brace group. 392 → **393/689**, xUnit 172/172. (The 2026-09-17 handover's
    "393 before" was off by one; the merge base actually measured 392.)
-3. Triage whatever stage 2 leaves failing into tickets; keep asking the user on
-   undecided rules.
+3. **Triage — done, see [port-stage2-residue](port-stage2-residue.md).** 78 failures in
+   six causes. 68 of them are one family (`export`, as the stage-2 `type` macro uses
+   it) and are **blocked on one undecided rule**: may a declaration syntax form used
+   inside a block write an `export`? Ask the user before forking that family.
+   `macros/core-308` (expected 1010, got 110) is the only silently wrong answer in the
+   suite — look at it first despite being one case.
 
 **Open for the user (not blocking):**
 - Generic impls (`impl Size(Option(A))`): **decided 2026-09-18** — a free name in an
