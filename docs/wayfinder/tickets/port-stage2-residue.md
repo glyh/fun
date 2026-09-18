@@ -31,10 +31,36 @@ own file when it is picked up. Counts are C# conformance cases.
 > opens and syntax
 
 The stage-2 `type` macro emits `export` (see `type_exports` in `dotnet/std/stage2.fun`),
-and `Expander.Roles.cs:243` `DeclOver` rejects an `export` from a declaration syntax
-form used inside a block. Either a block-local `type` must not emit `export`, or
-`DeclOver`'s list must admit it. **Decide which before forking** — it is a language
-rule about what a declaration form may write in a block, not an implementation detail.
+and `Expander.Roles.cs:243` `DeclOver` rejects it when the form is used inside a block.
+
+### Grilled (2026-09-18): the site adapts, and a written `export` is an error
+
+**Ruling.** A declaration macro emits a canonical decl list; the **site** decides what
+each item means there. This is the rule that already governs `pub`: `expand.ml:1045`
+applies `Syntax.publish` to every binding a macro emitted, so `pub type Color = …`
+publishes the `rec`, the `export` and nothing else, with the macro knowing nothing
+about `pub`. The block site is the other half of the same rule.
+
+1. A **generated** `export` at a block site is **dropped** — port the prototype's
+   `ExportBinding { public = false; _ } -> body` (`expand.ml:569`).
+2. A **source-written** `export` in a block is an **error**. `{ export Foo; 1 }` is
+   nobody's intent, and the expander can tell the two apart: a generated
+   `ExportBinding` arrives through `expand_struct_bindings_with_scopes` from an
+   `InstantiateBinding`, a written one is parsed from source by `block_decls`. This is
+   a deliberate divergence from the prototype, which drops both — reproduce it, add
+   the shared case, and list it in `test/conformance/prototype-divergences.txt`.
+
+**Rejected for now: an ambient `$site` hole** letting the macro adapt itself. It
+competes with `publish` rather than joining it, and it has exactly one client
+(`type_decls` is the only `: Decl` form in the prelude). Split off to
+[macro-owns-its-output](macro-owns-its-output.md), where it is tied to the removal of
+`publish` — they are one design, and the user's position is that M1 should not land
+without it.
+
+### Also a port gap, not a question
+
+C#'s `DeclOver` has five cases; the prototype's has nine plus the export line. Missing:
+`EffectBinding`, `TraitBinding`, `ImplBinding`. Port them with the above.
 
 ## 2. ~~`pub type` in a module publishes no constructors (19)~~ — CLOSED 2026-09-18
 
