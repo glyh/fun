@@ -79,3 +79,44 @@ The site adapts, and the rule is written down — see
 [port-stage2-residue](port-stage2-residue.md) item 1. A **generated** `export` at a
 block site is dropped; a **source-written** one is an error. That keeps the silent
 no-op out of user code without giving the macro a site.
+
+## Direction (user, 2026-09-18): take this from Klister, generically
+
+`$site` as sketched above is the ad-hoc version — one ambient hole, one enum, one
+question ("module or block?"). Klister already has the general form, and this repo
+has the material extracted:
+
+```
+(define-macro (convert)
+  (>>= (which-problem)
+    (lambda (problem)
+      (case problem
+        [(expression fun-type) …]))))
+```
+
+`which-problem` is a macro-monad primitive returning **the problem the expander is
+currently solving** — declaration, type, expression or pattern — carrying the expected
+type where there is one
+(`docs/wayfinder/macro-system/extracted/klister/commentary/interleaving.md`;
+`examples/which-problem.kl`, noted in `source-notes/implementation-map.md:140`, is one
+macro expanding four ways).
+
+Why that is the better target than `$site`:
+
+- **One primitive, not one hole per question.** "Module item or block statement" is a
+  single instance of "what is the expander solving right now". A second question
+  (expected type, pattern position, whether the use said `pub`) would want a second
+  ambient hole under the `$site` design and nothing new under this one.
+- **It joins work already done.** Type-aware interleaving is built
+  (`Macro_driver`, `docs/wayfinder/macro-system/TYPE_AWARE_INTERLEAVING.md`), and the
+  expected type a typed macro already receives is exactly the `(expression fun-type)`
+  payload of Klister's `problem`. Two halves of one primitive.
+- **It is hardened by an existing design** rather than invented here, which is the
+  standing rule for macro-system vocabulary: follow Honu, sets-of-scopes and Klister,
+  and treat a deviation as a defect.
+
+Read before designing: `interleaving.md` (the macro monad and the task queue,
+including how a task blocks on an unsolved problem), and
+`commentary/architecture.md:171` on the signal system.
+
+Still later, not now. The trigger above is unchanged.
