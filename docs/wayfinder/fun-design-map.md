@@ -568,33 +568,47 @@ What remains, in the recommended order:
   — `s.keep(x)` with `keep(r : Ref(I64))` fails at the call; the hidden implicit
   is solved against a spine holding the struct value.
 - [Solving a meta applied to a spine fails on a dependent right-hand side](tickets/meta-solution-renaming-not-lifted-under-binders.md)
-  — `rename` never lifts its renaming under a binder, so a solution mentioning its
-  own binders raises `VarNotInSpine`. Fixed in the C# port only.
+  (closed) — `rename` never lifts its renaming under a binder, so a solution
+  mentioning its own binders raises `VarNotInSpine`. Fixed in the C# port only.
 - [A bare constructor pattern resolves by name](tickets/bare-constructor-pattern-resolves-by-name.md)
-  — `Red => …` finds the scrutinee's constructor with no `open`, even over a value
-  named `Red`. Fixed in the C# port only.
+  (closed) — `Red => …` finds the scrutinee's constructor with no `open`, even over
+  a value named `Red`. Fixed in the C# port only.
 - [A recursive record whose field has the record's own type cannot be used](tickets/recursive-record-field-of-own-type-rejected.md)
-  — `next : L` in `rec L = struct { … }` fails once `L` is a parameter type. Fixed in the C# port only.
+  (closed) — `next : L` in `rec L = struct { … }` fails once `L` is a parameter
+  type. Fixed in the C# port only.
 - [A type-case former head takes its arity from the template](tickets/type-case-former-head-arity-from-template.md)
-  — `Opt(x)` on a `fn(A) { enum … }` former is `PatternArityMismatch`. Fixed in the C# port only.
+  (closed) — `Opt(x)` on a `fn(A) { enum … }` former is `PatternArityMismatch`.
+  Fixed in the C# port only.
 - [Pattern synonym arguments bind by position](tickets/pattern-synonym-arguments-bind-by-position.md)
-  — `Flip(a, b) = Pt(b, a)` binds its use by position; a synonym through `open` is unknown. Fixed in the C# port only.
+  (closed) — `Flip(a, b) = Pt(b, a)` binds its use by position; a synonym through
+  `open` is unknown. Fixed in the C# port only.
 - [Checking a module against a signature takes the first member of a name](tickets/signature-check-takes-first-member.md)
-  — `sig { x : I64 }` against `module { pub x = 'a'; pub x = 1 }` fails on the first `x`. Fixed in the C# port only.
+  (closed) — `sig { x : I64 }` against `module { pub x = 'a'; pub x = 1 }` fails on
+  the first `x`. Fixed in the C# port only.
 - [Checking against an implicit function type inserts metas first](tickets/check-against-implicit-type-inserts-first.md)
-  — `g : [A : Type] -> A -> A = id` is rejected; decided it must check. To fix in the C# port only.
+  (closed) — `g : [A : Type] -> A -> A = id` was rejected; decided it must check,
+  and the port does.
 - [`panic` with an unknown message fails while checking](tickets/panic-with-unknown-message-fails-checking.md)
-  — decided it stays unevaluated, like every primitive. The C# port already does.
+  (closed) — decided it stays unevaluated, like every primitive. The C# port does.
 - [A reference operation on a value of unknown type is "not a reference"](tickets/deref-of-unknown-type-is-not-a-reference.md)
-  — decided it infers `Ref(?h, ?A)`, like application infers an arrow. The C# port already does.
+  (closed) — decided it infers `Ref(?h, ?A)`, like application infers an arrow.
+  The C# port does.
 - [A method cannot infer its row with `~>`](tickets/method-cannot-infer-row-with-poly-arrow.md)
-  — decided it may. To fix in the C# port only.
+  (closed) — decided it may. Fixed in the C# port only.
 - [A pattern synonym cannot be declared in a block](tickets/pattern-synonym-not-a-block-declaration.md)
-  — decided a block may declare one. The C# port already does.
+  (closed) — decided a block may declare one. The C# port does.
 - [`Trait.op` takes the innermost impl whatever its argument](tickets/trait-op-takes-innermost-impl.md)
-  — decided it resolves by the argument's type. To fix in the C# port only.
+  — **still open**: it now resolves by the argument's type, but the grilled
+  2026-09-18 ruling (a free name in an impl head binds) is implemented nowhere yet.
+  Step 2 of [the parity recipe](tickets/port-parity-plan.md).
 - [Opening a handle on a unit is not an open of that unit](tickets/unit-handle-open-not-a-unit-open.md)
-  — `V = import "v"; open V` does not deliver names `v`'s forms introduce. Fixed in the C# port only.
+  (closed) — `V = import "v"; open V` does not deliver names `v`'s forms
+  introduce. Fixed in the C# port only.
+
+The thirteen above were still listed as open long after the port was correct; the
+verification and closure is [close the recorded divergences](tickets/port-divergence-closure.md)
+(2026-09-20), which re-ran both runners against
+`test/conformance/prototype-divergences.txt`'s 19 case lines.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),
@@ -603,8 +617,8 @@ What remains, in the recommended order:
   [match and enums](tickets/port-match-and-enums.md), [implicit parameters](tickets/port-implicit-parameters.md),
   [recursive definitions](tickets/port-recursive-definitions.md), [imports](tickets/port-imports.md).
 - [Checking a lambda ignores its written parameter type](tickets/lambda-check-ignores-written-parameter-type.md)
-  — `fn(x : Char) { x }` checks against `I64 -> I64`. Fixed in the C# port only;
-  `elab-049` diverges there.
+  (closed) — `fn(x : Char) { x }` checked against `I64 -> I64`. Fixed in the C# port
+  only; `elab-049` diverges there.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
