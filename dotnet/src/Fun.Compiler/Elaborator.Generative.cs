@@ -8,13 +8,21 @@ namespace Fun.Compiler;
 /// generative - each evaluation is a new type - and the binder of such a value
 /// names it. In the binder's type every nominal the module declares becomes that
 /// member of the binder, so <c>m1 = mk(())</c> gives <c>m1.make : I64 -&gt; m1.T</c>,
-/// shared with no other evaluation; a sealed type may not leave the binder's scope.
+/// Every module also holds a private stamp its nominals capture, so a type-case
+/// separates two evaluations of a generative module.
 /// </summary>
-// ponytail: no run-time stamp yet (the prototype's first private module slot), so two
-// evaluations of a generative module would compare equal in a type-case: a type-case
-// head on a generative nominal raises "not ported yet" instead (Elaborator.Patterns).
+// ponytail: a type-case head on a sealed generative nominal is still refused
+// (Elaborator.Patterns): the declaration behind the projection is recorded in
+// Context.Sealed, and reading it there is not ported yet.
 public sealed partial record Context
 {
+    /// <summary>
+    /// The levels a nominal declared in this scope always captures, beyond the names
+    /// its enclosing module or body uses (E11): a module's stamp. Replaced whenever the
+    /// enclosing module or body changes, as the prototype's <c>scope_captures</c> is.
+    /// </summary>
+    public ImmutableHashSet<int> ScopeCaptures { get; init; } = [];
+
     /// <summary>
     /// The nominals a sealed binder names, by binder level and member label (E11). A
     /// type-case head like <c>st1.Symbol</c> is a projection on a sealed binder, so its
@@ -27,25 +35,47 @@ public sealed partial record Context
 public static partial class Elaborator
 {
     /// <summary>
-    /// A module's bindings in a sink of their own, so the module knows whether its
-    /// evaluation performs; what they performed then reaches the enclosing form. Every
-    /// nominal declared meanwhile becomes generative when it did - labelled by the
-    /// member it is bound to, where it is bound directly.
+    /// The module's stamp member (E11): private, and unwritable - <c>#</c> begins a
+    /// resolved name no source spells.
     /// </summary>
-    private static (Term, Value) Generative(Context ctx, Func<Context, (Term Term, Value Type, IReadOnlyList<BindingTerm> Bindings)> elaborate)
+    private const string ModuleStamp = "#stamp";
+
+    private static readonly Value UnitType = new Value.VAtomTy(AtomTy.Unit);
+
+    /// <summary>
+    /// A module: its first slot is a private stamp every nominal it declares captures.
+    /// The check-time stamp is <c>()</c>; a module whose evaluation performs gets a
+    /// fresh cell at run time instead, so each evaluation's types are distinct
+    /// instances (E11). Both sides read the slot list (I2), so the stamp moves no index
+    /// by hand.
+    /// </summary>
+    private static (Term, Value) GenerativeModule(Context ctx, Syntax.Module module)
     {
         var firstDeclared = ctx.Metas.DeclaredNominals.Count;
-        var ((term, type, bindings), performed) = Collecting(ctx, c => elaborate(c));
-        Emit(ctx, performed);
-        if (!performed.IsEmpty)
+        var outer = ctx.WithoutSelf() with { Enclosing = module };
+        var stampLevel = outer.Width;
+        // The check-time stamp: the real definition - a fresh cell or not - is written
+        // once the bindings say whether the module's evaluation performs.
+        var stamp = new BindingTerm.Let(ModuleStamp, MemberKind.Private, new Term.Atom(Atom.Unit.Instance));
+        var inner = ExtendFromSlots(outer, stamp, [(ModuleStamp, UnitType)]) with
         {
-            var labels = bindings.OfType<BindingTerm.Let>()
-                .Where(l => l.Def is Term.Nominal)
-                .ToDictionary(l => ((Term.Nominal)l.Def).Decl, l => l.Name);
-            foreach (var decl in ctx.Metas.DeclaredNominals.Skip(firstDeclared))
-                ctx.Metas.GenerativeNominals[decl] = labels.GetValueOrDefault(decl);
-        }
-        return (term, type);
+            ScopeCaptures = outer.ScopeCaptures.Add(stampLevel),
+        };
+
+        var ((terms, entries, _), sink) = Collecting(inner, c => InferModuleBindings(c, module, stampLevel));
+        Emit(ctx, sink);
+        if (sink.IsEmpty) return Build(stamp, generative: false);
+
+        var labels = terms.OfType<BindingTerm.Let>()
+            .Where(l => l.Def is Term.Nominal)
+            .ToDictionary(l => ((Term.Nominal)l.Def).Decl, l => l.Name);
+        foreach (var decl in ctx.Metas.DeclaredNominals.Skip(firstDeclared))
+            ctx.Metas.GenerativeNominals[decl] = labels.GetValueOrDefault(decl);
+        return Build(stamp, generative: true);
+
+        (Term, Value) Build(BindingTerm.Let placeholder, bool generative) =>
+            (new Term.Module([placeholder with { Def = generative ? new Term.RefNew(new Term.Atom(Atom.Unit.Instance)) : new Term.Atom(Atom.Unit.Instance) }, .. terms]),
+             new Value.VModule([new ModuleEntry.Field(ModuleStamp, MemberKind.Private, UnitType), .. entries], Partial: false));
     }
 
     /// <summary>

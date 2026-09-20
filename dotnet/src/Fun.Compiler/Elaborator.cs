@@ -363,16 +363,16 @@ public static partial class Elaborator
     /// A module: each binding elaborates in the context the ones before it
     /// built, pushing exactly its slots (I2). Its type lists every binding's
     /// member, private ones included, so widths stay aligned; only public ones
-    /// are reachable from outside.
+    /// are reachable from outside. Its first slot is the stamp (E11), so both
+    /// sides push it and no index moves by hand.
     /// </summary>
-    // ponytail: no module stamp slot yet; it arrives with nominals (E11), and
-    // both sides read the slot list, so adding it moves no index by hand.
     private static (Term, Value) InferModule(Context ctx, Syntax.Module module) =>
-        Generative(ctx, c => InferModuleBindings(c, module));
+        GenerativeModule(ctx, module);
 
-    private static (Term, Value, IReadOnlyList<BindingTerm>) InferModuleBindings(Context ctx, Syntax.Module module)
+    private static (List<BindingTerm> Terms, List<ModuleEntry> Entries, bool Performed) InferModuleBindings(
+        Context ctx, Syntax.Module module, int innerLevel)
     {
-        var inner = ctx.WithoutSelf() with { Enclosing = module };
+        var inner = ctx;
         var performingMember = false;
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
@@ -388,8 +388,8 @@ public static partial class Elaborator
         // A member whose value performed is a rigid entry of the module: no member's type may name it.
         if (performingMember)
             foreach (var field in entries.OfType<ModuleEntry.Field>())
-                CheckSealedStays(inner, ctx.Width, inner.Width, field.Name, field.Value);
-        return (new Term.Module([.. terms]), new Value.VModule([.. entries], Partial: false), terms);
+                CheckSealedStays(inner, innerLevel, inner.Width, field.Name, field.Value);
+        return (terms, entries, performingMember);
     }
 
     /// <summary>

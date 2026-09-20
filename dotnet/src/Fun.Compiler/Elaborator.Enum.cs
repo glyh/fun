@@ -16,6 +16,9 @@ public sealed partial record Context
         {
             field = value;
             EnclosingWidth = Width;
+            // The names a new enclosing module or body uses replace the last one's,
+            // stamp included (as the prototype's enclosing_scope does).
+            ScopeCaptures = [];
         }
     }
 
@@ -53,14 +56,15 @@ public static partial class Elaborator
             .Select(c => c.Payloads.Select(p => ctx.Eval(TypeTerm(ctx, p))).ToList())
             .ToList();
 
-        var levels = FirstBoundLevel(ctx) is int firstBound
+        var levels = (FirstBoundLevel(ctx) is int firstBound
             ? NamedLevels(ctx, ctx.Enclosing)
                 .Concat(payloads.SelectMany(ps => ps.SelectMany(p => FreeLevels(ctx, p))))
                 .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
-                .Distinct()
-                .Order()
-                .ToEquatableArray()
-            : [];
+            : Enumerable.Empty<int>())
+            .Concat(ctx.ScopeCaptures)
+            .Distinct()
+            .Order()
+            .ToEquatableArray();
 
         EquatableArray<ConstructorDecl> constructors =
             [.. e.Constructors.Select((c, i) => new ConstructorDecl(c.Name,
