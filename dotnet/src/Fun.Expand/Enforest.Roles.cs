@@ -805,7 +805,12 @@ public sealed partial class Enforest(EnforestEnv env)
             if (!stmt.IsEmpty) results.Add(read(stmt, rest.IsEmpty));
             if (rest.IsEmpty) return results;
             if (_env.Declared != declared)
-                rest = new Terms([.. rest.Select(t => t.AddScope(FreshQuotedScope()))]);
+            {
+                // One scope for the whole of the rest, so a role a statement
+                // declared is visible to every statement after it alike.
+                var fresh = FreshQuotedScope();
+                rest = new Terms([.. rest.Select(t => t.AddScope(fresh))]);
+            }
             terms = rest;
         }
     }

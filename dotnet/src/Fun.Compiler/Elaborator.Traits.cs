@@ -371,11 +371,14 @@ public static partial class Elaborator
         }
         if (pending.Count == 0 || ctx.Force(type) is not Value.VPi { Explicitness: Explicitness.Explicit } explicitPi) return null;
 
-        var arg = Check(ctx, argSyntax, explicitPi.Domain);
+        var (arg, argEffects) = Collecting(ctx, c => Check(c, argSyntax, explicitPi.Domain));
+        Emit(ctx, argEffects);
         foreach (var dict in pending)
             fn = new Term.Ap(fn, Explicitness.Implicit, Evidence(ctx, dict.Decl, dict.Args));
-        var result = Nbe.ApplyClosure(ctx.Metas, explicitPi.Codomain, ctx.Eval(arg));
-        return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
+        // The argument's value is read only when evaluating it is safe: one that
+        // performs takes a rigid stand-in as the codomain's argument.
+        var result = Nbe.ApplyClosure(ctx.Metas, explicitPi.Codomain, ArgumentValue(ctx, arg, argEffects));
+        return (EmitLatent(ctx, explicitPi, new Term.Ap(fn, Explicitness.Explicit, arg)), ctx.Force(result));
     }
 
     /// <summary>
