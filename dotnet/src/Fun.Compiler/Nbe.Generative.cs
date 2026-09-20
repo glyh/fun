@@ -17,6 +17,9 @@ public static partial class Nbe
     /// head, a type former applied to one fresh meta per parameter, is the same
     /// declaration over the same captures (E11). The metas then give the parameters.
     /// </summary>
+    // ponytail: evaluating the head and applying a former nests one evaluation
+    // per nominal-head match on the native stack (as Force does), not a Kont frame - a
+    // shared choice documented for uniformity, with no observable difference.
     private static bool MatchesNominalHead(MetaContext mc, Environment env, CorePattern.NominalHead head, Value.VNominal type, Occurrence at, List<(Occurrence, Value)> binds)
     {
         if (!ReferenceEquals(head.Decl, type.Decl)) return false;
