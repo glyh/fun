@@ -191,13 +191,10 @@ public static partial class Elaborator
     /// </summary>
     private static (CorePattern, List<(string Name, Value Type)>) ElaborateNominalHeadPattern(Context ctx, Pattern.Con pattern)
     {
-        var (head, nominal, arity) = TypeHead(ctx, pattern.Head)
+        var (head, _, decl, arity) = TypeHead(ctx, pattern.Head)
             ?? throw new FunException("a type-case head must name a type");
         if (pattern.Args.Length != arity)
             throw new FunException($"this type takes {arity} parameters, the pattern gives {pattern.Args.Length}");
-        // Two evaluations of a generative module differ only by their run-time stamp.
-        if (ctx.Metas.GenerativeNominals.ContainsKey(nominal.Decl))
-            throw new NotImplementedException("not ported yet: type-case on a generative nominal (run-time module stamps)");
 
         var parameters = new List<CorePattern>();
         var binders = new List<(string, Value)>();
@@ -207,16 +204,17 @@ public static partial class Elaborator
             parameters.Add(core);
             binders.AddRange(argBinders);
         }
-        return (new CorePattern.NominalHead(nominal.Decl, head, arity, [.. parameters]), binders);
+        return (new CorePattern.NominalHead(decl, head, arity, [.. parameters]), binders);
     }
 
     /// <summary>
-    /// What a pattern head names when it names a type: its term, the nominal it
-    /// reduces to with a type former's parameters as fresh metas, and how many
-    /// parameters it takes. Any function reducing to a nominal qualifies - an
-    /// alias is as good as its name. Null when the head names no type.
+    /// What a pattern head names when it names a type: its term, the value it denotes -
+    /// the nominal instance, or the projection on a sealed binder a generative module
+    /// minted - the declaration, and how many parameters it takes. Any function reducing
+    /// to a nominal qualifies - an alias is as good as its name. Null when the head names
+    /// no type.
     /// </summary>
-    private static (Term Head, Value.VNominal Nominal, int Arity)? TypeHead(Context ctx, Syntax head)
+    private static (Term Head, Value Value, NominalDecl Decl, int Arity)? TypeHead(Context ctx, Syntax head)
     {
         var (term, type) = Infer(ctx, head);
         var value = ctx.Eval(term);
@@ -227,7 +225,38 @@ public static partial class Elaborator
             var arg = ctx.RawMeta();
             (value, type, arity) = (Nbe.Apply(ctx.Metas, value, arg), ctx.Force(Nbe.ApplyClosure(ctx.Metas, pi.Codomain, arg)), arity + 1);
         }
-        return type is Value.VU && ctx.Force(value) is Value.VNominal nominal ? (term, nominal, arity) : null;
+        if (type is not Value.VU) return null;
+        if (ctx.Force(value) is Value.VNominal nominal) return (term, value, nominal.Decl, arity);
+        // A member of a binder sealed at a generative module (E11): the value is a
+        // projection, and the sealing context records the declaration behind it.
+        return SealedDecl(ctx, head) is { } decl ? (term, value, decl, arity) : null;
+    }
+
+    /// <summary>
+    /// What a path names when it is one member of a sealed binder (E11): the sealing
+    /// context of that binder, by member label. Null for any other path.
+    /// </summary>
+    private static NominalDecl? SealedDecl(Context ctx, Syntax head)
+    {
+        if (head is not Syntax.FieldAccess { Of: var of, Field: var member }) return null;
+        var level = of switch
+        {
+            Syntax.Var v => ctx.Names.TryGetValue(v.Id.Name, out var bound) ? bound.Level : null,
+            Syntax.OpenChoice c => ChoiceLevel(ctx, c),
+            _ => null,
+        };
+        return level is int l && ctx.Sealed.TryGetValue(l, out var sealedMembers) && sealedMembers.TryGetValue(member, out var decl)
+            ? decl
+            : null;
+    }
+
+    private static int? ChoiceLevel(Context ctx, Syntax.OpenChoice c)
+    {
+        foreach (var label in c.Opens)
+            if (ctx.Opened.TryGetValue(label, out var members) && members.TryGetValue(c.Name.Name, out var entry))
+                return entry.Level;
+        if (c.Fallback is not null && ctx.Names.TryGetValue(c.Fallback, out var fallback)) return fallback.Level;
+        return ctx.BaseNames.TryGetValue(c.Name.Name, out var based) ? based.Level : null;
     }
 
     // ---- refinement -----------------------------------------------------------
@@ -244,7 +273,7 @@ public static partial class Elaborator
     {
         Pattern.AtomType t => new Value.VAtomTy(t.Ty),
         Pattern.Or o => RefinementOf(ctx, o.Left) ?? RefinementOf(ctx, o.Right),
-        Pattern.Con c => TypeHead(ctx, c.Head)?.Nominal,
+        Pattern.Con c => TypeHead(ctx, c.Head)?.Value,
         _ => null,
     };
 
