@@ -245,6 +245,14 @@ language error, so a case expecting `error` can pass for the right reason.
 | `Elaborator.Structs.cs:209` | `elab_infer.ml:936` |
 | `Elaborator.Structs.cs:244` | `elab_type_expr.ml:74` |
 
+**Integrator re-verified the sharpest one (2026-09-20).** `Enforest.Roles.cs:148`
+throws *before* the `continues` guard, so the port refuses `{ 1 + 2 ~> 3 }` with
+``NotImplementedException("not ported yet: the polymorphic arrow ~>")`` while the
+prototype parses `(1 + 2) ~> 3` and type-errors. Reproduced in both runners (a case
+expecting `error` fails in C# and passes in OCaml): the port's `error` cases do not
+simply lack coverage here, the convention-2 violation is live and observable. Move
+the `continues` check ahead of the throw.
+
 ## Undecided — needs the user
 
 Each is a form the port refuses where the prototype's behaviour is either absent or
@@ -256,10 +264,16 @@ itself suspect; the ruling decides a real gap versus a `FunException`:
 2. `Nbe.Match.cs:87` — neutral sub-occurrence: default arm (prototype) or stuck?
 3. `Unify.cs:206` — which `Value` kinds may appear in a meta solution.
 4. `Nbe.cs:561` — can `VCont` be read back as a term?
-5. `Elaborator.Patterns.cs:72` — a synonym whose RHS is a product pattern. Prototype
-   accepts the definition in a *module*, then errors `TupleLengthMismatch` at use
-   (probe Q2): `module { pattern P(a, b) = (a, b); pub X = 1 }`. (A block `pattern`
-   fails in the prototype for the unrelated reason on
+5. `Elaborator.Patterns.cs:72` — a synonym whose RHS is a product pattern. **Independently
+   re-probed by the integrator, and the audit's evidence direction was wrong:** the
+   prototype does *not* accept the definition and fail at use — it rejects
+   `module { pattern P(a, b) = (a, b); pub X = 1 }` **at elaboration** with
+   `ElabError(TupleLengthMismatch)`, with no use in the program at all. So the
+   prototype refuses too: by convention 2 this is either parity (the throw becomes
+   the same language error) or a prototype defect (`P(a, b) = (a, b)` reads like a
+   legal tuple-pattern synonym, and `TupleLengthMismatch` is a strange way to say
+   otherwise). Which one needs a ruling. (A block `pattern` fails in the prototype
+   for the unrelated reason on
    [pattern-synonym-not-a-block-declaration](pattern-synonym-not-a-block-declaration.md).)
 6. `Elaborator.Patterns.cs:76` — a synonym over a type-case pattern.
 7. `Elaborator.Patterns.cs:88` — a synonym whose parameter types are not fixed.
