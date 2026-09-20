@@ -358,10 +358,11 @@ every defect below is an invariant with no name in the source.
 
 ### Language and macro work
 
-- [A local open expression, `M.(expr)`](tickets/local-open-expression.md) — (open,
-  grilling) OCaml's `M.(e)`; would expand to the existing `Open`. Undecided: path-only
-  left side, parentheses vs braces (`M.{…}` is export selection), pattern and type
-  position, shadowing warnings.
+- [A local open expression, `M.(expr)`](tickets/local-open-expression.md)
+  (closed) — **not adopted**: a block already opens a module for one expression
+  (`{ open M; e }`) and `M.(e)` expands to the same `Open`, so it is a second
+  spelling for one construct. If the double-bracketed enum-match idiom grows into
+  an irritant, reopen with call sites as evidence.
 
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
