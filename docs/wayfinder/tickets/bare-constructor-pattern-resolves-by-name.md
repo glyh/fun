@@ -3,7 +3,9 @@ title: A bare constructor pattern resolves by name among the scrutinee's constru
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: A bare constructor pattern head resolves through its binder or open, never by scrutinee-constructor name; fixed in the C# port only.
 assignee:
 blocked_by:
 ---
@@ -52,3 +54,12 @@ still reads `Red` as the constructor.
 - `values/bare-constructor-pattern-after-open` (2) is the agreeing case.
 - No existing case relied on the by-name lookup: every raw-enum case qualifies its
   patterns.
+
+## Resolution (2026-09-20)
+
+Closed after re-running both runners on `main @ d58af64`.
+`dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
+prototype divergences`, so `elaborate/bare-constructor-pattern-needs-open` and
+`elaborate/bare-constructor-pattern-shadowed-by-value` fail in the prototype as
+listed; `cd dotnet && dotnet run --project test/Fun.Conformance --no-build` passes
+both (neither is among the 13 unrelated residue failures), so the port is correct.
