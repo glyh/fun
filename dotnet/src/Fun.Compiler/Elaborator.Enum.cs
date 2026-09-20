@@ -46,10 +46,9 @@ public static partial class Elaborator
     /// <c>enum { … }</c>: a new declaration, whose identity is itself and the
     /// values of its captures. It captures every entry, from the first bound one
     /// on, that its enclosing function body or module names or its payload types
-    /// mention; each payload type is closed over those captures.
+    /// mention - plus whatever the scope always captures, a module's stamp - and
+    /// each payload type is closed over those captures.
     /// </summary>
-    // ponytail: no generative stamp; without effects every declaration is
-    // applicative (E11). Add the module stamp slot with effects.
     private static (Term, Value) InferEnum(Context ctx, Syntax.Enum e)
     {
         var payloads = e.Constructors

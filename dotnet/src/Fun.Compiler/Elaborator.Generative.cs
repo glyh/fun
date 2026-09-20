@@ -8,12 +8,10 @@ namespace Fun.Compiler;
 /// generative - each evaluation is a new type - and the binder of such a value
 /// names it. In the binder's type every nominal the module declares becomes that
 /// member of the binder, so <c>m1 = mk(())</c> gives <c>m1.make : I64 -&gt; m1.T</c>,
+/// shared with no other evaluation; a sealed type may not leave the binder's scope.
 /// Every module also holds a private stamp its nominals capture, so a type-case
 /// separates two evaluations of a generative module.
 /// </summary>
-// ponytail: a type-case head on a sealed generative nominal is still refused
-// (Elaborator.Patterns): the declaration behind the projection is recorded in
-// Context.Sealed, and reading it there is not ported yet.
 public sealed partial record Context
 {
     /// <summary>
@@ -62,7 +60,7 @@ public static partial class Elaborator
             ScopeCaptures = outer.ScopeCaptures.Add(stampLevel),
         };
 
-        var ((terms, entries, _), sink) = Collecting(inner, c => InferModuleBindings(c, module, stampLevel));
+        var ((terms, entries), sink) = Collecting(inner, c => InferModuleBindings(c, module, stampLevel));
         Emit(ctx, sink);
         if (sink.IsEmpty) return Build(stamp, generative: false);
 

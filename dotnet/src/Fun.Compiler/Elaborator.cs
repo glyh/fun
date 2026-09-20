@@ -369,7 +369,7 @@ public static partial class Elaborator
     private static (Term, Value) InferModule(Context ctx, Syntax.Module module) =>
         GenerativeModule(ctx, module);
 
-    private static (List<BindingTerm> Terms, List<ModuleEntry> Entries, bool Performed) InferModuleBindings(
+    private static (List<BindingTerm> Terms, List<ModuleEntry> Entries) InferModuleBindings(
         Context ctx, Syntax.Module module, int innerLevel)
     {
         var inner = ctx;
@@ -389,7 +389,7 @@ public static partial class Elaborator
         if (performingMember)
             foreach (var field in entries.OfType<ModuleEntry.Field>())
                 CheckSealedStays(inner, innerLevel, inner.Width, field.Name, field.Value);
-        return (terms, entries, performingMember);
+        return (terms, entries);
     }
 
     /// <summary>
