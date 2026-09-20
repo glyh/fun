@@ -105,6 +105,10 @@ public abstract partial record Term
                     mapped.Add(l with { Def = l.Def.Map(visit, under) });
                     under += 1;
                     break;
+                case BindingTerm.Impl i:
+                    mapped.Add(i with { Def = i.Def.Map(visit, under) });
+                    under += 1;
+                    break;
                 default:
                     throw new NotImplementedException($"not ported yet: traversing the binding {binding.GetType().Name}");
             }
