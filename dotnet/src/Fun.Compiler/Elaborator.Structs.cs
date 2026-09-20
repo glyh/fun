@@ -286,8 +286,9 @@ public static partial class Elaborator
                 if (st.Entries.OfType<ModuleEntry.Field>().FirstOrDefault(f => f.Name == name && f.Kind == MemberKind.Field) is { } field)
                     return (dot, ctx.Force(field.Value));
                 var isSelf = of is Term.Var v && ctx.SelfEntry is { } self && v.Index == Nbe.LevelToIndex(ctx.Width, self.Level);
-                if (LastMember(st, name, k => k == MemberKind.Method) is not null || isSelf && ctx.SelfMethods.ContainsKey(name))
-                    throw new NotImplementedException("not ported yet: method calls on a record");
+                var methodType = LastMember(st, name, k => k == MemberKind.Method)
+                    ?? (isSelf && ctx.SelfMethods.TryGetValue(name, out var selfMethod) ? selfMethod : null);
+                if (methodType is not null) return MethodCall(ctx, of, ofType, name, methodType);
                 // `self` is exactly the fields written so far: it asks for nothing more.
                 if (!st.Partial || isSelf) throw new FunException($"no field `{name}`");
                 return (dot, RequireField(ctx, ofType, st, name));

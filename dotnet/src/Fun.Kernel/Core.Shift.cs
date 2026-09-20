@@ -53,6 +53,8 @@ public abstract partial record Term
             ProdTy p => new ProdTy([.. p.Items.Select(i => Go(i))]),
             Proj p => p with { Of = Go(p.Of) },
             Dot d => d with { Of = Go(d.Of) },
+            RecordConstruct r => r with { Type = Go(r.Type), Fields = [.. r.Fields.Select(f => (f.Name, Go(f.Value)))] },
+            Struct s => new Struct([.. s.ConFields.Select(f => (f.Name, Go(f.Type)))], MapBindings(s.Bindings, visit, under), s.Partial),
             Nominal n => n with { Captures = [.. n.Captures.Select(c => Go(c))] },
             Con c => c with { Args = [.. c.Args.Select(a => Go(a))], Of = Go(c.Of) },
             Open o => o with { Of = Go(o.Of), Body = Go(o.Body, o.Members.Length) },
