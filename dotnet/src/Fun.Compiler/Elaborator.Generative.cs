@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Fun.Kernel;
 
 namespace Fun.Compiler;
@@ -12,6 +13,17 @@ namespace Fun.Compiler;
 // ponytail: no run-time stamp yet (the prototype's first private module slot), so two
 // evaluations of a generative module would compare equal in a type-case: a type-case
 // head on a generative nominal raises "not ported yet" instead (Elaborator.Patterns).
+public sealed partial record Context
+{
+    /// <summary>
+    /// The nominals a sealed binder names, by binder level and member label (E11). A
+    /// type-case head like <c>st1.Symbol</c> is a projection on a sealed binder, so its
+    /// declaration is read here.
+    /// </summary>
+    public ImmutableDictionary<int, ImmutableDictionary<string, NominalDecl>> Sealed { get; init; } =
+        ImmutableDictionary<int, ImmutableDictionary<string, NominalDecl>>.Empty;
+}
+
 public static partial class Elaborator
 {
     /// <summary>
@@ -39,19 +51,26 @@ public static partial class Elaborator
     /// <summary>
     /// <paramref name="type"/> as the type of a binder pushed at <paramref name="ctx"/>'s
     /// width whose value performs: each generative nominal it mentions becomes that
-    /// member of the binder.
+    /// member of the binder, and is reported by the label it became. An empty report
+    /// means the type was not sealed - it mentions no generative nominal - and the
+    /// type is returned unchanged.
     /// </summary>
-    private static Value Seal(Context ctx, Value type)
+    private static (Value Type, ImmutableDictionary<string, NominalDecl> Sealed) Seal(Context ctx, Value type)
     {
         var width = ctx.Width + 1;
         var quoted = Nbe.Quote(ctx.Metas, width, type);
-        if (!Mentions(ctx.Metas, quoted)) return type;
+        if (!Mentions(ctx.Metas, quoted)) return (type, ImmutableDictionary<string, NominalDecl>.Empty);
 
-        var sealedTerm = quoted.Map((t, under) => t is Term.Nominal n && ctx.Metas.GenerativeNominals.TryGetValue(n.Decl, out var label)
-            ? new Term.Dot(new Term.Var(under), label
-                ?? throw new NotImplementedException("not ported yet: sealing a generative nominal that is not bound as a module member"))
-            : null);
-        return Nbe.Eval(ctx.Metas, ctx.Environment.Push(new Value.VVar(ctx.Width, [])), sealedTerm);
+        var sealedNominals = ImmutableDictionary<string, NominalDecl>.Empty;
+        var sealedTerm = quoted.Map((t, under) =>
+        {
+            if (t is not Term.Nominal n || !ctx.Metas.GenerativeNominals.TryGetValue(n.Decl, out var label)) return null;
+            if (label is null)
+                throw new NotImplementedException("not ported yet: sealing a generative nominal that is not bound as a module member");
+            sealedNominals = sealedNominals.SetItem(label, n.Decl);
+            return new Term.Dot(new Term.Var(under), label);
+        });
+        return (Nbe.Eval(ctx.Metas, ctx.Environment.Push(new Value.VVar(ctx.Width, [])), sealedTerm), sealedNominals);
     }
 
     private static bool Mentions(MetaContext mc, Term term)
@@ -63,6 +82,17 @@ public static partial class Elaborator
             return found ? t : null;
         });
         return found;
+    }
+
+    /// <summary>
+    /// The binder a performing value gets: a rigid entry whose type is sealed, and the
+    /// sealing context that lets a type-case head name the declaration behind it (E11).
+    /// </summary>
+    private static (Context Body, ImmutableDictionary<string, NominalDecl> Sealed) SealBinder(Context ctx, string name, Value type)
+    {
+        var (sealedType, sealedNominals) = Seal(ctx, type);
+        var body = ctx.Bind(name, sealedType);
+        return (sealedNominals.IsEmpty ? body : body with { Sealed = body.Sealed.SetItem(ctx.Width, sealedNominals) }, sealedNominals);
     }
 
     /// <summary>
