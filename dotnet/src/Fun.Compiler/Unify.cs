@@ -201,10 +201,36 @@ public static partial class Unify
             {
                 Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Go(a.Arg)),
                 Frame.FProj p => new Term.Proj(acc, p.Index),
+                Frame.FDot d => new Term.Dot(acc, d.Name),
+                Frame.FRefGet => new Term.RefGet(acc),
+                Frame.FRefSet s => new Term.RefSet(acc, Go(s.Value)),
+                Frame.FMatch m => RenameStuckMatch(mc, id, ren, acc, m),
                 _ => throw new NotImplementedException($"not ported yet: renaming a {frame.GetType().Name} frame"),
             }),
             var other => throw new NotImplementedException($"not ported yet: solving to {other.GetType().Name}"),
         };
+    }
+
+    /// <summary>
+    /// A stuck match among a solution: its scrutinee is renamed, and each arm's body
+    /// is opened at fresh variables for its binders and renamed under them - exactly
+    /// as a stuck match is read back (<c>Nbe.QuoteStuckMatch</c>).
+    /// </summary>
+    private static Term RenameStuckMatch(MetaContext mc, int id, Renaming ren, Term scrutinee, Frame.FMatch frame)
+    {
+        var bodies = new List<Term>();
+        for (var i = 0; i < frame.Match.Bodies.Length; i++)
+        {
+            var env = frame.Env;
+            var lifted = ren;
+            for (var j = 0; j < Nbe.ArmBinders(frame.Match, i); j++)
+            {
+                env = env.Push(new Value.VVar(ren.Cod + j, []));
+                lifted = lifted.Lift();
+            }
+            bodies.Add(Rename(mc, id, lifted, Nbe.Eval(mc, env, frame.Match.Bodies[i])));
+        }
+        return frame.Match with { Scrutinee = scrutinee, Bodies = [.. bodies] };
     }
 
     private static void OccursCheck(MetaContext mc, int id, Value value)
