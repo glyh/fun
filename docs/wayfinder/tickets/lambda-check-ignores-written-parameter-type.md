@@ -3,7 +3,9 @@ title: Checking a lambda against a function type ignores its written parameter t
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: A written parameter type is unified with the expected domain before the body is checked; fixed in the C# port only.
 assignee:
 blocked_by:
 ---
@@ -48,3 +50,12 @@ The lambda binds its parameter at the expected domain (now known equal).
 
 Both `error` cases are listed in `test/conformance/prototype-divergences.txt`, so
 the prototype's run expects them to fail.
+
+## Resolution (2026-09-20)
+
+Closed after re-running both runners on `main @ d58af64`.
+`dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
+prototype divergences`, so `elaborate/elab-049` and
+`elaborate/lambda-param-type-mismatch` fail in the prototype as listed; `cd dotnet
+&& dotnet run --project test/Fun.Conformance --no-build` passes both (neither is
+among the 13 unrelated residue failures), so the port is correct.

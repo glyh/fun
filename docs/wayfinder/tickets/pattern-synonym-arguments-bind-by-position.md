@@ -3,7 +3,9 @@ title: Pattern synonym arguments bind by position, and a synonym is not found th
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: Synonym arguments bind by parameter name and a synonym is found through open; both fixed in the C# port only.
 assignee:
 blocked_by:
 ---
@@ -47,3 +49,12 @@ Added with the port (names fixed here so the list matches):
 
 The two defect cases are listed in `test/conformance/prototype-divergences.txt`
 once they land and are confirmed to fail in the prototype.
+
+## Resolution (2026-09-20)
+
+Both defect cases landed and are listed. Closed after re-running both runners on
+`main @ d58af64`: `dune test --root . test/conformance` reports `690 cases, 0
+failed, 19 known prototype divergences`, so `values/pattern-synonym-binds-by-name`
+and `values/pattern-synonym-through-open` fail in the prototype as listed; `cd
+dotnet && dotnet run --project test/Fun.Conformance --no-build` passes both
+(neither is among the 13 unrelated residue failures), so the port is correct.
