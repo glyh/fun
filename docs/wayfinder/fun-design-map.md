@@ -303,9 +303,15 @@ order.
 ### Blocking the .NET port
 
 [Port `core_tt` to .NET](tickets/port-core-tt-to-dotnet.md) is the destination.
-**In progress since 2026-09-16, paused 2026-09-17** at 393 of 689 conformance cases
-(C#, `dotnet/`). **Start at the port ticket's "Handover (2026-09-17)"**: state, how the
-work runs, and the next step (bind prelude stage 2). Language: C#; the evaluator is
+**In progress since 2026-09-16** — 677 of 690 conformance cases (C#, `dotnet/`),
+168/168 xUnit, `dune test` green (2026-09-18). **Start at the port ticket's
+"Handover (2026-09-17)"**, then work
+[reach feature parity with the prototype](tickets/port-parity-plan.md) — the recipe
+for what remains. A green suite is not parity: 60 `not ported yet` paths in
+`dotnet/src` are only failures when a shared case reaches them, so the audit of
+those paths is a step of its own, and the port is the one place the implementation
+is *less* correct than the prototype
+([E11's nominal identity](tickets/port-nominal-identity.md)). Language: C#; the evaluator is
 an explicit frame-stack machine; the domain model is the spec and the OCaml
 prototype supporting material. History below. **Blockers extended 2026-09-14:** the decided
 effect semantics, the `Self`-identity soundness hole and record knot, the open

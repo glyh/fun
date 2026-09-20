@@ -86,6 +86,13 @@ operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (
    **fixed** (`b8bf5bb`): it took 19 more cases with it, closing the residue's item 2.
    611 → 630/689. Then the `export` family (residue items 1 and 3, `ac86a56`) →
    **677 of 690**, **13 failures left**, each a singleton or near-singleton.
+4. **Parity, not a green suite** — [reach feature parity with the
+   prototype](port-parity-plan.md) is the recipe for what remains, in order: finish
+   [E11 nominal identity](port-nominal-identity.md) (the one place the port is *less*
+   correct than the prototype), the residue's remaining families, the audit of every
+   [unported path](port-unported-path-audit.md) (60 `not ported yet` sites, 15
+   `ponytail:` notes — a throw is only a failure when a case reaches it), and closing
+   the recorded divergences.
 
 **Open for the user (not blocking):**
 - Generic impls (`impl Size(Option(A))`): **decided 2026-09-18** — a free name in an
