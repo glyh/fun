@@ -3,7 +3,9 @@ title: Opening a handle on a unit is not an open of that unit
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: Opening a handle on a unit is an open of that unit, so the syntax form's id resolves to its member; fixed in the C# port only.
 assignee:
 blocked_by:
 ---
@@ -39,3 +41,12 @@ treats only `open (import "v")` as a unit open; through the handle, the introduc
 
 `imports/unit-handle-open-form-member` (3), listed in
 `test/conformance/prototype-divergences.txt`.
+
+## Resolution (2026-09-20)
+
+Closed after re-running both runners on `main @ d58af64`.
+`dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
+prototype divergences`, so `imports/unit-handle-open-form-member` fails in the
+prototype as listed (`UnboundVariable "three"`); `cd dotnet && dotnet run --project
+test/Fun.Conformance --no-build` passes it (not among the 13 unrelated residue
+failures), so the port is correct.

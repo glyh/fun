@@ -3,7 +3,9 @@ title: "Port: prelude stage 2"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: Merged 2026-09-18 from `port/prelude-stage2` (`1bbc673`, `6859015`); stage 2 is the prelude, stage-2 stopgaps deleted, 393 → 611/689. Front-matter flipped 2026-09-20.
 assignee:
 blocked_by:
 ---
@@ -98,3 +100,24 @@ Cost accepted: this one line of `dotnet/std/stage2.fun` diverges from the protot
 `Elab_prelude.stage2_source`, which has no unit loader and so has no such collision.
 Note the divergence in the resolution; it is a port-only difference, not a language
 change, so it does not belong in `prototype-divergences.txt`.
+
+## Resolution (2026-09-18) — merged
+
+Merged from `port/prelude-stage2` (`1bbc673`, `6859015`); the front-matter was left
+`open` by the run that landed it, and is flipped here on 2026-09-20 after
+re-verifying both runners.
+
+`stdlib` and `import "std"` are **stage 2**, which imports stage 1 as
+`"std/stage1"` and re-exports it; every stage-2 stopgap is deleted
+(`dotnet/std/stage1.fun`, `dotnet/std/stage2.fun`). 393 → **611/689**; the
+"the infix operator …" (199 cases) and "prelude syntax roles" (95) groups are gone.
+xUnit 172 → 168 (four cases pinned to the deleted stopgap; two added).
+
+Two decisions recorded on the way: reflection anchors on stage 1, and a loader
+seeds its macro metas from its prelude stage at construction. One port-only
+divergence is noted at the end of this ticket: a line of `dotnet/std/stage2.fun`
+(the unit loader), which is a port difference, not a language change, so it is not
+listed in `test/conformance/prototype-divergences.txt`.
+
+What remained after it is triaged in
+[what prelude stage 2 left failing](port-stage2-residue.md).

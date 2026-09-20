@@ -3,7 +3,9 @@ title: Checking a module against a signature takes the first member of a name
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: A signature check uses the last member of a name (I3); fixed in the C# port only.
 assignee:
 blocked_by:
 ---
@@ -28,3 +30,12 @@ family as the closed [dotted-paths-first-match](dotted-paths-first-match.md).
 
 `values/signature-check-takes-last-member` (1), listed in
 `test/conformance/prototype-divergences.txt`.
+
+## Resolution (2026-09-20)
+
+Closed after re-running both runners on `main @ d58af64`.
+`dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
+prototype divergences`, so `values/signature-check-takes-last-member` fails in
+the prototype as listed (with `CannotUnify(I64 vs Char)`); `cd dotnet && dotnet
+run --project test/Fun.Conformance --no-build` passes it (not among the 13
+unrelated residue failures), so the port is correct.

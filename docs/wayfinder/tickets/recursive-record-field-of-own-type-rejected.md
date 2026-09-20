@@ -3,7 +3,9 @@ title: A recursive record whose field has the record's own type cannot be used
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: A recursive occurrence is a type, so a field of the record's own type checks and the record is usable; fixed in the C# port only.
 assignee:
 blocked_by:
 ---
@@ -32,3 +34,12 @@ decides that a recursive occurrence *is* a type (glossary
 `values/rec-record-field-of-own-type` (1), listed in
 `test/conformance/prototype-divergences.txt`. The port also pins it in
 `dotnet/test/Fun.Tests/RecTypesTests.cs`.
+
+## Resolution (2026-09-20)
+
+Closed after re-running both runners on `main @ d58af64`.
+`dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
+prototype divergences`, so `values/rec-record-field-of-own-type` fails in the
+prototype as listed; `cd dotnet && dotnet run --project test/Fun.Conformance
+--no-build` passes it (not among the 13 unrelated residue failures), so the port
+is correct.

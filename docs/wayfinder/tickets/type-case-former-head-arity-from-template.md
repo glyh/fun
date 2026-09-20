@@ -3,7 +3,9 @@ title: A type-case head that is a type former takes its arity from the template
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: A type-case head that is a type former takes its arity from the form, not the declaration's num_params; fixed in the C# port only.
 assignee:
 blocked_by:
 ---
@@ -31,3 +33,12 @@ former is a valid type-case head, matched on its parameters, so this gives 2.
 
 `values/type-case-former-parameter` (2), listed in
 `test/conformance/prototype-divergences.txt`.
+
+## Resolution (2026-09-20)
+
+Closed after re-running both runners on `main @ d58af64`.
+`dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
+prototype divergences`, so `values/type-case-former-parameter` fails in the
+prototype as listed (with `PatternArityMismatch`); `cd dotnet && dotnet run
+--project test/Fun.Conformance --no-build` passes it (not among the 13 unrelated
+residue failures), so the port is correct.

@@ -3,7 +3,9 @@ title: "Port: verify recorded deviations, fix core-311, runners evaluate error c
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: All three items merged 2026-09-16; front-matter flipped to closed 2026-09-20 after re-verifying both runners.
 assignee:
 blocked_by:
 ---
@@ -71,3 +73,15 @@ parentheses reads as a name, as in the prototype. C# 236/666; xUnit 123; OCaml 6
 cases, 0 failed, 10 known divergences.
 
 All three open questions are decided.
+
+## Closed (2026-09-20)
+
+Front-matter was stale: the body's [Resolution (2026-09-16)](#resolution-2026-09-16)
+records all three items merged, but `status` was still `open`. Flipped to
+`closed` after re-running both runners on `main @ d58af64`:
+`dune test --root . test/conformance` reports `690 cases, 0 failed, 19 known
+prototype divergences`, and `cd dotnet && dotnet run --project
+test/Fun.Conformance --no-build` reports `690 cases, 13 failed` — all 13 are the
+unrelated residue cases (`method calls on a record`, `Eq` impl resolution,
+`elab-059/062/067`, `core-067/102/270`, `imports/core-165`), none of them listed
+in `prototype-divergences.txt`.
