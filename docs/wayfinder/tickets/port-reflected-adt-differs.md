@@ -3,7 +3,9 @@ title: "Port: the reflected Syntax ADT differs — a trait with several paramete
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: Ruled by the integrator on evidence (no trait in the language takes two parameters; every one of the 707 cases, the prelude and std use Eq(A)/Show(A)/Size(A)/Same(A)). Split: the TypeDef shape is to port (port-reflected-typedef); trait arity is a deliberate divergence that must give a named macro error.
 assignee:
 blocked_by:
 ---
