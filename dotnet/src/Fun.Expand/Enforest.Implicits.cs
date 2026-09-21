@@ -32,4 +32,17 @@ public sealed partial class Enforest
             .Select(ParseAll)
             .Aggregate(fn, (f, arg) => new Syntax.Ap(f, Explicitness.Implicit, arg, span));
     }
+
+    /// <summary>
+    /// <c>f{ e }</c>: one implicit argument written in braces, the whole group read
+    /// as a single expression (enforest.ml:646). The callee must touch the group, which
+    /// the caller has already checked; a brace group holding a <c>=</c> field is record
+    /// construction instead.
+    /// </summary>
+    private Syntax ParseBraceImplicitApplication(Syntax fn, TokenTree.Group group)
+    {
+        var span = SourceSpan.Between(fn.Span, group.Span);
+        var arg = ParseAll(DropSeparators(new Terms(group.Items)));
+        return new Syntax.Ap(fn, Explicitness.Implicit, arg, span);
+    }
 }
