@@ -277,7 +277,11 @@ itself suspect; the ruling decides a real gap versus a `FunException`:
    [pattern-synonym-not-a-block-declaration](pattern-synonym-not-a-block-declaration.md).)
 6. `Elaborator.Patterns.cs:76` — a synonym over a type-case pattern.
 7. `Elaborator.Patterns.cs:88` — a synonym whose parameter types are not fixed.
-8. `Elaborator.Generative.cs:52` — sealing a generative nominal not bound as a member.
+8. ~~`Elaborator.Generative.cs:52` — sealing a generative nominal not bound as a
+   member.~~ **Resolved 2026-09-20: real gap, no ruling needed.** The probe below was
+   run and the prototype answers `1` where the port throws (a parametric nominal, a
+   type former, in a generative module), so sealing simply has not been taught about a
+   former. → [a parametric nominal in a generative module](port-generative-former-nominal.md)
 9. `Enforest.Roles.cs:845` — which quoted-syntax statements take a body.
 
 ## Internals parity (the third invisible delta)

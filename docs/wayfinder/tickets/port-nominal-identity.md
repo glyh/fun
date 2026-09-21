@@ -3,7 +3,9 @@ title: "Port: finish E11 — nominal identity (captures, sealing, run-time stamp
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: E11 is finished in the port. One private stamp slot per module, type-case compares declaration + captures + stamp, sealed heads resolve through the sealing context. values/elab-062, values/core-067 and values/elab-067 pass; C# conformance 695 cases, 0 failed. One E11 shape remains unported (a parametric nominal in a generative module) — port-generative-former-nominal.
 assignee:
 blocked_by:
 ---
@@ -108,3 +110,59 @@ Do not edit this ticket, `fun-design-map.md` or `docs/STATUS.md`; report and the
 integrator records. Report: the diagnosis of each failure before the fix, branch,
 commits, the conformance and xUnit counts, files touched, and any question you
 stopped on with a concrete example.
+
+## Resolution (2026-09-20) — C# conformance 695 cases, 0 failed
+
+Merged from branch `port/nominal-identity` (E11 commits `74a4745`, `0f94076`,
+`aaf3b40`, `3f549c7`, `752bbab`, `faf4e79`, `597d1a6`, plus the merge of `main`
+`f4b3823`). **690/13 → 695/0**, xUnit 168 → **172**, `dotnet build` clean, `dune test`
+and `dune test test/conformance` green (695 cases, 0 failed, 20 divergences).
+
+### The diagnoses — and the first one was not the guess the ticket made
+
+**`values/elab-062` is not the nested-`Eval` stopgap.** Instrumenting
+`MatchesNominalHead` showed the head and the scrutinee carrying the *same* declaration
+and two captures, while `SameInstance` returned false: the captures include the closure
+`less`, and C#'s structural comparison had no closure case, so `a.T` did not compare
+equal to **itself**. The prototype's `runtime_value_equal` short-circuits on physical
+identity (a cell by identity) — ported that, and `elab-062` answers `10`. The
+`Nbe.Patterns.cs:88` nested `Eval` was innocent and stays; its note moved with the code
+to the new `Nbe.Generative.cs` with the reason restated as a *shared choice, not a
+defect*. (Ticket's candidate (a)/(b) were both wrong; the lesson is the one the ticket
+asked for — diagnose before fixing.)
+
+**`values/core-067`.** `InferLet` ran `CheckSealedStays` for *every* performing let, so
+a body whose type names an entry at or above the binder tripped it even though no
+nominal was generative. The prototype checks only when the value's type mentions a
+generative nominal (`mentions_generative`); gated on the sealing report being non-empty.
+
+### Built
+
+One private **stamp slot per module** (`()` at check time and for a pure module,
+`ref(())` at run time when the module's evaluation performs); the slot is contributed
+through `BindingTerm.Slots()`, read by both sides, so no index moved by hand (verified
+by an xUnit slot-width test). **Type-case compares nominal instances by declaration +
+captures + stamp**, and a **sealed head resolves through the sealing context**, which
+retired the `Elaborator.Patterns.cs:198-200` refusal and fixed `elab-067` (the
+`SymbolTable` type-case) as a side effect. New `Nbe.Generative.cs` (own partial file,
+convention 7); `Elaborator.{cs,Generative,Enum,RecTypes,Patterns}.cs`,
+`Nbe.Patterns.cs`, `NominalTests.cs`.
+
+### Cases added (the generative half had no coverage — that is why the gap was invisible)
+
+`values/nominal-generative-symbol-table-shares-own` (1),
+`-rejects-other`, `-rejects-name-across` (error), `nominal-generative-type-case-separates`
+(10) — all four pass in **both** runners. Note recorded by the fork: the family already
+existed as `elab-063`…`elab-069` and only the type-case (`elab-067`) was failing, so
+these add coverage rather than being its only source.
+
+### Open / not done
+
+- **A parametric nominal (a type former) in a generative module is still unported** —
+  `not ported yet: sealing a generative nominal that is not bound as a module member`.
+  Verified real gap (prototype `1`, port throws); it needs the prototype's separate
+  `NomRef.params`, since C# `Term.Nominal` has captures but no param list and an unused
+  parameter is not captured. → [port-generative-former-nominal](port-generative-former-nominal.md)
+- **Type-case branch refinement to a sealed projection is refused by *both* runners**
+  ("rigid vs neutral"). Parity, so no case was added, but it is a real limitation of
+  the rule as it stands, worth its own ticket if a use appears.

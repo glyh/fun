@@ -89,14 +89,15 @@ operators (199, "the infix operator …"), stage-2 syntax forms such as `type` (
    causes are now closed** (2026-09-20, `fbea929`, `4fdab26`): C# **688 of 691**, and
    the 3 that remain are E11's — they moved to
    [E11 nominal identity](port-nominal-identity.md).
-4. **Parity, not a green suite** — [reach feature parity with the
-   prototype](port-parity-plan.md) is the recipe for what remains, in order: finish
-   [E11 nominal identity](port-nominal-identity.md) (the one place the port is *less*
-   correct than the prototype), the audit of every
-   [unported path](port-unported-path-audit.md) (62 sites found, sorted into 17 real
-   gaps, 13 wrong-kind refusals, 17 unreachable, 9 undecided — a throw is only a
-   failure when a case reaches it), and closing the recorded divergences (done
-   2026-09-20: 13 of the 14 closed).
+4. **E11 finished 2026-09-20** (`port/nominal-identity`) — **C# conformance 695 cases,
+   0 failed**; xUnit 172/172; both runners green. The visible delta is closed.
+5. **Parity, not a green suite** — [reach feature parity with the
+   prototype](port-parity-plan.md) is the recipe for what remains, in order: the audit
+   of every [unported path](port-unported-path-audit.md) (62 sites found, sorted into
+   17 real gaps, 13 wrong-kind refusals, 17 unreachable, 8 undecided — a throw is only
+   a failure when a case reaches it), and closing the recorded divergences (done
+   2026-09-20: 13 of the 14 closed). **695/0 is not feature parity**: none of the 17
+   real gaps is visible to the suite as it stands.
 
 **Open for the user (not blocking):**
 - Generic impls (`impl Size(Option(A))`): **decided 2026-09-18** — a free name in an

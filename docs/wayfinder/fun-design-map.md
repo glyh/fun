@@ -303,17 +303,16 @@ order.
 ### Blocking the .NET port
 
 [Port `core_tt` to .NET](tickets/port-core-tt-to-dotnet.md) is the destination.
-**In progress since 2026-09-16** — **688 of 691** conformance cases (C#, `dotnet/`),
-168/168 xUnit, `dune test` green (2026-09-20). The 3 that remain are all E11
-([nominal identity](tickets/port-nominal-identity.md)), where the port is *less*
-correct than the prototype rather than merely incomplete. **Start at the port ticket's
+**In progress since 2026-09-16** — **695 of 695** conformance cases, **0 failed** (C#,
+`dotnet/`), 172/172 xUnit, `dune test` green (2026-09-20). **The shared suite is fully
+green, which is not yet feature parity:** 62 `not ported yet` paths in `dotnet/src` are
+only failures when a shared case reaches them, and
+[the audit of those paths](tickets/port-unported-path-audit.md) (2026-09-20) sorted
+them into 17 real gaps, 13 wrong-kind refusals, 17 unreachable and 8 undecided — none
+of the 17 is visible to the suite as it stands. **Start at the port ticket's
 "Handover (2026-09-17)"**, then work
 [reach feature parity with the prototype](tickets/port-parity-plan.md) — the recipe
-for what remains. A green suite is not parity: 62 `not ported yet` paths in
-`dotnet/src` are only failures when a shared case reaches them, and
-[the audit of those paths](tickets/port-unported-path-audit.md) (2026-09-20) sorted
-them into 17 real gaps, 13 wrong-kind refusals, 17 unreachable and 9 undecided.
-Language: C#; the evaluator is
+for what remains. Language: C#; the evaluator is
 an explicit frame-stack machine; the domain model is the spec and the OCaml
 prototype supporting material. History below. **Blockers extended 2026-09-14:** the decided
 effect semantics, the `Self`-identity soundness hole and record knot, the open

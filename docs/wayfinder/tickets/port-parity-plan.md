@@ -53,6 +53,19 @@ refusal all want the same machinery. Both `Elaborator.cs:368` (module stamp slot
 it, so no index moves by hand.
 → [port-nominal-identity](port-nominal-identity.md)
 
+**Done 2026-09-20 — C# conformance 695 cases, 0 failed**, xUnit 172/172, `dune test`
+green. One private stamp slot per module, type-case by declaration + captures + stamp,
+sealed heads resolved through the sealing context. The ticket's guess about `elab-062`
+was **wrong**: it was not the nested-`Eval` stopgap but a missing closure case in the
+captures comparison, so `a.T` did not equal itself — diagnose-before-fixing earned its
+keep. Four shared cases now cover the generative half, which had none. One E11 shape
+remains: a **parametric** nominal in a generative module →
+[port-generative-former-nominal](port-generative-former-nominal.md).
+
+**A green suite is not parity — and it is now green.** 695/0 is the visible delta
+closed; the 17 real gaps from step 3 are what remains, and not one of them is visible
+to the suite as it stands.
+
 **2. The residue's remaining families**, in the residue ticket's own order:
 record method calls (4), `Eq` impl resolution (2, including the grilled generic-impls
 ruling on [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md)),
