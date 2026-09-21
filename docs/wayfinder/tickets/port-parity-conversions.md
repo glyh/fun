@@ -3,7 +3,9 @@ title: "Port: the 13 parity throws become language errors (convention 2)"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: 12 of the 13 rows were parity and now give the prototype's own language errors (17 unreachable catch-alls became invariant failures). The 13th was the audit's mistake - a dotted order-group path is a real gap, spun out to port-order-group-through-unit-path. C# 695 → 706 cases, 0 failed.
 assignee:
 blocked_by:
 ---
@@ -77,3 +79,70 @@ is the point of the change, and the reason the count will move *up* rather than
 holding. Verify each new case fails in the prototype before listing it in
 `test/conformance/prototype-divergences.txt`; a case that passes in both is a normal
 case, not a divergence.
+
+## Resolution (2026-09-20)
+
+Merged from `port/parity-refusals` (`d1d10fe`, commits `a9c8f12`, `7f45f83`).
+**C# conformance 695 → 706 cases, 0 failed**; xUnit 172/172 unchanged; `dune test` and
+`dune test test/conformance` green (706 cases, 20 divergences).
+
+### The refusals now say what the prototype says
+
+| site | now | prototype |
+|---|---|---|
+| `Enforest.cs:220` | `ExpandException("unsupported module item: …")` | `enforest.ml:1445` |
+| `Enforest.cs:291` | `ExpandException("unsupported Phase 7A keyword: …")` | `:514` |
+| `Enforest.cs:396` | leaves the unnameable operator unconsumed so `EnsureNoRest` reports it | `enforest_util.ml:342` |
+| `Enforest.cs:412` + the **live** `Enforest.Implicits.cs` bracket path | `ExpandException("bare bracket expression is not in Phase 7A")` | `enforest.ml:87` |
+| `Enforest.Roles.cs:148` | `ExpandException("not an infix operator: ~>")`, **`continues` guard moved ahead of the throw** | `enforest.ml:684` |
+| `Enforest.Traits.cs:143` | `ExpandException("an impl in a signature must be named…")` | `:407` |
+| `Elaborator.cs:510` | `FunException("open of a non-module")` | `elab_resolve.ml:387` |
+| `Elaborator.Export.cs:63` | `"export of a non-module"` | `elab_infer.ml:150` |
+| `Elaborator.Patterns.cs:47` | `"record pattern fields must follow a struct"` | `elab_patterns.ml:187` |
+| `Elaborator.Structs.cs:80`, `:209`, `:244` | `unsupported struct item` / `record construction of a non-struct` / `unsupported signature item` | `enforest.ml:1509`, `elab_infer.ml:936`, `elab_type_expr.ml:74` |
+
+**11 shared cases added**, all `expect error`, all pass in both runners, **none a
+divergence**: `poly-arrow-is-not-an-infix-operator`, `module-item-that-is-not-a-binding`,
+`keyword-in-expression-position`, `unnamed-impl-in-signature`,
+`open-value-of-unknown-type`, `export-value-of-unknown-type`,
+`record-pattern-head-of-unknown-type`, `struct-item-that-is-not-a-binding`,
+`record-construction-of-a-non-struct`, `bare-bracket-expression`,
+`pub-impl-is-not-an-expression`. `ExpandTests.RejectsUnported` folded into `Rejects`.
+
+**Two rows are dead**, so their conversions are for the reader, not for a program:
+`Enforest.cs:412`'s branch is unreachable because `ParsePrimary` intercepts bracket
+groups first (the live path is `Enforest.Implicits.cs`, now converted too), and
+`Elaborator.Structs.cs:244` is reachable only if a macro reflects a `RawSig` whose impl
+carries fields — the enforester emits only `Let`/`Impl{Fields: null}`.
+
+### The one row the audit got wrong
+
+`Enforest.Roles.cs:343` (audit `:338`) is **not parity — it is a real gap**, and the
+audit's reasoning is the part that failed: it read the site as
+[brackets-decide-grouping](brackets-decide-grouping.md)'s open "dotted group
+references" item, but the prototype resolves a dotted path of depth > 1 through a
+module member. **Probed by the fork and re-verified by the integrator**:
+`{ W = import "wrapper"; infix (@@) W.M.g ($x, $y) { $x }; 1 @@ 2 }` (units: `m` declares
+`pub order g`, `wrapper` does `pub M = import "m"`) → the prototype answers `1`, the
+port refuses. The fork left it alone and committed no case, which is right.
+→ [an order group named through a unit member's path](port-order-group-through-unit-path.md)
+
+The generalisable lesson: **"the prototype has an open ticket nearby" is not evidence
+that a particular form is unported. Probe it.** The audit's correction is recorded in
+its own parity table.
+
+### Scope C
+
+A `pub impl` parsed as an *expression* (a top-level program) refused the `pub` form; the
+prototype gives `unsupported Phase 7A keyword: pub`, so it rides the `:291` conversion,
+and the case `pub-impl-is-not-an-expression` pins it. At true unit level
+(`ParseUnit` → `Module`) `pub impl` already worked in both.
+
+### Integrator follow-up: invariant failures report, they do not abort
+
+The 17 new `InvalidOperationException`s were uncaught by the conformance runner, so a
+row wrongly believed unreachable would have **crashed the run** instead of failing one
+case — hiding the other 705 results. The runner now catches
+`InvalidOperationException`/`IndexOutOfRangeException`/`ArgumentException` per case and
+reports `invariant failure (<type>): <message>`. An `expect error` case still does
+**not** pass on one, so convention 2 is intact and the failure is simply visible.
