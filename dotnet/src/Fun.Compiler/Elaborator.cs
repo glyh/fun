@@ -447,7 +447,7 @@ public static partial class Elaborator
             }
 
             default:
-                throw new NotImplementedException($"not ported yet: elaborating the binding {binding.GetType().Name}");
+                throw new InvalidOperationException($"unhandled binding {binding.GetType().Name}");
         }
     }
 

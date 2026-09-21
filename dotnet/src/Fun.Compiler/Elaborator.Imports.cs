@@ -13,7 +13,7 @@ public static partial class Elaborator
     /// <summary>An import: the unit's value, transported, never its term (I5).</summary>
     private static (Term, Value) InferImport(Context ctx, Syntax.Import import)
     {
-        var loader = ctx.Loader ?? throw new NotImplementedException("not ported yet: an import with no loader");
+        var loader = ctx.Loader ?? throw new InvalidOperationException("an import outside an elaboration with a loader");
         var (value, type) = loader.Load(import.Path, ctx.Metas);
         return (new Term.Imported(value), type);
     }

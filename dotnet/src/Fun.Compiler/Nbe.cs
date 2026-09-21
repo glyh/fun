@@ -194,7 +194,7 @@ public static partial class Nbe
                         continue;
 
                     default:
-                        throw new NotImplementedException($"not ported yet: evaluating {term.GetType().Name}");
+                        throw new InvalidOperationException($"unhandled term {term.GetType().Name}");
                 }
                 break;
             }

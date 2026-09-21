@@ -196,7 +196,7 @@ public static partial class Unify
                 Head.HMeta h when h.Id == id => throw new UnifyException("occurs check: a meta in its own solution"),
                 Head.HMeta h => new Term.Meta(h.Id),
                 Head.HPrim h => new Term.Prim(h.Name),
-                _ => throw new NotImplementedException($"not ported yet: renaming a {n.Head.GetType().Name} head"),
+                _ => throw new InvalidOperationException($"unhandled head {n.Head.GetType().Name}"),
             }, (acc, frame) => frame switch
             {
                 Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Go(a.Arg)),

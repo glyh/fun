@@ -174,7 +174,7 @@ public sealed class Reflection
         {
             Syntax.Var v => (v.Id, (Value?)null),
             Syntax.OpenChoice c => (c.Name, Record(_pathChoiceType, ("opens", List(c.Opens, Str)), ("fallback", Option(c.Fallback, Str)))),
-            _ => throw new NotImplementedException($"not ported yet: reflecting a {form.GetType().Name} as a path"),
+            _ => throw new InvalidOperationException($"unhandled path form {form.GetType().Name}"),
         };
         return Record(_pathType, ("head", ReflectId(head)), ("members", List(members, Str)), ("head_choice", OptionOf(choice)));
     }
@@ -279,7 +279,7 @@ public sealed class Reflection
             Syntax.MacroCall c => E("RawMacroCall", X(c.Head), List(c.Args, ReflectCaptured)),
             Syntax.OperatorUse u => E("RawOperatorUse", ReflectId(u.Operator), FixityVal(u.Fixity), List(u.Operands, X),
                 Span(u.DeclaredAt), Span(u.Span), Option(u.FromUnit, Str)),
-            _ => throw new NotImplementedException($"not ported yet: reflecting the form {stx.GetType().Name}"),
+            _ => throw new InvalidOperationException($"unhandled syntax form {stx.GetType().Name}"),
         };
     }
 
@@ -369,7 +369,7 @@ public sealed class Reflection
             Fun.Kernel.Pattern.Record r => P("RawPatRecord", Path(r.Type), List(r.Fields, PatField), Bool(r.Partial)),
             Fun.Kernel.Pattern.StructType s => P("RawPatStructType", List(s.Fields, PatField), Bool(s.Partial)),
             Fun.Kernel.Pattern.AtomType t => P("RawPatType", AtomTyVal(t.Ty)),
-            _ => throw new NotImplementedException($"not ported yet: reflecting the pattern {p.GetType().Name}"),
+            _ => throw new InvalidOperationException($"unhandled pattern {p.GetType().Name}"),
         };
     }
 
@@ -396,7 +396,7 @@ public sealed class Reflection
             Binding.Items i => D("DeclItems", ReflectTokens(i.Terms)),
             Binding.Instantiate i => D("DeclInstantiate", ReflectId(i.Instantiation.Form), RuleVal(i.Instantiation.Rule),
                 Captures(i.Instantiation.Captures), Option(i.Instantiation.FromUnit, Str), Bool(i.Public)),
-            _ => throw new NotImplementedException($"not ported yet: reflecting the declaration {b.GetType().Name}"),
+            _ => throw new InvalidOperationException($"unhandled binding {b.GetType().Name}"),
         };
     }
 

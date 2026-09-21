@@ -32,7 +32,7 @@ public static partial class Unify
                       Frame.FApp or Frame.FProj or Frame.FDot or Frame.FRefGet or Frame.FRefSet or Frame.FMatch):
                     throw new UnifyException("stuck computations with different eliminations");
                 default:
-                    throw new NotImplementedException($"not ported yet: unifying stuck {a.Frames[i].GetType().Name} frames");
+                    throw new InvalidOperationException($"unhandled stuck frame {a.Frames[i].GetType().Name}");
             }
         }
     }

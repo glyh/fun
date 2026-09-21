@@ -209,7 +209,7 @@ public sealed partial class Expander
             case Syntax.Stx or Syntax.Elaborated: return stx;
 
             default:
-                throw new NotImplementedException($"not ported yet: expanding {stx.GetType().Name}");
+                throw new InvalidOperationException($"unhandled syntax form {stx.GetType().Name}");
         }
     }
 
@@ -354,7 +354,7 @@ public sealed partial class Expander
                 }
 
                 case var other:
-                    throw new NotImplementedException($"not ported yet: expanding the binding {other.GetType().Name}");
+                    throw new InvalidOperationException($"unhandled binding {other.GetType().Name}");
             }
         }
     }
