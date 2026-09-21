@@ -47,10 +47,26 @@ public static partial class Elaborator
                 return (new Term.Ap(fn, Explicitness.Implicit, arg), ctx.Force(result));
             }
             case Value.VMeta or Value.VVar or Value.VNeutral:
-                throw new NotImplementedException("not ported yet: applying a value of unknown function type");
+                return InferApImplicitUnknown(ctx, fn, fnType, ap.Arg);
             default:
                 throw new FunException("applying non-function");
         }
+    }
+
+    /// <summary>
+    /// A value of unknown type applied to a written implicit argument: its type is
+    /// taken to be an implicit arrow from a fresh meta to a fresh meta, and unified
+    /// with it (elab_apply.ml:158-175) - the implicit analogue of
+    /// <see cref="InferApUnknown"/>.
+    /// </summary>
+    private static (Term, Value) InferApImplicitUnknown(Context ctx, Term fn, Value fnType, Syntax arg)
+    {
+        var domain = ctx.RawMeta();
+        var argTerm = Check(ctx, arg, domain);
+        var codomain = new Closure(ctx.Environment, ctx.Bind("_", domain).Quote(ctx.RawMeta()));
+        ctx.Unify(fnType, new Value.VPi(Explicitness.Implicit, domain, codomain));
+        return (new Term.Ap(fn, Explicitness.Implicit, argTerm),
+            Nbe.ApplyClosure(ctx.Metas, codomain, ctx.Eval(argTerm)));
     }
 
     /// <summary>

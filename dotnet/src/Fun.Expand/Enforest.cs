@@ -367,13 +367,6 @@ public sealed partial class Enforest
                 continue;
             }
 
-            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } record && lhs.Span.End == record.Span.Start
-                && IndexOfToken(new Terms(record.Items), TokenKind.Eq) >= 0)
-            {
-                (lhs, terms) = (ParseRecordConstruct(lhs, record), terms.Tail);
-                continue;
-            }
-
             if (term is TokenTree.Group { Delimiter: Delimiter.Bracket } implicitArgs)
             {
                 lhs = ParseImplicitApplication(lhs, implicitArgs);
@@ -381,10 +374,18 @@ public sealed partial class Enforest
                 continue;
             }
 
-            // `f{ e }` with no `=`: an implicit argument written in braces.
-            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } postfix
-                && lhs.Span.End == postfix.Span.Start)
-                throw new NotImplementedException("not ported yet: an implicit argument written f{ e }");
+            // `e { field = value }` constructs a record; `f{ e }` with no `=` is one
+            // implicit argument written in braces (enforest.ml:636-647). Either must
+            // touch the callee; whitespace before a brace group is not application.
+            if (term is TokenTree.Group { Delimiter: Delimiter.Brace } brace)
+            {
+                RequireAdjacent(lhs.Span, brace.Span, "record construction");
+                lhs = IndexOfToken(new Terms(brace.Items), TokenKind.Eq) >= 0
+                    ? ParseRecordConstruct(lhs, brace)
+                    : ParseBraceImplicitApplication(lhs, brace);
+                terms = terms.Tail;
+                continue;
+            }
 
             // An infix operator is a declared role. An identifier with none ends
             // the expression; an operator with none may be the prelude's.
