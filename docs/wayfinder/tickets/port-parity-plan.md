@@ -103,10 +103,13 @@ order the frontier should take it:
   audit**: `Enforest.Roles.cs:343` (a dotted order-group path) is a real gap, not
   parity → [port-order-group-through-unit-path](port-order-group-through-unit-path.md).
   The live convention-2 violation (`{ 1 + 2 ~> 3 }`) is repaired.
-- [latent form gaps](port-latent-form-gaps.md) — G2 traversals (broadest reach),
-  G3 the reflection reader, G4 typed operator macros, G5 rec-enum captures. G6 is now
-  its own ticket: [a stuck match waits](port-stuck-match-sub-occurrence.md), ruled by
-  the user 2026-09-20 (the port is right, the prototype takes the default arm).
+- [latent form gaps](port-latent-form-gaps.md) — **G2 and G3 done 2026-09-20**
+  (`1edd7af`): `Term.Map` is total and a reflection-based test now fails on any new kind,
+  so a forgotten kind cannot recur; G3's unit token and parameter trait bounds are read;
+  695 → 707/0, xUnit 172 → 178. What remains is split out, and none of it is a
+  traversal: [the reflected Syntax ADT differs](port-reflected-adt-differs.md) (a
+  trait's arity, a missing `TypeDef` node — needs a ruling), G4 and G5 unverified
+  reachability, and [a stuck match waits](port-stuck-match-sub-occurrence.md) (ruled).
 - The 9 undecided and the 13 parity rows are ruled by the two rules above; the ones
   that need a semantic ruling are one question at a time, per the port ticket. Three are
   now settled without one: the parametric nominal in a generative module (real gap), the

@@ -3,7 +3,9 @@ title: "Port: latent form gaps — traversals, the reflection reader, operator m
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: G2 closed by making Term.Map total with a reflection test that fails on any new kind; G3's UnitTok and param trait bounds enabled. The rest are model changes (the reflected Syntax ADT differs) or unverified reachability (G4, G5) - spun out. G6 ruled separately.
 assignee:
 blocked_by:
 ---
@@ -91,3 +93,70 @@ warning that the shared case must be *demanded by the checker* to be observable 
 budget cases. The shape/scope-set/parser-combinator suites are explicitly **not**
 mirrored, so nothing in G2–G6 needs a shape assertion — the source → result case is
 the contract.
+
+## Resolution (2026-09-20) — G2 and G3
+
+Merged from `port/latent-form-gaps-g2-g3` (`1edd7af`, commits `e95b5ff`, `11ba255`,
+`d7f8371`, `1a4b30e`). **C# conformance 695 → 707 cases, 0 failed; xUnit 172 → 178**;
+`dune test` and `dune test test/conformance` green.
+
+### G2 — one traversal, made total, with its exhaustiveness *tested*
+
+C# has no exhaustiveness check for an open record hierarchy (`CS8509` fires on any
+hierarchy switch without a catch-all, so `WarningsAsErrors=CS8509` buys nothing here).
+So the prototype's `Core.map_subterms` answer was taken and the gap closed by test
+rather than by compiler:
+
+- `Term.Map` is complete — `Tunnel`, `RecursiveOccurrence`, `Sig`, `TraitRef`,
+  `TraitDictTy`, and a handler `Match`'s effect branches were the missing kinds.
+- New `dotnet/test/Fun.Tests/CoreTraversalTests.cs` **enumerates every kind by
+  reflection**, constructs one and walks it, for `Term`, `BindingTerm`, `Syntax`,
+  `Binding` and `Pattern`. A new kind fails there until it is walked — verified by
+  deleting a case and watching the test fail, and the sample-builder documents its own
+  failure mode (a kind with a field the traversal dereferences but the builder cannot
+  construct fails rather than passing silently).
+- Pattern binder counts are now **one function**, `CorePattern.Binders()`, read by both
+  `Core.Shift.ArmBinders` (which also now reads `DecisionTree.Sequential`) and
+  `Nbe.StuckMatch`; `MapBindings` dispatches per binding.
+- `Elaborator.Enum.NamedLevels` reads `Syntax.Map` and `FreeLevels` reads `Term.Map`, so
+  the free-name and free-level walks are single-sourced rather than hand-written.
+- `Unify.Rename` is complete for every `Value` kind the prototype's `rename` handles
+  (`VModule`, `VStruct` bindings, `VRecord`, `VSig`, `VTrait`, `VTraitDict`, `VFix`,
+  `VGlued`), keeps a deferred call a call, and refuses `VRef`/`VCont`/`VPatternSynonym`
+  with `UnifyException` where the prototype has `CannotUnify`.
+
+**Not done, and named:** `Rename`/`FreeLevels`/`NamedLevels` are now *readers* of `Map`
+rather than folded into `map_subterms` itself. That is the remaining unification, and it
+is small — the hand-written scans are gone, which was the defect; the last step is
+cosmetic.
+
+### G3 — enabled, and the rest is a model change, not a reader fix
+
+- **`UnitTok`** — reads as the empty paren group the same source reads as; shared case
+  `macros/port-reflected-unit-token` (`expect` `1`, prototype agrees).
+- **A parameter's trait bounds** — `Param.Bounds` added with its reader, writer and
+  mapper. No shared case can observe it: the elaborator reads source bounds from the
+  type (`TraitBoundSet`), so it is covered by the xUnit round trip
+  `AParameterWithTraitBoundsRoundTrips`.
+- **Multi-parameter traits / multi-argument impls and a reflected `RawTypeDef` are not
+  reader fixes at all** — they are places where the port's reflected **Syntax ADT
+  differs** from the prototype's (one `Id Param` where a list is needed; no `TypeDef`
+  node at all, since stage 2 desugars it). Since reflection is total and the round trip
+  the identity, the ADT a macro sees is part of the language contract. Split out:
+  [the reflected Syntax ADT differs](port-reflected-adt-differs.md), which needs a ruling
+  before a fork.
+
+### G4, G5, G6 — reported, not implemented
+
+- **G4** (a type-aware operator macro, `Expander.Macros.cs:306`): it refuses
+  `entry.Signature is not null`, which the prototype's `syntax_operator_arg` admits. No
+  program constructed, so reachability is unverified — same shape as everything else
+  here: the case comes first.
+- **G5 is *not* subsumed by E11**, checked rather than assumed: `PredictCaptures` still
+  predicts from `NamedLevels` only while `InferEnum` adds payload `FreeLevels`, and
+  `CompletePending` still throws on mismatch — so a name-based prediction beside a
+  use-based one is still there. But **no triggering program was found** (a block-local
+  probe passed in both runners), so reachability is unverified. Do not "fix" it on
+  inspection alone: either construct the program or close it as unreachable.
+- **G6** is ruled and has its own ticket: [a stuck match waits](port-stuck-match-sub-occurrence.md).
+  The port is right, the prototype takes the default arm.
