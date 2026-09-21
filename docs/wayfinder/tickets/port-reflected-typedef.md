@@ -1,51 +1,54 @@
 ---
-title: "Port: a reflected TypeDef (a trait takes one parameter — ruled a divergence)"
+title: "The reflected TypeDef node is deliberately absent — `type` is a macro"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: Ruled (user, 2026-09-20) - do not port it. `type` is a macro in both implementations, so a dedicated node for it in the macro-visible ADT is meaningless; the port's absence is the newer shape and the prototype's RawTypeDef is a leftover.
 assignee:
 blocked_by:
 ---
 
-# Port: a reflected `TypeDef`
+# The reflected `TypeDef` node is deliberately absent
 
-The one item left from [the latent gaps](port-latent-form-gaps.md) fork's G3, after
-[the reflected Syntax ADT](port-reflected-adt-differs.md) was ruled on. Two things were
-bundled there; the ruling split them.
+**Ruled (user, 2026-09-20): do not port it.** This reverses the integrator's earlier
+call on this ticket, and the reason is better than the one it replaced.
 
-## Ruled (integrator, 2026-09-20, on evidence)
+## Why
 
-**A trait keeps its single parameter; multi-parameter traits are a divergence, not a
-port.** Checked rather than argued: every trait in the language — `Eq(A)` in
-`dotnet/std/stage2.fun` and in `lib/semantic/typecheck/elab_prelude.ml`, plus `Show(A)`,
-`Size(A)`, `Same(A)` across the conformance cases — takes exactly one parameter. The
-prototype's list is a generalisation with no user. So `Reflection.cs:718`/`:922` and
-`:726`/`:928` should raise a **named macro error** saying the port's traits carry one
-parameter, not `not ported yet`, and the difference is recorded as deliberate. If the
-language ever wants multi-parameter traits that is a language question with its own
-ticket — it is not a reflection fix.
+`type` is a **macro**, in both implementations:
 
-## To port: the `TypeDef` shape
+- `lib/semantic/typecheck/elab_prelude.ml:292` —
+  `pub syntax type : Decl { type $(r : List(TokenTree)) => { type_decls($r) } }`, over the
+  public `type_decls` macro.
+- `dotnet/std/stage2.fun` — the same, `type_name`/`type_params`/`type_member`/`type_opens`/
+  `type_exports` building `rec … and …` enums plus their `export` and `open`.
 
-`Reflection.cs:762` — a reflected `RawTypeDef`. Probe: prototype `1`, port refuses. The
-port has no `Syntax.TypeDef` node because stage 2 desugars `type`, so the reader has
-nothing to produce — but a macro written against the prototype's ADT can name that shape,
-and the SAME code cannot be *written* in C# at all. Reflection is total and the round
-trip the identity, so this is a hole in a total function, not a nicety.
+And the surface nodes it replaced are already gone: [ADTs are declared by let
+bindings](adts-as-let-bindings.md) (closed) lists `Syntax.TypeBinding`, `DeclType`, the
+`TypeDeclaration` role and `parse_type_binding` as **deleted**. So a `TypeDef` node in
+the *macro-visible* ADT has nothing that produces it, and giving macros a node for a
+construct that is itself a macro is a contradiction — the macro's own output is the
+`rec … and …` form, and that is what a macro should see.
 
-Fix: restore `TypeDef` as a shape a macro may construct and reflect, with the elaborator
-desugaring it immediately so nothing downstream changes. Check what the prototype's
-`macro_eval.ml:762` reader accepts and what its writer produces, so the round trip is
-the identity in C# too. Note `Syntax.TypeDef` existed before the port (`delete-surface-ir`
-removed `Surface.t`, not this) — look for the shape the OCaml reader expects rather than
-inventing a new one.
+The port is therefore **ahead** here, not behind: its ADT has no such node because
+stage 2 desugars `type` before anything can observe it. The prototype's `RawTypeDef`
+(`lib/expand/macro_eval.ml:762`) is a leftover of the pre-macro `type`; a hand-written
+macro can still build one there, which is exactly the kind of shape no source can
+produce.
 
-## Tests
+## Action
 
-`RawTypeDef` is macro-constructible, so this *can* be a shared case: a macro that
-constructs a `TypeDef` and a macro that reflects one, both `expect` a value. Verify in
-both runners before committing — the prototype reads it (`1`), so if a case fails in
-OCaml the case or the reading is wrong, not the prototype. Add the xUnit round-trip
-assertion too (construct → reflect → construct is the identity), mirroring
-`AParameterWithTraitBoundsRoundTrips`.
+`dotnet/src/Fun.Compiler/Reflection.cs:762`'s refusal becomes a **named macro error**
+(not `not ported yet: reading the reflected form RawTypeDef`), so a macro that asks for
+this shape is told the ADT is narrower on purpose. Record it as a deliberate divergence
+in the reflected syntax:
+
+- the shared-suite angle cannot exist (a case would have to reflect a shape the C#
+  surface cannot spell), so nothing is listed in `prototype-divergences.txt`;
+- an xUnit test asserting the refusal *names the difference* is the honest interim, as
+  `port-reflected-adt-differs` said.
+
+If the prototype is ever corrected, its `RawTypeDef` should be deleted rather than read —
+but the prototype is not maintained after the port, so this is a note, not work.

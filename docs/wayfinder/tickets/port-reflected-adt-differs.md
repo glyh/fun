@@ -5,7 +5,7 @@ labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-20
-resolution: Ruled by the integrator on evidence (no trait in the language takes two parameters; every one of the 707 cases, the prelude and std use Eq(A)/Show(A)/Size(A)/Same(A)). Split: the TypeDef shape is to port (port-reflected-typedef); trait arity is a deliberate divergence that must give a named macro error.
+resolution: Ruled by the integrator on evidence (no trait in the language takes two parameters; every one of the 707 cases, the prelude and std use Eq(A)/Show(A)/Size(A)/Same(A)). Both halves are now **deliberate narrowings** of the reflected ADT. Trait arity is a divergence that must give a named macro error. The TypeDef node is **not** ported either - ruled (user, 2026-09-20), because `type` is a macro in both implementations, so a node for it in the macro-visible ADT is meaningless; see port-reflected-typedef.
 assignee:
 blocked_by:
 ---
