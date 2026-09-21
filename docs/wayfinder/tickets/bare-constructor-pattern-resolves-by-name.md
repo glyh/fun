@@ -52,6 +52,18 @@ still reads `Red` as the constructor.
   `elaborate/bare-constructor-pattern-shadowed-by-value` (error) are the two
   reproductions, listed in `test/conformance/prototype-divergences.txt`.
 - `values/bare-constructor-pattern-after-open` (2) is the agreeing case.
+- **Correction (2026-09-20): the claim above was wrong.** One existing case *did*
+  rely on the by-name lookup, and it is why the rule was first thought settled:
+  `imports/core-165` matched `{ Green => 2, Red => 1 }` with no `open` in scope, and
+  passed in the prototype only through the defect. It surfaced when the port's
+  residue fork stopped on it rather than guessing (a shared case and the decision
+  cannot both hold). Resolved by making the case say what it means — the arms now
+  qualify through the unit that declares the constructors
+  (`C = import "color"; C.Red => 1, C.Green => 2`), which passes in **both**
+  runners — and by pinning the rejected behaviour for that shape in
+  `imports/bare-constructor-pattern-through-import` (error), listed as a divergence.
+  The import shape is what slipped past the original audit: every case checked
+  then was a raw `enum` in one unit, where patterns were qualified.
 - No existing case relied on the by-name lookup: every raw-enum case qualifies its
   patterns.
 
