@@ -254,15 +254,22 @@ expecting `error` fails in C# and passes in OCaml): the port's `error` cases do 
 simply lack coverage here, the convention-2 violation is live and observable. Move
 the `continues` check ahead of the throw.
 
-## Undecided — needs the user
+## Undecided — now a probing ticket, not a parked list
 
 Each is a form the port refuses where the prototype's behaviour is either absent or
-itself suspect; the ruling decides a real gap versus a `FunException`:
+itself suspect; a probe decides real gap versus `FunException` versus unreachable. **All
+of these are owned by [settle the rows nobody could decide](port-unverified-rows.md)** —
+this list is its work list, so a row cannot sit here unowned. Two were settled after the
+audit was written, and both by *probing* rather than inferring (one inference in this
+very list — the dotted order-group path — had already been wrong):
 
 1. `Elaborator.cs:304` — `Syntax.Stx` (a typed macro argument marker) is left for the
    elaborator by the expander but has no `Infer` case. Program form: a typed macro
    whose argument is placed in the output.
-2. `Nbe.Match.cs:87` — neutral sub-occurrence: default arm (prototype) or stuck?
+2. ~~`Nbe.Match.cs:87` — neutral sub-occurrence: default arm (prototype) or stuck?~~
+   **Ruled 2026-09-20 by the user: the match waits** — the port was right and the
+   prototype takes a default arm it should not. It is a recorded divergence, not parity:
+   [a match stuck on a known scrutinee's unknown part](port-stuck-match-sub-occurrence.md).
 3. `Unify.cs:206` — which `Value` kinds may appear in a meta solution.
 4. `Nbe.cs:561` — can `VCont` be read back as a term?
 5. `Elaborator.Patterns.cs:72` — a synonym whose RHS is a product pattern. **Independently
@@ -284,6 +291,10 @@ itself suspect; the ruling decides a real gap versus a `FunException`:
    type former, in a generative module), so sealing simply has not been taught about a
    former. → [a parametric nominal in a generative module](port-generative-former-nominal.md)
 9. `Enforest.Roles.cs:845` — which quoted-syntax statements take a body.
+
+The latent gaps fork contributed two more to the same ticket (G4, a type-aware operator
+macro; G5, rec-enum captures predicted by name — **checked and not subsumed by the
+landed E11 work**, but no triggering program found).
 
 ## Internals parity (the third invisible delta)
 
