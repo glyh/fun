@@ -277,8 +277,24 @@ public static partial class Nbe
                         continue;
 
                     case Kont.DotOf f:
+                    {
+                        // [v.m] on a record with no field [m]: a method of its
+                        // type, applied to it. The struct's entry holds the method
+                        // value (a function of self), so the call is an application.
+                        if (value is Value.VRecord record && record.Fields.All(x => x.Name != f.Name))
+                        {
+                            var method = DotValue(Unfold(mc, record.Type), f.Name);
+                            if (Enter(mc, stack, method, value, charged: false, out var applied) is { } next2)
+                            {
+                                (env, term) = next2;
+                                goto evaluate;
+                            }
+                            value = applied ?? throw new InvalidOperationException("a method call gave neither a term nor a value");
+                            continue;
+                        }
                         value = DotValue(value, f.Name);
                         continue;
+                    }
 
                     case Kont.StructOf f:
                         value = AsStruct(f, value);

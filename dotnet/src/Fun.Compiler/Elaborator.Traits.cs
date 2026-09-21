@@ -245,7 +245,7 @@ public static partial class Elaborator
     private static (Term Term, Value Type)? ResolveEvidence(Context ctx, TraitDecl trait, EquatableArray<Value> args)
     {
         bool Same(EquatableArray<Value> a, EquatableArray<Value> b) =>
-            a.Length == b.Length && a.Zip(b).All(p => Nbe.Convertible(ctx.Metas, ctx.Width, p.First, p.Second));
+            a.Length == b.Length && a.Zip(b).All(p => Convertible(ctx, p.First, p.Second));
 
         var matches = ctx.Evidence
             .Where(e => ReferenceEquals(e.Trait, trait) && Same(e.Args, args))
@@ -309,6 +309,30 @@ public static partial class Elaborator
     /// <summary>Whether an argument is not yet known well enough to say no impl exists for it.</summary>
     private static bool Unresolved(Context ctx, Value arg) => ctx.Force(arg) is Value.VMeta or Value.VVar or Value.VNeutral;
 
+    /// <summary>
+    /// Whether two types convert without solving a meta (the prototype's
+    /// <c>Nbe.conv</c>): read-back equality, or, when read-back differs, a
+    /// structural unification that succeeds while solving nothing. The no-solve
+    /// guard is what makes it a conversion rather than a guess: it admits width
+    /// subtyping (an impl head's <c>Self</c> is the struct's fields so far, and
+    /// must match the complete struct) and eta, but never commits to a meta, so a
+    /// choice still waits on an unknown argument type (traits.md, "Resolution",
+    /// rule 4).
+    /// </summary>
+    private static bool Convertible(Context ctx, Value left, Value right)
+    {
+        if (Nbe.Convertible(ctx.Metas, ctx.Width, left, right)) return true;
+        var before = ctx.Metas.Snapshot();
+        bool ok;
+        try { ok = Unify.TryValues(ctx.Metas, ctx.Width, left, right); }
+        catch (FunException) { ctx.Metas.Restore(before); return false; }
+        if (!ok) return false;
+        var after = ctx.Metas.Snapshot();
+        for (var i = 0; i < before.Length; i++)
+            if (before[i] is null && after[i] is not null) { ctx.Metas.Restore(before); return false; }
+        return true;
+    }
+
     /// <summary>The trait a checked form's value is, when it is one.</summary>
     private static TraitDecl? TraitOf(Context ctx, Term term, Value type) =>
         ctx.Force(type) is Value.VU && ctx.Force(ctx.Eval(term)) is Value.VTrait trait ? trait.Decl : null;
@@ -347,11 +371,14 @@ public static partial class Elaborator
         }
         if (pending.Count == 0 || ctx.Force(type) is not Value.VPi { Explicitness: Explicitness.Explicit } explicitPi) return null;
 
-        var arg = Check(ctx, argSyntax, explicitPi.Domain);
+        var (arg, argEffects) = Collecting(ctx, c => Check(c, argSyntax, explicitPi.Domain));
+        Emit(ctx, argEffects);
         foreach (var dict in pending)
             fn = new Term.Ap(fn, Explicitness.Implicit, Evidence(ctx, dict.Decl, dict.Args));
-        var result = Nbe.ApplyClosure(ctx.Metas, explicitPi.Codomain, ctx.Eval(arg));
-        return (new Term.Ap(fn, Explicitness.Explicit, arg), ctx.Force(result));
+        // The argument's value is read only when evaluating it is safe: one that
+        // performs takes a rigid stand-in as the codomain's argument.
+        var result = Nbe.ApplyClosure(ctx.Metas, explicitPi.Codomain, ArgumentValue(ctx, arg, argEffects));
+        return (EmitLatent(ctx, explicitPi, new Term.Ap(fn, Explicitness.Explicit, arg)), ctx.Force(result));
     }
 
     /// <summary>
