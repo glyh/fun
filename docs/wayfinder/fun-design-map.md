@@ -307,11 +307,11 @@ order.
 168/168 xUnit, `dune test` green (2026-09-18). **Start at the port ticket's
 "Handover (2026-09-17)"**, then work
 [reach feature parity with the prototype](tickets/port-parity-plan.md) — the recipe
-for what remains. A green suite is not parity: 60 `not ported yet` paths in
-`dotnet/src` are only failures when a shared case reaches them, so the audit of
-those paths is a step of its own, and the port is the one place the implementation
-is *less* correct than the prototype
-([E11's nominal identity](tickets/port-nominal-identity.md)). Language: C#; the evaluator is
+for what remains. A green suite is not parity: 62 `not ported yet` paths in
+`dotnet/src` are only failures when a shared case reaches them, and
+[the audit of those paths](tickets/port-unported-path-audit.md) (2026-09-20) sorted
+them into 17 real gaps, 13 wrong-kind refusals, 17 unreachable and 9 undecided.
+Language: C#; the evaluator is
 an explicit frame-stack machine; the domain model is the spec and the OCaml
 prototype supporting material. History below. **Blockers extended 2026-09-14:** the decided
 effect semantics, the `Self`-identity soundness hole and record knot, the open

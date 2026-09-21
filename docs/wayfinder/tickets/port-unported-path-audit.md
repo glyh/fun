@@ -320,6 +320,29 @@ I cannot decide whether the missing shape/budget coverage must be mirrored: that
 a test-strategy ruling (mirror the OCaml suites case-for-case, or accept that the
 port is behaviour-complete without shape tests). Flagged for the user.
 
+### Ruling (user, 2026-09-20): behavioural only — budget yes, shapes no
+
+The port is complete when it agrees with the prototype on every **source → result**
+case. The consequence, which is the whole of the ruling:
+
+- **Mirror the observable behaviour.** Add `dotnet/test/Fun.Tests/BudgetTests.cs`
+for the three budget-accounting cases (`test/backend/test_core.ml:1399`, `:1412`,
+`:2048`): an overrun is a real user-visible error naming the macro and the site, so
+it is behaviour, not an internal. Note the shared suite cannot express it — the
+runner's expectations are a value, `ok`, or `error` — which is why it is an xUnit
+case and not a conformance case.
+- **Do not mirror the shape assertions.** The 93 `test_enforest.ml` + 17
+`test_expand_compat.ml` + 7 smoke + 9 traits/refs + 5 `test_scope_sets.ml` cases
+assert the *tree* a parse produced (`Shape`, resolved names, open regions), and
+`test_spec.ml` asserts the parser combinators. The domain model names the surface
+as an erasure plus one escape hatch, so a port is free to build a different tree;
+source → result is the contract. Same for the shape half of `test_elaborate.ml` and
+`test_core.ml`. Existing C# counts in the table above are therefore adequate, and
+the "no counterpart at all" list below is closed by this ruling except for budget.
+
+The aim is a defensible parity claim: **source → result parity, with the budget's
+observable behaviour covered.** Nothing else in this section needs a ruling.
+
 ## Prototype defects found
 
 None reproduced. Probe P5 exposed a *port-side* ordering bug (`InfixRoleUse` throws

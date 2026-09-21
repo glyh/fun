@@ -63,6 +63,29 @@ ruling on [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md)),
 into the three verdicts above, so the invisible delta becomes a number and the real
 gaps become tickets. Expect it to *shrink* the work. → [port-unported-path-audit](port-unported-path-audit.md)
 
+**Done 2026-09-20** (`fb67a63`, `e4f5320`): 62 sites — **17 real gaps, 13 parity
+conversions, 17 unreachable, 9 undecided, 4 owned**. The audit's outcome, in the
+order the frontier should take it:
+
+- [implicit application `f{ e }` and `g[I64]`](port-implicit-application.md) — the two
+  the audit *reproduced*. Verified again by the integrator; the only gaps with a
+  known-passing prototype program, so the cheapest 2 cases on the board.
+- [the parity throws become language errors](port-parity-conversions.md) — mechanical,
+  and it repairs a **live** convention-2 violation: `{ 1 + 2 ~> 3 }` is answered with
+  `NotImplementedException` where the prototype type-errors.
+- [latent form gaps](port-latent-form-gaps.md) — G2 traversals (broadest reach),
+  G3 the reflection reader, G4 typed operator macros, G5 rec-enum captures, G6 a
+  stuck match. Latent: no shared case reaches them, so the case comes first.
+- The 9 undecided and the 13 parity rows are ruled by the two rules above; the ones
+  that need a semantic ruling are one question at a time, per the port ticket.
+
+**Internals parity — ruled (user, 2026-09-20): behavioural only, budget yes, shapes
+no.** The port is complete when it agrees on every source → result case; add
+`BudgetTests.cs` for the three observable budget cases; do not mirror the
+tree-shape/scope-set/parser-combinator Alcotest suites, because the domain model
+names the surface as an erasure plus one escape hatch and a port may build a
+different tree. The audit's internals table closes on that basis.
+
 **4. Close the recorded divergences.** Every case in
 `test/conformance/prototype-divergences.txt` (19 lines, 14 tickets) is already correct
 in C# — the file says so, and the C# runner passes all of them. The work is
@@ -74,7 +97,9 @@ yet, so it belongs to step 2.
 **Also part of 3:** internals parity. The conformance suite cannot see shapes, the
 unifier, the machine or budget accounting, so C# coverage for those rests on
 `dotnet/test/Fun.Tests` mirroring `test/syntax/*.ml` and `test/semantic/test_elaborate.ml`.
-Check the mirror is complete (there is no `BudgetTests.cs`).
+Check the mirror is complete (there is no `BudgetTests.cs`). **Audited 2026-09-20 and
+ruled on: source → result parity plus the budget cases; the shape suites are not
+mirrored.**
 
 ## Not parity work — do not start these for this goal
 
