@@ -53,6 +53,20 @@ public class ReflectionTests
         Assert.Equal(program.Map(Normal), R.ReadExpr(R.ReflectExpr(program))?.Map(Normal));
     }
 
+    /// <summary>
+    /// A parameter's trait-bound paths are part of the reflection grammar: what a
+    /// macro puts in MkParam's bound list reads back. The elaborator reads source
+    /// bounds from the type (a TraitBoundSet), so no program can observe this field.
+    /// </summary>
+    [Fact]
+    public void AParameterWithTraitBoundsRoundTrips()
+    {
+        var param = new Param(new Id("A", SourceSpan.Synthetic), null, Explicitness.Implicit,
+            [new Syntax.Var(new Id("Eq", SourceSpan.Synthetic))]);
+        var lambda = new Syntax.Lam(param, new Syntax.Atom(Atom.Unit.Instance, SourceSpan.Synthetic), SourceSpan.Synthetic);
+        Assert.Equal(lambda.Map(Normal), R.ReadExpr(R.ReflectExpr(lambda))?.Map(Normal));
+    }
+
     /// <summary>An operator macro receives its whole use: operator, fixity, operands, spans and unit.</summary>
     [Fact]
     public void AnOperatorUseRoundTrips()

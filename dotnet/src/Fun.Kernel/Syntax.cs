@@ -14,7 +14,7 @@ public sealed record Id(string Name, SourceSpan Span, ScopeSet Scope)
     public Id(string name, SourceSpan span) : this(name, span, ScopeSet.Empty) { }
 }
 
-public sealed record Param(Id Name, Syntax? Type, Explicitness Explicitness);
+public sealed record Param(Id Name, Syntax? Type, Explicitness Explicitness, EquatableArray<Syntax> Bounds = default);
 
 /// <summary>
 /// An arrow's latent effects. <c>Inferred</c> is the row written <c>_</c>;

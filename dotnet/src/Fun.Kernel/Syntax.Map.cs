@@ -177,7 +177,7 @@ public abstract partial record Syntax
     }
 
     private static Param MapParam(Param p, SyntaxMapper m) =>
-        p with { Name = m.Id(p.Name), Type = p.Type?.Map(m) };
+        p with { Name = m.Id(p.Name), Type = p.Type?.Map(m), Bounds = [.. p.Bounds.Select(b => b.Map(m))] };
 }
 
 public abstract partial record Binding

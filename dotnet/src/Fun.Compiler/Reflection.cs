@@ -339,10 +339,11 @@ public sealed class Reflection
     private Value Fields(EquatableArray<(string Name, Syntax Value)> fields) =>
         List(fields, f => Con(_field, "MkField", Str(f.Name), ReflectExpr(f.Value)));
 
-    // A binder's trait bounds are written in its type (a TraitBoundSet), so the
-    // reflected bound paths are always empty.
+    // A source binder's trait bounds are written in its type (a TraitBoundSet); the
+    // reflected bound paths carry what a macro put there.
     private Value ParamVal(Param p) =>
-        Con(_param, "MkParam", ReflectId(p.Name), OptionOf(p.Type is null ? null : ReflectExpr(p.Type)), Con(_list, "Nil"), Explicitness(p.Explicitness));
+        Con(_param, "MkParam", ReflectId(p.Name), OptionOf(p.Type is null ? null : ReflectExpr(p.Type)),
+            List(p.Bounds, Path), Explicitness(p.Explicitness));
 
     private Value EffectRowVal(EffectRow row) =>
         Con(_effectRow, "MkEffectRow", List(row.Effects, ReflectExpr), List(row.Tails, ReflectExpr), Bool(row.Inferred), Bool(row.Polymorphic));
@@ -599,13 +600,17 @@ public sealed class Reflection
         ("StringTok", [var s]) when ReadStr(s) is { } str => new TokenKind.Str(str),
         ("KeywordTok", [var s]) when ReadStr(s) is { } kw && TokenKind.Keywords.TryGetValue(kw, out var word) => word,
         ("PunctTok", [var s]) when ReadStr(s) is { } p => Punctuation.FirstOrDefault(w => w.Spelling == p),
-        // `()` is a group here; a unit token has no reading.
-        ("UnitTok", _) => throw new NotImplementedException("not ported yet: reading a reflected unit token"),
         _ => null,
     };
 
     public Fun.Kernel.TokenTree? ReadTokenTree(Value v) => Payload(TokenTreeType, v) switch
     {
+        // A reflected `UnitTok` is `()`: the port's tree has no unit token kind, but
+        // the same source reads as the empty paren group it is here, and the
+        // enforester reads that as unit (the prototype's Token_tree.Unit).
+        ("Tok", [var unitSpan, var unitKind, _])
+            when ReadSpan(unitSpan) is { } unitSp && Payload(_tokenKind, unitKind) is ("UnitTok", { IsEmpty: true })
+            => new Fun.Kernel.TokenTree.Group(Delimiter.Paren, [], unitSp),
         ("Tok", [var span, var kind, Value.VAtom { Atom: Atom.Scopes scopes }])
             when ReadSpan(span) is { } sp && ReadTokenKind(kind) is { } k
                  && (k is not TokenKind.Ident i || Certified(i.Name, scopes.ResolvedName))
@@ -847,7 +852,7 @@ public sealed class Reflection
         if (Payload(_param, v) is not ("MkParam", [var n, var ty, var bounds, var ex])) return null;
         if (ReadId(n) is not { } name || ReadOption(ty, ReadExpr) is not (true, var type) || ReadExplicitness(ex) is not { } e) return null;
         if (ReadList(bounds, ReadPath) is not { } bs) return null;
-        return bs.IsEmpty ? new Param(name, type, e) : throw new NotImplementedException("not ported yet: reading reflected trait bound paths");
+        return new Param(name, type, e, bs);
     }
 
     private EffectRow? ReadEffectRow(Value v) => Payload(_effectRow, v) is ("MkEffectRow", [var effects, var tails, var inferred, var poly])

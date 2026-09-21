@@ -33,21 +33,9 @@ namespace Fun.Compiler
                 DecisionTree.Destruct d => d.Cases.Select(c => InTree(c.Tree, arm)).FirstOrDefault(n => n is not null)
                     ?? (d.Default is null ? null : InTree(d.Default, arm)),
                 DecisionTree.TypeSwitch ts => ts.Cases.Select(c => InTree(c.Tree, arm)).FirstOrDefault(n => n is not null) ?? InTree(ts.Default, arm),
-                DecisionTree.Sequential s => Binds(s.Arms[arm]),
+                // The one statement of a pattern's binder count (CorePattern.Binders).
+                DecisionTree.Sequential s => s.Arms[arm].Binders(),
                 _ => null,
-            };
-
-            static int Binds(CorePattern p) => p switch
-            {
-                CorePattern.Bind => 1,
-                CorePattern.Wild or CorePattern.Atom or CorePattern.AtomType => 0,
-                CorePattern.Or or => Binds(or.Left),
-                CorePattern.Prod prod => prod.Items.Sum(Binds),
-                CorePattern.Con con => con.Args.Sum(Binds),
-                CorePattern.Record r => r.Fields.Sum(f => Binds(f.Pattern)),
-                CorePattern.StructType st => st.Fields.Sum(f => Binds(f.Pattern)),
-                CorePattern.NominalHead h => h.Params.Sum(Binds),
-                _ => throw new NotImplementedException($"not ported yet: the binders of a stuck {p.GetType().Name} arm"),
             };
 
             return InTree(match.Tree, arm)
