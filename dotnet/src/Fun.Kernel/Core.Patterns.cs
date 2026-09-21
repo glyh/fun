@@ -23,6 +23,27 @@ public abstract partial record CorePattern
     /// </summary>
     public sealed record NominalHead(NominalDecl Decl, Term Head, int Arity, EquatableArray<CorePattern> Params) : CorePattern;
 
+    /// <summary>
+    /// How many environment entries this pattern binds, in source order (an
+    /// or-pattern's sides bind alike). The one statement of a pattern's binder
+    /// count: the decision tree's leaves and a stuck arm both read it.
+    /// </summary>
+    public int Binders() => this switch
+    {
+        Bind => 1,
+        Wild or Atom or AtomType => 0,
+        Or o => o.Left.Binders(),
+        Prod p => p.Items.Sum(i => i.Binders()),
+        Con c => c.Args.Sum(a => a.Binders()),
+        Record r => r.Fields.Sum(f => f.Pattern.Binders()),
+        StructType s => s.Fields.Sum(f => f.Pattern.Binders()),
+        NominalHead h => h.Params.Sum(p => p.Binders()),
+        // A synonym's template is substituted away before it can be a match arm,
+        // so a surviving parameter stands for an argument pattern nothing here knows.
+        SynonymParam => throw new InvalidOperationException("a pattern synonym's template is not a match arm"),
+        _ => throw new NotImplementedException($"not ported yet: the binders of a {GetType().Name} pattern"),
+    };
+
     /// <summary>Whether matching this pattern needs more than a decision tree can test: a struct type's exact field set, or a nominal's instance.</summary>
     public bool NeedsDirectMatch() => this switch
     {

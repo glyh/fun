@@ -51,13 +51,14 @@ public static partial class Elaborator
     /// </summary>
     private static (Term, Value) InferEnum(Context ctx, Syntax.Enum e)
     {
-        var payloads = e.Constructors
-            .Select(c => c.Payloads.Select(p => ctx.Eval(TypeTerm(ctx, p))).ToList())
+        var payloadTerms = e.Constructors
+            .Select(c => c.Payloads.Select(p => TypeTerm(ctx, p)).ToList())
             .ToList();
+        var payloads = payloadTerms.Select(ps => ps.Select(p => ctx.Eval(p)).ToList()).ToList();
 
         var levels = (FirstBoundLevel(ctx) is int firstBound
             ? NamedLevels(ctx, ctx.Enclosing)
-                .Concat(payloads.SelectMany(ps => ps.SelectMany(p => FreeLevels(ctx, p))))
+                .Concat(payloadTerms.SelectMany(ps => ps.SelectMany(p => FreeLevels(ctx, p))))
                 .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
             : Enumerable.Empty<int>())
             .Concat(ctx.ScopeCaptures)
@@ -229,8 +230,11 @@ public static partial class Elaborator
     /// The levels of the context's entries that the names written in <paramref name="stx"/>
     /// locate, among those that exist where the enclosing module or body starts.
     /// </summary>
+    // One structural traversal, Syntax.Map: a form the walk does not know cannot
+    // hide a name it uses. The prototype's enclosing_scope reads the same mapper.
     private static IEnumerable<int> NamedLevels(Context ctx, Syntax? stx)
     {
+        if (stx is null) return [];
         var found = new List<int>();
 
         void Name(string name)
@@ -249,114 +253,36 @@ public static partial class Elaborator
             if (c.Fallback is not null) Name(c.Fallback);
         }
 
-        void Pat(Pattern p)
+        stx.Map(new SyntaxMapper
         {
-            switch (p)
+            Id = id =>
             {
-                case Pattern.Prod prod: foreach (var i in prod.Items) Pat(i); break;
-                case Pattern.Or o: Pat(o.Left); Pat(o.Right); break;
-                case Pattern.Con c: Go(c.Head); foreach (var a in c.Args) Pat(a); break;
-                case Pattern.Record r: Go(r.Type); foreach (var f in r.Fields) Pat(f.Pattern); break;
-                case Pattern.StructType s: foreach (var f in s.Fields) Pat(f.Pattern); break;
-            }
-        }
-
-        void Go(Syntax? s)
-        {
-            switch (s)
+                Name(id.Name);
+                return id;
+            },
+            Form = form =>
             {
-                case null or Syntax.Atom or Syntax.Import: break;
-                case Syntax.Var v: Name(v.Id.Name); break;
-                case Syntax.OpenChoice c: Choice(c); break;
-                case Syntax.Ap a: Go(a.Fn); Go(a.Arg); break;
-                case Syntax.Lam l: Go(l.Param.Type); Go(l.Body); break;
-                case Syntax.Let l: Go(l.Type); Go(l.Value); Go(l.Body); break;
-                case Syntax.Annotated a: Go(a.Inner); Go(a.Type); break;
-                case Syntax.Arrow a:
-                    Go(a.Domain); Go(a.Codomain);
-                    if (a.Row is { } row) foreach (var r in row.Effects.Concat(row.Tails)) Go(r);
-                    break;
-                case Syntax.Prod p: foreach (var i in p.Items) Go(i); break;
-                case Syntax.ProdTy p: foreach (var i in p.Items) Go(i); break;
-                case Syntax.Proj p: Go(p.Of); break;
-                case Syntax.FieldAccess f: Go(f.Of); break;
-                case Syntax.Open o: Go(o.Of); Go(o.Body); break;
-                case Syntax.Match m:
-                    Go(m.Scrutinee);
-                    foreach (var b in m.Branches) { Pat(b.Pattern); Go(b.Body); }
-                    break;
-                case Syntax.Enum e: foreach (var c in e.Constructors) foreach (var p in c.Payloads) Go(p); break;
-                case Syntax.PatternSynonym synonym: Pat(synonym.Rhs); break;
-                case Syntax.Module m: Bindings(m.Bindings); break;
-                case Syntax.Struct st: Bindings(st.Bindings); break;
-                case Syntax.RecordConstruct r: Go(r.Type); foreach (var (_, v) in r.Fields) Go(v); break;
-                case Syntax.LetRecGroup g: foreach (var member in g.Members) Go(member.Value); Go(g.Body); break;
-                case Syntax.RefNew r: Go(r.Arg); break;
-                case Syntax.RefGet r: Go(r.Ref); break;
-                case Syntax.RefSet r: Go(r.Ref); Go(r.Value); break;
-                default:
-                    throw new NotImplementedException($"not ported yet: the names a {s.GetType().Name} uses");
-            }
-        }
-
-        void Bindings(EquatableArray<Binding> bindings)
-        {
-            foreach (var b in bindings)
-            {
-                switch (b)
-                {
-                    case Binding.Let l: Go(l.Value); break;
-                    case Binding.Open o: Go(o.Of); break;
-                    case Binding.Export e: Go(e.Of); break;
-                    case Binding.Field f: Go(f.Type); break;
-                    case Binding.RecGroup g: foreach (var member in g.Members) Go(member.Value); break;
-                    case Binding.Method method:
-                        foreach (var p in method.Params) Go(p.Type);
-                        Go(method.Body);
-                        break;
-                    default: throw new NotImplementedException($"not ported yet: the names a {b.GetType().Name} binding uses");
-                }
-            }
-        }
-
-        Go(stx);
+                if (form is Syntax.OpenChoice c) Choice(c);
+                return form;
+            },
+        });
         return found.Where(l => l < ctx.EnclosingWidth);
     }
 
-    /// <summary>The levels below the context's width that a value's bound variables stand at.</summary>
-    private static IEnumerable<int> FreeLevels(Context ctx, Value value)
+    /// <summary>
+    /// The levels below the context's width that a payload term's bound variables stand at.
+    /// </summary>
+    // The one core-term traversal, Term.Map: a form it did not walk could hide a
+    // captured variable (the prototype's capture_payloads reads map_subterms).
+    private static IEnumerable<int> FreeLevels(Context ctx, Term term)
     {
         var found = new List<int>();
-        var mc = ctx.Metas;
-
-        void Go(Value v, int width)
+        term.Map((t, under) =>
         {
-            switch (Nbe.Force(mc, v))
-            {
-                case Value.VVar r:
-                    if (r.Level < ctx.Width) found.Add(r.Level);
-                    foreach (var a in r.Spine) Go(a, width);
-                    break;
-                case Value.VMeta m: foreach (var a in m.Spine) Go(a, width); break;
-                case Value.VNeutral n:
-                    if (n.Head is Head.HVar h && h.Level < ctx.Width) found.Add(h.Level);
-                    foreach (var f in n.Frames) if (f is Frame.FApp app) Go(app.Arg, width);
-                    break;
-                case Value.VPi pi:
-                    Go(pi.Domain, width);
-                    Go(Nbe.ApplyClosure(mc, pi.Codomain, new Value.VVar(width, [])), width + 1);
-                    break;
-                case Value.VLam lam: Go(Nbe.ApplyClosure(mc, lam.Body, new Value.VVar(width, [])), width + 1); break;
-                case Value.VProd p: foreach (var i in p.Items) Go(i, width); break;
-                case Value.VProdTy p: foreach (var i in p.Items) Go(i, width); break;
-                case Value.VNominal n: foreach (var c in n.Captures) Go(c, width); break;
-                case Value.VCon c: Go(c.Nominal, width); foreach (var a in c.Args) Go(a, width); break;
-                case Value.VU or Value.VAtom or Value.VAtomTy: break;
-                case var other: throw new NotImplementedException($"not ported yet: the variables a {other.GetType().Name} mentions");
-            }
-        }
-
-        Go(value, ctx.Width);
+            if (t is Term.Var v && v.Index >= under)
+                found.Add(ctx.Width - 1 - (v.Index - under));
+            return null;
+        });
         return found;
     }
 }
