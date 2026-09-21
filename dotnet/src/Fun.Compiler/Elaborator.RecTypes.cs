@@ -133,13 +133,14 @@ public static partial class Elaborator
     {
         foreach (var lam in lambdas)
             ctx = ctx.Bind(lam.Param.Name.Name, Value.VU.Instance) with { Enclosing = lam.Body };
-        return FirstBoundLevel(ctx) is int firstBound
+        return (FirstBoundLevel(ctx) is int firstBound
             ? NamedLevels(ctx, ctx.Enclosing)
                 .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
-                .Distinct()
-                .Order()
-                .ToEquatableArray()
-            : [];
+            : Enumerable.Empty<int>())
+            .Concat(ctx.ScopeCaptures)
+            .Distinct()
+            .Order()
+            .ToEquatableArray();
     }
 
     /// <summary>
@@ -174,13 +175,14 @@ public static partial class Elaborator
         var decls = members.Select(m => new RecordDecl(Label(m.Name.Name))).ToList();
         var arities = members.Select(m => Lambdas(m.Value).Count).ToList();
         var types = members.Select(m => ctx.Eval(FormerType(Lambdas(m.Value)))).ToList();
-        var levels = FirstBoundLevel(ctx) is int firstBound
+        var levels = (FirstBoundLevel(ctx) is int firstBound
             ? NamedLevels(ctx, ctx.Enclosing)
                 .Where(l => l >= firstBound && l < width && !ctx.RecursiveLevels.Contains(l))
-                .Distinct()
-                .Order()
-                .ToEquatableArray()
-            : [];
+            : Enumerable.Empty<int>())
+            .Concat(ctx.ScopeCaptures)
+            .Distinct()
+            .Order()
+            .ToEquatableArray();
 
         var results = new List<(string, Term, Value, Value)>();
         var at = ctx;

@@ -363,16 +363,16 @@ public static partial class Elaborator
     /// A module: each binding elaborates in the context the ones before it
     /// built, pushing exactly its slots (I2). Its type lists every binding's
     /// member, private ones included, so widths stay aligned; only public ones
-    /// are reachable from outside.
+    /// are reachable from outside. Its first slot is the stamp (E11), so both
+    /// sides push it and no index moves by hand.
     /// </summary>
-    // ponytail: no module stamp slot yet; it arrives with nominals (E11), and
-    // both sides read the slot list, so adding it moves no index by hand.
     private static (Term, Value) InferModule(Context ctx, Syntax.Module module) =>
-        Generative(ctx, c => InferModuleBindings(c, module));
+        GenerativeModule(ctx, module);
 
-    private static (Term, Value, IReadOnlyList<BindingTerm>) InferModuleBindings(Context ctx, Syntax.Module module)
+    private static (List<BindingTerm> Terms, List<ModuleEntry> Entries) InferModuleBindings(
+        Context ctx, Syntax.Module module, int innerLevel)
     {
-        var inner = ctx.WithoutSelf() with { Enclosing = module };
+        var inner = ctx;
         var performingMember = false;
         var terms = new List<BindingTerm>();
         var entries = new List<ModuleEntry>();
@@ -388,8 +388,8 @@ public static partial class Elaborator
         // A member whose value performed is a rigid entry of the module: no member's type may name it.
         if (performingMember)
             foreach (var field in entries.OfType<ModuleEntry.Field>())
-                CheckSealedStays(inner, ctx.Width, inner.Width, field.Name, field.Value);
-        return (new Term.Module([.. terms]), new Value.VModule([.. entries], Partial: false), terms);
+                CheckSealedStays(inner, innerLevel, inner.Width, field.Name, field.Value);
+        return (terms, entries);
     }
 
     /// <summary>
@@ -423,12 +423,20 @@ public static partial class Elaborator
                 var term = new BindingTerm.Let(Label(let.Name.Name), kind, def);
                 // A value that performs is not known at check time (E4): its binder is a rigid
                 // entry, whose type seals what a generative module declared (E11).
-                if (!performed.IsEmpty) (type, performingMember) = (Seal(inner, type), true);
+                var sealedNominals = ImmutableDictionary<string, NominalDecl>.Empty;
+                if (!performed.IsEmpty)
+                {
+                    var sealing = Seal(inner, type);
+                    type = sealing.Type;
+                    sealedNominals = sealing.Sealed;
+                    performingMember = true;
+                }
                 terms.Add(term);
                 entries.Add(new ModuleEntry.Field(term.Name, kind, type));
-                return performed.IsEmpty
+                var next = performed.IsEmpty
                     ? ExtendFromSlots(inner, term, [(let.Name.Name, type)])
                     : BindFromSlots(inner, term, [(let.Name.Name, type)]);
+                return sealedNominals.IsEmpty ? next : next with { Sealed = next.Sealed.SetItem(inner.Width, sealedNominals) };
             }
 
             case Binding.Open open:
@@ -545,12 +553,15 @@ public static partial class Elaborator
             writtenType is null ? Infer(c, let.Value) : (Check(c, let.Value, writtenType), writtenType));
         Emit(ctx, performed);
         (valueTerm, valueType) = Generalise(ctx, valueTerm, valueType);
-        // A value is known in the body only when evaluating it performs nothing (E4).
-        var body = performed.IsEmpty
-            ? ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm))
-            : ctx.Bind(let.Name.Name, Seal(ctx, valueType));
+        // A value is known in the body only when evaluating it performs nothing (E4);
+        // a performing value's binder is rigid, its type sealed (E11).
+        var (body, sealedNominals) = performed.IsEmpty
+            ? (ctx.Define(let.Name.Name, valueType, ctx.Eval(valueTerm)), ImmutableDictionary<string, NominalDecl>.Empty)
+            : SealBinder(ctx, let.Name.Name, valueType);
         var (bodyTerm, bodyType) = Infer(body, let.Body);
-        if (!performed.IsEmpty) CheckSealedStays(body, ctx.Width, body.Width, let.Name.Name, bodyType);
+        // Emptiness of the report is what says the binder's own type named a generative
+        // nominal; only a sealed binder may not carry its type out of its scope.
+        if (!sealedNominals.IsEmpty) CheckSealedStays(body, ctx.Width, body.Width, let.Name.Name, bodyType);
         return (new Term.Let(ctx.Quote(valueType), valueTerm, bodyTerm), bodyType);
     }
 

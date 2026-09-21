@@ -16,6 +16,9 @@ public sealed partial record Context
         {
             field = value;
             EnclosingWidth = Width;
+            // The names a new enclosing module or body uses replace the last one's,
+            // stamp included (as the prototype's enclosing_scope does).
+            ScopeCaptures = [];
         }
     }
 
@@ -43,24 +46,24 @@ public static partial class Elaborator
     /// <c>enum { … }</c>: a new declaration, whose identity is itself and the
     /// values of its captures. It captures every entry, from the first bound one
     /// on, that its enclosing function body or module names or its payload types
-    /// mention; each payload type is closed over those captures.
+    /// mention - plus whatever the scope always captures, a module's stamp - and
+    /// each payload type is closed over those captures.
     /// </summary>
-    // ponytail: no generative stamp; without effects every declaration is
-    // applicative (E11). Add the module stamp slot with effects.
     private static (Term, Value) InferEnum(Context ctx, Syntax.Enum e)
     {
         var payloads = e.Constructors
             .Select(c => c.Payloads.Select(p => ctx.Eval(TypeTerm(ctx, p))).ToList())
             .ToList();
 
-        var levels = FirstBoundLevel(ctx) is int firstBound
+        var levels = (FirstBoundLevel(ctx) is int firstBound
             ? NamedLevels(ctx, ctx.Enclosing)
                 .Concat(payloads.SelectMany(ps => ps.SelectMany(p => FreeLevels(ctx, p))))
                 .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
-                .Distinct()
-                .Order()
-                .ToEquatableArray()
-            : [];
+            : Enumerable.Empty<int>())
+            .Concat(ctx.ScopeCaptures)
+            .Distinct()
+            .Order()
+            .ToEquatableArray();
 
         EquatableArray<ConstructorDecl> constructors =
             [.. e.Constructors.Select((c, i) => new ConstructorDecl(c.Name,
