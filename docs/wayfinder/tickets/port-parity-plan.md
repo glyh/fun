@@ -101,10 +101,13 @@ order the frontier should take it:
   and it repairs a **live** convention-2 violation: `{ 1 + 2 ~> 3 }` is answered with
   `NotImplementedException` where the prototype type-errors.
 - [latent form gaps](port-latent-form-gaps.md) — G2 traversals (broadest reach),
-  G3 the reflection reader, G4 typed operator macros, G5 rec-enum captures, G6 a
-  stuck match. Latent: no shared case reaches them, so the case comes first.
+  G3 the reflection reader, G4 typed operator macros, G5 rec-enum captures. G6 is now
+  its own ticket: [a stuck match waits](port-stuck-match-sub-occurrence.md), ruled by
+  the user 2026-09-20 (the port is right, the prototype takes the default arm).
 - The 9 undecided and the 13 parity rows are ruled by the two rules above; the ones
-  that need a semantic ruling are one question at a time, per the port ticket.
+  that need a semantic ruling are one question at a time, per the port ticket. Two are
+  now settled by evidence rather than a ruling: the parametric nominal in a generative
+  module (real gap) and the stuck match (the port is right — a divergence to record).
 
 **Internals parity — ruled (user, 2026-09-20): behavioural only, budget yes, shapes
 no.** The port is complete when it agrees on every source → result case; add
