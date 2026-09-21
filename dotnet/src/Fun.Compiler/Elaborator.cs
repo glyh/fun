@@ -447,7 +447,7 @@ public static partial class Elaborator
             }
 
             default:
-                throw new NotImplementedException($"not ported yet: elaborating the binding {binding.GetType().Name}");
+                throw new InvalidOperationException($"unhandled binding {binding.GetType().Name}");
         }
     }
 
@@ -510,9 +510,7 @@ public static partial class Elaborator
         // A signature-typed module (a parameter) opens as the signature gives it.
         var type = ModuleTypeOf(ctx, inferred, term);
         if (ctx.Force(type) is not Value.VModule moduleType)
-            throw ctx.Force(type) is Value.VMeta or Value.VVar or Value.VNeutral
-                ? new NotImplementedException("not ported yet: opening a value of unknown type")
-                : new FunException("open of a non-module");
+            throw new FunException("open of a non-module");
 
         var value = ctx.Eval(term);
         var members = ImmutableDictionary<string, Entry>.Empty;

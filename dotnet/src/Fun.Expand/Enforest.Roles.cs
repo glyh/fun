@@ -144,9 +144,14 @@ public sealed partial class Enforest(EnforestEnv env)
     {
         if (TokenText(term) is not string symbol || term is not TokenTree.Leaf leaf) return null;
         if (_env.Roles.FindRole(symbol, Fixity.Infix, leaf.Token.Scope) is not { } role) return null;
-        if (role.Meaning is RoleMeaning.PolyArrow)
-            throw new NotImplementedException("not ported yet: the polymorphic arrow `~>`");
         if (!Continues(prec, symbol, role)) return null;
+        // A `~>` at an infix position is not an infix operator: the arrow is
+        // read where a type is (Enforest.Effects), never as an expression
+        // operator. The prototype's guard order matters -- `1 + 2 ~> 3` ends the
+        // expression before `~>` (it does not continue `+`) and then reads `~>`
+        // at the top level, where it errors (enforest.ml:684).
+        if (role.Meaning is RoleMeaning.PolyArrow)
+            throw new ExpandException($"not an infix operator: {symbol}");
 
         var (rhs, after) = ParseExprPrec(rest, new Prec.Operand(symbol, role));
         var span = SourceSpan.Between(lhs.Span, rhs.Span);

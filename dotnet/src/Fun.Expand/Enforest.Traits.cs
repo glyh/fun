@@ -140,7 +140,7 @@ public sealed partial class Enforest
     private Binding ParseSignatureImpl(Terms stmt)
     {
         if (NameOf(stmt.Head) is not Id name || !IsToken(stmt.Drop(1).Head, TokenKind.Colon) || !IsToken(stmt.Drop(2).Head, TokenKind.Impl))
-            throw new NotImplementedException("not ported yet: an unnamed impl in a signature");
+            throw new ExpandException("an impl in a signature must be named: write name : impl Trait(Type)");
         var (_, trait, arg) = ParseImplHead(stmt.Drop(3));
         return new Binding.Impl(name, trait, arg, null, Public: true);
     }

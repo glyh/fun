@@ -22,8 +22,8 @@ public static partial class Elaborator
     // prototype reuses that elaboration); reuse it if elaboration cost matters.
     private static (Term, Value) ApplyTypedMacro(Context ctx, Syntax.MacroCall call, Value? expected)
     {
-        var expander = ctx.Expander ?? throw new NotImplementedException("not ported yet: a type-aware macro's call with no expander");
-        var loader = ctx.Loader ?? throw new NotImplementedException("not ported yet: a type-aware macro's call with no loader");
+        var expander = ctx.Expander ?? throw new InvalidOperationException("a type-aware macro call outside an elaboration with an expander");
+        var loader = ctx.Loader ?? throw new InvalidOperationException("a type-aware macro call outside an elaboration with a loader");
         var key = call.Head is Syntax.Var v ? v.Id.Name : throw new InvalidOperationException("a deferred macro call's head is its key");
         var entry = expander.LookupMacro(key) ?? throw new InvalidOperationException($"a deferred call names no macro: {key}");
         var signature = entry.Signature ?? throw new InvalidOperationException($"a deferred call names an untyped macro: {key}");

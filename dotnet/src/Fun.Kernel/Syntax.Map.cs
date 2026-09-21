@@ -171,7 +171,7 @@ public abstract partial record Syntax
             Stx x => x with { Inner = Go(x.Inner) },
             // Written after expansion, where its form was already elaborated: left alone.
             Elaborated => this,
-            _ => throw new NotImplementedException($"not ported yet: a syntax traversal over {GetType().Name}"),
+            _ => throw new InvalidOperationException($"unhandled syntax form {GetType().Name}"),
         };
         return m.Form(mapped);
     }
@@ -222,7 +222,7 @@ public abstract partial record Binding
             },
             Macro ma => ma with { Name = m.Id(ma.Name), Value = ma.Value.Map(m), Output = ma.Output?.Map(m) },
             MacroCall c => c with { Head = c.Head.Map(m), Args = [.. c.Args.Select(m.MapCapture)] },
-            _ => throw new NotImplementedException($"not ported yet: a syntax traversal over the binding {GetType().Name}"),
+            _ => throw new InvalidOperationException($"unhandled binding {GetType().Name}"),
         };
         return m.Binding(mapped);
     }
@@ -253,7 +253,7 @@ public abstract partial record Pattern
             AtomType or SynonymParam => this,
             Record r => r with { Type = r.Type.Map(m), Fields = [.. r.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
             StructType st => st with { Fields = [.. st.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
-            _ => throw new NotImplementedException($"not ported yet: a syntax traversal over the pattern {GetType().Name}"),
+            _ => throw new InvalidOperationException($"unhandled pattern {GetType().Name}"),
         };
         return m.Pattern(mapped);
     }

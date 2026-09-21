@@ -217,8 +217,8 @@ public sealed partial class Enforest
 
         if (ParseTraitOrImplItem(unprefixed, isPublic) is { } item) return [item];
 
-        throw new NotImplementedException(
-            $"not ported yet: module item starting `{(unprefixed.Head is { } head ? Describe(head) : "(empty)")}`");
+        throw new ExpandException(
+            $"unsupported module item: {(unprefixed.Head is { } head ? Describe(head) : "(empty)")}");
     }
 
     private string Describe(TokenTree term) => term switch
@@ -288,7 +288,7 @@ public sealed partial class Enforest
                     case TokenKind.Word w when w == TokenKind.Ref: return ParseRef(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Deref: return ParseDeref(term.Span, rest);
                     case TokenKind.Word w:
-                        throw new NotImplementedException($"not ported yet: the `{w.Spelling}` form");
+                        throw new ExpandException($"unsupported Phase 7A keyword: {w.Spelling}");
                     case TokenKind.Operator o:
                         throw new ExpandException($"unsupported prefix operator: {o.Spelling}");
                 }
@@ -393,7 +393,10 @@ public sealed partial class Enforest
                 if (InfixRoleUse(lhs, term, terms.Tail, prec) is var (use, afterUse)) { (lhs, terms) = (use, afterUse); continue; }
                 if (_env.Roles.FindRole(symbol, Fixity.Infix, ((TokenTree.Leaf)term).Token.Scope) is not null
                     || term is TokenTree.Leaf { Token.Kind: TokenKind.Ident }) return (lhs, terms);
-                throw new NotImplementedException($"not ported yet: the infix operator `{symbol}`");
+                // An operator token no role names ends the expression, as in the
+                // prototype: the caller's `EnsureNoRest` reports it (enforest.ml:684,
+                // enforest_util.ml:342).
+                return (lhs, terms);
             }
 
             return (lhs, terms);
@@ -409,7 +412,7 @@ public sealed partial class Enforest
                 return ReadBlock(group.Items, group.Span);
 
             case Delimiter.Bracket:
-                throw new NotImplementedException("not ported yet: bracket expressions");
+                throw new ExpandException("bare bracket expression is not in Phase 7A");
 
             default:
                 if (items.IsEmpty) return Unit(group.Span);

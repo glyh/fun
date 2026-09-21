@@ -39,7 +39,7 @@ namespace Fun.Compiler
             };
 
             return InTree(match.Tree, arm)
-                ?? throw new NotImplementedException("not ported yet: reading back an unreachable arm of a stuck match");
+                ?? throw new InvalidOperationException("reading back an unreachable arm of a stuck match");
         }
 
         /// <summary>A stuck match's arm body, evaluated with fresh variables for its binders from <paramref name="width"/>.</summary>
