@@ -97,17 +97,21 @@ order the frontier should take it:
 - [implicit application `f{ e }` and `g[I64]`](port-implicit-application.md) — the two
   the audit *reproduced*. Verified again by the integrator; the only gaps with a
   known-passing prototype program, so the cheapest 2 cases on the board.
-- [the parity throws become language errors](port-parity-conversions.md) — mechanical,
-  and it repairs a **live** convention-2 violation: `{ 1 + 2 ~> 3 }` is answered with
-  `NotImplementedException` where the prototype type-errors.
+- [the parity throws become language errors](port-parity-conversions.md) — **done
+  2026-09-20** (`d1d10fe`): 12 rows converted, 17 unreachable catch-alls became
+  invariant failures, 11 error cases added, 695 → 706/0. It also **corrected the
+  audit**: `Enforest.Roles.cs:343` (a dotted order-group path) is a real gap, not
+  parity → [port-order-group-through-unit-path](port-order-group-through-unit-path.md).
+  The live convention-2 violation (`{ 1 + 2 ~> 3 }`) is repaired.
 - [latent form gaps](port-latent-form-gaps.md) — G2 traversals (broadest reach),
   G3 the reflection reader, G4 typed operator macros, G5 rec-enum captures. G6 is now
   its own ticket: [a stuck match waits](port-stuck-match-sub-occurrence.md), ruled by
   the user 2026-09-20 (the port is right, the prototype takes the default arm).
 - The 9 undecided and the 13 parity rows are ruled by the two rules above; the ones
-  that need a semantic ruling are one question at a time, per the port ticket. Two are
-  now settled by evidence rather than a ruling: the parametric nominal in a generative
-  module (real gap) and the stuck match (the port is right — a divergence to record).
+  that need a semantic ruling are one question at a time, per the port ticket. Three are
+  now settled without one: the parametric nominal in a generative module (real gap), the
+  stuck match (**the port is right** — a divergence to record), and the dotted
+  order-group path (real gap, found by probing a row the audit had called parity).
 
 **Internals parity — ruled (user, 2026-09-20): behavioural only, budget yes, shapes
 no.** The port is complete when it agrees on every source → result case; add

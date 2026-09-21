@@ -44,6 +44,13 @@ static string? RunCase(string path)
     {
         return expect == "error" ? null : $"elaboration failed: {e.Message}";
     }
+    // An invariant failure reports as this case's failure, not as a crash of the run.
+    // One reachable path the port believes is unreachable must not hide the other
+    // 705 results - and it still never passes a case expecting `error`.
+    catch (Exception e) when (e is InvalidOperationException or IndexOutOfRangeException or ArgumentException)
+    {
+        return $"invariant failure ({e.GetType().Name}): {e.Message}";
+    }
 
     if (expect == "ok") return null;
 
@@ -55,7 +62,8 @@ static string? RunCase(string path)
     var run = Task.Run(() =>
     {
         try { return (Value: (string?)Driver.Describe(Driver.Run(elaborated)), Error: (Exception?)null); }
-        catch (Exception e) when (e is FunException or NotImplementedException) { return (null, e); }
+        catch (Exception e) when (e is FunException or NotImplementedException
+                                      or InvalidOperationException) { return (null, e); }
     });
     if (!run.Wait(timeout)) return $"did not finish within {timeout.TotalSeconds}s";
     var (got, error) = run.Result;
@@ -63,6 +71,7 @@ static string? RunCase(string path)
     return (expect, error) switch
     {
         (_, NotImplementedException e) => e.Message,
+        (_, InvalidOperationException e) => $"invariant failure ({e.GetType().Name}): {e.Message}",
         ("error", FunException) => null,
         ("error", _) => "expected an error",
         (_, FunException e) => $"evaluation failed: {e.Message}",

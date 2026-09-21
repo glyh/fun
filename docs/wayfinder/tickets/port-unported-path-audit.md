@@ -40,8 +40,9 @@ Use the prototype as a *map*, not as the spec — where they disagree, the domai
 model decides and a prototype defect is its own verdict (convention 5). Two
 verdicts are already established and are examples of 2:
 `Enforest.cs:412` bare bracket expressions (`lib/expand/enforest.ml:87`, "not in
-Phase 7A") and `Enforest.Roles.cs:338` a dotted order-group reference (an open item
-on [brackets-decide-grouping](brackets-decide-grouping.md)).
+Phase 7A") and `Enforest.Traits.cs:143` (an unnamed impl in a signature,
+`enforest.ml:407`). ~~`Enforest.Roles.cs:338` a dotted order-group reference~~ —
+**that one turned out to be a real gap, not parity: see the correction below.**
 
 ## Resolution (2026-09-20)
 
@@ -91,7 +92,7 @@ Legend: **RG** real gap · **P** parity (→ `FunException`) · **U** unreachabl
 | 13 | `Fun.Expand/Enforest.cs:412` | **P** | established: `enforest.ml:87` "not in Phase 7A" |
 | 14 | `Fun.Expand/Enforest.Traits.cs:143` | **P** | `enforest.ml:407` `error "an impl in a signature must be named"` |
 | 15 | `Fun.Expand/Enforest.Roles.cs:148` | **P** | `enforest.ml:684` `error "not an infix operator: ~>"`; note the throw precedes the `continues` guard, so `1 + 2 ~> 3` throws where the prototype parses `(1+2) ~> 3` and type-errors (probe P5) |
-| 16 | `Fun.Expand/Enforest.Roles.cs:338` | **P** | established; open item on [brackets-decide-grouping](brackets-decide-grouping.md) |
+| 16 | `Fun.Expand/Enforest.Roles.cs:338` (`:343`) | **G** | **corrected 2026-09-20: a real gap, not parity.** The prototype resolves a dotted path of depth > 1 through a module member (`{ W = import "wrapper"; infix (@@) W.M.g ($x, $y) { $x }; 1 @@ 2 }` → `1`; verified by the integrator) → [an order group named through a unit member's path](port-order-group-through-unit-path.md). `brackets-decide-grouping`'s open "dotted group references" item is a narrower, different case |
 | 17 | `Fun.Expand/Enforest.Roles.cs:845` (`WithBody`) | **?** | a quoted-syntax block statement other than `let`/`rec`/`open`/`syntax`/`macro`; no program constructed |
 | 18 | `Fun.Compiler/Unify.cs:199` | **U** | heads are exactly `HVar`/`HMeta`/`HPrim` |
 | 19 | `Fun.Compiler/Unify.cs:204` | **RG** | residue: renaming `FDot`/`FRefGet`/`FRefSet`/`FMatch` frames; `elab-059` |
@@ -237,7 +238,7 @@ language error, so a case expecting `error` can pass for the right reason.
 | `Enforest.cs:412` | `enforest.ml:87` (established) |
 | `Enforest.Traits.cs:143` | `enforest.ml:407` |
 | `Enforest.Roles.cs:148` | `enforest.ml:684` (guard-order bug noted above) |
-| `Enforest.Roles.cs:338` | open item (established) |
+| ~~`Enforest.Roles.cs:338`~~ | **not parity — a real gap** (corrected 2026-09-20): [port-order-group-through-unit-path](port-order-group-through-unit-path.md) |
 | `Elaborator.cs:506` | `elab_resolve.ml:387` |
 | `Elaborator.Export.cs:52` | `elab_infer.ml:150` |
 | `Elaborator.Patterns.cs:47` | `elab_patterns.ml:187` |
