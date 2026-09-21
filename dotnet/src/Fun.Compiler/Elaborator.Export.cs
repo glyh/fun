@@ -61,9 +61,7 @@ public static partial class Elaborator
             })];
 
         if (ctx.Force(ModuleTypeOf(ctx, type, term)) is not Value.VModule module)
-            throw ctx.Force(ModuleTypeOf(ctx, type, term)) is Value.VMeta or Value.VVar or Value.VNeutral
-                ? new NotImplementedException("not ported yet: exporting a value of unknown type")
-                : new FunException("export of a non-module");
+            throw new FunException("export of a non-module");
 
         var members = new List<ExportedMember>();
         foreach (var entry in module.Entries)

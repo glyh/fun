@@ -96,15 +96,10 @@ public class ExpandTests
     [InlineData("fn[]() { 1 }", "empty implicit parameter list")]
     [InlineData("f [I64]", "implicit argument list must be adjacent to the callee; whitespace application is not supported")]
     [InlineData("fn [A : Type](a) { a }", "implicit fn parameter list must be adjacent to the callee; whitespace application is not supported")]
+    // A keyword with no expression form, and an operator token no role names,
+    // are read as ordinary errors: the enforester refuses them, as the prototype.
+    [InlineData("macro m(x) { x }", "unsupported Phase 7A keyword: macro")]
+    [InlineData("1 + 2", "expression has trailing terms")]
     public void Rejects(string source, string message) =>
         Assert.Equal(message, Assert.Throws<ExpandException>(() => Expander.ExpandExpr(source, new Fun.Compiler.Loader(new Dictionary<string, string>()))).Message);
-
-    // Unported forms name themselves rather than parsing into something else, and
-    // are never an ordinary error: a conformance case expecting `error` must not
-    // pass because a form is missing.
-    [Theory]
-    [InlineData("1 + 2", "not ported yet: the infix operator `+`")]
-    [InlineData("macro m(x) { x }", "not ported yet: the `macro` form")]
-    public void RejectsUnported(string source, string message) =>
-        Assert.Equal(message, Assert.Throws<NotImplementedException>(() => Expander.ExpandExpr(source, new Fun.Compiler.Loader(new Dictionary<string, string>()))).Message);
 }

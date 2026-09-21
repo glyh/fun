@@ -13,7 +13,7 @@ public sealed partial class Enforest
     {
         var after = DropSeparators(rest);
         if (!IsToken(after.Head, TokenKind.ThinArrow))
-            throw new ExpandException("bare bracket expression is not supported");
+            throw new ExpandException("bare bracket expression is not in Phase 7A");
 
         var binders = ParseParamGroup(new Terms(group.Items), Explicitness.Implicit);
         var codomain = ParseAll(after.Tail);

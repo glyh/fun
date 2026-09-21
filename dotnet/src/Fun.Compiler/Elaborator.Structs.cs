@@ -77,7 +77,7 @@ public static partial class Elaborator
                 }
 
                 default:
-                    throw new NotImplementedException($"not ported yet: the struct item {item.GetType().Name}");
+                    throw new FunException($"unsupported struct item: {item.GetType().Name}");
             }
         }
 
@@ -205,9 +205,7 @@ public static partial class Elaborator
         // A recursive occurrence is a type of type `Type`: its shape is its unfolding.
         var shape = ctx.Force(typeType) is Value.VU ? Nbe.Unfold(ctx.Metas, ctx.Eval(type)) : Nbe.Unfold(ctx.Metas, typeType);
         if (shape is not Value.VStruct structType)
-            throw shape is Value.VPi or Value.VMeta or Value.VVar or Value.VNeutral or Value.VRecursiveOccurrence
-                ? new NotImplementedException("not ported yet: record construction through an explicit type former or a type of unknown shape")
-                : new FunException("record construction of a non-struct");
+            throw new FunException("record construction of a non-struct");
 
         var declared = structType.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Field).ToList();
         RejectDuplicates(record.Fields.Select(f => f.Name));
@@ -241,7 +239,7 @@ public static partial class Elaborator
                 continue;
             }
             if (binding is not Binding.Let let)
-                throw new NotImplementedException($"not ported yet: the signature item {binding.GetType().Name}");
+                throw new FunException($"unsupported signature item: {binding.GetType().Name}");
             var (typeTerm, typeType) = Infer(inner, let.Value);
             var type = inner.Eval(typeTerm);
             CheckTypeLike(inner, typeType, type);

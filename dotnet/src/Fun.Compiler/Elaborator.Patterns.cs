@@ -44,7 +44,6 @@ public static partial class Elaborator
         return ctx.Force(typeType) switch
         {
             Value.VStruct structType => structType,
-            Value.VMeta or Value.VVar or Value.VNeutral => throw new NotImplementedException("not ported yet: a record pattern whose head has an unknown type"),
             _ => throw new FunException("record pattern fields must follow a struct"),
         };
     }
