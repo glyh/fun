@@ -76,15 +76,13 @@ this as a duplicate rather than adding a second capture rule.
 ## G6. A stuck match on a known scrutinee's unknown part
 
 `Fun.Compiler/Nbe.StuckMatch.cs:12` (`:50`, `:54` follow from it): the port waits only
-on an unknown *scrutinee*, where the prototype also waits when a known scrutinee has an
-unknown *part* a pattern tests. **Undecided in the audit** — `Nbe.Match.cs:87` asks
-whether a neutral sub-occurrence should take the default arm (the prototype) or make
-the match stuck, and the two readings are not obviously the same rule. Get a ruling
-from the user with a concrete program before implementing; do not infer it from
-"the prototype does X" alone, since the marker under an argument performing a read is
-exactly the area where the prototype has its own stopgap
-(`Elaborator.Effects.cs:304`, "a codomain depending on a performing argument reads the
-stand-in").
+on an unknown *scrutinee*, where an unknown **part** a pattern inspects should also
+wait. **Decided 2026-09-20 by the user: the match waits — it does not take the default
+arm — so the port is right and the prototype is wrong.** That makes it a recorded
+divergence rather than parity. Implemented on its own ticket:
+[port-stuck-match-sub-occurrence](port-stuck-match-sub-occurrence.md), which carries
+the prototype's rule (`lib/backend/interp/nbe.ml:784-810`), the refusal sites, and the
+warning that the shared case must be *demanded by the checker* to be observable at all.
 
 ## Internals parity — settled
 
