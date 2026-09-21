@@ -59,6 +59,20 @@ ruling on [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md)),
 `elab-059` / `elab-067` (one missing `switch` case each), then `core-102`, `core-270`,
 `core-165`. → [port-stage2-residue](port-stage2-residue.md)
 
+**Done 2026-09-20** (`fbea929`, `4fdab26`): 13 → **3**, xUnit 168/168 throughout, both
+runners green. Nine fixed across five independent causes; `imports/core-165` was a
+shared case that could only pass via the by-name constructor resolution the port
+rejected, so it was **rewritten to say what it means** rather than ruled on, and the
+rejected shape got its own divergence case. The residue ticket is closed: the 3 that
+remain are all E11 (`elab-062`, `core-067`, `elab-067` — the last is the `SymbolTable`
+program, so it is not the local one-case fix its triage implied) and are
+[port-nominal-identity](port-nominal-identity.md)'s.
+
+Still open from that family: the grilled generic-impls ruling on
+[trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md) is implemented
+nowhere (no shared case exercises it), `Nbe.Convertible` remains a stopgap, and a
+top-level `pub impl` still refuses the `pub` form.
+
 **3. The unported-path audit** — classify all 60 throw sites and 15 `ponytail:` notes
 into the three verdicts above, so the invisible delta becomes a number and the real
 gaps become tickets. Expect it to *shrink* the work. → [port-unported-path-audit](port-unported-path-audit.md)

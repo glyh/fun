@@ -3,7 +3,9 @@ title: "Port: what prelude stage 2 left failing"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-20
+resolution: All six causes closed. 13 failures → 3, and the 3 are E11's (values/elab-062, values/core-067, values/elab-067), moved to port-nominal-identity. core-165 was fixed by rewriting the case, not by a ruling.
 assignee:
 blocked_by:
 ---
@@ -137,3 +139,39 @@ Remaining, all singletons or near-singletons:
 
 Take `values/elab-062` first, as `macros/core-308` was taken first: a wrong answer is a
 better lead than a missing feature.
+
+## Resolution (2026-09-20) — 13 failures → 3
+
+Merged from branch `pi-agent-8accc24c-f625-44f` (`fbea929`), commits `50c8b03`
+(method calls), `568a1ea` (`Eq` impls), `b720867` (`FMatch` rename), `ddb83e1` (two
+singletons). **C# 13 → 3 failed**; xUnit 168/168 before and after; `dune test` and
+`dune test test/conformance` green throughout.
+
+| item | verdict |
+|---|---|
+| 4. Method calls on a record (4 cases) | **fixed** — `InferMember` grew a method branch (unify the value's type with the method's `Self`, apply the codomain, emit the row; a nullary `method m()` is a function of `()`), evaluation got the matching `Dot` case, and the work lives in a new `Elaborator.Methods.cs` (convention 7) |
+| 5. `Eq` impls (2 cases) | **fixed, two independent causes** — `core-152`: evidence matching compared by read-back equality, which cannot see a partial `Self` struct against the complete type, replaced by a conversion test that solves no meta; `core-312`: `export M` dropped named public impls, so export now carries `BindingTerm.Impl`/`ModuleEntry.Impl` and the clash check counts impl names |
+| 6a. `elab-059` (1) | **fixed** — rename a stuck `FMatch` (open each arm at its binders, rename under them) plus `FDot`/`FRefGet`/`FRefSet`; it now errors for a genuine reason (`cannot unify VAtom with VAtom`) |
+| 6b. `core-102` (1) | **fixed** — `InferApWithPendingDicts` evaluated its argument eagerly; it now uses `ArgumentValue` and emits argument effects and the arrow row |
+| 6c. `core-270` (1) | **fixed** — `ReadContext` minted a fresh scope *per token* rather than once per statement group, so a generated role's scope never reached its use |
+| `imports/core-165` | **fixed by rewriting the case, not by a ruling** — the fork correctly stopped: its arms passed in the prototype only via the rejected by-name bare-constructor resolution, and the case was not listed as a divergence. The arms now qualify through the unit that declares the constructors, which passes in both runners; the rejected shape gets its own divergence case. See [bare-constructor-pattern-resolves-by-name](bare-constructor-pattern-resolves-by-name.md) "Correction (2026-09-20)" and commit `4fdab26` |
+
+**The 3 that remain are all E11**: `values/elab-062`, `values/core-067` and
+`values/elab-067`, and they are [port-nominal-identity](port-nominal-identity.md)'s.
+`elab-067` turned out *not* to be the local one-case fix this ticket's table implied:
+it is the `SymbolTable` program (`f(st1.Symbol) * 10 + f(st2.Symbol)` = `10`), and the
+fork diagnosed the two reasons it cannot pass yet — `TypeHead` returns null on a stuck
+`s1.Symbol`, and `ElaborateNominalHeadPattern` refuses generative nominals. Both are
+in that ticket's paths, so the fork did not touch them.
+
+### Not done (each a ticket line)
+
+- **The grilled generic-impls ruling is implemented nowhere.** `trait-op-takes-innermost-impl`'s
+  "Grilled (2026-09-18)" decided that a free name in an impl head binds; neither
+  `Eq` case needed it, and no shared case exercises it. It stays open there.
+- **`Nbe.Convertible` is still a stopgap.** The fix above added a localized no-solve
+  conversion in `Elaborator.Traits.cs` rather than porting the prototype's full
+  `Nbe.conv`. Careful as that is, the port now has two conversion notions.
+- **A top-level `pub impl` still reports "not ported yet: the `pub` form"** (found by a
+  diagnostic; no shared case reaches it). It belongs with
+  [the parity conversions](port-parity-conversions.md).

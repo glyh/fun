@@ -303,8 +303,10 @@ order.
 ### Blocking the .NET port
 
 [Port `core_tt` to .NET](tickets/port-core-tt-to-dotnet.md) is the destination.
-**In progress since 2026-09-16** — 677 of 690 conformance cases (C#, `dotnet/`),
-168/168 xUnit, `dune test` green (2026-09-18). **Start at the port ticket's
+**In progress since 2026-09-16** — **688 of 691** conformance cases (C#, `dotnet/`),
+168/168 xUnit, `dune test` green (2026-09-20). The 3 that remain are all E11
+([nominal identity](tickets/port-nominal-identity.md)), where the port is *less*
+correct than the prototype rather than merely incomplete. **Start at the port ticket's
 "Handover (2026-09-17)"**, then work
 [reach feature parity with the prototype](tickets/port-parity-plan.md) — the recipe
 for what remains. A green suite is not parity: 62 `not ported yet` paths in
