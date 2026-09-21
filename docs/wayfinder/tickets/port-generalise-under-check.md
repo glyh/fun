@@ -30,6 +30,18 @@ implementations are wrong in *opposite* directions.
 
 ## Ruled (integrator, 2026-09-20): both must be accepted
 
+**Reaffirmed and widened by the user (2026-09-20): all three of these are accepted**, and
+none of them is an error —
+
+```fun
+{ h = fn(g) { g[I64](7) }; h(fn[A : Type](a : A) { a }) }              -- inline, → 7
+{ ch = fn[A : Type](a : A) { a }; h = fn(g) { g[I64](7) }; h(ch) }    -- named,  → 7
+{ h = fn(g) { g[I64]; 7 }; h(fn[A : Type](a : A) { a }) }             -- no result applied, → 7
+```
+
+— so the third is already correct in both runners, and each implementation must stop
+rejecting its half of the first two.
+
 The two programs differ only by let-inlining — the same term, one written inline and one
 bound first. **Generalization must not depend on that.** This is the project's own
 stated priority (`Consistency > Flexibility > Correctness`, root `README.md`) applied to
@@ -53,10 +65,40 @@ So this ticket has three pieces of work:
    condition — after the fix the inline one is an ordinary case and the named one is a
    divergence; before the fix the inline one fails, which is the point.
 
-Be careful not to "fix" this by making the inline case *also* reject: the direction is
-fixed by the ruling above. If reading the two paths shows the generalization rules differ
-in more than this shape, report it rather than patching the one case — an eta/inlining
-invariance that holds for one shape and not another is the same defect elsewhere.
+## The cause (confirmed in code, 2026-09-20)
+
+Both failures are the *same* root, which is why the two implementations are wrong in
+mirror image: **let-generalisation abstracts an undecided meta into a rigid variable
+before the other side can solve it.**
+
+`Elaborator.cs:553` generalises the value of a `let`, and `Elaborator.Generalise.cs`
+does it by *solving* each unsolved meta of the type to a rigid variable:
+
+```csharp
+for (var i = 0; i < n; i++) ctx.Metas.Solve(unsolved[i], new Value.VVar(ctx.Width + n - 1 - i, []));
+```
+
+`h = fn(g) { g[I64](7) }` is a single-parameter lambda, so it is generalised: the implicit
+domain that `g[I64]` created (`InferApImplicitUnknown`) is turned into a rigid variable.
+At `h(fn[A : Type](a : A) { a })` the written `Type` is then checked against a **rigid
+variable** instead of a solvable meta — hence `cannot unify VAtomTy with VVar`.
+
+OCaml's half is the mirror: it generalises `ch`'s fully-determined type at its binding,
+and unifying that with the inferred `[?] -> ?` gives `CannotUnify(function type vs
+function type)`. The named case works in C# precisely because `ch`'s type has no
+unsolved meta, so nothing is abstracted; the inline case works in OCaml because `h`'s
+body is never let-generalised the same way.
+
+**Not established:** which side should move. The candidates are (a) insert the callee's
+implicit arguments *before* checking the argument, so the domain is a fresh meta rather
+than the generalised rigid variable, or (b) keep generalisation from abstracting metas
+that a call site still supplies. Decide by finding which is consistent with the
+prototype's restriction (`ClosedUnder(body, 1)` — "only where the lambda names nothing
+outside itself"), not by what makes this case pass.
+
+`Generalise` is also one of the sites whose `ClosedUnder` traversal used to
+"not ported yet" on an unknown binder form; the G2 work replaced that with the single
+`Term.Map`, so its closedness check is now total.
 
 ## Also recorded
 
