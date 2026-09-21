@@ -165,6 +165,12 @@ public static partial class Unify
             spine.Aggregate(head, (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a)));
         var fresh = new Value.VVar(ren.Cod, []);
 
+        // A deferred call stays the call, as it does when read back: unfolding it
+        // would solve the solution around a different value (the prototype's rename
+        // keeps VGlued too).
+        if (value is Value.VGlued deferred)
+            return new Term.Ap(Go(deferred.Fix), Explicitness.Explicit, Go(deferred.Arg));
+
         return Nbe.Force(mc, value) switch
         {
             Value.VMeta f when f.Id == id => throw new UnifyException("occurs check: a meta in its own solution"),
@@ -182,14 +188,21 @@ public static partial class Unify
             Value.VAtomTy a => new Term.AtomTy(a.Ty),
             Value.VProd p => new Term.Prod([.. p.Items.Select(Go)]),
             Value.VProdTy p => new Term.ProdTy([.. p.Items.Select(Go)]),
-            // Constructor fields read back at the struct's own width (as Nbe.QuoteStruct
-            // does), so they need no lift; a binding sits entries further in.
-            Value.VStruct { Entries: var entries } st when entries.All(e => e is ModuleEntry.Field { Kind: MemberKind.Field }) =>
-                new Term.Struct([.. entries.Cast<ModuleEntry.Field>().Select(f => (f.Name, Go(f.Value)))], [], st.Partial),
+            Value.VModule m => RenameModule(mc, id, ren, m),
+            Value.VStruct st => RenameStruct(mc, id, ren, st),
+            Value.VRecord r => RenameRecord(mc, id, ren, r),
+            Value.VSig sig => RenameSignature(mc, id, ren, sig),
+            Value.VTrait t => new Term.TraitRef(t.Decl),
+            Value.VTraitDict dict => RenameTraitDict(mc, id, ren, dict),
             Value.VRefTy r => new Term.RefTy(Go(r.Heap), Go(r.Element)),
             Value.VNominal n => new Term.Nominal(n.Decl, [.. n.Captures.Select(Go)]),
             Value.VRecursiveOccurrence o => new Term.RecursiveOccurrence(o.Decl, [.. o.Captures.Select(Go)], [.. o.Args.Select(Go)]),
             Value.VCon c => c.Args.Aggregate((Term)new Term.Dot(Go(c.Nominal), c.Name), (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a))),
+            Value.VFix fix => RenameFix(mc, id, ren, fix),
+            Value.VGlued glued => new Term.Ap(Go(glued.Fix), Explicitness.Explicit, Go(glued.Arg)),
+            // The prototype refuses to quote these during unification too (CannotUnify).
+            Value.VRef or Value.VCont or Value.VPatternSynonym =>
+                throw new UnifyException($"cannot quote {value.GetType().Name} during unification"),
             Value.VNeutral n => n.Frames.Aggregate(n.Head switch
             {
                 Head.HVar h => Var(h.Level),
@@ -231,6 +244,52 @@ public static partial class Unify
             bodies.Add(Rename(mc, id, lifted, Nbe.Eval(mc, env, frame.Match.Bodies[i])));
         }
         return frame.Match with { Scrutinee = scrutinee, Bodies = [.. bodies] };
+    }
+
+    /// <summary>
+    /// A module among a solution: its entries read back like <c>Nbe.QuoteEntry</c>, a
+    /// signature's impl holding its dictionary type in both places.
+    /// </summary>
+    private static Term RenameModule(MetaContext mc, int id, Renaming ren, Value.VModule m) =>
+        new Term.Module([.. m.Entries.Select(e => RenameEntry(mc, id, ren, e, m.Partial))], m.Partial);
+
+    /// <summary>A struct among a solution: constructor fields, then its bindings.</summary>
+    private static Term RenameStruct(MetaContext mc, int id, Renaming ren, Value.VStruct st) =>
+        new Term.Struct(
+            [.. st.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Field)
+                .Select(f => (f.Name, Rename(mc, id, ren, f.Value)))],
+            [.. st.Entries.Where(e => e is not ModuleEntry.Field { Kind: MemberKind.Field })
+                .Select(e => RenameEntry(mc, id, ren, e, partial: false))],
+            st.Partial);
+
+    private static BindingTerm RenameEntry(MetaContext mc, int id, Renaming ren, ModuleEntry entry, bool partial) => entry switch
+    {
+        ModuleEntry.Field f => new BindingTerm.Let(f.Name, f.Kind, Rename(mc, id, ren, f.Value)),
+        ModuleEntry.Impl i => partial
+            ? new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.DictType), Value.VU.Instance)
+            : new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.Value), i.DictType),
+    };
+
+    private static Term RenameRecord(MetaContext mc, int id, Renaming ren, Value.VRecord r) =>
+        new Term.RecordConstruct(Rename(mc, id, ren, r.Type),
+            [.. r.Fields.Select(f => (f.Name, Rename(mc, id, ren, f.Value)))]);
+
+    private static Term RenameSignature(MetaContext mc, int id, Renaming ren, Value.VSig sig) =>
+        new Term.Sig(Rename(mc, id, ren.Lift(), Nbe.ApplyClosure(mc, sig.Body, new Value.VVar(ren.Cod, []))));
+
+    private static Term RenameTraitDict(MetaContext mc, int id, Renaming ren, Value.VTraitDict dict) =>
+        new Term.TraitDictTy(dict.Decl, [.. dict.Args.Select(a => Rename(mc, id, ren, a))],
+            [.. dict.Operations.Select(o => (o.Name, Rename(mc, id, ren, o.Type)))]);
+
+    /// <summary>A recursive group among a solution: every body under one variable per member.</summary>
+    private static Term RenameFix(MetaContext mc, int id, Renaming ren, Value.VFix fix)
+    {
+        var count = fix.Members.Length;
+        var env = Enumerable.Range(0, count).Aggregate(fix.Environment, (e, i) => e.Push(new Value.VVar(ren.Cod + i, [])));
+        var lifted = ren;
+        for (var i = 0; i < count; i++) lifted = lifted.Lift();
+        return new Term.Fix(
+            [.. fix.Members.Select(m => m with { Body = Rename(mc, id, lifted, Nbe.Eval(mc, env, m.Body)) })], fix.Index);
     }
 
     private static void OccursCheck(MetaContext mc, int id, Value value)
