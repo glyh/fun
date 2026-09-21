@@ -268,6 +268,7 @@ public static partial class Unify
         ModuleEntry.Impl i => partial
             ? new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.DictType), Value.VU.Instance)
             : new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.Value), i.DictType),
+        _ => throw new InvalidOperationException($"unhandled module entry {entry.GetType().Name}"),
     };
 
     private static Term RenameRecord(MetaContext mc, int id, Renaming ren, Value.VRecord r) =>
