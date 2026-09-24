@@ -1,0 +1,7 @@
+{
+  // Mirrors pi-lens's bundled fallback (pi-lens/config/markdownlint/core.json),
+  // which this file replaces, so MD025 is the only behaviour that changes.
+  "MD013": false,
+  "MD024": { "siblings_only": true },
+  "MD025": false
+}
