@@ -3,7 +3,7 @@ title: "Port: an enum's captures come from its payload values, not its payload t
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -90,3 +90,41 @@ The next step, as it left it:
 Files it identified: `dotnet/src/Fun.Compiler/Elaborator.Enum.cs` (~55-72),
 `Elaborator.RecTypes.cs` (`CompletePending` ~62, `PredictCaptures` ~132),
 `dotnet/test/Fun.Conformance/Program.cs`.
+
+## Resolution (2026-09-24) — closed
+
+Implemented on the second attempt (the first was stopped by a work pause in its diagnosis
+phase) and merged. Branch `port-enum-captures-from-payload-values` @ `703319b`.
+
+- **Cause, as pinned:** `InferEnum` read the capture levels from the payload **terms**
+  (`FreeLevels` sees `Var(A)`) while `CloseOver` closed the payload **values**
+  (`VVar(X)` through `A = X`), so `X ∉ levels` and the unification failed at
+  `Unify.cs:161`. `PredictCaptures` read names only.
+- **Fix:** one helper, `EnumCaptureLevels(ctx, payloadValues)` — the enclosing body's
+  names ∪ the levels found by quoting each payload value back (`Nbe.Quote`), the shape of
+  the prototype's `capture_payloads` — used by `InferEnum`; and `PredictCaptures` now
+  elaborates the payloads once in a stand-in context (each member bound to its type, and a
+  former over its fresh declaration carrying the captures predicted so far) and iterates
+  the same value-based computation to a **fixed point**, so a payload naming a member sees
+  that member's captures and prediction cannot disagree with the use. The term/name-based
+  computation is kept as the seed, so nothing previously captured is lost — a multi-member
+  cross-capture probe (`rec P = enum { K(A1) } and Q = enum { J(P) }` under `A1 = X`) passes
+  in both implementations, and would have hit `CompletePending`'s refusal without the
+  fixed point.
+- **Runner (convention 2's honesty, not just a catch):** `UnifyException` is now reported
+  as an invariant failure in both the elaborate and run phases. A type mismatch is a
+  `FunException` by the time it surfaces, so an escaped `UnifyException` is never a
+  language error, and an `error` case still cannot pass for the wrong reason. **Proved by
+  construction**: the pre-fix compiler with the fixed runner reports
+  `invariant failure (UnifyException): …` and a real count (`2 cases, 2 failed`) instead of
+  the unhandled exception that used to kill the run.
+- **Tests:** C# conformance **729 → 731, 0 failed** (two new cases, both observing an
+  `I64` by apply-and-match rather than printing `<lam>`; the prototype answers `3` for
+  both, so **no divergence entries** — still 26); xUnit 182/182; `dune test` and
+  `dune test test/conformance` green (731 cases, 0 failed, 26 divergences).
+- **Reported and not fixed** (recorded rather than dropped): the port still **over-captures
+  enclosing names** relative to the prototype's `enclosing_scope` (a value binder named in
+  the body) — pre-existing policy, identity-consistent, untouched here →
+  [a recursive enum's captures over-capture enclosing names](port-rec-enum-over-captures-names.md);
+  and prediction now elaborates the payloads **twice** (throwaway metas) where the
+  prototype elaborates once — harmless today, worth knowing if budget cases ever appear.
