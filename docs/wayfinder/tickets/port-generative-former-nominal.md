@@ -3,7 +3,7 @@ title: "Port: a parametric nominal in a generative module"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -57,6 +57,34 @@ still produce (a `b1.Box` used where `b2.Box` is expected, with two `Mk(())`
 evaluations) so the stamp keeps separating them once formers are labelled — the
 non-parametric versions of both already exist as
 `values/nominal-generative-type-case-separates` and `-rejects-other`.
+
+## Resolution (2026-09-24) — closed
+
+Merged from `pi-agent-ad9f5b16-e600-450` (`d7bc78c`, `9fb72ce`). The last E11 shape
+lands: the ticket's program answers `1`, and the companion stays rejected.
+
+- **Cause confirmed** (the third time this area's stated cause has had to be checked
+  rather than trusted): the label map filtered `l.Def is Term.Nominal`, and a former's
+  definition is a `Lam` chain over the `Term.Nominal`, so `Box` was never labelled,
+  `GenerativeNominals[decl]` was `null`, and sealing refused. The former's captures are
+  `[Var 0]` with the stamp **not** captured.
+- **Fix, and why no `Term.Nominal` shape change was needed** (shapes are the port's to
+  choose, ruled 2026-09-20): `GenerativeModule` now labels a binding by peeling its
+  lambdas (`NominalHeadOf`, which also counts its parameters); the map's value became
+  `GenerativeNominal(string? Label, int NumParams)` in `MetaContext.cs`; and sealing
+  re-applies a former's trailing `NumParams` captures to the member projection, the way
+  the prototype's `seal` does. `Term.Nominal`/`Value` are untouched, so `Unify`,
+  `Nbe.Quote` and `Core.Shift` do not ripple.
+- Cases added: `values/nominal-generative-former-shares-own` (`expect` `1`) and
+  `values/nominal-generative-former-rejects-other` (`expect` `error`) — both ordinary,
+  the prototype agreeing on each.
+- Verified by the integrator after merging: C# conformance **721 → 723, 0 failed**;
+  xUnit 182/182; `dune test` and `dune test test/conformance` green (723 cases, 0 failed,
+  22 divergences).
+- **Spun out**: two E11 gaps the fix does not reach, both re-verified here — a type-case
+  still cannot separate two former instances (prototype `10`, port `11`), and a
+  generative former with an *unused* type parameter is refused where the prototype
+  accepts → [the generative former's identity residue](port-generative-former-identity-residue.md).
 
 ## Paused (2026-09-24) — resume here
 

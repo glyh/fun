@@ -58,9 +58,14 @@ green. One private stamp slot per module, type-case by declaration + captures + 
 sealed heads resolved through the sealing context. The ticket's guess about `elab-062`
 was **wrong**: it was not the nested-`Eval` stopgap but a missing closure case in the
 captures comparison, so `a.T` did not equal itself — diagnose-before-fixing earned its
-keep. Four shared cases now cover the generative half, which had none. One E11 shape
-remains: a **parametric** nominal in a generative module →
-[port-generative-former-nominal](port-generative-former-nominal.md).
+keep. Four shared cases now cover the generative half, which had none. **Done 2026-09-24**
+(`921da47`+): the last E11 shape, a **parametric** nominal in a generative module, landed
+([port-generative-former-nominal](port-generative-former-nominal.md), C# 721 → 723/0,
+xUnit 182/182, both runners green), and what it does not reach is now
+[the generative former's identity residue](port-generative-former-identity-residue.md) —
+a type-case still cannot separate two instances of a former (prototype `10`, port `11`),
+and a generative former with an *unused* type parameter is refused where the prototype
+accepts (that half likely needs a ruling: the prototype treats the parameter as phantom).
 
 **A green suite is not parity — and it is now green.** 695/0 is the visible delta
 closed; the 17 real gaps from step 3 are what remains, and not one of them is visible
