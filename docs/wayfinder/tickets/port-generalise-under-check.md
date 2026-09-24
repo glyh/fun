@@ -1,5 +1,5 @@
 ---
-title: "Port: generalizing the argument to an unknown-typed function under a check"
+title: "Port: an implicit lambda checked against a function type instantiates"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
@@ -65,40 +65,60 @@ So this ticket has three pieces of work:
    condition — after the fix the inline one is an ordinary case and the named one is a
    divergence; before the fix the inline one fails, which is the point.
 
-## The cause (confirmed in code, 2026-09-20)
+## The cause — **corrected 2026-09-24: it is not generalisation**
 
-Both failures are the *same* root, which is why the two implementations are wrong in
-mirror image: **let-generalisation abstracts an undecided meta into a rigid variable
-before the other side can solve it.**
+The analysis this file used to carry claimed let-generalisation was the root. **It was
+wrong, and the fork that re-examined it proved so with the port's own traces:**
+`Generalise` is *called* on `h` and returns early, because `ClosedUnder(body, 1)` is false
+for `h = fn(g) { g[I64](7) }` — its body mentions the global `I64`. Both implementations
+decline to generalise, so neither candidate (a) nor (b) is the mechanism. The integrator
+verified the three code facts this rests on: the two implicit-expected cases in `Check`
+(`Elaborator.cs:313`, `:319`) are guarded by
+`stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }`; the `(Lam, VPi)`
+case unifies the written parameter type against `pi.Domain` (`:334`) and binds its own
+parameter rigidly; and `ClosedUnder` is `v.Index >= under + depth`.
 
-`Elaborator.cs:553` generalises the value of a `let`, and `Elaborator.Generalise.cs`
-does it by *solving* each unsolved meta of the type to a rigid variable:
+**The real mechanism.** A *name* in check position against an implicit `Pi` takes
+`CheckUnderImplicit`, which instantiates it (`InsertImplicitArgs`) and unifies — that is
+why the named form works in C#. An *inline implicit lambda* skips that path by the guard
+above, lands in `(Syntax.Lam lam, Value.VPi pi)`, and binds its own implicit parameter
+**rigidly**. For `h(fn[A : Type](a : A) { a })`, with the call site's domain already
+solved, the trace is:
 
-```csharp
-for (var i = 0; i < n; i++) ctx.Metas.Solve(unsolved[i], new Value.VVar(ctx.Width + n - 1 - i, []));
+```text
+[C] param A#2 pi.Domain=VMeta[?563] forced=VU
+[C] param a#3 pi.Domain=VMeta[?565] forced=VAtomTy
+[U] … ?565 -> VAtomTy(I64) … ?566 -> UNSOLVED   <- unify(?565, TypeValue(a : A)), A rigid
+[G] unsolved=[566] typehead=VPi / [G] ?566 -> UNSOLVED / [X] open var idx=56  <- ClosedUnder says no
 ```
 
-`h = fn(g) { g[I64](7) }` is a single-parameter lambda, so it is generalised: the implicit
-domain that `g[I64]` created (`InferApImplicitUnknown`) is turned into a rigid variable.
-At `h(fn[A : Type](a : A) { a })` the written `Type` is then checked against a **rigid
-variable** instead of a solvable meta — hence `cannot unify VAtomTy with VVar`.
+So `a : A` meets `I64` while `A` is a rigid variable — the error message the wrong
+analysis predicted, from a different cause. A lambda checked against a function type
+should *instantiate*, exactly as the already-decided
+[check-against-implicit-type-inserts-first](check-against-implicit-type-inserts-first.md)
+rule does for names.
 
-OCaml's half is the mirror: it generalises `ch`'s fully-determined type at its binding,
-and unifying that with the inferred `[?] -> ?` gives `CannotUnify(function type vs
-function type)`. The named case works in C# precisely because `ch`'s type has no
-unsolved meta, so nothing is abstracted; the inline case works in OCaml because `h`'s
-body is never let-generalised the same way.
+**The plan** (the research fork's, with the integrator's verification of the cited code):
 
-**Not established:** which side should move. The candidates are (a) insert the callee's
-implicit arguments *before* checking the argument, so the domain is a fresh meta rather
-than the generalised rigid variable, or (b) keep generalisation from abstracting metas
-that a call site still supplies. Decide by finding which is consistent with the
-prototype's restriction (`ClosedUnder(body, 1)` — "only where the lambda names nothing
-outside itself"), not by what makes this case pass.
+1. Let `CheckUnderImplicit` fire for an implicit `expected` `Pi` even when `stx` *is* an
+   implicit lambda — drop the `stx is not Syntax.Lam { Implicit }` guard.
+2. Restrict the `(Lam, VPi)` case to explicit lambdas
+   (`when lam.Param.Explicitness == Explicitness.Explicit`), so a type-level implicit
+   lambda falls through to infer + `InsertImplicitArgs`.
 
-`Generalise` is also one of the sites whose `ClosedUnder` traversal used to
-"not ported yet" on an unknown binder form; the G2 work replaced that with the single
-`Term.Map`, so its closedness check is now total.
+**The one spot that needs care, and may need a ruling:** the scoping must distinguish a
+type-level implicit parameter (`[A : Type]`) from a dictionary or effect-row implicit
+parameter, or `InsertHiddenDicts` is lost — the fork *observed* that a naive version
+breaks the prelude (`dotnet/std/stage2.fun:23-24` defines `(==)`/`(!=)` as
+`fn[A : Type](lhs, rhs) { … }` checked against `[A : Eq] -> …`), with "missing
+implementation of Eq" / "cannot unify VPi with VPi". Two routes: gate on the implicit
+parameter's written type being `Type`, or teach the instantiated path to run
+`InsertHiddenDicts`. Do not paper over that.
+
+Tests: `values/implicit-lambda-argument-inline` (`expect` `7`, an ordinary case) and
+`values/implicit-lambda-argument-named` (`expect` `7`, listed in
+`prototype-divergences.txt` naming this ticket). The third program already passes in both
+runners, so it is covered by neither.
 
 ## Also recorded
 
@@ -106,7 +126,11 @@ Cosmetic, from the same fork: the prototype prints `<lam>` where the port prints
 when a value is described. Not worth a ticket on its own; fix it if a case ever becomes
 observable.
 
-## Paused (2026-09-24) — resume here
+## The first attempt (2026-09-24) — superseded
+
+**Superseded the same day:** the replacement fork finished the work, and its verdict is
+the corrected cause above. The traces recorded below are what produced that verdict, so
+they are kept as the record of how it was reached.
 
 The research fork was killed by a provider usage limit (resets 2026-09-24 18:33:48)
 mid-turn, after ~70 tool calls. Its own last words were that "the real causes are now
