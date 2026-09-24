@@ -51,6 +51,7 @@ public static partial class Elaborator
     /// </summary>
     private static (Term, Value) InferEnum(Context ctx, Syntax.Enum e)
     {
+        RejectDuplicates(e.Constructors.Select(c => c.Name), "constructor");
         var payloadTerms = e.Constructors
             .Select(c => c.Payloads.Select(p => TypeTerm(ctx, p)).ToList())
             .ToList();

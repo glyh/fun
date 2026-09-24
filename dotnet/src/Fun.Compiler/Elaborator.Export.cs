@@ -80,10 +80,11 @@ public static partial class Elaborator
     }
 
     /// <summary>
-    /// A module's member names may not clash through an export: an exported name
-    /// is taken by no other public member, before or after it, and no export takes
-    /// a name already public - except a constructor exported from the enum it
-    /// shares its name with, which the path then denotes (I3).
+    /// A module's public member names are unique, and an export may not take a name
+    /// already public (or repeat an exported one) - except a constructor exported from
+    /// the enum it shares its name with, which the path then denotes (I3). Private
+    /// bindings are not members, so `pub x = 1; x = 2` and `open M; pub x = 2` stay
+    /// legal: the interface holds one public `x`, whatever the body sees.
     /// </summary>
     private sealed class ExportClashes
     {
@@ -104,8 +105,15 @@ public static partial class Elaborator
                 _ => Array.Empty<string>(),
             }))
             {
-                if (_exported.Contains(name) || export is not null && _seen.Contains(name) && name != source)
+                // A name an export already took is an export clash whichever binding
+                // takes it; a name merely already public is an export clash when an
+                // export takes it and a duplicate member when a `pub` takes it.
+                if (_exported.Contains(name))
                     throw new FunException($"export clash: `{name}` is already a member");
+                if (_seen.Contains(name) && name != source)
+                    throw new FunException(export is not null
+                        ? $"export clash: `{name}` is already a member"
+                        : $"duplicate member: `{name}` is already public");
                 if (export is not null) _exported.Add(name);
                 _seen.Add(name);
             }

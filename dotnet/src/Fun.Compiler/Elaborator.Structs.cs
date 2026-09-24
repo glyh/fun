@@ -364,11 +364,11 @@ public static partial class Elaborator
         _ => false,
     };
 
-    private static void RejectDuplicates(IEnumerable<string> names)
+    private static void RejectDuplicates(IEnumerable<string> names, string what = "field")
     {
         var seen = new HashSet<string>();
         foreach (var name in names)
-            if (!seen.Add(name)) throw new FunException($"duplicate field `{name}`");
+            if (!seen.Add(name)) throw new FunException($"duplicate {what} `{name}`");
     }
 }
 
