@@ -133,6 +133,15 @@ order the frontier should take it:
   was **deferred by ruling**: a *typed* operator macro is not port work, because parity
   there is "neither implementation has it" — the prototype hangs on it — so it became
   [post-port work](port-typed-operator-macro.md), and the port keeps its refusal.
+- **Re-swept 2026-09-24** — the refusal inventory is down from the audit's 62 sites to
+  **20 sites / 17 distinct messages**, every one owned by an open ticket, and the
+  *prototype* side was swept for the first time, which is the half that cannot be seen from
+  the port at all. It found [two budget behaviours](port-budget-observable-cases.md) and
+  [four runtime-error variants](port-runtime-error-cases.md) that no case anywhere covers —
+  the visible answer to "is the port a superset?": not knowably, and these are the places
+  where nobody would notice if it were not. It also resolved one refusal family as
+  **parity** (the trait/impl arity message) →
+  [a language error, not an unported path](port-trait-impl-arity-message.md).
 - The 9 undecided and the 13 parity rows are ruled by the two rules above; the ones
   that need a semantic ruling are one question at a time, per the port ticket. Three are
   now settled without one: the parametric nominal in a generative module (real gap), the
