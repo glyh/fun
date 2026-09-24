@@ -110,6 +110,13 @@ order the frontier should take it:
   traversal: [the reflected Syntax ADT differs](port-reflected-adt-differs.md) (a
   trait's arity, a missing `TypeDef` node — needs a ruling), G4 and G5 unverified
   reachability, and [a stuck match waits](port-stuck-match-sub-occurrence.md) (ruled).
+- [a pattern synonym is checked, and generalizes where its type is unknown](port-pattern-synonym-generalizes.md)
+  — **ruled 2026-09-21**, while the undecided rows were being probed: a product or
+  bare-binder right-hand side (`pattern Two(a, b) = (a, b)`, `pattern Id(x) = x`) is
+  legal — the synonym is checked at its declaration and the types it cannot know are
+  generalized like a generic function's, instantiated at the use; the prototype's
+  `TupleLengthMismatch` / `NotANominalType` are prototype defects, and the port's
+  `not ported yet` on that path (`Elaborator.Patterns.cs:71`) becomes work.
 - The 9 undecided and the 13 parity rows are ruled by the two rules above; the ones
   that need a semantic ruling are one question at a time, per the port ticket. Three are
   now settled without one: the parametric nominal in a generative module (real gap), the

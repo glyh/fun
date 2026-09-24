@@ -69,14 +69,21 @@ sub-occurrence, which the user ruled on — [the match waits](port-stuck-match-s
 5. `dotnet/src/Fun.Compiler/Nbe.cs:561` — can `VCont` be read back as a term? A
    continuation escapes a handler's body only through `resume`; relate it to the E6 rule
    on [handlers tunnelling callback effects](handlers-tunnel-callback-effects.md) (closed).
-6. **The pattern-synonym cluster** — `Elaborator.Patterns.cs:72` (a synonym whose RHS is
-   a product pattern), `:76` (a synonym over a type-case pattern), `:88` (a synonym whose
-   parameter types are not fixed). **Known result: the prototype rejects the product case
-   too**, at elaboration, with `ElabError(TupleLengthMismatch)` with no use in the program
-   (re-probed by the integrator 2026-09-20). That refusal looks like a defect rather than
-   a decision — a synonym `pattern P(a, b) = (a, b)` reads like a legal tuple pattern — so
-   **ask for a ruling before treating `TupleLengthMismatch` as the answer here**, and
-   probe the other two the same way.
+6. ~~**The pattern-synonym cluster**~~ — **the product/binder half is settled (user
+   ruling, 2026-09-21): do not re-probe it.** A synonym is *checked* at its declaration,
+   and the types it cannot determine are *generalized* like a generic function's,
+   instantiated at the use — so `pattern Two(a, b) = (a, b)` and `pattern Id(x) = x`
+   are legal; the work is
+   [a pattern synonym is checked, and generalizes where its type is unknown](port-pattern-synonym-generalizes.md),
+   and the prototype's `ElabError(TupleLengthMismatch)` (product) and
+   `ElabError(NotANominalType)` (bare binder) are prototype defects. **Evidence already
+   gathered — do not repeat it:** a zero-parameter type-case synonym
+   (`pub pattern IsI64 = I64`) works in **both** runners, so a type-case right-hand side
+   is not part of this gap.
+   **Still yours to probe** (current lines in `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs`):
+   `:75` `NeedsDirectMatch` — a right-hand side that needs the direct-match machinery;
+   and `:87` — a parameter type that stays a meta, which under the ruling is *the thing
+   that gets generalized*, so it should dissolve rather than need a verdict of its own.
 7. `dotnet/src/Fun.Expand/Enforest.Roles.cs:845` — which quoted-syntax statements take a
    body (`WithBody`). Program shape: `quote { … }` containing a statement other than
    `let`/`rec`/`open`/`syntax`/`macro`.
