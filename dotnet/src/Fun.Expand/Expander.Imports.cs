@@ -164,7 +164,7 @@ public sealed partial class Expander
         if (value is Syntax.Import import)
         {
             _moduleUnits[resolved] = import.Path;
-            if (publicBinding) _ownUnitMembers.Add((resolved.IndexOf('#') is var at and >= 0 ? resolved[..at] : resolved, import.Path));
+            if (publicBinding) _ownUnitMembers.Add((Label(resolved), import.Path));
         }
         ImportRoles(value, written.Scope, region);
     }
