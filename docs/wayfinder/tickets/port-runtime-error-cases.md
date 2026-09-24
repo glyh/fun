@@ -3,7 +3,7 @@ title: "Port: the runtime-error variants no case covers"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -49,3 +49,22 @@ case's first line to say what it is doing.
 - `test/backend/test_core.ml` — `check_overflow`
 - `dotnet/src/Fun.Compiler/Nbe_prim.cs` (or the primitives table) and the prototype's
   `nbe_prim.ml` for the checked-arithmetic declarations
+
+## Resolution (2026-09-25) — closed
+
+All four cases landed, each probed in both runners first, and **both runners agree on every
+one** — so they are ordinary `error` cases and `prototype-divergences.txt` is untouched at 27:
+
+| case | OCaml | port |
+|---|---|---|
+| `runtime-multiplication-overflow` | `integer overflow in *` | `integer overflow in *` |
+| `runtime-subtraction-overflow` | `integer overflow in -` | `integer overflow in -` |
+| `runtime-remainder-by-zero` | `division by zero` | `division by zero` |
+| `runtime-min-int-div-neg-one` | `integer overflow in /` | `integer overflow in /` |
+
+`min_int / -1` is the one whose case says so in its first line: it is an overflow that does
+not look like one, and the prototype calls it `integer overflow in /` rather than division by
+zero — worth having in writing, since the obvious guess is the other answer.
+
+**Verified by the integrator after merging:** conformance **736 → 740, 0 failed** in both
+runners; xUnit 182 (this ticket adds no xUnit); `dune test` green; divergences 27.
