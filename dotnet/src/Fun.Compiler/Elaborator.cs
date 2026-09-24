@@ -300,6 +300,12 @@ public static partial class Elaborator
                 return (new Term.Proj(of, proj.Index), ctx.Force(tuple.Items[proj.Index]));
             }
 
+            // The marker is only reachable through the reflected RawStx builder; the
+            // ordinary typed-argument path never produces one, so reaching here is a
+            // language error, not an unported path (elab_infer.ml:1418).
+            case Syntax.Stx:
+                throw new FunException("stx-only syntax should not reach elaboration");
+
             default:
                 throw new NotImplementedException($"not ported yet: elaborating {stx.GetType().Name}");
         }
