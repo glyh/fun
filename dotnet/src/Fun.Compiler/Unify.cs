@@ -220,7 +220,9 @@ public static partial class Unify
                 Frame.FMatch m => RenameStuckMatch(mc, id, ren, acc, m),
                 _ => throw new NotImplementedException($"not ported yet: renaming a {frame.GetType().Name} frame"),
             }),
-            var other => throw new NotImplementedException($"not ported yet: solving to {other.GetType().Name}"),
+            // Unreachable: a meta is solved with a type, so no VRef, VCont or
+            // VPatternSynonym can ever be the solution (those are refused above).
+            var other => throw new InvalidOperationException($"unhandled solution {other.GetType().Name}"),
         };
     }
 

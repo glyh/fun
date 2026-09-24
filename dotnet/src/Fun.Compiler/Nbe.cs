@@ -564,6 +564,9 @@ public static partial class Nbe
             Value.VSig sig => new Term.Sig(Quote(mc, width + 1, ApplyClosure(mc, sig.Body, fresh))),
             Value.VRefTy r => new Term.RefTy(Quote(mc, width, r.Heap), Quote(mc, width, r.Element)),
             Value.VRef => throw new FunException("a reference cell cannot be read back as a term"),
+            // Parity with nbe_quote.ml:181. Quoting a continuation is unreachable
+            // (no probe read one back), but the prototype names it an EvalError.
+            Value.VCont => throw new FunException("cannot quote continuation"),
             Value.VNeutral n => n.Frames.Aggregate(QuoteHead(width, n.Head), (acc, frame) => frame switch
             {
                 Frame.FApp a => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a.Arg)),
@@ -574,7 +577,9 @@ public static partial class Nbe
                 Frame.FMatch m => QuoteStuckMatch(mc, width, acc, m),
                 _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
             }),
-            var other => throw new NotImplementedException($"not ported yet: reading back {other.GetType().Name}"),
+            // Unreachable: every remaining kind is either handled above or a value
+            // that cannot arise as a type.
+            var other => throw new InvalidOperationException($"unhandled value {other.GetType().Name}"),
         };
     }
 
