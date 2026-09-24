@@ -100,9 +100,16 @@ public static partial class Elaborator
 
         for (var i = 0; i < group; i++)
         {
-            var (_, type) = Infer(inner, members[i].Value);
+            // Elaborate the enum body over the declaration site, the former's
+            // parameters bound on top of it - not through InferLam, which opens a
+            // new enclosing scope and would drop the site's scope captures (a
+            // generative module's stamp). The prototype's elab_type_group peels
+            // the parameters the same way; this run completes the declaration's
+            // constructors over the predicted captures. The former's type was
+            // already predicted as types[i], so no re-unification is needed.
+            var body = shapes[i].Lambdas.Aggregate(inner, (c, lam) => c.Bind(lam.Param.Name.Name, Value.VU.Instance));
+            Infer(body, shapes[i].Enum);
             if (!decls[i].IsComplete) throw new InvalidOperationException("a recursive enum's declaration was not completed");
-            inner.Unify(types[i], type);
         }
 
         return [.. members.Select((m, i) => (m.Name.Name,
@@ -160,10 +167,15 @@ public static partial class Elaborator
         List<(List<Syntax.Lam> Lambdas, Syntax.Enum Enum)> shapes, ImmutableHashSet<int> recursive)
     {
         var group = members.Length;
+        // A former's parameters bind on top of the declaration site, but do not
+        // open a new enclosing scope for capture purposes: the prototype's
+        // elab_type_group captures the declaration site's scope_captures (a
+        // generative module's stamp included), not the lambda body's. Resetting
+        // Enclosing here would drop the stamp, so the group's own ctx supplies it.
         Context Body(Context standIns, List<Syntax.Lam> lambdas)
         {
             foreach (var lam in lambdas)
-                standIns = standIns.Bind(lam.Param.Name.Name, Value.VU.Instance) with { Enclosing = lam.Body };
+                standIns = standIns.Bind(lam.Param.Name.Name, Value.VU.Instance);
             return standIns;
         }
 
