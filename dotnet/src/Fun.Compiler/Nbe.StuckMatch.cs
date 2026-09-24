@@ -5,23 +5,18 @@ namespace Fun.Compiler
     public static partial class Nbe
     {
         /// <summary>
-        /// A match on a value whose head is unknown - a variable, a meta, a stuck
-        /// computation, under the checker - waits as that value's last frame. Null when
-        /// the scrutinee is known, so the decision tree chooses the arm.
+        /// A match waits as the unknown value's last frame, whether that value is the
+        /// scrutinee's head or only a part a pattern inspects: the frame hangs on the
+        /// unknown value, and <see cref="Frame.FMatch.Scrutinee"/> holds the whole
+        /// scrutinee so read-back rebuilds it.
         /// </summary>
-        // ponytail: only an unknown *scrutinee* waits; a known scrutinee with an unknown
-        // part a pattern tests still raises "not ported yet" in SelectArm.
-        private static Value? StuckMatch(MetaContext mc, Value scrutinee, Environment env, Term.Match match)
+        private static Value StuckNeutral(Value stuck, Frame.FMatch frame) => stuck switch
         {
-            var frame = new Frame.FMatch(env, match);
-            return Force(mc, scrutinee) switch
-            {
-                Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(frame) },
-                Value.VVar v => new Value.VNeutral(Value.VU.Instance, new Head.HVar(v.Level), Spine(v.Spine).Add(frame)),
-                Value.VMeta m => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(m.Id), Spine(m.Spine).Add(frame)),
-                _ => null,
-            };
-        }
+            Value.VNeutral n => n with { Ty = Value.VU.Instance, Frames = n.Frames.Add(frame) },
+            Value.VVar v => new Value.VNeutral(Value.VU.Instance, new Head.HVar(v.Level), Spine(v.Spine).Add(frame)),
+            Value.VMeta m => new Value.VNeutral(Value.VU.Instance, new Head.HMeta(m.Id), Spine(m.Spine).Add(frame)),
+            _ => throw new InvalidOperationException($"a match stuck on a {stuck.GetType().Name} its type rules out"),
+        };
 
         /// <summary>How many binders arm <paramref name="arm"/> pushes, in source order.</summary>
         internal static int ArmBinders(Term.Match match, int arm)
@@ -50,10 +45,10 @@ namespace Fun.Compiler
             return (Eval(mc, env, frame.Match.Bodies[arm]), binders);
         }
 
-        private static Term QuoteStuckMatch(MetaContext mc, int width, Term scrutinee, Frame.FMatch frame) =>
+        private static Term QuoteStuckMatch(MetaContext mc, int width, Frame.FMatch frame) =>
             frame.Match with
             {
-                Scrutinee = scrutinee,
+                Scrutinee = Quote(mc, width, frame.Scrutinee),
                 Bodies = [.. frame.Match.Bodies.Select((_, i) =>
                 {
                     var (body, binders) = OpenArm(mc, width, frame, i);
