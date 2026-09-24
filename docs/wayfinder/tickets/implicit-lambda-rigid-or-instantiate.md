@@ -1,6 +1,6 @@
 ---
-title: "When an implicit lambda should bind its parameter rigidly, and when it should instantiate"
-parent: ../fun-design-map.md
+title: "Port: the implicit-lambda gate ignores the codomain's residual shape"
+parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
 status: open
@@ -8,13 +8,86 @@ assignee:
 blocked_by:
 ---
 
-# When an implicit lambda should bind its parameter rigidly, and when it should instantiate
+# Port: the implicit-lambda gate ignores the codomain's residual shape
 
-**Not blocking anything.** Raised by the fork that implemented
-[an implicit lambda checked against a function type instantiates](port-generalise-under-check.md)
-(2026-09-24). It had to choose a gate to land that fix, chose one that keeps every suite
-case green, and reports the corners its choice does not cover rather than leaving them in a
-conversation. This ticket is those corners.
+**A verified port bug, not a design question** — and one the shared suite cannot see, because
+no case reaches it. Raised as a design question by the fork that landed
+[an implicit lambda checked against a function type instantiates](port-generalise-under-check.md),
+then probed by a second fork on 2026-09-24 and **confirmed by the integrator in both runners**.
+The negative-result route the original framing left open is closed: the corners are real.
+
+## The two programs, and what each runner does (integrator, `4cb7e4f`)
+
+```fun
+-- probe1: the codomain continues *implicitly*
+{ trait Size(A) = sig { size : A -> I64 }; impl Size(I64) = module { size = fn(x) { 8 } };
+  g : [A : Type] -> [B : Size] -> B -> I64 = fn[A : Type, B : Type](b : B) { Size.size(b) };
+  g(3) }
+```
+
+| runner | output |
+|---|---|
+| OCaml | `8` |
+| port | **fails**: `missing implementation of `Size`` |
+
+```fun
+-- probe2b: the codomain is not a Pi at all
+{ f : [A : Type] -> I64 = fn[T : Type] { match (T) { I64 => 1, _ => 0 } }; f[Bool] }
+```
+
+| runner | output |
+|---|---|
+| OCaml | `0` |
+| port | **stuck**: returns `VNeutral` |
+
+A third shape is *correct* today and must stay correct: an **explicit** Pi codomain
+(`f : [A : Type] -> I64 -> I64 = fn[T : Type](x : T) { match (T) { I64 => x, _ => 0 } }; f(5)`)
+→ `5` in both.
+
+## The cause (the probing fork's, and it matches the evidence)
+
+The prototype's check path (`lib/semantic/typecheck/elab_check.ml:24-30`) has **no instantiate
+path at all** — an implicit lambda always binds its parameter rigidly, one parameter at a
+time, which is what keeps binder identity aligned through hidden dictionaries and connects
+the written `T` to the call's implicit argument. The port *needed* an instantiate path (that
+is the landed ruling's fix: a name instantiates, and so must a lambda against a
+parameter-independent expected type) — but its gate decides on **dependency alone** and
+ignores the codomain's **residual shape**:
+
+- codomain continues **implicitly** (`[B : Size] -> …`) → instantiating desynchronizes the
+  parameter walk, the residual is re-inferred under a fresh binder, and the hidden dictionary
+  evidence is lost → `missing implementation of `Size``;
+- codomain is **not a Pi** (`I64`) → instantiating orphans the lambda's own parameter, and
+  nothing can solve the inserted meta → `VNeutral`.
+
+## The fix direction
+
+Keep the dependency test, then add the residual shape: **instantiate only when the probed
+codomain is an explicit Pi or still a meta; otherwise bind rigidly.** Dependency decides
+*whether*, shape decides *how*.
+
+A sketch of exactly that — the gate narrowed in `Elaborator.Implicits.cs`, plus the four probe
+cases as `zz-probe*` — is on branch `pi-agent-5385293b-26d9-47e`, auto-squashed, **unverified
+and not mergeable as it stands**: its author died on the provider's 5-hour cap one step before
+running it. Re-derive from the direction above; reuse the sketch only as a cross-check.
+
+## Tests
+
+All three programs belong in the suite once the fix lands. `probe1` and `probe2b` cannot be
+committed today (the port fails them — convention 8), and they are **not** divergences: the
+*prototype* answers them correctly. The explicit-Pi shape is already covered by
+`values/implicit-lambda-argument-inline`; add the two as ordinary cases with the fix, and
+keep the whole gate honest by re-running the 16 cases that motivated it (the type-case
+family, the value-level implicit `[n : I64]`, and `stage2.fun`'s `(==)`/`(!=)`).
+
+---
+
+## The original framing (kept: it is how the corners were found)
+
+Raised by the fork that implemented
+[an implicit lambda checked against a function type instantiates](port-generalise-under-check.md):
+it had to choose a gate to land that fix, chose one that keeps every suite case green, and
+reports the corners its choice does not cover rather than leaving them in a conversation.
 
 ## The situation
 
