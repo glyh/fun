@@ -3,7 +3,7 @@ title: "Port: the implicit-lambda gate ignores the codomain's residual shape"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -146,3 +146,35 @@ inference. Then either:
 - [an implicit lambda checked against a function type instantiates](port-generalise-under-check.md)
   — the ruling, the corrected cause, and the hazard
 - `dotnet/std/stage2.fun:23-24` — the `(==)`/`(!=)` definitions the naive version broke
+
+## Resolution (2026-09-25) — closed
+
+Fixed and merged (`fix/implicit-lambda-codomain-shape` @ `398f913`, fast-forwarded). Both
+verified bugs now answer the prototype's values: `probe1` → `8`, `probe2b` → `0`, and the
+explicit-Pi shape stays `7`.
+
+**The gate as it now reads** — dependency decides *whether*, shape decides *how*:
+
+```csharp
+if (stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }) return false;
+if (ctx.Force(pi.Domain) is not Value.VU) return true;              // dict / effect-row / value param
+var probe = ctx.RawMeta();
+var codomain = ctx.Force(Nbe.ApplyClosure(ctx.Metas, pi.Codomain, probe));
+if (Unify.Mentions(ctx.Metas, ((Value.VMeta)probe).Id, codomain)) return true;   // dependent
+return codomain is not (Value.VPi { Explicitness: Explicitness.Explicit } or Value.VMeta);
+```
+
+It agrees with the sketch on `pi-agent-5385293b-26d9-47e` verbatim — re-derived from the
+direction in this ticket rather than merged from it. **That sketch branch is superseded and
+has been deleted**, along with the four `zz-probe*` cases it carried; the two probes are now
+real shared cases.
+
+- **Tests:** C# conformance **736 → 738, 0 failed**; xUnit 182/182; `dune test` and
+  `dune test test/conformance` green — 738 cases, 0 failed, **27** divergences, i.e. the two
+  new cases are ordinary (the prototype answers `8` and `0` correctly). New cases:
+  `values/implicit-lambda-codomain-continues-implicitly`, `values/implicit-lambda-codomain-not-pi`.
+- **The 16 cases that motivated the gate are all green**, by the full runs: the type-case
+  family (`core-072..084`, `elab-041`), `values/type-case-refines-variable`, the value-level
+  implicit family, and `stage2.fun`'s `(==)`/`(!=)`. The domain-not-`Type` branch still binds
+  those rigidly, so the narrowing did not reach them — which was the thing to check.
+- Verified by the integrator after merging, not taken on the fork's word.
