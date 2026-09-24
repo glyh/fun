@@ -322,17 +322,18 @@ public static partial class Elaborator
                 return CheckUnderImplicitRow(ctx, stx, rowPi);
 
             case (_, Value.VPi { Explicitness: Explicitness.Implicit } implicitPi)
-                when stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }:
+                when BindsImplicitParameterItself(ctx, stx, implicitPi) is false:
                 return CheckUnderImplicit(ctx, stx, implicitPi);
 
             case (Syntax.Match match, _): return CheckMatch(ctx, match, expected);
             case (Syntax.MacroCall call, _): return ApplyTypedMacro(ctx, call, expected).Item1;
             case (Syntax.QuoteDecls quote, _) when CheckQuoteDecl(ctx, quote, expected) is { } decl: return decl;
 
-            case (Syntax.Lam lam, Value.VPi pi):
+            // An implicit lambda that binds the parameter itself arrives here against an
+            // implicit Pi (BindsImplicitParameterItself); one that instantiates instead
+            // fell through to infer + InsertImplicitArgs, exactly as a name does.
+            case (Syntax.Lam lam, Value.VPi pi) when lam.Param.Explicitness == pi.Explicitness:
             {
-                if (lam.Param.Explicitness != pi.Explicitness)
-                    throw new FunException("applying non-function");
                 // A written parameter type is an annotation like any other: it
                 // must agree with the domain expected. The prototype ignores it
                 // here (lambda-check-ignores-written-parameter-type).

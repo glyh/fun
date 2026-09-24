@@ -84,4 +84,27 @@ public static partial class Elaborator
         var body = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, new Value.VVar(entry.Level, []));
         return new Term.Lam(Check(inner, stx, body));
     }
+
+    /// <summary>
+    /// Whether <paramref name="stx"/> binds <paramref name="pi"/>'s implicit parameter
+    /// itself, so checking must not insert that parameter first. Only a lambda that
+    /// writes the parameter can. A dictionary, effect-row, or value parameter it always
+    /// binds: the parameter's runtime value flows through it. A type parameter it binds
+    /// when the expected type is dependent on it — the codomain, probed at a fresh meta,
+    /// mentions it: a trait-bounded signature ([A : Eq] -> …, whose hidden dictionaries
+    /// are among the mentions, traits.md "Phase 5") or an annotation whose body type-cases
+    /// the parameter ([T : Type] -> T -> T). Those are checked as the forall they claim
+    /// to be. Against a param-independent expected (a call site's [A : Type] -> I64 -> ?r)
+    /// the lambda instantiates instead, exactly as a name does
+    /// (check-against-implicit-type-inserts-first): the parameter is inserted first and
+    /// the lambda's own implicit argument instantiated against the body.
+    /// </summary>
+    private static bool BindsImplicitParameterItself(Context ctx, Syntax stx, Value.VPi pi)
+    {
+        if (stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }) return false;
+        if (ctx.Force(pi.Domain) is not Value.VU) return true;
+        var probe = ctx.RawMeta();
+        return Unify.Mentions(ctx.Metas, ((Value.VMeta)probe).Id,
+            ctx.Force(Nbe.ApplyClosure(ctx.Metas, pi.Codomain, probe)));
+    }
 }
