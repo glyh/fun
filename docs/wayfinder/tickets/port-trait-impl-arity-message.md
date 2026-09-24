@@ -35,16 +35,12 @@ single `Param` (`Syntax.Traits.cs:9,29`), `ImplDef`/`Impl` a single `Arg` (`:17,
 prototype's carry `params`/`args` lists. So the port genuinely cannot *represent* another
 arity: `NotImplementedException` is an honest marker, but it is not a decision.
 
-## Ruling (integrator, 2026-09-25 — veto with one word if you disagree)
+## Ruled (user, 2026-09-25): **one parameter is the rule**
 
-**One parameter is the rule.** Both implementations enforce it on every spelling a *user* can
-write, and the port's AST encodes it. A macro-built reflected form that bypasses the check is
-a **prototype defect** — the rule is real, that path simply skips it — so the convention-5
-route applies: change nothing in the prototype, make the port's refusal the *language error*
-its source path already raises, and **list the case in `prototype-divergences.txt`**.
-
-That is the conversion this ticket's first version asked for, for the opposite reason, and
-with a divergence entry the first version would not have added.
+So the work is the conversion this ticket's first version asked for — for the opposite reason,
+and with a divergence entry the first version would not have added: the prototype accepting a
+macro-built reflected form with other arities is a **prototype defect** (its own source path
+enforces the rule), and the port's refusal becomes the same language error that path raises.
 
 ## What to do
 
