@@ -94,17 +94,25 @@ public static partial class Elaborator
     /// mentions it: a trait-bounded signature ([A : Eq] -> …, whose hidden dictionaries
     /// are among the mentions, traits.md "Phase 5") or an annotation whose body type-cases
     /// the parameter ([T : Type] -> T -> T). Those are checked as the forall they claim
-    /// to be. Against a param-independent expected (a call site's [A : Type] -> I64 -> ?r)
-    /// the lambda instantiates instead, exactly as a name does
-    /// (check-against-implicit-type-inserts-first): the parameter is inserted first and
-    /// the lambda's own implicit argument instantiated against the body.
+    /// to be. Otherwise the codomain's residual shape decides (implicit-lambda-rigid-or-
+    /// instantiate): it instantiates, exactly as a name does
+    /// (check-against-implicit-type-inserts-first), only when it continues explicitly —
+    /// an explicit Pi (a call site's [A : Type] -> I64 -> ?r), or a codomain still
+    /// unknown (a meta), where whatever follows may solve the inserted parameter. When
+    /// the codomain instead continues implicitly ([A : Type] -> [B : Eq] -> …: the lambda
+    /// binds the parameters pairwise, and inserting the first would desynchronize the
+    /// walk so the second's hidden dictionaries are no longer insertable) or is not a
+    /// function type at all ([A : Type] -> I64: the lambda's parameter *is* the implicit
+    /// argument the annotation names, and an inserted anonymous one orphans it into a
+    /// stuck neutral), the lambda binds its parameter itself.
     /// </summary>
     private static bool BindsImplicitParameterItself(Context ctx, Syntax stx, Value.VPi pi)
     {
         if (stx is not Syntax.Lam { Param.Explicitness: Explicitness.Implicit }) return false;
         if (ctx.Force(pi.Domain) is not Value.VU) return true;
         var probe = ctx.RawMeta();
-        return Unify.Mentions(ctx.Metas, ((Value.VMeta)probe).Id,
-            ctx.Force(Nbe.ApplyClosure(ctx.Metas, pi.Codomain, probe)));
+        var codomain = ctx.Force(Nbe.ApplyClosure(ctx.Metas, pi.Codomain, probe));
+        if (Unify.Mentions(ctx.Metas, ((Value.VMeta)probe).Id, codomain)) return true;
+        return codomain is not (Value.VPi { Explicitness: Explicitness.Explicit } or Value.VMeta);
     }
 }
