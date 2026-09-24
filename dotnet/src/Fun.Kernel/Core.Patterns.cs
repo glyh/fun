@@ -69,11 +69,17 @@ public abstract partial record Value
     /// <paramref name="ScrutineeType"/>, with <see cref="CorePattern.SynonymParam"/>
     /// where each parameter sits. <paramref name="Params"/> gives each parameter's
     /// type, in the order the parameters sit in the scrutinee - the order their
-    /// binders come out in.
+    /// binders come out in. Where the right-hand side cannot determine its types,
+    /// those metas are <paramref name="Generalized"/> (<paramref name="TypeParams"/>
+    /// of them), instantiated afresh at each use; <paramref name="Env"/> and
+    /// <paramref name="Width"/> are the definition's, so the names it captures stay
+    /// the definition's while only the generalized types come from the use.
     /// </summary>
     // Compared by reference: two synonyms are the same only if they are one definition.
     public sealed record VPatternSynonym(
-        int Arity, CorePattern Rhs, Value ScrutineeType, EquatableArray<(int Index, Value Type)> Params) : Value
+        int Arity, int TypeParams, EquatableArray<int> Generalized,
+        CorePattern Rhs, Value ScrutineeType, EquatableArray<(int Index, Value Type)> Params,
+        Environment Env, int Width) : Value
     {
         public bool Equals(VPatternSynonym? other) => ReferenceEquals(this, other);
         public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);

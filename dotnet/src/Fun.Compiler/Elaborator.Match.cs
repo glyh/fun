@@ -86,7 +86,7 @@ public static partial class Elaborator
             Pattern.Atom a => new Value.VAtomTy(AtomTypeOf(a.Value)),
             Pattern.Prod prod => new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
-            Pattern.Con c when SynonymAt(ctx, c.Head) is { } synonym => synonym.ScrutineeType,
+            Pattern.Con c when SynonymAt(ctx, c.Head) is { } synonym => InstantiateSynonym(ctx, synonym).ScrutineeType,
             // A head naming a type makes this a type-case: the scrutinee is a type.
             Pattern.Con c => TypeHead(ctx, c.Head) is not null
                 ? Value.VU.Instance
