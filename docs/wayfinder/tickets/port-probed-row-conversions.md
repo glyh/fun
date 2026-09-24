@@ -60,3 +60,29 @@ would be an ordinary `error` case, not a divergence).
 
 - `dotnet/src/Fun.Compiler/Elaborator.cs:304`, `Unify.cs:202-206`/`:222`, `Nbe.cs:577`
 - `test/conformance/prototype-divergences.txt` (nothing to add here)
+
+## Implemented, **unmerged** (2026-09-24, work paused)
+
+All three conversions were finished before the pause and are committed, but **deliberately
+not merged** — the pause stopped the merge checklist at its verification step. Branch
+`port-probed-row-conversions`, commit `0b71c6d` (base `1dec417`); pi may also surface it as
+`pi-agent-f2d9fde6-5676-4c2`.
+
+- `Elaborator.cs` — `Syntax.Stx` now throws
+  `FunException("stx-only syntax should not reach elaboration")`; the default stays for the
+  other kinds.
+- `Unify.cs` — the catch-all is now an `InvalidOperationException` ("unhandled
+  solution"); `:204`'s three-kind refusal is untouched.
+- `Nbe.cs` — the catch-all is an `InvalidOperationException`, plus
+  `Value.VCont => throw new FunException("cannot quote continuation")` for parity with
+  `nbe_quote.ml:181`.
+- One new **ordinary** case, `macros/raw-stx-not-elaborated` (`expect` `error`); the
+  divergence list is unchanged at 26 and the control `m(3)` still answers `3` in both.
+
+**These are the fork's numbers, not the integrator's** — they have not been re-verified:
+C# 728 → **729 cases, 0 failed**; xUnit 182/182; `dune test` green; OCaml 729 cases, 0
+failed, 26 divergences. None of the three sites turned out reachable: the new case
+exercises the `Stx` language error (as intended), and the two catch-alls remain unprobed.
+
+To finish when work resumes: `git merge port-probed-row-conversions`, confirm **729/0** in
+both runners plus xUnit 182/182, close this ticket, prune the branch.
