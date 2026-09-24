@@ -96,14 +96,27 @@ inference is not.
 
 ## Paused (2026-09-24) — resume here
 
-The probing fork ran for ~95 tool calls and was stopped by a provider usage limit
-(resets 2026-09-24 18:33:48), steered to stop cleanly first. **Nothing is recorded from
-it yet** — no verdict reached the integrator, so no row can be called settled except the
-ones already written above (row 6's product/binder half, and the two rows spun off to
-their own tickets). Its worktree was cut at `b73a755`; whatever it left is preserved on
-its `pi-agent-` branch at cleanup, but treat that as scratch, not as findings.
+The probing fork was killed by a provider usage limit (resets 2026-09-24 18:33:48)
+after ~94 tool calls, mid-report. It left **no branch**, which is correct: it added no
+case files, so its worktree was clean.
 
-Resuming: spawn a fresh probe fork over the same rows, with the row-6 note above and
-the two lines (site numbers, not the older `:72/:76/:88`) already corrected, and tell it
-that rows 1–5 and 7 are untouched. Do **not** resume the dead agent: its report never
-arrived, so its context carries only its own notes.
+What did reach the integrator before it died, as fragments — enough to shorten the next
+run, not enough to settle any row:
+
+- **Row 1 (G4, a typed operator macro): a probe came back `1` in both runners →
+  *parity, not a gap*** (its words: "Both runners give `1` on r1 — parity, not a gap
+  (surprising)"). A variant it called `r1b` "**throws** the gap", i.e. a related shape
+  *does* reach the refusal, so row 1 may split into a parity row plus a narrower real
+  gap. Both need re-probing to be written down.
+- **Row 3 (`Syntax.Stx`, the typed-macro-argument marker): its prototype counterpart is
+  an assertion** at `lib/semantic/typecheck/elab_infer.ml:1418` — so the prototype is not
+  quietly handling it either; the fork was about to check whether the prelude exposes an
+  `stx` builder a macro could use to inject one.
+- **Rows 2, 4, 5, the row-6 remainder and 7: nothing recorded.**
+
+Resume with `resume: "unverified-rows"` (its context holds the probes and their output).
+Its full transcript is at
+`/tmp/pi-subagents-1000/home-lyh-pullground-fun/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/d0b516c6-c060-43f.output`
+— under `/tmp`, so a fresh fork should be told this section rather than the path. If it
+is respawned rather than resumed, give it the corrected row-6 wording above and the two
+lines (site numbers, not the older `:72/:76/:88`) already fixed in this file.

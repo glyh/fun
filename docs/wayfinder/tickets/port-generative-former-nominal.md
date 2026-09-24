@@ -57,3 +57,34 @@ still produce (a `b1.Box` used where `b2.Box` is expected, with two `Mk(())`
 evaluations) so the stamp keeps separating them once formers are labelled — the
 non-parametric versions of both already exist as
 `values/nominal-generative-type-case-separates` and `-rejects-other`.
+
+## Paused (2026-09-24) — resume here
+
+The implementation fork was killed by a provider usage limit (resets 2026-09-24
+18:33:48) after ~119 tool calls, one step short of starting the fix: its last words were
+"Diagnosis is complete and confirmed on both sides", and it was heading off to check
+the tests that reference `ctx.Metas.GenerativeNominals` before changing its type.
+
+**Its branch `pi-agent-6cd6cf45-5d98-492` (`4fbcd72`) is instrumentation only** — two
+`Console.Error.WriteLine` probes in `Elaborator.Generative.cs` (every member's `Def`
+during labouring, and a stack trace where sealing throws). **Merge nothing from it**;
+reuse the traces.
+
+What it did establish, from its own words, all of which sharpens the fix:
+
+- **The ticket's stated cause is confirmed this time** (the ticket itself warns that a
+  neighbouring diagnosis, `elab-062`'s, was wrong once): `Box`'s definition is a `Lam`
+  chain whose body is the `Term.Nominal`, and the label map filters on
+  `l.Def is Term.Nominal`, so the former is never labelled.
+- **The former's captures are `[Var 0]`, so the stamp is *not* captured** — the arity
+  cannot be recovered from captures, which is exactly why the ticket says a parameter
+  list is needed.
+- **The prototype's nominal conversion compares `params`** as part of identity, which is
+  what a port-side parameter list has to reproduce.
+- **An *unused* type parameter errors `NonVariableInSpine` in the prototype** — a shaky
+  corner there, to be probed or ruled on rather than copied.
+
+Resume with `resume: "generative-former"` (its context still holds the traces and the
+reasoning). Its full transcript is at
+`/tmp/pi-subagents-1000/home-lyh-pullground-fun/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/6cd6cf45-5d98-492.output`
+— under `/tmp`, so treat it as a convenience and this section as the record.
