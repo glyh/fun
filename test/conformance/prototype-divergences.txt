@@ -33,3 +33,4 @@ elaborate/trait-op-nearness-no-tiebreak       trait-op-takes-innermost-impl.md
 imports/unit-handle-open-form-member           unit-handle-open-not-a-unit-open.md
 imports/bare-constructor-pattern-through-import   bare-constructor-pattern-resolves-by-name.md
 values/implicit-lambda-argument-named           port-generalise-under-check.md
+macros/reflected-trait-two-parameters           port-trait-impl-arity-message.md

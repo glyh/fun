@@ -7,8 +7,8 @@ namespace Fun.Compiler;
 /// <c>Syntax</c> module are one grammar seen twice. <c>Reflect*</c> builds the value
 /// of a form and <c>Read*</c> reads a form back; reading what was reflected is the
 /// identity on every field (M1). A value that is not well-formed reflection reads
-/// back as null, never as a guess. A form the port has no reflected image for, or a
-/// reflected form the port cannot read, is "not ported yet".
+/// back as null, never as a guess. A reflected form the port deliberately has no
+/// image for is a language error naming the rule, never an unported path.
 /// </summary>
 // Not carried, because the reflection grammar has no slot for them: the spans of
 // a path's members, and the roles an open's region holds (expansion recomputes
@@ -720,7 +720,7 @@ public sealed class Reflection
                     || ReadFields(args[2]) is not { } tfields || X(args[3]) is not { } tbody) return null;
                 return tps.Length == 1
                     ? new Syntax.TraitDef(tname, tps[0], tfields, tbody, span)
-                    : throw new NotImplementedException("not ported yet: a trait with other than one parameter");
+                    : throw new FunException("trait declaration accepts exactly one parameter");
             }
             case ("RawImplDef", 5):
             {
@@ -728,7 +728,7 @@ public sealed class Reflection
                     || ReadList(args[2], X) is not { } iargs || ReadFields(args[3]) is not { } ifields || X(args[4]) is not { } ibody) return null;
                 return iargs.Length == 1
                     ? new Syntax.ImplDef(iname, trait, iargs[0], ifields, ibody, span)
-                    : throw new NotImplementedException("not ported yet: an impl of other than one argument");
+                    : throw new FunException("impl declaration accepts exactly one trait argument");
             }
             case ("RawPerform", 2):
                 return ReadPath(args[0]) is Syntax.FieldAccess op && X(args[1]) is { } parg ? new Syntax.Perform(op, parg, span) : null;
@@ -764,7 +764,7 @@ public sealed class Reflection
                 return new Syntax.OperatorUse(operatorId, fx, operands, declared, unit, used);
             }
             case ("RawTypeDef", _):
-                throw new NotImplementedException($"not ported yet: reading the reflected form {name}");
+                throw new FunException("type is a macro: the reflected syntax has no type definition");
             default:
                 return null;
         }
@@ -924,13 +924,13 @@ public sealed class Reflection
             case ("DeclTrait", 4):
             {
                 if (ReadId(args[0]) is not { } tn || ReadList(args[1], ReadId) is not { } tps || ReadFields(args[2]) is not { } tf || ReadBool(args[3]) is not { } tpub) return null;
-                return tps.Length == 1 ? new Binding.Trait(tn, tps[0], tf, tpub) : throw new NotImplementedException("not ported yet: a trait with other than one parameter");
+                return tps.Length == 1 ? new Binding.Trait(tn, tps[0], tf, tpub) : throw new FunException("trait declaration accepts exactly one parameter");
             }
             case ("DeclImpl", 5):
             {
                 if (ReadOption(args[0], ReadId) is not (true, var iname) || ReadPath(args[1]) is not { } trait || ReadList(args[2], X) is not { } iargs
                     || ReadFields(args[3]) is not { } ifields || ReadBool(args[4]) is not { } ipub) return null;
-                return iargs.Length == 1 ? new Binding.Impl(iname, trait, iargs[0], ifields, ipub) : throw new NotImplementedException("not ported yet: an impl of other than one argument");
+                return iargs.Length == 1 ? new Binding.Impl(iname, trait, iargs[0], ifields, ipub) : throw new FunException("impl declaration accepts exactly one trait argument");
             }
             case ("DeclMacro", 5):
             {
