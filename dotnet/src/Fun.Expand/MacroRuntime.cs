@@ -9,6 +9,9 @@ namespace Fun.Expand;
 public sealed record UnitSyntax(EquatableArray<(string Name, Role Role)> Roles)
 {
     public EquatableArray<(string Name, MacroEntry Macro)> Macros { get; init; } = [];
+
+    /// <summary>The unit this unit's public members denote, e.g. <c>pub M = import "m"</c>.</summary>
+    public EquatableArray<(string Name, string Path)> UnitMembers { get; init; } = [];
 }
 
 /// <summary>

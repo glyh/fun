@@ -1,0 +1,1 @@
+pub M = import "m";
