@@ -365,3 +365,32 @@ None reproduced. Probe P5 exposed a *port-side* ordering bug (`InfixRoleUse` thr
 before the `continues` guard, so `1 + 2 ~> 3` throws where the prototype parses and
 type-errors) — that is row 15, a parity conversion, not a prototype defect. No new
 ticket filed; the integrator decides.
+
+## Re-sweep (2026-09-24) — 62 → 20 sites, and the prototype side swept
+
+A cheap read-only sweep re-ran both halves of this audit against `main` after the day's
+landings. It is the record that keeps the numbers above from reading as current:
+
+- **Refusals:** `grep 'not ported yet'` now finds **20 `throw` sites / 17 distinct
+  messages** (62 at the audit). Every one is owned by an open ticket or is classified
+  below; none is unowned, and none is a newly missing feature.
+- **Probed real gaps (3), all already ticketed:** a pattern synonym over a type-case RHS
+  (`Elaborator.Patterns.cs:73`), a generative former with an unused type parameter
+  (`Elaborator.Generative.cs:119`), and the recursive-enum capture crash
+  (`Unify.cs:161` ← `Unify.Enum.cs:42`). The third was **fixed later the same day**
+  ([captures from payload values](port-enum-captures-from-payload-values.md), two shared
+  cases now cover it), so that row is stale by the time you read it — the sweep ran against
+  a `main` from before that merge.
+- **One family resolved as parity:** the trait/impl "exactly one parameter" refusals
+  (`Reflection.cs:723`, `:731`, `:927`, `:933`) — probed, and the *prototype* rejects the
+  same spellings → [the arity refusal is a language error](port-trait-impl-arity-message.md).
+- **Not re-probed (12 sites):** the internal traversal / unifier / reflection paths
+  (`Core.Shift.cs:94,143`, `Core.Patterns.cs:44`, `Unify.cs:221`,
+  `Enforest.Roles.cs:867`, `Reflection.cs:767`, `Nbe.Effects.cs:106`, …) — the same class
+  this audit called unreachable, now *unverified* rather than verified-unreachable.
+- **The prototype side, which this audit never covered:** two behaviours are exercised only
+  by the OCaml suites and have no shared case anywhere —
+  [the observable budget cases](port-budget-observable-cases.md) and
+  [the runtime-error variants](port-runtime-error-cases.md). Both are ticketed now. This is
+  the half of the question — "could the port silently lack something the prototype has?" —
+  that an inventory of the port's own throws cannot answer.
