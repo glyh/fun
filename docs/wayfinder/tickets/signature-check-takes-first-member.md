@@ -5,7 +5,7 @@ labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-20
-resolution: A signature check uses the last member of a name (I3); fixed in the C# port only.
+resolution: A signature check uses the last member of a name (I3); fixed in the C# port only. Superseded 2026-09-21 — a container's public members are unique, so the check has one member to use and the case's divergence line was deleted; see public-members-are-unique.md.
 assignee:
 blocked_by:
 ---

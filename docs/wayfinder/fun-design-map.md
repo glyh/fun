@@ -611,6 +611,19 @@ The thirteen above were still listed as open long after the port was correct; th
 verification and closure is [close the recorded divergences](tickets/port-divergence-closure.md)
 (2026-09-20), which re-ran both runners against
 `test/conformance/prototype-divergences.txt`'s 19 case lines.
+
+### From the divergence review (2026-09-21)
+
+- [Review the recorded divergences](tickets/review-recorded-divergences.md)
+  (grilling, in progress) — the 20 lines of
+  `test/conformance/prototype-divergences.txt` put in front of the user once, so a
+  wrong claim cannot sit in the file unexamined. Settled so far: impl resolution by the
+  use's argument types (never the last-declared impl), opening a *handle* on a unit is
+  an open of that unit, and a module's public members are unique (below).
+- [A module's public members are unique](tickets/public-members-are-unique.md)
+  — decided 2026-09-21, **port-only**: a repeated `pub` name in one container and a
+  repeated constructor name become errors in the C# port, while the prototype keeps the
+  last-wins defect and `prototype-divergences.txt` records it.
 - Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
   [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
   [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),

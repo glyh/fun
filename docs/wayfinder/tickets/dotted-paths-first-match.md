@@ -5,7 +5,7 @@ labels:
   - wayfinder:task
 status: closed
 closed_date: 2026-09-15
-resolution: Every member lookup takes the last match through one helper, `Core.find_map_last` (`find_field_last` and the named-impl lookups use it; `Elab_stdlib.resolve` reads fields with `find_field_last`; the unused `struct_impl_type_opt` is deleted). The prelude nominal names `Elab_stdlib.syntax_nominals` and the quote-hole types read are in `Compiler_names` (`Syntax_name`, `Type_name.option`/`list`). Test: a module with two named impls `eq_I` resolves `M.eq_I` to the last in both the type and value views.
+resolution: Every member lookup takes the last match through one helper, `Core.find_map_last` (`find_field_last` and the named-impl lookups use it; `Elab_stdlib.resolve` reads fields with `find_field_last`; the unused `struct_impl_type_opt` is deleted). The prelude nominal names `Elab_stdlib.syntax_nominals` and the quote-hole types read are in `Compiler_names` (`Syntax_name`, `Type_name.option`/`list`). Test: a module with two named impls `eq_I` resolves `M.eq_I` to the last in both the type and value views. **Superseded in part (2026-09-21):** a container's public members are unique in the C# port, so a container holds one member per name and there is nothing to choose between; last-match still governs two `open`s supplying one name and a private binding sharing a label with a public one (public-members-are-unique.md). The cited test's duplicate `eq_I` impls are now `eq_bool` / `eq_i64` in `values/elab-021`, since the port refuses the duplicates.
 assignee:
 blocked_by:
 ---

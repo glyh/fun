@@ -104,17 +104,25 @@ entries against the evaluated value's entries and silently opens nothing when
 the value is not a `VModule` (`| _ -> ctx`). Distance:
 [module-open-width-depends-on-value](../tickets/module-open-width-depends-on-value.md).
 
-### I3 — a dotted path denotes the last member of that name
+### I3 — a container's public members are distinct
 
-**Status: enforced for field lookups; two first-match lookups remain.**
+**Status: the C# port refuses a repeated public member (2026-09-21); the prototype still
+resolves by last match.**
 
-One helper, `Core.find_field_last`, is used by every field lookup in both
-libraries. Distance: `Elab_stdlib.resolve` and the named-impl lookups
-(`module_impl_type_opt` / `module_impl_value_opt`) still take the first match
-([dotted-paths-first-match](../tickets/dotted-paths-first-match.md)). Previously the rule was written out seven times as a bare
-first-match scan, and disagreed with `open` and with `do` bindings, both of
-which take the last. That disagreement is what made a constructor sharing its
-type's name unreachable through a path.
+A container's public member entries must have distinct names
+([a module's public members are unique](../tickets/public-members-are-unique.md)), so a dotted
+path denotes *the* member of that name. Where a private binding shares a label with a public
+one the lookup takes the public entry — a private binding is not a member — and where two
+`open`s supply one name the later open's wins. Both measured:
+`module { pub x = 1; x = 2; pub y = x }` gives `M.x` = 1 from outside and `M.y` = 2 inside,
+and `open A; open B; x` gives `B`'s `x`.
+
+Before that ruling the rule was *last match on a label*, through one helper,
+`Core.find_field_last`, used by every field lookup in both libraries
+([dotted-paths-first-match](../tickets/dotted-paths-first-match.md)). Previously it was written
+out seven times as a bare first-match scan, and disagreed with `open` and with `do` bindings,
+both of which take the last. That disagreement is what made a constructor sharing its type's
+name unreachable through a path.
 
 ### I4 — names live in one namespace
 
@@ -122,7 +130,9 @@ type's name unreachable through a path.
 
 Values, types, constructors, macros and operators all share one namespace (the
 bare names; fields and effect operations are members — see I4b). A later binding
-shadows an earlier one. The consequence is
+shadows an earlier one — but shadowing is a *bare-name* rule: a container's
+repeated public member is refused, not shadowed
+([a module's public members are unique](../tickets/public-members-are-unique.md)). The consequence is
 accepted rather than repaired: after `type T = T I64` the constructor shadows
 the type, so `T` no longer works in type position.
 

@@ -183,6 +183,12 @@ Last updated: after .NET port macros and interleaving, 2026-09-17.
   constructors as members of the enclosing module, opening nothing locally;
   clashes are `ExportClash`; a unit's roles re-export with it. A module with
   public impls is `ExportImpls` (undecided).
+- A container's public members are unique (2026-09-21, C# port only): a repeated `pub`
+  name is `duplicate member: \`x\` is already public`, and a repeated constructor is
+  `duplicate constructor`. A private rebinding of a public name, an `open`'s name
+  shadowed by a `pub`, and a nominal's own label are all still legal. The prototype keeps
+  last-wins, so `values/core-121`, `elaborate/duplicate-enum-constructor` and
+  `macros/spliced-public-decl-is-a-duplicate` are recorded divergences (22 lines).
 - A block's `rec A = enum { … } and B = enum { … }` elaborates with the module
   knot; its slots become `Let`s.
 - The `type` prelude macro is blocked: the prelude has no elaborator to compile a
