@@ -297,6 +297,25 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
   the user with concrete code examples; several decisions this run were revised
   mid-implementation (generated syntax is hygienic, quotes parse at definition).
 
+### Waiting on the user (as of 2026-09-25)
+
+Three decisions are parked with tickets of their own. None blocks work in flight; the third
+blocks one *test*.
+
+- [A generative former with an unused type parameter](tickets/port-generative-former-phantom-parameter.md)
+  — mirror the prototype's phantom parameter (`Box(I64)` and `Box(Char)` become one type), or
+  keep the port's refusal as its documented limit. The prototype accepts it; the port refuses.
+- [Should a pattern synonym's generalized types be supplyable?](tickets/pattern-synonym-type-parameters.md)
+  — the port takes the rigid reading today (the scrutinee's type solves them, nothing can be
+  supplied, nothing is reported unsolved). The other reading makes them the synonym's implicit
+  type parameters, which answers all three of that ticket's questions with existing machinery.
+- [A budget error should name the call stack of requests](tickets/port-budget-attribution.md)
+  — the *shape* is already ruled (name the chain, since an overrun can come from a
+  combination); four sub-questions remain: order, frame content (the port's macro budget
+  errors carry no source position — the map's own fog item), scope across macro and checker
+  requests, and truncation. **Blocks a test**: the `expand_decls` assertion the budget ruling
+  asked for cannot be written until they are answered.
+
 The current frontier — open tickets under [`tickets/`](tickets/), in intended
 order.
 
