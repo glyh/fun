@@ -3,7 +3,7 @@ title: "Port: the reflected trait/impl forms with other than one parameter"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -56,3 +56,26 @@ enforces the rule), and the port's refusal becomes the same language error that 
 - `Reflection.cs:723`, `:731`, `:767`, `:927`, `:933`; `dotnet/src/Fun.Kernel/Syntax.Traits.cs:9,17,29,36`
 - [the probed rows' conversions](port-probed-row-conversions.md) — the same shape of work
   (a refusal reclassified), done earlier
+
+## Resolution (2026-09-25) — closed
+
+Implemented on the user's ruling and merged (`e82b5d1`). All five sites now raise
+`FunException`; the last `NotImplementedException` in `Reflection.cs` is gone, and the class
+comment that claimed such forms are "not ported yet" is corrected with it.
+
+- `:723` `RawTraitDef` → `trait declaration accepts exactly one parameter`;
+  `:731` `RawImplDef` → `impl declaration accepts exactly one trait argument`; `:927`
+  `DeclTrait` and `:933` `DeclImpl` the same two messages. The wording is byte-identical to
+  what `Enforest.Traits.cs` raises for the source-level spellings, so both paths refuse alike.
+- `:767` `RawTypeDef` → `type is a macro: the reflected syntax has no type definition` — **not
+  an arity claim at all**, which is the right call: it follows the earlier closed ruling
+  [do not port the reflected TypeDef](port-reflected-typedef.md), so the wording names the
+  macro rather than a parameter count.
+- Case `macros/reflected-trait-two-parameters`, `expect` `error`, **listed** in
+  `prototype-divergences.txt` naming this ticket — 27 → **28**. A green OCaml run *with* the
+  entry is the proof it is needed, since a listed case that passes is reported as a failure.
+- **Verified by the integrator after merging:** C# 742 → **743 cases, 0 failed**; xUnit
+  183/183; `dune test` and `dune test test/conformance` green — 743 cases, 0 failed, **28**
+  divergences. No existing case changed behaviour, which is what the probe predicted.
+- **Unverified:** `:927`, `:933` and `:767` share the checked refusal but no case exercises
+  them — the ticket asked for one shared case, and the `RawTypeDef` shape has no shared angle.
