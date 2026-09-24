@@ -67,8 +67,6 @@ public static partial class Elaborator
 
         var rhs = MarkSynonymParams(synonym.Rhs, names);
         var scrutineeType = RefineScrutineeType(ctx, ctx.RawMeta(), [new MatchBranch(rhs, synonym)]);
-        if (HasMeta(ctx, scrutineeType))
-            throw new NotImplementedException("not ported yet: a pattern synonym whose pattern does not fix its scrutinee's type");
 
         var (core, binders) = ElaboratePattern(ctx, rhs, scrutineeType);
         if (core.NeedsDirectMatch())
@@ -83,10 +81,18 @@ public static partial class Elaborator
                     ? $"a pattern synonym's parameter `{Label(name)}` is not bound by its pattern"
                     : $"a pattern synonym's parameter `{Label(name)}` is bound twice");
         }
-        if (parameters.Any(p => HasMeta(ctx, p.Type)))
-            throw new NotImplementedException("not ported yet: a pattern synonym whose parameter types are not fixed");
+        // The ruling: what the right-hand side cannot determine is generalized,
+        // the step a `let` performs - the unknown metas become the synonym's type
+        // parameters, instantiated where it is used. The right-hand side is still
+        // elaborated (and checked) here, once, at its declaration.
+        var generalized = new List<int>();
+        CollectSynonymMetas(ctx, ctx.Force(scrutineeType), generalized);
+        foreach (var (_, type) in parameters) CollectSynonymMetas(ctx, type, generalized);
 
-        return (new Term.PatternSynonym(new Value.VPatternSynonym(names.Count, core, ctx.Force(scrutineeType), [.. parameters])),
+        return (new Term.PatternSynonym(new Value.VPatternSynonym(
+                    names.Count, generalized.Count, [.. generalized],
+                    core, ctx.Force(scrutineeType), [.. parameters],
+                    ctx.Environment, ctx.Width)),
                 Value.VU.Instance);
     }
 
@@ -120,6 +126,34 @@ public static partial class Elaborator
     };
 
     /// <summary>
+    /// A synonym's generalized type parameters as this use's fresh metas: each
+    /// stored meta becomes a fresh meta here, so one declaration is instantiated
+    /// once per use. The template is read back and evaluated under the
+    /// definition's environment, so the names it captures stay the definition's
+    /// (hygiene); only the generalized types come from the use.
+    /// </summary>
+    private static (Value ScrutineeType, List<(int Index, Value Type)> Params) InstantiateSynonym(
+        Context ctx, Value.VPatternSynonym synonym)
+    {
+        if (synonym.TypeParams == 0)
+            return (synonym.ScrutineeType, [.. synonym.Params.Select(p => (p.Index, p.Type))]);
+
+        var fresh = new Dictionary<int, int>();
+        for (var i = 0; i < synonym.TypeParams; i++) fresh[synonym.Generalized[i]] = ctx.Metas.Fresh();
+
+        Term Instantiate(Term term) => term.Map((t, _) =>
+            t is Term.Meta m && fresh.TryGetValue(m.Id, out var replacement)
+                ? new Term.Meta(replacement)
+                : null);
+
+        Value Read(Value value) =>
+            Nbe.Eval(ctx.Metas, synonym.Env, Instantiate(Nbe.Quote(ctx.Metas, synonym.Width, value)));
+
+        return (Read(synonym.ScrutineeType),
+                [.. synonym.Params.Select(p => (p.Index, Read(p.Type)))]);
+    }
+
+    /// <summary>
     /// <c>Flip(first, second)</c>: each argument matched against its parameter's
     /// type and put where that parameter sits. Binders come out in the order the
     /// parameters sit in the scrutinee, as the arm's context needs.
@@ -129,14 +163,15 @@ public static partial class Elaborator
     {
         if (use.Args.Length != synonym.Arity)
             throw new FunException($"this pattern synonym takes {synonym.Arity} arguments, the pattern gives {use.Args.Length}");
-        ctx.Unify(type, synonym.ScrutineeType);
+        var (scrutineeType, parameters) = InstantiateSynonym(ctx, synonym);
+        ctx.Unify(type, scrutineeType);
 
         var args = new CorePattern[synonym.Arity];
         var binders = new List<(string, Value)>[synonym.Arity];
-        foreach (var (index, paramType) in synonym.Params)
+        foreach (var (index, paramType) in parameters)
             (args[index], binders[index]) = ElaboratePattern(ctx, use.Args[index], paramType);
 
-        return (FillSynonymParams(synonym.Rhs, args), [.. synonym.Params.SelectMany(p => binders[p.Index])]);
+        return (FillSynonymParams(synonym.Rhs, args), [.. parameters.SelectMany(p => binders[p.Index])]);
     }
 
     private static CorePattern FillSynonymParams(CorePattern pattern, CorePattern[] args) => pattern switch
@@ -162,6 +197,50 @@ public static partial class Elaborator
         Value.VVar v => v.Spine.Any(a => HasMeta(ctx, a)),
         _ => true,
     };
+
+    /// <summary>The unsolved metas a synonym's scrutinee and parameter types mention, each once, first-seen first.</summary>
+    private static void CollectSynonymMetas(Context ctx, Value value, List<int> seen)
+    {
+        switch (ctx.Force(value))
+        {
+            case Value.VMeta { Spine.IsEmpty: true } m:
+                if (!seen.Contains(m.Id)) seen.Add(m.Id);
+                return;
+            case Value.VMeta m:
+                foreach (var a in m.Spine) CollectSynonymMetas(ctx, a, seen);
+                return;
+            case Value.VU or Value.VAtomTy or Value.VAtom: return;
+            case Value.VNominal n:
+                foreach (var c in n.Captures) CollectSynonymMetas(ctx, c, seen);
+                return;
+            case Value.VProdTy p:
+                foreach (var i in p.Items) CollectSynonymMetas(ctx, i, seen);
+                return;
+            case Value.VProd p:
+                foreach (var i in p.Items) CollectSynonymMetas(ctx, i, seen);
+                return;
+            case Value.VStruct s:
+                foreach (var f in s.Entries.OfType<ModuleEntry.Field>()) CollectSynonymMetas(ctx, f.Value, seen);
+                return;
+            case Value.VVar v:
+                foreach (var a in v.Spine) CollectSynonymMetas(ctx, a, seen);
+                return;
+            case Value.VPi pi:
+            {
+                var binder = new Value.VVar(ctx.Width, []);
+                CollectSynonymMetas(ctx, pi.Domain, seen);
+                foreach (var e in Nbe.EvalRowClosure(ctx.Metas, pi.Row, binder).Effects) CollectSynonymMetas(ctx, e, seen);
+                CollectSynonymMetas(ctx, Nbe.ApplyClosure(ctx.Metas, pi.Codomain, binder), seen);
+                return;
+            }
+            case Value.VRefTy r:
+                CollectSynonymMetas(ctx, r.Heap, seen);
+                CollectSynonymMetas(ctx, r.Element, seen);
+                return;
+            default:
+                throw new NotImplementedException($"not ported yet: generalising a pattern synonym over a {ctx.Force(value).GetType().Name}");
+        }
+    }
 
     // ---- type-case ------------------------------------------------------------
 
