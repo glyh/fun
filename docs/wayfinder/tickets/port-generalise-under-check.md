@@ -3,7 +3,7 @@ title: "Port: an implicit lambda checked against a function type instantiates"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -119,6 +119,36 @@ Tests: `values/implicit-lambda-argument-inline` (`expect` `7`, an ordinary case)
 `values/implicit-lambda-argument-named` (`expect` `7`, listed in
 `prototype-divergences.txt` naming this ticket). The third program already passes in both
 runners, so it is covered by neither.
+
+## Resolution (2026-09-24) — closed
+
+Fixed and merged (`port-generalise-under-check` @ `7ae6084`, `02e8406`, merged as
+`6a56b8d`). The inline program answers `7`; the named and no-result programs were already
+right and stay right. **Verified by the integrator:** C# 731 → **733 cases, 0 failed**;
+xUnit 182/182; `dune test` and `dune test test/conformance` green — 733 cases, 0 failed,
+**27** divergences (the 26 plus this ticket's named-form entry).
+
+- **Cause, confirmed in code:** the guard this ticket cited sent *every* implicit lambda
+  to `(Lam, VPi)`, which unifies the written parameter type and binds the parameter
+  rigidly; at the call site the domain is already `I64`, so `a : A` failed with `A` rigid.
+- **The hazard was wider than this ticket predicted**, and only probing found it: the
+  naive guard-drop broke **16** cases, not merely `stage2.fun`'s `(==)`/`(!=)`. The whole
+  type-case family (`elab-041`, `core-072..084`, `type-case-refines-variable`) and the
+  value-level implicit `[n : I64]` case need the rigid treatment — heterogeneous matches
+  are not inferable, and a value implicit's runtime value must flow through the lambda.
+- **The gate, which is the actual finding:** `BindsImplicitParameterItself`
+  (`Elaborator.Implicits.cs`) binds the parameter itself iff the expected domain is not
+  `Type` (dictionary / effect-row / value parameter), or the codomain probed at a fresh
+  meta `Unify.Mentions` the parameter — i.e. **dependency decides**. A param-independent
+  expected (`[A : Type] -> I64 -> ?r`) instantiates, exactly as a name does. Hidden
+  dictionaries are covered by the same rule, so `InsertHiddenDicts` is untouched.
+- **Also fixed on the way:** inline and named implicit lambdas now behave identically
+  against *explicit* annotations — `g : I64 -> I64 = fn[A : Type](a : A) { a }` used to
+  throw "applying non-function" while the named form passed.
+- **Spun out** (no suite case exercises either, so not defects): the gate's two uncovered
+  corners — a *parameter-independent* dictionary whose body needs the evidence, and a
+  written parameter type that mentions the parameter inside a non-inferable body →
+  [when an implicit lambda should bind rigidly, and when it should instantiate](implicit-lambda-rigid-or-instantiate.md).
 
 ## Also recorded
 
