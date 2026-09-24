@@ -69,8 +69,13 @@ public static partial class Elaborator
         var scrutineeType = RefineScrutineeType(ctx, ctx.RawMeta(), [new MatchBranch(rhs, synonym)]);
 
         var (core, binders) = ElaboratePattern(ctx, rhs, scrutineeType);
-        if (core.NeedsDirectMatch())
-            throw new NotImplementedException("not ported yet: a pattern synonym over a type-case pattern");
+        // A struct type-case pattern (struct { x: a; _ }) runs in the sequential
+        // matcher (SelectArmInOrder) with no head term to carry. A nominal
+        // type-case head would carry its head term - a definition-site term that
+        // must run under a definition-site closure, not the use's environment - so
+        // it stays unported until that closure exists.
+        if (ContainsNominalHead(core))
+            throw new NotImplementedException("not ported yet: a pattern synonym over a nominal type-case pattern");
 
         var parameters = binders.Select(b => (Index: int.Parse(b.Name[SynonymParamPrefix.Length..]), b.Type)).ToList();
         foreach (var (name, index) in names.Select((n, i) => (n, i)))
@@ -173,6 +178,18 @@ public static partial class Elaborator
 
         return (FillSynonymParams(synonym.Rhs, args), [.. parameters.SelectMany(p => binders[p.Index])]);
     }
+
+    /// <summary>Whether a synonym's right-hand side names a nominal type-case head anywhere: the one direct-match shape that still carries a definition-site head term.</summary>
+    private static bool ContainsNominalHead(CorePattern pattern) => pattern switch
+    {
+        CorePattern.NominalHead => true,
+        CorePattern.Prod p => p.Items.Any(ContainsNominalHead),
+        CorePattern.Or o => ContainsNominalHead(o.Left) || ContainsNominalHead(o.Right),
+        CorePattern.Con c => c.Args.Any(ContainsNominalHead),
+        CorePattern.Record r => r.Fields.Any(f => ContainsNominalHead(f.Pattern)),
+        CorePattern.StructType s => s.Fields.Any(f => ContainsNominalHead(f.Pattern)),
+        _ => false,
+    };
 
     private static CorePattern FillSynonymParams(CorePattern pattern, CorePattern[] args) => pattern switch
     {
