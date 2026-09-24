@@ -3,7 +3,7 @@ title: "Port: a pattern synonym over a type-case pattern"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -56,6 +56,38 @@ Evidence for the `:87` half, so it is not re-probed: `{ M = module { pub pattern
 
 - `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs:75` and `NeedsDirectMatch`
 - [the pattern-synonym ruling](port-pattern-synonym-generalizes.md)
+
+## Resolution (2026-09-25) — closed
+
+Merged from `pi-agent-0b6cda9e-c3d1-4e5` (`dc57698`). The blanket refusal was **narrowed**, not
+removed: a `StructType` pattern carries no head term, so `SelectArmInOrder`/`Matches` and
+`FillSynonymParams` already handled it — the only blocker was `core.NeedsDirectMatch()`
+covering `StructType` and `NominalHead` together. It now refuses only a **nominal** type-case
+head (`ContainsNominalHead`), the half that needs a definition-site closure to carry its head
+term.
+
+- Cases: `pattern-synonym-over-struct-type-case`, its `-use` companion (which *runs* the
+direct-match path rather than only elaborating) and `-subposition`, all ordinary (`expect`
+`1`; the prototype answers `1`). Plus `pattern-synonym-over-option-constructor`, pinning this
+ticket's other half: `{ M = module { pub pattern Head(a) = Option.Some(a) }; 1 }` used to
+refuse with "parameter types not fixed" and now answers `1` — dissolved by the generalization
+work, as predicted.
+- **Verified by the integrator after merging:** C# 743 → **747 cases, 0 failed**; xUnit
+  183/183; `dune test` and `dune test test/conformance` green — 747 cases, 0 failed, **28**
+  divergences.
+- **The sketch did not survive, correctly.** The dead fork's shape (`NominalHead.Head`:
+  `Term` → `Value`, plus removing the runtime-env re-evaluation in `Nbe.Generative.cs`) was
+  rejected for a concrete reason: the stored value is already `Option(?m)`, so
+  `MatchesNominalHead` would apply fresh metas a second time, and the dropped re-evaluation is
+  exactly what E11's sealed projections need. None of `Core.Patterns.cs`, `Nbe.Generative.cs`,
+  `Nbe.Patterns.cs` or `Elaborator.Match.cs` was touched, `NominalHead.Head` stays `Term`, and
+  every `values/nominal-*` and `elab-067` identity case passes unchanged. The sketch branch is
+  deleted.
+- **Residue, verified by the integrator and spun out:** a zero-argument **sealed-nominal** head
+  still refuses while the prototype accepts it →
+  [a pattern synonym over a sealed-nominal head](port-pattern-synonym-over-sealed-nominal-head.md).
+  A *former* head is parity, not a gap — the prototype answers `UnknownConstructor "Option"`
+  for `pub pattern IsOpt(a) = Option(a)`.
 
 ## First attempt (2026-09-24) — died on a provider limit; WIP preserved as a sketch
 
