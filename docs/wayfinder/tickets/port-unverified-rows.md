@@ -93,3 +93,17 @@ sub-occurrence, which the user ruled on — [the match waits](port-stuck-match-s
 Per row: the program (or what you tried and why you stopped), the verdict, and what the
 verdict implies. Two or three rows settled is a fine outcome; a row resolved by
 inference is not.
+
+## Paused (2026-09-24) — resume here
+
+The probing fork ran for ~95 tool calls and was stopped by a provider usage limit
+(resets 2026-09-24 18:33:48), steered to stop cleanly first. **Nothing is recorded from
+it yet** — no verdict reached the integrator, so no row can be called settled except the
+ones already written above (row 6's product/binder half, and the two rows spun off to
+their own tickets). Its worktree was cut at `b73a755`; whatever it left is preserved on
+its `pi-agent-` branch at cleanup, but treat that as scratch, not as findings.
+
+Resuming: spawn a fresh probe fork over the same rows, with the row-6 note above and
+the two lines (site numbers, not the older `:72/:76/:88`) already corrected, and tell it
+that rows 1–5 and 7 are untouched. Do **not** resume the dead agent: its report never
+arrived, so its context carries only its own notes.

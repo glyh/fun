@@ -105,3 +105,22 @@ outside itself"), not by what makes this case pass.
 Cosmetic, from the same fork: the prototype prints `<lam>` where the port prints `VLam`
 when a value is described. Not worth a ticket on its own; fix it if a case ever becomes
 observable.
+
+## Paused (2026-09-24) — resume here
+
+The research fork was killed by a provider usage limit (resets 2026-09-24 18:33:48)
+mid-turn, after ~70 tool calls. Its own last words were that "the real causes are now
+pinned", but **that analysis never reached the integrator**, so nothing here is settled:
+the recommendation is still open and the ticket still needs its answer.
+
+What did survive is its instrumentation, as a single auto-squashed commit on
+`pi-agent-e3a08282-3aab-45d` (`83f0bbb`): markers in `Elaborator.Generalise.cs`
+(`[G]` unsolved metas and what each solved to) and `Elaborator.cs` (`[U]` the metas at a
+unification failure, `[C]` the Pi domain a written lambda parameter is checked against,
+`[X]` the variable that fails `ClosedUnder`). **It is trace output only — no functional
+change — so merge nothing from that branch**; reuse the traces.
+
+Resuming: `Agent({resume: "generalise-check"})` keeps the dead agent's context, so its
+pinned diagnosis may still be in there; if that fails, a fresh fork should start from
+the traces above rather than from scratch. Either way, the deliverable is the same: which
+side moves (a) or (b), with the evidence, and no feature code.

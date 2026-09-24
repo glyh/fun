@@ -81,13 +81,19 @@ exports.
   `dune test` and `dune test test/conformance` green; the OCaml runner reports 721 cases,
   0 failed, 22 known divergences — no divergence entry added, as the ticket requires.
 
-**Open, taken to the user (2026-09-21):** `order-through-binder` commits the binder
-shape as `error` — `W = module { pub M = import "m" }; infix (@@) W.M.g …` errors in
-*both* runners, so the case is parity rather than a decision, but the fork's reason for
-it (a first-class `module { … }` value denotes no unit, so only `import` bindings and
-paths through imported units name one) is the fork's **inference**, not a ruling, and
-the case asserts it. If the user rules the other way the case is rewritten and the
-gap becomes a ticket; the import-path fix above is unaffected either way.
+**The binder shape, verified rather than assumed (integrator, 2026-09-21).** The fork
+committed `order-through-binder` as `error`, reasoning that a first-class `module { … }`
+value denotes no unit. That is now checked, and it is a *uniform* rule rather than a
+corner: with `W = module { … }` bound to a name, `open W` delivers none of `W`'s syntax
+in **either** runner — a `pub order`, a `pub macro`, a `pub syntax` and a `pub infix`
+all fail to resolve (`unknown order group`, `UnboundVariable`, `unconsumed terms`),
+while a handle on a unit (`V = import "v"; open V`) does deliver its forms, which is
+the user's ruled behaviour on
+[opening a handle on a unit](unit-handle-open-not-a-unit-open.md). So syntax travels
+with *units* — an `import` — and a module value carries values only. The case asserts
+parity, nothing is blocked, and no gap ticket is opened. Whether a module *value*
+should export its syntax is a language question, not a port gap: no ruling is needed
+for the port, so it is not taken to the user.
 
 Integrator cleanup: the resolved-name label rule (`M#3` → `M`) is now reused from the
 existing private helper instead of an inline copy in `Expander.Imports.cs`.
