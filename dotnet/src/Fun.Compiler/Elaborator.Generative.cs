@@ -65,15 +65,32 @@ public static partial class Elaborator
         if (sink.IsEmpty) return Build(stamp, generative: false);
 
         var labels = terms.OfType<BindingTerm.Let>()
-            .Where(l => l.Def is Term.Nominal)
-            .ToDictionary(l => ((Term.Nominal)l.Def).Decl, l => l.Name);
+            .Select(l => (Let: l, Nominal: NominalHeadOf(l.Def)))
+            .Where(x => x.Nominal is { } head)
+            .ToDictionary(x => x.Nominal!.Value.Decl, x => new GenerativeNominal(x.Let.Name, x.Nominal!.Value.NumParams));
         foreach (var decl in ctx.Metas.DeclaredNominals.Skip(firstDeclared))
-            ctx.Metas.GenerativeNominals[decl] = labels.GetValueOrDefault(decl);
+            ctx.Metas.GenerativeNominals[decl] = labels.GetValueOrDefault(decl, new GenerativeNominal(null, 0));
         return Build(stamp, generative: true);
 
         (Term, Value) Build(BindingTerm.Let placeholder, bool generative) =>
             (new Term.Module([placeholder with { Def = generative ? new Term.RefNew(new Term.Atom(Atom.Unit.Instance)) : new Term.Atom(Atom.Unit.Instance) }, .. terms]),
              new Value.VModule([new ModuleEntry.Field(ModuleStamp, MemberKind.Private, UnitType), .. entries], Partial: false));
+    }
+
+    /// <summary>
+    /// The nominal a binding's definition names, peeling a former's lambdas to count
+    /// its parameters (E11): a parametric nominal's definition is a lambda chain over
+    /// the <c>Term.Nominal</c>.
+    /// </summary>
+    private static (NominalDecl Decl, int NumParams)? NominalHeadOf(Term def)
+    {
+        var numParams = 0;
+        while (def is Term.Lam lam)
+        {
+            def = lam.Body;
+            numParams++;
+        }
+        return def is Term.Nominal n ? (n.Decl, numParams) : null;
     }
 
     /// <summary>
@@ -92,11 +109,17 @@ public static partial class Elaborator
         var sealedNominals = ImmutableDictionary<string, NominalDecl>.Empty;
         var sealedTerm = quoted.Map((t, under) =>
         {
-            if (t is not Term.Nominal n || !ctx.Metas.GenerativeNominals.TryGetValue(n.Decl, out var label)) return null;
-            if (label is null)
+            if (t is not Term.Nominal n || !ctx.Metas.GenerativeNominals.TryGetValue(n.Decl, out var gen)) return null;
+            if (gen.Label is null)
                 throw new NotImplementedException("not ported yet: sealing a generative nominal that is not bound as a module member");
-            sealedNominals = sealedNominals.SetItem(label, n.Decl);
-            return new Term.Dot(new Term.Var(under), label);
+            sealedNominals = sealedNominals.SetItem(gen.Label, n.Decl);
+            // A former's captures are its applied parameters, last of the list: sealing
+            // re-applies them to the member projection, as the prototype's seal does.
+            if (gen.NumParams > n.Captures.Length)
+                throw new NotImplementedException("not ported yet: sealing a generative former with an unused type parameter");
+            Term member = new Term.Dot(new Term.Var(under), gen.Label);
+            var parameters = n.Captures.Skip(n.Captures.Length - gen.NumParams);
+            return parameters.Aggregate(member, (acc, p) => new Term.Ap(acc, Explicitness.Explicit, p));
         });
         return (Nbe.Eval(ctx.Metas, ctx.Environment.Push(new Value.VVar(ctx.Width, [])), sealedTerm), sealedNominals);
     }

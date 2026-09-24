@@ -2,6 +2,13 @@ using Fun.Kernel;
 
 namespace Fun.Compiler;
 
+/// <summary>
+/// A generative nominal's sealing information (E11): the member label its declaring
+/// module bound it to, and how many type parameters the former takes. Null label for
+/// a nominal not bound directly as a member.
+/// </summary>
+public sealed record GenerativeNominal(string? Label, int NumParams);
+
 /// <summary>The metas of one elaboration, and what they have been solved to.</summary>
 public sealed class MetaContext
 {
@@ -26,10 +33,12 @@ public sealed class MetaContext
 
     /// <summary>
     /// The generative nominals (E11): declared by a module whose evaluation performs.
-    /// Each maps to the member label it is bound to in that module, or null when it is
-    /// not bound directly as a member.
+    /// Each maps to the member label it is bound to in that module (null when it is
+    /// not bound directly as a member) and, for a type former, how many parameters it
+    /// takes - sealing re-applies those, since an applied nominal's captures are its
+    /// parameters.
     /// </summary>
-    public Dictionary<NominalDecl, string?> GenerativeNominals { get; } = [];
+    public Dictionary<NominalDecl, GenerativeNominal> GenerativeNominals { get; } = [];
 
     /// <summary>Impl choices waiting on argument types (traits.md, "Resolution", rule 4).</summary>
     public List<PendingEvidence> PendingEvidence { get; } = [];
@@ -61,7 +70,7 @@ public sealed class MetaContext
             throw new InvalidOperationException("a meta context must be seeded from the prelude before it creates metas");
         _solutions.AddRange(prelude._solutions);
         DeclaredNominals.AddRange(prelude.DeclaredNominals);
-        foreach (var (decl, label) in prelude.GenerativeNominals) GenerativeNominals[decl] = label;
+        foreach (var (decl, gen) in prelude.GenerativeNominals) GenerativeNominals[decl] = gen;
         _seeded = true;
     }
 
