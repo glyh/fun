@@ -83,16 +83,15 @@ public static partial class Elaborator
         var shapes = members.Select(m => Shape(m.Value)).ToList();
         var decls = shapes.Select(_ => NominalDecl.Declare("enum")).ToList();
         ctx.Metas.DeclaredNominals.AddRange(decls);
+        var types = shapes.Select(s => ctx.Eval(FormerType(s.Lambdas))).ToList();
 
         // The members' entries have a width before they have values: predict each
         // member's captures in a context holding stand-ins for them.
-        var standIns = members.Aggregate(ctx, (c, m) => c.Define(m.Name.Name, Value.VU.Instance, Value.VU.Instance))
-            with { RecursiveLevels = recursive };
-        var levels = shapes.Select(s => PredictCaptures(standIns, s.Lambdas, s.Enum)).ToList();
+        var levels = PredictCaptures(ctx, members, types, decls, shapes, recursive);
 
-        var types = shapes.Select(s => ctx.Eval(FormerType(s.Lambdas))).ToList();
         var values = shapes.Select((s, i) =>
-            Nbe.Eval(ctx.Metas, standIns.Environment, FormerTerm(decls[i], s.Lambdas.Count, levels[i], width + group, width + group))).ToList();
+            Nbe.Eval(ctx.Metas, StandInContext(ctx, members, types, decls, shapes, recursive, levels).Environment,
+                FormerTerm(decls[i], s.Lambdas.Count, levels[i], width + group, width + group))).ToList();
 
         var pending = ctx.PendingNominals;
         for (var i = 0; i < group; i++) pending = pending.SetItem(shapes[i].Enum, (decls[i], levels[i]));
@@ -125,22 +124,87 @@ public static partial class Elaborator
     }
 
     /// <summary>
-    /// The levels a member's enum will capture, worked out as <c>InferEnum</c> does
-    /// from the context its lambdas build (each binding its parameter, its body
-    /// the enclosing body), without elaborating it.
+    /// The context a recursive group's stand-ins live in: member <c>j</c> bound to
+    /// its type and a former over its declaration with the captures
+    /// <paramref name="levels"/> predicts for it, so a payload naming that member
+    /// sees its captures. No former names a member's slot, so they evaluate in any
+    /// environment the group's width deep - the stand-ins capturing nothing, say.
     /// </summary>
-    private static EquatableArray<int> PredictCaptures(Context ctx, List<Syntax.Lam> lambdas, Syntax.Enum e)
+    private static Context StandInContext(
+        Context ctx, EquatableArray<RecMember> members, List<Value> types, List<NominalDecl> decls,
+        List<(List<Syntax.Lam> Lambdas, Syntax.Enum Enum)> shapes, ImmutableHashSet<int> recursive,
+        List<EquatableArray<int>> levels)
     {
-        foreach (var lam in lambdas)
-            ctx = ctx.Bind(lam.Param.Name.Name, Value.VU.Instance) with { Enclosing = lam.Body };
-        return (FirstBoundLevel(ctx) is int firstBound
-            ? NamedLevels(ctx, ctx.Enclosing)
-                .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
-            : Enumerable.Empty<int>())
-            .Concat(ctx.ScopeCaptures)
+        var at = ctx.Width + members.Length;
+        var flat = Enumerable.Range(0, members.Length).Aggregate(ctx,
+            (c, j) => c.Define(members[j].Name.Name, types[j], Value.VU.Instance));
+        return Enumerable.Range(0, members.Length).Aggregate(
+            ctx with { RecursiveLevels = recursive },
+            (c, j) => c.Define(members[j].Name.Name, types[j],
+                Nbe.Eval(ctx.Metas, flat.Environment,
+                    FormerTerm(decls[j], shapes[j].Lambdas.Count, levels[j], at, at))));
+    }
+
+    /// <summary>
+    /// The levels each member's enum will capture, predicted before the members
+    /// elaborate: exactly what <see cref="EnumCaptureLevels"/> computes at the
+    /// use, read in a context holding stand-ins for the group. The payloads
+    /// elaborate once, against stand-ins capturing nothing; the prediction starts
+    /// from the levels their terms' variables stand at (as it always has) and then
+    /// reads their values' levels under stand-ins with the captures predicted so
+    /// far, repeating until the levels stop growing - a payload naming a member
+    /// sees that member's captures, which grow with its own payloads' mentions.
+    /// </summary>
+    private static List<EquatableArray<int>> PredictCaptures(
+        Context ctx, EquatableArray<RecMember> members, List<Value> types, List<NominalDecl> decls,
+        List<(List<Syntax.Lam> Lambdas, Syntax.Enum Enum)> shapes, ImmutableHashSet<int> recursive)
+    {
+        var group = members.Length;
+        Context Body(Context standIns, List<Syntax.Lam> lambdas)
+        {
+            foreach (var lam in lambdas)
+                standIns = standIns.Bind(lam.Param.Name.Name, Value.VU.Instance) with { Enclosing = lam.Body };
+            return standIns;
+        }
+
+        var elaboration = StandInContext(ctx, members, types, decls, shapes, recursive,
+            Enumerable.Repeat(EquatableArray<int>.Empty, group).ToList());
+        var payloads = shapes.Select(s =>
+        {
+            var body = Body(elaboration, s.Lambdas);
+            return (Body: body,
+                Terms: s.Enum.Constructors.Select(c => c.Payloads.Select(p => TypeTerm(body, p)).ToList()).ToList());
+        }).ToList();
+
+        // The seed: the enclosing names and the levels the payload terms'
+        // variables stand at - what the computation read before payload values
+        // did - plus whatever the scope always captures. The rounds below only
+        // grow it, so nothing captured before is lost.
+        var levels = payloads.Select(p => (FirstBoundLevel(p.Body) is int firstBound
+                ? NamedLevels(p.Body, p.Body.Enclosing)
+                    .Concat(p.Terms.SelectMany(ps => ps.SelectMany(t => FreeLevels(p.Body, t))))
+                    .Where(l => l >= firstBound && !p.Body.RecursiveLevels.Contains(l))
+                : Enumerable.Empty<int>())
+            .Concat(p.Body.ScopeCaptures)
             .Distinct()
             .Order()
-            .ToEquatableArray();
+            .ToEquatableArray()).ToList();
+
+        // Levels only grow, and there are no more of them than the context has
+        // entries, so the rounds are bounded; one that has not settled leaves the
+        // disagreement for CompletePending to report.
+        for (var round = 0; round < ctx.Width + group; round++)
+        {
+            var standIns = StandInContext(ctx, members, types, decls, shapes, recursive, levels);
+            var next = payloads.Select((p, i) =>
+            {
+                var body = Body(standIns, shapes[i].Lambdas);
+                return EnumCaptureLevels(body, p.Terms.SelectMany(ps => ps).Select(body.Eval));
+            }).ToList();
+            if (next.Zip(levels).All(x => x.First == x.Second)) return next;
+            levels = next;
+        }
+        return levels;
     }
 
     /// <summary>

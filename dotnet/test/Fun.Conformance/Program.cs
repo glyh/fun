@@ -47,7 +47,10 @@ static string? RunCase(string path)
     // An invariant failure reports as this case's failure, not as a crash of the run.
     // One reachable path the port believes is unreachable must not hide the other
     // 705 results - and it still never passes a case expecting `error`.
-    catch (Exception e) when (e is InvalidOperationException or IndexOutOfRangeException or ArgumentException)
+    // A UnifyException that escapes is one of those: a type mismatch is a
+    // FunException by the time it surfaces, so an escaped one is an invariant
+    // failure, never a language error.
+    catch (Exception e) when (e is InvalidOperationException or IndexOutOfRangeException or ArgumentException or UnifyException)
     {
         return $"invariant failure ({e.GetType().Name}): {e.Message}";
     }
@@ -63,7 +66,7 @@ static string? RunCase(string path)
     {
         try { return (Value: (string?)Driver.Describe(Driver.Run(elaborated)), Error: (Exception?)null); }
         catch (Exception e) when (e is FunException or NotImplementedException
-                                      or InvalidOperationException) { return (null, e); }
+                                      or InvalidOperationException or UnifyException) { return (null, e); }
     });
     if (!run.Wait(timeout)) return $"did not finish within {timeout.TotalSeconds}s";
     var (got, error) = run.Result;
@@ -72,6 +75,7 @@ static string? RunCase(string path)
     {
         (_, NotImplementedException e) => e.Message,
         (_, InvalidOperationException e) => $"invariant failure ({e.GetType().Name}): {e.Message}",
+        (_, UnifyException e) => $"invariant failure ({e.GetType().Name}): {e.Message}",
         ("error", FunException) => null,
         ("error", _) => "expected an error",
         (_, FunException e) => $"evaluation failed: {e.Message}",

@@ -45,7 +45,7 @@ public static partial class Elaborator
     /// <summary>
     /// <c>enum { … }</c>: a new declaration, whose identity is itself and the
     /// values of its captures. It captures every entry, from the first bound one
-    /// on, that its enclosing function body or module names or its payload types
+    /// on, that its enclosing function body or module names or its payload values
     /// mention - plus whatever the scope always captures, a module's stamp - and
     /// each payload type is closed over those captures.
     /// </summary>
@@ -57,15 +57,7 @@ public static partial class Elaborator
             .ToList();
         var payloads = payloadTerms.Select(ps => ps.Select(p => ctx.Eval(p)).ToList()).ToList();
 
-        var levels = (FirstBoundLevel(ctx) is int firstBound
-            ? NamedLevels(ctx, ctx.Enclosing)
-                .Concat(payloadTerms.SelectMany(ps => ps.SelectMany(p => FreeLevels(ctx, p))))
-                .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
-            : Enumerable.Empty<int>())
-            .Concat(ctx.ScopeCaptures)
-            .Distinct()
-            .Order()
-            .ToEquatableArray();
+        var levels = EnumCaptureLevels(ctx, payloads.SelectMany(ps => ps));
 
         EquatableArray<ConstructorDecl> constructors =
             [.. e.Constructors.Select((c, i) => new ConstructorDecl(c.Name,
@@ -74,6 +66,25 @@ public static partial class Elaborator
         ctx.Metas.DeclaredNominals.Add(decl);
         var captures = levels.Select(l => (Term)new Term.Var(Nbe.LevelToIndex(ctx.Width, l))).ToEquatableArray();
         return (new Term.Nominal(decl, captures), Value.VU.Instance);
+    }
+
+    /// <summary>
+    /// The levels an enum declared in <paramref name="ctx"/> captures: every entry,
+    /// from the first bound one on, that its enclosing function body or module
+    /// names or its payload values mention - each value read back as a term, so
+    /// a transparent binding's entry is seen through to the variable it holds,
+    /// the quotes the prototype's <c>capture_payloads</c> feeds on - plus whatever
+    /// the scope always captures, a module's stamp. A recursive entry is never
+    /// captured: a nominal refers to it by its declaration.
+    /// </summary>
+    private static EquatableArray<int> EnumCaptureLevels(Context ctx, IEnumerable<Value> payloadValues)
+    {
+        IEnumerable<int> mentioned = FirstBoundLevel(ctx) is int firstBound
+            ? NamedLevels(ctx, ctx.Enclosing)
+                .Concat(payloadValues.SelectMany(p => FreeLevels(ctx, Nbe.Quote(ctx.Metas, ctx.Width, p))))
+                .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
+            : Enumerable.Empty<int>();
+        return mentioned.Concat(ctx.ScopeCaptures).Distinct().Order().ToEquatableArray();
     }
 
     /// <summary>
