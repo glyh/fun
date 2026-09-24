@@ -117,6 +117,17 @@ order the frontier should take it:
   generalized like a generic function's, instantiated at the use; the prototype's
   `TupleLengthMismatch` / `NotANominalType` are prototype defects, and the port's
   `not ported yet` on that path (`Elaborator.Patterns.cs:71`) becomes work.
+- The undecided rows are **settled** (2026-09-24, [the unverified rows](port-unverified-rows.md)
+  now closed): four gaps came out of seven rows, in the order they should be taken —
+  [an enum's captures come from its payload values](port-enum-captures-from-payload-values.md)
+  (the port **crashes** on it today, so the runner must also stop dying),
+  [effect/trait/impl statements in a quoted block](port-quoted-block-statements.md),
+  [a pattern synonym over a type-case pattern](port-pattern-synonym-over-type-case-rhs.md),
+  and [a type-aware operator macro](port-typed-operator-macro.md), which **waits on a
+  ruling** (the prototype *hangs* on it, so its typed argument's shape must be decided,
+  and it is the one gap that cannot become a shared case while the prototype loops).
+  The mechanical half — one `FunException` and two assertions — is
+  [the probed rows' conversions](port-probed-row-conversions.md).
 - The 9 undecided and the 13 parity rows are ruled by the two rules above; the ones
   that need a semantic ruling are one question at a time, per the port ticket. Three are
   now settled without one: the parametric nominal in a generative module (real gap), the

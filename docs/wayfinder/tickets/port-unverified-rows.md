@@ -3,7 +3,7 @@ title: "Port: settle the rows nobody could decide by probing them"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -94,29 +94,35 @@ Per row: the program (or what you tried and why you stopped), the verdict, and w
 verdict implies. Two or three rows settled is a fine outcome; a row resolved by
 inference is not.
 
-## Paused (2026-09-24) — resume here
+## Verdicts (2026-09-24) — closed
 
-The probing fork was killed by a provider usage limit (resets 2026-09-24 18:33:48)
-after ~94 tool calls, mid-report. It left **no branch**, which is correct: it added no
-case files, so its worktree was clean.
+Probed by a fresh fork on `32aa27e` (the `deepseek` run; the earlier attempt died on a
+provider rate limit), 5 of 7 rows reached, every verdict re-verified by the integrator in
+both runners before a ticket was opened. Line numbers below are as they are at `32aa27e`
+— several of the ticket's originals had drifted (the table at the end of this section).
 
-What did reach the integrator before it died, as fragments — enough to shorten the next
-run, not enough to settle any row:
+| row | site | verdict | follow-up |
+|---|---|---|---|
+| 1 — typed operator macro (G4) | `Expander.Macros.cs:306` | **split**: an *untyped* operator macro is **parity** (both runners answer `1`); a **typed** one is a **real gap** — the port refuses, and the prototype **hangs** (exit 124 at 25 s, no output) | [a type-aware operator macro](port-typed-operator-macro.md) — **needs a ruling** on its argument shape |
+| 2 — recursive-enum captures (G5) | `Elaborator.RecTypes.cs:62`, `:132` | **real gap, and a crash**: the prototype accepts, the port throws an **unhandled** `UnifyException` and kills the whole run | [captures from payload values](port-enum-captures-from-payload-values.md) |
+| 3 — `Syntax.Stx` | `Elaborator.cs:304` | **parity**: both refuse (the prototype's `elab_infer.ml:1418` is an assertion) | [the conversions](port-probed-row-conversions.md) §1 |
+| 4 — `Value` kinds in a meta solution | `Unify.cs:204`, `:222` | **unreachable** — no program put a `VRef`/`VCont`/`VPatternSynonym` into a solution | [the conversions](port-probed-row-conversions.md) §2 |
+| 5 — quoting a `VCont` | `Nbe.cs:577` | **unreachable** — no quoting of a continuation was reachable four different ways | [the conversions](port-probed-row-conversions.md) §3 |
+| 6 — a synonym over a type-case pattern | `Elaborator.Patterns.cs:75` | **real gap**: the prototype answers `1`, the port refuses. The `:87` half dissolves under the generalization ruling (evidence in the ticket) | [a pattern synonym over a type-case pattern](port-pattern-synonym-over-type-case-rhs.md) |
+| 7 — statements in a quoted block | `Enforest.Roles.cs:867` | **real gap**: `effect` and `trait` statements answer `1` in the prototype, refuse in the port; `impl` untested | [quoted block statements](port-quoted-block-statements.md) |
 
-- **Row 1 (G4, a typed operator macro): a probe came back `1` in both runners →
-  *parity, not a gap*** (its words: "Both runners give `1` on r1 — parity, not a gap
-  (surprising)"). A variant it called `r1b` "**throws** the gap", i.e. a related shape
-  *does* reach the refusal, so row 1 may split into a parity row plus a narrower real
-  gap. Both need re-probing to be written down.
-- **Row 3 (`Syntax.Stx`, the typed-macro-argument marker): its prototype counterpart is
-  an assertion** at `lib/semantic/typecheck/elab_infer.ml:1418` — so the prototype is not
-  quietly handling it either; the fork was about to check whether the prelude exposes an
-  `stx` builder a macro could use to inject one.
-- **Rows 2, 4, 5, the row-6 remainder and 7: nothing recorded.**
+The reachable shape matters for row 7: it is a quoted **block expression**,
+`quote( { … } )`. `quote { … }` goes through `ReadItemsNow`/`ParseModuleStatement` and
+never reaches `WithBody` — a case written that way proves nothing.
 
-Resume with `resume: "unverified-rows"` (its context holds the probes and their output).
-Its full transcript is at
-`/tmp/pi-subagents-1000/home-lyh-pullground-fun/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/d0b516c6-c060-43f.output`
-— under `/tmp`, so a fresh fork should be told this section rather than the path. If it
-is respawned rather than resumed, give it the corrected row-6 wording above and the two
-lines (site numbers, not the older `:72/:76/:88`) already fixed in this file.
+Corrected line numbers at `32aa27e` (the ticket's originals in parentheses):
+`Elaborator.RecTypes.cs:62` is the `CompletePending` throw, message on `:63` (`:54`);
+`Enforest.Roles.cs:845` is `ReadBlock` and the throw is `WithBody` `:867` (`:845`);
+`Nbe.cs:561` is inside `Quote` and the `VCont` catch-all is `:577` (`:561`);
+`Unify.cs:204` is the value-kind refusal, `:206` the `VNeutral` case, and the catch-all
+is `:222` (`:206`/`:223`). `Elaborator.Patterns.cs:75`/`:87` matched as written.
+
+Resumable transcripts of both probe attempts are under
+`/tmp/pi-subagents-1000/home-lyh-pullground-fun/01a0d1e2-8670-75e3-a2ef-72dadaf596b5/tasks/`
+(`d0b516c6…` the first, `1abe1ca5…` the second) — convenience only; this section is the
+record.
