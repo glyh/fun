@@ -1,6 +1,6 @@
 ---
-title: "Port: a type-aware operator macro"
-parent: port-core-tt-to-dotnet.md
+title: "A type-aware operator macro"
+parent: ../fun-design-map.md
 labels:
   - wayfinder:task
 status: open
@@ -8,13 +8,15 @@ assignee:
 blocked_by:
 ---
 
-# Port: a type-aware operator macro
+# A type-aware operator macro
 
-Verdict of [the unverified rows](port-unverified-rows.md), row 1 — its `r1b` half (the
-`r1a` half is parity: an **untyped** operator macro works in both runners). Verified by
-the integrator 2026-09-24 at `32aa27e`.
+**Post-port work, by ruling — not a port gap.** Decided by the user on 2026-09-24, while
+[the unverified rows](port-unverified-rows.md) were being probed (its row 1): a typed
+operator macro is deferred, because **parity here is "neither implementation has it"** —
+the OCaml prototype has no working one, it loops — and this is something wanted *after*
+the port, not before it.
 
-## The program
+## What the probe measured (integrator, `32aa27e`)
 
 ```fun
 { infix (foo) (a, b) { Syntax.i64(9) };
@@ -24,38 +26,45 @@ the integrator 2026-09-24 at `32aa27e`.
 
 | runner | output |
 |---|---|
-| OCaml | **hangs** — no output, killed at 25 s (`timeout 25 dune exec fun` → exit 124) |
+| OCaml | **hangs** — no output, exit 124 at 25 s |
 | port | `not ported yet: a type-aware operator macro \`foo\`` (`Expander.Macros.cs:306`) |
 
-The refusal is real: the port raises it for an operator entry whose `Signature` is not
-null, which the prototype's `syntax_operator_arg` (`lib/expand/enforest_util.ml:142`)
-admits. And the prototype never answers — it loops — so this is neither parity nor a
-pass: an unported path in the port **and** a prototype defect.
+The port's refusal is the honest-runner form (convention 2) and **stays exactly as it
+is**: a present-but-unimplemented path raises `NotImplementedException`, never a
+`FunException` — a language error is a different thing, and a case expecting `error`
+must not start passing because a feature is missing. No port change follows from this
+ticket.
 
-## The ruling this needs — do not implement before it
+The *untyped* form already works in both, which is why row 1 split in two:
 
-The prototype's intent is the `MacroCall` deferral at `lib/expand/enforest.ml:681`: it
-folds the whole operator use into **one** argument. The port instead splits the operands
-by arity, and it is that split whose typed case has no implementation. So the shape of a
-typed operator macro's argument is a semantic choice, not an implementation detail.
+```fun
+{ infix (foo) (a, b) { Syntax.i64(9) }; macro foo(e) { Syntax.i64(1) }; 1 foo 2 }   -- 1 in both
+```
 
-Take to the user: **the prototype's deferral** (one argument, the whole operator use) is
-the recommendation — `foo`'s written parameter is `x : Expr(I64)`, one expression, not
-one per operand — with the alternative being to keep the port's arity split and define
-what each typed parameter means then.
+## What is known when it is picked up
 
-## The test problem, which the ruling has to solve too
-
-This program **cannot** join `test/conformance/cases` while the prototype loops: the
-OCaml runner runs every case, so the suite would hang, and `prototype-divergences.txt`
-only works for a case that *fails*, not one that never returns. Either the ruling
-chooses a shape the prototype also refuses (then it can be a listed divergence), or this
-becomes a documented exception to convention 6 — a port-only test in
-`dotnet/test/Fun.Tests` naming this ticket — because conventions 6 and 8 cannot both be
-satisfied by a program the prototype hangs on. Say which in the ruling, not in the code.
+- The prototype's **intent is legible even though its execution loops**:
+  `lib/expand/enforest_util.ml:142` (`syntax_operator_arg`) admits an operator entry
+  whose `Signature` is not null, and `lib/expand/enforest.ml:681` defers the use as a
+  `MacroCall`, folding the **whole operator use into one argument**.
+- The port's `Expander.Macros.cs:306` splits the operands by arity instead, which is why
+  its typed case has nothing to do.
+- So the open question is the **shape**, and it is a language question rather than a bug:
+  does the macro receive one syntax argument covering `1 foo 2`, or one per operand? The
+  prototype's intent reads as the former — `x : Expr(I64)` is one expression.
+- **The prototype's hang is a prototype defect**, recorded here because it is the reason
+  this could not be probed into a shared case. The prototype is not maintained after the
+  port, so nothing gets fixed there; the record is for whoever implements this.
+- **It cannot become a shared conformance case while the prototype loops.** The OCaml
+  runner runs every case, so the suite would hang, and `prototype-divergences.txt` covers
+  a case that *fails*, not one that never returns. Whoever takes this must decide the
+  test story explicitly — a port-only xUnit test naming this ticket is the likely
+  exception to convention 6 ("a source-to-result test is a conformance case, never
+  xUnit"), and it should be argued in the ticket rather than slipped in.
 
 ## Reading
 
-- `dotnet/src/Fun.Expand/Expander.Macros.cs:306` (the refusal), `Enforest.Roles.cs`
-  (operator roles and `ExpandOperatorUse`), `Expander.Macros.cs`'s `ExpandMacroCall`
-- `lib/expand/enforest.ml:681` (the deferral), `lib/expand/enforest_util.ml:142`
+- `dotnet/src/Fun.Expand/Expander.Macros.cs:306`, `Enforest.Roles.cs`, and
+  `ExpandMacroCall` in `Expander.Macros.cs`
+- `lib/expand/enforest.ml:681`, `lib/expand/enforest_util.ml:142`
+- [the unverified rows](port-unverified-rows.md) row 1 for the probe and its evidence

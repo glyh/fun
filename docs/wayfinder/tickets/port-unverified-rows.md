@@ -103,7 +103,7 @@ both runners before a ticket was opened. Line numbers below are as they are at `
 
 | row | site | verdict | follow-up |
 |---|---|---|---|
-| 1 — typed operator macro (G4) | `Expander.Macros.cs:306` | **split**: an *untyped* operator macro is **parity** (both runners answer `1`); a **typed** one is a **real gap** — the port refuses, and the prototype **hangs** (exit 124 at 25 s, no output) | [a type-aware operator macro](port-typed-operator-macro.md) — **needs a ruling** on its argument shape |
+| 1 — typed operator macro (G4) | `Expander.Macros.cs:306` | **split**: an *untyped* operator macro is **parity** (both runners answer `1`); a **typed** one is neither implementation's feature — the port refuses and the prototype **hangs** (exit 124 at 25 s, no output) | [a type-aware operator macro](port-typed-operator-macro.md) — **ruled 2026-09-24: deferred to after the port**, because parity is "neither has it"; the port keeps its refusal |
 | 2 — recursive-enum captures (G5) | `Elaborator.RecTypes.cs:62`, `:132` | **real gap, and a crash**: the prototype accepts, the port throws an **unhandled** `UnifyException` and kills the whole run | [captures from payload values](port-enum-captures-from-payload-values.md) |
 | 3 — `Syntax.Stx` | `Elaborator.cs:304` | **parity**: both refuse (the prototype's `elab_infer.ml:1418` is an assertion) | [the conversions](port-probed-row-conversions.md) §1 |
 | 4 — `Value` kinds in a meta solution | `Unify.cs:204`, `:222` | **unreachable** — no program put a `VRef`/`VCont`/`VPatternSynonym` into a solution | [the conversions](port-probed-row-conversions.md) §2 |

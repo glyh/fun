@@ -364,6 +364,11 @@ every defect below is an invariant with no name in the source.
   (`{ open M; e }`) and `M.(e)` expands to the same `Open`, so it is a second
   spelling for one construct. If the double-bracketed enum-match idiom grows into
   an irritant, reopen with call sites as evidence.
+- [A type-aware operator macro](tickets/port-typed-operator-macro.md) — **after the
+  port** (user ruling, 2026-09-24): an operator declared as a macro with a typed
+  signature. Neither implementation has a working one — the prototype hangs, the port
+  refuses — so this is post-port work and not a port gap, and it needs a shape decision
+  (one argument for the whole use, or one per operand) before it is built.
 
 - [Specify Stage 11 macro-powered language features](tickets/specify-stage-11-macro-powered-language-features.md)
   — umbrella for demoting built-in constructs to library. Direction decided;
