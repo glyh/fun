@@ -80,10 +80,13 @@ public abstract partial record DecisionTree
 public abstract partial record Frame
 {
     /// <summary>
-    /// A match waiting on a value whose head is unknown: its arms stay closed over
-    /// <paramref name="Env"/>, each under its own binders.
+    /// A match waiting on a value whose head is unknown, or on an unknown part a
+    /// pattern inspects: its arms stay closed over <paramref name="Env"/>, each under
+    /// its own binders. <paramref name="Scrutinee"/> is the match's scrutinee as a value,
+    /// so read-back rebuilds it even when the neutral the frame hangs on is only a part
+    /// of it (a sub-occurrence, not the head).
     /// </summary>
-    public sealed record FMatch(Environment Env, Term.Match Match) : Frame;
+    public sealed record FMatch(Environment Env, Term.Match Match, Value Scrutinee) : Frame;
 }
 
 public sealed record DestructCase(string Name, DecisionTree Tree);

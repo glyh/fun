@@ -217,7 +217,7 @@ public static partial class Unify
                 Frame.FDot d => new Term.Dot(acc, d.Name),
                 Frame.FRefGet => new Term.RefGet(acc),
                 Frame.FRefSet s => new Term.RefSet(acc, Go(s.Value)),
-                Frame.FMatch m => RenameStuckMatch(mc, id, ren, acc, m),
+                Frame.FMatch m => RenameStuckMatch(mc, id, ren, m),
                 _ => throw new NotImplementedException($"not ported yet: renaming a {frame.GetType().Name} frame"),
             }),
             // Unreachable: a meta is solved with a type, so no VRef, VCont or
@@ -231,7 +231,7 @@ public static partial class Unify
     /// is opened at fresh variables for its binders and renamed under them - exactly
     /// as a stuck match is read back (<c>Nbe.QuoteStuckMatch</c>).
     /// </summary>
-    private static Term RenameStuckMatch(MetaContext mc, int id, Renaming ren, Term scrutinee, Frame.FMatch frame)
+    private static Term RenameStuckMatch(MetaContext mc, int id, Renaming ren, Frame.FMatch frame)
     {
         var bodies = new List<Term>();
         for (var i = 0; i < frame.Match.Bodies.Length; i++)
@@ -245,7 +245,7 @@ public static partial class Unify
             }
             bodies.Add(Rename(mc, id, lifted, Nbe.Eval(mc, env, frame.Match.Bodies[i])));
         }
-        return frame.Match with { Scrutinee = scrutinee, Bodies = [.. bodies] };
+        return frame.Match with { Scrutinee = Rename(mc, id, ren, frame.Scrutinee), Bodies = [.. bodies] };
     }
 
     /// <summary>

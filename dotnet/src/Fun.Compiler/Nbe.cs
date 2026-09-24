@@ -267,8 +267,16 @@ public static partial class Nbe
                         continue;
                     case Kont.Handle { InBody: false } f:
                         stack.Push(f with { InBody = true });
-                        (env, term) = SelectArm(mc, f.Env, value, f.Match);
-                        goto evaluate;
+                        switch (SelectArm(mc, f.Env, value, f.Match))
+                        {
+                            case MatchStep.Arm arm:
+                                (env, term) = (arm.Env, arm.Body);
+                                goto evaluate;
+                            case MatchStep.Stuck stuck:
+                                value = StuckNeutral(stuck.Value, new Frame.FMatch(f.Env, f.Match, Force(mc, value)));
+                                continue;
+                        }
+                        break;
                     case Kont.Handle:
                         continue;
 
@@ -356,9 +364,16 @@ public static partial class Nbe
                     }
 
                     case Kont.MatchOn f:
-                        if (StuckMatch(mc, value, f.Env, f.Match) is { } stuck) { value = stuck; continue; }
-                        (env, term) = SelectArm(mc, f.Env, value, f.Match);
-                        goto evaluate;
+                        switch (SelectArm(mc, f.Env, value, f.Match))
+                        {
+                            case MatchStep.Arm arm:
+                                (env, term) = (arm.Env, arm.Body);
+                                goto evaluate;
+                            case MatchStep.Stuck stuck:
+                                value = StuckNeutral(stuck.Value, new Frame.FMatch(f.Env, f.Match, Force(mc, value)));
+                                continue;
+                        }
+                        break;
                     case Kont.NominalOf f: value = new Value.VNominal(f.Decl, ((Value.VProd)value).Items); continue;
                     case Kont.QuoteFill f: value = FillQuote(f, value); continue;
                     case Kont.TraitDictOf f: value = TraitDict(f, value); continue;
@@ -574,7 +589,7 @@ public static partial class Nbe
                 Frame.FDot d => new Term.Dot(acc, d.Name),
                 Frame.FRefGet => new Term.RefGet(acc),
                 Frame.FRefSet s => new Term.RefSet(acc, Quote(mc, width, s.Value)),
-                Frame.FMatch m => QuoteStuckMatch(mc, width, acc, m),
+                Frame.FMatch m => QuoteStuckMatch(mc, width, m),
                 _ => throw new InvalidOperationException($"unhandled frame {frame.GetType().Name}"),
             }),
             // Unreachable: every remaining kind is either handled above or a value

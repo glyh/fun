@@ -20,21 +20,22 @@ public static partial class Nbe
     // ponytail: evaluating the head and applying a former nests one evaluation
     // per nominal-head match on the native stack (as Force does), not a Kont frame - a
     // shared choice documented for uniformity, with no observable difference.
-    private static bool MatchesNominalHead(MetaContext mc, Environment env, CorePattern.NominalHead head, Value.VNominal type, Occurrence at, List<(Occurrence, Value)> binds)
+    private static MatchResult MatchesNominalHead(MetaContext mc, Environment env, CorePattern.NominalHead head, Value.VNominal type, Occurrence at, List<(Occurrence, Value)> binds)
     {
-        if (!ReferenceEquals(head.Decl, type.Decl)) return false;
+        if (!ReferenceEquals(head.Decl, type.Decl)) return new MatchResult.NoMatch();
 
         var metas = Enumerable.Range(0, head.Arity).Select(_ => mc.Fresh()).ToList();
         var written = metas.Aggregate(Eval(mc, env, head.Head), (f, id) => Apply(mc, f, new Value.VMeta(id, [])));
         var solved = new Dictionary<int, Value>();
-        if (!SameInstance(mc, written, type, metas, solved)) return false;
+        if (!SameInstance(mc, written, type, metas, solved)) return new MatchResult.NoMatch();
 
         for (var i = 0; i < head.Arity; i++)
         {
             var parameter = solved.TryGetValue(metas[i], out var p) ? p : new Value.VMeta(metas[i], []);
-            if (!Matches(mc, env, head.Params[i], parameter, new Occurrence.Child(at, i), binds)) return false;
+            var sub = Matches(mc, env, head.Params[i], parameter, new Occurrence.Child(at, i), binds);
+            if (sub is not MatchResult.Matched) return sub;
         }
-        return true;
+        return new MatchResult.Matched();
     }
 
     /// <summary>

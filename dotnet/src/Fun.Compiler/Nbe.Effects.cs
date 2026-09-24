@@ -94,7 +94,12 @@ public static partial class Nbe
                         var continuation = new Value.VCont(new CapturedFrames([.. popped]));
                         stack.Push(handler with { InBody = true });
                         // The argument pattern is exhaustive (checked at elaboration), so its tree always selects.
-                        var (armEnv, body) = SelectArm(mc, handler.Env, arg, new Term.Match(Term.U.Instance, [branch.Body], branch.Argument));
+                        var (armEnv, body) = SelectArm(mc, handler.Env, arg, new Term.Match(Term.U.Instance, [branch.Body], branch.Argument)) switch
+                        {
+                            MatchStep.Arm arm => (arm.Env, arm.Body),
+                            MatchStep.Stuck => throw new InvalidOperationException("an effect argument pattern is stuck"),
+                            _ => throw new InvalidOperationException("unhandled match step"),
+                        };
                         return (armEnv.Push(continuation), body);
                     }
                     break;
