@@ -6,6 +6,13 @@ using Fun.Compiler;
 
 const string UnitInfix = ".unit-";
 
+// --file <path>: run a single program and print the differential protocol for
+// scripts/differential.sh (the OCaml half is bin/differential.ml). It reuses
+// the same value/error shape as a normal case, so a program is judged exactly
+// as the suite judges it.
+if (args is ["--file", var file])
+    return RunFile(file);
+
 // prototype-divergences.txt is the OCaml runner's business: the port passes every case.
 var root = CasesRoot(args);
 var cases = Directory.EnumerateDirectories(root)
@@ -107,3 +114,74 @@ static string CasesRoot(string[] args)
     }
     throw new DirectoryNotFoundException("no dune-project above the runner; pass the cases directory");
 }
+
+// The differential protocol, one line per program (scripts/differential.sh):
+//   OK           the program elaborates (sibling .expect is "ok", so it is not run)
+//   VALUE <s>    Driver.Describe of the result
+//   ELAB <msg>   expansion/elaboration failed
+//   EVAL <msg>   evaluation failed
+//   HANG         the run did not finish within 60s
+// The accounting stays honest: an unported path is a failure, an invariant
+// failure is a failure, and neither passes a program expecting `error`.
+static int RunFile(string path)
+{
+    var full = Path.GetFullPath(path);
+    var dir = Path.GetDirectoryName(full)!;
+    var name = Path.GetFileNameWithoutExtension(full);
+    var units = UnitSources(dir, name);
+    var expect = Path.Combine(dir, name + ".expect");
+    var elaboratesOnly = File.Exists(expect) && File.ReadAllText(expect).Trim() == "ok";
+
+    Elaborated elaborated;
+    try
+    {
+        elaborated = Driver.Elaborate(File.ReadAllText(full), units);
+    }
+    catch (Exception e)
+    {
+        PrintFile("ELAB", DescribeFailure(e));
+        return 0;
+    }
+
+    if (elaboratesOnly)
+    {
+        PrintFile("OK", "");
+        return 0;
+    }
+
+    var timeout = TimeSpan.FromSeconds(60);
+    var run = Task.Run(() =>
+    {
+        try { return (Value: (string?)Driver.Describe(Driver.Run(elaborated)), Error: (Exception?)null); }
+        catch (Exception e) { return (Value: (string?)null, Error: e); }
+    });
+    if (!run.Wait(timeout))
+    {
+        PrintFile("HANG", "");
+        return 0;
+    }
+    var (value, error) = run.Result;
+    if (error is not null)
+    {
+        PrintFile("EVAL", DescribeFailure(error));
+        return 0;
+    }
+    PrintFile("VALUE", value ?? "");
+    return 0;
+}
+
+// The honest failure description for --file: an unported path says so, an
+// invariant failure says so, anything unexpected names its type.
+static string DescribeFailure(Exception e) => e switch
+{
+    NotImplementedException => "not ported: " + e.Message,
+    FunException => e.Message,
+    InvalidOperationException or IndexOutOfRangeException or ArgumentException or UnifyException =>
+        $"invariant ({e.GetType().Name}): {e.Message}",
+    _ => $"{e.GetType().Name}: {e.Message}",
+};
+
+static void PrintFile(string tag, string msg) =>
+    Console.WriteLine(msg.Length == 0 ? tag : $"{tag} {OneLine(msg)}");
+
+static string OneLine(string s) => s.Replace('\r', ' ').Replace('\n', ' ');
