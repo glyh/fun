@@ -3,7 +3,7 @@ title: "Port: a pattern synonym is checked, and generalizes where its type is un
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -98,3 +98,40 @@ Shared cases, run through both runners as the acceptance condition:
 Prefer a **qualified** use (`M.Two(x, b)`) over `open M` in these cases, so the
 prototype's failure stays the one this ticket is about rather than its recorded
 open-through-synonym defect.
+
+## Resolution (2026-09-24) — closed
+
+Merged from `pi-agent-2ec360d5-f99f-4ef` (`ee56f2f`, `7c63c48`), on top of the landed
+E11 work.
+
+- **What landed.** The two `NotImplementedException` refusals in
+  `Elaborator.Patterns.cs` became the `let`-generalization step: `CollectSynonymMetas`
+  gathers the unsolved metas of the scrutinee and parameter types; `VPatternSynonym`
+  (`dotnet/src/Fun.Kernel/Core.Patterns.cs`) now carries `TypeParams`, `Generalized` and
+  the definition's `Env`/`Width`; `InstantiateSynonym` quotes the stored template back
+  under the definition environment and substitutes each generalized meta with a fresh
+  one, so one declaration is elaborated once and instantiated per use, with captured
+  names still the definition's (hygiene unchanged). `ElaborateSynonymUse` and
+  `RefineScrutineeType.Implied` instantiate before unifying. `:75`
+  (`NeedsDirectMatch`) is untouched and owns
+  [its own ticket](port-pattern-synonym-over-type-case-rhs.md); `:87` dissolved, as this
+  ticket predicted.
+- **Numbers, integrator-verified after merging:** C# conformance **723 → 728, 0
+  failed**; xUnit 182/182; `dune test` and `dune test test/conformance` green — 728
+  cases, 0 failed, **26** known prototype divergences.
+- **Four divergences, not two.** The fork probed instead of assuming, and found the
+  prototype also *accepts* an unused ill-typed synonym (`Pair(a, a)` where
+  `Pair : (I64, Bool)`), so the "checked" half of the ruling has **no** prototype
+  counterpart — the port is stricter, and that case is listed too. The `use-mismatch`
+  case is deliberately **not** listed: the prototype's declaration error coincides with
+  the coarse `error` expect, so it passes there for the wrong reason. (A green OCaml run
+  proves each listed case really does fail there, since the runner reports a listed case
+  that passes as a failure.)
+- **Which reading of the generalized parameters was taken:** the **rigid-variable** one
+  — fresh metas per use, solved by unification against the scrutinee's type — not
+  `f[I64]`-style explicit/implicit solving. Nothing in the ruled cases distinguishes the
+  two, so this is a choice rather than a defect; if a use should be able to *supply*
+  them, that is a new question, not a bug in this work.
+- **Left open, untested:** a use whose scrutinee type is itself a meta (inside an
+  unannotated lambda). `Implied` instantiates and lets it stay stuck; the port has no
+  scope-end unsolved-meta report, and no case exercises it yet.
