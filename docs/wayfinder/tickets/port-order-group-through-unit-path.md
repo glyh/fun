@@ -3,7 +3,7 @@ title: "Port: an order group named through a unit member's path"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -60,3 +60,34 @@ so it is an **ordinary case, not a divergence**. Add the companion shapes while 
 there, each verified in both runners first: the same path used through a *binder* rather
 than an `import` (`W = module { … }`), and a depth-2 path that must still fail when the
 named member is not an order group (add that one only if the prototype agrees it errors).
+
+## Resolution (2026-09-21) — closed
+
+Merged from `pi-agent-ff187c38-f6a5-4c4` (`9da3bb7`, merge `70c5f8a`). The port no
+longer refuses a dotted order-group path of depth > 1: `ResolveOrder` folds the
+reference into a `Syntax.FieldAccess` chain and reads the roles the last unit it denotes
+exports.
+
+- `Enforest.Roles.cs` — the fold, replacing the depth-1-only hard failure.
+- `MacroRuntime.cs` / `Expander.Imports.cs` / `Expander.cs` — the port lacked the
+  prototype's `unit_path_of`/`unit_member` altogether, so a member could not be resolved
+  to the unit it denotes. `UnitSyntax` gained `UnitMembers`, a `pub M = import "m"`
+  binding is recorded as one, and `UnitPathOf` gained the recursive `FieldAccess` case.
+  Everything in `Fun.Expand`; no OCaml or prelude source touched.
+- Cases added (`imports/`): `deep` (this ticket's three-file case, ordinary — the
+  prototype passes it), `order-group-missing` (the path's final member is not an order
+  group → `error`, the prototype refuses too), `order-through-binder` (see below).
+- Verified by the integrator: C# conformance **718 → 721, 0 failed**; xUnit 182/182;
+  `dune test` and `dune test test/conformance` green; the OCaml runner reports 721 cases,
+  0 failed, 22 known divergences — no divergence entry added, as the ticket requires.
+
+**Open, taken to the user (2026-09-21):** `order-through-binder` commits the binder
+shape as `error` — `W = module { pub M = import "m" }; infix (@@) W.M.g …` errors in
+*both* runners, so the case is parity rather than a decision, but the fork's reason for
+it (a first-class `module { … }` value denotes no unit, so only `import` bindings and
+paths through imported units name one) is the fork's **inference**, not a ruling, and
+the case asserts it. If the user rules the other way the case is rewritten and the
+gap becomes a ticket; the import-path fix above is unaffected either way.
+
+Integrator cleanup: the resolved-name label rule (`M#3` → `M`) is now reused from the
+existing private helper instead of an inline copy in `Expander.Imports.cs`.
