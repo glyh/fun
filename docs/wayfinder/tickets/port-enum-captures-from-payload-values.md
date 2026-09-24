@@ -61,3 +61,32 @@ sits *after* `CloseOver`, so it is masked by it.
 - `dotnet/src/Fun.Compiler/Elaborator.Enum.cs` (`InferEnum`, `CloseOver`),
   `Elaborator.RecTypes.cs:62`/`:132`, `Unify.Enum.cs:42`, `Unify.cs:161`
 - the prototype's `capture_payloads`
+
+## Paused (2026-09-24) — nothing written, plan pinned
+
+The implementation fork was stopped during its **diagnosis** phase by the work pause:
+clean tree, **nothing committed**, so this ticket resumes exactly as written, from base
+`1dec417`.
+
+What its read confirmed, agreeing with the evidence above: `InferEnum` computes the
+capture `levels` from the payload **terms** (via `FreeLevels`, which sees `Var(A)`'s
+level) while `CloseOver` runs on the payload **values** (`VVar(X)`), so `X ∉ levels`;
+and `PredictCaptures` reads only `NamedLevels`, i.e. names. The prototype's
+`capture_payloads` feeds on *quoted values*, which is the shape to mirror.
+
+The next step, as it left it:
+
+1. Quote the payload values — `Nbe.Quote(ctx.Metas, ctx.Width, p)` — into one shared
+   helper, `EnumCaptureLevels(ctx, payloadValues)`.
+2. Use that helper in **both** places: replace `FreeLevels(payloadTerms)` in `InferEnum`,
+   and elaborate + eval the payloads inside `PredictCaptures`'s stand-in context, so the
+   name-based prediction and the use-based computation cannot disagree.
+3. Add the shared case(s) (the program above, preferring an observable `I64`; plus the
+   nominal-payload variant), then catch `UnifyException` in
+   `dotnet/test/Fun.Conformance/Program.cs` so an invariant failure is a **failed case**
+   rather than a dead run, and re-run the full suite — captures feed identity, so the
+   `values/nominal-*` and `values/rec-*` cases are the ones at risk.
+
+Files it identified: `dotnet/src/Fun.Compiler/Elaborator.Enum.cs` (~55-72),
+`Elaborator.RecTypes.cs` (`CompletePending` ~62, `PredictCaptures` ~132),
+`dotnet/test/Fun.Conformance/Program.cs`.
