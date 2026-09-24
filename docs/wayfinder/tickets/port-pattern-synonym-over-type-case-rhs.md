@@ -56,3 +56,31 @@ Evidence for the `:87` half, so it is not re-probed: `{ M = module { pub pattern
 
 - `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs:75` and `NeedsDirectMatch`
 - [the pattern-synonym ruling](port-pattern-synonym-generalizes.md)
+
+## First attempt (2026-09-24) — died on a provider limit; WIP preserved as a sketch
+
+The fork was killed by the provider's 5-hour cap (resets 2026-09-25 01:35:34) after 59 tool
+calls, mid-diagnosis. **Nothing was merged, nothing is verified, and the ticket stays open.**
+
+Its own last words pin the crux: `TypeHead`'s value is already applied to arity metas
+(`Option(?m)`, a `VNominal`) while `MatchesNominalHead` needs the *unapplied former* — and
+for direct arms the head term is (re)evaluated under the runtime environment, which matters
+for E11 sealed projections. It was heading into the E11 cases when it died. That first
+observation is a real code fact, and it is why the change reaches into `NominalHead` at all.
+
+What it left is on branch `pi-agent-64a8991f-7d64-4ad` (commit `29f4852`, auto-squashed).
+**Treat it as a sketch of an approach, not as workable code:**
+
+- the `NeedsDirectMatch()` refusal is gone, with a comment saying the right-hand side is
+  carried into the synonym and runs where the synonym is used (the match's `Sequential`
+  tree, `Nbe.SelectArmInOrder`);
+- `CorePattern.NominalHead` changes shape — `Term Head` → `Value Head` — so a pattern stored
+  in a synonym's right-hand side does not carry a term from its definition's context;
+- `FillSynonymParams` gains a `NominalHead` case, and `Nbe.Generative.cs` stops
+  re-evaluating `head.Head` under the runtime environment.
+
+**The last point is the one to be suspicious of**, and it is why this must be re-derived
+rather than merged: the same fork had just observed that direct arms *do* re-evaluate the
+head under the runtime env for E11 sealed projections, so a Kernel shape change that removes
+that re-evaluation has to be run against the identity cases (`values/nominal-*` and the
+generative ones) before it can be believed. None of that was done.
