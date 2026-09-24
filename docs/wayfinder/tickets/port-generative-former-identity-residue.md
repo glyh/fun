@@ -10,11 +10,13 @@ blocked_by:
 
 # Port: the generative former's identity residue
 
-Two remaining E11 gaps, both found by the fork that landed
-[the parametric nominal in a generative module](port-generative-former-nominal.md) and
-both **re-verified by the integrator** in both runners on 2026-09-24, after that work
-merged (`921da47`+). They are one ticket because they are the same nominal (a *former* in
-a generative module); if the fixes diverge, split it.
+One remaining E11 gap. The fork that landed
+[the parametric nominal in a generative module](port-generative-former-nominal.md) found
+two; the second was split out on 2026-09-24 because it waits on a ruling and this one does
+not — it is
+[a generative former with an unused type parameter](port-generative-former-phantom-parameter.md).
+What is left here was **re-verified by the integrator** in both runners on 2026-09-24,
+after that work merged (`921da47`+).
 
 ## 1. A type-case cannot tell two former instances apart (prototype `10`, port `11`)
 
@@ -44,7 +46,11 @@ reported as `captures = [Var 0]`.
 Test: the program above is an **ordinary** shared case once fixed (`expect` `10`; the
 prototype answers `10`), so nothing is added to `prototype-divergences.txt`.
 
-## 2. A generative former with an *unused* type parameter is refused (prototype `1`)
+## 2. Moved out (2026-09-24) — the unused type parameter
+
+Now its own ticket — [a generative former with an unused type parameter](port-generative-former-phantom-parameter.md)
+— because it waits on a ruling and this ticket's gap does not. The evidence below is kept
+as the record it was first written from.
 
 ```fun
 { Mk = fn(u : Unit) { module {
