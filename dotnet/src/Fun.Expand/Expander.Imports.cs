@@ -17,6 +17,9 @@ public sealed partial class Expander
 
     private readonly List<(string Name, Role Role)> _syntaxExports = [];
 
+    /// <summary>This unit's public members that are unit handles, e.g. <c>pub M = import "m"</c>.</summary>
+    private readonly List<(string Name, string Path)> _ownUnitMembers = [];
+
     public Expander(IMacroRuntime runtime)
     {
         _runtime = runtime;
@@ -24,7 +27,11 @@ public sealed partial class Expander
     }
 
     /// <summary>The public roles this expansion declared or re-exported: a unit's syntax exports.</summary>
-    public UnitSyntax SyntaxExports => new([.. _syntaxExports]) { Macros = [.. _macroExports] };
+    public UnitSyntax SyntaxExports => new([.. _syntaxExports])
+    {
+        Macros = [.. _macroExports],
+        UnitMembers = [.. _ownUnitMembers],
+    };
 
     /// <summary>The label of an open of <c>import "path"</c>: every such open names the same unit.</summary>
     public static string UnitOpenLabel(string path) => $"unit:{path}";
@@ -37,12 +44,18 @@ public sealed partial class Expander
         _ => ScopeSet.Empty,
     };
 
-    /// <summary>The unit an expression denotes: an import, or a binder bound to one.</summary>
+    /// <summary>
+    /// The unit an expression denotes: an import, a binder bound to one, or a dotted
+    /// path whose members name unit-valued members of the unit before them.
+    /// </summary>
     private string? UnitPathOf(Syntax of) => of switch
     {
         Syntax.Import i => i.Path,
         Syntax.Var v => (v.Id.Name.Contains('#') ? v.Id.Name : _bindings.Resolve(v.Id)?.ResolvedName) is { } resolved
             ? _moduleUnits.GetValueOrDefault(resolved)
+            : null,
+        Syntax.FieldAccess { Of: var inner, Field: var field } => UnitPathOf(inner) is { } path
+            ? _runtime.LoadSyntax(path).UnitMembers.FirstOrDefault(m => m.Name == field).Path
             : null,
         _ => null,
     };
@@ -141,10 +154,18 @@ public sealed partial class Expander
         }
     }
 
-    /// <summary><c>M = import "u"</c>: <c>M</c> is a handle on the unit, and the unit's roles bind in the binder's region.</summary>
-    private void BindImportHandle(Syntax value, Id written, ScopeSet region, string resolved)
+    /// <summary>
+    /// <c>M = import "u"</c>: <c>M</c> is a handle on the unit, and the unit's roles bind in the binder's
+    /// region. A public binding also names the unit among this unit's own members, so a path
+    /// through it (<c>W.M.g</c> in an importer) resolves at any depth.
+    /// </summary>
+    private void BindImportHandle(Syntax value, Id written, ScopeSet region, string resolved, bool publicBinding = false)
     {
-        if (value is Syntax.Import import) _moduleUnits[resolved] = import.Path;
+        if (value is Syntax.Import import)
+        {
+            _moduleUnits[resolved] = import.Path;
+            if (publicBinding) _ownUnitMembers.Add((resolved.IndexOf('#') is var at and >= 0 ? resolved[..at] : resolved, import.Path));
+        }
         ImportRoles(value, written.Scope, region);
     }
 

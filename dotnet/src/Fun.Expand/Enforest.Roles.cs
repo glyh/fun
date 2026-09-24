@@ -329,7 +329,11 @@ public sealed partial class Enforest(EnforestEnv env)
         return (TakeTerms(terms, n), terms.Drop(n));
     }
 
-    /// <summary>An order group named where a declaration names it: a bare name resolves by scope set, like any binder.</summary>
+    /// <summary>
+    /// An order group named where a declaration names it: a bare name resolves by scope set, like
+    /// any binder; <c>M.g</c> reads <c>g</c> among the roles the unit <c>M</c> denotes exports, and a
+    /// longer path <c>W.M.g</c> follows each member to the unit it denotes before the lookup.
+    /// </summary>
     private Order ResolveOrder(Terms reference)
     {
         var leaf = (TokenTree.Leaf)reference[0];
@@ -338,13 +342,21 @@ public sealed partial class Enforest(EnforestEnv env)
             return _env.Roles.FindOrder(name, leaf.Token.Scope)
                 ?? throw new ExpandException($"unknown order group: {name}");
 
-        // `M.g`: `g` among the roles the unit `M` denotes exports.
-        if (reference.Count != 3)
-            throw new NotImplementedException("not ported yet: an order group named through a unit member's path");
-        var group = ((TokenKind.Ident)((TokenTree.Leaf)reference[2]).Token.Kind).Name;
-        var unit = new Syntax.Var(new Id(name, leaf.Span, leaf.Token.Scope));
-        return (_env.UnitRoles(unit) ?? []).FirstOrDefault(r => r.Name == group && r.Role.Meaning is RoleMeaning.OrderGroup).Role?.Order
-            ?? throw new ExpandException($"unknown order group: {name}.{group}");
+        // A dotted path: the head names a unit (or a binder bound to one), each
+        // intermediate member a unit-valued member of the unit before it.
+        var path = new List<string>();
+        Syntax of = new Syntax.Var(new Id(name, leaf.Span, leaf.Token.Scope));
+        for (var i = 2; i < reference.Count; i += 2)
+        {
+            if (reference[i] is not TokenTree.Leaf { Token.Kind: TokenKind.Ident part } partLeaf)
+                throw new ExpandException("an order group is named by an identifier or a dotted path M.g");
+            path.Add(part.Name);
+            if (i + 2 < reference.Count)
+                of = new Syntax.FieldAccess(of, part.Name, partLeaf.Span);
+        }
+        var group = path[^1];
+        return (_env.UnitRoles(of) ?? []).FirstOrDefault(r => r.Name == group && r.Role.Meaning is RoleMeaning.OrderGroup).Role?.Order
+            ?? throw new ExpandException($"unknown order group: {string.Join(".", path.Prepend(name))}");
     }
 
     /// <summary>

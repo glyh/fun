@@ -300,7 +300,7 @@ public sealed partial class Expander
                     l = (Binding.Let)l.AddScope(active);
                     var (scope, resolved) = Bind(l.Name);
                     var value = Expand(l.Recursive ? l.Value.AddScope(scope) : l.Value);
-                    BindImportHandle(value, l.Name, scope, resolved);
+                    BindImportHandle(value, l.Name, scope, resolved, l.Public);
                     expanded.Add(l with { Name = Rename(l.Name, scope, resolved), Value = value });
                     active = active.Union(scope);
                     break;
