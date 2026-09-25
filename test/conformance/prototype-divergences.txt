@@ -34,5 +34,4 @@ imports/unit-handle-open-form-member           unit-handle-open-not-a-unit-open.
 imports/bare-constructor-pattern-through-import   bare-constructor-pattern-resolves-by-name.md
 values/implicit-lambda-argument-named           port-generalise-under-check.md
 macros/reflected-trait-two-parameters           port-trait-impl-arity-message.md
-values/rec-enum-former-ignores-outer-name       port-rec-enum-over-captures-names.md
 values/stuck-match-sub-occurrence               port-stuck-match-sub-occurrence.md

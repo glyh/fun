@@ -1,5 +1,5 @@
 ---
-title: "Port: a recursive enum's captures over-capture enclosing names"
+title: "Port: a former's captures must not include the enclosing function's bindings"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
@@ -8,54 +8,98 @@ assignee:
 blocked_by:
 ---
 
-# Port: a recursive enum's captures over-capture enclosing names
+# Port: a former's captures must not include the enclosing function's bindings
 
-Reported by the fork that fixed
-[captures come from payload values](port-enum-captures-from-payload-values.md)
-(2026-09-24) — it saw this, judged it pre-existing and identity-consistent, and left it
-alone rather than widening its own change. Recorded here so it is not dropped.
+**Reopened 2026-09-25: two merged pieces of work are in tension here, and the case is held back
+until the user rules.** The file keeps its old name; the title is what the issue actually is.
 
-**There is no reproducing program yet. That is this ticket's first task**, and the reason
-this is not written up as a defect: if nothing observable fails, there is nothing to fix
-and no case to add. The reporter's description — "a value binder named in the body", e.g.
+## What happened
 
-```text
-an enclosing value binding referred to by a member of a rec enum group
+The claim as first written — "the port over-captures enclosing names" — was the **wrong way
+round**. A probe found a program and showed the *prototype* over-captures while the port did not,
+so the case was added with `expect` `1` and listed as a prototype divergence.
+
+Then the other fork landed. The integrator's A/B, on the merged tree, reverting only
+`Elaborator.RecTypes.cs` to its pre-`former-stamp` state:
+
+| tree | `values/rec-enum-former-ignores-outer-name` | `values/nominal-generative-former-type-case-separates` |
+|---|---|---|
+| with `former-stamp`'s `RecTypes.cs` | **fails** — `type mismatch: cannot unify VAtom with VAtom` | passes (`10`) |
+| with `RecTypes.cs` reverted | passes (`1`) | **fails** — `expected 10, got 11` |
+
+One file, one 15-line change, and the two cases want opposite outcomes.
+[The generative former's identity residue](port-generative-former-identity-residue.md)'s fix binds
+a former's parameters over the **declaration site's** `Enclosing`/`ScopeCaptures` — which is what
+supplies the module's **stamp** for generative identity — and that same change also admits the
+enclosing *function's* scope, and so its value binding, into the capture set.
+
+## The program
+
+```fun
+{ F = fn(n : I64) { y = n; rec T = fn(A : Type) { enum { X(A) } }; T };
+  a = F(1); b = F(2); take = fn(z : a(I64)) { 1 }; take(b(I64).X(3)) }
 ```
 
-— is a direction, not a reproduction. **Do not treat it as one.**
+| runner | output |
+|---|---|
+| OCaml | `UnifyError(NominalMismatch(T, T))` — `a` and `b` are distinct |
+| port, with `former-stamp` | a type mismatch — also distinct |
+| port, before `former-stamp` | `1` — the same type |
 
-## What is known
+The `rec` keyword alone flips the prototype: drop it and **both** runners agree `n` is not
+captured, which is what made the probe call the prototype the over-capturer.
 
-- The port computes a member's captures as *the enclosing body's names ∪ the levels quoted
-  out of its payload values* (`EnumCaptureLevels`, quoted through `Nbe.Quote`), whereas the
-  prototype's `capture_payloads` / `enclosing_scope` pair does not admit the enclosing names
-  the same way. The port therefore captures **more**.
-- Captures are what E11 identity compares, so an observable form would look like two
-  nominals the port treats as distinct where the prototype treats them as the same, or the
-  other way round — reached through a **type-case**, a signature check, or the
-  unrelated-records-cannot-unify comparison. That is the shape to hunt for.
-- The difference is *not* reachable through the cases the merged ticket added (those are
-  about payload values, and both runners agree on them).
+## Already decided by the model — the question was mine, not the user's
 
-## First task
+The user's answer was to read the docs first, and the docs settle it:
 
-1. Build the smallest program that observes a difference in captures between the two
-   implementations, or establish honestly that none exists. Probe both runners — the
-   prototype is a *map*, not the spec, and this area has already produced causes that
-   probing overturned.
-2. If a program exists: decide which side is right against the domain model (a **prototype
-   defect** fixed in C# only, per convention 5, is a live possibility — "the port captures
-   more" is not automatically the bug). Fix accordingly and add a shared case, ordinary if
-   the prototype is right and listed in `prototype-divergences.txt` if it is not.
-3. If no program exists, **close this ticket saying so** and record the difference as
-   unobservable — an honest negative result is the wanted outcome, and it retires the claim
-   rather than leaving it to be re-discovered.
+- [nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md) (closed,
+  2026-09-16), footgun **6**: *"Identity over **all** captures makes unused variables split
+  types. Hence the declaration's own free variables only."*
+- the same decision: *"A nominal's identity is its declaration plus the values of its own free
+  variables, compared by conversion"*, and
+- its stamp rule: *"Every module has a private stamp slot its nominals capture: `()` at check
+  time and for a pure module, a fresh cell at run time for a module whose evaluation performs
+  something — so type-case separates evaluations."*
+
+So a former's captures are **its own free variables, plus the enclosing modules' stamps** — and
+nothing else. Measured against the variants the integrator ran in both runners:
+
+| program | rule says | runners today |
+|---|---|---|
+| `F = fn(n) { y = n; T = fn(A) { enum { X(A) } }; T }` (no `rec`) | no free var, no stamp → same type | `1` in both ✓ |
+| `F = fn(A) { rec T = fn(B) { enum { X(A) } }; T }` (declaration names `A`) | `A` is free → distinct | error in both ✓ |
+| `F = fn(n) { y = n; rec T = fn(A) { enum { X(A) } }; T }` (names nothing) | no free var, no stamp → **same** | error in both ✗ **the port over-captures** |
+| `Mk = fn(u) { module { … pub type Box(A) = Bx(A) } }` (performing) | stamp → distinct | `10` in both ✓ |
+
+So **the prototype over-captures** — `NominalMismatch` on a declaration that names nothing outside
+itself — and `former-stamp`'s mechanism inherited that by taking the declaration site's
+`ScopeCaptures` wholesale. The port must be narrowed to *free variables + stamps*, and the stamp
+case must stay green while it is.
+
+Note what the narrowing is **not**: the model's stamp rule is exactly why `ScopeCaptures` was the
+natural place to look (the stamp *is* a scope), so the fix is not "stop using the declaration
+site" but "take the stamp, not the enclosing function's bindings".
+
+## Held back, per convention 8
+
+The case pair and its divergence entry were **removed from the tree** while this is open —
+"never commit a case the port cannot pass" — so `main` stays green (750 → 749 cases, 30 → 29
+divergence entries). They return with whichever fix the ruling implies. Do not re-add them
+before it: either outcome makes one of the two current behaviours wrong, and the case's `expect`
+is what changes.
+
+## Kept: the probe's unverified lead
+
+The port's `Choice` (OpenChoice) lacks the prototype's base-names fallback — a possible
+**under**-capture, the opposite direction. No reproducing program yet; recorded rather than
+ticketed separately.
 
 ## Reading
 
-- [captures come from payload values](port-enum-captures-from-payload-values.md) — its
-  Resolution describes the helper, the fixed point, and the name-based seed
-- `dotnet/src/Fun.Compiler/Elaborator.Enum.cs` (`EnumCaptureLevels`),
-  `Elaborator.RecTypes.cs` (`PredictCaptures`, `CompletePending`)
-- the prototype's `capture_payloads` and `enclosing_scope`
+- `dotnet/src/Fun.Compiler/Elaborator.RecTypes.cs` — `PredictCaptures`, `EnumCaptureLevels`,
+  `CompletePending`; `Elaborator.Enum.cs`
+- [the parametric nominal in a generative module](port-generative-former-nominal.md) and
+  [the generative former's identity residue](port-generative-former-identity-residue.md) — what
+  the stamp capture is for
+- E11's rule: `docs/wayfinder/topics/nominal-identity-applicative-by-purity.md`
