@@ -104,3 +104,32 @@ strictly more precise and wins.
 split): pattern synonyms as heads, or-patterns, blanket `_`, and changing
 `Syntax.Decl.DeclImpl`'s arguments from `List(Expr)` to `List(Pattern)`. Nothing needs
 them yet; this ticket only needs a head that binds its free names.
+
+## Reconnaissance (2026-09-25) — from a fork that died before writing code
+
+A fork ran the investigation below and then hit the provider's 5-hour cap (`429`) on the step
+before implementing, so it committed nothing. **These are leads from its transcript, not verified
+conclusions** — nothing was built or run. Taken together they say the implementation is smaller
+than the ticket implies, and where its risk sits:
+
+- **One production site.** `TraitEvidence` is created in exactly one place,
+  `Elaborator.Traits.cs`, plus the bound-dictionary path at `Elaborator.Implicits.cs:83` — and that
+  one is *non-generic*. So the impl's own-variables list (`Vars`) has a single site to thread
+  rather than a general representation change.
+- **The matching direction may already be free.** In `Unify`, `(VVar a, VVar b) when a.Level =
+  b.Level` unifies *rigidly* while metas solve. So binding an impl head's free names as **fresh
+  metas** gives one-way matching — impl-side variables get solved against the use's argument types,
+  while the use's own variables and metas stay rigid — without inventing a matching mode.
+- **Where a head's free name has to be bound.** `impl Size(Option(A))`'s head elaborates through
+  `Infer(ctx, argSyntax)` to `Ap(Var Option, Var A)` and then applies the type function, producing
+  the nominal `Option(A)`. So the free names must be in scope via `Bind` **before** the head's
+  argument syntaxes are inferred; the collection point is there, not in the resolver.
+- **Open item it did not reach:** how an imported `pub impl`'s evidence reaches the importer
+  (`ModuleEntry.Impl` uses) — it reasoned only that head *values* persist with the evidence and that
+  the variables list is the sole new thing, then died before checking.
+- **Hazard it flagged and left open:** `values/trait-impl-through-open` shows the `open` path
+  matters, and it suspected a generic impl reached through `open` could break. It recorded the
+  suspicion as unverified, which is the honest state: **probe it** rather than assume either way.
+- Its own next step was "baseline: build and test first" — i.e. it had not yet measured anything.
+  Whoever takes this should start with the precision program from the ruling above and the probes
+  for the two open items.
