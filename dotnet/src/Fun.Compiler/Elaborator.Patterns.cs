@@ -292,6 +292,15 @@ public static partial class Elaborator
                 CollectSynonymMetas(ctx, r.Heap, seen);
                 CollectSynonymMetas(ctx, r.Element, seen);
                 return;
+            case Value.VNeutral n:
+                // A stuck neutral is a head plus a spine: the head is a variable
+                // or a rigid atom and contributes no metas; the spine's arguments
+                // may still mention one.
+                foreach (var f in n.Frames)
+                    if (f is Frame.FApp a) CollectSynonymMetas(ctx, a.Arg, seen);
+                return;
+            case Value.VEffectRowTy:
+                return;
             default:
                 throw new NotImplementedException($"not ported yet: generalising a pattern synonym over a {ctx.Force(value).GetType().Name}");
         }
