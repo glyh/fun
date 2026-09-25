@@ -171,7 +171,22 @@ public static partial class Elaborator
         return new Elaborated(term, type, ctx);
     }
 
-    public static (Term, Value) Infer(Context ctx, Syntax stx)
+    /// <summary>
+    /// The form being elaborated, so an evaluation that fails while checking it names that form
+    /// (the prototype's <c>at</c>): the innermost form converts the evaluator's
+    /// <see cref="EvaluationFailed"/> into the elaboration error at that form.
+    /// </summary>
+    private static T At<T>(Context ctx, Syntax stx, string mode, Func<T> work) =>
+        ctx.Metas.Budget.At(stx.Span, mode, () =>
+        {
+            try { return work(); }
+            catch (EvaluationFailed e) { throw new FunException(e.Message + ctx.Metas.Budget.Where() + " (while type checking)"); }
+        });
+
+    public static (Term, Value) Infer(Context ctx, Syntax stx) =>
+        At(ctx, stx, "inferring the form", () => InferForm(ctx, stx));
+
+    private static (Term, Value) InferForm(Context ctx, Syntax stx)
     {
         switch (stx)
         {
@@ -311,7 +326,10 @@ public static partial class Elaborator
         }
     }
 
-    public static Term Check(Context ctx, Syntax stx, Value expected)
+    public static Term Check(Context ctx, Syntax stx, Value expected) =>
+        At(ctx, stx, "checking the form", () => CheckForm(ctx, stx, expected));
+
+    private static Term CheckForm(Context ctx, Syntax stx, Value expected)
     {
         expected = ctx.Force(expected);
         switch (stx, expected)
@@ -614,10 +632,11 @@ public static partial class Elaborator
     /// A written type's value. Reading a type inspects it, so a type computed by a
     /// divergent call is an evaluation budget error here rather than a deferred one.
     /// </summary>
-    private static Value TypeValue(Context ctx, Syntax stx)
-    {
-        var value = ctx.Eval(TypeTerm(ctx, stx));
-        ctx.Force(value);
-        return value;
-    }
+    private static Value TypeValue(Context ctx, Syntax stx) =>
+        At(ctx, stx, "reading the type", () =>
+        {
+            var value = ctx.Eval(TypeTerm(ctx, stx));
+            ctx.Force(value);
+            return value;
+        });
 }

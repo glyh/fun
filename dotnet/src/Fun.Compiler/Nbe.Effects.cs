@@ -105,10 +105,11 @@ public static partial class Nbe
                     break;
             }
         }
-        // The checker only evaluates terms that perform nothing; reaching here while
-        // checking means a check-time evaluation site was not ported with that guard.
+        // A request that reaches no handler while the checker is evaluating is a language
+        // error: no handler for the performed effect is in scope where the form being
+        // checked sits (the prototype's unhandled_effect_error), not an unported path.
         if (mc.Budget.Checking && mc.Budget.Application is null)
-            throw new NotImplementedException($"not ported yet: the checker evaluated a term that performs {Describe(instance)}.{op}");
+            throw new EvaluationFailed($"unhandled effect {Describe(instance)}.{op}: no handler for it is in scope");
         throw new FunException($"unhandled effect: {Describe(instance)}.{op}");
     }
 

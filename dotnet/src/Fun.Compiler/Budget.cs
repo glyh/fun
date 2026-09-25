@@ -20,6 +20,7 @@ public sealed class Budget
     private int _remaining = DefaultLimit;
     private int _depth;
     private string? _calling;
+    private (string Mode, SourceSpan Span)? _site;
     private readonly List<Frame> _frames = [];
 
     /// <summary>One request in the chain that spent the budget: what it was, and where.</summary>
@@ -30,6 +31,23 @@ public sealed class Budget
 
     /// <summary>Whether the current request is type checking (limited) rather than running a program.</summary>
     public bool Checking => _limit is not null;
+
+    /// <summary>
+    /// The source form the elaborator is at while <paramref name="work"/> runs (the innermost
+    /// enclosing one; synthetic spans keep the outer). An evaluation that fails while checking
+    /// names it, as the prototype's <c>Eval_budget.at</c> site does.
+    /// </summary>
+    public T At<T>(SourceSpan span, string mode, Func<T> work)
+    {
+        if (span.IsSynthetic) return work();
+        var outer = _site;
+        _site = (mode, span);
+        try { return work(); }
+        finally { _site = outer; }
+    }
+
+    /// <summary>Where the checker was when it asked for the evaluation, as the prototype's <c>where</c> does.</summary>
+    public string Where() => _site is { } site ? $" while {site.Mode} at {site.Span}" : "";
 
     /// <summary>One checker request, named by what demanded it; nested requests spend from the outermost.</summary>
     public T Request<T>(string demand, Func<T> work) => Start(DefaultLimit, new Frame(demand, null), work);
