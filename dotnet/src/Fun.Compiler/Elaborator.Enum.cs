@@ -57,7 +57,7 @@ public static partial class Elaborator
             .ToList();
         var payloads = payloadTerms.Select(ps => ps.Select(p => ctx.Eval(p)).ToList()).ToList();
 
-        var levels = EnumCaptureLevels(ctx, payloads.SelectMany(ps => ps));
+        var levels = EnumCaptureLevels(ctx, payloads.SelectMany(ps => ps), ctx.Enclosing is Syntax.Module);
 
         EquatableArray<ConstructorDecl> constructors =
             [.. e.Constructors.Select((c, i) => new ConstructorDecl(c.Name,
@@ -77,10 +77,11 @@ public static partial class Elaborator
     /// the scope always captures, a module's stamp. A recursive entry is never
     /// captured: a nominal refers to it by its declaration.
     /// </summary>
-    private static EquatableArray<int> EnumCaptureLevels(Context ctx, IEnumerable<Value> payloadValues)
+    private static EquatableArray<int> EnumCaptureLevels(
+        Context ctx, IEnumerable<Value> payloadValues, bool namedFromEnclosing = true)
     {
         IEnumerable<int> mentioned = FirstBoundLevel(ctx) is int firstBound
-            ? NamedLevels(ctx, ctx.Enclosing)
+            ? (namedFromEnclosing ? NamedLevels(ctx, ctx.Enclosing) : Enumerable.Empty<int>())
                 .Concat(payloadValues.SelectMany(p => FreeLevels(ctx, Nbe.Quote(ctx.Metas, ctx.Width, p))))
                 .Where(l => l >= firstBound && !ctx.RecursiveLevels.Contains(l))
             : Enumerable.Empty<int>();

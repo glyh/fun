@@ -167,6 +167,15 @@ public static partial class Elaborator
         List<(List<Syntax.Lam> Lambdas, Syntax.Enum Enum)> shapes, ImmutableHashSet<int> recursive)
     {
         var group = members.Length;
+        // A nominal captures its own free variables plus the enclosing modules'
+        // stamps (E11, footgun 6), nothing else. A rec enum declared directly
+        // in a module also captures the module's own free variables - what the
+        // module names, the prototype's enclosing_scope (elab-062) - but one
+        // declared in a function body captures only what its payloads name,
+        // never the enclosing function's bindings (an unused parameter must not
+        // split the type). The group's own ctx supplies Enclosing/ScopeCaptures:
+        // the former's parameters bind on top of it without opening a new scope.
+        bool namedFromEnclosing = ctx.Enclosing is Syntax.Module;
         // A former's parameters bind on top of the declaration site, but do not
         // open a new enclosing scope for capture purposes: the prototype's
         // elab_type_group captures the declaration site's scope_captures (a
@@ -193,7 +202,7 @@ public static partial class Elaborator
         // did - plus whatever the scope always captures. The rounds below only
         // grow it, so nothing captured before is lost.
         var levels = payloads.Select(p => (FirstBoundLevel(p.Body) is int firstBound
-                ? NamedLevels(p.Body, p.Body.Enclosing)
+                ? (namedFromEnclosing ? NamedLevels(p.Body, p.Body.Enclosing) : Enumerable.Empty<int>())
                     .Concat(p.Terms.SelectMany(ps => ps.SelectMany(t => FreeLevels(p.Body, t))))
                     .Where(l => l >= firstBound && !p.Body.RecursiveLevels.Contains(l))
                 : Enumerable.Empty<int>())
@@ -211,7 +220,7 @@ public static partial class Elaborator
             var next = payloads.Select((p, i) =>
             {
                 var body = Body(standIns, shapes[i].Lambdas);
-                return EnumCaptureLevels(body, p.Terms.SelectMany(ps => ps).Select(body.Eval));
+                return EnumCaptureLevels(body, p.Terms.SelectMany(ps => ps).Select(body.Eval), namedFromEnclosing);
             }).ToList();
             if (next.Zip(levels).All(x => x.First == x.Second)) return next;
             levels = next;
