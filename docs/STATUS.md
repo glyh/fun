@@ -11,8 +11,14 @@ Last updated: after the .NET port's parity re-measurement, 2026-09-25.
 
 ### .NET port — parity re-measured (2026-09-25)
 
-- **Port: `conformance: 751 cases, 0 failed`, xUnit `184/184`, `dune test` green with
-  `conformance: 751 cases, 0 failed, 31 known prototype divergences`** (integrator runs).
+- **Port: `conformance: 763 cases, 0 failed`, xUnit `185/185`, `dune test` green with
+  `conformance: 763 cases, 0 failed, 31 known prototype divergences`** (integrator runs).
+- **The corpus measured, 2026-09-25: `agree 732 | port-fails 0 | prototype-fails 31 | both-fail 0
+  | hang 0` over 763 programs**, and the 31 are exactly the 31 entries in
+  `test/conformance/prototype-divergences.txt` — zero untagged disagreements. `port-fails: 0` is
+  the gate for [deleting the prototype](docs/wayfinder/tickets/delete-the-prototype.md); the other
+  half is the two unprobed residues. The harness bounds the corpus, not the language: every hole
+  found on 2026-09-24/25 was found by probing, and none was visible in this number.
 - **The refusal inventory is 14 sites, re-swept and classified**: **3 real gaps** — the checker's
   unhandled-effect error (`Nbe.Effects.cs`), a pattern head that is a member of a non-nominal
   (`Elaborator.Enum.cs`), generalising a pattern synonym over a stuck neutral

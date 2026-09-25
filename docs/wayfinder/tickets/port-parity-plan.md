@@ -199,24 +199,33 @@ integrator records.
 `scripts/differential.sh` (with `bin/differential.ml` and the C# runner's `--file` mode) runs
 every `.fun` program in the repo through both runners and compares outcomes by **class**
 (`VALUE` / `OK` / `ELAB` / `EVAL` / `HANG`), adjudicating a disagreement against the case's
-`.expect`. The first measured run:
+`.expect`. **Measured on the tree at `ca90528`, 2026-09-25** — the first run with all three audited gaps
+closed:
 
-| | count |
+| measure | count |
 |---|---|
-| enumerated | 804 files |
-| ran | 752 |
+| enumerated | 817 files |
+| ran | 763 |
 | skipped — `<name>.unit-<unit>.fun`, each printed with its reason | 54 |
-| **agreed** | **723** |
+| **agreed** | **732** |
 | **port fails, prototype answers** | **0** |
-| prototype fails, port answers | 29 — every one already in `prototype-divergences.txt`, tagged |
+| prototype fails, port answers | 31 |
 | both fail | 0 |
 | hang | 0 |
 | runner error | 0 |
 
-Measured at `1af90e0`; a fresh run on the final tree is in flight as this was written. Since
-`1af90e0` the tree gained one case (`values/rec-enum-former-ignores-outer-name`, a prototype
-divergence — the prototype over-captures), so the expectation is **30** prototype-fails with
-agreement unchanged. Re-run rather than assume: it is one command.
+Two things to read carefully. **`port-fails: 0` is the deletion gate's second half**
+([delete-the-prototype](delete-the-prototype.md)) and it is now met. And the 31 prototype-fails are
+**exactly** the 31 entries in `prototype-divergences.txt` — `grep` for an untagged disagreement
+returns none — which makes "the port is ahead in 31 places" a measurement rather than a claim.
+
+The earlier run (`1af90e0`) recorded 723 agreement and predicted 30 divergences; the measured run
+that day was 722, off by one in a way nobody explained, which is why the numbers above are the ones
+to quote. The harness's own warning still stands and is now well earned: **this bounds the corpus,
+not the language.** Every port-side hole found on 2026-09-24/25 — the implicit-lambda gate, the
+reflected arities, the pattern-synonym type-case head, the recursive-enum capture crash, the
+quoted-block refusals, the nominal-head capture, the nested-field hang, all three audited gaps —
+was found by *probing*, and not one of them was visible here.
 
 **What this number does and does not mean.** It bounds *the corpus*: no program in this repo is a
 case where the port fails and the prototype answers. It does **not** bound the language — every
