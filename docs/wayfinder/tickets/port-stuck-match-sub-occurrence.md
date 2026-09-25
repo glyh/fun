@@ -3,12 +3,49 @@ title: "Port: a match stuck on a known scrutinee's unknown part waits"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed by the integrator, 2026-09-25 - the port half of the ruling was already landed (680187d) with the case values/stuck-match-sub-occurrence; the fork closed the one refusal it left reachable (a pruned arm) in 7be55ab, merged d7bb999, plus the case values/stuck-match-pruned-arm. Verified after merging - 183 xUnit, 751 conformance 0 failed, dune test green with 31 divergences.
 assignee:
 blocked_by:
 ---
 
 # Port: a match stuck on a known scrutinee's unknown part waits
+
+> ## Resolution (2026-09-25) — closed
+>
+> **The port half of the ruling was already in** when the ticket was picked up: `680187d`
+> (*Port the stuck match on unknown parts*) landed the deferral for an unknown **occurrence**,
+> and with it the case `values/stuck-match-sub-occurrence`. A fork spawned against this ticket
+> measured that first rather than assuming it, then closed the one refusal the landed work left
+> reachable.
+>
+> **What the fork added** (`7be55ab`, merged `d7bb999`): a **pruned arm**. A match whose tree
+> inspects a sub-position holding a variable waits as an `FMatch` frame; reading it back opens
+> **every** arm, and an arm an earlier one subsumes has no leaf to count its binders from —
+> exactly the `Nbe.StuckMatch.cs:50` refusal this ticket listed as becoming reachable.
+> `Term.Match` now carries its arms' `Patterns` (as the prototype's pattern-carrying frame
+> always has) and `ArmBinders` takes a pruned arm's binder count from its pattern. Sites:
+> `Core.Match.cs`, `Elaborator.Match.cs`, `Nbe.StuckMatch.cs`; new case
+> `values/stuck-match-pruned-arm` (`expect` `5`) listed in `prototype-divergences.txt`, since the
+> prototype cannot elaborate even the program whose own first arm matches.
+>
+> **Verified by the integrator after merging**, not taken on the fork's word: port
+> `183/183` xUnit and `conformance: 751 cases, 0 failed`; `dune test` green with
+> `conformance: 751 cases, 0 failed, 31 known prototype divergences`.
+>
+> The ticket's other "becomes reachable" site (`Nbe.StuckMatch.cs:54`, reading back an
+> unreachable arm) is the second half of the same fix.
+>
+> Two follow-ups, filed rather than fixed here:
+>
+> - [a constructor sub-pattern in a record field hangs instead of being refused](port-record-pattern-field-mismatch-hangs.md)
+>   — found while probing, re-verified by the integrator as pre-existing; it would be the first
+>   `HANG` the repo's corpus could state.
+> - `Term.Match.Patterns` is **not shifted** by `Core.Shift.MatchArm` (it uses `match with`), so
+>   the stored patterns keep their elaboration-time indices. Safe today because only `Binders()`
+>   is read — a count, invariant under shifting — and `Handler` is precedent for a non-shifted
+>   field on the same record; but anything that later reads a pattern's terms must shift it.
 
 G6 of [the latent form gaps](port-latent-form-gaps.md), and an **undecided** row of
 [the unported-path audit](port-unported-path-audit.md) — decided **2026-09-20 by the
