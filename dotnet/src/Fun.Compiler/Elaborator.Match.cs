@@ -69,7 +69,7 @@ public static partial class Elaborator
         // than a tree tests: such a match runs its arms in order, once the tree
         // has shown them exhaustive.
         var run = patterns.Any(p => p.NeedsDirectMatch()) ? new DecisionTree.Sequential([.. patterns]) : tree!;
-        return (new Term.Match(scrutinee, [.. bodies], run) { EffectBranches = [.. branchTerms], Handler = handler }, ctx.Force(resultType));
+        return (new Term.Match(scrutinee, [.. bodies], run) { Patterns = [.. patterns], EffectBranches = [.. branchTerms], Handler = handler }, ctx.Force(resultType));
     }
 
     /// <summary>

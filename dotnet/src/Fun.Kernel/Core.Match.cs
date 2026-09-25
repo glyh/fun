@@ -10,6 +10,14 @@ public abstract partial record Term
     public sealed record Match(Term Scrutinee, EquatableArray<Term> Bodies, DecisionTree Tree) : Term
     {
         /// <summary>
+        /// The arms' patterns, in source order: the tree may prune an arm an
+        /// earlier one subsumes, so reading a stuck match back (which opens every
+        /// arm) takes an unreachable arm's binder count from its pattern - exactly
+        /// what the prototype's pattern-carrying match frame knows.
+        /// </summary>
+        public EquatableArray<CorePattern> Patterns { get; init; } = [];
+
+        /// <summary>
         /// A match with effect branches is a handler: deep, lexical (E5, E8).
         /// <see cref="Handler"/> identifies it among the handlers a tunneled request skips.
         /// </summary>
