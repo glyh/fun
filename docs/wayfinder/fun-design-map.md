@@ -282,6 +282,12 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
 [type-case refinement walks the whole context](tickets/type-case-refinement-walks-whole-context.md).
 
 **Working notes for the next agent:**
+- **Bear in mind that a probe is only evidence if the program is valid.** On 2026-09-25 three
+  separate conclusions — a nested field pattern hangs, the reader is fine, a record pattern is
+  unsupported — were all wrong, because the probes used a comma in a struct field list and a bare
+  `{…}` record: the language spells those `;` and `R{…}`. A hang looks like a hang whether or not
+  the program parses, so check the shape against a *passing* conformance case first, and when a
+  result says "the language has a hole here", prefer the reading "my program is malformed".
 - **Before a session ends, run `git worktree list`.** On 2026-09-25 a fork was cleaned up before it
   committed, and its finished fix sat uncommitted in an orphaned `/tmp` worktree — it was recovered
   by luck of the sweep, verified and merged. A dead fork's *uncommitted* work is still its
