@@ -3,7 +3,7 @@ title: "Port: a former's captures must not include the enclosing function's bind
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -136,3 +136,39 @@ ticketed separately.
   [the generative former's identity residue](port-generative-former-identity-residue.md) — what
   the stamp capture is for
 - E11's rule: `docs/wayfinder/topics/nominal-identity-applicative-by-purity.md`
+
+## Resolution (2026-09-25) — closed
+
+**Recovered, verified and completed by the integrator, because the fork died one step short.**
+The `capture-narrow` fork was cleaned up before it committed; its work sat uncommitted in an
+orphaned `/tmp` worktree. That work was the finished fix: preserved on `wip/capture-narrow`
+(`118815c`), verified in place (xUnit 183/183, port 749/0, the program above answering `1`),
+then merged as `d8fc15b` with the case and divergence entry added here.
+
+**The mechanism** — one predicate, in two places:
+
+```csharp
+bool namedFromEnclosing = ctx.Enclosing is Syntax.Module;
+```
+
+A nominal captures the names of its enclosing body **only when that body is a module** (which is
+what supplies the stamp), never when it is a function body. `EnumCaptureLevels` gained the flag as
+an optional parameter, `InferEnum` and `PredictCaptures` both pass it, and the round-based
+prediction keeps the same gate. So the free variables of the declaration still capture (example 2),
+the module's stamp still captures (example 5), and an unused enclosing binding no longer splits the
+type (example 1).
+
+- **Tests:** C# **749 → 750 cases, 0 failed**; xUnit 183/183; `dune test` green; divergences
+  **29 → 30** with `values/rec-enum-former-ignores-outer-name` (`expect` `1`) restored and listed.
+  The generative stamp case (`nominal-generative-former-type-case-separates`, `10`) stayed green
+  throughout — that pairing is the whole point, since the first attempt traded one for the other.
+- **All five examples of the contract hold**, in both runners: 1 typechecks, 2 and 4 do not,
+  3 typechecks, 5 is distinct.
+- **The lesson worth keeping:** the fork's *uncommitted* work was its deliverable. A worktree in
+  `/tmp` is not a durability guarantee — check `git worktree list` for orphans and preserve them
+  before a session ends.
+
+Still open from this area, in order: [a pattern synonym over a sealed-nominal
+head](port-pattern-synonym-over-sealed-nominal-head.md), then [identity must survive the
+pipeline's re-evaluation](port-identity-survives-reevaluation.md) — both in `Nbe.Generative.cs`'s
+comparison code, so they run one after the other, not together.
