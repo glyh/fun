@@ -92,12 +92,12 @@ public sealed class Loader(
 
     public Value CompileSignature(Syntax signature) => Compile(MacroBase, signature);
 
-    public Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion) =>
-        ApplyMacro(macro, entry.Value, [], args, expansion, output =>
+    public Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion, SourceSpan? site) =>
+        ApplyMacro(macro, entry.Value, [], args, expansion, site, output =>
             Reflection.OfPrelude.ReadExpr(output) ?? throw new FunException($"macro {macro} did not return syntax"));
 
-    public EquatableArray<Binding> ApplyDecls(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion) =>
-        ApplyMacro(macro, entry.Value, [], args, expansion, output =>
+    public EquatableArray<Binding> ApplyDecls(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion, SourceSpan? site) =>
+        ApplyMacro(macro, entry.Value, [], args, expansion, site, output =>
             Reflection.OfPrelude.ReadDeclOutput(output) ?? throw new FunException($"macro {macro} did not return declarations"));
 
     /// <summary>
@@ -105,12 +105,13 @@ public sealed class Loader(
     /// reflected type it was solved to, then to each argument as the value of its kind,
     /// under the budget (M5); <paramref name="read"/> reads its output back.
     /// </summary>
-    internal T ApplyMacro<T>(string macro, Value fn, IEnumerable<Value> types, EquatableArray<Capture> args, MacroExpansion expansion, Func<Value, T> read)
+    internal T ApplyMacro<T>(string macro, Value fn, IEnumerable<Value> types, EquatableArray<Capture> args, MacroExpansion expansion, SourceSpan? site, Func<Value, T> read)
     {
         var r = Reflection.OfPrelude;
         var application = new MacroApplication(macro,
             v => r.ReflectExpr(expansion.ExpandBlock(r.ReadExpr(v) ?? throw new FunException($"expand_block in macro {macro}: not syntax"))),
-            v => r.ReflectDecls(expansion.ExpandDecls(r.ReadDeclOutput(v) ?? throw new FunException($"expand_decls in macro {macro}: not declarations"))));
+            v => r.ReflectDecls(expansion.ExpandDecls(r.ReadDeclOutput(v) ?? throw new FunException($"expand_decls in macro {macro}: not declarations"))),
+            site);
         return _macroMetas.Budget.MacroApplication(application, () =>
         {
             foreach (var type in types) fn = Nbe.Apply(_macroMetas, fn, r.ReflectType(type));
