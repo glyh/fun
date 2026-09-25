@@ -193,3 +193,41 @@ The user's standing rule is **at most two implementation forks at once**
 [porting conventions](port-core-tt-to-dotnet.md#porting-conventions-2026-09-16);
 a fork does not edit this ticket, the map, or `docs/STATUS.md` — it reports, and the
 integrator records.
+
+## The measured delta (2026-09-25)
+
+`scripts/differential.sh` (with `bin/differential.ml` and the C# runner's `--file` mode) runs
+every `.fun` program in the repo through both runners and compares outcomes by **class**
+(`VALUE` / `OK` / `ELAB` / `EVAL` / `HANG`), adjudicating a disagreement against the case's
+`.expect`. The first measured run:
+
+| | count |
+|---|---|
+| enumerated | 804 files |
+| ran | 752 |
+| skipped — `<name>.unit-<unit>.fun`, each printed with its reason | 54 |
+| **agreed** | **723** |
+| **port fails, prototype answers** | **0** |
+| prototype fails, port answers | 29 — every one already in `prototype-divergences.txt`, tagged |
+| both fail | 0 |
+| hang | 0 |
+| runner error | 0 |
+
+Measured at `1af90e0`; a fresh run on the final tree is in flight as this was written. Since
+`1af90e0` the tree gained one case (`values/rec-enum-former-ignores-outer-name`, a prototype
+divergence — the prototype over-captures), so the expectation is **30** prototype-fails with
+agreement unchanged. Re-run rather than assume: it is one command.
+
+**What this number does and does not mean.** It bounds *the corpus*: no program in this repo is a
+case where the port fails and the prototype answers. It does **not** bound the language — every
+port-side gap found on 2026-09-24/25 (the implicit-lambda gate, the reflected arities, the
+pattern-synonym type-case head, the recursive-enum capture crash, the quoted-block refusals) was
+found by *probing*, and none of those shapes exists as a repo program. Probes remain the
+instrument for the language; this measures the corpus. The harness's own README (`scripts/README.md`)
+records the normalization and what it cannot see (a constructor's spine, error wording, a
+prototype that hangs).
+
+**Before asking the user the two parked decisions** (the phantom type parameter, supplyable
+pattern-synonym types), check the model first: the last question of that shape — a former's
+captures — was already answered by footgun 6 of
+[nominal identity](nominal-identity-applicative-by-purity.md), and asking cost more than reading.
