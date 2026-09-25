@@ -35,3 +35,4 @@ imports/bare-constructor-pattern-through-import   bare-constructor-pattern-resol
 values/implicit-lambda-argument-named           port-generalise-under-check.md
 macros/reflected-trait-two-parameters           port-trait-impl-arity-message.md
 values/stuck-match-sub-occurrence               port-stuck-match-sub-occurrence.md
+values/rec-enum-former-ignores-outer-name       port-rec-enum-over-captures-names.md
