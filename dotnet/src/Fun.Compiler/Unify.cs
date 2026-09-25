@@ -89,7 +89,7 @@ public static partial class Unify
                 return;
 
             default:
-                throw new UnifyException($"cannot unify {left.GetType().Name} with {right.GetType().Name}");
+                throw new UnifyException($"cannot unify {Describe(left)} with {Describe(right)}");
         }
     }
 

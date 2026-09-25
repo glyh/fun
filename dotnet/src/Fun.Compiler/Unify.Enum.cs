@@ -30,6 +30,8 @@ public static partial class Unify
     {
         Value.VNominal n => n.Decl.ToString(),
         Value.VCon c => c.Name,
+        Value.VAtomTy a => $"VAtomTy({a.Ty})",
+        Value.VAtom a => $"VAtom({a.Atom})",
         _ => v.GetType().Name,
     };
 
