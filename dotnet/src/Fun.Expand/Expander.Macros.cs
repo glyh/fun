@@ -279,7 +279,7 @@ public sealed partial class Expander
             };
 
         var app = NewApplication(null);
-        var output = _runtime.ApplyExpr(Label(key), entry, [.. call.Args.Select(app.Receive.MapCapture)], Expansion());
+        var output = _runtime.ApplyExpr(Label(key), entry, [.. call.Args.Select(app.Receive.MapCapture)], Expansion(), call.Span);
         return Expand(output.Map(app.Emit));
     }
 
@@ -306,7 +306,7 @@ public sealed partial class Expander
             throw new NotImplementedException($"not ported yet: a type-aware operator macro `{use.Operator.Name}`");
 
         var app = NewApplication(null);
-        var output = _runtime.ApplyExpr(Label(key), entry, [.. operands.Select(o => app.Receive.MapCapture(new Capture.Expr(o)))], Expansion());
+        var output = _runtime.ApplyExpr(Label(key), entry, [.. operands.Select(o => app.Receive.MapCapture(new Capture.Expr(o)))], Expansion(), use.Span);
         return Expand(output.Map(app.Emit));
     }
 
@@ -340,7 +340,7 @@ public sealed partial class Expander
             throw new ExpandException($"`{(call.Head as Syntax.Var)?.Id.Name}` is not a declaration macro");
         var entry = EntryFor(key, call.Head, FormKind.Decl, call.Args.Length);
         var app = NewApplication(null);
-        var output = _runtime.ApplyDecls(Label(key), entry, [.. call.Args.Select(app.Receive.MapCapture)], Expansion());
+        var output = _runtime.ApplyDecls(Label(key), entry, [.. call.Args.Select(app.Receive.MapCapture)], Expansion(), call.Head.Span);
         return [.. output.Select(b => EmitBinding(app, b))];
     }
 

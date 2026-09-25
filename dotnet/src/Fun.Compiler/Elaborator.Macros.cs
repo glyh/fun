@@ -55,7 +55,7 @@ public static partial class Elaborator
             ? throw new FunException($"the type binder {b.First} of macro {macro} is not solved at its call")
             : ctx.Force(b.Second)).ToList();
         var promised = ctx.Force(type);
-        var output = expander.ApplyTyped(args, (received, expansion) => loader.ApplyMacro(macro, entry.Value, binders, received, expansion,
+        var output = expander.ApplyTyped(args, (received, expansion) => loader.ApplyMacro(macro, entry.Value, binders, received, expansion, call.Span,
             o => Reflection.OfPrelude.ReadExpr(o) ?? throw new FunException($"macro {macro} did not return syntax")));
         return (Blamed($"the output of macro {macro}", () => Check(ctx, output, promised)), promised);
     }

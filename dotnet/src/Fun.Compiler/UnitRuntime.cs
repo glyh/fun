@@ -26,9 +26,9 @@ public sealed class UnitRuntime(Loader loader, Func<Context> start) : IMacroRunt
 
     public Value CompileSignature(Syntax signature) => loader.Compile(Unit, signature);
 
-    public Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion) =>
-        loader.ApplyExpr(macro, entry, args, expansion);
+    public Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion, SourceSpan? site) =>
+        loader.ApplyExpr(macro, entry, args, expansion, site);
 
-    public EquatableArray<Binding> ApplyDecls(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion) =>
-        loader.ApplyDecls(macro, entry, args, expansion);
+    public EquatableArray<Binding> ApplyDecls(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion, SourceSpan? site) =>
+        loader.ApplyDecls(macro, entry, args, expansion, site);
 }

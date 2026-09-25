@@ -66,8 +66,8 @@ public interface IMacroRuntime
     /// Applies a macro to its arguments, each as the value of its kind, under the
     /// evaluation budget: the expression it returns.
     /// </summary>
-    Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion);
+    Syntax ApplyExpr(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion, SourceSpan? site);
 
     /// <summary>Applies a declaration macro: the declarations it returns.</summary>
-    EquatableArray<Binding> ApplyDecls(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion);
+    EquatableArray<Binding> ApplyDecls(string macro, MacroEntry entry, EquatableArray<Capture> args, MacroExpansion expansion, SourceSpan? site);
 }
