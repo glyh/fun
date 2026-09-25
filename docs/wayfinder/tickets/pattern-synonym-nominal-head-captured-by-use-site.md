@@ -3,12 +3,54 @@ title: "A pattern synonym's nominal head is captured by the use site's scope"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 - the fix landed but not by the route this ticket expected: its fork died on the provider's 5-hour cap after committing the source change and before adding any test, so the integrator merged that commit, corrected an indentation slip, and added the three cases and three divergence entries from its own verified probes. Port 766 cases 0 failed and 185/185 xUnit; dune test green at 766/0 with 34 divergences (31 + 3).
 assignee:
 blocked_by:
 ---
 
 # A pattern synonym's nominal head is captured by the use site's scope
+
+> ## Resolution (2026-09-25) — closed
+>
+> **The fix landed, but not by the route this ticket expected.** The fork implementing it died on
+> the provider's 5-hour cap (`429`, reset 18:21) **after committing its source change and before
+> adding a single test**; pi's cleanup auto-squashed the tree as `0c81a9a`. The integrator merged
+> that commit, corrected one indentation slip it introduced, and added the three cases and three
+> divergence entries from its own verified probes — the fork's report never arrived, so nothing
+> here was taken on a fork's word.
+>
+> **What the fix does, and why the earlier attempt failed.** `CorePattern.NominalHead` now carries
+> `HeadWidth` — the *context width where the head term was elaborated*, i.e. its level base. At a
+> match, the matcher re-roots that term by a constant shift, `env.Count - head.HeadWidth`, before
+> evaluating it (`Nbe.Generative.cs`), so the head resolves to the bindings it was written with
+> whatever is in scope at the `match`. That **is** the definition-site closure this ticket asked
+> for, expressed as a level difference rather than a captured environment — and a level base is
+> precisely what the earlier attempt could not express: a recorded environment cannot resurrect
+> the head's slot, because the elaborated term is `Dot(Var 1, Symbol)` whose slot is a `VVar`
+> artifact.
+>
+> **Verified by the integrator on the four programs**, not inferred from the diff:
+>
+> | program | OCaml | port |
+> | --- | --- | --- |
+> | control: the `match` at top level | `VALUE 42` | `VALUE 42` |
+> | one binder deeper, `fn(x : Type) { … }` | `EVAL EvalError("field not found")` | `VALUE 42` |
+> | two binders deeper | `EVAL EvalError("field access on non-struct")` | `VALUE 42` |
+> | one `let` deeper, `{ k = 7; … }` | `EVAL EvalError("field not found")` | `VALUE 42` |
+>
+> **Tests, added by the integrator** (the fork's slot died before them):
+> `values/pattern-synonym-nominal-head-{in-lambda,two-binders,after-let}`, each `.expect 42`, all
+> three listed in `prototype-divergences.txt` under this ticket **as the ruling directed** (C# only,
+> porting convention 5). The control is the pre-existing
+> `values/pattern-synonym-over-sealed-nominal-head-match` (`42` in both). The four pre-existing
+> sealed-head cases are unchanged and still pass: `1`, `42`, `0`, and the former-head `error`.
+>
+> **Counts:** port `766 cases, 0 failed` (was 763) and `185/185` xUnit; `dune test` green at
+> `766 cases, 0 failed, 34 known prototype divergences` (31 + these 3). The prototype now fails
+> three more programs than it did this morning — which is the point: each is one where it is wrong
+> and the port is right.
 
 **Confirmed in both implementations, 2026-09-25** — the prototype has this defect too, so it is a
 language bug, not a port gap. It is the hazard

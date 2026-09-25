@@ -334,7 +334,7 @@ public static partial class Elaborator
     private static (CorePattern, List<(string Name, Value Type)>) ElaborateNominalHeadPattern(Context ctx, Pattern.Con pattern)
     {
         var (head, _, decl, arity) = TypeHead(ctx, pattern.Head)
-        ?? throw new FunException("a type-case head must name a type");
+            ?? throw new FunException("a type-case head must name a type");
         if (pattern.Args.Length != arity)
             throw new FunException($"this type takes {arity} parameters, the pattern gives {pattern.Args.Length}");
 

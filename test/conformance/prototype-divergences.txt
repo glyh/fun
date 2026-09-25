@@ -37,3 +37,6 @@ macros/reflected-trait-two-parameters           port-trait-impl-arity-message.md
 values/stuck-match-sub-occurrence               port-stuck-match-sub-occurrence.md
 values/stuck-match-pruned-arm                  port-stuck-match-sub-occurrence.md
 values/rec-enum-former-ignores-outer-name       port-rec-enum-over-captures-names.md
+values/pattern-synonym-nominal-head-in-lambda        pattern-synonym-nominal-head-captured-by-use-site.md
+values/pattern-synonym-nominal-head-two-binders      pattern-synonym-nominal-head-captured-by-use-site.md
+values/pattern-synonym-nominal-head-after-let        pattern-synonym-nominal-head-captured-by-use-site.md
