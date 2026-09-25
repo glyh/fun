@@ -3,12 +3,67 @@ title: "An unused type parameter is an error at its declaration"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 - implemented by a fork (fbaf875, merged) in BOTH implementations as ruled, and verified by the integrator including the OCaml half (the first branch of the day to touch lib/). Port 761 cases 0 failed and 185/185 xUnit, dune runtest rc=0 with every OCaml suite green and the conformance runner at 761/0 with 31 divergences. The ruling's own program is refused by both, at the declaration.
 assignee:
 blocked_by:
 ---
 
 # An unused type parameter is an error at its declaration
+
+> ## Resolution (2026-09-25) — closed
+>
+> Implemented by a fork (`fbaf875`, merged) and verified by the integrator — including the OCaml
+> half, which is the branch that makes this the first today to touch `lib/`. **The ruling's own
+> program is refused by both, and at the declaration:**
+>
+> ```fun
+> { Mk = fn(u : Unit) { module {
+>     table = ref(0);
+>     pub type Box(A) = Bx;
+>     pub mk = fn() { table <- deref(table) + 1; Bx } } };
+>   b1 = Mk(()); g = fn(x : b1.Box(I64)) { 1 }; g(b1.mk()) }
+> ```
+>
+> | runner | output |
+> | --- | --- |
+> | OCaml | `ELAB ElabError(FormerParameterUnused "A#413" (a type former's parameter must occur in its body))` |
+> | port | `ELAB type former's parameter 'A#4' does not occur in its body` |
+>
+> The non-generative shape this ticket called out
+> (`{ M = module { pub type Box(A) = Bx; … }; g = fn(x : M.Box(I64)) { 1 }; g(M.mk()) }`) is
+> refused the same way by both — so the check is on the declaration, not on the sealing path, which
+> is what the scope ruling asked for.
+>
+> **Where it landed — two sites, both at the declaration.** The **lambda site** (`InferLam` and the
+> `Check`-against-`VPi` path) covers let-bound and rec-bound record formers and nested chains: a
+> lambda is a former iff its result is in the `Type` spine (`Type`, a record-type literal, or a Pi
+> chain ending in one), and "used" is a `Var` at the binder's depth in the elaborated body. The
+> **rec enum group** (`InferEnumGroup`) covers enum formers: a peeled parameter is used iff its
+> level appears in the declaration's predicted captures. The **OCaml mirror** is `infer_lam`
+> (`elab_apply.ml`), the `TypeDef` former and `elab_type_group` (`elab_infer.ml`), with a new
+> `ElabError FormerParameterUnused` naming the parameter.
+>
+> **A trap worth keeping:** OCaml's de Bruijn convention here is `depth-1-level`, so parameter *i*
+> of *n* is index `n-1-i`, not `n-i`. The fork found it; anyone re-deriving this will meet it.
+>
+> **The sealing guard is deleted** (`Elaborator.Generative.cs`) and `NominalHeadOf` kept for the
+> used case — once the declaration is refused the guard is unreachable, so it was removed rather
+> than converted (the audit's verdict 3).
+>
+> **Eight existing tests asserted the now-illegal shape. Every rewrite was reviewed by the
+> integrator, and each keeps its original subject:** conformance `elab-033`/`elab-034` (the
+> former-valued binder now dispatches on its parameter), `elab-100`/`elab-101` (the `fn(R){R}`
+> shadowing shape, now applying the outer `A`), both `enum-captures-*` (formers made nullary),
+> Alcotest `binder_counts` (its `Endo = fn[T : Type](u : I64){T->T}` is illegal now; rewritten with
+> the parameter used) and xUnit `AnUnmentionedParameterIsNotCaptured` →
+> `AnUnmentionedParameterIsRefusedAtItsDeclaration`. None dropped coverage; the count went up.
+>
+> **Verified numbers:** port `761 cases, 0 failed` (was 757) and `185/185` xUnit;
+> `dune runtest` rc=0 with every OCaml suite green (269 tests in the elaborate suite alone) and the
+> conformance runner at `761 cases, 0 failed, 31 divergences`. The four new cases are ordinary:
+> three `error` in both runners and `unused-type-parameter-positive` `VALUE 2` in both.
 
 Split out of [the generative former's identity residue](port-generative-former-identity-residue.md)
 on 2026-09-24 because it waited on a ruling, so the other gap there could be worked.
