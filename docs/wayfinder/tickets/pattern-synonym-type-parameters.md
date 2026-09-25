@@ -10,6 +10,28 @@ blocked_by:
 
 # Should a pattern synonym's generalized types be supplyable?
 
+> ## Resolution (user, 2026-09-25): they are the synonym's implicit type parameters
+>
+> The ticket's own recommendation was taken. All three questions answer from the one reading:
+>
+> 1. **Supplyable — yes.** `M.Two[I64, Bool](x, b)`, the way an implicit is supplied at a call
+>    (`f[I64]`), because that is what they are.
+> 2. **Reported unsolved** where their scope ends when nothing determines them — the shape an
+>    unsolved implicit already has, so the silent corner the ticket describes goes away.
+> 3. **One rule everywhere** — a `match` arm and a lambda parameter alike.
+>
+> Implementation reuses the existing implicit machinery (`InsertImplicitArgs` /
+> `CheckUnderImplicit`, `Elaborator.Implicits.cs`) in place of the rigid
+> `CollectSynonymMetas`/`InstantiateSynonym` path as it stands. The rigid reading is **not** kept
+> as a compatibility mode: nothing in the ruled cases distinguished the two, so there is nothing
+> to preserve. The cost the recommendation named — "cannot be supplied, cannot be reported
+> unsolved" — is exactly what is being paid.
+>
+> **Port work, not yet in flight**; it queues behind the two ruled tickets
+> ([the unused type parameter](port-generative-former-phantom-parameter.md),
+> [the budget call stack](port-budget-attribution.md)) and the E11 chain. Negative case to add
+> with it: a use whose scrutinee type is a bare meta, to prove the scope-end report fires.
+
 **Not blocking anything.** Raised while implementing
 [a pattern synonym is checked, and generalizes where its type is unknown](port-pattern-synonym-generalizes.md)
 (2026-09-24): the port had to pick a reading to land that ruling, picked one, and the
@@ -57,6 +79,7 @@ The two readings differ where the scrutinee's type does **not** determine a para
    parameter), or is it one rule everywhere?
 
 Recommendation when this is taken up: make them the synonym's implicit type parameters.
+**Taken (user, 2026-09-25) — see the Resolution above.**
 It is the reading the ruling's own words invite, it answers all three questions with an
 existing mechanism, and it costs the rigid reading only the "cannot be supplied, cannot
 be reported unsolved" corner.
