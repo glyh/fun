@@ -281,6 +281,15 @@ work](port-nested-field-patterns.md) (a feature, the port ahead of the prototype
 [identity must survive re-evaluation](port-identity-survives-reevaluation.md) (gated on
 `sealed-nominal-head`).
 
+**A language defect the port now owns:** [a pattern synonym's nominal head is captured by the use
+site's scope](pattern-synonym-nominal-head-captured-by-use-site.md) — confirmed in **both**
+implementations on 2026-09-25 with three minimal reproducers (one extra name in scope around the
+`match` turns `42` into a field-access failure), ruled **C# only + divergence entries** (porting
+convention 5). It came out of the
+[sealed-nominal head](port-pattern-synonym-over-sealed-nominal-head.md) closure: the deviation
+that ticket recorded as an unprobed hazard fired on the first probe. It is serialized behind the
+in-flight `synonym-neutral` fork, same file.
+
 **Landed this session, with the integrator's own re-run of both suites:**
 [a match stuck on a known scrutinee's unknown part](port-stuck-match-sub-occurrence.md) (`7be55ab`,
 merged `d7bb999`) — `183/183` xUnit, `751 cases, 0 failed`, `dune test` green with 31 divergences.

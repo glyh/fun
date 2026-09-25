@@ -73,14 +73,19 @@ specific obstacle to get past rather than a reason to keep parity.
 2. **Reproduce the three failing shapes above before and after**, and keep all four programs: the
    working one is the control that says the fix did not break the everyday case, and the three are
    the regression.
-3. **Both implementations, or a divergence — ask before choosing.** The prototype fails all three
-   exactly as the port does, so a fix in C# only would need the cases listed in
-   `test/conformance/prototype-divergences.txt`; the alternative is the route taken for
-   [an unused type parameter](port-generative-former-phantom-parameter.md), which the user ruled must land
-   in both. This ticket does not assume which.
-4. **The case cannot be committed before the fix** (porting convention 8 — the conformance count
-   never drops). Test with the programs above once the fix is in; if the ruling is "C# only", the
-   four cases are ordinary-versus-divergence per that ruling.
+3. **Ruled (user, 2026-09-25): C# only, with divergence entries.** That is the port's documented
+   route for a prototype defect (porting convention 5): fix the port, add the four programs as
+   shared cases with the correct `.expect` (`42`), and list the three failing ones in
+   `test/conformance/prototype-divergences.txt` naming this ticket. The prototype keeps its
+   capture bug, as it keeps the other 31 recorded defects — it is not maintained once the port is
+   done. The alternative, the route
+   [an unused type parameter](port-generative-former-phantom-parameter.md) took (fix both, so the
+   cases are ordinary), was put to the user and declined. Expect `dune test` to report three more
+   known divergences and the differential harness three more prototype-fails: that is this list
+   working, not a regression.
+4. **Order.** Porting convention 8 holds: the cases cannot be committed before the fix, since
+   three of them fail in both runners today. Land the fix first, then the four cases — the control
+   ordinary, the three reproducers listed as divergences per the ruling above.
 
 ## Reading
 
