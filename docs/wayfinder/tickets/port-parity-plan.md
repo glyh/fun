@@ -243,3 +243,49 @@ ticket was written (`1f70e82`, merged `5a685ba`, with the case
 `VALUE 10` each, `.expect` `10`, no divergence entry. The ticket is closed and the fork that
 went looking for it correctly reported nothing to do — so this list is one item shorter than it
 reads. Measure a gap in the runners before spending a fork slot on it.
+
+## The frontier after the 2026-09-25 re-sweep
+
+A read-only fork re-classified the whole refusal inventory, and closed the wave tickets the list
+below used to be built on. **The visible and invisible deltas both changed shape**: what remains
+is no longer three big waves but a handful of named refusals, each with its probe written down
+on its ticket.
+
+**Closed as stale**, every scope bullet verified *landed in `dotnet/src`, mechanism by
+mechanism* — not by the ticket's prose, which is the thing that was in doubt:
+
+| ticket | the mechanism that settles it |
+|---|---|
+| [port-procedural-macros](port-procedural-macros.md) | `MacroRuntime.cs:57` `Advance(Binding)` called per expanded binding by `Expander.cs:244` → `Elaborator.AdvanceUnit` — the interleaving that ticket listed as "not done" |
+| [port-syntax-roles](port-syntax-roles.md) | `RoleException` (`BinderTable.cs:28`), operators through `stage2.fun`'s `order additive`, roles through imports, the Driver's blanket rule gone |
+| [port-effects](port-effects.md) | `Nbe.Effects.cs`, `Term.Tunnel` (`Elaborator.Effects.cs:297`), the optional `Pi.Row` its sequencing guard asked for |
+| [port-generative-former-identity-residue](port-generative-former-identity-residue.md) | `1f70e82` + the case `values/nominal-generative-former-type-case-separates` |
+
+**Newly found, reachable, and unowned — these are the frontier now**, cheapest first, each probe
+verbatim on its ticket:
+
+1. [the checker's unhandled-effect error](port-checker-unhandled-effect.md) — site 8,
+   `Nbe.Effects.cs:111`. The prototype reports a language error; the port refuses.
+2. [a pattern head that is a member of a non-nominal](port-non-nominal-pattern-head.md) — site 2,
+   `Elaborator.Enum.cs:43`. Reduce the head first; `NotANominalType` only when no nominal appears
+   (the alias ruling bounds the fix).
+3. [generalising a pattern synonym over a stuck neutral](port-synonym-generalises-over-neutral.md)
+   — site 5, `Elaborator.Patterns.cs:258`. **Serialized behind
+   [sealed-nominal-head](port-pattern-synonym-over-sealed-nominal-head.md)** — same file, and also
+   ahead of [the synonym's implicit type parameters](pattern-synonym-type-parameters.md).
+
+**Ruled, queued, no ruling left** — in the order they were ruled: [a nested field pattern must
+work](port-nested-field-patterns.md) (a feature, the port ahead of the prototype on purpose),
+[the budget call stack](port-budget-attribution.md), [an unused type parameter](port-generative-former-phantom-parameter.md)
+(in flight), [the synonym's implicit type parameters](pattern-synonym-type-parameters.md), and
+[identity must survive re-evaluation](port-identity-survives-reevaluation.md) (gated on
+`sealed-nominal-head`).
+
+**Landed this session, with the integrator's own re-run of both suites:**
+[a match stuck on a known scrutinee's unknown part](port-stuck-match-sub-occurrence.md) (`7be55ab`,
+merged `d7bb999`) — `183/183` xUnit, `751 cases, 0 failed`, `dune test` green with 31 divergences.
+
+So the answer to "is the port a superset yet" moves from *not knowably* to **bounded**: three
+named programs the prototype answers and the port refuses, plus one in flight and one being
+implemented, and then the shapes no corpus can hold (a nested field pattern, a hang) — each with
+the probe that reaches it.

@@ -3,12 +3,33 @@ title: "Port: procedural macros"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 after a read-only re-audit verified every scope bullet landed in dotnet/src - by the mechanism, not by the prose. The wave itself landed 2026-09-17; the ticket stayed open by bookkeeping, like port-generative-former-identity-residue.
 assignee:
 blocked_by:
 ---
 
 # Port: procedural macros
+
+> ## Resolution (2026-09-25) — every scope bullet verified landed
+>
+> Verified by a read-only audit against `dotnet/src`, and re-checked by the integrator:
+>
+> 1. **Reflection** — `Reflection.cs`, exercised by the port's own xUnit round-trip tests.
+> 2. **Definitions and calls** — `Expander.Macros.cs`, including `ExpandOperatorUse` for
+>    operator macros (`stage2.fun`'s `pub infix (+)` / `(&&)` run), in blocks and modules.
+> 3. **Quoted syntax** — `Enforest.Roles.cs`'s block reading, parsed at definition.
+> 4. **The runtime, including this ticket's own "not done" headline — the interleaving** —
+>    `Fun.Expand/MacroRuntime.cs:57` `void Advance(Binding expanded)`, called per expanded
+>    binding by `Expander.cs:244`, with `UnitRuntime.Advance` → `Elaborator.AdvanceUnit`
+>    (`Elaborator.cs:466`) and the loader's own implementation. Expansion and elaboration
+>    interleave one top-level binding at a time.
+> 5. **Type-aware macros** — `ApplyTypedMacro` (`Elaborator.cs:218,329`).
+>
+> One refusal remains on this path — `Expander.Macros.cs:306`, a *typed operator* macro — and it
+> is ruled [post-port work](port-typed-operator-macro.md): the prototype hangs on it too, so it
+> is parity by absence, not a gap.
 
 Wave 3 fork. Follow the porting conventions in
 [port-core-tt-to-dotnet](port-core-tt-to-dotnet.md#porting-conventions-2026-09-16).

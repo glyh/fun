@@ -10,6 +10,40 @@ blocked_by:
 
 # Port: audit every unported path
 
+> ## Re-sweep 2026-09-25
+>
+> A read-only fork re-classified the whole inventory, against `dotnet/src` and by probing both
+> runners, because **several tickets in this repo turned out to be older than the commits that
+> closed them** — this file's own annotations included. The original inventory below is kept
+> unchanged as the record it is; **this section is the one that bounds the language today.**
+>
+> The inventory is down from 62 sites to **14** (`grep -rn "not ported yet:" dotnet/src`), of
+> which:
+>
+> | verdict | sites |
+> |---|---|---|
+> | **real gap** | **3** — [the checker's unhandled effect](port-checker-unhandled-effect.md), [a pattern head that is a member of a non-nominal](port-non-nominal-pattern-head.md), [generalising a synonym over a stuck neutral](port-synonym-generalises-over-neutral.md) |
+> | real gap, in flight | 1 — [a pattern synonym over a sealed-nominal head](port-pattern-synonym-over-sealed-nominal-head.md) |
+> | ruled and queued | 1 — [an unused type parameter](port-generative-former-phantom-parameter.md) |
+> | ruled deferred | 1 — [a typed operator macro](port-typed-operator-macro.md) (the prototype hangs too: parity by absence, post-port work) |
+> | unreachable | 7 — the frame-rename default, the quoted-statement default, the `Syntax`-elaboration default, the `CorePattern` binder default, the two `Core.Shift` defaults, and the unlabelled-generative-seal throw |
+> | unprobed | 1 — the rec-enum unnamed-capture throw: two probes pass in both runners, and its ticket is closed with prediction deliberately kept, so the throw is unowned residue. Revisit only if a reaching program is found. |
+>
+> **The three real gaps are the finding.** Each hides behind a row below marked *fixed*: the
+> non-nominal head and the checker's unhandled effect are credited to
+> [port-stage2-residue](port-stage2-residue.md), which closed a *different* route for each
+> (`elab-067`'s generative route, `core-102`'s eager argument). A row marked fixed says a *route*
+> was fixed; it never said the throw was gone. Rows 17 and 37's open `?` also resolve to
+> *unreachable* by enumeration (the frame hierarchy is closed at six kinds; every `CorePattern`
+> and `Term` kind is handled).
+>
+> Each gap's program, both runners' outputs and the fix direction are on its ticket — the audit
+> wrote the probe down so the next fork does not re-derive it.
+>
+> The wave tickets this file's siblings described (`port-procedural-macros`, `port-syntax-roles`,
+> `port-effects`) were verified **landed scope-bullet by scope-bullet** and closed the same day;
+> the frontier is no longer three big waves but the handful of sites above.
+
 Step 3 of [port-parity-plan](port-parity-plan.md). **This is an audit — it writes no
 feature code.** Its deliverable is this file: one verdict per site, so the invisible
 delta becomes a number and the real gaps become tickets.

@@ -3,12 +3,31 @@ title: "Port: algebraic effects"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 after a read-only re-audit verified every scope bullet landed in dotnet/src - handlers, rows on arrows, deep one-shot resume, tunneling, and the optional Pi.Row the sequencing guard asked for. Its "not done" list landed through the closed follow-up tickets. Landed in wave 2; open by bookkeeping.
 assignee:
 blocked_by:
 ---
 
 # Port: algebraic effects
+
+> ## Resolution (2026-09-25) — every scope bullet verified landed
+>
+> Verified by a read-only audit against `dotnet/src`, and re-checked by the integrator:
+>
+> 1. **Effects, `perform`, handlers, `resume`** — `Nbe.Effects.cs` (deep, one-shot; a captured
+>    continuation is a slice of the machine's frame stack).
+> 2. **Rows on arrows**, open and inferred rows, `~>` — the closed
+>    [effects follow-ups](port-effects-followups.md) landed every one of them.
+> 3. **Tunneling** — `Term.Tunnel` (`Elaborator.Effects.cs:297`) and `Nbe.Effects.cs`'s
+>    `TunnelFrame`, skipping lexical handlers by instancing.
+> 4. **The sequencing guard** — `Term.Pi`/`Value.VPi` carry the row as an optional member
+>    defaulting to the empty (pure) row, which is why no other fork's `Pi` construction churned.
+>
+> One reachable refusal sits on this path and is **not** this ticket's scope — the *checker*
+> evaluating a term that performs, which is a separate gap now filed as
+> [the checker's unhandled-effect error](port-checker-unhandled-effect.md).
 
 Wave 2 fork. Follow the porting conventions in
 [port-core-tt-to-dotnet](port-core-tt-to-dotnet.md#porting-conventions-2026-09-16).
