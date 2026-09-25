@@ -286,6 +286,11 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
   committed, and its finished fix sat uncommitted in an orphaned `/tmp` worktree — it was recovered
   by luck of the sweep, verified and merged. A dead fork's *uncommitted* work is still its
   deliverable, and `/tmp` is not durable.
+- **Measure a ticket's gap in the runners before spending a fork slot on it.** On 2026-09-25 a
+  fork was spawned against `port-generative-former-identity-residue`'s section 1, whose fix had
+  already been committed and merged the same day the ticket was written (`1f70e82`, merged
+  `5a685ba`). Its whole slot went on discovering that. A ticket's prose can be older than the
+  commit that closes it: run the program before briefing a fork.
 - **Read the model before asking the user a question.** The last question of the form "is this
   behaviour right?" was already answered by footnote 6 of
   [nominal identity](tickets/nominal-identity-applicative-by-purity.md); asking cost more than

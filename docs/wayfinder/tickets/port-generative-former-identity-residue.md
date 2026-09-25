@@ -3,12 +3,41 @@ title: "Port: the generative former's identity residue"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed by the integrator, 2026-09-25 - section 1 (a type-case telling two former instances apart) was already implemented and merged the same day this ticket was written (1f70e82, merged 5a685ba, with the case values/nominal-generative-former-type-case-separates). Section 2 was split out to port-generative-former-phantom-parameter, ruled 2026-09-25 and queued.
 assignee:
 blocked_by:
 ---
 
 # Port: the generative former's identity residue
+
+> ## Resolution (2026-09-25) — the ticket was stale; both halves are closed
+>
+> **Section 1 was already fixed when this ticket was written.** The fix landed 2026-09-24
+> 21:04 as `1f70e82` (*E11: capture a generative former's stamp in type-case*, merged
+> `5a685ba`), with the case at 21:12; the ticket's own "the port reports `11`" prose was
+> written around 2026-09-24 before that merge. Re-measured by the integrator 2026-09-25 on
+> `9183016`:
+>
+> ```text
+> C#     --file values/nominal-generative-former-type-case-separates.fun  → VALUE 10
+> OCaml     _build/default/bin/differential.exe (same file)               → VALUE 10
+> .expect                                                                  → 10
+> test/conformance/prototype-divergences.txt entries for it                 → 0
+> ```
+> The fix is in `dotnet/src/Fun.Compiler/Elaborator.RecTypes.cs`, not the `Nbe.Generative.cs`
+> comparison this ticket points at: two sites dropped the declaration-site scope (which
+> carries the stamp) — `PredictCaptures`/`Body` reset `Enclosing` while peeling the former's
+> parameters, and the recursive-enum re-elaboration loop ran the enum body through `InferLam`.
+> Both now bind the parameters over the declaration-site context without resetting `Enclosing`,
+> matching the prototype's `elab_type_group`.
+>
+> **Section 2 is ruled and queued**, not open work here:
+> [an unused type parameter is an error at its declaration](port-generative-former-phantom-parameter.md).
+>
+> A fork was spawned against this ticket on 2026-09-25 and correctly reported *nothing to do*.
+> Measure a ticket's gap in the runners before spending a fork slot on it.
 
 One remaining E11 gap. The fork that landed
 [the parametric nominal in a generative module](port-generative-former-nominal.md) found
@@ -18,7 +47,7 @@ not — it is
 What is left here was **re-verified by the integrator** in both runners on 2026-09-24,
 after that work merged (`921da47`+).
 
-## 1. A type-case cannot tell two former instances apart (prototype `10`, port `11`)
+## 1. A type-case cannot tell two former instances apart (prototype `10`, port `11`) — **CLOSED, see the Resolution above**
 
 ```fun
 { Mk = fn(u : Unit) { module {

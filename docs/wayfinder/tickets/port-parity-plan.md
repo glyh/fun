@@ -231,3 +231,15 @@ prototype that hangs).
 pattern-synonym types), check the model first: the last question of that shape — a former's
 captures — was already answered by footgun 6 of
 [nominal identity](nominal-identity-applicative-by-purity.md), and asking cost more than reading.
+**Done 2026-09-25** for the phantom parameter: footgun 6 was pointing at "the parameter means
+nothing, so it is not part of the identity", and the user took the stricter route instead —
+[an unused type parameter is an error at its declaration](port-generative-former-phantom-parameter.md),
+in both implementations; queued behind a free fork slot.
+
+**A stale gap, closed 2026-09-25.** `port-generative-former-identity-residue` was carried here
+as "one remaining E11 gap"; its section 1 had already been fixed and merged on the same day the
+ticket was written (`1f70e82`, merged `5a685ba`, with the case
+`values/nominal-generative-former-type-case-separates`). Re-measured in both runners 2026-09-25:
+`VALUE 10` each, `.expect` `10`, no divergence entry. The ticket is closed and the fork that
+went looking for it correctly reported nothing to do — so this list is one item shorter than it
+reads. Measure a gap in the runners before spending a fork slot on it.
