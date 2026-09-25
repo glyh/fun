@@ -21,7 +21,20 @@ public abstract partial record CorePattern
     /// matches only if it is that instance: the declaration over convertible
     /// captures (E11), not merely the declaration.
     /// </summary>
-    public sealed record NominalHead(NominalDecl Decl, Term Head, int Arity, EquatableArray<CorePattern> Params) : CorePattern;
+    public sealed record NominalHead(NominalDecl Decl, Term Head, int Arity, EquatableArray<CorePattern> Params) : CorePattern
+{
+    /// <summary>
+    /// The context width where the head term was elaborated - its level base.
+    /// A term's de Bruijn index names a level as width - 1 - index, and run-time
+    /// environments are bottom-aligned with elaboration contexts (one entry per
+    /// binding over the shared prelude), so the matcher re-roots the head with a
+    /// constant shift of environment count minus this width and it resolves to
+    /// the bindings it was written with, whatever is in scope at the match - a
+    /// pattern synonym's template is elaborated at its definition, and a use
+    /// site one binding further in must not shift what its head names.
+    /// </summary>
+    public int HeadWidth { get; init; }
+}
 
     /// <summary>
     /// How many environment entries this pattern binds, in source order (an

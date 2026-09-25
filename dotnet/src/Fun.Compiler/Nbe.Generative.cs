@@ -25,7 +25,12 @@ public static partial class Nbe
         if (!ReferenceEquals(head.Decl, type.Decl)) return new MatchResult.NoMatch();
 
         var metas = Enumerable.Range(0, head.Arity).Select(_ => mc.Fresh()).ToList();
-        var written = metas.Aggregate(Eval(mc, env, head.Head), (f, id) => Apply(mc, f, new Value.VMeta(id, [])));
+        // The head is level-addressed: its indices are rooted at the width it was
+        // elaborated at, so re-root it onto this environment by the difference -
+        // run-time environments are bottom-aligned with elaboration contexts - and
+        // it resolves where it was written, not where the match sits.
+        var rooted = head.HeadWidth is 0 ? head.Head : head.Head.Shift(env.Count - head.HeadWidth);
+        var written = metas.Aggregate(Eval(mc, env, rooted), (f, id) => Apply(mc, f, new Value.VMeta(id, [])));
         var solved = new Dictionary<int, Value>();
         if (!SameInstance(mc, written, type, metas, solved)) return new MatchResult.NoMatch();
 
