@@ -33,8 +33,12 @@ namespace Fun.Compiler
                 _ => null,
             };
 
+            // A pruned arm (an earlier arm subsumes it) has no leaf to read, but its
+            // pattern still says how many binders its body closes over.
             return InTree(match.Tree, arm)
-                ?? throw new InvalidOperationException("reading back an unreachable arm of a stuck match");
+                ?? (arm < match.Patterns.Length
+                    ? match.Patterns[arm].Binders()
+                    : throw new InvalidOperationException("reading back an unreachable arm of a stuck match without patterns"));
         }
 
         /// <summary>A stuck match's arm body, evaluated with fresh variables for its binders from <paramref name="width"/>.</summary>
