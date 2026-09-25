@@ -5,6 +5,14 @@ namespace Fun.Compiler;
 /// <summary>An expansion, elaboration or evaluation failure.</summary>
 public sealed class FunException(string message) : Exception(message);
 
+/// <summary>
+/// The evaluator failed while the checker was evaluating: a language error (the prototype's
+/// evaluation failure), not an unported path. <see cref="Elaborator"/> carries the form being
+/// elaborated on the budget and converts this at the innermost form, as the prototype's
+/// <c>at</c> does.
+/// </summary>
+public sealed class EvaluationFailed(string message) : Exception(message);
+
 /// <summary>A program checked and ready to run, with the context it was checked in.</summary>
 public sealed record Elaborated(Term Term, Value Type, Context Context);
 
