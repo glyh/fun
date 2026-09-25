@@ -60,7 +60,7 @@ after that work merged (`921da47`+).
 ```
 
 | runner | output |
-|---|---|
+| --- | --- |
 | OCaml | `10` |
 | port | `11` |
 
@@ -92,7 +92,7 @@ as the record it was first written from.
 ```
 
 | runner | output |
-|---|---|
+| --- | --- |
 | OCaml | `1` |
 | port | `not ported yet: sealing a generative former with an unused type parameter` (`Elaborator.Generative.cs`, the guard the landed work added) |
 

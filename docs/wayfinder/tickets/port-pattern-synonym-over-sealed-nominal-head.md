@@ -74,7 +74,7 @@ when its *struct* half landed (2026-09-25). What remains is the half that needs 
 ```
 
 | runner | output |
-|---|---|
+| --- | --- |
 | OCaml | `1` |
 | port | `not ported yet: a pattern synonym over a nominal type-case pattern` (`Elaborator.Patterns.cs`) |
 
