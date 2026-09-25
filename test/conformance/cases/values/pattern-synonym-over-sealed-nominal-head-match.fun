@@ -1,4 +1,4 @@
-# the same synonym used in a match: the direct-match path evaluates the head under the definition's closure
+# the same synonym used in a match: the direct-match path re-evaluates the carried head term
 { SymbolTable = fn(u : Unit) { module {
     table = ref("");
     pub type Symbol = Sym(String);

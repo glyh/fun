@@ -1,4 +1,5 @@
-# a pattern synonym over a sealed-nominal head: the head term runs under the definition site's closure
+# a pattern synonym over a sealed-nominal head: the head *term* is carried in the template and
+# re-evaluated at each match, under the match's environment (prototype parity: nbe.ml:716)
 { SymbolTable = fn(u : Unit) { module {
     table = ref("");
     pub type Symbol = Sym(String);

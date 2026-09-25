@@ -3,12 +3,55 @@ title: "Port: a pattern synonym over a sealed-nominal head"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 - implemented by a fork (1d53a17, merged) and verified by the integrator - 755 cases 0 failed and 184/184 xUnit where the port was at 751, dune test green at 755/0 with 31 divergences. One deviation from this ticket's prescribed mechanism is recorded below, with the reason it was necessary.
 assignee:
 blocked_by:
 ---
 
 # Port: a pattern synonym over a sealed-nominal head
+
+> ## Resolution (2026-09-25) — closed, with a recorded deviation
+>
+> Implemented by a fork (`1d53a17`, merged) and verified by the integrator re-running both
+> suites: port `755 cases, 0 failed` (was 751) and `184/184` xUnit; `dune test` green at
+> `755 cases, 0 failed, 31 divergences`. All four new cases agree in **both** runners:
+>
+> | case | expect | OCaml | port |
+> | --- | --- | --- | --- |
+> | definition (`...-sealed-nominal-head`) | `1` | `VALUE 1` | `VALUE 1` |
+> | use in a match (`...-match`) | `42` | `VALUE 42` | `VALUE 42` |
+> | a second evaluation's `Symbol` (`...-stamp`) | `0` | `VALUE 0` | `VALUE 0` |
+> | the former half (`...-former-head`) | `error` | `ELAB UnknownConstructor "Option2"` | `ELAB unknown constructor \`Option2\`` |
+>
+> **The deviation, recorded because this ticket prescribed the opposite mechanism.** It said the
+> head is a definition-site term and must run under a **definition-site closure** (its environment
+> and width). The fork implemented exactly that first, and it **fails**: inside the module the
+> elaborated head term is `Dot(Var 1, Symbol)` whose slot is a `VVar` elaboration artifact, so
+> under the recorded environment it stays a stuck `VNeutral`. What shipped is **prototype
+> parity** — the head *term* is carried in the template and re-evaluated at each match under the
+> **match's** environment, which is what `same_instance mc env …` does at `nbe.ml:716`. The
+> property this ticket was actually protecting survives: no pre-applied `Value` (so no double
+> application) and the head is re-evaluated per match rather than frozen. The stamp case is the
+> proof that identity still separates two instances.
+>
+> **The hazard that mechanism shares with the prototype, recorded rather than guessed:** a
+> use-site environment *wider* than the definition site's could resolve the head term's variable
+> to a different binding than intended. The prototype has the same exposure and nobody has probed
+> a capturing shape, so this ticket closes on parity — if a probe ever shows one, the
+> definition-site closure comes back, with a design that survives the `VVar` artifact above.
+>
+> **The former half was split off**, as the ticket asked: `RejectFormerHeads` walks the surface
+> right-hand side and a head naming a type former now throws `FunException("unknown constructor …")`
+> where the port used to refuse — parity with the prototype's `UnknownConstructor`, covered as an
+> ordinary `error` case. Do not "fix" that half; the prototype refuses it too.
+>
+> **Two smaller reach-ins:** `FillSynonymParams` now recurses into a `NominalHead`'s parameters,
+> and `CollectSynonymMetas` walks a `VRef` cell's content (the `Symbol` nominal captures the
+> table cell). The integrator also corrected three of the four new case comments, which described
+> the prescribed definition-site closure rather than the shipped match-site re-evaluation — a
+> comment a reader would have been right to trust and wrong to act on.
 
 Split out of [the type-case right-hand side ticket](port-pattern-synonym-over-type-case-rhs.md)
 when its *struct* half landed (2026-09-25). What remains is the half that needs a

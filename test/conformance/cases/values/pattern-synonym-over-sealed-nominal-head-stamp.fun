@@ -1,4 +1,5 @@
-# a second evaluation's same-named nominal is another instance: the closure keeps the stamp, it does not merge
+# a second evaluation's same-named nominal is another instance: the stamp survives the
+# re-evaluation, so the two are not merged
 { SymbolTable = fn(u : Unit) { module {
     table = ref("");
     pub type Symbol = Sym(String);
