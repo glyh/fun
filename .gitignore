@@ -1,44 +1,14 @@
-*.annot
-*.cmo
-*.cma
-*.cmi
-*.a
-*.o
-*.cmx
-*.cmxs
-*.cmxa
+# .NET build output
+bin/
+obj/
+*.user
 
-# Files containing detailed information about the compilation (generated
-# by `ocamlc`/`ocamlopt` when invoked using the option `-bin-annot`).
-# These files are typically useful for code inspection tools
-# (e.g. Merlin).
-*.cmt
-*.cmti
+# Test and coverage output
+[Tt]est[Rr]esults/
+*.coverage
+*.trx
 
-# ocamlbuild and Dune default working directory
-_build/
-
-# ocamlbuild targets
-*.byte
-*.native
-
-# oasis generated files
-setup.data
-setup.log
-
-# Merlin configuring file for Vim and Emacs
-.merlin
-
-# Dune generated files
-*.install
-
-# Local OPAM switch
-_opam/
-
-.claude/
-.cortexkit/
-.opencode/*
-!.opencode/skills/
-.codebase-memory/
-.slim/deepwork/
-.pi/
+# Editor and OS
+.DS_Store
+.vs/
+.idea/

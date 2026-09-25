@@ -1,5 +1,0 @@
-(library
- (name core_tt_kernel)
- (wrapped false)
- (preprocess
-  (pps ppx_deriving.std)))

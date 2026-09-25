@@ -1,187 +1,174 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for working in this repository.
 
 ## Project overview
 
-`fun` is a programming language compiler/interpreter in OCaml. The core (`core_tt`) is dependently typed with bidirectional elaboration, NbE, nominal ADTs, structural records/modules, traits, algebraic effects, and a hygienic enforestation-based macro system.
+`fun` is a programming language compiler/interpreter. The implementation is **C# (.NET 10)** under
+`dotnet/`. The earlier OCaml prototype was **removed on 2026-09-25** — see *History* at the end,
+which keeps the knowledge that was learned while it was the reference.
 
-Design philosophy: **Consistency > Flexibility > Correctness** — one construct for many roles (`struct` = record/module/namespace), types are values, type-case on open `Type` is acceptable.
+The core (`core_tt`) is dependently typed with bidirectional elaboration, normalization by
+evaluation, nominal ADTs, structural records/modules, traits, algebraic effects, mutable
+references, and a hygienic enforestation-based macro system.
 
-`(wrapped false)` everywhere — all `.ml` are flat top-level modules, no `.mli` files. Library names are `core_tt_*` (see dependency graph below), distinct from directory names.
+Design philosophy: **Consistency > Flexibility > Correctness** — one construct for many roles
+(`struct` = record/module/namespace), types are values, type-case on open `Type` is acceptable.
 
 ### Build & test
 
 ```sh
-dune build                     # build
-dune test                      # all tests
-dune exec fun                  # REPL (bin/main.ml)
-dune exec test/backend/test_core.exe -- test macros -e 'name'  # single test
+cd dotnet
+dotnet build                                         # everything
+dotnet test test/Fun.Tests                           # xUnit (internals)
+dotnet run --project test/Fun.Conformance            # the shared language suite
+dotnet run --project src/Fun.Cli                     # REPL
 ```
 
-Test executables: `test/backend/test_core.exe`, `test/backend/test_macro_driver_stage7.exe`, `test/semantic/test_elaborate.exe`, `test/syntax/test_syntax.exe` (a single Alcotest binary aggregating all `test/syntax/test_*.ml` suites, including `test_line_counts`).
+A single conformance program, the way the suite judges it:
+
+```sh
+dotnet dotnet/test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file /tmp/probe.fun
+```
+
+**The three-project split is load-bearing**: `Fun.Kernel` (atoms, terms, values, patterns,
+decision trees), `Fun.Expand` (reader, enforestation, macros — it **cannot reference the
+elaborator**), `Fun.Compiler` (elaboration, unification, the evaluator). `Fun.Cli` is the
+executable. Do not add a reference that crosses the first boundary.
 
 ### Documentation hierarchy
 
-- `docs/STATUS.md` — **authoritative** snapshot of what is built; when any doc disagrees on completion status, STATUS wins.
-- `docs/wayfinder/` — direction map (decided / open tickets / fog); start at `docs/wayfinder/fun-design-map.md`. Macro-system reference lives in `docs/wayfinder/macro-system/`.
+- `docs/STATUS.md` — **authoritative** snapshot of what is built; when any doc disagrees on
+  completion status, STATUS wins.
+- `docs/wayfinder/` — the direction map (decided / open tickets / fog); start at
+  `docs/wayfinder/fun-design-map.md`. Design detail for decided directions lives in `topics/`,
+  the macro-system reference in `macro-system/`.
 
 ### Pipeline
 
-```
-source → Raw_syntax → Enforest Syntax.t → Expand → expanded Syntax.t → Elaborate → Core.term → NBE → value
+```text
+source → reader → enforestation → expanded Syntax → elaboration → Core term → NbE → value
 ```
 
 ### Source layout
 
-- `lib/core_kernel/` — `Atom`, `Core`, `Debug`, `Syntax`, `Compiler_names` (centralized compiler-known names), `Scope_set`
-- `lib/syntax/` — `Raw_syntax` reader
-- `lib/expand/` — `Enforest` (+ `enforest_forms`/`_pat`/`_template`/`_decl_helpers`), `Expand`, `Parse_expand`, `Macro_eval`, `Expand_ctx`
-- `lib/semantic/typecheck/` — `Elaborate` split across many `elab_*` modules (`elab_infer`, `elab_check`, `elab_patterns`, `elab_prelude`, `elab_driver`, …), `Unify`, `Macro_driver` (type-aware macro interleaving)
-- `lib/semantic/match/` — `Core_match_compile`, `Core_decision_tree`
-- `lib/backend/interp/` — `Nbe`
-- `lib/loader/` — `Core_loader`
-- `test/backend/`, `test/semantic/`, `test/syntax/` — tests by pipeline stage
-- `test/conformance/` — the shared conformance suite: `.fun` programs plus
-  `.expect` results that the .NET port must pass too (`cases/README.md`)
+- `dotnet/src/Fun.Kernel/` — `Atom`, `Core` (`Core.Shift`, `Core.Match`, `Core.Patterns`,
+  `Core.Refs`), `Syntax`, the decision trees, `EquatableArray`
+- `dotnet/src/Fun.Expand/` — the reader, `Enforest` (+ `Enforest.Roles`, `Enforest.Match`),
+  `Expander` (+ `.Macros`, `.Roles`, `.Imports`), `MacroRuntime`, `Reflection`
+- `dotnet/src/Fun.Compiler/` — `Elaborator` split across partial files (`Elaborator.Traits`,
+  `.Patterns`, `.RecTypes`, `.Generative`, `.Implicits`, `.Effects`, `.Match`, …), `Unify`,
+  `Nbe` (+ `Nbe.Match`, `.StuckMatch`, `.Effects`, `.Generative`), `Budget`, `Driver`, `Loader`
+- `dotnet/std/` — the prelude source, `stage1.fun` and `stage2.fun`
+- `test/conformance/cases/` — the language suite: `.fun` + `.expect` pairs, nothing to register
+  (`cases/README.md`)
+- `dotnet/test/Fun.Tests/` — xUnit, internals only
 
-### Library dependency graph
+### Where a test goes
 
-```
-core_tt_kernel → core_tt_syntax → core_tt_expand → core_tt_loader → core_tt_typecheck
-                                  core_tt_interp ──────────────────────┘
-                                  core_tt_match ───────────────────────┘
-```
+A test that is only "source → value or error" belongs in `test/conformance/cases/` — **and only
+there**, so language behaviour has one source of truth. Keep a test in xUnit when it inspects
+internals: syntax shapes, reflection round trips, budget accounting, an exact error constructor,
+or a type rather than a value.
 
-### Testing helpers
+## Rules that bite
 
-- `eval_with_macros` — expression-level macro tests
-- `eval_decl_module` — module-level macro tests (uses `parse_module` with callbacks)
-- `eval_with_imported_macros` — cross-module tests (writes temp `.fun` files)
-- `check_i64_macro` — asserts macro result equals an i64
+- **Exceptions are not control flow.** `FunException` is a genuine *language* error;
+  `NotImplementedException("not ported yet: …")` marks an **unported path** and is deliberately
+  distinguishable, so a refusal can never satisfy a case expecting `error`. Do not use either for
+  ordinary dispatch — use `Result`, `option`, or an explicit sum type.
+- **The evaluator never recurses on the native stack per object-level call.** A term needing a
+  sub-evaluation gets a `Kont` frame. Readback, unification and the elaborator may recurse over
+  structure.
+- **Slots.** A binding contributes entries only through `BindingTerm.Slots()`, which both the
+  elaborator and the evaluator consume.
+- **A feature's code goes in its own partial file** (`Elaborator.<Feature>.cs`,
+  `Nbe.<Feature>.cs`, `Core.<Feature>.cs`, `Enforest.<Feature>.cs`, `Expander.<Feature>.cs`);
+  a shared dispatch switch gets one case line that calls into it.
+- **Name things after the domain model and `CONTEXT.md`** (`Context`, `Environment`, `Width`,
+  `Entry`, `Locate`, `Binding`, `Value`, `Meta`), not after the deleted prototype's abbreviations.
+- **No test-driven special cases.** Do not add logic whose only purpose is to make a test pass.
+  Fix the code so it genuinely handles the input. When the intended semantics are ambiguous or
+  under-specified, **ask** before committing to an interpretation.
+- **Debug via instrumentation, not test-case exploration.** When tracking down a parser or
+  elaboration bug, add logging or a reusable utility that exposes the intermediate
+  representation, and capture the output:
 
-A test that is only "source string → value or error" belongs in
-`test/conformance/cases/` instead (two data files, no registration), so the .NET
-port runs it too — **and only there**: the Alcotest copies of those cases were
-deleted, so language behaviour has one source of truth. Keep a test in Alcotest
-when it inspects internals: syntax shapes, reflection round trips, budget
-accounting, macro nominals plumbing, an exact error constructor
-(`expect_elab_error`), or a type rather than a value (`check_type`).
+  ```sh
+  cd dotnet && dotnet build 2>&1 && dotnet test test/Fun.Tests --nologo 2>/tmp/log
+  ```
+
+  The goal is one diagnostic that pins the root cause, not a matrix of modified inputs.
+- **Git checkout is a last resort.** If you must jump to a historical commit or branch, first
+  record where you are so you do not lose the starting point.
+
+## Writing a fork's report, and reading one
+
+Four times in one session a ticket's own prose was older than the commit that closed it, and
+twice a "known" error message had never been run. So:
+
+- **Measure a gap in the runner before briefing a fork**: one command settles what a paragraph
+  cannot, and a probe written down is worth less than one executed.
+- **Never soften an unprobed path into a verdict.** "Unsettled, here is the probe I would run
+  next" is a useful report; "probably fine" is not.
+- **Say what you did not do.** A fork that could not run half its verification (no `_build` in a
+  worktree, no provider quota) and says so is more valuable than one that reports green.
 
 ---
 
-## Adding a new Syntax ADT (e.g. Pattern, TypeExpr)
+## History: the OCaml prototype (removed 2026-09-25)
 
-When adding a new nominal type for macros to inspect/construct:
+It was deleted once the port measured as a superset: `port-fails: 0` over every program in the
+repo, with the 34 cases where the two disagreed being ones the prototype got wrong. Its code is
+in `git log` (paths `lib/`, `bin/`, `dune`, `dune-project`, `fun.opam`, `test/{backend,semantic,
+syntax}/`, `test/conformance/run_conformance.ml`, `scripts/differential.sh`), and
+`test/conformance/prototype-divergences.txt` is now a historical record of the 34 places a second
+implementation got the language wrong.
 
-1. **Prelude**: in `Elab_prelude.stage1_source`'s `Syntax` module (stage 1 has no
-   `type` macro - that is defined in stage 2), declare
-   `pub rec Foo = enum { Ctor1(Tys), Ctor2(Tys) }; export Foo;` - add `open Foo;` only
-   where the stage-1 source uses the constructors bare, else qualify them (`Foo.Ctor1`)
-2. **Builders**: add `pub foo_build = fn(args...) { Ctor(args...) }` in the prelude
-3. **syntax_nominals**: add a `foo : value` field in `Macro_eval.syntax_nominals`
-4. **wrap/unwrap**: add `wrap_stx_foo` / `unwrap_stx_foo` in `macro_eval.ml`
-5. **Nominals construction**: update ALL sites that build `syntax_nominals`
-   (`test/backend/test_core.ml`, `eval_with_macros`, `eval_decl_module`, etc.)
-6. **Pattern synonyms**: if adding `pub pattern` for the new type, the elaborator
-   hardcodes `Expr` as the scrutinee (`elab_infer.ml`). Must also add the
-   resolve-by-constructor-name fallback.
+The notes below describe that prototype's structure. They are kept because the *lessons*
+transfer: each one is a trap the port can still fall into, in its own idiom.
 
-## Reflection and scope-addition: preserve ALL fields
+### Adding a new reflected Syntax ADT (e.g. `Pattern`, `TypeExpr`)
 
-When adding a field to `Syntax.struct_binding` variants (e.g. `kind` to `MacroBinding`),
-you MUST update EVERY constructor of that variant across the codebase:
+When adding a nominal type for macros to inspect and construct:
 
-- `macro_eval.ml` — reflection must carry the field both ways (the round trip is the identity)
-- `expand.ml` `go_kind` / `go_struct_binding` — the one traversal (`mapper`) every
-  scope, intro, rename and syntax-form fill goes through; `map_binders` for the
-  names a declaration binds
-- `enforest_template.ml` — a syntax form's rules (patterns, matching into
-  `Syntax.capture`)
+1. **Prelude**: declare it in `dotnet/std/stage1.fun`'s `Syntax` module (stage 1 has no `type`
+   macro — that is defined in stage 2) as `pub rec Foo = enum { … }; export Foo;`, and add
+   builders (`pub foo_build = fn(args…) { … }`).
+2. **Nominals**: add the field to the syntax-nominals registry the macro evaluator builds.
+3. **Wrap/unwrap**: add the wrap/unwrap pair the reflection layer uses.
+4. **Every construction site**: update all sites building that registry (the test helpers
+   included) — the round trip must be the identity.
+5. **Pattern synonyms**: a new ADT's `pub pattern` must be resolvable by constructor name as
+   well, not only through `open`.
 
-**Pattern**: `git grep` for the variant name (e.g. `MacroBinding {`) and check
-every match site preserves the new field or explicitly drops it.
+### Reflection and scope-addition: preserve ALL fields
 
-## Parser: `rest = []` is almost always wrong
+When adding a field to a `Syntax` binding variant, update **every** constructor of that variant
+across the codebase — reflection both ways, the one traversal that every scope, intro, rename and
+syntax-form fill goes through, and a syntax form's rule templates. **Pattern**: search for the
+variant name and check every match site preserves the new field or explicitly drops it with a
+reason.
 
-In `enforest.ml`, when a function consumes tokens and returns remaining tokens
-(`rest`), never hardcode `rest = []`. Return the unconsumed tokens so the caller
-can check `ensure_no_rest` or continue parsing. Classic bugs:
+### Parser: `rest = []` is almost always wrong
 
-- `parse_fn_parts` arrow case was `(body, [], span)` — dropped rest silently
-- Any `parse_all(...)` call that discards the rest tuple
+When a function consumes tokens and returns the remaining tokens, never hardcode the remainder as
+empty. Return the unconsumed tokens so the caller can check "nothing left" or keep parsing. The
+classic bug was a `fn`-parts arrow case returning `(body, [], span)` and silently dropping the
+rest — the same shape exists in the port's enforester.
 
-**Fix**: replace `parse_all (fun ts -> f ts) terms` with `f terms` and destructure
-the `(result, rest)` tuple.
+### Constructor resolution phases
 
-## Elaborator: constructor resolution phases
+A pattern head resolves *like a bare name* — a binder or an open choice — and the nominal is read
+off the entry it lands on, never by scanning or by spelling. Consequences: a new ADT declared
+inside a module becomes visible only **after** its binding is processed, so pattern synonyms for
+it must come later in the binding group; and a *function* reducing to a nominal is a valid head
+(an alias), because types are values.
 
-The elaborator resolves pattern heads via `find_nominal_for_pattern_head_opt(ctx, path)`:
-the path's head resolves like a bare name (binder or open choice), and the nominal is
-read off the entry it lands on (never by scanning or by spelling). When adding a new ADT inside a
-module, its constructors become visible only AFTER the ADT binding is processed.
+### Expander vs elaborator context
 
-- **Pattern synonyms** for ADT constructors work only if the ADT was elaborated
-  in a PREVIOUS binding group
-- The `Expr` pattern synonyms work because they pre-date all user code
-- New ADTs added to the prelude need their pattern synonyms after them
-
-## Expander vs Elaborator context
-
-- **Expander** (`Expand_ctx.t`): processes macros during parsing. Requires
-  `elaborate` and `eval_and_apply` callbacks.
-- **Elaborator** (`Elaborate.Ctx.t`): elaborates expanded `Syntax.t` → `Core.term`.
-- Macros are compiled by the EXPANDER using the `elaborate` callback.
-- Imported module macros are pre-compiled by `visit_macros` and cached in
-  `macro_cache`. The `load_macros` callback pre-registers them in the expander.
-- `MacroCallBinding` expansion needs `eval_and_apply` threaded through
-  `Core_loader.load_elaborated → parse_runtime_module → Parse_expand.parse_module`.
-
-## Common OCaml patterns in this codebase
-
-- Libraries use `(wrapped false)` — all `.ml` files are flat top-level modules
-- No `.mli` files — all modules export everything
-- `Syntax.t` is the surface AST node, NOT an OCaml `t` type alias
-- `Core.term` is the elaboration core term, `Core.value` is the evaluated value
-- `and` in type definitions links mutually recursive types across files
-
-## Style conventions
-
-- **Exceptions are not control flow.** `raise`/`try-with` must never be used for
-  normal program logic. They signal unrecoverable errors — malformed input, I/O
-  failures, internal invariants violated. A well-formed program should not
-  trigger exception-based dispatch. Use `Result`, `option`, or explicit
-  sum types for recoverable or expected failure paths.
-- **Line-count reduction is structural, not cosmetic.** When faced with a hard
-  LoC limit, do not minify, reindent, or join lines. Instead:
-  1. Identify genuinely repetitive code (e.g. near-duplicate `first_some` blocks,
-     body-parsing patterns copied across `parse_fn_parts`/`parse_method_binding`/
-     `parse_operator_value`).
-  2. Lift the common structure into a shared helper or combinator.
-  3. Or split the module at a clean interface boundary (e.g. expression parser
-     vs binding parsers into separate files accessible via a small driver).
-  The goal is fewer lines through less duplication, not fewer lines through
-  less readability.
-  **The 3000-line limit in `test_line_counts.ml` is strict. Never bump it.**
-  If a file exceeds it, split or extract — do not raise the cap.
-- **Debug via instrumentation, not test-case exploration.** When tracking down
-  a parser or elaboration bug, do not repeatedly modify test cases to exhaust
-  the input space. Instead:
-  1. Add logging (`debug_tokens`, `Printf.eprintf`, etc.) to surface internal
-     state at the point of failure.
-  2. Or add reusable test utilities that expose intermediate representations
-     (e.g. `show_token_kind`, `desc_token`, `Parse_spec.parse` with
-     traceable combinators).
-  3. `dune build 2>&1 && dune exec test.exe 2>/tmp/log` captures both stdout
-     and stderr for inspection without scrolling through test output.
-  The goal is a single diagnostic that pins the root cause, not a matrix of
-  modified test inputs.
-- **No test-driven special cases.** Do not introduce special-case logic whose
-  sole purpose is making a test pass. Fix the code so that it genuinely and
-  uniformly handles the input, conforming to the semantics of the language
-  or compiler. When the intended semantics are ambiguous or under-specified,
-  ask the user before committing to an interpretation.
-- **Git checkout is a last resort.** Use `git checkout` only sparingly. If you
-  must jump to a historical commit or branch, first record where you are
-  (e.g. note the current branch/commit in the todo list or save a stash) so
-  you do not lose track of the starting point and lose progress.
+The expander processes macros during parsing (it needs `elaborate` and `eval_and_apply`
+callbacks); the elaborator turns expanded `Syntax` into the core term. Macros are compiled by the
+**expander** using the `elaborate` callback, and imported modules' macros are pre-compiled and
+cached, then pre-registered in the expander. In the port these are `Expander`/`MacroRuntime` and
+`Elaborator`; the same split, and the same reason `Fun.Expand` cannot reference `Fun.Compiler`.

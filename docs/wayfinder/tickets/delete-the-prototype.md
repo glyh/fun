@@ -3,12 +3,53 @@ title: "Delete the OCaml prototype, leaving the C# port as the implementation"
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 - the user approved once both halves of the gate were met (port-fails 0 measured; both unknowns settled as non-blockers, one of them by correcting the ticket's own premise). 99 tracked files deleted, the divergence file folded into a historical note, and the port re-verified after the deletion. One real breakage the deletion introduced was found and fixed: the conformance runner located the cases by walking up for `dune-project`.
 assignee:
-blocked_by: unknown residues: the rec-enum unnamed-capture throw and the synonym collector's narrower walk (read-only probe in flight, 2026-09-25)
+blocked_by:
 ---
 
 # Delete the OCaml prototype, leaving the C# port as the implementation
+
+> ## Resolution (2026-09-25) — done
+>
+> Approved by the user once **both halves of the gate were met**: the differential harness read
+> `port-fails: 0` over 766 programs with all 34 disagreements being recorded divergences, and the
+> two unknowns were settled as non-blockers —
+> [the rec-enum unnamed-capture throw](port-rec-enum-over-captures-names.md) after 16 probes across
+> the plausible capture routes plus a monotone-fixpoint argument, and the collector residual by
+> **disproving this ticket's own premise** (the prototype's `PatternSynBinding` path,
+> `elab_infer.ml:503`, does no generalization at all, so "the port collects fewer metas than the
+> prototype" was impossible).
+>
+> **Deleted** (99 tracked files): `lib/`, `bin/`, `test/{backend,semantic,syntax}/`,
+> `test/conformance/{dune,run_conformance.ml}`, `dune`, `dune-project`, `fun.opam`, `.envrc`, and
+> `scripts/` (the differential harness and its README). `_opam`/`_build` removed untracked.
+> **Kept**: `dotnet/`, the 766 shared programs in `test/conformance/cases/`, `docs/`, `CONTEXT.md`.
+>
+> **One breakage the deletion introduced, found before committing**: the conformance runner found
+> the cases by walking up for `dune-project` — the very file being deleted. `CasesRoot` now walks
+> up for `test/conformance/cases` itself, and its error message and two comments that named the
+> deleted harness are corrected. Verified afterwards: build clean, `185/185` xUnit,
+> `766 cases, 0 failed`, and the `--file` probe protocol still answers.
+>
+> **The divergence file is folded, not removed.** `test/conformance/prototype-divergences.txt` keeps
+> its 34 lines under a header saying the second implementation is gone and that nothing reads the
+> file: each listed case is an ordinary one now, and `grep` for readers returns none. The list is
+> kept because 34 programs where a second implementation got the language wrong are worth having
+> beside the cases.
+>
+> **Docs rewritten to match**: `README.md` (implementation, commands, and the removal with its
+> reason), `CLAUDE.md` (the port's build/test/layout, the live conventions promoted, and the
+> prototype's sections kept as *History* with the knowledge that transfers), `docs/STATUS.md`
+> (header now the port's, with the prototype's entries marked as its record), `cases/README.md`,
+> `.gitignore` (dotnet rather than OCaml artefacts), and the design map's worktree note.
+>
+> **What this does not claim**: that the port is correct, only that it is a superset — the 34-fold
+> divergence list and today's three audited gaps were all found by *probing*, and the harness's own
+> failure to see any of them is the reason the gate was phrased as a measurement rather than a
+green suite.
 
 Requested by the user 2026-09-25, with the bar stated narrowly on purpose:
 

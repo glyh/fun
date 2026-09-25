@@ -300,10 +300,11 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
   behaviour right?" was already answered by footnote 6 of
   [nominal identity](tickets/nominal-identity-applicative-by-purity.md); asking cost more than
   reading.
-- Parallel agents in git worktrees worked well for independent tickets; run
-  dune there with `dune build --root .` (the parent `dune-project` otherwise
-  captures the build). Worktrees may be created from a stale commit — reset to
-  `main` first.
+- Parallel agents in git worktrees worked well for independent tickets. A fresh worktree has no
+  build output, so `dotnet build` once before running anything — and tell a fork that it cannot
+  run the *other* implementation's half of a verification, so it says "unverified" rather than
+  inferring green. Worktrees may be created from a stale commit — reset to `main` first. Since
+  2026-09-25 each fork must also get its own `/tmp/<fork>/` scratch directory.
 - Use the camlkit MCP tools (locate / uses / type_at) for OCaml navigation.
 - Surface syntax changed wholesale: bodies are `{ … }`, arms use `=>`, `;` is
   explicit and a trailing `;` discards. Docs under `macro-system/` and closed

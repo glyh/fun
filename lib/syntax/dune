@@ -1,6 +1,0 @@
-(library
- (name core_tt_syntax)
- (wrapped false)
- (libraries core_tt_kernel sedlex)
- (preprocess
-  (pps ppx_deriving.std sedlex.ppx)))

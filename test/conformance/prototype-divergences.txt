@@ -1,9 +1,11 @@
-# Cases the OCaml prototype is known to fail. The shared .expect states the
-# language's behaviour (the domain model is the specification); these are
-# prototype defects, fixed in the .NET port only. Each line names the ticket.
+# HISTORICAL: cases the OCaml prototype got wrong. It was deleted on 2026-09-25 once the C#
+# port was measured as a superset of it (port-fails: 0 over every program in the repo).
 #
-# The OCaml runner expects every case listed here to FAIL, and reports one that
-# passes so it can be removed. The .NET runner ignores this file.
+# Nothing reads this file any more. Each line below is an ORDINARY case now: the `.expect`
+# states the language's behaviour (the domain model is the specification) and the port passes
+# it, which it did before the deletion too - the list only ever told the OCaml runner to expect
+# a failure. It is kept because 34 places where a second implementation got the language wrong
+# are worth having written down next to the cases.
 #
 # <area>/<name>    <ticket in docs/wayfinder/tickets/>
 elaborate/elab-049                          lambda-check-ignores-written-parameter-type.md

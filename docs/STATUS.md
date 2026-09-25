@@ -1,7 +1,13 @@
 # STATUS — canonical current implementation snapshot
 
-This is the **authoritative** status document for the `fun` compiler prototype.
-When other docs disagree with this file, STATUS.md wins.
+This is the **authoritative** status document for the `fun` compiler. When other docs disagree
+with this file, STATUS.md wins.
+
+**The implementation is the C# port in `dotnet/`.** The OCaml prototype was deleted on 2026-09-25,
+when the port measured as a superset of it (`port-fails: 0` over every program in the repo). The
+entries from 2026-09-16 onward describe waves of porting work and remain accurate as history; the
+entries that describe the prototype's own implementation are its record, and its code lives in
+`git log`.
 
 Last updated: after the .NET port's parity re-measurement, 2026-09-25.
 

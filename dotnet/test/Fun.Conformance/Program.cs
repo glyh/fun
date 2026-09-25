@@ -1,19 +1,20 @@
-// Runs the shared conformance suite -- the same cases/<area>/<name>.fun files
-// the OCaml prototype runs, compared against the same <name>.expect. The port
-// is complete when this passes every case OCaml passes.
+// Runs the shared conformance suite -- the cases/<area>/<name>.fun files under
+// test/conformance/cases, compared against their sibling <name>.expect. It is the only place
+// a language behaviour is tested, and it began life shared with the OCaml prototype (removed
+// 2026-09-25), which is why it lives beside the case files rather than under dotnet/.
 // See ../../../test/conformance/cases/README.md.
 using Fun.Compiler;
 
 const string UnitInfix = ".unit-";
 
-// --file <path>: run a single program and print the differential protocol for
-// scripts/differential.sh (the OCaml half is bin/differential.ml). It reuses
-// the same value/error shape as a normal case, so a program is judged exactly
-// as the suite judges it.
+// --file <path>: run a single program and print the one-line protocol below. It reuses
+// the same value/error shape as a normal case, so a program is judged exactly as the
+// suite judges it -- the way to check a suspected bug without adding a case first.
 if (args is ["--file", var file])
     return RunFile(file);
 
-// prototype-divergences.txt is the OCaml runner's business: the port passes every case.
+// prototype-divergences.txt is historical now (the second implementation is gone); the
+// cases it lists are ordinary ones, and this runner passes every case in the directory.
 var root = CasesRoot(args);
 var cases = Directory.EnumerateDirectories(root)
     .OrderBy(d => d, StringComparer.Ordinal)
@@ -102,20 +103,22 @@ static Dictionary<string, string> UnitSources(string dir, string name)
             StringComparer.Ordinal);
 }
 
-// test/conformance/cases, found by walking up to the repo root (dune-project),
-// so the runner works from anywhere. An argument overrides it.
+// test/conformance/cases, found by walking up to the repo root, so the runner works from
+// anywhere. An argument overrides it.
 static string CasesRoot(string[] args)
 {
     if (args.Length > 0) return args[0];
+    // Walk up to the repo root. The marker is the cases directory itself, not a build file:
+    // the runner used to look for `dune-project`, which the prototype's removal took with it.
     for (var dir = AppContext.BaseDirectory; dir is not null; dir = Path.GetDirectoryName(dir))
     {
-        if (!File.Exists(Path.Combine(dir, "dune-project"))) continue;
-        return Path.Combine(dir, "test", "conformance", "cases");
+        var cases = Path.Combine(dir, "test", "conformance", "cases");
+        if (Directory.Exists(cases)) return cases;
     }
-    throw new DirectoryNotFoundException("no dune-project above the runner; pass the cases directory");
+    throw new DirectoryNotFoundException("no test/conformance/cases above the runner; pass the cases directory");
 }
 
-// The differential protocol, one line per program (scripts/differential.sh):
+// The probe protocol, one line per program (the `--file` mode above):
 //   OK           the program elaborates (sibling .expect is "ok", so it is not run)
 //   VALUE <s>    Driver.Describe of the result
 //   ELAB <msg>   expansion/elaboration failed
