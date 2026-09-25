@@ -1,5 +1,5 @@
 ---
-title: "Port: a generative former with an unused type parameter"
+title: "An unused type parameter is an error at its declaration"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
@@ -8,13 +8,20 @@ assignee:
 blocked_by:
 ---
 
-# Port: a generative former with an unused type parameter
+# An unused type parameter is an error at its declaration
 
 Split out of [the generative former's identity residue](port-generative-former-identity-residue.md)
-on 2026-09-24, so that it **waits on a ruling without blocking the other gap** in that
-ticket. Verified by the integrator in both runners, at `32aa27e`.
+on 2026-09-24 because it waited on a ruling, so the other gap there could be worked.
+**Ruled by the user 2026-09-25**, answering the two options this ticket put up (mirror the
+prototype's phantom parameter, or keep the port's refusal) with a third that neither was:
+**reject the declaration**.
 
-## The program
+## The ruling
+
+> A type former's parameter that does not occur in the former's body is a **language error
+> at its declaration** — in both implementations.
+
+The asymmetry that made this a gap:
 
 ```fun
 { Mk = fn(u : Unit) { module {
@@ -27,46 +34,78 @@ ticket. Verified by the integrator in both runners, at `32aa27e`.
 ```
 
 | runner | output |
-|---|---|
-| OCaml | `1` |
-| port | `not ported yet: sealing a generative former with an unused type parameter` (`Elaborator.Generative.cs` — the guard the landed E11 work added, which replaced a `Skip(-1)` crash) |
+| --- | --- |
+| OCaml | `1` — the parameter is **phantom**: `b1.Box(I64)` and `b1.Box(Char)` are the same type |
+| port | `not ported yet: sealing a generative former with an unused type parameter` (`Elaborator.Generative.cs`) |
 
-The guard is honest, but it refuses where the prototype accepts, so it is a gap rather
-than a decision. **The same shape without a generative module is accepted in both**:
+and the same shape without a generative module (`{ M = module { pub type Box(A) = Bx;
+pub mk = fn() { Bx } }; g = fn(x : M.Box(I64)) { 1 }; g(M.mk()) }`) is accepted by both →
+`1`. So the port's refusal was a gap, and the prototype's acceptance was a defect: nothing
+observable distinguishes `Box(I64)` from `Box(Char)`, and a declaration whose parameter
+means nothing should say so rather than silently ignore it.
 
-```fun
-{ M = module { pub type Box(A) = Bx; pub mk = fn() { Bx } }; g = fn(x : M.Box(I64)) { 1 }; g(M.mk()) }
-```
-→ `1` in each runner. So the missing piece is specifically the **sealing path**: an unused
-parameter is not among the nominal's captures, and re-applying the parameters cannot
-reconstruct an argument that was never captured.
+**Rejected: the phantom reading.** It was the recommendation on this ticket and the model's
+own analogy (footgun 6 of
+[nominal identity](nominal-identity-applicative-by-purity.md): *"identity over all captures
+makes unused variables split types, hence the declaration's own free variables only"*) points
+the same way. The ruling takes the other route deliberately: rather than define what a
+phantom parameter *means*, refuse to write one. That is the stricter reading and it is now
+the decided one — do not re-litigate it in the fork.
 
-## The ruling this needs — do not implement before it
+## Scope — ruled (user, 2026-09-25): all type formers
 
-Two candidate answers, and the choice is semantic, not mechanical:
+- **Every type former**, not only the generative path: the check is on the *declaration*,
+  before any module or sealing is involved. The ruling's own table shows the non-generative
+  shape is accepted today, so that is exactly where the new case bites.
+- **Enum formers AND record (`struct`) formers.** `Pair = fn[A, B] { struct { fst : A } }` has
+  an unused `B` and is the same defect; the rule is uniform across the two kinds of former the
+  language has, per the project's "one construct, many roles" bias.
+- **Implicit parameters count** (`fn[h : Type] { … }`), and the error names the parameter.
+- **A parameter is "used" iff it occurs in the former's body** — the desugared body, i.e.
+  after the `type` macro has run (`rec Box = fn(A : Type) { … }`), not the surface spelling.
+  The check reads the elaborated former, so no macro can hide an unused parameter.
+- **Checked in the prelude too.** Checked as of the ruling: `dotnet/std/stage{1,2}.fun` declares
+  no former with an unused parameter (`Option(A)` and `List(A)` both use `A`; the only `fn[…]`
+  binders in stage 2 are the `(==)`/`(!=)` functions), so the prelude must stay green. If it
+  does not, that is a finding to report, not a reason to weaken the rule.
 
-- **Mirror the prototype**: the parameter is *phantom*, so `b1.Box(I64)` and
-  `b1.Box(Char)` are the same type. Then say what an application of such a former means
-  afterwards (nothing observable?) and what the sealed `Dot(Var, label)` is applied to.
-- **Keep the refusal, on purpose**: document it as the port's limit, in the port's own
-  words rather than `not ported yet`, and record the prototype's phantom parameter as a
-  divergence.
+## What to implement, once a fork slot is free
 
-Recommendation to take to the user: mirror the prototype (the language's own two
-implementations should agree on a phantom parameter; refusing it makes a legal
-declaration unusable), with the divergence route as the fallback if the phantom behaviour
-turns out to be a prototype accident.
+`Elaborator.Generative.cs` is not free: [the identity residue](port-generative-former-identity-residue.md)
+is in it right now, and this ticket's guard lives in the same file. **Queued behind it.**
 
-## Tests
+1. **Raise the error where the declaration is elaborated**, not where it is sealed: the check
+   is a property of the former, so it does not need an environment or a stamp. A `FunException`
+   naming the parameter (convention 2: a language error, never `not ported yet`).
+2. **Delete the sealing guard** (`NumParams > Captures.Length` → `NotImplementedException`) and
+   the `NominalHeadOf` arity bookkeeping it needed: once step 1 is in, that path is unreachable
+   (the audit's verdict 3 — delete the throw, do not convert it).
+3. **Do the same in the OCaml prototype.** The ruling says both implementations, so this case
+   is an ordinary shared one, *not* a divergence entry: `elaborate/<name>` with `.expect error`,
+   green in both runners. This is the rare OCaml edit — it is a language rule, not port work —
+   and `dune test` must stay green.
+4. **xUnit** (convention 6 — a source-to-result test is a conformance case, but *which* error,
+   at *which* site, is internals): assert the error is the declaration-site one naming the
+   parameter, so a future change that moves it back to the sealing path is caught.
 
-Whichever way it goes: the program above, plus a companion that applies the former at two
-different types if the phantom route is taken — probed in both runners first, and listed
-in `prototype-divergences.txt` only if the prototype proves to be the wrong one.
+### Tests
+
+- `elaborate/unused-type-parameter` — the generative program above, `.expect error` (ordinary:
+  the prototype errors too, once step 3 lands).
+- a companion with no generative module at all, the same `.expect`, so the rule is shown to be
+  about the declaration rather than about sealing.
+- a positive control, `A` used in the body, still `ok`/`1` — `Option`/`List` in the prelude are
+  the standing control, but one in the same area keeps the pair adjacent.
+- if the record-former case: one record former with an unused parameter, `.expect error`.
+- one xUnit test naming the error (step 4).
 
 ## Reading
 
-- [the parametric nominal in a generative module](port-generative-former-nominal.md) — its
-  Resolution describes `GenerativeNominal(Label, NumParams)` and the sealing path
-- `dotnet/src/Fun.Compiler/Elaborator.Generative.cs` (`NominalHeadOf`, `Seal`, and the
-  `NumParams > Captures.Length` guard)
-- the residue ticket's section 2 for the evidence as it was first written up
+- [the generative former's identity residue](port-generative-former-identity-residue.md) —
+  section 2 is this ticket's evidence, and its section 1 is the file-sharing blocker
+- [the parametric nominal in a generative module](port-generative-former-nominal.md) —
+  `GenerativeNominal(Label, NumParams)`, `NominalHeadOf`, `Seal`
+- `dotnet/src/Fun.Compiler/Elaborator.Generative.cs` — the `NumParams > Captures.Length` guard
+  that replaced a `Skip(-1)` crash
+- [nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md) —
+  footgun 6, the argument this ruling declines to follow
