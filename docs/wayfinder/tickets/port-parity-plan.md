@@ -298,3 +298,11 @@ So the answer to "is the port a superset yet" moves from *not knowably* to **bou
 named programs the prototype answers and the port refuses, plus one in flight and one being
 implemented, and then the shapes no corpus can hold (a nested field pattern, a hang) — each with
 the probe that reaches it.
+
+**Unowned residue, written down so it cannot hide.** Two things are known to be open with no
+reaching program, and they are exactly the shape that produced today's surprises: the audit's one
+*unprobed* site (the rec-enum unnamed-capture throw, where two probes pass in both runners and the
+own ticket is closed with prediction deliberately kept) and
+[the synonym collector's narrower-than-prototype walk](port-synonym-generalises-over-neutral.md)
+(a value kind carrying a meta in a *type* position would be missed **silently** rather than
+refused). Neither is a ticket; both are one probe away from being one. Measure before acting.
