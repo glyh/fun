@@ -109,6 +109,19 @@ public static partial class Elaborator
             // already predicted as types[i], so no re-unification is needed.
             var body = shapes[i].Lambdas.Aggregate(inner, (c, lam) => c.Bind(lam.Param.Name.Name, Value.VU.Instance));
             Infer(body, shapes[i].Enum);
+            // The declaration-site phantom-parameter check (ruling 2026-09-25): the
+            // former's parameters bind at inner.Width onwards, in order, and the
+            // declaration's captures are what its payloads mention - a level absent
+            // from levels[i] is a parameter no payload used. Enclosing module names
+            // cannot imitate one: NamedLevels reads only below the enclosing width,
+            // which the parameters sit above.
+            var paramLevel = inner.Width;
+            foreach (var lam in shapes[i].Lambdas)
+            {
+                if (!levels[i].Contains(paramLevel))
+                    throw new FunException($"type former's parameter '{lam.Param.Name.Name}' does not occur in its body");
+                paramLevel++;
+            }
             if (!decls[i].IsComplete) throw new InvalidOperationException("a recursive enum's declaration was not completed");
         }
 
@@ -320,4 +333,48 @@ public static partial class Elaborator
     private static Term FormerType(List<Syntax.Lam> lambdas) =>
         Enumerable.Reverse(lambdas).Aggregate((Term)Term.U.Instance,
             (acc, lam) => new Term.Pi(lam.Param.Explicitness, Term.U.Instance, acc));
+
+    /// <summary>
+    /// Whether <paramref name="type"/> is in the <c>Type</c> spine: <c>Type</c> itself,
+    /// a record type literal (a <c>struct {{ … }}</c> expression's type is the record
+    /// type it spells), or a Pi chain whose end is one of those. A lambda whose
+    /// result sits there is a type former (ruling 2026-09-25); one whose result is a
+    /// value is an ordinary function of a type argument, and no identity is at stake.
+    /// </summary>
+    private static bool InTypeSpine(Context ctx, Value type)
+    {
+        while (true)
+        {
+            type = ctx.Force(type);
+            if (type is Value.VU or Value.VStruct) return true;
+            if (type is not Value.VPi pi) return false;
+            type = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, new Value.VVar(ctx.Width, []));
+        }
+    }
+
+    /// <summary>
+    /// Whether the elaborated <paramref name="term"/> mentions the binder it sits
+    /// directly under: a <c>Var</c> at the depth each point of the walk stands at.
+    /// </summary>
+    private static bool MentionsBinder(Term term)
+    {
+        var found = false;
+        term.Map((t, under) =>
+        {
+            if (t is Term.Var v && v.Index == under) found = true;
+            return found ? t : null;
+        });
+        return found;
+    }
+
+    /// <summary>
+    /// The declaration-site phantom-parameter check (ruling 2026-09-25): a lambda
+    /// whose result is in the Type spine is a type former, and its parameter must
+    /// occur in its elaborated body - no macro can hide an unused one.
+    /// </summary>
+    private static void CheckFormerParameter(Context ctx, string name, Term body, Value resultType)
+    {
+        if (InTypeSpine(ctx, resultType) && !MentionsBinder(body))
+            throw new FunException($"type former's parameter '{name}' does not occur in its body");
+    }
 }

@@ -1410,7 +1410,7 @@ let path_heads =
 let binder_counts =
   [
     Alcotest.test_case "an inserted meta in a codomain mentions its binder" `Quick
-      (check_type_src "{ Endo = fn[T : Type](u : I64) { T -> T }; id_at : (B : Type) -> B -> B = fn(B : Type, x : B) { x }; f : (A : Type) -> Endo(0) = fn(A : Type) { id_at(A) }; f(I64) }" "I64 -> I64");
+      (check_type_src "{ Endo = fn[T : Type](u : Type) { u -> T }; id_at : (B : Type) -> B -> B = fn(B : Type, x : B) { x }; f : (A : Type) -> Endo(A) = fn(A : Type) { id_at(A) }; f(I64) }" "I64 -> I64");
   ]
 
 let () =
