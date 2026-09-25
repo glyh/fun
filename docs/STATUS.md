@@ -3,11 +3,46 @@
 This is the **authoritative** status document for the `fun` compiler prototype.
 When other docs disagree with this file, STATUS.md wins.
 
-Last updated: after .NET port macros and interleaving, 2026-09-17.
+Last updated: after the .NET port's parity re-measurement, 2026-09-25.
 
 ---
 
 ## Completed
+
+### .NET port — parity re-measured (2026-09-25)
+
+- **Port: `conformance: 751 cases, 0 failed`, xUnit `184/184`, `dune test` green with
+  `conformance: 751 cases, 0 failed, 31 known prototype divergences`** (integrator runs).
+- **The refusal inventory is 14 sites, re-swept and classified**: **3 real gaps** — the checker's
+  unhandled-effect error (`Nbe.Effects.cs`), a pattern head that is a member of a non-nominal
+  (`Elaborator.Enum.cs`), generalising a pattern synonym over a stuck neutral
+  (`Elaborator.Patterns.cs`) — plus 7 **unreachable** by enumeration, 1 in flight, 1 ruled and
+  queued (an unused type parameter), 1 ruled and deferred (a typed operator macro, where the
+  prototype hangs too), and 1 unprobed residue. Each gap's reaching program is written on its
+  ticket. All three hide behind rows of the first audit marked *fixed*: a fixed row named a
+  **route**, never the throw.
+- **Four tickets closed as stale**, every scope bullet verified in `dotnet/src` rather than by
+  prose: [procedural macros](docs/wayfinder/tickets/port-procedural-macros.md) (including the
+  per-binding interleaving it called "not done": `MacroRuntime.Advance` called by
+  `Expander.cs:244`), [syntactic roles](docs/wayfinder/tickets/port-syntax-roles.md),
+  [effects](docs/wayfinder/tickets/port-effects.md), and
+  [the generative former's identity residue](docs/wayfinder/tickets/port-generative-former-identity-residue.md)
+  (already fixed the day it was written, `1f70e82`). So the remaining port work is no longer
+  three waves but the handful of sites above.
+- **Landed:** a stuck match reads back an arm its tree pruned (`Term.Match` carries its arms'
+  `Patterns`; `values/stuck-match-pruned-arm`); a budget error names the **call stack**
+  (outermost → innermost, `<request> at <site>`, one stack across macro applications and checker
+  demands, outermost 3 / `… N more …` / innermost 3) — the last of the ruling's three observable
+  budget behaviours, xUnit 183 → 184.
+- **Ruled:** an unused type parameter is an error at its declaration **in both implementations**
+  (all type formers, enum and record alike; a lambda is a former iff its result is a type);
+  a **nested field pattern is supported** (the port ahead of the prototype on purpose); a match
+  whose head is known but a pattern inspects an unknown part **waits**; a pattern synonym's
+  generalized types are its **implicit type parameters**.
+- **Corrected in the record:** the budget ticket's headline program used a
+  `macro m(_) <diverging>` annotation that exists in **neither** implementation — both runners
+  reject the spelling, and the divergence it stood for was reproduced with the prototype's own
+  program instead. A transcribed probe that nobody ran is worth less than one command.
 
 ### .NET port — procedural macros and interleaving (2026-09-17)
 
