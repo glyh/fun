@@ -288,6 +288,12 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
   `{…}` record: the language spells those `;` and `R{…}`. A hang looks like a hang whether or not
   the program parses, so check the shape against a *passing* conformance case first, and when a
   result says "the language has a hole here", prefer the reading "my program is malformed".
+- **Valid is not enough — the pattern must also match the value.** A fourth wrong conclusion the
+  same day: an atom field pattern was reported as failing to unify, when the real defect was only
+  that the error named neither atom. The probe varied the *pattern* (binder → constructor → atom)
+  without varying the *argument*, so `f(5, 5)` stopped satisfying `g = 2` and the rejection was
+  correct. When changing a pattern, change what it matches; when a rejection says "cannot unify
+  X with Y", make the message name X and Y before believing anything about the semantics.
 - **Before a session ends, run `git worktree list`.** On 2026-09-25 a fork was cleaned up before it
   committed, and its finished fix sat uncommitted in an orphaned `/tmp` worktree — it was recovered
   by luck of the sweep, verified and merged. A dead fork's *uncommitted* work is still its

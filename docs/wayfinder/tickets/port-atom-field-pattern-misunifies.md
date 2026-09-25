@@ -1,69 +1,55 @@
 ---
-title: "Port: an atom pattern in a record field does not unify"
+title: "Port: the atom-field-pattern ticket was a mis-diagnosis — the program was ill-typed"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 as a mis-diagnosis, the second in this area in one session. The program was ill-typed - its argument 5 does not match the atom 2, so y's type is Char and passing an I64 is correctly rejected. The pattern elaborates against the declared field type and the neighbours are all right; the one real defect was the message, which named neither atom, and that is fixed (6d98c3e, merged) with three conformance cases (0d82cea).
 assignee:
 blocked_by:
 ---
 
 # Port: an atom pattern in a record field does not unify
 
-A well-typed program is rejected. Found by the integrator 2026-09-25 while re-testing
-[the nested field pattern ticket](port-nested-field-patterns.md), whose probes had been invalid
-(they used a comma in the struct declaration — see
-[the reader loop](port-reader-loops-on-struct-field-comma.md) — and a bare `{…}` where the
-language wants `R{…}`).
-
-## The program
-
-```fun
-{ R = struct { f : I64; g : I64 };
-  f = fn(x : I64, y : match (R{f = 1; g = x}) { R{f = 1; g = 2} => I64, _ => Char }) { y };
-  f(5, 5) }
-```
-
-| shape of the field pattern | result |
-| --- | --- |
-| a bare binder, `R{f = 1; g = y}` | `VALUE 5` |
-| a constructor, `R{f = 1; g = Some(z)}` (against `g : Option(I64)`) | `VALUE 5` |
-| an **atom**, `R{f = 1; g = 2}` (against `g : I64`) | **`ELAB type mismatch: cannot unify VAtomTy with VAtomTy`** |
-
-The expected answer is `5`: the field pattern is an atom, the field's type is that atom's type,
-so the pattern matches everything and `y` is `5`. Both neighbouring shapes work, which is what
-makes this a bug in the atom path rather than in record patterns as a whole.
-
-## Why the message is the clue
-
-`cannot unify VAtomTy with VAtomTy` — an atom *type* failing to unify with an atom *type*, with
-no indication of which. Two readings, and the fix should say which is true rather than guess:
-
-- the atom pattern's type is compared against the field's type with one side built wrongly (e.g.
-  the atom *value's* type instead of the atom's declared type), so two atoms that should be equal
-  are not; or
-- the atom pattern is elaborated against the wrong expected type (the scrutinee's, not the field's).
-
-The second would be the same class of mistake as the record-pattern path's own; the first is
-local to the atom case. Both are one probe away: print the two `VAtomTy` payloads at the failing
-unify.
-
-## What to do
-
-1. Reproduce, then **name the two atoms** in the error before changing anything — the message is
-   currently useless for exactly this reason.
-2. Fix the mismatch at its source. Do not special-case `I64` fields.
-3. **Tests**: the three programs above, all `.expect 5`, as ordinary shared cases (nothing here is
-   a prototype divergence — the prototype is deleted, and this is the port being wrong on a shape
-   the suite never covered). The bare-binder and constructor forms are the controls that keep the
-   fix honest.
-4. Check the neighbouring positions while in there — a tuple field, a nested record, an atom
-   against a `Char` — since a wrong expected type would show up in more than one place.
-
-## Reading
-
-- `dotnet/src/Fun.Compiler/Elaborator.Patterns.cs` — `ElaboratePattern`'s atom case, and
-  `ElaborateRecordPattern`'s per-field call that supplies the field's type
-- `dotnet/src/Fun.Compiler/Unify.cs` — the atom-type comparison the message comes from
-- [the nested field pattern ticket](port-nested-field-patterns.md) — the probes that found this,
-  and why they had to be rewritten twice
+> ## Resolution (2026-09-25) — closed as a mis-diagnosis
+>
+> **The rejection was correct; the message was the bug.** A fork diagnosed this by instrumenting
+> the pattern path before changing anything, and found:
+>
+> - the atom field pattern **is** elaborated against the declared field type, `VAtomTy(I64)`, every
+>   time — so there is no wrong-expected-type bug, which was this ticket's leading hypothesis;
+> - the failing unify is at the **application** `f(5, 5)`: `y`'s domain is the type-level match,
+>   which reduces to the `_ => Char` arm **because the atom `2` does not equal the scrutinee's
+>   `g = 5`**, so `y : Char` and passing `5 : I64` is a genuine type error;
+> - and the domain model says exactly that: `core-124`/`core-125` pin literal patterns matching by
+>   **value** (`match (1) { 1 => 10, _ => 20 }` → `10`), and
+>   `docs/wayfinder/topics/record-field-type-reflection.md` has the record-field reading.
+>
+> With the argument changed to satisfy the atom — `f(2, 5)` — the answer is `VALUE 5`, verified by
+> the integrator, and the binder and constructor neighbours were never broken.
+>
+> **So the real defect was the error message**, which read `cannot unify VAtomTy with VAtomTy` and
+> named neither side. Fixed by adding `VAtomTy` and `VAtom` to `Unify.Describe` (the helper the
+> nominal path already used), so it now reads:
+>
+> ```text
+> ELAB type mismatch: cannot unify VAtomTy(Char) with VAtomTy(I64)
+> ```
+>
+> That is the shape of message a person can act on, and it is what turned a "wrong semantics"
+> report into a five-minute diagnosis.
+>
+> **Tests** (`0d82cea`): `values/record-field-binder-pattern`, `-constructor-pattern`,
+> `-atom-pattern` — all `.expect 5`, the atom one using `f(2, 5)`. The fork checked the neighbours
+> as the brief asked (an atom against a `Char` field, inside a tuple, inside a nested record — each
+> `10`, each correctly failing when unequal) and found no wrong-expected-type bug in any position.
+>
+> **Counts**: port `773 cases, 0 failed` and `185/185` xUnit.
+>
+> **The lesson this ticket is the second half of.** The previous ticket in this area
+> ([a nested field pattern](port-nested-field-patterns.md)) was wrong because the *program* was
+> malformed; this one was wrong because the program was *ill-typed* — I varied the pattern without
+> varying the argument, so `f(5, 5)` stopped satisfying the pattern the moment it became an atom.
+> A probe is evidence only if the program is valid **and the pattern actually matches the value**;
+> both of my errors survived review because a rejection looks like a rejection.
