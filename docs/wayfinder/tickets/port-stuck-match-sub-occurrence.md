@@ -39,9 +39,10 @@ blocked_by:
 >
 > Two follow-ups, filed rather than fixed here:
 >
-> - [a constructor sub-pattern in a record field hangs instead of being refused](port-record-pattern-field-mismatch-hangs.md)
->   — found while probing, re-verified by the integrator as pre-existing; it would be the first
->   `HANG` the repo's corpus could state.
+> - [a nested field pattern must work — it hangs today](port-nested-field-patterns.md)
+>   — found while probing, re-verified by the integrator as pre-existing, and **ruled the same
+>   day**: a nested field pattern is to work, so this is a feature (the port ahead of the
+>   prototype on purpose), and the first `HANG` the repo's corpus could state.
 > - `Term.Match.Patterns` is **not shifted** by `Core.Shift.MatchArm` (it uses `match with`), so
 >   the stored patterns keep their elaboration-time indices. Safe today because only `Binders()`
 >   is read — a count, invariant under shifting — and `Handler` is precedent for a non-shifted
