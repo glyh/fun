@@ -20,6 +20,11 @@ prototype's phantom parameter, or keep the port's refusal) with a third that nei
 
 > A type former's parameter that does not occur in the former's body is a **language error
 > at its declaration** — in both implementations.
+>
+> Scope, ruled the same day in two follow-ups: it covers **every type former**, enum and record
+> alike, implicit parameters included; and a lambda **is** a type former iff its result is a
+> type, which is what makes `Pair = fn[A, B] { struct { fst : A } }` checkable without naming
+> the surface form.
 
 The asymmetry that made this a gap:
 
@@ -54,6 +59,18 @@ the decided one — do not re-litigate it in the fork.
 
 ## Scope — ruled (user, 2026-09-25): all type formers
 
+**What counts as a type former — ruled (user, 2026-09-25): a lambda whose result is a type.**
+A lambda is checked iff its result is in the `Type` spine (`Type`, or `B -> … -> Type`), so
+`fn(A : Type) { I64 }` is refused and so is a nested chain
+(`fn(A : Type) { fn(B : Type) { I64 } }` — both lambdas are formers). `fn(A : Type) { 1 }`
+stays legal: its result is a value, so it is an ordinary function of a type argument and no
+identity is at stake. The offered alternative — "any `: Type` parameter that is unused,
+wherever it appears" — was declined for exactly that reason.
+
+That single criterion covers both declared shapes (`pub type Box(A) = Bx` is a rec-bound
+lambda over a nominal; `Pair = fn[A, B] { struct { fst : A } }` is a let-bound lambda over a
+struct type) without special-casing the surface form.
+
 - **Every type former**, not only the generative path: the check is on the *declaration*,
   before any module or sealing is involved. The ruling's own table shows the non-generative
   shape is accepted today, so that is exactly where the new case bites.
@@ -77,6 +94,13 @@ is in it right now, and this ticket's guard lives in the same file. **Queued beh
 1. **Raise the error where the declaration is elaborated**, not where it is sealed: the check
    is a property of the former, so it does not need an environment or a stamp. A `FunException`
    naming the parameter (convention 2: a language error, never `not ported yet`).
+   The criterion is about a lambda and its *result type*, so the site that must certainly see it
+   is wherever a `rec` type binding's former is peeled (the port's `Elaborator.RecTypes.cs`,
+   where the E11 capture fix lives; beside the prototype's `elab_type_group`,
+   `lib/semantic/typecheck/elab_infer.ml:323`). Whether that and the `let`-bound record former
+   are one check at the lambda site or two is the fork's call. "Used" is an occurrence test on
+   the elaborated body — `term_mentions_var` is the precedent, and the closed
+   `term-mentions-var-ignores-inserted-metas` ticket records the trap it had.
 2. **Delete the sealing guard** (`NumParams > Captures.Length` → `NotImplementedException`) and
    the `NominalHeadOf` arity bookkeeping it needed: once step 1 is in, that path is unreachable
    (the audit's verdict 3 — delete the throw, do not convert it).

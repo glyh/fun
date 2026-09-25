@@ -41,26 +41,50 @@ product of several applications rather than one, and a single frame misattribute
 way. The error should carry the chain of requests that spent the budget — which also means the
 original question was the wrong question, and this ticket is now bigger than a message fix.
 
-## What has to be settled before implementing — **ask the user, one short question at a time**
+**Follow-up ruled 2026-09-25: the order is outermost → innermost** ("like a stacktrace"), so
+the port must name `keep` before `spin` in the program below. Three sub-questions remain —
+frame content, scope, truncation — and they are asked one at a time, in the order below.
 
-1. **Order** — outermost→innermost (a stack trace's order, and the direction the port's message
-   already reads in) or innermost first (the frame that overran).
-2. **Frame content** — the macro's name, and its site. The port's *macro* budget errors carry
-   **no source position** today, while its *checker* ones do
-   (`calling loop, in an evaluation while reading the type at <file>:1:57-1:64`), so a stack of
+## All four settled (user, 2026-09-25) — ready to implement
+
+| # | sub-question | ruling |
+| --- | --- | --- |
+| 1 | order | outermost → innermost ("like a stacktrace") |
+| 2 | frame content | `<macro name> at <site>` — this ticket also adds spans to macro budget errors |
+| 3 | scope | one stack across macro applications **and** checker demands |
+| 4 | truncation | outermost K, `… N more …`, innermost K |
+
+1. **Order — outermost → innermost.** ✓ *Ruled by the user 2026-09-25: "like a stacktrace".*
+   The outermost request comes first and the frame that overran last, which is also the
+   direction the port's message already reads in. So the program below must name `keep`
+   before `spin`.
+2. **Frame content — a macro's name *and* its site.** ✓ *Ruled by the user 2026-09-25:*
+   *"Name + site now."* Each frame reads `<macro name> at <site>`, so **this ticket also takes
+   on the span half**: the port's *macro* budget errors carry no source position today while
+   its *checker* ones do
+   (`calling loop, in an evaluation while reading the type at <file>:1:57-1:64`), and a stack of
    bare names is only half of what the prototype prints. Spans on macro budget errors are the
-   map's recorded fog item (elaborator errors carry no location) — decide whether this ticket
-   takes that on or leaves it.
-3. **Scope** — one stack across both kinds of request (macro applications *and* checker
-   demands, of which the checker form already names one) or a stack of macro applications only.
-4. **Truncation** — deep nesting needs a cap, and the cap has to say it truncated.
+   map's recorded fog item (elaborator errors carry no location) — this ticket now owns that
+   half rather than leaving it implied.
+3. **Scope — one stack across both kinds of request.** ✓ *Ruled by the user 2026-09-25.* Macro
+   applications and checker demands are frames in the same chain, each labelled with what it
+   was; the checker form's existing `in an evaluation while reading the type at …` wording
+   becomes a frame in that chain rather than a message of its own. A mixed overrun — a checker
+   demand that forces a macro application — is exactly the case the original ruling was aimed at.
+4. **Truncation — both ends, with an elision.** ✓ *Ruled by the user 2026-09-25.* Show the
+   outermost K frames, `… N more …`, then the innermost K frames: the head of the chain (who
+   asked) and the tail (what overran) both survive. The ruled order makes that load-bearing —
+   in outermost→innermost order the culprit is always last, so a plain prefix cap would drop it.
+   K is the fork's to pick and to record.
 
-## What to do once those are answered
+## What to do
 
 1. Build the chain in `Budget`/`MacroApplication` instead of keeping only the depth-0 name.
-2. Prove it with the program above: the port should name **both** `keep` and `spin`, in the
-   settled order.
-3. Land the assertion in `BudgetTests.cs` that is blocked today (xUnit is 183 where the ruling's
+2. Prove it with the program above: the port should name **both** `keep` and `spin`, `keep`
+   first, each with its site.
+3. **Carry spans on macro budget errors** (sub-question 2's other half): a macro application
+   must know its source position the way a checker demand already does.
+4. Land the assertion in `BudgetTests.cs` that is blocked today (xUnit is 183 where the ruling's
    three observable behaviours wanted 184).
 
 ## Reading
