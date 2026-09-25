@@ -66,16 +66,20 @@ public static partial class Elaborator
         if (names.Distinct().Count() != names.Count) throw new FunException("a pattern synonym names a parameter twice");
 
         var rhs = MarkSynonymParams(synonym.Rhs, names);
+        // A synonym's right-hand side may name a type-case head only as a member
+        // of a binder sealed at a generative module (E11); a type former is
+        // refused, as the prototype refuses it.
+        RejectFormerHeads(ctx, rhs);
         var scrutineeType = RefineScrutineeType(ctx, ctx.RawMeta(), [new MatchBranch(rhs, synonym)]);
 
         var (core, binders) = ElaboratePattern(ctx, rhs, scrutineeType);
-        // A struct type-case pattern (struct { x: a; _ }) runs in the sequential
-        // matcher (SelectArmInOrder) with no head term to carry. A nominal
-        // type-case head would carry its head term - a definition-site term that
-        // must run under a definition-site closure, not the use's environment - so
-        // it stays unported until that closure exists.
-        if (ContainsNominalHead(core))
-            throw new NotImplementedException("not ported yet: a pattern synonym over a nominal type-case pattern");
+        // The prototype refines a synonym over a type-case head to the instance
+        // the head names (not just "a type"), so a use against that instance
+        // unifies with the definition's scrutinee. A sealed projection that does
+        // not force to a nominal here leaves the scrutinee a type.
+        if (ctx.Force(scrutineeType) is Value.VU && rhs is Pattern.Con { Head: var head } && TypeHead(ctx, head) is { Value: var headType }
+            && ctx.Force(headType) is Value.VNominal)
+            scrutineeType = headType;
 
         var parameters = binders.Select(b => (Index: int.Parse(b.Name[SynonymParamPrefix.Length..]), b.Type)).ToList();
         foreach (var (name, index) in names.Select((n, i) => (n, i)))
@@ -179,21 +183,50 @@ public static partial class Elaborator
         return (FillSynonymParams(synonym.Rhs, args), [.. parameters.SelectMany(p => binders[p.Index])]);
     }
 
-    /// <summary>Whether a synonym's right-hand side names a nominal type-case head anywhere: the one direct-match shape that still carries a definition-site head term.</summary>
-    private static bool ContainsNominalHead(CorePattern pattern) => pattern switch
+    /// <summary>
+    /// A synonym's right-hand side may not name a type former as a type-case
+    /// head - <c>pattern IsOpt(a) = Option(a)</c> is refused, the prototype's
+    /// <c>UnknownConstructor</c>. Only a sealed binder's member (E11) carries a
+    /// head term through a template.
+    /// </summary>
+    private static void RejectFormerHeads(Context ctx, Pattern pattern)
     {
-        CorePattern.NominalHead => true,
-        CorePattern.Prod p => p.Items.Any(ContainsNominalHead),
-        CorePattern.Or o => ContainsNominalHead(o.Left) || ContainsNominalHead(o.Right),
-        CorePattern.Con c => c.Args.Any(ContainsNominalHead),
-        CorePattern.Record r => r.Fields.Any(f => ContainsNominalHead(f.Pattern)),
-        CorePattern.StructType s => s.Fields.Any(f => ContainsNominalHead(f.Pattern)),
-        _ => false,
+        switch (pattern)
+        {
+            case Pattern.Con c:
+                if (TypeHead(ctx, c.Head) is { } && SealedDecl(ctx, c.Head) is null)
+                    throw new FunException($"unknown constructor `{HeadLabel(c.Head)}`");
+                foreach (var arg in c.Args) RejectFormerHeads(ctx, arg);
+                break;
+            case Pattern.Prod p:
+                foreach (var item in p.Items) RejectFormerHeads(ctx, item);
+                break;
+            case Pattern.Or o:
+                RejectFormerHeads(ctx, o.Left);
+                RejectFormerHeads(ctx, o.Right);
+                break;
+            case Pattern.Record r:
+                foreach (var (_, field) in r.Fields) RejectFormerHeads(ctx, field);
+                break;
+            case Pattern.StructType s:
+                foreach (var (_, field) in s.Fields) RejectFormerHeads(ctx, field);
+                break;
+        }
+    }
+
+    /// <summary>The written name a pattern head was spelled with, for error messages.</summary>
+    private static string HeadLabel(Syntax head) => head switch
+    {
+        Syntax.Var v => v.Id.Name,
+        Syntax.OpenChoice c => c.Name.Name,
+        Syntax.FieldAccess f => f.Field,
+        _ => "type",
     };
 
     private static CorePattern FillSynonymParams(CorePattern pattern, CorePattern[] args) => pattern switch
     {
         CorePattern.SynonymParam p => args[p.Index],
+        CorePattern.NominalHead h => h with { Params = [.. h.Params.Select(x => FillSynonymParams(x, args))] },
         CorePattern.Prod p => p with { Items = [.. p.Items.Select(x => FillSynonymParams(x, args))] },
         CorePattern.Or o => o with { Left = FillSynonymParams(o.Left, args), Right = FillSynonymParams(o.Right, args) },
         CorePattern.Con c => c with { Args = [.. c.Args.Select(x => FillSynonymParams(x, args))] },
@@ -238,6 +271,11 @@ public static partial class Elaborator
                 return;
             case Value.VStruct s:
                 foreach (var f in s.Entries.OfType<ModuleEntry.Field>()) CollectSynonymMetas(ctx, f.Value, seen);
+                return;
+            case Value.VRef r:
+                // A cell's identity is a stamp, never generalizable; its content
+                // is an ordinary value and may still mention a meta.
+                CollectSynonymMetas(ctx, r.Cell.Value, seen);
                 return;
             case Value.VVar v:
                 foreach (var a in v.Spine) CollectSynonymMetas(ctx, a, seen);
