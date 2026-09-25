@@ -3,12 +3,52 @@ title: "Port: the reader loops forever on a comma in a struct field list"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 - fixed by a fork (74f7a8c + 96fdb69, merged) and verified by the integrator: port 770 cases 0 failed and 185/185 xUnit, the four programs all terminate, and the guard covers module and block items as well as struct fields. One robustness gap the fork reported is filed as its own ticket.
 assignee:
 blocked_by:
 ---
 
 # Port: the reader loops forever on a comma in a struct field list
+
+> ## Resolution (2026-09-25) — closed
+>
+> Fixed by a fork (`74f7a8c` reader, `96fdb69` cases, merged) and verified by the integrator.
+> **The root cause is exact**: `TakeStatement` splits at `;` *and* `,`, but `DropSeparators`
+> strips only `;` — so a leading comma left the term list **unchanged** and `ReadContext`'s
+> statement loop asked for another statement forever.
+>
+> **The fix is the invariant, not the case**: `Enforest.RequireAdvance(before, after)` refuses a
+> step that hands back as many terms as it was given, naming the offending token's position —
+> and it guards **all three statement walks**, `ReadContext` (struct fields, eagerly-read blocks,
+> module items), `BlockDecls`, and `Expander`'s `Binding.Items` case (module and block items read
+> lazily).
+>
+> **Verified by the integrator, both the four programs and the class claim**:
+>
+> | program | before | after |
+> | --- | --- | --- |
+> | `struct { f : I64 }` (control) | `VALUE 1` | `VALUE 1` |
+> | `struct { f : I64; g : I64 }` (control) | `VALUE 1` | `VALUE 1` |
+> | `struct { f : I64, g : I64 }` | **killed at 20 s** | `ELAB unexpected token in a definition context at <unknown>:2:22-2:23` |
+> | `struct { f : I64, }` | **killed at 20 s** | same refusal, same position |
+> | a comma in a **module** body | hung | `ELAB unexpected token in a definition context at <unknown>:1:24-1:25` |
+> | a comma in a **block** | an error already | `ELAB empty block` (its own pre-existing error; it terminated before and after) |
+>
+> So the check is genuinely class-wide rather than a struct-field special case. Match arms are the
+> one family left alone, and legitimately so: `SplitMatchBranches` is a separate loop that
+> structurally always shrinks (`match (…) { s => s.f, }` answered `1` before and after).
+>
+> **Counts**: port `770 cases, 0 failed` (was 766) and `185/185` xUnit. The four cases are
+> ordinary — two `.expect error`, two controls that must keep answering `1` — and
+> `prototype-divergences.txt` is untouched. These are the first cases in the suite whose real
+> content is *"must terminate"*.
+>
+> **Robustness gap the fork reported, filed rather than left in its report**: the conformance
+> runner does not timebox elaboration, so a *future* non-advancing step would hang the suite
+> instead of failing it — the fix removes the known loops, and only
+> [a runner timeout](port-runner-does-not-timebox-elaboration.md) catches unknown ones.
 
 **A hang on a grammar error.** The language spells struct fields with `;`; write `,` and the
 reader never advances, so the compiler spins at 100% CPU with no diagnostic. Any typo of that
