@@ -100,9 +100,15 @@ a = Set(I64, compare_i64); b = Set(I64, compare_i64)
 a.union(x_from_a, y_from_b)            -- must typecheck
 ```
 
-with the reason given there: *"the checker re-evaluates `Set(I64, cmp).T` during conversion, so a
-type minted per evaluation would not equal itself"* — i.e. a per-call nominal would not even be
+with the reason given there: *“the checker re-evaluates `Set(I64, cmp).T` during conversion, so a
+type minted per evaluation would not equal itself”* — i.e. a per-call nominal would not even be
 equal to **itself**, which is why example 3 is mandatory rather than a convenience.
+
+**Caveat (user, 2026-09-25): that reason is a symptom, not the design.** Identity must be a pure
+function of the declaration, its free variables and its stamp, so *no* re-evaluation can change
+the answer — and if a pipeline recalculation mints something new, the **recalculation** is the bug
+to fix. That is [its own ticket](port-identity-survives-reevaluation.md), with the port's
+nominal-head match as its first audit target.
 
 So the target is exactly: identity = the declaration + its own free variables + the enclosing
 module's stamp. Examples 2, 3, 4 and 5 are already right; **1 is the bug**, and 2/4 are the guards
