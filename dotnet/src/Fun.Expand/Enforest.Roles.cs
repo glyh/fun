@@ -821,6 +821,7 @@ public sealed partial class Enforest(EnforestEnv env)
             var declared = _env.Declared;
             if (!stmt.IsEmpty) results.Add(read(stmt, rest.IsEmpty));
             if (rest.IsEmpty) return results;
+            RequireAdvance(terms, rest);
             if (_env.Declared != declared)
             {
                 // One scope for the whole of the rest, so a role a statement

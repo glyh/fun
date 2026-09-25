@@ -234,7 +234,7 @@ public sealed partial class Expander
         {
             var (stmt, after) = Enforest.TakeStatement(terms);
             read.AddRange(Reader().ParseModuleStatement(stmt));
-            terms = after;
+            terms = Enforest.RequireAdvance(terms, after);
         }
         return read.SelectMany(BlockDecls);
     }

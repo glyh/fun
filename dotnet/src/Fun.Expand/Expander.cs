@@ -252,7 +252,9 @@ public sealed partial class Expander
             {
                 case Binding.Items items:
                 {
-                    var (stmt, after) = Enforest.TakeStatement(new Terms(items.Terms));
+                    var terms = new Terms(items.Terms);
+                    var (stmt, after) = Enforest.TakeStatement(terms);
+                    after = Enforest.RequireAdvance(terms, after);
                     if (!Enforest.DropSeparators(after).IsEmpty) pending.Push((new Binding.Items(after.ToArray()), publish));
                     var marked = new Terms([.. stmt.Select(t => t.AddScope(active))]);
                     EquatableArray<Binding> read;

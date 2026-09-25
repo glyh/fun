@@ -564,6 +564,20 @@ public sealed partial class Enforest
         return (TakeTerms(terms, n), terms.Drop(n));
     }
 
+    /// <summary>
+    /// The terms a statement step left behind, insisting the step shortened them.
+    /// A statement loop that consumes nothing and is asked again would spin
+    /// forever -- <c>struct { f : I64, g : I64 }</c> is the smallest one -- so a
+    /// step that does not advance is a grammar error, never a retry. The token
+    /// that could not start a statement is named by its position.
+    /// </summary>
+    public static Terms RequireAdvance(Terms before, Terms after)
+    {
+        if (!after.IsEmpty && after.Count >= before.Count)
+            throw new ExpandException($"unexpected token in a definition context at {after.Head!.Span}");
+        return after;
+    }
+
     private List<Terms> SplitCommas(Terms terms)
     {
         var parts = new List<Terms>();
