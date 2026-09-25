@@ -282,6 +282,14 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
 [type-case refinement walks the whole context](tickets/type-case-refinement-walks-whole-context.md).
 
 **Working notes for the next agent:**
+- **Before a session ends, run `git worktree list`.** On 2026-09-25 a fork was cleaned up before it
+  committed, and its finished fix sat uncommitted in an orphaned `/tmp` worktree — it was recovered
+  by luck of the sweep, verified and merged. A dead fork's *uncommitted* work is still its
+  deliverable, and `/tmp` is not durable.
+- **Read the model before asking the user a question.** The last question of the form "is this
+  behaviour right?" was already answered by footnote 6 of
+  [nominal identity](tickets/nominal-identity-applicative-by-purity.md); asking cost more than
+  reading.
 - Parallel agents in git worktrees worked well for independent tickets; run
   dune there with `dune build --root .` (the parent `dune-project` otherwise
   captures the build). Worktrees may be created from a stale commit — reset to
