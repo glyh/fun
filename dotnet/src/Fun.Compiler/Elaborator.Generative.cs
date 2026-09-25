@@ -115,8 +115,8 @@ public static partial class Elaborator
             sealedNominals = sealedNominals.SetItem(gen.Label, n.Decl);
             // A former's captures are its applied parameters, last of the list: sealing
             // re-applies them to the member projection, as the prototype's seal does.
-            if (gen.NumParams > n.Captures.Length)
-                throw new NotImplementedException("not ported yet: sealing a generative former with an unused type parameter");
+            // A former with an unused parameter was refused at its declaration, so the
+            // applied captures always carry every parameter.
             Term member = new Term.Dot(new Term.Var(under), gen.Label);
             var parameters = n.Captures.Skip(n.Captures.Length - gen.NumParams);
             return parameters.Aggregate(member, (acc, p) => new Term.Ap(acc, Explicitness.Explicit, p));

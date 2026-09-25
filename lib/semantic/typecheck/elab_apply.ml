@@ -195,4 +195,18 @@ let infer_lam ops (ctx : Ctx.t) (param : Syntax.param) (body : Syntax.t) :
   let body_ty_term = Ctx.quote ctx' body_ty in
   let body_effects = discharge_local_heaps ctx' ~since ~visible:[ Ctx.quote ctx a_ty; body_ty_term ] body_effects in
   let pi_ty = VPi { explicitness = expl_of_syntax param.explicitness; domain = a_ty; effects = effect_row_closure ctx.env (effect_row_of_expr_effects ctx' body_effects); codomain = { env = ctx.env; body = body_ty_term } } in
+  (* A lambda is a type former iff its result is in the Type spine (Type, or a
+     Pi chain ending in Type): a former's parameter must occur in its elaborated
+     body, so a phantom parameter is an error at the declaration (ruling
+     2026-09-25). A lambda returning a value is an ordinary function of a type
+     argument and stays legal. *)
+  let rec type_spine ty =
+    match Nbe.force ctx.metas ty with
+    | VU | VStruct _ -> true
+    | VPi { codomain; _ } ->
+        type_spine (Nbe.closure_apply ctx.metas codomain (VRigid { lvl = ctx.Ctx.lvl; spine = [] }))
+    | _ -> false
+  in
+  if type_spine body_ty && not (term_mentions_var 0 body_core) then
+    raise (ElabError (FormerParameterUnused param.name.name));
   (Lam body_core, pi_ty)

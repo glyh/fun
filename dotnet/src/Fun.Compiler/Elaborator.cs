@@ -346,6 +346,7 @@ public static partial class Elaborator
                 // The body performs within the row the function type declares; a bare arrow's is empty.
                 var since = ctx.Metas.Count;
                 var (body, performed) = Collecting(dictCtx, c => Check(c, lam.Body, dictBodyType));
+                CheckFormerParameter(ctx, lam.Param.Name.Name, body, dictBodyType);
                 performed = DischargeLocalHeaps(dictCtx, since, [pi.Domain, dictBodyType], performed);
                 CheckEffectSubset(dictCtx, performed, Nbe.EvalRowClosure(ctx.Metas, pi.Row, binder), inFunction: true);
                 for (var i = 0; i < hidden; i++) body = new Term.Lam(body);
@@ -576,6 +577,7 @@ public static partial class Elaborator
         var since = ctx.Metas.Count;
         var inner = ctx.Bind(lam.Param.Name.Name, domain) with { Enclosing = lam.Body, HandlerScopes = [] };
         var ((body, bodyType), performed) = Collecting(inner, c => Infer(c, lam.Body));
+        CheckFormerParameter(ctx, lam.Param.Name.Name, body, bodyType);
         // A heap allocated in the body that neither the domain nor the result mentions cannot be observed.
         performed = DischargeLocalHeaps(inner, since, [domain, bodyType], performed);
         var codomain = new Closure(ctx.Environment, inner.Quote(bodyType));

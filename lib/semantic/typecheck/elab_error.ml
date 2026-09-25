@@ -28,6 +28,9 @@ type elab_error =
       (** Effects left where nothing handles them, named. *)
   | NonExhaustive of string
   | InvalidRecursiveRecord of string
+  | FormerParameterUnused of string
+      (** A type former's parameter occurs in no part of its body: the phantom
+          parameter is refused at the declaration (ruling 2026-09-25). *)
   | ImportRequiresLoader of string
   | UnknownTrait of string
   | UnknownTraitMethod of string
@@ -92,6 +95,7 @@ let string_of_elab_error = function
   | GenerativeTypeEscapes name -> "GenerativeTypeEscapes \"" ^ name ^ "\""
   | NonExhaustive msg -> "NonExhaustive \"" ^ msg ^ "\""
   | InvalidRecursiveRecord msg -> "InvalidRecursiveRecord \"" ^ msg ^ "\""
+  | FormerParameterUnused p -> "FormerParameterUnused \"" ^ p ^ "\" (a type former's parameter must occur in its body)"
   | ImportRequiresLoader path -> "ImportRequiresLoader \"" ^ path ^ "\""
   | UnknownTrait n -> "UnknownTrait \"" ^ n ^ "\""
   | UnknownTraitMethod n -> "UnknownTraitMethod \"" ^ n ^ "\""

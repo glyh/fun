@@ -33,14 +33,17 @@ public class NominalTests
         Assert.Throws<UnifyException>(() => Unify.Values(mc, 0, types[0], types[1]));
     }
 
-    /// <summary>A parameter nothing in the declaring function body names does not split the type.</summary>
+    /// <summary>
+    /// A former's parameter nothing in its body names is refused at the declaration,
+    /// naming the parameter (ruling 2026-09-25) - not at sealing, whose message and
+    /// site are different.
+    /// </summary>
     [Fact]
-    public void AnUnmentionedParameterIsNotCaptured()
+    public void AnUnmentionedParameterIsRefusedAtItsDeclaration()
     {
-        var (mc, types) = Tuple("{ F = fn(n : I64) { enum { X } }; (F(0), F(1)) }");
-
-        Assert.Empty(Assert.IsType<Value.VNominal>(types[0]).Captures);
-        Unify.Values(mc, 0, types[0], types[1]);
+        var ex = Assert.Throws<FunException>(() => Tuple("{ F = fn(n : I64) { enum { X } }; (F(0), F(1)) }"));
+        Assert.Contains("does not occur in its body", ex.Message);
+        Assert.Contains("'n#", ex.Message);
     }
 
     // ---- the module stamp (E11) ------------------------------------------------

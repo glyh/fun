@@ -395,6 +395,19 @@ let elab_type_group ?(ctors_private = false) (ops : Elab_ops.t) (ctx : Ctx.t) ~(
         (m, nominal_id, placeholder, param_ctx, placeholder_env, nominal_ty, payload_terms))
       registered
   in
+  (* A former's parameter must occur in its body (ruling 2026-09-25): the
+     payloads are quoted over the member's params, the i-th param (0-based)
+     standing at index [n - i], so an index no payload mentions is a phantom
+     parameter - an error at the declaration, before any module or sealing. *)
+  List.iter
+    (fun ((m : type_member), _, _, _, _, _, payload_terms) ->
+      let n = List.length m.member_params in
+      List.iteri
+        (fun i param ->
+          if not (List.exists (term_mentions_var (n - 1 - i)) (List.concat_map snd payload_terms)) then
+            raise (ElabError (FormerParameterUnused param)))
+        m.member_params)
+    elaborated;
   (* The declaration's own free variables, shared by its members (E11). *)
   let levels, captured =
     capture_payloads ~group_ids:(List.map (fun (id, _, _) -> id) group) ~scope_lvl:ctx.Ctx.lvl ~enclosing:ctx.Ctx.scope_captures
@@ -1313,6 +1326,11 @@ let infer ops (ctx : Ctx.t) (expr : Syntax.t) : term * value =
                 payloads ))
           ctors
       in
+      List.iteri
+        (fun i param ->
+          if not (List.exists (term_mentions_var (num_params - 1 - i)) (List.concat_map snd payload_terms)) then
+            raise (ElabError (FormerParameterUnused param)))
+        params;
       let levels, captured =
         capture_payloads ~group_ids:[ nominal_id ] ~scope_lvl:ctx.lvl ~enclosing:ctx.scope_captures
           (List.map (fun (_, payloads) -> (num_params, payloads)) payload_terms)
