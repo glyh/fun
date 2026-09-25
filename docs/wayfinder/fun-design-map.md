@@ -286,6 +286,11 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
   committed, and its finished fix sat uncommitted in an orphaned `/tmp` worktree — it was recovered
   by luck of the sweep, verified and merged. A dead fork's *uncommitted* work is still its
   deliverable, and `/tmp` is not durable.
+- **Give each fork its own scratch directory.** Three forks ran in parallel on 2026-09-25 sharing
+  `/tmp`; one probe file was overwritten mid-run by another fork's probe of the same name, costing
+  a confusing `VALUE 0` and a re-run. Brief forks with `/tmp/<fork-name>/` — one fork switched to
+  `/tmp/fixer-scratch/` on its own after being bitten, which is the tell that the shared name is
+  the problem and not the fork.
 - **Measure a ticket's gap in the runners before spending a fork slot on it.** On 2026-09-25 a
   fork was spawned against `port-generative-former-identity-residue`'s section 1, whose fix had
   already been committed and merged the same day the ticket was written (`1f70e82`, merged

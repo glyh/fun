@@ -3,12 +3,39 @@ title: "Port: the checker's unhandled-effect error, not a refusal"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 - fixed by a fork (a47c94d, merged) and verified by the integrator - 756 cases 0 failed and 185/185 xUnit where the port was at 755, dune test green at 756/0 with 31 divergences. The verdict matches the prototype's shape including the span. The ticket's own premise (that the port already carried a checker site) was wrong and the fork corrected it.
 assignee:
 blocked_by:
 ---
 
 # Port: the checker's unhandled-effect error, not a refusal
+
+> ## Resolution (2026-09-25) — closed
+>
+> Fixed by a fork (`a47c94d`, merged) and verified by the integrator re-running both suites and
+> the program by hand:
+>
+> | runner | output |
+> | --- | --- |
+> | OCaml | `ELAB ElabError(EvaluationFailed "unhandled effect Abort.stop: no handler for it is in scope while inferring the form at <unknown>:4:6-4:23 (while type checking)")` |
+> | port | `ELAB unhandled effect Abort.stop: no handler for it is in scope while inferring the form at <unknown>:4:6-4:23 (while type checking)` |
+>
+> Same effect, same wording, same span. The new case `elaborate/checker-unhandled-effect` is
+> **ordinary** (`error` in both runners) and `prototype-divergences.txt` is untouched.
+>
+> **This ticket's premise was wrong, and the fork corrected it rather than working around it.** It
+> claimed the port's checker errors already carried a source position — citing a budget form that
+> printed `… in an evaluation while reading the type at …`. The port had **no** site mechanism at
+> all; only the prototype has one (`Eval_budget.where`). So the fix *ported* the mechanism: 
+> `Budget.At/Where` keeps the innermost non-synthetic `(mode, span)`, `Elaborator.Infer/Check/TypeValue`
+> wrap their bodies with it, and the evaluator's new `EvaluationFailed` is converted at that
+> innermost form into a `FunException` carrying `message + Where() + " (while type checking)"`.
+> Nobody had run the quoted message; it had been carried through two tickets as evidence.
+>
+> Honest accounting kept: only the checker-path raise at `Nbe.Effects.cs` was converted. The
+> runtime `unhandled effect:` error and the file's other refusals are untouched.
 
 Site 8 of the 2026-09-25 [re-sweep](port-unported-path-audit.md#re-sweep-2026-09-25) of the
 refusal inventory, found by a read-only audit, re-probed by the integrator. One of **three
