@@ -38,9 +38,13 @@ blocked_by:
 >
 > **The hazard that mechanism shares with the prototype, recorded rather than guessed:** a
 > use-site environment *wider* than the definition site's could resolve the head term's variable
-> to a different binding than intended. The prototype has the same exposure and nobody has probed
-> a capturing shape, so this ticket closes on parity — if a probe ever shows one, the
-> definition-site closure comes back, with a design that survives the `VVar` artifact above.
+> to a different binding than intended. **It fired on 2026-09-25.**
+> [A pattern synonym's nominal head is captured by the use site's scope](pattern-synonym-nominal-head-captured-by-use-site.md)
+> has three minimal reproducers — one extra name in scope around the `match` is enough
+> (`fn(x : Type) { match (…) { M.S => 42, … } }`) — and they fail in **both** runners, so this is
+> a language defect the parity route shipped rather than a theoretical exposure. The fix is the
+> **definition-site closure this ticket originally prescribed**, with the `VVar` artifact above as
+> the obstacle to get past, and it is that ticket's work.
 >
 > **The former half was split off**, as the ticket asked: `RejectFormerHeads` walks the surface
 > right-hand side and a head naming a type former now throws `FunException("unknown constructor …")`
