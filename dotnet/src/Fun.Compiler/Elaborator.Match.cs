@@ -88,9 +88,12 @@ public static partial class Elaborator
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
             Pattern.Con c when SynonymAt(ctx, c.Head) is { } synonym => InstantiateSynonym(ctx, synonym).ScrutineeType,
             // A head naming a type makes this a type-case: the scrutinee is a type.
+            // Otherwise the nominal the head resolves to refines the scrutinee; a
+            // head resolving to nothing refines nothing, and pattern elaboration
+            // says what is wrong with it (as the prototype's find_pat does).
             Pattern.Con c => TypeHead(ctx, c.Head) is not null
                 ? Value.VU.Instance
-                : (ResolveConstructorHead(ctx, c.Head) ?? throw new NotImplementedException(UnportedConstructorHead)).Nominal,
+                : ResolveConstructorHead(ctx, c.Head)?.Nominal,
             Pattern.Record r => RecordPatternType(ctx, r),
             Pattern.AtomType => Value.VU.Instance,
             Pattern.StructType => type is Value.VStruct ? type : Value.VU.Instance,
@@ -158,7 +161,7 @@ public static partial class Elaborator
             case Pattern.Con c:
             {
                 var (nominal, constructor) = ResolveConstructorHead(ctx, c.Head)
-                    ?? throw new NotImplementedException(UnportedConstructorHead);
+                    ?? throw new FunException($"pattern head `{HeadLabel(c.Head)}` does not name a nominal type");
                 ctx.Unify(type, nominal);
                 if (ctx.Force(type) is not Value.VNominal scrutinee)
                     throw new InvalidOperationException("a scrutinee unified with a nominal is one");

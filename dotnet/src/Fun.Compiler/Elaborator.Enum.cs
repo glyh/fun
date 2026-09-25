@@ -39,8 +39,6 @@ public sealed partial record Context
 
 public static partial class Elaborator
 {
-    private const string UnportedConstructorHead =
-        "not ported yet: a constructor pattern head that is a member of a non-nominal";
 
     /// <summary>
     /// <c>enum { … }</c>: a new declaration, whose identity is itself and the
@@ -190,7 +188,9 @@ public static partial class Elaborator
     /// <summary>
     /// The nominal and constructor a pattern's head names, found through what the
     /// head resolves to - a member of the type its path names, or an entry an
-    /// <c>open</c> of a nominal pushed - never by its spelling. Null otherwise.
+    /// <c>open</c> of a nominal pushed - never by its spelling. Null when the head's
+    /// reduction (each parameter applied to a fresh meta) yields no nominal - which
+    /// a match head then reports as a language error.
     /// </summary>
     private static (Value.VNominal Nominal, ConstructorDecl Constructor)? ResolveConstructorHead(Context ctx, Syntax head)
     {
