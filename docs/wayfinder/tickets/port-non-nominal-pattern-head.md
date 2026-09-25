@@ -3,12 +3,53 @@ title: "Port: a pattern head that is a member of a non-nominal reduces to a lang
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-25
+resolution: Closed 2026-09-25 - fixed by a fork (d8a29f7, merged) and verified by the integrator - port 763 cases 0 failed and 185/185 xUnit where the port was at 761; OCaml conformance 763/0 with 31 divergences; the audit's own probe now answers the language error in both. The throw was unreachable-by-design once a null reduction is read as a language error, so it was deleted rather than converted.
 assignee:
 blocked_by:
 ---
 
 # Port: a pattern head that is a member of a non-nominal reduces to a language error
+
+> ## Resolution (2026-09-25) — closed
+>
+> Fixed by a fork (`d8a29f7`, merged) and verified by the integrator re-running both suites and
+> the audit's own probe:
+>
+> | runner | output |
+> | --- | --- |
+> | OCaml | `ELAB ElabError(NotANominalType)` |
+> | port | `ELAB pattern head \`f\` does not name a nominal type` |
+>
+> **The fix is smaller than this ticket assumed, and the audit's verdict 3 was right.** The
+> reduction already existed: `Instantiate` (`Elaborator.Enum.cs`) applies fresh metas to the head's
+> value until a nominal appears, and `ResolveConstructorHead`'s `FieldAccess` case already routes a
+> dotted head's prefix through it — so the alias direction needed **no** code. All that was wrong
+> was what `null` *meant*: it read as "unported path". It now reads as "the reduction yields no
+> nominal", which is a language error. So `Elaborator.Enum.cs`'s throw and its const were
+> **deleted**, `Elaborator.Match.cs` raises `FunException` at pattern elaboration, and
+> `RefineScrutineeType.Implied` returns no refinement instead of refusing — exactly as the
+> prototype's `find_pat` returns `None` and lets pattern elaboration speak.
+>
+> **Both directions are pinned by the new case pair**, which is the constraint this ticket existed
+> to respect:
+>
+> - `values/pattern-head-member-of-non-nominal` — `error`, the audit's `M.f` program;
+> - `values/pattern-head-type-former-alias` — `3`, `Seq = fn(A : Type) { List(A) }` matched through
+>   `Seq.Cons`/`Seq.Nil`, the alias the closed
+>   [pattern-head-accepts-type-formers](pattern-head-accepts-type-formers.md) ruling blesses.
+>
+> Had the fix simply rejected "a head that is a member of a non-nominal", the second case is what
+> would have caught it. Both are **ordinary** — the prototype errors on one and answers `3` on the
+> other — so `prototype-divergences.txt` is untouched.
+>
+> `TypeHead` was judged the wrong granularity for a match head (it names a *type* for type-cases,
+> while the constructor lookup needs `Instantiate`'s nominal value), so it was left alone rather
+> than reused for symmetry.
+>
+> **Unrelated parity, deliberately left alone:** `[1,2,3]` bracket list literals are refused
+> pre-elaboration by **both** runners ("bare bracket expression is not in Phase 7A").
 
 Site 2 of the 2026-09-25 [re-sweep](port-unported-path-audit.md#re-sweep-2026-09-25) of the
 refusal inventory, found by a read-only audit, re-probed by the integrator. One of **three
