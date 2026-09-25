@@ -81,6 +81,33 @@ Note what the narrowing is **not**: the model's stamp rule is exactly why `Scope
 natural place to look (the stamp *is* a scope), so the fix is not "stop using the declaration
 site" but "take the stamp, not the enclosing function's bindings".
 
+## The five-example contract (user-ruled 2026-09-25)
+
+| # | program | ruled | today |
+|---|---|---|---|
+| 1 | `F = fn(n : I64) { y = n; rec T = fn(A : Type) { enum { X(A) } }; T }`, `a = F(1); b = F(2)`, `take(b(I64).X(3))` | **must typecheck** (`1`) | error in both — the bug |
+| 2 | same, but the declaration names the outer parameter (`F = fn(A : Type) { rec T = fn(B : Type) { enum { X(A) } }; T }`) | **must not typecheck** | error in both ✓ |
+| 3 | `Set = fn(T : Type) { module { pub type S = Leaf \| Node(T); pub leaf = Leaf } }` used as `a = Set(I64); b = Set(I64)`, `take(b.leaf)` | **must typecheck** (`1`) | `1` in both ✓ |
+| 4 | the same `S` from `Set(Char)` against `Set(I64)`'s | **must not typecheck** | error in both ✓ |
+| 5 | a *performing* module's two evaluations (`Mk(())` twice) | **distinct** (`10`) | `10` in both ✓ |
+
+Example 3's answer is the model's own use case, not an inference — from
+[nominal identity is applicative by purity](nominal-identity-applicative-by-purity.md) under
+*"Applicative — sharing required"*:
+
+```fun
+a = Set(I64, compare_i64); b = Set(I64, compare_i64)
+a.union(x_from_a, y_from_b)            -- must typecheck
+```
+
+with the reason given there: *"the checker re-evaluates `Set(I64, cmp).T` during conversion, so a
+type minted per evaluation would not equal itself"* — i.e. a per-call nominal would not even be
+equal to **itself**, which is why example 3 is mandatory rather than a convenience.
+
+So the target is exactly: identity = the declaration + its own free variables + the enclosing
+module's stamp. Examples 2, 3, 4 and 5 are already right; **1 is the bug**, and 2/4 are the guards
+that keep a fix from over-correcting in the other direction.
+
 ## Held back, per convention 8
 
 The case pair and its divergence entry were **removed from the tree** while this is open —
