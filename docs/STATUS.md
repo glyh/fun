@@ -3,26 +3,46 @@
 This is the **authoritative** status document for the `fun` compiler. When other docs disagree
 with this file, STATUS.md wins.
 
-**The implementation is the C# port in `dotnet/`.** The OCaml prototype was deleted on 2026-09-25,
+**The implementation is the C# port in the repository root**: `src/` (compiler), `std/` (prelude
+source), `test/` (the suite and its runners). The OCaml prototype was deleted on 2026-09-25,
 when the port measured as a superset of it (`port-fails: 0` over every program in the repo). The
 entries from 2026-09-16 onward describe waves of porting work and remain accurate as history; the
 entries that describe the prototype's own implementation are its record, and its code lives in
-`git log`.
+`git log`. Paths written in a dated entry are the paths of that date — the port was lifted from
+`dotnet/` to the repo root on 2026-09-26.
 
-Last updated: after the .NET port's parity re-measurement, 2026-09-25.
+Last updated: the port lifted to the repo root, 2026-09-26.
 
 ---
 
 ## Completed
+
+### Repo layout — the port lifted to the root (2026-09-26)
+
+- `dotnet/` is gone: `dotnet/src` → `src/`, `dotnet/std` → `std`,
+  `dotnet/test/{Fun.Tests,Fun.Conformance}` → `test/{Fun.Tests,Fun.Conformance}` (beside
+  `test/conformance/cases`, which never moved), `Fun.slnx` and `Directory.Build.props` → root.
+  The wrapper only ever existed to tell the two implementations apart, and the prototype's
+  deletion retired that job. Relative paths kept their shape — `src/` and `test/` moved together,
+  so every `ProjectReference` and the prelude's `..\..\std\*.fun` still resolve — which is why
+  the move needed no project-file edit at all.
+- **Measured after the move** (integrator run): `dotnet build` succeeds from the root,
+  `conformance: 773 cases, 0 failed`, xUnit `185/185`. Both counts are higher than the
+  2026-09-25 entries below (763 cases, 185 xUnit) because cases landed after that measurement;
+  the suite grew, nothing regressed.
+- Docs updated for the new layout: `CLAUDE.md`, `README.md`, `test/conformance/cases/README.md`,
+  this header, and the comments in `test/Fun.Conformance/Program.cs` and `src/Fun.Compiler/Prelude.cs`.
+  Dated entries below keep the paths they were written with.
 
 ### .NET port — parity re-measured (2026-09-25)
 
 - **Port: `conformance: 763 cases, 0 failed`, xUnit `185/185`, `dune test` green with
   `conformance: 763 cases, 0 failed, 31 known prototype divergences`** (integrator runs).
 - **The corpus measured, 2026-09-25: `agree 732 | port-fails 0 | prototype-fails 31 | both-fail 0
-  | hang 0` over 763 programs**, and the 31 are exactly the 31 entries in
-  `test/conformance/prototype-divergences.txt` — zero untagged disagreements. `port-fails: 0` is
-  the gate for [deleting the prototype](docs/wayfinder/tickets/delete-the-prototype.md); the other
+  | hang 0` over 763 programs**, with zero untagged disagreements. Note the two counts: the
+  harness reported 31 prototype failures, while `test/conformance/prototype-divergences.txt`
+  lists **34** entries, so three entries were never exercised by that corpus. `port-fails: 0` is
+  the gate for [deleting the prototype](wayfinder/tickets/delete-the-prototype.md); the other
   half is the two unprobed residues. The harness bounds the corpus, not the language: every hole
   found on 2026-09-24/25 was found by probing, and none was visible in this number.
 - **The refusal inventory is 14 sites, re-swept and classified**: **3 real gaps** — the checker's
@@ -34,11 +54,11 @@ Last updated: after the .NET port's parity re-measurement, 2026-09-25.
   ticket. All three hide behind rows of the first audit marked *fixed*: a fixed row named a
   **route**, never the throw.
 - **Four tickets closed as stale**, every scope bullet verified in `dotnet/src` rather than by
-  prose: [procedural macros](docs/wayfinder/tickets/port-procedural-macros.md) (including the
+  prose: [procedural macros](wayfinder/tickets/port-procedural-macros.md) (including the
   per-binding interleaving it called "not done": `MacroRuntime.Advance` called by
-  `Expander.cs:244`), [syntactic roles](docs/wayfinder/tickets/port-syntax-roles.md),
-  [effects](docs/wayfinder/tickets/port-effects.md), and
-  [the generative former's identity residue](docs/wayfinder/tickets/port-generative-former-identity-residue.md)
+  `Expander.cs:244`), [syntactic roles](wayfinder/tickets/port-syntax-roles.md),
+  [effects](wayfinder/tickets/port-effects.md), and
+  [the generative former's identity residue](wayfinder/tickets/port-generative-former-identity-residue.md)
   (already fixed the day it was written, `1f70e82`). So the remaining port work is no longer
   three waves but the handful of sites above.
 - **Landed:** a stuck match reads back an arm its tree pruned (`Term.Match` carries its arms'

@@ -4,7 +4,7 @@ using Fun.Kernel;
 namespace Fun.Compiler;
 
 /// <summary>
-/// The prelude (<c>std</c>): stage 2 of <c>dotnet/std</c>, which imports stage 1 as a
+/// The prelude (<c>std</c>): stage 2 of <c>std/</c>, which imports stage 1 as a
 /// unit of its own (<see cref="Stage1Path"/>) and re-exports it. Each stage is
 /// elaborated once per process - stage 1 against the builtins alone, stage 2 against
 /// the builtins with stage 1 bound as <c>stdlib</c> - and the base context binds

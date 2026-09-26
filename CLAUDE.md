@@ -4,8 +4,9 @@ Guidance for working in this repository.
 
 ## Project overview
 
-`fun` is a programming language compiler/interpreter. The implementation is **C# (.NET 10)** under
-`dotnet/`. The earlier OCaml prototype was **removed on 2026-09-25** — see *History* at the end,
+`fun` is a programming language compiler/interpreter. The implementation is **C# (.NET 10)**: the
+compiler tree is `src/`, the prelude source is `std/`, and the tests are `test/`. The earlier
+OCaml prototype was **removed on 2026-09-25** — see *History* at the end,
 which keeps the knowledge that was learned while it was the reference.
 
 The core (`core_tt`) is dependently typed with bidirectional elaboration, normalization by
@@ -18,7 +19,6 @@ Design philosophy: **Consistency > Flexibility > Correctness** — one construct
 ### Build & test
 
 ```sh
-cd dotnet
 dotnet build                                         # everything
 dotnet test test/Fun.Tests                           # xUnit (internals)
 dotnet run --project test/Fun.Conformance            # the shared language suite
@@ -28,7 +28,7 @@ dotnet run --project src/Fun.Cli                     # REPL
 A single conformance program, the way the suite judges it:
 
 ```sh
-dotnet dotnet/test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file /tmp/probe.fun
+dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file /tmp/probe.fun
 ```
 
 **The three-project split is load-bearing**: `Fun.Kernel` (atoms, terms, values, patterns,
@@ -52,17 +52,20 @@ source → reader → enforestation → expanded Syntax → elaboration → Core
 
 ### Source layout
 
-- `dotnet/src/Fun.Kernel/` — `Atom`, `Core` (`Core.Shift`, `Core.Match`, `Core.Patterns`,
+- `src/Fun.Kernel/` — `Atom`, `Core` (`Core.Shift`, `Core.Match`, `Core.Patterns`,
   `Core.Refs`), `Syntax`, the decision trees, `EquatableArray`
-- `dotnet/src/Fun.Expand/` — the reader, `Enforest` (+ `Enforest.Roles`, `Enforest.Match`),
+- `src/Fun.Expand/` — the reader, `Enforest` (+ `Enforest.Roles`, `Enforest.Match`),
   `Expander` (+ `.Macros`, `.Roles`, `.Imports`), `MacroRuntime`, `Reflection`
-- `dotnet/src/Fun.Compiler/` — `Elaborator` split across partial files (`Elaborator.Traits`,
+- `src/Fun.Compiler/` — `Elaborator` split across partial files (`Elaborator.Traits`,
   `.Patterns`, `.RecTypes`, `.Generative`, `.Implicits`, `.Effects`, `.Match`, …), `Unify`,
   `Nbe` (+ `Nbe.Match`, `.StuckMatch`, `.Effects`, `.Generative`), `Budget`, `Driver`, `Loader`
-- `dotnet/std/` — the prelude source, `stage1.fun` and `stage2.fun`
+- `std/` — the prelude source, `stage1.fun` and `stage2.fun`, embedded into `Fun.Compiler`
+  as resources by its `.csproj`
 - `test/conformance/cases/` — the language suite: `.fun` + `.expect` pairs, nothing to register
   (`cases/README.md`)
-- `dotnet/test/Fun.Tests/` — xUnit, internals only
+- `test/Fun.Tests/` — xUnit, internals only
+- `test/Fun.Conformance/` — the suite's runner; `test/Fun.Cli` lives at `src/Fun.Cli`
+- `Fun.slnx`, `Directory.Build.props` — the solution and the settings every project shares
 
 ### Where a test goes
 
@@ -95,7 +98,7 @@ or a type rather than a value.
   representation, and capture the output:
 
   ```sh
-  cd dotnet && dotnet build 2>&1 && dotnet test test/Fun.Tests --nologo 2>/tmp/log
+  dotnet build 2>&1 && dotnet test test/Fun.Tests --nologo 2>/tmp/log
   ```
 
   The goal is one diagnostic that pins the root cause, not a matrix of modified inputs.
@@ -132,7 +135,7 @@ transfer: each one is a trap the port can still fall into, in its own idiom.
 
 When adding a nominal type for macros to inspect and construct:
 
-1. **Prelude**: declare it in `dotnet/std/stage1.fun`'s `Syntax` module (stage 1 has no `type`
+1. **Prelude**: declare it in `std/stage1.fun`'s `Syntax` module (stage 1 has no `type`
    macro — that is defined in stage 2) as `pub rec Foo = enum { … }; export Foo;`, and add
    builders (`pub foo_build = fn(args…) { … }`).
 2. **Nominals**: add the field to the syntax-nominals registry the macro evaluator builds.

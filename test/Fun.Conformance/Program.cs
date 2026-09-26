@@ -1,8 +1,8 @@
 // Runs the shared conformance suite -- the cases/<area>/<name>.fun files under
 // test/conformance/cases, compared against their sibling <name>.expect. It is the only place
 // a language behaviour is tested, and it began life shared with the OCaml prototype (removed
-// 2026-09-25), which is why it lives beside the case files rather than under dotnet/.
-// See ../../../test/conformance/cases/README.md.
+// 2026-09-25), which is why it lives beside the case files in test/ rather than under
+// src/, the implementation tree. See ../conformance/cases/README.md.
 using Fun.Compiler;
 
 const string UnitInfix = ".unit-";

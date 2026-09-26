@@ -2,8 +2,8 @@
 
 Language-behaviour tests as data: 766 programs plus their expected results, run by
 the C# port. They were written to be implementation-independent, so the earlier OCaml
-prototype ran the same files — that is why the suite lives here and not under `dotnet/`,
-and why `../prototype-divergences.txt` exists as a historical record.
+prototype ran the same files — that is why the suite lives in its own tree, apart from the
+implementation, and why `../prototype-divergences.txt` exists as a historical record.
 
 A case may only depend on what a program produces — never on compiler internals.
 
@@ -33,12 +33,12 @@ not whatever an implementation happens to do.
 
 `error` is deliberately coarse: an error's class and wording are
 implementation-specific. Tests that must assert a *particular* error belong in
-`dotnet/test/Fun.Tests` (xUnit), not here.
+`test/Fun.Tests` (xUnit), not here.
 
 ## Running
 
 ```sh
-cd dotnet && dotnet run --project test/Fun.Conformance
+dotnet run --project test/Fun.Conformance
 ```
 
 It prints `conformance: <n> cases, <k> failed`, naming each failure's file, what

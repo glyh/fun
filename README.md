@@ -1,7 +1,8 @@
 # fun
 
 `fun` is an experimental programming language compiler/interpreter. The implementation is
-written in **C# (.NET 10)** under `dotnet/`.
+written in **C# (.NET 10)**: `src/` is the compiler, `std/` the prelude source, `test/` the
+suite and the runners.
 
 The earlier OCaml prototype was **removed on 2026-09-25** once the port was measured as a
 superset of it: `port-fails: 0` over every program in the repo, with the 34 cases where the two
@@ -14,11 +15,10 @@ ADTs, structural records/modules, pattern matching, traits, algebraic effects,
 mutable references, and a hygienic enforestation-based macro system.
 
 ```sh
-cd dotnet
 dotnet build                                  # the compiler
-cd dotnet && dotnet test test/Fun.Tests       # xUnit: internals (shapes, unifier, machine, budget)
-cd dotnet && dotnet run --project test/Fun.Conformance   # the shared language suite
-cd dotnet && dotnet run --project src/Fun.Cli            # REPL
+dotnet test test/Fun.Tests                    # xUnit: internals (shapes, unifier, machine, budget)
+dotnet run --project test/Fun.Conformance     # the shared language suite
+dotnet run --project src/Fun.Cli              # REPL
 ```
 
 ## Design philosophy
@@ -37,7 +37,7 @@ cd dotnet && dotnet run --project src/Fun.Cli            # REPL
 The pipeline is a single path from surface syntax to values:
 
 ```text
-source → Raw_syntax → Enforest → Expand + Lower → Surface.t → Elaborate → Core.term → NbE → value
+source → reader → enforestation → expanded Syntax → elaboration → Core term → NbE → value
 ```
 
 ## Where things live
