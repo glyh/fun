@@ -12,3 +12,6 @@ obj/
 .DS_Store
 .vs/
 .idea/
+
+# Agent tooling (local config and skills)
+.pi/
