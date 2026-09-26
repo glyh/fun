@@ -1,5 +1,14 @@
 # Deepwork: Type-aware macro interleaving implementation
 
+> **Historical work log (OCaml prototype).** Every path below — `lib/…`,
+> `dune build`, `dune exec test/backend/…` — belongs to the OCaml prototype,
+> which was removed on 2026-09-25; none of them resolve any more. The design it
+> implements survives in
+> [topics/macro-interleaving-design.md](../../topics/macro-interleaving-design.md)
+> (parent: [TYPE_AWARE_INTERLEAVING.md](../TYPE_AWARE_INTERLEAVING.md)), and its
+> ticket is closed. For what is built now, see [docs/STATUS.md](../../../STATUS.md)
+> and the macro [STATUS.md](../STATUS.md). Covers Stages 1–6.
+
 ## Goal
 
 Implement the design in `docs/17.type_aware_macro_interleaving_design.md`, starting with Stage 1: split parsed unresolved macro annotations from resolved macro kinds without changing runtime behavior more than necessary.

@@ -11,6 +11,17 @@ This directory collects references for a future `fun` macro system. It keeps the
 - [`STAGE_8_PLAN.md`](STAGE_8_PLAN.md) — design for problem-aware / kind-tagged macros (Stage 8).
 - [`TYPE_AWARE_INTERLEAVING.md`](TYPE_AWARE_INTERLEAVING.md) — design for expander/elaborator interleaving to fix annotation-name disambiguation.
 
+## Deepwork logs
+
+Work logs from the type-aware interleaving migration. The `lib/` and `dune` paths
+inside them are historical — they belong to the OCaml prototype, removed
+2026-09-25. The designs they implement live in
+[`TYPE_AWARE_INTERLEAVING.md`](TYPE_AWARE_INTERLEAVING.md) and
+[`../topics/macro-interleaving-design.md`](../topics/macro-interleaving-design.md).
+
+- [`deepwork/type-aware-macro-interleaving.md`](deepwork/type-aware-macro-interleaving.md) — Stages 1–6.
+- [`deepwork/stage7-self-recursive-macros.md`](deepwork/stage7-self-recursive-macros.md) — Stage 7, self-recursive macro cells and fuel guards. The fuel guard was later retired in favour of the evaluation budget.
+
 ## Papers
 
 ### Regular syntax and enforestation

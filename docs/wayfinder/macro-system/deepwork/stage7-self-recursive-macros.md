@@ -1,5 +1,19 @@
 # Stage 7 — self-recursive macro cells + fuel guards
 
+> **Historical work log (OCaml prototype).** Every path below — `lib/…`,
+> `dune test`, `test/backend/…` — belongs to the OCaml prototype, which was
+> removed on 2026-09-25; none of them resolve any more. The design it implements
+> survives in
+> [topics/macro-interleaving-design.md](../../topics/macro-interleaving-design.md)
+> (parent: [TYPE_AWARE_INTERLEAVING.md](../TYPE_AWARE_INTERLEAVING.md)), and its
+> ticket is closed. For what is built now, see [docs/STATUS.md](../../../STATUS.md)
+> and the macro [STATUS.md](../STATUS.md).
+>
+> **Superseded detail:** the depth-style macro fuel this log builds was retired
+> on 2026-09-14 — see
+> [macro-fuel-is-the-evaluation-budget.md](../../tickets/macro-fuel-is-the-evaluation-budget.md).
+> Macro recursion is now bounded by the checker's evaluation budget.
+
 ## Goal
 
 Implement the next type-aware macro interleaving migration step from
