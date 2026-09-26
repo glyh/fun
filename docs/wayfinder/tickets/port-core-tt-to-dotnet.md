@@ -6,28 +6,16 @@ labels:
 status: open
 assignee:
 blocked_by:
-  - domain-model-core-tt.md
-  - domain-model-surface-enforestation.md
-  - imported-module-elaboration-context.md
-  - env-width-contract-is-unnamed.md
-  - unify-primitive-declaration.md
-  - constructor-lookup-matches-type-name.md
-  - core-traversals-ignore-binding-list-depth.md
-  - struct-open-does-not-scope-over-con-fields.md
-  - templates-desugar-to-macros.md
-  - bare-arrow-is-pure.md
-  - refs-in-effect-rows.md
-  - nominal-identity-applicative-by-purity.md
-  - handlers-tunnel-callback-effects.md
-  - self-type-has-no-identity.md
-  - recursive-records-cannot-hold-a-record.md
-  - mutually-recursive-record-types.md
-  - recursive-definitions-stuck-on-open-arguments.md
-  - pattern-head-accepts-type-formers.md
-  - macro-annotation-constraints-mean-nothing.md
 ---
 
 # Port `core_tt` to .NET (C#)
+
+> **Unblocked 2026-09-26** — every one of the nineteen tickets this awaited is closed. The port
+> they describe is **done**: parity measured (`port-fails: 0` over every program in the repo) and
+> the OCaml prototype deleted on 2026-09-25, then the `dotnet/` wrapper lifted to the repository
+> root on 2026-09-26. What remains under this umbrella is the follow-up list on the map's
+> [Frontier (2026-09-26)](../fun-design-map.md#frontier-2026-09-26), not a port. The decisions
+> below are the record of how it was built.
 
 ## Handover (2026-09-17) — start here
 

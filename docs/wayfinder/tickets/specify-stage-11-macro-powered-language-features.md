@@ -6,10 +6,15 @@ labels:
 status: open
 assignee: glyh
 blocked_by:
-  - design-type-aware-macro-interleaving.md
 ---
 
 # Stage 11 macro-powered language features spec
+
+> **Unblocked 2026-09-26** — `design-type-aware-macro-interleaving.md` closed. Re-framed the same
+> day: the ticket was written while two implementations existed, and the counts and file paths in
+> it are the OCaml prototype's. The prototype is gone (2026-09-25) and `src/` is the
+> implementation, so progress is measured against the port from here on. The direction
+> (demote compiler-built-in constructs into the library) is unaffected and still decided.
 
 ## Question
 
@@ -35,7 +40,9 @@ the umbrella for successive demotion increments.
 
 ## Progress
 
-**Increment 1 — `Bool` + `if` (implemented, green: 778 tests).** `Bool` is now a
+**Increment 1 — `Bool` + `if` (implemented).** "778 tests" was the prototype's `dune test`
+count; the port's equivalent measurement on 2026-09-26 is `conformance: 773 cases, 0 failed` and
+xUnit `185/185`, and the same behaviour is in it. `Bool` is a
 prelude nominal ADT (`type Bool = False | True`), primitives return `I64` and the
 prelude wraps them, and `if` is desugared to `match` (the dedicated `Core.If` node
 and `FIf` frame were removed, sound because `FMatch` already subsumes them). Two
@@ -55,8 +62,14 @@ dictionaries, effects) — the idea store for future increments:
 - [Add short-circuit && / || operators](add-short-circuit-and-or-operators.md)
   — feasible now via the builtin operator table.
 - [Explicit prelude open for operator demotion](explicit-prelude-open-operator-demotion.md)
-  — needed before `+`/`==`/`<` can move out of `operator_env.ml`; blocked on
-  [Unify operators into the scope-aware binding table](unify-operators-into-scope-aware-binding-table.md).
+  — the ticket and [Unify operators into the scope-aware binding table](unify-operators-into-scope-aware-binding-table.md),
+  which blocked it, are both closed. **Re-measured 2026-09-26 on the port:** the comparison and
+  equality operators are already prelude definitions over primitives
+  (`pub (<) = fn(x, y) { … }` and the `Eq` impls, `std/stage2.fun:13-25`), while the arithmetic
+  five are still primitives (`+` at `src/Fun.Compiler/Primitives.cs:44`). So the demotion is
+  half-done and no longer blocked; what is left is the `+`/`-`/`*`/`/`/`%` half, whose cost is
+  whatever the fixity declaration already handles (they are `pub infix` in `std/stage2.fun:31-35`).
+  Whether that half is wanted is this ticket's call, not a blocker.
 - [Reflect Match in the Expr macro ADT](reflect-match-in-expr-macro-adt.md)
   — required for a *true* prelude-macro `if` (macros can't construct `Match` today).
 
@@ -71,7 +84,8 @@ gone and `if` already is a prelude form.
 
 **Landed:** five keyword tokens deleted — `then`, `with`, `end`, `else`, `Unit`.
 Nothing matched them: a syntax form's rule literals compare by spelling
-(`Enforest_template.same_literal_token`), so the prelude's `if` form matches
+(`Enforest_template.same_literal_token`, now `SameLiteral` in
+`src/Fun.Expand/Enforest.Roles.cs`), so the prelude's `if` form matches
 `else` as a plain token, and `Unit` had an identical `Ident` path in expression
 and pattern position. They are ordinary identifiers now
 (`test/conformance/cases/values/freed-keywords.fun`).
@@ -84,14 +98,19 @@ and pattern position. They are ordinary identifiers now
   `[h : Type, A : Type] -> A ->{Mutate(h)} Ref(h, A)`, where `h` is solved by
   unification: normally a fresh meta (same behaviour), but an expected type could
   force an existing heap, widening what is discharged. `RefNew` also carries E11's
-  generative module stamp, so the core node stays either way.
+  generative module stamp, so the core node stays either way. (Prototype path `elab_infer.ml`;
+  the port's refs live in `src/Fun.Compiler/Elaborator.Refs.cs`, whose note is the same: "each
+  `Ref(A)` gets a fresh one".)
 - Everything else keyword-driven (`match`, `fn`, `struct`, `module`, `sig`,
   `enum`, `trait`, `impl`, `effect`, `macro`, `pattern`, `import`, `open`,
   `export`, `perform`, `resume`, `method`, `rec`, `pub`, `self`, `Self`) is a core
   structural form producing a primitive node — keywords by the rule decided
   2026-09-16. No `while` exists to demote.
-- Not this ticket, noticed: `enforest_pat.ml` picks type patterns (`I64`, `Unit`,
-  `Char`, `String`, `Absurd`) by spelling — an M12 survivor.
+- Not this ticket, noticed: the prototype's `enforest_pat.ml` picked type patterns (`I64`,
+  `Unit`, `Char`, `String`, `Absurd`) by spelling — an M12 survivor. **Re-measured 2026-09-26:**
+  the port resolves them structurally, as `Pattern.AtomType(AtomTy Ty)`
+  (`src/Fun.Kernel/Syntax.Patterns.cs:27`, elaborated at `src/Fun.Compiler/Elaborator.Match.cs:184`,
+  `:416`) — the spelling lookup did not port, so there is nothing to demote here.
 
 ## Grilled (2026-09-16): `ref` / `deref` stay compiler nodes
 

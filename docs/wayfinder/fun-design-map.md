@@ -24,8 +24,10 @@ topic doc that holds its detail.
 - **Domain:** `fun`, an experimental dependently-typed language built on `core_tt`
   (bidirectional elaboration, NbE, implicit args, nominal ADTs, structural
   records/modules, traits, algebraic effects, references), with a hygienic
-  enforestation-based macro system. Prototype is in OCaml; a CLR/C# rewrite is on
-  the agenda (see Fog).
+  enforestation-based macro system. The implementation is the C# port of `core_tt`
+  at the repository root — `src/` (compiler), `std/` (prelude), `test/` (suite and
+  runners). The OCaml prototype was deleted 2026-09-25 once the port measured as a
+  superset of it; its code is in `git log`.
 - **Design priority:** Consistency > Flexibility > Correctness. One construct for
   many roles (`struct` = record/module/namespace), types are values, the core
   carries the language model directly. See the root [`README.md`](../../README.md).
@@ -201,9 +203,11 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
 Dim directions — real, but not yet sharp enough to be tickets. Signposts, cleared
 as the frontier reaches them.
 
-- ~~**CLR / C# rewrite shape**~~ — promoted out of fog to
-  [port `core_tt` to .NET (C#)](tickets/port-core-tt-to-dotnet.md) — in progress
-  since 2026-09-16.
+- ~~**CLR / C# rewrite shape**~~ — the rewrite happened: promoted out of fog to
+  [port `core_tt` to .NET (C#)](tickets/port-core-tt-to-dotnet.md), in progress from
+  2026-09-16, **at parity 2026-09-25** (`port-fails: 0`, the prototype deleted the same
+  day) and lifted from `dotnet/` to the repository root 2026-09-26. What remains is
+  the open-ticket list, not a rewrite.
 - **Formalized core semantics as cross-rewrite truth** — proposal to write
   `Core.term` / `Core.value` / `eval` (and optionally elaboration) as a Lean 4 (or
   Coq) spec used as an AI-checked structural-correspondence reference across the
@@ -214,10 +218,10 @@ as the frontier reaches them.
   (possibly less ML-flavored, Ruby/Elixir-style `do … end`) should change once the
   macro expansion model is finalized; the syntax redesign now enters through
   reader/enforestation rather than grammar growth.
-- **Diagnostics polish boundary** — which diagnostics work belongs pre-rewrite
-  (only to unblock feature work/tests) vs post-rewrite (broad polish, when the
-  implementation shape is stable). Broad polish in the OCaml prototype is avoided
-  because that code is expected to be replaced.
+- **Diagnostics polish boundary** — which diagnostics work belongs now vs later. The
+  pre-rewrite/​post-rewrite split that framed this is gone with the prototype: there
+  is one implementation again, so the boundary is now "what a reaching test needs"
+  vs "broad polish once the surface is stable".
   Concrete input: elaborator errors carry **no source location at all**. `Elab_error`
   has no span fields. Since delete-surface-ir the elaborator reads `Syntax.t`, so
   every form it sees has a span; attaching them to errors is the remaining work.
@@ -313,11 +317,12 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
   [nominal identity](tickets/nominal-identity-applicative-by-purity.md); asking cost more than
   reading.
 - Parallel agents in git worktrees worked well for independent tickets. A fresh worktree has no
-  build output, so `dotnet build` once before running anything — and tell a fork that it cannot
-  run the *other* implementation's half of a verification, so it says "unverified" rather than
-  inferring green. Worktrees may be created from a stale commit — reset to `main` first. Since
-  2026-09-25 each fork must also get its own `/tmp/<fork>/` scratch directory.
-- Use the camlkit MCP tools (locate / uses / type_at) for OCaml navigation.
+  build output, so run `dotnet build` once before anything — and tell a fork to say which
+  verifications it could not run, rather than inferring green. Worktrees may be created from a
+  stale commit — reset to `main` first. Since 2026-09-25 each fork must also get its own
+  `/tmp/<fork>/` scratch directory.
+- Use pi-lens LSP navigation (`lsp_navigation`) for C# go-to-definition, references and
+  diagnostics; the camlkit MCP tools went with the prototype.
 - Surface syntax changed wholesale: bodies are `{ … }`, arms use `=>`, `;` is
   explicit and a trailing `;` discards. Docs under `macro-system/` and closed
   tickets still show the old `do … end` / `->` syntax; trust the code, `CLAUDE.md`
@@ -328,7 +333,66 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
   the user with concrete code examples; several decisions this run were revised
   mid-implementation (generated syntax is hygienic, quotes parse at definition).
 
-### Waiting on the user (as of 2026-09-25)
+### Frontier (2026-09-26)
+
+**The port's parity work is closed.** Every item the 2026-09-25 re-sweep listed landed, and the
+OCaml prototype was deleted the same day; [`docs/STATUS.md`](../STATUS.md) is authoritative for
+what is built. The rewrite wrapper `dotnet/` was lifted to the repository root on 2026-09-26.
+So the frontier is no longer a port wedge — it is the open tickets below, and the two sections
+that used to lead this one are kept underneath as the record of how the port finished.
+
+**24 open tickets, 23 unblocked.** By where they live:
+
+- **Port follow-ups** (`port-core-tt-to-dotnet`'s children) — none is a known divergence:
+  [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md) (ruled 2026-09-17, its
+  generic-head half implemented nowhere — step 2 of the parity recipe),
+  [identity must survive re-evaluation](tickets/port-identity-survives-reevaluation.md) (ruled
+  2026-09-25), [the observable budget cases](tickets/port-budget-observable-cases.md),
+  [the runner does not timebox elaboration](tickets/port-runner-does-not-timebox-elaboration.md),
+  and the deferred [typed operator macro](tickets/port-typed-operator-macro.md).
+- **Language and macro work** — the largest ready group:
+  [a synonym's generalized types are its implicits](tickets/pattern-synonym-type-parameters.md)
+  (ruled 2026-09-25), [reflect `Match` in the `Expr` ADT](tickets/reflect-match-in-expr-macro-adt.md)
+  (blocker closed), [a meta in a method signature captures `self`](tickets/method-signature-metas-capture-self.md),
+  [does a macro own its output](tickets/macro-owns-its-output.md) (grilling),
+  the [Stage 11](tickets/specify-stage-11-macro-powered-language-features.md) and
+  [Stage 12](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md) specs,
+  [deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md),
+  [private type visibility](tickets/design-private-type-visibility-model.md),
+  [generated symbol cleanup](tickets/scope-generated-symbol-cleanup.md), and
+  [enforester improvements](tickets/scope-enforester-improvements.md).
+- **Ruled or researched, waiting on nobody**: [brackets decide grouping](tickets/brackets-decide-grouping.md)
+  (tail-returning forms, dotted group references), [one set literal](tickets/general-set-literals.md)
+  (later), [type-case refinement walks the context](tickets/type-case-refinement-walks-whole-context.md),
+  [mutual chains in scoped heads](tickets/type-def-chains-in-scoped-do-heads.md), and
+  [deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
+  (architectural, pre-existing).
+- **Blocked**: [an impl head is a pattern over types](tickets/pattern-headed-impls.md) waits on
+  [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md).
+
+Umbrellas keep their own children: [the port](tickets/port-core-tt-to-dotnet.md),
+[the parity recipe](tickets/port-parity-plan.md), and the
+[unported-path audit](tickets/port-unported-path-audit.md).
+
+### Waiting on the user (2026-09-25) — all three answered
+
+All three were settled 2026-09-25, and each answer was carried into its ticket:
+
+- [A generative former with an unused type parameter](tickets/port-generative-former-phantom-parameter.md)
+  — **decided**: an unused type parameter is an error at its declaration, in both
+  implementations; the stricter route, not the prototype's phantom reading. Landed in both.
+- [Should a pattern synonym's generalized types be supplyable?](tickets/pattern-synonym-type-parameters.md)
+  — **decided**: they are the synonym's implicit type parameters, so all three of the ticket's
+  questions answer from one reading. Ruled and queued.
+- [A budget error should name the call stack of requests](tickets/port-budget-attribution.md)
+  — **closed**: the call stack landed (outermost → innermost, one stack across macro and checker
+  requests), and with it the `expand_decls` assertion the ruling asked for. The
+  test it blocked now exists; the remaining gap is [the observable cases](tickets/port-budget-observable-cases.md).
+
+The nested text below is the state as it stood before those answers; the tickets are the record
+now.
+
+#### The three as they were written (2026-09-25)
 
 Three decisions are parked with tickets of their own. None blocks work in flight; the third
 blocks one *test*.
@@ -347,10 +411,18 @@ blocks one *test*.
   requests, and truncation. **Blocks a test**: the `expand_decls` assertion the budget ruling
   asked for cannot be written until they are answered.
 
-The current frontier — open tickets under [`tickets/`](tickets/), in intended
-order.
+The sections from here down are the record of how the macro model and the port got here. They
+were written as a running to-do list, and later sections are kept in the tense they were written
+in — closed items say `(closed)` in their bullet. The live list is at the top of this section,
+under [Frontier (2026-09-26)](#frontier-2026-09-26).
 
-### Blocking the .NET port
+### Blocking the .NET port — closed 2026-09-25
+
+> **Closed.** The port reached parity (`port-fails: 0`) and the prototype was deleted on
+> 2026-09-25; `dotnet/` was lifted to the repository root on 2026-09-26. The narrative below is
+> the record of the port's last mile, kept because each defect in it was an invariant whose
+> distance had to be found by probing. It is **not** a to-do list — for the live one see
+> [Frontier (2026-09-26)](#frontier-2026-09-26) and [`docs/STATUS.md`](../STATUS.md).
 
 [Port `core_tt` to .NET](tickets/port-core-tt-to-dotnet.md) is the destination.
 **In progress since 2026-09-16** — **695 of 695** conformance cases, **0 failed** (C#,
@@ -377,7 +449,7 @@ every defect below is an invariant with no name in the source.
   ([pass 1](tickets/domain-model-core-tt.md)),
   [surface and enforestation](tickets/domain-model-surface-enforestation.md),
   [macro evaluation and hygiene](tickets/domain-model-macro-hygiene.md), and
-  [effects](../topics/core-tt-domain-model-effects.md). The specification is
+  [effects](topics/core-tt-domain-model-effects.md). The specification is
   written; what remains between the prototype and the port are the defect
   tickets below — each an invariant's distance, none an unnamed rule.
 - [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)

@@ -4,10 +4,34 @@ parent: ../fun-design-map.md
 status: open
 assignee:
 blocked_by:
-  - mutually-recursive-nominal-types.md
 ---
 
 # Mutual type chains in scoped do-heads
+
+> ## Re-measured 2026-09-26 — the premise does not reproduce on the port
+>
+> Unblocked (`mutually-recursive-nominal-types.md` closed) and re-framed: the ticket describes
+> `parse_type_binding` in `enforest.ml`, which went with the prototype, and its surface spelling
+> (`do type A = … and B = …; body`) went with the `do … end` syntax. Probed through the suite's
+> `--file` mode on the port (2026-09-26), the chains **work**:
+>
+> | probe | result |
+> | --- | --- |
+> | `{ type A = MkA \| MkB and B = MkC; (MkA : A) }` | `VALUE MkA` |
+> | `{ type A = MkA \| MkB and B = MkC; (B.MkC : B) }` | `VALUE MkC` |
+> | `{ rec A = enum { MkA } and B = enum { MkB(A) }; 1 }` | `VALUE 1` (and `{ …; (A.MkA : A) }` is `VALUE MkA`) |
+> | `{ rec A = struct { x : I64 } and B = struct { a : A }; 1 }` | `VALUE 1` |
+>
+> Not one of them hit the targeted "scoped head accepts exactly one type" error this ticket was
+> written about — so the expression-position group knot appears to be **already built**, and what
+> remains is a decision, not work: close it, or turn the statement into the case the suite lacks.
+>
+> One neighbour measured on the way, **not** this ticket's question: a **mixed** group is refused —
+> `rec A = enum { MkA(B) } and B = struct { a : A }` → *"a rec … and … group holds enums, struct
+> types or functions, not a mix"*, at block scope and in a module alike. Where exactly that
+> boundary sits is unprobed (`elaborate/elab-109` mixes a struct type with a function and passes).
+>
+> The original text is kept below; its mechanism names the deleted prototype.
 
 ## Question
 

@@ -253,7 +253,17 @@ ticket was written (`1f70e82`, merged `5a685ba`, with the case
 went looking for it correctly reported nothing to do — so this list is one item shorter than it
 reads. Measure a gap in the runners before spending a fork slot on it.
 
-## The frontier after the 2026-09-25 re-sweep
+## The frontier after the 2026-09-25 re-sweep — closed 2026-09-25
+
+> **Closed the same day it was written, and verified 2026-09-26.** Every item in this section
+> landed: the three "newly found" refusals (checker unhandled-effect `a47c94d`, non-nominal
+> pattern head `d8a29f7`, synonym-over-neutral), the sealed-nominal head, the nominal-head capture,
+> and the "landed this session" stuck match. The prototype was then deleted (`port-fails: 0`) and
+> the port lifted out of `dotnet/` on 2026-09-26. **The port's parity frontier is empty** — what
+> remains under this umbrella is the follow-up list, which lives on
+> [the map's Frontier (2026-09-26)](../fun-design-map.md#frontier-2026-09-26) and in
+> [`docs/STATUS.md`](../../STATUS.md). Read the section below as the record of the last mile, not
+> as a to-do list: its "frontier now" heading is the state of one afternoon.
 
 A read-only fork re-classified the whole refusal inventory, and closed the wave tickets the list
 below used to be built on. **The visible and invisible deltas both changed shape**: what remains

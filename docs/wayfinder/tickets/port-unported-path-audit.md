@@ -12,6 +12,30 @@ blocked_by:
 
 > ## Re-sweep 2026-09-25
 >
+> **Closed 2026-09-26. Re-measured the same day: 10 sites remain, down from 14**
+> (`grep -rn "not ported yet:" src` — note the path: the port was lifted out of `dotnet/` on
+> 2026-09-26). The three *real gaps* this table named all closed on 2026-09-25 and
+> [the checker's unhandled effect](port-checker-unhandled-effect.md) is the one that speaks to the
+> method: its own premise (that the port already had a checkpoint site) was wrong. Of the 10 that
+> remain:
+>
+> - **7 are the unreachable defaults** — both `Core.Shift` cases, `Core.Patterns` (the
+>   `CorePattern` binder), `Unify` (the frame rename), `Enforest.Roles` (the quoted statement),
+>   `Elaborator.cs` (the `Syntax` elaboration), and `Elaborator.Generative.cs` (the unlabelled
+>   generative seal). Unchanged from the table below.
+> - **1 is the deferred shape** — the typed operator macro in `Expander.Macros.cs`, still
+>   [post-port work](port-typed-operator-macro.md).
+> - **1 is the unowned residue this file already predicted** — `Elaborator.RecTypes.cs`, the
+>   rec-enum unnamed-capture throw.
+> - **1 needs a look, not a claim**: `Elaborator.Patterns.cs` still refuses *generalising a
+>   pattern synonym over a `<kind>`*, and [its ticket](port-synonym-generalises-over-neutral.md)
+>   closed — so either the closed fix narrowed the throw to a case the ticket did not cover, or the
+>   throw is now unreachable. **Unprobed**: one probe settles it, and the map already names the
+>   shape this file worried about (a value kind carrying a meta in a *type* position, missed
+>   silently rather than refused).
+>
+> The table below is the 2026-09-25 record and is kept for its method, not its numbers.
+>
 > A read-only fork re-classified the whole inventory, against `dotnet/src` and by probing both
 > runners, because **several tickets in this repo turned out to be older than the commits that
 > closed them** — this file's own annotations included. The original inventory below is kept

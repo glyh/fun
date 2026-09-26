@@ -6,21 +6,26 @@ labels:
 status: open
 assignee:
 blocked_by:
-  - design-type-aware-macro-interleaving.md
 ---
 
 # Stage 12 macro diagnostics / expansion UX spec
 
+> **Unblocked 2026-09-26** — `design-type-aware-macro-interleaving.md` closed. Re-framed the same
+> day: "before / after the rewrite" is no longer a distinction that exists. The OCaml prototype was
+> deleted 2026-09-25 and `src/` is the only implementation, so everything this ticket deferred
+> "to after the port" is now due, and "pre-rewrite" scoping becomes "what a reaching test needs".
+
 ## Question
 
-Specify the Stage 12 diagnostics/expansion UX scope, and decide what belongs
-before the CLR / C# rewrite.
+Specify the Stage 12 diagnostics/expansion UX scope, and decide what belongs now that there is
+one implementation and no rewrite coming to make the effort disposable.
 
 ## Context
 
-- The roadmap says broad diagnostics polish is post-rewrite.
-- Pre-rewrite diagnostics work should be scoped narrowly — only enough to
-  unblock macro feature work and macro-level tests.
+- Broad diagnostics polish is no longer deferred by a rewrite; it is deferred only by the surface
+  still moving.
+- Whatever diagnostics work is taken now should still be scoped narrowly — enough to unblock
+  macro feature work and macro-level tests.
 - Items like structured error spans, traceable expansion output, and
   user-facing macro error messages need a clear boundary.
 
@@ -28,7 +33,7 @@ before the CLR / C# rewrite.
 
 _Unresolved._
 
-## Deferred to after the .NET port (2026-09-15)
+## Carried over from before the port (2026-09-15) — now actionable, not deferred
 
 - **A typed macro call whose expected type contradicts its promise** fails today
   with a plain unification error before the macro runs (`b : Bool = n()` with

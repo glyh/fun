@@ -89,7 +89,7 @@ declarer's scope environment at instantiation time. Options to weigh:
 
 Whichever is chosen, the two prelude repros above become regression tests; the
 fix changes `&&`/`||` expansion for shadowing programs, so land it with the
-[regression-coverage](../../topics/regression-coverage.md) suite in mind.
+[regression-coverage](../topics/regression-coverage.md) suite in mind.
 
 ## Second symptom: pattern heads
 

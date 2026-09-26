@@ -6,10 +6,32 @@ labels:
 status: open
 assignee:
 blocked_by:
-  - mutually-recursive-nominal-types.md
 ---
 
 # Reflect Match in the Expr macro ADT
+
+> ## Re-measured 2026-09-26 — the work looks landed, but nothing tests it
+>
+> The stale `blocked_by:` edge (`mutually-recursive-nominal-types.md`, closed) is dropped. The
+> design below was implemented against the port and **not** the `macro_eval.ml` this ticket was
+> written for:
+>
+> - `RawMatch` and `Branch` are in the reflected `Expr` ADT — `std/stage1.fun:32`, and the
+>   `Branch` sum is already the forward-compatible `ValueBranch | EffectBranch` shape decision 2
+>   asked for (it went further than "value branches only").
+> - Both directions round-trip: reflect at `src/Fun.Compiler/Reflection.cs:268` (+ `BranchVal`
+>   at `:353`, both branch kinds) and read at `:739` (+ `ReadBranch` at `:868`).
+> - The patterns it needed are reflected too (`RawPatWild/Bind/Con/Atom/Prod/Or/Record/StructType/Type`).
+> - The follow-on it was meant to unblock is already true: `if` is a prelude form, not an
+>   enforester desugar (see [Stage 11](specify-stage-11-macro-powered-language-features.md)).
+>
+> **Unowned gap:** `grep -r 'RawMatch' test/conformance/cases` returns nothing, and no xUnit case
+> names it either — so *whether a macro can actually construct and destructure a `match`* is
+> **unprobed**. One probe settles it: a prelude-free program whose macro builds
+> `RawMatch(scrutinee, [value_branch(pat, body)])` and one whose macro destructures a `match`
+> passed to it, each as a `test/conformance/cases/macros/` case. If they pass, this ticket closes
+> with those two cases and the ADT decision moves to the map's Decisions-so-far; if either fails,
+> the failure names what is left.
 
 ## Question
 
