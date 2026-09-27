@@ -5,9 +5,10 @@ namespace Fun.Compiler;
 
 /// <summary>
 /// Evidence that <see cref="Args"/> implement <see cref="Trait"/>: the dictionary
-/// sits at <see cref="Level"/>, at dictionary type <see cref="Type"/>.
+/// sits at <see cref="Level"/>, at dictionary type <see cref="Type"/>. <see cref="Vars"/>
+/// are the impl's own type variables, the metas its head's free names bound.
 /// </summary>
-public sealed record TraitEvidence(TraitDecl Trait, EquatableArray<Value> Args, int Level, Value Type);
+public sealed record TraitEvidence(TraitDecl Trait, EquatableArray<Value> Args, int Level, Value Type, EquatableArray<int> Vars = default);
 
 /// <summary>
 /// A dictionary chosen later: <see cref="Meta"/> stands for the impl of
@@ -30,7 +31,7 @@ public sealed partial record Context
 public static partial class Elaborator
 {
     /// <summary>What an impl contributes: its trait and argument, dictionary type, and dictionary term and value.</summary>
-    private sealed record ImplContribution(TraitDecl Trait, Value Arg, Value.VTraitDict DictType, Term Core, Value Value);
+    private sealed record ImplContribution(TraitDecl Trait, Value Arg, Value.VTraitDict DictType, Term Core, Value Value, EquatableArray<int> Vars);
 
     /// <summary>
     /// A trait: its one parameter is a defined entry standing for itself, and each
@@ -86,6 +87,62 @@ public static partial class Elaborator
     }
 
     /// <summary>
+    /// An impl head's free names are the impl's own type variables, bindable with
+    /// no declaration: <c>impl Size(Option(A))</c> makes <c>A</c> its own. Each is
+    /// pushed as a definition of a fresh meta around the head's own inference (not
+    /// the body's), and the head's free occurrences are rewritten to it.
+    /// </summary>
+    // The cost is accepted: `impl Size(Optoin(A))` is a typo that silently becomes a
+    // generic impl over two fresh variables; it never matches and surfaces at the use.
+    // No scan, warning or validation for it.
+    private static (Context Head, Syntax HeadSyntax, EquatableArray<int> Vars) BindHeadNames(Context ctx, Syntax head)
+    {
+        var free = new List<string>();
+        head.Map(new SyntaxMapper
+        {
+            Form = form =>
+            {
+                switch (form)
+                {
+                    case Syntax.Var v when !Resolves(ctx, v.Id.Name): free.Add(v.Id.Name); break;
+                    case Syntax.OpenChoice c when !Resolves(ctx, c.Name.Name, c.Opens, c.Fallback): free.Add(c.Name.Name); break;
+                }
+                return form;
+            },
+        });
+        free = [.. free.Distinct()];
+        if (free.Count == 0) return (ctx, head, []);
+
+        var vars = EquatableArray<int>.Empty;
+        foreach (var name in free)
+        {
+            var id = ctx.Metas.Fresh();
+            ctx = ctx.Define(name, Value.VU.Instance, ctx.Eval(new Term.InsertedMeta(id, ctx.EntryKinds)));
+            vars = vars.Add(id);
+        }
+        var bound = free.ToHashSet();
+        var rewritten = head.Map(new SyntaxMapper
+        {
+            Form = form => form is Syntax.OpenChoice c && bound.Contains(c.Name.Name) ? new Syntax.Var(c.Name) : form,
+        });
+        return (ctx, rewritten, vars);
+    }
+
+    /// <summary>Whether a name is supplied by the context, as <see cref="Context.Locate"/> would.</summary>
+    private static bool Resolves(Context ctx, string name)
+    {
+        try { ctx.Locate(name); return true; }
+        catch (FunException) { return false; }
+    }
+
+    /// <summary>Whether an open choice is supplied, as <see cref="Context.LocateChoice"/> would.</summary>
+    private static bool Resolves(Context ctx, string name, EquatableArray<string> opens, string? fallback)
+    {
+        try { ctx.LocateChoice(name, opens, fallback); return true; }
+        catch (FunException) { return false; }
+    }
+
+    /// <summary>
     /// An impl's dictionary: every operation of the trait given exactly once, each
     /// checked at its type for this argument. The dictionary is a struct of the
     /// operations; each is elaborated in the impl's context, so the ith is shifted
@@ -93,7 +150,8 @@ public static partial class Elaborator
     /// </summary>
     private static ImplContribution Contribute(Context ctx, Syntax traitPath, Syntax argSyntax, EquatableArray<(string Name, Syntax Value)> fields)
     {
-        var (trait, arg, dictType) = ImplDictType(ctx, traitPath, argSyntax);
+        var (headCtx, head, vars) = BindHeadNames(ctx, argSyntax);
+        var (trait, arg, dictType) = ImplDictType(headCtx, traitPath, head);
         var seen = new HashSet<string>();
         foreach (var (name, _) in fields)
         {
@@ -106,7 +164,7 @@ public static partial class Elaborator
         var bindings = fields.Select((f, i) => (BindingTerm)new BindingTerm.Let(f.Name, MemberKind.Public,
             Check(ctx, f.Value, dictType.Operations.Last(o => o.Name == f.Name).Type).Shift(i)));
         var core = new Term.Struct([], [.. bindings], Partial: false);
-        return new ImplContribution(trait, arg, dictType, core, ctx.Eval(core));
+        return new ImplContribution(trait, arg, dictType, core, ctx.Eval(core), vars);
     }
 
     /// <summary><c>impl Trait(Arg) = module { … }; body</c>: the dictionary is an entry, and evidence, for the body.</summary>
@@ -114,7 +172,7 @@ public static partial class Elaborator
     {
         var c = Contribute(ctx, i.TraitPath, i.Arg, i.Fields);
         var (inner, entry) = ctx.DefineAnonymous(c.DictType, c.Value);
-        inner = inner.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType));
+        inner = inner.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType, c.Vars));
         var (body, bodyType) = Infer(inner, i.Body);
         return (new Term.Let(ctx.Quote(c.DictType), c.Core, body), bodyType);
     }
@@ -136,8 +194,8 @@ public static partial class Elaborator
             throw new InvalidOperationException("an impl contributes one entry");
         var value = ctx.Eval(def.Term);
         var (after, entry) = ctx.DefineAnonymous(c.DictType, value);
-        after = after.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType));
-        return (after, term, new ModuleEntry.Impl(name, kind, c.DictType, value));
+        after = after.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType, c.Vars));
+        return (after, term, new ModuleEntry.Impl(name, kind, c.DictType, value, c.Vars));
     }
 
     private static Context InferImplBinding(Context ctx, Binding.Impl impl, List<BindingTerm> terms, List<ModuleEntry> entries)
@@ -232,38 +290,44 @@ public static partial class Elaborator
         return (ctx, type, count);
     }
 
+    /// <summary>A candidate impl for a use: its head arguments, its own variables, and the dictionary it offers.</summary>
+    private sealed record EvidenceCandidate(EquatableArray<Value> Args, EquatableArray<int> Vars, Term Term, Value Type);
+
     /// <summary>
     /// The impl in scope for <paramref name="trait"/> at <paramref name="args"/>
-    /// (traits.md, "Resolution"): evidence whose arguments convert, and a struct
-    /// argument's own public impls. Null when there is none; lexical nearness never
-    /// breaks a tie, so more than one is an ambiguity.
+    /// (traits.md, "Resolution"): evidence whose arguments match, and a struct
+    /// argument's own public impls, of which the most precise is chosen. Null when
+    /// there is none; no unique most precise one is an ambiguity. An argument whose
+    /// type is not yet known (a meta) makes the choice wait.
     /// </summary>
-    // Rule 2's precision order needs no code yet: an impl has no type variables of its
-    // own (its arguments are concrete types or binders in scope), so every candidate is
-    // an instance of every other and none is more precise. Order candidates by one-way
-    // instance matching once impls can be generic.
     private static (Term Term, Value Type)? ResolveEvidence(Context ctx, TraitDecl trait, EquatableArray<Value> args)
     {
-        bool Same(EquatableArray<Value> a, EquatableArray<Value> b) =>
-            a.Length == b.Length && a.Zip(b).All(p => Convertible(ctx, p.First, p.Second));
+        // An unknown argument type waits (rule 4): a candidate matching it could still
+        // be beaten by a later, more precise one, so resolving now would be a guess.
+        if (args.Any(a => ctx.Force(a) is Value.VMeta or Value.VNeutral)) return null;
 
-        var matches = ctx.Evidence
-            .Where(e => ReferenceEquals(e.Trait, trait) && Same(e.Args, args))
-            .Select(e => ((Term)new Term.Var(Nbe.LevelToIndex(ctx.Width, e.Level)), e.Type))
+        // P is more precise than Q when P's arguments are an instance of Q's: Q's own
+        // variables are filled in to give P's (rule 2).
+        bool Instance(EvidenceCandidate p, EvidenceCandidate q) => Matches(ctx, q.Args, p.Args, q.Vars);
+
+        var candidates = ctx.Evidence
+            .Where(e => ReferenceEquals(e.Trait, trait) && Matches(ctx, e.Args, args, e.Vars))
+            .Select(e => new EvidenceCandidate(e.Args, e.Vars,
+                new Term.Var(Nbe.LevelToIndex(ctx.Width, e.Level)), e.Type))
             .ToList();
 
         if (args.Length == 1 && ctx.Force(args[0]) is Value.VStruct st)
-            matches.AddRange(st.Entries.OfType<ModuleEntry.Impl>()
+            candidates.AddRange(st.Entries.OfType<ModuleEntry.Impl>()
                 .Where(i => i.Kind == MemberKind.Public && ctx.Force(i.DictType) is Value.VTraitDict d
-                            && ReferenceEquals(d.Decl, trait) && Same(d.Args, args))
-                .Select(i => (ctx.Quote(i.Value), i.DictType)));
+                            && ReferenceEquals(d.Decl, trait) && Matches(ctx, d.Args, args, i.Vars))
+                .Select(i => new EvidenceCandidate(
+                    ((Value.VTraitDict)ctx.Force(i.DictType)).Args, i.Vars, ctx.Quote(i.Value), i.DictType)));
 
-        return matches.Count switch
-        {
-            0 => null,
-            1 => matches[0],
-            _ => throw new FunException($"ambiguous implementation of `{trait.Name}`"),
-        };
+        if (candidates.Count == 0) return null;
+        var best = candidates.Where(p => candidates.All(q => ReferenceEquals(p, q) || Instance(p, q))).ToList();
+        return best.Count == 1
+            ? (best[0].Term, best[0].Type)
+            : throw new FunException($"ambiguous implementation of `{trait.Name}`");
     }
 
     /// <summary>
@@ -310,27 +374,34 @@ public static partial class Elaborator
     private static bool Unresolved(Context ctx, Value arg) => ctx.Force(arg) is Value.VMeta or Value.VVar or Value.VNeutral;
 
     /// <summary>
-    /// Whether two types convert without solving a meta (the prototype's
-    /// <c>Nbe.conv</c>): read-back equality, or, when read-back differs, a
-    /// structural unification that succeeds while solving nothing. The no-solve
-    /// guard is what makes it a conversion rather than a guess: it admits width
-    /// subtyping (an impl head's <c>Self</c> is the struct's fields so far, and
-    /// must match the complete struct) and eta, but never commits to a meta, so a
-    /// choice still waits on an unknown argument type (traits.md, "Resolution",
-    /// rule 4).
+    /// Whether an impl head's arguments match a use's: read-back equality, or a
+    /// structural unification that solves only the impl's own variables
+    /// (<paramref name="vars"/>) - the use's metas and variables stay rigid - and is
+    /// undone, so the impl stays generic. The no-solve guard beyond those variables
+    /// is what makes it a match rather than a guess: it admits width subtyping and
+    /// eta, but never commits to the use's unknowns, so a choice still waits on an
+    /// unknown argument type (traits.md, "Resolution", rule 4).
     /// </summary>
-    private static bool Convertible(Context ctx, Value left, Value right)
+    private static bool Matches(Context ctx, EquatableArray<Value> pattern, EquatableArray<Value> target, EquatableArray<int> vars)
     {
-        if (Nbe.Convertible(ctx.Metas, ctx.Width, left, right)) return true;
+        if (pattern.Length != target.Length) return false;
         var before = ctx.Metas.Snapshot();
-        bool ok;
-        try { ok = Unify.TryValues(ctx.Metas, ctx.Width, left, right); }
-        catch (FunException) { ctx.Metas.Restore(before); return false; }
-        if (!ok) return false;
-        var after = ctx.Metas.Snapshot();
-        for (var i = 0; i < before.Length; i++)
-            if (before[i] is null && after[i] is not null) { ctx.Metas.Restore(before); return false; }
-        return true;
+        var ok = true;
+        try
+        {
+            foreach (var (p, t) in pattern.Zip(target))
+                if (!Nbe.Convertible(ctx.Metas, ctx.Width, p, t) && !Unify.TryValues(ctx.Metas, ctx.Width, p, t))
+                { ok = false; break; }
+            if (ok)
+            {
+                var after = ctx.Metas.Snapshot();
+                for (var i = 0; i < before.Length && ok; i++)
+                    if (before[i] is null && after[i] is not null && !vars.Contains(i)) ok = false;
+            }
+        }
+        catch (FunException) { ok = false; }
+        finally { ctx.Metas.Restore(before); }
+        return ok;
     }
 
     /// <summary>The trait a checked form's value is, when it is one.</summary>
@@ -398,7 +469,7 @@ public static partial class Elaborator
         var (after, entry) = ctx.DefineAnonymous(impl.DictType, value);
         opened.Add(member);
         return !duplicate && after.Force(impl.DictType) is Value.VTraitDict d
-            ? after.AddEvidence(new TraitEvidence(d.Decl, d.Args, entry.Level, impl.DictType))
+            ? after.AddEvidence(new TraitEvidence(d.Decl, d.Args, entry.Level, impl.DictType, impl.Vars))
             : after;
     }
 }

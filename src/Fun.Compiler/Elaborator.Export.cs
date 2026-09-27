@@ -22,7 +22,7 @@ public static partial class Elaborator
 
         for (var i = 0; i < members.Count; i++)
         {
-            var (name, term, type, constructor, isImpl) = members[i];
+            var (name, term, type, constructor, isImpl, vars) = members[i];
             if (isImpl)
             {
                 // A named impl leaves as a public entry of this module, pushed
@@ -32,7 +32,7 @@ public static partial class Elaborator
                 var binding = new BindingTerm.Impl(name, MemberKind.Public, term.Shift(i), type);
                 (ctx, _) = ctx.DefineAnonymous(type, value);
                 terms.Add(binding);
-                entries.Add(new ModuleEntry.Impl(name, MemberKind.Public, type, value));
+                entries.Add(new ModuleEntry.Impl(name, MemberKind.Public, type, value, vars));
             }
             else
             {
@@ -46,7 +46,7 @@ public static partial class Elaborator
     }
 
     /// <summary>One member <c>export M</c> takes: a public module field, or a named public impl.</summary>
-    private sealed record ExportedMember(string Name, Term Term, Value Type, ConstructorMark? Constructor, bool IsImpl);
+    private sealed record ExportedMember(string Name, Term Term, Value Type, ConstructorMark? Constructor, bool IsImpl, EquatableArray<int> Vars = default);
 
     /// <summary>What <c>export M</c> takes: an enum's constructors, or a module's public members, in order.</summary>
     private static List<ExportedMember> ExportedMembers(Context ctx, Syntax of)
@@ -71,7 +71,7 @@ public static partial class Elaborator
                     members.Add(new ExportedMember(f.Name, new Term.Dot(term, f.Name), ctx.Force(f.Value), f.Constructor, false));
                     break;
                 case ModuleEntry.Impl { Kind: MemberKind.Public, Name: { } name } impl:
-                    members.Add(new ExportedMember(name, new Term.Dot(term, name), ctx.Force(impl.DictType), null, true));
+                    members.Add(new ExportedMember(name, new Term.Dot(term, name), ctx.Force(impl.DictType), null, true, impl.Vars));
                     break;
                 case ModuleEntry.Impl { Kind: MemberKind.Public, Name: null } impl:
                     throw new FunException($"export of an unnamed public impl of `{(ctx.Force(impl.DictType) is Value.VTraitDict d ? d.Decl.Name : "?")}`; name it");
