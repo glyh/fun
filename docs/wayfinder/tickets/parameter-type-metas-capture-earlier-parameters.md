@@ -3,7 +3,9 @@ title: A parameter's type meta captures the earlier binders, not only `self`
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Implemented 2026-09-27 (branch `fork/param-type-metas-no-capture`, merged; `2d00dd0` the rule, `4e5c013` eleven cases, `b8a80ac` STATUS). `WithoutSelfInMetas(int level)` became `NoCapture()` — every entry defined while a written parameter type is elaborated, so the meta such a type inserts skips them all and abstracts over nothing — and the two `InferLam`-family sites that never called it were brought in. The dead `level` threading went with it, along with `MethodBody`'s `SelfEntry` guard, which existed only to supply that level. The two `Unify.Invert` diagnostics were left alone (wording is a separate, open question). Cases: ten in `test/conformance/cases/values/written-param-type-*` and the soundness row as an `error` expectation in `elaborate/written-param-type-value-indexed-mismatch`. `conformance: 876 cases, 0 failed`, xUnit 188/188, re-verified by the integrator on the merge; the probes answer `01 VALUE 0`, `03 VALUE 0`, `05 VALUE 3`, `07 VALUE 0`, `11 VALUE 7`, and `10` stays refused with `cannot unify VAtomTy(I64) with enum#35`. Nothing falsified the ruling: no program was found that needed a written type's meta to abstract over a binder. Unmoved and still open: [a struct former in a written parameter type](struct-former-in-written-parameter-type.md).
 assignee:
 blocked_by:
 decided: 2026-09-27
@@ -58,7 +60,7 @@ and neither is touched by the method fix). `Ref(Pair[I64, Bool])` works. Whether
 be inserted inside `Ref(…)` is a separate question from this ticket's, and the two should not be
 fixed together.
 
-## Direction
+## Direction — **landed 2026-09-27**
 
 **Ruled 2026-09-27: a written parameter type captures nothing bound before it.** An
 annotation is a term read in scope, not a function of what is bound around it, so every
