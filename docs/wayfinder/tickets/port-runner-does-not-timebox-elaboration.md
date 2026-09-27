@@ -3,7 +3,9 @@ title: "The conformance runner does not timebox elaboration, so a hang cannot fa
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Closed 2026-09-27 - implemented by a fork (00fa8f7, merged) and verified by the integrator by reintroducing a non-advancing step in a scratch worktree. RunCase and RunFile now bound Driver.Elaborate with Task.Run + Wait(60s); a timeout is a named failure, never a pass, and never satisfies a case expecting error. Constructed evidence: the suite terminated by itself in 128s with two named FAILs and `conformance: 776 cases, 2 failed` - the two error-expecting reader cases failed rather than passing - and --file printed HANG at 60s and exited 0. Reverted, suite 776 cases 0 failed, xUnit 185/185.
 assignee:
 blocked_by:
 ---
@@ -54,6 +56,35 @@ and you get a wedged process and no message.
    by construction: temporarily reintroduce a non-advancing step in the reader, watch the runner
    fail with the message and a path rather than wedging, then revert. Say in the report that you
    did that, with the message pasted.
+
+## Closed 2026-09-27 — the suite can no longer wedge
+
+A fork (`wright`, `00fa8f7`, merged) bounded `Driver.Elaborate` in both entry points with the same
+shape the run already had one layer up — `Task.Run` + `Wait(60s)`, per case, `--file` included. A
+timeout returns `elaboration did not finish within 60s` as the case's failure; `--file` prints
+`HANG elaboration did not finish within 60s`. Exception accounting is unchanged: an unported path
+still fails a case and never passes an `error` one, a `FunException` still passes only an `error`
+case, and an invariant failure is still reported as this case's failure rather than crashing the
+run.
+
+**Verified by construction, by the integrator, in a throwaway worktree** — not taken on the fork's
+word. `RequireAdvance` (`src/Fun.Expand/Enforest.cs:576`) was made to never fire, and:
+
+```
+FAIL elaborate/struct-field-comma.fun: elaboration did not finish within 60s
+FAIL elaborate/struct-field-trailing-comma.fun: elaboration did not finish within 60s
+conformance: 776 cases, 2 failed
+```
+
+It terminated **by itself** in 128s rather than wedging, and both cases failed — which is the
+point: their `.expect` is `error`, and a timeout must not satisfy one. `--file` on the same program
+printed `HANG elaboration did not finish within 60s` at 60s and exited 0 (`--file` exits 0 for every
+diagnostic, as before). The reader change was reverted; the worktree and its branch are gone, and
+the suite is 776 cases 0 failed with xUnit 185/185.
+
+**Known ceiling, kept:** the timed-out elaboration thread spins until process exit — the same thing
+the run timeout already accepts, and now noted in the code. This is a hang detector, not a
+preemption: it makes a hang *visible and named*, which is all the ticket asked for.
 
 ## Reading
 

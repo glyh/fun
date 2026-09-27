@@ -379,19 +379,29 @@ what is built. The rewrite wrapper `dotnet/` was lifted to the repository root o
 So the frontier is no longer a port wedge — it is the open tickets below, and the two sections
 that used to lead this one are kept underneath as the record of how the port finished.
 
-**27 open tickets, 25 unblocked.** By where they live:
+**Re-measured 2026-09-27 — 23 open tickets, 21 unblocked.** Four closed today on measured
+evidence ([mutual chains in scoped heads](tickets/type-def-chains-in-scoped-do-heads.md), which
+needed no work; [the observable budget cases](tickets/port-budget-observable-cases.md), whose third
+row had landed; [reflect `Match` in the `Expr` ADT](tickets/reflect-match-in-expr-macro-adt.md),
+whose ADT was built and untested; and [identity must survive re-evaluation](tickets/port-identity-survives-reevaluation.md),
+audited innocent at every site but one), the runner grew a hang detector
+([the runner does not timebox elaboration](tickets/port-runner-does-not-timebox-elaboration.md)),
+and the audit's one residue opened a ticket of its own. **27 open, 25 unblocked** was the count at
+2026-09-26, and the rest of this section is that state. By where the tickets live:
 
 - **Port follow-ups** (`port-core-tt-to-dotnet`'s children) — none is a known divergence:
   [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md) (ruled 2026-09-17, its
-  generic-head half implemented nowhere — step 2 of the parity recipe),
-  [identity must survive re-evaluation](tickets/port-identity-survives-reevaluation.md) (ruled
-  2026-09-25), [the observable budget cases](tickets/port-budget-observable-cases.md),
-  [the runner does not timebox elaboration](tickets/port-runner-does-not-timebox-elaboration.md),
-  and the deferred [typed operator macro](tickets/port-typed-operator-macro.md).
+  generic-head half implemented nowhere — step 2 of the parity recipe; in flight 2026-09-27),
+  and the deferred [typed operator macro](tickets/port-typed-operator-macro.md) (its one open
+  question is the shape: one syntax argument for the whole use, or one per operand).
 - **Language and macro work** — the largest ready group:
   [a synonym's generalized types are its implicits](tickets/pattern-synonym-type-parameters.md)
-  (ruled 2026-09-25), [reflect `Match` in the `Expr` ADT](tickets/reflect-match-in-expr-macro-adt.md)
-  (blocker closed), [a meta in a method signature captures `self`](tickets/method-signature-metas-capture-self.md),
+  (ruled 2026-09-25, and its "E11 chain" is not a ticket — it is the stamp case family, all green),
+  [a meta in a method signature captures `self`](tickets/method-signature-metas-capture-self.md)
+  (in flight 2026-09-27),
+  [a closure capture gives two answers](tickets/closure-capture-identity-two-answers.md) (new
+  2026-09-27, needs a ruling: conversion says two lambda captures are one type and a type-case says
+they are two),
   [does a macro own its output](tickets/macro-owns-its-output.md) (grilling),
   the [Stage 11](tickets/specify-stage-11-macro-powered-language-features.md) and
   [Stage 12](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md) specs,
@@ -402,13 +412,13 @@ that used to lead this one are kept underneath as the record of how the port fin
 - **Ruled or researched, waiting on nobody**: [brackets decide grouping](tickets/brackets-decide-grouping.md)
   (tail-returning forms, dotted group references), [one set literal](tickets/general-set-literals.md)
   (later), [type-case refinement walks the context](tickets/type-case-refinement-walks-whole-context.md),
-  [mutual chains in scoped heads](tickets/type-def-chains-in-scoped-do-heads.md), and
-  [deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
+  and [deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
   (architectural, pre-existing).
 - **Stdlib and its compiler interface** — new 2026-09-26, the first direction aimed at `std/`
   itself and the boundary to the compiler rather than at the compiler's language:
   [declare the bootstrap↔compiler interface once](tickets/declare-bootstrap-compiler-interface-once.md)
-  (best landed first, so the split below happens with the interface already guarded),
+  (best landed first, so the split below happens with the interface already guarded; **ruled
+  2026-09-27: measured before it is shaped**, and the measuring fork is in flight),
   [restructure `std` into a bootstrap layer and a library layer](tickets/restructure-std-into-bootstrap-and-library.md)
   (the seam is exactly the names C# spells, and the library is everything else), and
   [design the user-facing library surface](tickets/design-std-library-surface.md).
