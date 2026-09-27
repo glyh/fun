@@ -3,7 +3,9 @@ title: Reflect Match in the Expr macro ADT
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Closed 2026-09-27 - the design was implemented (in the port, not the `macro_eval.ml` this ticket names) and both directions were unprobed only because nothing tested them. Landed two cases, `macros/core-332` (a macro constructs `RawMatch`) and `core-333` (a macro destructures one), both green, by a fork (`ba12434`, merged). Conformance 775 cases 0 failed, xUnit 185/185.
 assignee:
 blocked_by:
 ---
@@ -32,6 +34,13 @@ blocked_by:
 > passed to it, each as a `test/conformance/cases/macros/` case. If they pass, this ticket closes
 > with those two cases and the ADT decision moves to the map's Decisions-so-far; if either fails,
 > the failure names what is left.
+>
+> **Probed and closed 2026-09-27.** Both settle it: `macros/core-332` (construct) and `core-333`
+> (destructure), landed by a fork on `ba12434`. Nothing was left to build — the reflection was
+> already in place both ways (`Reflection.cs:268`/`:353` reflect, `:739`/`:868` read). Two
+> spellings hit while writing the probes, worth knowing: surface lists are `Cons(h, t)` / `Nil`
+> (**not** `[a, b]`, which fails with "bare bracket expression is not in Phase 7A"), and
+> `pat_wild`/`i64` come from `Syntax`.
 
 ## Question
 
@@ -100,4 +109,19 @@ prelude-macro `if`** and other library-defined control forms.
 
 ## Resolution
 
-_Unresolved (blocked on mutually-recursive nominal types)._
+**Closed 2026-09-27 — implemented, and now tested.** The ADT landed in the port (see the
+re-measure note at the top): `RawMatch(Option(Span), Expr, List(Branch))` with
+`Branch = ValueBranch(Pattern, Expr) | EffectBranch(Path, Pattern, Expr)`, reflected both ways,
+and the `Pattern` nodes it needs alongside. Decision 2's "blocked by a language gap" no longer
+holds — `Expr` and `Branch` are mutually recursive and
+[mutually-recursive nominal types](mutually-recursive-nominal-types.md) landed 2026-09-14; the
+port carries the chain in one `TypeBinding`. Decision 1 asked for value branches only and got one
+better: the `ValueBranch | EffectBranch` sum that decision 2 called "forward-compatible" is what
+exists today.
+
+The two cases this ticket's own gap-list asked for are `macros/core-332` and `core-333`. The
+follow-on it was meant to unblock is already true — `if` is a prelude form, not an enforester
+desugar (see [Stage 11](specify-stage-11-macro-powered-language-features.md)).
+
+The mechanism names below (`macro_eval.ml`, `elab_prelude.ml`, `wrap_stx`) went with the OCaml
+prototype on 2026-09-25 and are kept only as the record of how the design was reached.
