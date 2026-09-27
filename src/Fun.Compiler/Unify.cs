@@ -142,9 +142,9 @@ public static partial class Unify
         for (var i = 0; i < spine.Length; i++)
         {
             if (Nbe.Force(mc, spine[i]) is not Value.VVar { Spine.IsEmpty: true } variable)
-                throw new UnifyException("a meta's spine argument is not a variable");
+                throw new UnifyException("a meta's spine must be distinct variables, and this spine contains a value");
             if (levels.ContainsKey(variable.Level))
-                throw new UnifyException("a meta's spine repeats a variable");
+                throw new UnifyException("a meta's spine must be distinct variables, and this spine repeats a variable");
             levels = levels.Add(variable.Level, i);
         }
         return new Renaming(spine.Length, width, levels);
