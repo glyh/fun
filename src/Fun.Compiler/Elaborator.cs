@@ -125,9 +125,9 @@ public static partial class Elaborator
     /// The base context every compilation unit elaborates against: the builtins and
     /// the prelude bound as <c>stdlib</c> - bound, not opened. A program's indices
     /// count these entries, so it runs in this context's environment.
-    /// <paramref name="prelude"/> is the unit that <c>stdlib</c> names: <c>"std"</c>
-    /// for everything but the prelude's own stages (<see cref="Prelude.Stage1Path"/>
-    /// for stage 2, and null for stage 1, which has only the builtins).
+    /// <paramref name="prelude"/> is the prelude unit that <c>stdlib</c> names:
+    /// <c>"std"</c> for everything but the prelude's own units, the unit below for
+    /// each of those, and null for the bootstrap, which has only the builtins).
     /// </summary>
     public static Context BaseContext(MetaContext metas, string? prelude = Prelude.Path)
     {
