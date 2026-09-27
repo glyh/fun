@@ -3,7 +3,9 @@ title: Impl resolution takes the innermost impl, not the most precise matching o
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Closed 2026-09-27. A fork implemented all four scope items (core fix ca897c8, the rest recovered by the integrator as 6262eb6 after the fork was killed by an extension reload before it could report or commit), and the integrator verified and merged it. The baseline that failed now answers: impl Size(Option(A)) with Size.size(Some(5)) was 'unbound variable: A', is 2. Conformance 790 cases 0 failed, xUnit 186/186 (one test added). Both open items the reconnaissance left are answered as cases - a generic impl through open (2), through export (3), through an import (5). This unblocks pattern-headed-impls.
 assignee:
 blocked_by:
 ---
@@ -133,3 +135,60 @@ than the ticket implies, and where its risk sits:
 - Its own next step was "baseline: build and test first" — i.e. it had not yet measured anything.
   Whoever takes this should start with the precision program from the ruling above and the probes
   for the two open items.
+
+## Closed 2026-09-27
+
+**Provenance, because it matters here:** the implementing fork (Oracle, on deepseek-flash after the
+GLM provider 429'd) was **killed by an extension reload** partway through. It had committed the core
+fix (`ca897c8 traits: an impl head's free names bind as its own type variables`) but not the rest, and
+the reload also dropped it from the agent registry, so `resume` was impossible. Its worktree
+survived; the integrator committed the remaining tree onto a branch and merged it (`6262eb6`). So the
+work below is the fork's, verified by the integrator — not a fork's report read at face value,
+because no report was ever written.
+
+**The baseline this ticket was opened on, measured before and after:**
+
+| program | before | after |
+| --- | --- | --- |
+| `impl Size(I64)` / `impl Size(Char)`, `Size.size(5)` — the 2026-09-17 ruling's program | `1` | `1` (control, untouched) |
+| `impl Size(Option(A))`, `Size.size(Some(5))` | `unbound variable: A` | **`2`** |
+
+**What landed**, all four scope items:
+
+1. `BindHeadNames` (`Elaborator.Traits.cs`): the head's free names are collected by whether the
+   context resolves them, each pushed as a definition of a fresh meta around the *head's own*
+   inference, and the head's open choices are rewritten to those variables.
+2. `Matches` replaced the old `Convertible`: readback equality, else a structural unification in
+   which **only the impl's own variables may solve** (`vars.Contains(i)`), with every meta restored
+   afterwards so the impl stays generic and the use's unknowns stay rigid. That is the one-way
+   matching the reconnaissance predicted came for free, and it is what keeps rule 4 (a choice waits
+   on an unknown argument type) working.
+3. The most precise candidate wins — `p` such that every other candidate is an instance of it — and
+   anything else is `ambiguous implementation of \`Conv\``.
+4. The impl's own variables are threaded through `TraitEvidence`, `ModuleEntry.Impl` and the
+   `export` path.
+
+**Both open items the reconnaissance left are answered as cases**, which is the strongest form the
+answer could take: a generic impl survives `open` (`values/trait-generic-impl-through-open`, `2`),
+`export` (`…-through-export`, `3`), and an **imported unit** (`imports/trait-generic-impl-through-import`,
+`5`, with its own `unit-lib.fun` publishing the generic impl; `…-in-imported-module` alongside).
+The `export` path needed a real change — `Elaborator.Export.cs` had no place to carry `Vars` — so
+item 4 was not bookkeeping after all.
+
+**The cost was taken exactly as ruled.** The head's free names bind with no declaration, and the
+accepted consequence lives in the code as a comment rather than a check: `impl Size(Optoin(A))`
+silently becomes a generic impl over two fresh variables, never matches, and surfaces at the use. No
+scan, no warning, no validation.
+
+**Negative controls, all unchanged:** `trait-op-resolves-by-argument`, `trait-impl-per-argument`,
+`trait-impl-through-open`, `trait-bounded-call`, `trait-choice-waits-for-argument` (`7`),
+`elaborate/trait-op-nearness-no-tiebreak` (`error`), `elaborate/trait-impls-ambiguous` (`error`),
+`elaborate/trait-impl-needs-open` (`error`). One test was added, asserting the incomparable-head
+message exactly (`TraitTests.IncomparableGenericImplsAreAmbiguous`); xUnit 185 → 186.
+
+**A probe of mine was ill-formed, and its error change is not a regression:** `open Size; size(Some(5))`
+gave `unbound variable: A` before because the impl head failed first; it now reaches the real error,
+`open of a non-module`, because `Size` is a trait. The `open` answer proper is the case above.
+
+The two deferrals stand: blanket `_`, or-patterns and pattern-synonym heads belong to
+[an impl head is a pattern over types](pattern-headed-impls.md), which this ticket unblocks.

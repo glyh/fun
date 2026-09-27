@@ -379,16 +379,19 @@ what is built. The rewrite wrapper `dotnet/` was lifted to the repository root o
 So the frontier is no longer a port wedge — it is the open tickets below, and the two sections
 that used to lead this one are kept underneath as the record of how the port finished.
 
-**Re-measured 2026-09-27 — 22 open tickets, 20 unblocked.** Six closed today on measured
+**Re-measured 2026-09-27 — 21 open tickets, 20 unblocked.** Seven closed today on measured
 evidence ([mutual chains in scoped heads](tickets/type-def-chains-in-scoped-do-heads.md), which
 needed no work; [the observable budget cases](tickets/port-budget-observable-cases.md), whose third
 row had landed; [reflect `Match` in the `Expr` ADT](tickets/reflect-match-in-expr-macro-adt.md),
 whose ADT was built and untested; [identity must survive re-evaluation](tickets/port-identity-survives-reevaluation.md),
 audited innocent at every site but one; [a meta in a method signature captures `self`](tickets/method-signature-metas-capture-self.md);
-and [a closure capture gives two answers](tickets/closure-capture-identity-two-answers.md), ruled
-and fixed in the same afternoon), the runner grew a hang detector
+[a closure capture gives two answers](tickets/closure-capture-identity-two-answers.md), ruled and
+fixed in the same afternoon; and
+[the most precise impl wins](tickets/trait-op-takes-innermost-impl.md), whose generic-head half had
+waited since 2026-09-17), the runner grew a hang detector
 ([the runner does not timebox elaboration](tickets/port-runner-does-not-timebox-elaboration.md)),
-and two of those closes opened a ticket of their own. **27 open, 25 unblocked** was the count at
+and two of those closes opened a ticket of their own. `pattern-headed-impls` is now **unblocked** —
+the one ticket it was waiting on is the one that closed. **27 open, 25 unblocked** was the count at
 2026-09-26, and the rest of this section is that state. By where the tickets live:
 
 - **Port follow-ups** (`port-core-tt-to-dotnet`'s children) — none is a known divergence:
@@ -422,10 +425,10 @@ shape chosen before a fork can take it),
   [restructure `std` into a bootstrap layer and a library layer](tickets/restructure-std-into-bootstrap-and-library.md)
   (the seam is exactly the names C# spells, and the library is everything else), and
   [design the user-facing library surface](tickets/design-std-library-surface.md).
-- **Blocked**: [an impl head is a pattern over types](tickets/pattern-headed-impls.md) waits on
-  [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md), and
-  [the library surface design](tickets/design-std-library-surface.md) waits on
-  [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md).
+- **Blocked**: [an impl head is a pattern over types](tickets/pattern-headed-impls.md) is now
+  **unblocked** — [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md) landed
+  2026-09-27 — and only [the library surface design](tickets/design-std-library-surface.md) waits,
+  on [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md).
 
 Umbrellas keep their own children: [the port](tickets/port-core-tt-to-dotnet.md),
 [the parity recipe](tickets/port-parity-plan.md), and the
