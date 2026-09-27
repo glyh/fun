@@ -5,8 +5,8 @@ labels:
   - wayfinder:grilling
 status: open
 assignee:
-blocked_by:
-  - restructure-std-into-bootstrap-and-library.md
+blocked_by: []
+# unblocked 2026-09-27: restructure-std-into-bootstrap-and-library.md closed (16f9948)
 ---
 
 # Design the user-facing library surface of std

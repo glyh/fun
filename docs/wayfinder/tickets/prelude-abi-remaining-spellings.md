@@ -42,15 +42,32 @@ So that a later sweep does not re-open them:
 - `Nil`/`Cons`/`Id`'s fields are resolved through probed accessors (`Reflection.ListNil`,
   `ListCons`, `IdFields`), so they are not spelled and need no entry.
 
-## 4. Sequenced behind the `std` split
+## 4. Sequenced behind the `std` split — **done 2026-09-27**
 
-The declaration has never been exercised against the restructured prelude: the
-[`std` split](restructure-std-into-bootstrap-and-library.md) was in flight when it landed, so
-`std/bootstrap.fun` and its renamed unit paths have not been run against `PreludeAbi.Verify`.
-The integrator's merge of that branch covers it — but **both branches create `std/README.md`**, so
-that file needs both sides kept rather than one, and the `stage1` → `bootstrap` rename has to leave
-the declaration's unit paths (`Prelude.Path`, `Stage1Path`, `Binding`) single-sourced in
-`Prelude.cs` as they are now.
+The declaration had never been exercised against the restructured prelude when it landed. It has
+been now: the [`std` split](restructure-std-into-bootstrap-and-library.md) merged as `16f9948`
+(`bootstrap.fun`, `list.fun`, `lib.fun`, `type.fun`, `stage2.fun`), and the eager check was
+demonstrated against the renamed unit by breaking one constant and rebuilding:
+
+```
+ELAB invariant (InvalidOperationException): PreludeAbi declares Syntax.Expr.RawVarX,
+which the prelude std/bootstrap does not define
+```
+
+Restored, the prelude loads and the suite is 806 cases, 0 failed. So the declaration's purpose
+survives the rename, and the check names both the member and the unit it looked in.
+
+Two things the merge left, both one-liners:
+
+- **`PreludeAbi.cs:22`'s doc comment is stale.** It names `Prelude.Path`,
+  `Prelude.Stage1Path` and `Prelude.Binding`, but the rename made that
+  `Prelude.BootstrapPath`. The comment is the only reference — the declaration holds names, not
+  paths — so nothing behaves wrongly, but the comment should be corrected rather than left to
+  mislead.
+- **The unit paths stayed single-sourced**, as the design intended: `Prelude.Path`,
+  `Prelude.BootstrapPath` and the `Order` list are one place each, and the error message quotes
+  `BootstrapPath` rather than spelling it. `std/README.md` was written by the split and the
+  declaration both; the split's merge kept both sides, and it now states the seam and the ABI table.
 
 ## Why this is not urgent
 

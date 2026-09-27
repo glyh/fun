@@ -3,7 +3,9 @@ title: Restructure std into a bootstrap layer and a library layer
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: "Closed 2026-09-27: merged as `16f9948`. `std/` is `bootstrap.fun` (the ABI), `list.fun`, `lib.fun`, `type.fun`, and `stage2.fun` as the `std` unit a program imports; `stage1.fun` is gone. Gate 0 build errors / xUnit 187/187 / `conformance: 806 cases, 0 failed`. One compiler change came with it — `export M` re-exports a unit's macros with its roles — which was checked against the record before merging and is a **port gap, not a semantic change**: [export-construct](export-construct.md) ruled it on 2026-09-16. Four of this ticket's decisions were stale because the ABI declaration landed mid-flight; each is recorded below with the reconciliation."
 assignee:
 blocked_by: []
 ---
@@ -120,6 +122,67 @@ plus the `Syntax` nominals.
 
 No declaration was made and no eager check was added — that choice is still open on its own
 ticket, and it does not stand in this ticket's way.
+
+## Landed 2026-09-27 — `16f9948`
+
+Merged from `restructure-std-bootstrap-library` (`a78ff74` reformat + prune, `08e1a47` the split,
+`031650c` `type.fun` onto the generics, `8ab591a` cases + README, `b266ccf` a merge of `main`).
+Gate on the merge: `dotnet build` 0 errors, xUnit **187/187**, `conformance: 806 cases, 0 failed`
+(798 → 806: the eight new pairs under `test/conformance/cases/std/`).
+
+```text
+std/bootstrap.fun   the ABI: Syntax, its builders, Bool / Option / List  (elaborated with no prelude)
+std/list.fun        rev, append, map, fold
+std/lib.fun         option_map, option_bind
+std/type.fun        the `type` macro and its token helpers
+std/stage2.fun      the `std` unit a program imports
+std/README.md
+```
+
+`Prelude.cs` and `Loader.cs` now take a **list** of prelude units, lowest first
+(`Order = [BootstrapPath, "std/list", "std/lib", "std/type", Path]`) rather than one name — the
+mechanical consequence of the prelude no longer being one unit. `Prelude.Stage1Path` is renamed
+`Prelude.BootstrapPath`.
+
+### The one compiler change — a port gap, not a semantic change
+
+The fork widened `ExportUnitRoles` into `ExportUnitSurface`, so `export M` re-exports a unit's
+**macros** alongside its roles, and reported that the split needs it because it moved
+`type`/`type_decls` into a different unit. This ticket says *"No change to language semantics"*, so
+before merging it was checked against the record:
+
+> **A unit's macros re-export like its roles** (`Expand_ctx.macro_reexports`, added to the driver's
+> `macro_exports`).
+
+That is [`export-construct`](export-construct.md)'s ruling of 2026-09-16, implemented in the
+prototype's `staged-prelude` branch. **The port never carried it**, which is why the split broke on
+it. So the change restores ruled behaviour instead of inventing a rule, and the ticket's "no
+semantic change" holds in the sense that matters — the language's semantics already included this.
+Pinned by `imports/re-exported-unit-macro` (it fails with `no public member same` without it).
+
+### Four decisions the ABI declaration made stale — reconciled, not followed blindly
+
+Those decisions were written before
+[declare the bootstrap↔compiler interface once](declare-bootstrap-compiler-interface-once.md)
+landed mid-flight:
+
+- **`pat_var` is kept.** Decision 4 pruned it as referenced nowhere — true then, false now:
+  `PreludeAbi` declares it and `Reflection` calls it, because that fork published it as a builder.
+- **`i64_to_bool` stays in bootstrap.** Decision 1 moved it to the library; it is an ABI builder, so
+  the library cannot own it.
+- **Option's functions are `option_map` / `option_bind`** — there is no module on `Option`.
+- **No dynamic token spelling** in the centralized `type` message: the language has no string
+  concatenation, so the message is centralized but not concatenated.
+
+**`pat_con` stays** as the ticket left it (unreferenced, and not in the declaration).
+
+### Not done
+
+- No new spans; `pat_con` was not deleted; the messages carry no source position, so the map's
+  *"elaborator errors carry no source location"* fog item is untouched.
+- A stale doc comment survives: `PreludeAbi.cs:22` still names `Prelude.Stage1Path`, which this
+  rename replaced with `BootstrapPath`. One word, filed with
+  [the spellings the declaration leaves](prelude-abi-remaining-spellings.md).
 
 ## Target layout
 

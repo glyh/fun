@@ -19,7 +19,7 @@ namespace Fun.Kernel;
 ///
 /// <para><c>Type</c> is deliberately absent: the compiler spells it and it belongs to the
 /// elaborator (<c>Elaborator.cs</c>), not to <c>std</c>. Unit paths are likewise not
-/// restated here - <c>Prelude.Path</c>, <c>Prelude.Stage1Path</c> and <c>Prelude.Binding</c>
+/// restated here - <c>Prelude.Path</c>, <c>Prelude.BootstrapPath</c> and <c>Prelude.Binding</c>
 /// are their single source.</para>
 /// </summary>
 public static class PreludeAbi

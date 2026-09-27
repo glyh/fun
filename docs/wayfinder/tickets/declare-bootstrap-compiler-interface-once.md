@@ -280,6 +280,9 @@ not the one whose name you guessed.
   so the declaration has never been exercised against `std/bootstrap.fun` and its renamed unit
   paths. The integrator's gate on that merge covers it; note that **both branches create
   `std/README.md`**, so that file will need both sides kept.
+  **Closed 2026-09-27:** the split merged as `16f9948` and the check was demonstrated against
+  `std/bootstrap` (break a constant, rebuild, read the message — see
+  [the remaining spellings](prelude-abi-remaining-spellings.md)); `std/README.md` kept both sides.
 - **`Nil`/`Cons`/`Id`'s fields** go through probed accessors (`Reflection.ListNil`, `ListCons`,
   `IdFields`) rather than the declaration — deliberate, and the reason the tag tier is 114 and not
   fewer.

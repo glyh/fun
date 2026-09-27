@@ -421,6 +421,17 @@ is declared and verified at load (merged `9f60619`), its name count corrected on
 double life as a declared type and a hole-kind keyword, and the `std`-split sequence. Still in
 flight: [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md).
 
+**All three forks landed — 17 open.** [The `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md)
+merged as `16f9948`: `std/bootstrap.fun` (the ABI) + `list.fun` + `lib.fun` + `type.fun`, with
+`stage2.fun` as the `std` a program imports and `stage1.fun` gone; `conformance: 806 cases, 0 failed`.
+It carried one compiler change — `export M` re-exports a unit's macros with its roles — which checks
+out as a **port gap, not a semantic change**: [`export-construct`](tickets/export-construct.md) ruled
+it on 2026-09-16 and the port never carried it. Four of that ticket's decisions were stale because
+the ABI declaration landed mid-flight; each reconciliation is recorded in the ticket. That closes
+the last blocked edge — [design the library surface](tickets/design-std-library-surface.md) is now
+unblocked, against real files and a real first cut, which is what the restructure existed to make
+possible.
+
 **27 open, 25 unblocked** was the count at
 2026-09-26, and the rest of this section is that state. By where the tickets live:
 
