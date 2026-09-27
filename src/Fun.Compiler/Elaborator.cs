@@ -356,7 +356,7 @@ public static partial class Elaborator
                 // must agree with the domain expected. The prototype ignores it
                 // here (lambda-check-ignores-written-parameter-type).
                 if (lam.Param.Type is { } written)
-                    ctx.Unify(pi.Domain, TypeValue(ctx, written));
+                    ctx.Unify(pi.Domain, TypeValue(ctx.NoCapture(), written));
                 var binder = new Value.VVar(ctx.Width, []);
                 var inner = ctx.Bind(lam.Param.Name.Name, pi.Domain) with { Enclosing = lam.Body, HandlerScopes = [] };
                 var bodyType = Nbe.ApplyClosure(ctx.Metas, pi.Codomain, binder);
@@ -591,7 +591,7 @@ public static partial class Elaborator
 
     private static (Term, Value) InferLam(Context ctx, Syntax.Lam lam)
     {
-        var domain = lam.Param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
+        var domain = lam.Param.Type is { } written ? TypeValue(ctx.NoCapture(), written) : ctx.RawMeta();
         var since = ctx.Metas.Count;
         var inner = ctx.Bind(lam.Param.Name.Name, domain) with { Enclosing = lam.Body, HandlerScopes = [] };
         var ((body, bodyType), performed) = Collecting(inner, c => Infer(c, lam.Body));
