@@ -10,6 +10,95 @@ blocked_by:
 
 # Port: audit every unported path
 
+> ## Re-sweep 2026-09-27 (base `f177993`)
+>
+> Enumerated with:
+> `grep -rn "NotImplementedException" src --include=*.cs` → **11 sites**, down from
+> **62** (2026-09-20) and **14** (2026-09-25). Per project: `Fun.Kernel` 3,
+> `Fun.Expand` 2, `Fun.Compiler` 6. `grep -rn "not ported yet"` also finds **one doc
+> comment** (`Fun.Compiler/Elaborator.Generalise.cs:44`) — 12 lines / 11 throws /
+> 10 distinct messages. `TODO`: **0**. `throw new FunException`: **122**, which is now the
+> *converted* form the parity verdicts asked for, not a marker; a sample scan found no
+> unported placeholder among them. `InvalidOperationException` with an
+> *unhandled/unsupported* message: **55** — the lying-catch-all class the original audit
+> put under *unreachable*, now spelled as an invariant failure rather than a refusal.
+>
+> ### The four numbers
+>
+> | verdict | 2026-09-20 | 2026-09-27 |
+> |---|---|---|
+> | real gap | **17** | **1 reachable + 1 unprobed residue** |
+> | wrong-kind refusal (parity → `FunException`) | **13** | **0** |
+> | unreachable | **17** | **8** |
+> | undecided | **8** (this file's resolution table says 9) | **0** |
+>
+> Plus **1 deferred-by-ruling** (`Expander.Macros.cs:306`), unchanged.
+>
+> ### The 11 sites, one verdict each
+>
+> | # | site | verdict | evidence |
+> |---|---|---|---|
+> | 1 | `Fun.Kernel/Core.Shift.cs:94` | U | the switch handles all **40** `Term` variants (enumerated) |
+> | 2 | `Fun.Kernel/Core.Shift.cs:143` | U | all **3** `BindingTerm` variants (`Open`/`Let`/`Impl`) |
+> | 3 | `Fun.Kernel/Core.Patterns.cs:57` | U | all **11** `CorePattern` variants |
+> | 4 | `Fun.Expand/Expander.Macros.cs:306` | deferred | typed operator macro; ruled 2026-09-24 not-a-gap (prototype hangs) |
+> | 5 | `Fun.Expand/Enforest.Roles.cs:871` | U | all **8** forms `DoStatement` can return; `quote-block-effect/trait/impl` cases exist |
+> | 6 | `Fun.Compiler/Unify.cs:221` | U | all **6** `Frame` variants |
+> | 7 | **`Fun.Compiler/Reflection.cs:245`** | **real gap, reachable — NEW** | see below; probe `p_syn_supply_macro` |
+> | 8 | `Fun.Compiler/Elaborator.cs:325` | U | every `Syntax` form that survives expansion is handled; `Stx` is an explicit `FunException` |
+> | 9 | `Fun.Compiler/Elaborator.RecTypes.cs:63` | unprobed residue | `CompletePending` guards prediction-by-name; no reaching program in 16+ probes |
+> | 10 | `Fun.Compiler/Elaborator.Patterns.cs:347` | U (residual) | probed: the old reaching program answers `1`; no reaching program found |
+> | 11 | `Fun.Compiler/Elaborator.Generative.cs:114` | U | the declaration-time unused-parameter check leaves no unlabelled generative nominal |
+>
+> ### The one real gap (new since the last audit)
+>
+> `Reflection.cs:245` was added by `3e60e20` (*pattern synonyms: generalized types are the
+> synonym's implicit type parameters*, 2026-09-27) — after the 2026-09-25 sweep — and is not
+> in that table. A macro whose output **reflects** a pattern-synonym use that supplies its
+> type arguments is refused:
+>
+> ```fun
+> { M = module { pub pattern Two(a, b) = (a, b) };
+>   macro use(x) { x };
+>   use(match ((1, True)) { M.Two[I64, Bool](p, q) => p }) }
+> ```
+>
+> ```text
+> ELAB not ported: not ported yet: reflecting the type arguments a pattern synonym use supplies
+> ```
+>
+> The *feature* works — the same match outside a macro answers `VALUE 1` — only reflecting
+> it is unported, because the reflected `Path` ADT has no slot for the supplied types (its
+> own ticket says so). **No conformance case reaches it today** (the suite is green); the
+> case that would is the program above. It is the one *live* hazard: a macro author can hit
+> it, and it is an unported path — correctly `NotImplementedException`, so it must **not** be
+> converted to `FunException`. Not trivially fixable: the reflected `Path` needs a new field
+> (`std/` + wrap/unwrap), the "new reflected `Syntax` field" job CLAUDE.md describes.
+>
+> ### Is the headline still true?
+>
+> "The gaps are invisible to the shared suite" — **yes, but for one gap, not seventeen**: the
+> suite is `865 cases, 0 failed` (xUnit `188/188`) with `Reflection.cs:245` unreached.
+>
+> ### What changed since 2026-09-25
+>
+> - **+1 site**: `Reflection.cs:245` (above).
+> - The three real gaps that sweep named (checker's unhandled effect, non-nominal pattern
+>   head, synonym over a stuck neutral) are all closed and gone; `Elaborator.Patterns.cs:347`
+>   no longer reaches on the old neutral program.
+> - All **13 parity sites are gone** (converted to `FunException` or deleted); the `~>`
+>   guard-order bug is fixed — `{ 1 + 2 ~> 3 }` now type-errors instead of refusing.
+> - 8 unreachable catch-alls + 1 deferred + 1 residue remain; nothing new beyond the one gap.
+>
+> ### What this re-sweep did not do
+>
+> - Did not re-probe the 55 `InvalidOperationException` catch-alls (assumed unreachable).
+> - Did not run the OCaml prototype (deleted 2026-09-25).
+> - Did not re-derive the original 62-site table; deltas are against this file's 2026-09-25
+>   record.
+> - Did not find a reaching program for the two residues (`RecTypes.cs:63`,
+>   `Patterns.cs:347`), so they stay *unprobed*, not *fixed*.
+
 > ## Re-sweep 2026-09-25
 >
 > **Closed 2026-09-26. Re-measured the same day: 10 sites remain, down from 14**
