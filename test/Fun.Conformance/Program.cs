@@ -41,27 +41,34 @@ static string? RunCase(string path)
     var expect = File.ReadAllText(Path.Combine(dir, name + ".expect")).Trim();
     var units = UnitSources(dir, name);
 
-    Elaborated elaborated;
-    try
+    // Elaboration is timeboxed like the run below: a reader or elaborator regression that
+    // loops must fail this case by name, not wedge the suite. A timeout is a failure and
+    // never satisfies an `error` case, or any non-termination would pass one.
+    var elabTimeout = TimeSpan.FromSeconds(60);
+    var elaborating = Task.Run(() =>
     {
-        elaborated = Driver.Elaborate(File.ReadAllText(path), units);
-    }
-    // A path still to be ported fails the case; it never passes one expecting `error`.
-    catch (NotImplementedException e) { return e.Message; }
-    catch (FunException e)
+        try { return (Elaborated: (Elaborated?)Driver.Elaborate(File.ReadAllText(path), units), Error: (Exception?)null); }
+        catch (Exception x) { return ((Elaborated?)null, x); }
+    });
+    if (!elaborating.Wait(elabTimeout))
+        return $"elaboration did not finish within {elabTimeout.TotalSeconds}s";
+    var (elaboratedOrNull, elabError) = elaborating.Result;
+    if (elabError is NotImplementedException npe)
     {
-        return expect == "error" ? null : $"elaboration failed: {e.Message}";
+        // A path still to be ported fails the case; it never passes one expecting `error`.
+        return npe.Message;
     }
-    // An invariant failure reports as this case's failure, not as a crash of the run.
-    // One reachable path the port believes is unreachable must not hide the other
-    // 705 results - and it still never passes a case expecting `error`.
-    // A UnifyException that escapes is one of those: a type mismatch is a
-    // FunException by the time it surfaces, so an escaped one is an invariant
-    // failure, never a language error.
-    catch (Exception e) when (e is InvalidOperationException or IndexOutOfRangeException or ArgumentException or UnifyException)
+    if (elabError is FunException fe)
+        return expect == "error" ? null : $"elaboration failed: {fe.Message}";
+    if (elabError is not null)
     {
-        return $"invariant failure ({e.GetType().Name}): {e.Message}";
+        // An invariant failure reports as this case's failure, not as a crash of the run.
+        // One reachable path the port believes is unreachable must not hide the other
+        // results -- and it still never passes a case expecting `error`.
+        if (elabError is not (InvalidOperationException or IndexOutOfRangeException or ArgumentException or UnifyException)) throw elabError;
+        return $"invariant failure ({elabError.GetType().Name}): {elabError.Message}";
     }
+    var elaborated = elaboratedOrNull!;
 
     if (expect == "ok") return null;
 
@@ -73,8 +80,8 @@ static string? RunCase(string path)
     var run = Task.Run(() =>
     {
         try { return (Value: (string?)Driver.Describe(Driver.Run(elaborated)), Error: (Exception?)null); }
-        catch (Exception e) when (e is FunException or NotImplementedException
-                                      or InvalidOperationException or UnifyException) { return (null, e); }
+        catch (Exception x) when (x is FunException or NotImplementedException
+                                      or InvalidOperationException or UnifyException) { return (null, x); }
     });
     if (!run.Wait(timeout)) return $"did not finish within {timeout.TotalSeconds}s";
     var (got, error) = run.Result;
@@ -135,16 +142,27 @@ static int RunFile(string path)
     var expect = Path.Combine(dir, name + ".expect");
     var elaboratesOnly = File.Exists(expect) && File.ReadAllText(expect).Trim() == "ok";
 
+    // Same timebox as a case: a looping elaboration is reported, not wedged (--file has
+    // no external `timeout 300` in front of it).
+    var elabTimeout = TimeSpan.FromSeconds(60);
+    var elaborating = Task.Run(() =>
+    {
+        try { return (Elaborated: (Elaborated?)Driver.Elaborate(File.ReadAllText(full), units), Error: (Exception?)null); }
+        catch (Exception e) { return ((Elaborated?)null, e); }
+    });
     Elaborated elaborated;
-    try
+    if (!elaborating.Wait(elabTimeout))
     {
-        elaborated = Driver.Elaborate(File.ReadAllText(full), units);
-    }
-    catch (Exception e)
-    {
-        PrintFile("ELAB", DescribeFailure(e));
+        PrintFile("HANG", $"elaboration did not finish within {elabTimeout.TotalSeconds}s");
         return 0;
     }
+    var (elaboratedOrNull, elabError) = elaborating.Result;
+    if (elabError is not null)
+    {
+        PrintFile("ELAB", DescribeFailure(elabError));
+        return 0;
+    }
+    elaborated = elaboratedOrNull!;
 
     if (elaboratesOnly)
     {
