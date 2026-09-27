@@ -230,6 +230,11 @@ public sealed class Reflection
     /// <summary>A path form -- a name, an open choice, a member of one -- as a <c>Syntax.Path</c>.</summary>
     private Value Path(Syntax form)
     {
+        // A pattern synonym use may supply its implicit type parameters
+        // (M.Two[I64, Bool](x, b)); the Path ADT has no slot for them yet, so
+        // reflecting such a use is an unported path rather than silent loss.
+        if (form is Syntax.Ap { Explicitness: Fun.Kernel.Explicitness.Implicit })
+            throw new NotImplementedException("not ported yet: reflecting the type arguments a pattern synonym use supplies");
         var members = new List<string>();
         while (form is Syntax.FieldAccess f)
         {

@@ -100,6 +100,11 @@ public static partial class Elaborator
         foreach (var id in ctx.Metas.WrittenRows)
             if (id >= since && ctx.Metas.Solution(id) is null)
                 throw new FunException("an effect row written _ is never solved: write the row");
+        // A pattern synonym's generalized types are its implicit type parameters:
+        // a use that leaves one undetermined comes out here, where its scope ends.
+        foreach (var id in ctx.Metas.SynonymTypeParams)
+            if (id >= since && ctx.Metas.Solution(id) is null)
+                throw new FunException("a pattern synonym's type parameter is never solved: supply it, as in M.Two[I64, Bool](x, y)");
     }
 
     /// <summary>
