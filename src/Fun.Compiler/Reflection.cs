@@ -27,23 +27,13 @@ public sealed class Reflection
         PatternType = Nominal("Syntax", "Pattern");
         TokenTreeType = Nominal("Syntax", "TokenTree");
         RType = Nominal("Syntax", "R");
-        _option = Nominal("Option");
-        _list = Nominal("List");
-        _bool = Nominal("Bool");
-        _explicitness = Nominal("Syntax", "Explicitness");
         _atomVal = Nominal("Syntax", "AtomVal");
-        _atomTy = Nominal("Syntax", "AtomTy");
-        _fixity = Nominal("Syntax", "Fixity");
-        _macroAnn = Nominal("Syntax", "MacroAnn");
         _tokenKind = Nominal("Syntax", "TokenKind");
-        _delim = Nominal("Syntax", "Delim");
-        _assoc = Nominal("Syntax", "Assoc");
         _role = Nominal("Syntax", "Role");
         _order = Nominal("Syntax", "Order");
         _roleMeaning = Nominal("Syntax", "RoleMeaning");
         _rule = Nominal("Syntax", "Rule");
         _rulePart = Nominal("Syntax", "RulePart");
-        _holeKind = Nominal("Syntax", "HoleKind");
         _replacement = Nominal("Syntax", "Replacement");
         _capture = Nominal("Syntax", "Capture");
         _captured = Nominal("Syntax", "Captured");
@@ -55,12 +45,34 @@ public sealed class Reflection
         _ctor = Nominal("Syntax", "Ctor");
         _branch = Nominal("Syntax", "Branch");
         _patField = Nominal("Syntax", "PatField");
-        _idType = Member("Syntax", "Id");
-        _spanType = Member("Syntax", "Span");
-        _pathType = Member("Syntax", "Path");
-        _pathChoiceType = Member("Syntax", "PathChoice");
+
+        // The shapes the compiler builds are probed off the builders the prelude
+        // publishes for them, so no constructor, field or leaf tag is spelled here.
+        _bool = LeafsOf(Builder("i64_to_bool"), 2);
+        // Each probe leads with the builder's own type binder, which the term's
+        // lambda chain counts like any other (Nbe.Apply knows no explicitness).
+        _some = CtorOf(Builder("mk_option"), Probe, I64(0), Probe);
+        _none = CtorOf(Builder("mk_option"), Probe, I64(1), Probe);
+        _nil = CtorOf(Builder("mk_list"), Probe, I64(0), Probe, Probe);
+        _cons = CtorOf(Builder("mk_list"), Probe, I64(1), Probe, Probe);
+        _explicitness = LeafsOf(SyntaxBuilder("explicitness"), 2);
+        _fixity = LeafsOf(SyntaxBuilder("fixity"), 2);
+        _delim = LeafsOf(SyntaxBuilder("delim"), 3);
+        _assoc = LeafsOf(SyntaxBuilder("assoc"), 3);
+        _holeKind = LeafsOf(SyntaxBuilder("hole_kind"), 7);
+        _atomTy = LeafsOf(SyntaxBuilder("atom_ty"), 6);
+        _macroAnn = LeafsOf(SyntaxBuilder("macro_ann"), 2);
+        _span = LayoutOf(SyntaxBuilder("mk_span"), 7);
+        _id = LayoutOf(SyntaxBuilder("mk_id"), 3);
+        _pathChoice = LayoutOf(SyntaxBuilder("mk_path_choice"), 2);
+        _path = LayoutOf(SyntaxBuilder("mk_path"), 3);
+        _patWild = CtorOf(SyntaxBuilder("pat_wild"));
+        _patBind = CtorOf(SyntaxBuilder("pat_var"), Probe);
+        _patAtom = CtorOf(SyntaxBuilder("pat_atom"), Probe);
+        _patProd = CtorOf(SyntaxBuilder("pat_prod"), Probe);
+        _patOr = CtorOf(SyntaxBuilder("pat_or"), Probe, Probe);
         DeclsType = Nbe.Force(_metas, Member("Syntax", "Decls"));
-        IdType = _idType;
+        IdType = _id.Type;
     }
 
     private static readonly Lazy<Reflection> PreludeReflection =
@@ -83,11 +95,71 @@ public sealed class Reflection
     /// <summary><c>Syntax.Id</c>, the record type of an identifier.</summary>
     public Value IdType { get; }
 
-    private readonly Value.VNominal _option, _list, _bool, _explicitness, _atomVal, _atomTy, _fixity, _macroAnn,
-        _tokenKind, _delim, _assoc, _role, _order, _roleMeaning, _rule, _rulePart, _holeKind, _replacement,
-        _capture, _captured, _field, _quoteHole, _param, _effectRow, _effectOp, _ctor, _branch, _patField;
+    private readonly Value.VNominal _atomVal, _tokenKind, _role, _order, _roleMeaning, _rule, _rulePart,
+        _replacement, _capture, _captured, _field, _quoteHole, _param, _effectRow, _effectOp, _ctor, _branch, _patField;
 
-    private readonly Value _idType, _spanType, _pathType, _pathChoiceType;
+    private readonly Leafs _bool, _explicitness, _fixity, _delim, _assoc, _holeKind, _atomTy, _macroAnn;
+    private readonly Ctor _some, _none, _nil, _cons, _patWild, _patBind, _patAtom, _patProd, _patOr;
+    private readonly Layout _span, _id, _pathChoice, _path;
+
+    // ---- reaching the prelude's published builders, once ----------------------
+
+    /// <summary>An argument no builder inspects: probe shapes, never values.</summary>
+    private static readonly Value Probe = Value.VU.Instance;
+
+    private static Value I64(long n) => new Value.VAtom(new Atom.I64(n));
+
+    private Value Builder(string name) => Member(name);
+
+    private Value SyntaxBuilder(string name) => Member("Syntax", name);
+
+    private Value Applied(Value builder, params Value[] args) =>
+        args.Aggregate(builder, (fn, arg) => Nbe.Apply(_metas, fn, arg));
+
+    /// <summary>A constructor, resolved by building it once from a published builder.</summary>
+    private Ctor CtorOf(Value builder, params Value[] probe) =>
+        Nbe.Force(_metas, Applied(builder, probe)) is Value.VCon c
+            ? new Ctor(c.Name, c.Nominal, c.Args.Length)
+            : throw new InvalidOperationException("a prelude builder did not build a constructor");
+
+    /// <summary>A struct, resolved by building it once from a published builder.</summary>
+    private Layout LayoutOf(Value builder, int arity) =>
+        Nbe.Force(_metas, Applied(builder, [.. Enumerable.Range(0, arity).Select(_ => Probe)])) is Value.VRecord r
+            ? new Layout(r.Type, [.. r.Fields.Select(f => f.Name)])
+            : throw new InvalidOperationException("a prelude builder did not build a record");
+
+    /// <summary>A leaf enum's constructors in code order, resolved by building each code once.</summary>
+    private Leafs LeafsOf(Value builder, int count) =>
+        new([.. Enumerable.Range(0, count).Select(code => Nbe.Force(_metas, Applied(builder, I64(code))))]);
+
+    /// <summary>A constructor the prelude builds: its tag, nominal and arity, probed, never spelled here.</summary>
+    private sealed record Ctor(string Tag, Value.VNominal Nominal, int Arity)
+    {
+        /// <summary>Build a constructor value; the arity the probe saw must hold.</summary>
+        public Value Build(params Value[] args) => args.Length == Arity
+            ? new Value.VCon(Tag, [.. args], Nominal)
+            : throw new InvalidOperationException($"the prelude's {Tag} takes {Arity} payloads, not {args.Length}");
+    }
+
+    /// <summary>A struct the prelude builds: its type and field names, in order, probed.</summary>
+    private sealed record Layout(Value Type, EquatableArray<string> Fields)
+    {
+        public Value Build(params Value[] values) => new Value.VRecord(Type, [.. Fields.Zip(values, (name, value) => (name, value))]);
+    }
+
+    /// <summary>A leaf enum's constructors in C# code order, probed: the code reads the tag back.</summary>
+    private sealed record Leafs(EquatableArray<Value> Values)
+    {
+        public Value.VNominal Nominal => ((Value.VCon)Values[0]).Nominal;
+
+        public Value At(int code) => Values[code];
+
+        public int CodeOf(string tag)
+        {
+            for (var i = 0; i < Values.Length; i++) if (Values[i] is Value.VCon { Args.IsEmpty: true } c && c.Name == tag) return i;
+            return -1;
+        }
+    }
 
     private Value Member(params string[] path) =>
         path.Aggregate(_stdlib, (acc, name) => Nbe.DotValue(Nbe.Force(_metas, acc), name));
@@ -100,7 +172,7 @@ public sealed class Reflection
     private Value.VNominal Nominal(params string[] path)
     {
         var v = Nbe.Force(_metas, Member(path));
-        while (v is Value.VLam) v = Nbe.Force(_metas, Nbe.Apply(_metas, v, Value.VU.Instance));
+        while (v is Value.VLam) v = Nbe.Force(_metas, Nbe.Apply(_metas, v, Probe));
         return v as Value.VNominal ?? throw new InvalidOperationException($"the prelude's {string.Join(".", path)} is not a nominal type");
     }
 
@@ -109,19 +181,16 @@ public sealed class Reflection
     private static Value Con(Value.VNominal nominal, string name, params Value[] args) => new Value.VCon(name, [.. args], nominal);
 
     private static Value Str(string s) => new Value.VAtom(new Atom.Str(s));
-    private static Value I64(long n) => new Value.VAtom(new Atom.I64(n));
 
-    private Value Bool(bool b) => Con(_bool, b ? "True" : "False");
+    private Value Bool(bool b) => _bool.At(b ? 1 : 0);
 
     private Value Option<T>(T? x, Func<T, Value> f) where T : class =>
-        x is null ? Con(_option, "None") : Con(_option, "Some", f(x));
+        x is null ? _none.Build() : _some.Build(f(x));
 
-    private Value OptionOf(Value? x) => x is null ? Con(_option, "None") : Con(_option, "Some", x);
+    private Value OptionOf(Value? x) => x is null ? _none.Build() : _some.Build(x);
 
     private Value List<T>(IEnumerable<T> items, Func<T, Value> f) =>
-        items.Reverse().Aggregate(Con(_list, "Nil"), (tail, head) => Con(_list, "Cons", f(head), tail));
-
-    private static Value Record(Value type, params (string, Value)[] fields) => new Value.VRecord(type, [.. fields]);
+        items.Reverse().Aggregate(_nil.Build(), (tail, head) => _cons.Build(f(head), tail));
 
     /// <summary>A resolved name carries the certificate that it was minted as one (M12).</summary>
     private static string? Certificate(string name) => name.Contains('#') ? name : null;
@@ -129,22 +198,22 @@ public sealed class Reflection
     private static bool Certified(string name, string? certificate) => !name.Contains('#') || certificate == name;
 
     private Value Span(SourceSpan span) => span.IsSynthetic
-        ? Con(_option, "None")
-        : Con(_option, "Some", Record(_spanType,
-            ("file", Option(span.File, Str)),
-            ("start_byte", I64(span.Start)),
-            ("end_byte", I64(span.End)),
-            ("start_line", OptionOf(span.StartLine is int sl ? I64(sl) : null)),
-            ("start_col", OptionOf(span.StartCol is int sc ? I64(sc) : null)),
-            ("end_line", OptionOf(span.EndLine is int el ? I64(el) : null)),
-            ("end_col", OptionOf(span.EndCol is int ec ? I64(ec) : null))));
+        ? _none.Build()
+        : _some.Build(_span.Build(
+            Option(span.File, Str),
+            I64(span.Start),
+            I64(span.End),
+            OptionOf(span.StartLine is int sl ? I64(sl) : null),
+            OptionOf(span.StartCol is int sc ? I64(sc) : null),
+            OptionOf(span.EndLine is int el ? I64(el) : null),
+            OptionOf(span.EndCol is int ec ? I64(ec) : null)));
 
-    public Value ReflectId(Id id) => Record(_idType,
-        ("name", Str(id.Name)),
-        ("span", Span(id.Span)),
-        ("scope", new Value.VAtom(new Atom.Scopes(id.Scope, Certificate(id.Name)))));
+    public Value ReflectId(Id id) => _id.Build(
+        Str(id.Name),
+        Span(id.Span),
+        new Value.VAtom(new Atom.Scopes(id.Scope, Certificate(id.Name))));
 
-    private Value Explicitness(Explicitness e) => Con(_explicitness, e == Kernel.Explicitness.Explicit ? "Explicit" : "Implicit");
+    private Value Explicitness(Explicitness e) => _explicitness.At((int)e);
 
     private Value AtomVal(Atom a) => a switch
     {
@@ -156,10 +225,7 @@ public sealed class Reflection
         _ => throw new InvalidOperationException($"unhandled atom {a.GetType().Name}"),
     };
 
-    private static readonly (AtomTy Ty, string Name)[] AtomTyNames =
-        [(AtomTy.I64, "TyI64"), (AtomTy.Unit, "TyUnit"), (AtomTy.Char, "TyChar"), (AtomTy.String, "TyString"), (AtomTy.Scopes, "TyScopes"), (AtomTy.Absurd, "TyAbsurd")];
-
-    private Value AtomTyVal(AtomTy t) => Con(_atomTy, AtomTyNames.First(p => p.Ty == t).Name);
+    private Value AtomTyVal(AtomTy t) => _atomTy.At((int)t);
 
     /// <summary>A path form -- a name, an open choice, a member of one -- as a <c>Syntax.Path</c>.</summary>
     private Value Path(Syntax form)
@@ -173,21 +239,16 @@ public sealed class Reflection
         var (head, choice) = form switch
         {
             Syntax.Var v => (v.Id, (Value?)null),
-            Syntax.OpenChoice c => (c.Name, Record(_pathChoiceType, ("opens", List(c.Opens, Str)), ("fallback", Option(c.Fallback, Str)))),
+            Syntax.OpenChoice c => (c.Name, (Value?)_pathChoice.Build(List(c.Opens, Str), Option(c.Fallback, Str))),
             _ => throw new InvalidOperationException($"unhandled path form {form.GetType().Name}"),
         };
-        return Record(_pathType, ("head", ReflectId(head)), ("members", List(members, Str)), ("head_choice", OptionOf(choice)));
+        return _path.Build(ReflectId(head), List(members, Str), OptionOf(choice));
     }
 
-    private Value Ann(FormKind k) => Con(_macroAnn, k == FormKind.Expr ? "AnnExpr" : "AnnDecl");
-    private Value FixityVal(Fixity f) => Con(_fixity, f == Fixity.Prefix ? "PrefixFixity" : "InfixFixity");
+    private Value Ann(FormKind k) => _macroAnn.At((int)k);
+    private Value FixityVal(Fixity f) => _fixity.At((int)f);
 
-    private Value Delim(Delimiter d) => Con(_delim, d switch
-    {
-        Delimiter.Paren => "ParenDelim",
-        Delimiter.Bracket => "BracketDelim",
-        _ => "BraceDelim",
-    });
+    private Value Delim(Delimiter d) => _delim.At((int)d);
 
     private Value TokenKindVal(TokenKind k) => k switch
     {
@@ -212,18 +273,9 @@ public sealed class Reflection
 
     public Value ReflectTokens(IEnumerable<Fun.Kernel.TokenTree> ts) => List(ts, ReflectTokenTree);
 
-    private Value AssocVal(Assoc a) => Con(_assoc, a switch { Assoc.Left => "Left", Assoc.Right => "Right", _ => "NonAssoc" });
+    private Value AssocVal(Assoc a) => _assoc.At((int)a);
 
-    private Value HoleKindVal(HoleKind k) => Con(_holeKind, k switch
-    {
-        HoleKind.Expr => "HoleExpr",
-        HoleKind.Block => "HoleBlock",
-        HoleKind.Id => "HoleId",
-        HoleKind.Decls => "HoleDecl",
-        HoleKind.Decl => "HoleOneDecl",
-        HoleKind.Pattern => "HolePattern",
-        _ => "HoleTokens",
-    });
+    private Value HoleKindVal(HoleKind k) => _holeKind.At((int)k);
 
     public Value ReflectExpr(Syntax stx)
     {
@@ -252,7 +304,7 @@ public sealed class Reflection
             Syntax.Struct s => E("RawStruct", List(s.Bindings, ReflectDecl)),
             Syntax.Module m => E("RawModule", List(m.Bindings, ReflectDecl)),
             Syntax.Sig s => E("RawSig", List(s.Bindings, ReflectDecl)),
-            Syntax.Enum e => E("RawEnum", Con(_option, "None"),
+            Syntax.Enum e => E("RawEnum", _none.Build(),
                 List(e.Constructors, c => Con(_ctor, "MkCtor", ReflectId(new Id(c.Name, SourceSpan.Synthetic)), List(c.Payloads, X)))),
             Syntax.Import i => E("RawImport", Str(i.Path), new Value.VAtom(new Atom.Scopes(i.Scope, null))),
             Syntax.Open o => E("RawOpen", X(o.Of), X(o.Body), Str(o.Label)),
@@ -357,16 +409,16 @@ public sealed class Reflection
     public Value ReflectPattern(Fun.Kernel.Pattern p)
     {
         // Patterns carry no span: the reflected span is always None.
-        Value P(string name, params Value[] args) => Con(PatternType, name, [Con(_option, "None"), .. args]);
-        Value PatField((string Name, Fun.Kernel.Pattern Pattern) f) => Con(_patField, "MkPatField", Str(f.Name), Con(_option, "Some", ReflectPattern(f.Pattern)));
+        Value P(string name, params Value[] args) => Con(PatternType, name, [_none.Build(), .. args]);
+        Value PatField((string Name, Fun.Kernel.Pattern Pattern) f) => Con(_patField, "MkPatField", Str(f.Name), _some.Build(ReflectPattern(f.Pattern)));
         return p switch
         {
-            Fun.Kernel.Pattern.Wild => P("RawPatWild"),
-            Fun.Kernel.Pattern.Bind b => P("RawPatBind", ReflectId(b.Name)),
+            Fun.Kernel.Pattern.Wild => _patWild.Build(_none.Build()),
+            Fun.Kernel.Pattern.Bind b => _patBind.Build(_none.Build(), ReflectId(b.Name)),
             Fun.Kernel.Pattern.Con c => P("RawPatCon", Path(c.Head), List(c.Args, ReflectPattern)),
-            Fun.Kernel.Pattern.Atom a => P("RawPatAtom", AtomVal(a.Value)),
-            Fun.Kernel.Pattern.Prod pr => P("RawPatProd", List(pr.Items, ReflectPattern)),
-            Fun.Kernel.Pattern.Or o => P("RawPatOr", ReflectPattern(o.Left), ReflectPattern(o.Right)),
+            Fun.Kernel.Pattern.Atom a => _patAtom.Build(_none.Build(), AtomVal(a.Value)),
+            Fun.Kernel.Pattern.Prod pr => _patProd.Build(_none.Build(), List(pr.Items, ReflectPattern)),
+            Fun.Kernel.Pattern.Or o => _patOr.Build(_none.Build(), ReflectPattern(o.Left), ReflectPattern(o.Right)),
             Fun.Kernel.Pattern.Record r => P("RawPatRecord", Path(r.Type), List(r.Fields, PatField), Bool(r.Partial)),
             Fun.Kernel.Pattern.StructType s => P("RawPatStructType", List(s.Fields, PatField), Bool(s.Partial)),
             Fun.Kernel.Pattern.AtomType t => P("RawPatType", AtomTyVal(t.Ty)),
@@ -437,10 +489,13 @@ public sealed class Reflection
     private Value? RecordField(Value v, string name) =>
         Nbe.Force(_metas, v) is Value.VRecord r ? r.Fields.FirstOrDefault(f => f.Name == name).Value : null;
 
-    private bool? ReadBool(Value v) => Payload(_bool, v) switch
+    /// <summary>A value of <paramref name="nominal"/>: the tag of its constructor, "" for any other value.</summary>
+    private string Tag(Value.VNominal nominal, Value v) => Payload(nominal, v) is { } payload ? payload.Name : "";
+
+    private bool? ReadBool(Value v) => _bool.CodeOf(Tag(_bool.Nominal, v)) switch
     {
-        ("True", { IsEmpty: true }) => true,
-        ("False", { IsEmpty: true }) => false,
+        0 => false,
+        1 => true,
         _ => null,
     };
 
@@ -448,29 +503,29 @@ public sealed class Reflection
     /// An option: <c>(true, null)</c> for None, <c>(true, x)</c> for Some read by
     /// <paramref name="f"/>, <c>(false, _)</c> when malformed.
     /// </summary>
-    private (bool Ok, T? Value) ReadOption<T>(Value v, Func<Value, T?> f) where T : class => Payload(_option, v) switch
-    {
-        ("None", _) => (true, null),
-        ("Some", [var x]) when f(x) is { } read => (true, read),
-        _ => (false, null),
-    };
+    private (bool Ok, T? Value) ReadOption<T>(Value v, Func<Value, T?> f) where T : class =>
+        Payload(_some.Nominal, v) is (var name, var args)
+            ? name == _none.Tag ? (true, null)
+            : name == _some.Tag && args is [var x] && f(x) is { } read ? (true, read)
+            : (false, null)
+            : (false, null);
 
-    private (bool Ok, T? Value) ReadOptionS<T>(Value v, Func<Value, T?> f) where T : struct => Payload(_option, v) switch
-    {
-        ("None", _) => (true, null),
-        ("Some", [var x]) when f(x) is { } read => (true, read),
-        _ => (false, null),
-    };
+    private (bool Ok, T? Value) ReadOptionS<T>(Value v, Func<Value, T?> f) where T : struct =>
+        Payload(_some.Nominal, v) is (var name, var args)
+            ? name == _none.Tag ? (true, null)
+            : name == _some.Tag && args is [var x] && f(x) is { } read ? (true, read)
+            : (false, null)
+            : (false, null);
 
     private EquatableArray<T>? ReadList<T>(Value v, Func<Value, T?> f) where T : class
     {
         var items = new List<T>();
         while (true)
         {
-            switch (Payload(_list, v))
+            switch (Payload(_cons.Nominal, v))
             {
-                case ("Nil", _): return [.. items];
-                case ("Cons", [var head, var tail]) when f(head) is { } item:
+                case (var name, _) when name == _nil.Tag: return [.. items];
+                case (var name, [var head, var tail]) when name == _cons.Tag && f(head) is { } item:
                     items.Add(item);
                     v = tail;
                     continue;
@@ -484,10 +539,10 @@ public sealed class Reflection
         var items = new List<T>();
         while (true)
         {
-            switch (Payload(_list, v))
+            switch (Payload(_cons.Nominal, v))
             {
-                case ("Nil", _): return [.. items];
-                case ("Cons", [var head, var tail]) when f(head) is { } item:
+                case (var name, _) when name == _nil.Tag: return [.. items];
+                case (var name, [var head, var tail]) when name == _cons.Tag && f(head) is { } item:
                     items.Add(item);
                     v = tail;
                     continue;
@@ -503,33 +558,41 @@ public sealed class Reflection
         var (ok, record) = ReadOption(v, x => Nbe.Force(_metas, x) as Value.VRecord);
         if (!ok) return null;
         if (record is null) return SourceSpan.Synthetic;
+        // The probe's field order is the struct's own: file, start_byte, end_byte,
+        // start_line, start_col, end_line, end_col.
+        var (fileField, startByte, endByte, startLine, startCol, endLine, endCol) =
+            (_span.Fields[0], _span.Fields[1], _span.Fields[2], _span.Fields[3], _span.Fields[4], _span.Fields[5], _span.Fields[6]);
         int? IntField(string name) => RecordField(record, name) is { } f && ReadI64(f) is long n ? (int)n : null;
         (bool, int?) OptInt(string name) => RecordField(record, name) is { } f ? ReadOptionS(f, x => ReadI64(x) is long n ? (int?)(int)n : null) : (false, null);
-        if (RecordField(record, "file") is not { } fileV) return null;
+        if (RecordField(record, fileField) is not { } fileV) return null;
         var (fileOk, file) = ReadOption(fileV, ReadStr);
-        if (!fileOk || IntField("start_byte") is not int start || IntField("end_byte") is not int end) return null;
-        var (slOk, sl) = OptInt("start_line");
-        var (scOk, sc) = OptInt("start_col");
-        var (elOk, el) = OptInt("end_line");
-        var (ecOk, ec) = OptInt("end_col");
+        if (!fileOk || IntField(startByte) is not int start || IntField(endByte) is not int end) return null;
+        var (slOk, sl) = OptInt(startLine);
+        var (scOk, sc) = OptInt(startCol);
+        var (elOk, el) = OptInt(endLine);
+        var (ecOk, ec) = OptInt(endCol);
         if (!(slOk && scOk && elOk && ecOk)) return null;
         return SourceSpan.Make(start, end, file, sl, sc, el, ec);
     }
 
     public Id? ReadId(Value v)
     {
-        if (RecordField(v, "name") is not { } n || ReadStr(n) is not { } name) return null;
-        if (RecordField(v, "span") is not { } s || ReadSpan(s) is not { } span) return null;
-        if (RecordField(v, "scope") is not Value.VAtom { Atom: Atom.Scopes scopes }) return null;
+        // The probe's field order is the struct's own: name, span, scope.
+        var (nameField, spanField, scopeField) = (_id.Fields[0], _id.Fields[1], _id.Fields[2]);
+        if (RecordField(v, nameField) is not { } n || ReadStr(n) is not { } name) return null;
+        if (RecordField(v, spanField) is not { } s || ReadSpan(s) is not { } span) return null;
+        if (RecordField(v, scopeField) is not Value.VAtom { Atom: Atom.Scopes scopes }) return null;
         return Certified(name, scopes.ResolvedName) ? new Id(name, span, scopes.Set) : null;
     }
 
-    private Explicitness? ReadExplicitness(Value v) => Payload(_explicitness, v) switch
+    /// <summary>A leaf enum's code as its C# enum: the probe's tags are matched, never spelled.</summary>
+    private T? ReadLeaf<T>(Leafs leafs, Value v) where T : struct, Enum
     {
-        ("Explicit", { IsEmpty: true }) => Kernel.Explicitness.Explicit,
-        ("Implicit", { IsEmpty: true }) => Kernel.Explicitness.Implicit,
-        _ => null,
-    };
+        var code = leafs.CodeOf(Tag(leafs.Nominal, v));
+        return code < 0 ? null : (T)Enum.ToObject(typeof(T), code);
+    }
+
+    private Explicitness? ReadExplicitness(Value v) => ReadLeaf<Explicitness>(_explicitness, v);
 
     private Atom? ReadAtom(Value v) => Payload(_atomVal, v) switch
     {
@@ -541,20 +604,21 @@ public sealed class Reflection
         _ => null,
     };
 
-    private AtomTy? ReadAtomTy(Value v) =>
-        Payload(_atomTy, v) is (var name, { IsEmpty: true }) && AtomTyNames.Any(p => p.Name == name)
-            ? AtomTyNames.First(p => p.Name == name).Ty
-            : null;
+    private AtomTy? ReadAtomTy(Value v) => ReadLeaf<AtomTy>(_atomTy, v);
 
     /// <summary>A <c>Syntax.Path</c> as the form it names: its head, an open choice when it has one, then each member.</summary>
     private Syntax? ReadPath(Value v)
     {
-        if (RecordField(v, "head") is not { } h || ReadId(h) is not { } head) return null;
-        if (RecordField(v, "members") is not { } m || ReadList(m, x => ReadStr(x)) is not { } members) return null;
-        if (RecordField(v, "head_choice") is not { } c) return null;
+        // The probe's field order is the struct's own: head, members, head_choice.
+        var (headField, membersField, choiceField) = (_path.Fields[0], _path.Fields[1], _path.Fields[2]);
+        if (RecordField(v, headField) is not { } h || ReadId(h) is not { } head) return null;
+        if (RecordField(v, membersField) is not { } m || ReadList(m, x => ReadStr(x)) is not { } members) return null;
+        if (RecordField(v, choiceField) is not { } c) return null;
+        // The choice probe's field order is the struct's own: opens, fallback.
+        var (opensField, fallbackField) = (_pathChoice.Fields[0], _pathChoice.Fields[1]);
         var (choiceOk, choice) = ReadOption(c, x =>
-            RecordField(x, "opens") is { } o && ReadList(o, ReadStr) is { } opens
-            && RecordField(x, "fallback") is { } f && ReadOption(f, ReadStr) is (true, var fallback)
+            RecordField(x, opensField) is { } o && ReadList(o, ReadStr) is { } opens
+            && RecordField(x, fallbackField) is { } f && ReadOption(f, ReadStr) is (true, var fallback)
                 ? new Boxed<(EquatableArray<string>, string?)>((opens, fallback))
                 : null);
         if (!choiceOk) return null;
@@ -562,27 +626,11 @@ public sealed class Reflection
         return members.Aggregate(form, (acc, member) => new Syntax.FieldAccess(acc, member, head.Span));
     }
 
-    private FormKind? ReadAnn(Value v) => Payload(_macroAnn, v) switch
-    {
-        ("AnnExpr", { IsEmpty: true }) => FormKind.Expr,
-        ("AnnDecl", { IsEmpty: true }) => FormKind.Decl,
-        _ => null,
-    };
+    private FormKind? ReadAnn(Value v) => ReadLeaf<FormKind>(_macroAnn, v);
 
-    private Fixity? ReadFixity(Value v) => Payload(_fixity, v) switch
-    {
-        ("PrefixFixity", { IsEmpty: true }) => Fixity.Prefix,
-        ("InfixFixity", { IsEmpty: true }) => Fixity.Infix,
-        _ => null,
-    };
+    private Fixity? ReadFixity(Value v) => ReadLeaf<Fixity>(_fixity, v);
 
-    private Delimiter? ReadDelim(Value v) => Payload(_delim, v) switch
-    {
-        ("ParenDelim", { IsEmpty: true }) => Delimiter.Paren,
-        ("BracketDelim", { IsEmpty: true }) => Delimiter.Bracket,
-        ("BraceDelim", { IsEmpty: true }) => Delimiter.Brace,
-        _ => null,
-    };
+    private Delimiter? ReadDelim(Value v) => ReadLeaf<Delimiter>(_delim, v);
 
     private static readonly TokenKind.Word[] Punctuation =
     [
@@ -623,25 +671,9 @@ public sealed class Reflection
 
     public EquatableArray<Fun.Kernel.TokenTree>? ReadTokens(Value v) => ReadList(v, ReadTokenTree);
 
-    private Assoc? ReadAssoc(Value v) => Payload(_assoc, v) switch
-    {
-        ("Left", { IsEmpty: true }) => Assoc.Left,
-        ("Right", { IsEmpty: true }) => Assoc.Right,
-        ("NonAssoc", { IsEmpty: true }) => Assoc.None,
-        _ => null,
-    };
+    private Assoc? ReadAssoc(Value v) => ReadLeaf<Assoc>(_assoc, v);
 
-    private HoleKind? ReadHoleKind(Value v) => Payload(_holeKind, v) switch
-    {
-        ("HoleExpr", { IsEmpty: true }) => HoleKind.Expr,
-        ("HoleBlock", { IsEmpty: true }) => HoleKind.Block,
-        ("HoleId", { IsEmpty: true }) => HoleKind.Id,
-        ("HoleDecl", { IsEmpty: true }) => HoleKind.Decls,
-        ("HoleOneDecl", { IsEmpty: true }) => HoleKind.Decl,
-        ("HolePattern", { IsEmpty: true }) => HoleKind.Pattern,
-        ("HoleTokens", { IsEmpty: true }) => HoleKind.Tokens,
-        _ => null,
-    };
+    private HoleKind? ReadHoleKind(Value v) => ReadLeaf<HoleKind>(_holeKind, v);
 
     public Syntax? ReadExpr(Value v)
     {
