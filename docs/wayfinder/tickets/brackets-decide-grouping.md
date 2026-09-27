@@ -3,8 +3,10 @@ title: Brackets decide grouping — structural hole extents, Rust-style arms
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
+closed_date: 2026-09-27
 decided: 2026-09-15 (partly — see Open)
+resolution: "Closed 2026-09-27. Every decision in this ticket is implemented and merged: all five branches it names (`capture-extents`, `rust-arms`, `order-groups`, `order-group-leftovers`, `weakest-group`) have 0 unmerged commits against `main`, and the last leftover it recorded as missing — a group through a module path — resolves (`Enforest.Roles.cs:358`) and is pinned by two cases. Its two `Open` bullets are deliberately deferred with no case needing either, which is exactly the escape hatch the ticket asked for. What was left was coverage, not decisions: three of its rules are unpinned, and those are now [Pin the grouping rules with cases](pin-grouping-rules-with-cases.md)."
 assignee:
 blocked_by:
 ---
@@ -169,3 +171,34 @@ group may override by declaring a relation to `assignment` explicitly
 (`order mine : weaker_than(assignment)`); the explicit declaration wins. Express
 it as a general property a group declaration can carry (e.g. `order assignment :
 weakest assoc(none)`), not as a check for the name `<-`.
+
+## Re-measured 2026-09-27 — merged, and what is left is cases
+
+Checked before closing, so the close rests on the repository and not on this ticket's own prose:
+
+- **Every named branch is in `main`.** `git rev-list --count main..<branch>` is 0 for
+  `capture-extents`, `rust-arms`, `order-groups`, `order-group-leftovers` and `weakest-group`.
+  The `Why` section's "branch `capture-extents`, unmerged" is stale.
+- **The last implementation leftover landed.** "`Std.additive` … only the parsing is missing" is
+  done: `src/Fun.Expand/Enforest.Roles.cs:358` reads a dotted group off the unit path
+  (`Enforest.Roles.cs:18`'s `UnitRoles`), and it is pinned twice — `macros/core-260.fun`
+  (`Std = import "std"`, `order tight : stronger_than(Std.multiplicative)`) and
+  `imports/order-group-through-unit-path.fun` (+ its `.unit-g.fun`).
+- **Each decided rule that has a case.** `values/order-groups-transitive`,
+  `values/order-group-left-assoc`, `elaborate/order-groups-unrelated` (the "no declared order"
+  error), `elaborate/order-assoc-none-does-not-chain` (rule 3's `assoc(none)`),
+  `elaborate/bare-bracket-expression` (rule 1), `imports/order-through-binder.unit-m` (groups are
+  ordinary binders), `macros/core-270` / `core-275` (rule 1's hole rule, both halves of a form's
+  argument list parenthesised).
+- **Three rules with no case**, now [their own ticket](pin-grouping-rules-with-cases.md): a
+  non-last `Decl` hole, the *refusal* half of "a non-trailing hole matches exactly one term", and
+  a re-check of the dotted group. `with_decls` — the name this ticket's notes use for the `Decl`
+  hole — appears nowhere in the repo.
+- **Not verified.** The `OpenSuppliesRole "not"` note says "fixed 2026-09-15" and adds "likely
+  pre-existing … Investigate"; the error name is gone from `src/` and
+  `elaborate/open-supplies-role.fun` exists, which is consistent with the fix, but the case was
+  not read line by line and the investigation the note asks for was not performed.
+
+The two `Open` bullets stay deferred, unchanged: tail-returning forms (Rhombus' `'macro`
+protocol) and "parse as if after operator `op`" (`AfterPrefixParsed`). No case needs either; a
+case that does is the trigger to write one of them up.

@@ -107,6 +107,20 @@ touch reflection. Making that statement is
 6. **This ticket is the frontier**; the design ticket is blocked by it, so it
    designs against real files and a real first cut instead of a plan.
 
+## Precondition landed (integrator, 2026-09-27)
+
+The `Relationship` note on [declare the bootstrap↔compiler interface
+once](declare-bootstrap-compiler-interface-once.md) says that ticket is *better landed first*, "so
+the restructure then moves files with the interface already declared and guarded". Its measurement
+is now on `main` (`71ce629`): the prelude publishes the compiler's reflection builders — 19 of
+them, in `std/stage1.fun` — and `Reflection.cs` calls them instead of spelling 60 constructor,
+field and leaf-tag names. The reflection boundary this restructure would otherwise have reshaped
+underneath itself is already reduced, and `std/stage1.fun`'s ABI surface is now one builder list
+plus the `Syntax` nominals.
+
+No declaration was made and no eager check was added — that choice is still open on its own
+ticket, and it does not stand in this ticket's way.
+
 ## Target layout
 
 ```text

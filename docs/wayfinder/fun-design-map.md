@@ -391,7 +391,26 @@ fixed in the same afternoon; and
 waited since 2026-09-17), the runner grew a hang detector
 ([the runner does not timebox elaboration](tickets/port-runner-does-not-timebox-elaboration.md)),
 and two of those closes opened a ticket of their own. `pattern-headed-impls` is now **unblocked** —
-the one ticket it was waiting on is the one that closed. **27 open, 25 unblocked** was the count at
+the one ticket it was waiting on is the one that closed. **Re-measured again the same evening — 19 open, 18 unblocked, 17 of those neither assigned nor
+blocked.** Two closed on measurement, not on work:
+[deep non-tail recursion](tickets/deep-non-tail-recursion-is-superlinear.md) — the port is linear
+(2x per doubling; the quadratic belonged to the deleted prototype's native-stack scanning, and the
+port's `Kont` frames are the fix that ticket named), and
+[brackets decide grouping](tickets/brackets-decide-grouping.md) — all five of its named branches
+are merged, its two `Open` bullets are explicitly deferred with no case needing either, and the
+rules that were implemented but never pinned are now
+[pin the grouping rules with cases](tickets/pin-grouping-rules-with-cases.md).
+[The bootstrap↔compiler interface](tickets/declare-bootstrap-compiler-interface-once.md) landed the
+measurement its ruling asked for (a fork's parked branch, integrated 2026-09-27 as `71ce629`), so
+its two routes are now a choice against a table rather than against an estimate — **that choice is
+open, and it is the next ruling due**. [Type-case refinement](tickets/type-case-refinement-walks-whole-context.md)
+turned out to be half done in the port and to have no benchmark left to measure with, so it is not
+forkable as written. **Forkable as they stand**:
+[a pattern synonym's generalized types](tickets/pattern-synonym-type-parameters.md), and
+[the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md), whose precondition
+is now on `main`.
+
+**27 open, 25 unblocked** was the count at
 2026-09-26, and the rest of this section is that state. By where the tickets live:
 
 - **Port follow-ups** (`port-core-tt-to-dotnet`'s children) — none is a known divergence:

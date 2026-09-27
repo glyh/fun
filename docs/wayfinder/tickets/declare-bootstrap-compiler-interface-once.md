@@ -136,3 +136,36 @@ them is taken against the measured count, not against the estimate that produced
 Consequence to keep in mind while measuring: the number that matters is not "how many names can
 be moved into a helper" but how many must remain **spelled in C#** at all. A name the compiler
 still has to write down is a name the declaration must carry, whichever route follows.
+
+## The measurement (integrator, 2026-09-27) — the deliverable the ruling asked for
+
+The fork this ticket asked for ran, and its branch (`bootstrap-interface-measure`) is integrated
+as `71ce629`. It is exactly the step the ruling scoped: the prelude publishes its reflection
+builders, and `Reflection.cs` reaches the prelude through them instead of building `VCon`/
+`VRecord` by name and field. Nothing else was touched — no `PreludeAbi.cs`, no eager verification
+in `Prelude.Load`, no rewiring of the five consumers — and the four other files are unchanged.
+
+Gate: `dotnet build` 0 errors, xUnit `186/186`, `conformance: 790 cases, 0 failed`.
+
+**How many names must remain spelled in C#, per tier** (before `c5f2489` → after):
+
+| tier | before | after |
+| --- | --- | --- |
+| struct field names | 15 (`file`, `start_byte` … `scope`) | **0** |
+| constructor / leaf tags spelled at build sites | the ticket's ~65 `Con(` call sites, ~50 names | **4** — `IdentTok`, `Tok`, `RawVar`, `RawPatBind`, and only on the *readback* side, where a name is matched rather than built |
+| type and module names | 43 `Nominal(`/`Member(` call sites | 31 sites: `Syntax`'s 23 nominals plus `Decls` |
+| distinct quoted identifiers in `Reflection.cs` | 201 | **160** |
+
+60 spelled names were removed and 19 added — the builders now called instead: `mk_option`,
+`mk_list`, `mk_span`, `mk_id`, `mk_path`, `mk_path_choice`, the leaf-tag builders (`explicitness`,
+`fixity`, `delim`, `assoc`, `hole_kind`, `atom_ty`, `macro_ann`), `i64_to_bool`, and the five
+`Syntax` pattern builders (`pat_wild`, `pat_var`, `pat_atom`, `pat_prod`, `pat_or`).
+
+**What the number says about the two routes.** The tier the ticket found *nothing catches today* is
+gone: no struct field name and no built constructor tag is spelled in the compiler any more. What
+survives is one table of `Syntax`'s nominal type names — the tier that already fails loudly at
+load (`Reflection.cs:100-104`) — plus four readback tags. So route **(1) declare all of it** is now
+a ~35-name declaration over a surface that no longer mirrors the prelude's shape, and route
+**(2) shrink it first** has been paid for where it was expensive. **Neither is chosen yet**: that
+choice is the next step, and it is now against this table rather than the 201-name estimate that
+produced the ticket.

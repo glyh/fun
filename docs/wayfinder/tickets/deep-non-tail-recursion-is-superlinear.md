@@ -3,7 +3,9 @@ title: Deep non-tail recursion runs in superlinear time
 parent: ../fun-design-map.md
 labels:
   - wayfinder:research
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: "Closed 2026-09-27 on a measurement, not on a fix — the port is already linear, so there is nothing to fix. Every path in this ticket (`caml_scan_stack`, OCaml 5's minor GC scanning a stack that grew per object-language call, `Gc.set` in `bin/main.ml`) is the deleted prototype's. The port honours the rule this ticket names as the architectural answer: a sub-evaluation gets a `Kont` frame, not a native one (`Nbe.{Rec,Enum,Effects,Match,Macros}.cs`). Re-measured through the conformance runner: 50k 1.13 s, 100k 1.76 s, 200k 2.94 s, 400k 5.65 s — 2x per doubling after ~0.5 s of runner startup (0.63 / 1.26 / 2.44 / 5.15), where the prototype was 4x per doubling and 14.40 s at 400k."
 assignee:
 blocked_by:
 ---
@@ -61,3 +63,31 @@ explicit continuation/stack machine for `Nbe.eval_result` (it already has
 subsume). That is a decision for the port's evaluator design, not a patch to
 the prototype; a port that transliterates `eval` recursively inherits it on any
 runtime whose GC scans stacks.
+
+## Findings (integrator, 2026-09-27): the port does not have it
+
+The probe the ticket used, against the port (`test/Fun.Conformance` on `/tmp/deep.fun`, one
+`dotnet` invocation per row, so each row carries the runner's startup):
+
+```fun
+rec t : I64 -> I64 = fn(n) { if (n == 0) { 0 } else { t(n - 1) + 1 } };
+t(N)
+```
+
+| N | prototype (the table above) | port, 2026-09-27 | port, startup subtracted |
+|---|---|---|---|
+| 50 000 | 0.26 s | 1.13 s | 0.63 s |
+| 100 000 | 0.84 s | 1.76 s | 1.26 s |
+| 200 000 | 3.32 s | 2.94 s | 2.44 s |
+| 400 000 | 14.40 s | 5.65 s | 5.15 s |
+
+**2x per doubling, not 4x** — the superlinear step is gone, and 400k costs a third of what it cost
+in the prototype. The cause is the one this ticket prescribed: object-language calls do not consume
+the native stack. `Kont` is a real frame machine in the port's evaluator
+(`src/Fun.Compiler/Nbe.{Rec,Enum,Effects,Match,Macros}.cs`), and `CLAUDE.md` states it as a rule
+(*"The evaluator never recurses on the native stack per object-level call"*) rather than as a
+property anyone has to preserve by hand.
+
+**Not measured:** the port's readback, unification and elaborator, which `CLAUDE.md` explicitly
+allows to recurse over structure. If a deep program's cost ever turns out superlinear, that is
+where to look next, and this ticket's answer does not cover it.
