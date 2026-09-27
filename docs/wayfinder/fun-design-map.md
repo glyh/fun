@@ -379,14 +379,16 @@ what is built. The rewrite wrapper `dotnet/` was lifted to the repository root o
 So the frontier is no longer a port wedge — it is the open tickets below, and the two sections
 that used to lead this one are kept underneath as the record of how the port finished.
 
-**Re-measured 2026-09-27 — 23 open tickets, 21 unblocked.** Four closed today on measured
+**Re-measured 2026-09-27 — 23 open tickets, 21 unblocked.** Five closed today on measured
 evidence ([mutual chains in scoped heads](tickets/type-def-chains-in-scoped-do-heads.md), which
 needed no work; [the observable budget cases](tickets/port-budget-observable-cases.md), whose third
 row had landed; [reflect `Match` in the `Expr` ADT](tickets/reflect-match-in-expr-macro-adt.md),
-whose ADT was built and untested; and [identity must survive re-evaluation](tickets/port-identity-survives-reevaluation.md),
-audited innocent at every site but one), the runner grew a hang detector
+whose ADT was built and untested; [identity must survive re-evaluation](tickets/port-identity-survives-reevaluation.md),
+audited innocent at every site but one; and
+[a meta in a method signature captures `self`](tickets/method-signature-metas-capture-self.md)), the
+runner grew a hang detector
 ([the runner does not timebox elaboration](tickets/port-runner-does-not-timebox-elaboration.md)),
-and the audit's one residue opened a ticket of its own. **27 open, 25 unblocked** was the count at
+and two of those closes opened a ticket of their own. **27 open, 25 unblocked** was the count at
 2026-09-26, and the rest of this section is that state. By where the tickets live:
 
 - **Port follow-ups** (`port-core-tt-to-dotnet`'s children) — none is a known divergence:
@@ -397,11 +399,11 @@ and the audit's one residue opened a ticket of its own. **27 open, 25 unblocked*
 - **Language and macro work** — the largest ready group:
   [a synonym's generalized types are its implicits](tickets/pattern-synonym-type-parameters.md)
   (ruled 2026-09-25, and its "E11 chain" is not a ticket — it is the stamp case family, all green),
-  [a meta in a method signature captures `self`](tickets/method-signature-metas-capture-self.md)
-  (in flight 2026-09-27),
+  [a parameter's type meta captures the earlier binders](tickets/parameter-type-metas-capture-earlier-parameters.md)
+  (new 2026-09-27 — the method fix's failure one layer out, measured pre-existing, and it needs a
+shape chosen before a fork can take it),
   [a closure capture gives two answers](tickets/closure-capture-identity-two-answers.md) (new
-  2026-09-27, needs a ruling: conversion says two lambda captures are one type and a type-case says
-they are two),
+  2026-09-27, ruled: the type-case is the wrong one, and the fix is in flight),
   [does a macro own its output](tickets/macro-owns-its-output.md) (grilling),
   the [Stage 11](tickets/specify-stage-11-macro-powered-language-features.md) and
   [Stage 12](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md) specs,
