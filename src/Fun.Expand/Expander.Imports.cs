@@ -169,12 +169,22 @@ public sealed partial class Expander
         ImportRoles(value, written.Scope, region);
     }
 
-    /// <summary><c>export M</c> of a unit re-exports its public roles with its values (the selection applies to both).</summary>
-    private void ExportUnitRoles(Binding.Export export)
+    /// <summary>
+    /// <c>export M</c> of a unit re-exports the unit's public surface with its values:
+    /// its roles and its macros (the selection applies to all three). A macro a unit
+    /// re-exports keeps its compiled entry, so a form of the re-exporting unit reaches
+    /// it without the consumer serving the unit it came from.
+    /// </summary>
+    private void ExportUnitSurface(Binding.Export export)
     {
         if (!export.Public || UnitPathOf(export.Of) is not { } path) return;
-        foreach (var (name, role) in _runtime.LoadSyntax(path).Roles)
-            if (export.Names is not { } names || names.Contains(name))
+        var unit = _runtime.LoadSyntax(path);
+        var selected = export.Names;
+        foreach (var (name, role) in unit.Roles)
+            if (selected is null || selected.Contains(name))
                 _syntaxExports.Add((name, role with { FromUnit = path }));
+        foreach (var (name, macro) in unit.Macros)
+            if (selected is null || selected.Contains(name))
+                _macroExports.Add((name, macro));
     }
 }

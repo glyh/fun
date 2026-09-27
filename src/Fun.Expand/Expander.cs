@@ -337,7 +337,7 @@ public sealed partial class Expander
                 case Binding.Export e:
                 {
                     var export = ExpandExport(e, active);
-                    ExportUnitRoles((Binding.Export)e.AddScope(active));
+                    ExportUnitSurface((Binding.Export)e.AddScope(active));
                     expanded.Add(export);
                     break;
                 }

@@ -1,7 +1,8 @@
 pub rec Bool = enum { False, True };
 open Bool;
 export Bool;
-pub syntax if { if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t, False => $e } };
+# i64_to_bool stays here, not the library: Reflection.cs probes the Bool constructors
+# through it, so it is part of the ABI the compiler reads by name.
 pub i64_to_bool = fn(n) { match (n) { 0 => False, _ => True } };
 pub rec Option = fn(A : Type) { enum { Some(A), None } };
 open Option;
