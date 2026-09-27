@@ -3,7 +3,9 @@ title: A generic impl's head variable carries no bound
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Implemented 2026-09-27 (merged `cb52e96`; `60124ef` core + 8 conformance cases + 1 xUnit test, `c643a39` docs, `cb52e96` the two-variable case). `Contribute` now promotes each pending evidence demand whose argument is a bare head variable into a hidden implicit dictionary argument (`ImplBound`, threaded through `TraitEvidence` and `ModuleEntry.Impl`), wraps the impl as a function of those dictionaries, and resolution instantiates each from the use's scope. Root cause: the head's free name bound as a plain meta with no dictionary, so a body's `Eq(A)` fell through to `PendingEvidence`, and unit end raised `cannot choose … never known` while the *prelude* elaborated — which is why every program died rather than one. Gate, re-run by the integrator: `impl … : Eq(List(A))` with a body calling `Eq.eq(h, h2)` answers `[1] == [1]` → `VALUE True` and `[1] == [2]` → `VALUE False` (the dictionary is consulted, not merely threaded), control `{ 1 }` → `VALUE 1`; `conformance: 865 cases, 0 failed`, xUnit 188/188. **The bound is inferred from the body's demands, not written** — no syntax exists for writing one on a head; ruling: keep the inference and park the written form as [a written bound on an impl head](impl-head-written-bound.md). Left open by this fix: [an impl declared inside a function does not promote](impl-in-a-function-does-not-promote.md), and the fork's unverified claim that [Nbe's module re-evaluation drops Vars and Bounds](nbe-module-reevaluation-drops-vars-and-bounds.md).
 assignee:
 blocked_by: []
 ---

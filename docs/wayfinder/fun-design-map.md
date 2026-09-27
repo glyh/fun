@@ -398,6 +398,21 @@ without flipping impl resolution to B; and it recorded that
 [`M.(e)`](tickets/local-open-expression.md) is not to be reopened as-is, since it
 buys nothing selective-open does not.
 
+**One of those two gaps closed the same evening — `cb52e96`.**
+[A generic impl's head variable carries no bound](tickets/generic-impl-head-var-has-no-bound.md)
+is implemented and merged: a generic impl's method body can use evidence for its own
+head variable (the demand becomes a hidden dictionary argument, resolved from the use's
+scope), verified by the integrator on the `[1] == [1]` → `True`, `[1] == [2]` → `False`
+gate with `conformance: 865 cases, 0 failed`, xUnit 188/188. Its **bound is inferred
+from the body's demands, not written** — that is the shipped contract, and whether the
+head may state its bound is parked as
+[a written bound on an impl head](tickets/impl-head-written-bound.md). Two follow-ups came
+out of the same fix: [an impl declared inside a function does not promote](tickets/impl-in-a-function-does-not-promote.md)
+(reproduced) and the fork's unverified claim that
+[Nbe's module re-evaluation drops Vars and Bounds](tickets/nbe-module-reevaluation-drops-vars-and-bounds.md).
+So [Eq for List and Option](tickets/std-eq-for-list-and-option.md) now waits only on
+[the two-list recursion crash](tickets/recursive-match-on-two-lists-cores.md).
+
 **The port's parity work is closed.** Every item the 2026-09-25 re-sweep listed landed, and the
 OCaml prototype was deleted the same day; [`docs/STATUS.md`](../STATUS.md) is authoritative for
 what is built. The rewrite wrapper `dotnet/` was lifted to the repository root on 2026-09-26.

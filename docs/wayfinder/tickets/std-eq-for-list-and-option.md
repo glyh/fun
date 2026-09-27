@@ -8,21 +8,25 @@ assignee:
 blocked_by:
   - generic-impl-head-var-has-no-bound.md
   - recursive-match-on-two-lists-cores.md
+# unblocked 2026-09-27: generic-impl-head-var-has-no-bound.md closed (cb52e96) — a
+# generic impl's body can now use its head variable's evidence. Only the recursion
+# crash below blocks this now.
 ---
 
 # `Eq(List(A))` and `Eq(Option(A))` — the library's two impls
 
 The one part of [the library surface](design-std-library-surface.md) that did **not**
-ship, because its two halves are each blocked by a compiler gap the fork found and the
-integrator reproduced:
+ship. One of its two blockers is closed and the other is not:
 
-- [A generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md)
-  — `Eq.eq(h, h)` inside `impl … : Eq(List(A))` has no dictionary for `A`, and the
-  failing shape breaks the **prelude load**, so it cannot even be stubbed.
+- ~~[A generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md)~~
+  — **closed 2026-09-27** (`cb52e96`). `Eq.eq(h, h2)` inside `impl … : Eq(List(A))`
+  now elaborates: the demand becomes a hidden dictionary argument, and selecting the
+  impl for `List(I64)` resolves `Eq(I64)` from scope.
 - [A recursive helper matching two lists cores](recursive-match-on-two-lists-cores.md)
-  — the body a real structural equality needs dumps core.
+  — still open, and still the reason a real structural equality cannot be written:
+  the body dumps core.
 
-## What to do when both close
+## What to do when the last blocker closes
 
 1. `std/list.fun`: `pub impl list_eq : Eq(List(A)) = module { fn eq(xs, ys) { … } };`
 2. `std/option.fun`: `pub impl option_eq : Eq(Option(A)) = module { fn eq(xs, ys) { … } };`
