@@ -147,25 +147,89 @@ in `Prelude.Load`, no rewiring of the five consumers — and the four other file
 
 Gate: `dotnet build` 0 errors, xUnit `186/186`, `conformance: 790 cases, 0 failed`.
 
-**How many names must remain spelled in C#, per tier** (before `c5f2489` → after):
+**How many names must remain spelled in C#, per tier** — **corrected 2026-09-27**, see the note
+below the table:
 
-| tier | before | after |
+| tier | before `c5f2489` | after `71ce629` |
 | --- | --- | --- |
 | struct field names | 15 (`file`, `start_byte` … `scope`) | **0** |
-| constructor / leaf tags spelled at build sites | the ticket's ~65 `Con(` call sites, ~50 names | **4** — `IdentTok`, `Tok`, `RawVar`, `RawPatBind`, and only on the *readback* side, where a name is matched rather than built |
-| type and module names | 43 `Nominal(`/`Member(` call sites | 31 sites: `Syntax`'s 23 nominals plus `Decls` |
+| leaf enums, `Option` / `List` / `Bool` tags | spelled at every site | **probed** — `_bool = LeafsOf(Builder("i64_to_bool"), 2)`, `_some = CtorOf(Builder("mk_option"), Probe, I64(0), Probe)` |
+| constructor tags on the **build** side — `Con(nominal, "X", …)` | 47 sites, 45 names | 47 sites, 45 names — **untouched** |
+| constructor tags on the **readback** side — `case ("X", …)` | not counted before | **113 distinct names over 198 sites — untouched** |
+| type and module names — `Nominal(...)` / `Member(...)` | 43 call sites | 31 call sites, 24 distinct (`Syntax`'s 23 nominals plus `Decls`) |
 | distinct quoted identifiers in `Reflection.cs` | 201 | **160** |
 
-60 spelled names were removed and 19 added — the builders now called instead: `mk_option`,
-`mk_list`, `mk_span`, `mk_id`, `mk_path`, `mk_path_choice`, the leaf-tag builders (`explicitness`,
-`fixity`, `delim`, `assoc`, `hole_kind`, `atom_ty`, `macro_ann`), `i64_to_bool`, and the five
-`Syntax` pattern builders (`pat_wild`, `pat_var`, `pat_atom`, `pat_prod`, `pat_or`).
+19 builders were published and called in place of the field, record and leaf-tag tiers:
+`mk_option`, `mk_list`, `mk_span`, `mk_id`, `mk_path`, `mk_path_choice`, `explicitness`, `fixity`,
+`delim`, `assoc`, `hole_kind`, `atom_ty`, `macro_ann`, `i64_to_bool`, `pat_wild`, `pat_var`,
+`pat_atom`, `pat_prod`, `pat_or`.
 
-**What the number says about the two routes.** The tier the ticket found *nothing catches today* is
-gone: no struct field name and no built constructor tag is spelled in the compiler any more. What
-survives is one table of `Syntax`'s nominal type names — the tier that already fails loudly at
-load (`Reflection.cs:100-104`) — plus four readback tags. So route **(1) declare all of it** is now
-a ~35-name declaration over a surface that no longer mirrors the prelude's shape, and route
-**(2) shrink it first** has been paid for where it was expensive. **Neither is chosen yet**: that
-choice is the next step, and it is now against this table rather than the 201-name estimate that
-produced the ticket.
+### Correction — the first version of this table was wrong, and this is why
+
+The first count came from grepping `Con(` / `Nominal(` / `Member(` / `CtorOf(` call sites, which
+sees only the **build** side. It missed `case ("RawVar", 1)`, `("IdentTok", [var s])`, and the
+rest of the readback switches entirely — **113 tags over 198 sites**, the single largest spelled
+tier in the file. The first version reported *"constructor tags → 4"*, which was true only of the
+four names my grep was written to look for. The corrected figure is above; the number 201 → 160
+was never in doubt.
+
+So what `71ce629` achieved is **the mechanism and the small tiers**, not the big ones. It built
+the probe (`Ctor` with a `Tag`, `Leafs` with `CodeOf`, `Layout`) and used it on the record, leaf
+and `Option`/`List`/`Bool` tiers — 11 tag comparisons in the file now go through a probed tag
+(`name == _nil.Tag`, `_bool.CodeOf(...)`). The ADT tiers — `Expr`'s ~40 `Raw*`, `Decl`'s 16
+`Decl*`, `Pattern`'s 10 `RawPat*`, `TokenKind`'s 8, the ~30 `Mk*` and role/rule tags — are
+untouched on both sides.
+
+**What that does to the route choice.** The declaration is **~160 names, not ~35** (24 type names
++ 45 build tags + 113 readback tags), which is the "a table mirrors the prelude rather than
+declaring an interface" scale the ticket was worried about at 200. The choice was put to the user
+again on 2026-09-27 against the corrected count; **it is the open item on this ticket**.
+
+What is *not* true any more, measured: no struct **field** name is spelled (the tier the ticket
+found nothing catches today), the record and leaf-enum tags are probed rather than spelled, and
+the remaining type names are the tier that already fails loudly at load (`Reflection.cs:100-104`).
+
+## Ruling (user, 2026-09-27): route (1) — declare all of it, at the corrected count
+
+Put to the user again after the first version of the table above was found wrong, and looked at
+side by side as code. **Decided: `PreludeAbi.cs` holds the whole interface, ~160 names, resolved
+eagerly in `Prelude.Load`.** Route (2) — shrink the surface first, moving the tag spellings into
+`.fun` — is **not** taken. The tags stay spelled in C#, but only inside the declaration, and every
+consumer references the declaration.
+
+What this means for whoever implements it:
+
+1. **`PreludeAbi.cs`** holds three groups of **`const string`** — ~19 **builders** (`mk_span`,
+   `mk_option`, `pat_wild`, …), 24 **type and module names** (`Syntax`'s 23 nominals plus
+   `Decls`), and the 158 **tags** (45 built, 113 read back). `const` and not `static readonly`:
+   198 readback sites are `case` labels, and only a compile-time constant is legal there.
+2. **Where it lives is a real constraint.** `Fun.Expand` cannot reference `Fun.Compiler`, and
+   three of the five consumers (`Expander.Macros.cs`, `Enforest.Macros.cs`, `Enforest.Roles.cs`)
+   are inside `Fun.Expand`. So the **data** belongs in `Fun.Kernel` or `Fun.Expand` — never
+   `Fun.Compiler` — while its **`Verify`** (which needs the loaded stage) belongs with `Prelude`.
+   Decide and justify the placement in the report.
+3. **Reference, do not restate, the unit paths**: `Prelude.Path`, `Stage1Path`, `Binding` are
+   already single-sourced. `Type` is **not** in the interface — the compiler spells it and it
+   belongs to the elaborator (`Elaborator.cs:151`), not to `std`.
+4. **Resolve the whole declaration eagerly in `Prelude.Load`**, before the stage is returned, so a
+   rename is a load error naming the member and its file. Today the check is lazy, at first
+   reflection use (`Reflection.cs:100-104`).
+5. **Rewire the consumers** — `Reflection.cs` (267 sites: 198 `case` labels, 45 `Con(` arguments,
+   24 `Nominal`/`Member` paths) plus the four others in the ABI table: `QuoteHoles.cs`,
+   `Expander.Macros.cs`, `Enforest.Macros.cs`, `Enforest.Roles.cs`. When this lands, **no bare
+   prelude name is spelled outside the declaration**, and a sweep is the check: search for prelude
+   names outside `PreludeAbi.cs`, and justify every remaining hit in the report.
+6. **One xUnit test asserting the declaration resolves**, so `dotnet test` catches it without
+   running a program; the eager check is the runtime half.
+7. State in `PreludeAbi.cs` and in `std/README.md` that the declaration *is* the interface and the
+   prelude is checked against it, with the note about why codegen was deferred, so it is not
+   re-litigated.
+
+**Cost accepted, stated plainly:** the declaration mirrors the prelude's shape. That is the
+reading chosen over moving the spellings into `.fun`, and the reason is in this ticket's own
+history — `.fun` cannot be the sole source, because the interface is a fact about the compiler's
+*usage*: which names matter, in which role, and that `Type` is the elaborator's.
+
+**For whoever measures next:** the first version of the table above was wrong by a factor of forty
+on the tag tier. Count the build side, the readback side and the type names separately — a `Con(`
+grep sees one of the three.
