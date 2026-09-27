@@ -245,6 +245,44 @@ as the frontier reaches them.
 - ~~**Primitive ↔ symbolic-name wiring is stringly-typed and fragile**~~ — promoted
   out of fog to [one declaration per primitive](tickets/unify-primitive-declaration.md);
   it blocks the port.
+- **First-class compiler API** — expose as much of the compiler as is honest to
+  expose to downstream users, at compile time and out of process: inference,
+  unification, goal inspection, normalization, the budget, reflection. The
+  elaborator and unifier are the core, but the ambition is that a tool, an LSP, a
+  REPL and a macro all sit on one surface instead of re-implementing the
+  elaborator — Unison's UCM over a compiler-as-library is the precedent. Today the
+  only thing expansion may ask of elaboration is the fixed `IMacroRuntime`
+  adapter, and `Fun.Expand` cannot reference `Fun.Compiler` by design, so this is an
+  interface-widening decision (`Driver.Elaborate` already admits its callers are
+  just the runner and the CLI).
+  Detail: [first-class-elaborator-api](topics/first-class-elaborator-api.md).
+  Sharpens when the first real downstream consumer appears and "can this be a
+  library over reflection instead?" has a measured no.
+- **Universes and level polymorphism** — replace `Type : Type` with `Type(i)` over
+  first-class level expressions (`max(i, j)`, `i + 1`), so meta-libraries and
+  category-theoretic abstractions are written once instead of duplicated per tier.
+  The singleton `Core.U`/`VU` and the deliberate simplification recorded in
+  [dependent-types](topics/dependent-types.md) are the starting point; the cost is
+  level unification, cumulativity and every `Type` occurrence in the pipeline.
+  Detail: [universe-levels](topics/universe-levels.md). Sharpens when the first
+  abstraction that must quantify over arbitrary types is written and cannot be
+  duplicated per tier.
+- **Content-addressed codebase database** — the Unison architecture
+  (<https://www.unison-lang.org/>): definitions identified by the hash of their
+  AST, names as separately stored metadata, with expansion / elaboration /
+  unification results cached under that hash permanently and across runs instead of
+  keyed by file path in the `Loader`'s per-process dictionaries — which is where
+  Unison's "no builds" comes from. Two obstacles are specific to `fun`: scope sets
+  are per-run integer sets (`Fun.Kernel/ScopeSet.cs`) so a hash needs a
+  scope-normal form, and the interleaved driver makes a cache key a *(definition,
+  context)* pair rather than one hash. This is orthogonal to language semantics and
+  pays off only with a persistent store; the codebase-layout decisions already open
+  ([the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md),
+  [the bootstrap↔compiler interface](tickets/declare-bootstrap-compiler-interface-once.md))
+  come first and would have to be hash-shaped. Detail:
+  [content-addressed-codebase](topics/content-addressed-codebase.md). Sharpens when
+  compile time is measured and attributed, or a hash-addressed library story is
+  wanted.
 
 ## Open questions
 
@@ -341,7 +379,7 @@ what is built. The rewrite wrapper `dotnet/` was lifted to the repository root o
 So the frontier is no longer a port wedge — it is the open tickets below, and the two sections
 that used to lead this one are kept underneath as the record of how the port finished.
 
-**24 open tickets, 23 unblocked.** By where they live:
+**27 open tickets, 25 unblocked.** By where they live:
 
 - **Port follow-ups** (`port-core-tt-to-dotnet`'s children) — none is a known divergence:
   [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md) (ruled 2026-09-17, its
@@ -367,8 +405,17 @@ that used to lead this one are kept underneath as the record of how the port fin
   [mutual chains in scoped heads](tickets/type-def-chains-in-scoped-do-heads.md), and
   [deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
   (architectural, pre-existing).
+- **Stdlib and its compiler interface** — new 2026-09-26, the first direction aimed at `std/`
+  itself and the boundary to the compiler rather than at the compiler's language:
+  [declare the bootstrap↔compiler interface once](tickets/declare-bootstrap-compiler-interface-once.md)
+  (best landed first, so the split below happens with the interface already guarded),
+  [restructure `std` into a bootstrap layer and a library layer](tickets/restructure-std-into-bootstrap-and-library.md)
+  (the seam is exactly the names C# spells, and the library is everything else), and
+  [design the user-facing library surface](tickets/design-std-library-surface.md).
 - **Blocked**: [an impl head is a pattern over types](tickets/pattern-headed-impls.md) waits on
-  [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md).
+  [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md), and
+  [the library surface design](tickets/design-std-library-surface.md) waits on
+  [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md).
 
 Umbrellas keep their own children: [the port](tickets/port-core-tt-to-dotnet.md),
 [the parity recipe](tickets/port-parity-plan.md), and the
