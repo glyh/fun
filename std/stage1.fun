@@ -9,6 +9,10 @@ export Option;
 pub rec List = fn(A : Type) { enum { Nil, Cons(A, List(A)) } };
 open List;
 export List;
+# The compiler's Option and List builders: it reflects these shapes far too often
+# to spell their constructors, so it probes the tag and nominal off these once.
+pub mk_option = fn[A : Type](n : I64, x : A) : Option(A) { match (n) { 0 => Some(x), _ => None } };
+pub mk_list = fn[A : Type](n : I64, h : A, t : List(A)) : List(A) { match (n) { 0 => Nil, _ => Cons(h, t) } };
 pub Syntax = module {
   pub rec Explicitness = enum { Explicit, Implicit };
   export Explicitness;
@@ -74,6 +78,24 @@ pub Syntax = module {
   pub pattern PatOr(l, r) = Pattern.RawPatOr(_, l, r);
   pub Decls = List(Decl);
   pub decl_let = fn(name, val, is_pub) { Decl.DeclLet(name, val, is_pub, False) };
+  # The compiler's record builders: the reflection boundary reads each record's
+  # type and field names off one probe of these, so no field is spelled in C#.
+  pub mk_span = fn(file, start_byte, end_byte, start_line, start_col, end_line, end_col) { Span{file = file; start_byte = start_byte; end_byte = end_byte; start_line = start_line; start_col = start_col; end_line = end_line; end_col = end_col} };
+  pub mk_id = fn(name, span, scope) { Id{name = name; span = span; scope = scope} };
+  pub mk_path_choice = fn(opens, fallback) { PathChoice{opens = opens; fallback = fallback} };
+  pub mk_path = fn(head, members, head_choice) { Path{head = head; members = members; head_choice = head_choice} };
+  # The compiler's leaf-enum builders, one code per constructor. The codes are the
+  # C# enums' own orders (Explicitness: Implicit, Explicit; Fixity: Prefix, Infix;
+  # Delim: Paren, Bracket, Brace; Assoc: Left, Right, NonAssoc; HoleKind: Expr,
+  # Block, Id, Decls, Decl, Pattern, Tokens; AtomTy: I64, Unit, Char, String,
+  # Scopes, Absurd; MacroAnn: Expr, Decl).
+  pub explicitness = fn(n : I64) : Explicitness { match (n) { 0 => Explicitness.Implicit, _ => Explicitness.Explicit } };
+  pub fixity = fn(n : I64) : Fixity { match (n) { 0 => Fixity.PrefixFixity, _ => Fixity.InfixFixity } };
+  pub delim = fn(n : I64) : Delim { match (n) { 0 => Delim.ParenDelim, 1 => Delim.BracketDelim, _ => Delim.BraceDelim } };
+  pub assoc = fn(n : I64) : Assoc { match (n) { 0 => Assoc.Left, 1 => Assoc.Right, _ => Assoc.NonAssoc } };
+  pub hole_kind = fn(n : I64) : HoleKind { match (n) { 0 => HoleKind.HoleExpr, 1 => HoleKind.HoleBlock, 2 => HoleKind.HoleId, 3 => HoleKind.HoleDecl, 4 => HoleKind.HoleOneDecl, 5 => HoleKind.HolePattern, _ => HoleKind.HoleTokens } };
+  pub atom_ty = fn(n : I64) : AtomTy { match (n) { 0 => AtomTy.TyI64, 1 => AtomTy.TyUnit, 2 => AtomTy.TyChar, 3 => AtomTy.TyString, 4 => AtomTy.TyScopes, _ => AtomTy.TyAbsurd } };
+  pub macro_ann = fn(n : I64) : MacroAnn { match (n) { 0 => MacroAnn.AnnExpr, _ => MacroAnn.AnnDecl } };
   pub rec R = enum { RExpr(Type), RDecls, RPat };
   export R;
   pub atom_val = fn(val) { Expr.RawAtom(None, val) };
