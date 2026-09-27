@@ -149,6 +149,43 @@ outcome. `S3` also has to be threaded to the `InsertImplicitArgs` site (`Elabora
 that actually inserts the meta, which is one call below the written-type site. `S4` changes
 `Invert`'s contract and is a different mechanism (substitution, not spine masking).
 
+### 5. Integrator's check of S1 (2026-09-27, base `001fd42`)
+
+S1 was rebuilt from this section's description — the helper mapping every `EntryKind` to
+`Defined` (`Elaborator.Structs.cs:415`, `WithoutSelfInMetas`), **plus** the two sites the
+"sites changed" line names, which the helper alone does not reach: `InferLam`'s written-domain
+elaboration (`Elaborator.cs:594`) and the Lam-against-`Pi` check (`Elaborator.cs:360`). All three
+now route a written parameter type through that context.
+
+Result — **the method half and the explicit-instantiation half reproduce exactly**:
+
+| probe | this section's S1 row | my S1 |
+| --- | --- | --- |
+| p1 literal | `VALUE 0` | `VALUE 0` |
+| p2 let-bound | `VALUE 0` | `VALUE 0` |
+| p3 called from a λ (control) | `VALUE 0` | `VALUE 0` |
+| p4 `Box[I64]{…}.get(x)` (method) | `VALUE 3` | `VALUE 3` |
+| p5 `f[I64](1, x)` | `VALUE 1` | `VALUE 1` |
+| p6 `g(b, x)` | `VALUE 1` | **`ELAB cannot unify VStruct with VU`** |
+
+Suite: `conformance: 865 cases, 0 failed`, xUnit 188/188 — the same as the row claims.
+
+**The p6 entry is wrong, in this table and in §1.** As written in §1, p6 fails with
+`cannot unify VStruct with VU` on **base as well as under S1** — it never reaches the spine
+machinery. Isolated: `g = fn(o : Box[I64]) : I64 { o.v }` alone fails the same way on base,
+with no spine-shaped expression in sight. So p6 measures the *adjacent* mechanism of §"Adjacent,
+different mechanism" — and extends it: that bug bites a struct former **with** its type argument
+supplied (`Box[I64]`), not only an unsupplied implicit (`Ref(Pair)`). Whichever shape is chosen,
+p6 stays failing until that separate bug is fixed, and no shape's row should count it.
+
+Two smaller consequences: §1's p6 row should read `cannot unify VStruct with VU`, not the spine
+message; and the "probes fixed" column for S1 should be read as p1 p2 p4 p5 p8 p10 dep4 dep10.
+
+Also confirmed while checking: S1's helper change alone, without the two `InferLam` sites, fixes
+**only** p4 — p1/p2/p5 keep the spine message. That is the §4 structural finding made concrete:
+the plain-`fn` half of the fix is not reachable from `WithoutSelfInMetas`, because `Syntax.Lam` is
+single-parameter and `InferLam` cannot tell an earlier parameter from an enclosing binder.
+
 ### 4. Structural finding for whichever shape is chosen
 
 `Syntax.Lam` is **single-parameter** (`src/Fun.Kernel/Syntax.cs:44`); `fn(a, r)` is nested `Lam`s, so
