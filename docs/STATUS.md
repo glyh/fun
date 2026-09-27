@@ -11,11 +11,33 @@ entries that describe the prototype's own implementation are its record, and its
 `git log`. Paths written in a dated entry are the paths of that date — the port was lifted from
 `dotnet/` to the repo root on 2026-09-26.
 
-Last updated: a generic impl's head variable takes its bound, 2026-09-27.
+Last updated: a written parameter type captures nothing, 2026-09-27.
 
 ---
 
 ## Completed
+
+### A written parameter type captures nothing (2026-09-27)
+
+- A meta inserted while elaborating a written parameter type listed every binder in
+  scope in its spine. At a call each spine entry must invert to a variable, but an
+  earlier parameter (like a method's `self`) is a value, so
+  `f = fn(a : I64, r : Ref(I64)) : I64 { a }; x = ref(40); f(0, x)` refused with
+  `a meta's spine argument is not a variable`. The shape worked or failed on *how* the
+  argument was made — a λ parameter inverted, a literal or a let-bound value did not.
+- `Context.WithoutSelfInMetas` (the method ticket's fix) is generalised to
+  `Context.NoCapture`: while a written parameter type is elaborated every entry is
+  `Defined`, so the type's metas abstract over nothing bound before them and a call's
+  values still invert. All three method sites (`MethodType`'s result, `MethodBody`,
+  `Params`) and both `Syntax.Lam` sites (`InferLam`'s written domain and the
+  Lam-against-`Pi` check) route through it.
+- The dependence that matters survives: the value-mentioning `Ref(F(b))` works, and
+  `f(True, True)` for `f = fn(b : Bool, v : F(b)) : F(b) { v }` is refused at the same
+  type mismatch as before. 11 conformance cases added (ten values, one `error`) —
+  **`conformance: 876 cases, 0 failed`** — xUnit **`188/188`**.
+- Not fixed (separate ticket): a struct former with its type argument supplied in a
+  written parameter type, `fn(o : Box[I64]) : I64 { o.v }`, still fails
+  `cannot unify VStruct with VU` (`struct-former-in-written-parameter-type.md`).
 
 ### A generic impl's head variable takes its bound (2026-09-27)
 
