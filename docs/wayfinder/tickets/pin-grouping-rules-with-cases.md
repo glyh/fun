@@ -3,7 +3,9 @@ title: Pin the grouping rules with cases
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: "Closed 2026-09-27 by the `grouping-cases` fork (79fccd3, merged into `main`). Both unpinned rules now have conformance cases and the third was confirmed already pinned, so nothing on this ticket is left. Verified on the merge: `dotnet build` 0 errors, xUnit 186/186, `conformance: 792 cases, 0 failed` (790 + 2)."
 assignee:
 blocked_by: []
 ---
@@ -45,3 +47,26 @@ The expected result comes from the rule in
 [`brackets-decide-grouping.md`](brackets-decide-grouping.md), **not** from what the runner prints.
 If the runner disagrees with the rule, **stop and report it** — that is a bug, and a case written
 from the runner's output would freeze the bug into the suite.
+
+## Closed 2026-09-27
+
+Two cases, both in `test/conformance/cases/macros/`:
+
+- **`non-trailing-decl-hole-takes-one-group.fun` → `3`.** The form had to be written, because
+  `with_decls` existed nowhere in the repo: `syntax with_decls { with_decls $(ds : List(Decl)) in
+  $(body : Expr) => { r = module { $ds; pub value = $body }; r.value } }`, used as the ticket's own
+  `with_decls { x = 1; y = 2 } in x + y`. It discriminates: a hole that did not stop at the `}`
+  would swallow `in x + y` and the form would not match at all.
+- **`non-trailing-hole-matches-one-term.fun` → `error`**, written from the ticket's own example
+  with the vocabulary bound, so a greedy `$cond` would answer `5` instead. The refusal's wording
+  is `no matching branch for syntax choose`, not the ticket's illustrative *"`<` where `then`
+  expected"* — the `.expect` convention is error-or-not, with wording
+  implementation-specific (`test/conformance/cases/README.md`), so the case is written against the
+  outcome, not the message.
+- **Item 3 confirmed already pinned** (`macros/core-260.fun`,
+  `imports/order-group-through-unit-path.fun`); no case added.
+
+The runner agreed with the ruled rules in both cases — neither was written from the runner's
+output, and neither needed the stop-and-report rule. **Not exhaustive anyway**: the searches were
+by filename and body text, so a case pinning item 1 or 2 under a name neither reached could still
+be hiding; finding one now costs nothing.

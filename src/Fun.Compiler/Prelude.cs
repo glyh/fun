@@ -1,3 +1,4 @@
+using System.Reflection;
 using Fun.Expand;
 using Fun.Kernel;
 
@@ -78,6 +79,56 @@ public static class Prelude
         var sink = new EffectSink();
         var (term, type) = Elaborator.Infer(ctx with { Sink = sink }, unit);
         Elaborator.RequireHandledAtEntry(ctx, sink, since: 0);
-        return new Stage(metas, ctx.Eval(term), type, expander.SyntaxExports);
+        var stage = new Stage(metas, ctx.Eval(term), type, expander.SyntaxExports);
+        // The bootstrap defines the Syntax module every other unit re-exports: resolve the
+        // whole declared interface here, before anything can read it lazily.
+        if (below.Count == 0) Verify(stage);
+        return stage;
     }
+
+    // ---- verifying the declared interface ------------------------------------
+
+    /// <summary>
+    /// Resolves <see cref="PreludeAbi"/> against the loaded prelude, so a test can assert the
+    /// declaration without running a program. The bootstrap's own <see cref="Load"/> runs the
+    /// same check as the unit is built; this is the half <c>dotnet test</c> can reach.
+    /// </summary>
+    public static void VerifyAbi() => Verify(SyntaxStage);
+
+    /// <summary>
+    /// Resolves every name <see cref="PreludeAbi"/> declares against the loaded stage,
+    /// so a rename in the prelude fails here, at load, naming the member and the file it
+    /// was looked for in - rather than lazily, at the first reflection use
+    /// (<c>Reflection.Nominal</c>). Throws on the first name that does not resolve.
+    /// </summary>
+    private static void Verify(Stage stage)
+    {
+        var syntax = Nbe.Force(stage.Metas, Nbe.DotValue(stage.Value, PreludeAbi.Syntax));
+        foreach (var name in Consts(typeof(PreludeAbi.Types.Syntax))) Resolve(stage, syntax, PreludeAbi.Syntax, name);
+        foreach (var name in Consts(typeof(PreludeAbi.Types.Builtins))) Resolve(stage, stage.Value, null, name);
+        foreach (var name in Consts(typeof(PreludeAbi.Builders.Syntax))) Resolve(stage, syntax, PreludeAbi.Syntax, name);
+        foreach (var name in Consts(typeof(PreludeAbi.Builders.Builtins))) Resolve(stage, stage.Value, null, name);
+        foreach (var nominal in typeof(PreludeAbi.Tags).GetNestedTypes())
+        {
+            var type = Resolve(stage, syntax, PreludeAbi.Syntax, nominal.Name);
+            foreach (var tag in Consts(nominal))
+                try { Nbe.DotValue(Nbe.Force(stage.Metas, type), tag); }
+                catch (Exception e) { throw Missing($"{PreludeAbi.Syntax}.{nominal.Name}.{tag}", e); }
+        }
+    }
+
+    /// <summary>The declared names of one group: its <c>const string</c> fields, in order.</summary>
+    private static IEnumerable<string> Consts(Type group) =>
+        group.GetFields(BindingFlags.Public | BindingFlags.Static).Where(f => f.IsLiteral)
+            .Select(f => (string)f.GetRawConstantValue()!);
+
+    private static Value Resolve(Stage stage, Value root, string? scope, string name)
+    {
+        try { return Nbe.Force(stage.Metas, Nbe.DotValue(Nbe.Force(stage.Metas, root), name)); }
+        catch (Exception e) { throw Missing(scope is null ? name : scope + "." + name, e); }
+    }
+
+    /// <summary>A prelude that does not carry a declared name: the member and its file.</summary>
+    private static InvalidOperationException Missing(string member, Exception inner) =>
+        new($"PreludeAbi declares {member}, which the prelude {BootstrapPath} does not define", inner);
 }

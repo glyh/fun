@@ -22,56 +22,56 @@ public sealed class Reflection
     {
         _metas = metas;
         _stdlib = stdlib;
-        ExprType = Nominal("Syntax", "Expr");
-        DeclType = Nominal("Syntax", "Decl");
-        PatternType = Nominal("Syntax", "Pattern");
-        TokenTreeType = Nominal("Syntax", "TokenTree");
-        RType = Nominal("Syntax", "R");
-        _atomVal = Nominal("Syntax", "AtomVal");
-        _tokenKind = Nominal("Syntax", "TokenKind");
-        _role = Nominal("Syntax", "Role");
-        _order = Nominal("Syntax", "Order");
-        _roleMeaning = Nominal("Syntax", "RoleMeaning");
-        _rule = Nominal("Syntax", "Rule");
-        _rulePart = Nominal("Syntax", "RulePart");
-        _replacement = Nominal("Syntax", "Replacement");
-        _capture = Nominal("Syntax", "Capture");
-        _captured = Nominal("Syntax", "Captured");
-        _field = Nominal("Syntax", "Field");
-        _quoteHole = Nominal("Syntax", "QuoteHole");
-        _param = Nominal("Syntax", "Param");
-        _effectRow = Nominal("Syntax", "EffectRow");
-        _effectOp = Nominal("Syntax", "EffectOp");
-        _ctor = Nominal("Syntax", "Ctor");
-        _branch = Nominal("Syntax", "Branch");
-        _patField = Nominal("Syntax", "PatField");
+        ExprType = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Expr);
+        DeclType = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Decl);
+        PatternType = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Pattern);
+        TokenTreeType = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.TokenTree);
+        RType = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.R);
+        _atomVal = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.AtomVal);
+        _tokenKind = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.TokenKind);
+        _role = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Role);
+        _order = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Order);
+        _roleMeaning = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.RoleMeaning);
+        _rule = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Rule);
+        _rulePart = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.RulePart);
+        _replacement = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Replacement);
+        _capture = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Capture);
+        _captured = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Captured);
+        _field = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Field);
+        _quoteHole = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.QuoteHole);
+        _param = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Param);
+        _effectRow = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.EffectRow);
+        _effectOp = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.EffectOp);
+        _ctor = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Ctor);
+        _branch = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Branch);
+        _patField = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.PatField);
 
         // The shapes the compiler builds are probed off the builders the prelude
         // publishes for them, so no constructor, field or leaf tag is spelled here.
-        _bool = LeafsOf(Builder("i64_to_bool"), 2);
+        _bool = LeafsOf(Builder(PreludeAbi.Builders.Builtins.I64ToBool), 2);
         // Each probe leads with the builder's own type binder, which the term's
         // lambda chain counts like any other (Nbe.Apply knows no explicitness).
-        _some = CtorOf(Builder("mk_option"), Probe, I64(0), Probe);
-        _none = CtorOf(Builder("mk_option"), Probe, I64(1), Probe);
-        _nil = CtorOf(Builder("mk_list"), Probe, I64(0), Probe, Probe);
-        _cons = CtorOf(Builder("mk_list"), Probe, I64(1), Probe, Probe);
-        _explicitness = LeafsOf(SyntaxBuilder("explicitness"), 2);
-        _fixity = LeafsOf(SyntaxBuilder("fixity"), 2);
-        _delim = LeafsOf(SyntaxBuilder("delim"), 3);
-        _assoc = LeafsOf(SyntaxBuilder("assoc"), 3);
-        _holeKind = LeafsOf(SyntaxBuilder("hole_kind"), 7);
-        _atomTy = LeafsOf(SyntaxBuilder("atom_ty"), 6);
-        _macroAnn = LeafsOf(SyntaxBuilder("macro_ann"), 2);
-        _span = LayoutOf(SyntaxBuilder("mk_span"), 7);
-        _id = LayoutOf(SyntaxBuilder("mk_id"), 3);
-        _pathChoice = LayoutOf(SyntaxBuilder("mk_path_choice"), 2);
-        _path = LayoutOf(SyntaxBuilder("mk_path"), 3);
-        _patWild = CtorOf(SyntaxBuilder("pat_wild"));
-        _patBind = CtorOf(SyntaxBuilder("pat_var"), Probe);
-        _patAtom = CtorOf(SyntaxBuilder("pat_atom"), Probe);
-        _patProd = CtorOf(SyntaxBuilder("pat_prod"), Probe);
-        _patOr = CtorOf(SyntaxBuilder("pat_or"), Probe, Probe);
-        DeclsType = Nbe.Force(_metas, Member("Syntax", "Decls"));
+        _some = CtorOf(Builder(PreludeAbi.Builders.Builtins.MkOption), Probe, I64(0), Probe);
+        _none = CtorOf(Builder(PreludeAbi.Builders.Builtins.MkOption), Probe, I64(1), Probe);
+        _nil = CtorOf(Builder(PreludeAbi.Builders.Builtins.MkList), Probe, I64(0), Probe, Probe);
+        _cons = CtorOf(Builder(PreludeAbi.Builders.Builtins.MkList), Probe, I64(1), Probe, Probe);
+        _explicitness = LeafsOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.Explicitness), 2);
+        _fixity = LeafsOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.Fixity), 2);
+        _delim = LeafsOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.Delim), 3);
+        _assoc = LeafsOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.Assoc), 3);
+        _holeKind = LeafsOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.HoleKind), 7);
+        _atomTy = LeafsOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.AtomTy), 6);
+        _macroAnn = LeafsOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MacroAnn), 2);
+        _span = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkSpan), 7);
+        _id = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkId), 3);
+        _pathChoice = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkPathChoice), 2);
+        _path = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkPath), 3);
+        _patWild = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatWild));
+        _patBind = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatVar), Probe);
+        _patAtom = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatAtom), Probe);
+        _patProd = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatProd), Probe);
+        _patOr = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatOr), Probe, Probe);
+        DeclsType = Nbe.Force(_metas, Member(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Decls));
         IdType = _id.Type;
     }
 
@@ -95,6 +95,14 @@ public sealed class Reflection
     /// <summary><c>Syntax.Id</c>, the record type of an identifier.</summary>
     public Value IdType { get; }
 
+    /// <summary>The probed field names of <c>Syntax.Id</c>, in order: name, span, scope.</summary>
+    public (string Name, string Span, string Scope) IdFields => (_id.Fields[0], _id.Fields[1], _id.Fields[2]);
+
+    /// <summary>The probed tags of the prelude's list constructors, for consumers building no layout of their own.</summary>
+    public string ListNil => _nil.Tag;
+
+    public string ListCons => _cons.Tag;
+
     private readonly Value.VNominal _atomVal, _tokenKind, _role, _order, _roleMeaning, _rule, _rulePart,
         _replacement, _capture, _captured, _field, _quoteHole, _param, _effectRow, _effectOp, _ctor, _branch, _patField;
 
@@ -111,7 +119,7 @@ public sealed class Reflection
 
     private Value Builder(string name) => Member(name);
 
-    private Value SyntaxBuilder(string name) => Member("Syntax", name);
+    private Value SyntaxBuilder(string name) => Member(PreludeAbi.Syntax, name);
 
     private Value Applied(Value builder, params Value[] args) =>
         args.Aggregate(builder, (fn, arg) => Nbe.Apply(_metas, fn, arg));
@@ -217,11 +225,11 @@ public sealed class Reflection
 
     private Value AtomVal(Atom a) => a switch
     {
-        Atom.I64 n => Con(_atomVal, "I64Atom", new Value.VAtom(n)),
-        Atom.Char c => Con(_atomVal, "CharAtom", new Value.VAtom(c)),
-        Atom.Str s => Con(_atomVal, "StringAtom", new Value.VAtom(s)),
-        Atom.Unit => Con(_atomVal, "UnitAtom"),
-        Atom.Scopes s => Con(_atomVal, "ScopesAtom", new Value.VAtom(s)),
+        Atom.I64 n => Con(_atomVal, PreludeAbi.Tags.AtomVal.I64Atom, new Value.VAtom(n)),
+        Atom.Char c => Con(_atomVal, PreludeAbi.Tags.AtomVal.CharAtom, new Value.VAtom(c)),
+        Atom.Str s => Con(_atomVal, PreludeAbi.Tags.AtomVal.StringAtom, new Value.VAtom(s)),
+        Atom.Unit => Con(_atomVal, PreludeAbi.Tags.AtomVal.UnitAtom),
+        Atom.Scopes s => Con(_atomVal, PreludeAbi.Tags.AtomVal.ScopesAtom, new Value.VAtom(s)),
         _ => throw new InvalidOperationException($"unhandled atom {a.GetType().Name}"),
     };
 
@@ -230,6 +238,11 @@ public sealed class Reflection
     /// <summary>A path form -- a name, an open choice, a member of one -- as a <c>Syntax.Path</c>.</summary>
     private Value Path(Syntax form)
     {
+        // A pattern synonym use may supply its implicit type parameters
+        // (M.Two[I64, Bool](x, b)); the Path ADT has no slot for them yet, so
+        // reflecting such a use is an unported path rather than silent loss.
+        if (form is Syntax.Ap { Explicitness: Fun.Kernel.Explicitness.Implicit })
+            throw new NotImplementedException("not ported yet: reflecting the type arguments a pattern synonym use supplies");
         var members = new List<string>();
         while (form is Syntax.FieldAccess f)
         {
@@ -252,22 +265,22 @@ public sealed class Reflection
 
     private Value TokenKindVal(TokenKind k) => k switch
     {
-        TokenKind.Ident i => Con(_tokenKind, "IdentTok", Str(i.Name)),
-        TokenKind.Operator o => Con(_tokenKind, "OperatorTok", Str(o.Spelling)),
-        TokenKind.Int n => Con(_tokenKind, "IntTok", I64(n.Value)),
-        TokenKind.Char c => Con(_tokenKind, "CharTok", new Value.VAtom(new Atom.Char(c.Value))),
-        TokenKind.Str s => Con(_tokenKind, "StringTok", Str(s.Value)),
-        TokenKind.Word w when TokenKind.Keywords.ContainsKey(w.Spelling) => Con(_tokenKind, "KeywordTok", Str(w.Spelling)),
-        TokenKind.Word w => Con(_tokenKind, "PunctTok", Str(w.Spelling)),
+        TokenKind.Ident i => Con(_tokenKind, PreludeAbi.Tags.TokenKind.IdentTok, Str(i.Name)),
+        TokenKind.Operator o => Con(_tokenKind, PreludeAbi.Tags.TokenKind.OperatorTok, Str(o.Spelling)),
+        TokenKind.Int n => Con(_tokenKind, PreludeAbi.Tags.TokenKind.IntTok, I64(n.Value)),
+        TokenKind.Char c => Con(_tokenKind, PreludeAbi.Tags.TokenKind.CharTok, new Value.VAtom(new Atom.Char(c.Value))),
+        TokenKind.Str s => Con(_tokenKind, PreludeAbi.Tags.TokenKind.StringTok, Str(s.Value)),
+        TokenKind.Word w when TokenKind.Keywords.ContainsKey(w.Spelling) => Con(_tokenKind, PreludeAbi.Tags.TokenKind.KeywordTok, Str(w.Spelling)),
+        TokenKind.Word w => Con(_tokenKind, PreludeAbi.Tags.TokenKind.PunctTok, Str(w.Spelling)),
         _ => throw new InvalidOperationException($"unhandled token kind {k.GetType().Name}"),
     };
 
     /// <summary>A token tree, each token with its scope set (M9).</summary>
     public Value ReflectTokenTree(Fun.Kernel.TokenTree t) => t switch
     {
-        Fun.Kernel.TokenTree.Leaf { Token: var tok } => Con(TokenTreeType, "Tok", Span(tok.Span), TokenKindVal(tok.Kind),
+        Fun.Kernel.TokenTree.Leaf { Token: var tok } => Con(TokenTreeType, PreludeAbi.Tags.TokenTree.Tok, Span(tok.Span), TokenKindVal(tok.Kind),
             new Value.VAtom(new Atom.Scopes(tok.Scope, tok.Kind is TokenKind.Ident i ? Certificate(i.Name) : null))),
-        Fun.Kernel.TokenTree.Group g => Con(TokenTreeType, "TokGroup", Span(g.Span), Delim(g.Delimiter), List(g.Items, ReflectTokenTree)),
+        Fun.Kernel.TokenTree.Group g => Con(TokenTreeType, PreludeAbi.Tags.TokenTree.TokGroup, Span(g.Span), Delim(g.Delimiter), List(g.Items, ReflectTokenTree)),
         _ => throw new InvalidOperationException($"unhandled token tree {t.GetType().Name}"),
     };
 
@@ -285,51 +298,51 @@ public sealed class Reflection
 
         return stx switch
         {
-            Syntax.Var v => E("RawVar", ReflectId(v.Id)),
-            Syntax.Atom a => E("RawAtom", AtomVal(a.Value)),
-            Syntax.Self => E("RawSelf"),
-            Syntax.SelfType => E("RawSelfType"),
-            Syntax.Ap a => E("RawAp", X(a.Fn), Explicitness(a.Explicitness), X(a.Arg)),
-            Syntax.Lam l => E("RawLam", ParamVal(l.Param), X(l.Body)),
-            Syntax.Let l => E("RawLet", ReflectId(l.Name), OptionOf(XOpt(l.Type)), X(l.Value), X(l.Body), Bool(l.Recursive)),
-            Syntax.LetRecGroup g => E("RawLetRecGroup", List(g.Members, m => ReflectId(m.Name)), List(g.Members, m => X(m.Value)), X(g.Body)),
-            Syntax.Annotated a => E("RawAnnotated", X(a.Inner), X(a.Type)),
-            Syntax.Prod p => E("RawProd", List(p.Items, X)),
-            Syntax.ProdTy p => E("RawProdTy", List(p.Items, X)),
-            Syntax.TraitBoundSet b => E("RawTraitBoundSet", List(b.Traits, X)),
-            Syntax.Arrow a => E("RawArrow", Explicitness(a.Explicitness), Option(a.Name, ReflectId), X(a.Domain), Option(a.Row, EffectRowVal), X(a.Codomain)),
-            Syntax.FieldAccess f => E("RawFieldAccess", X(f.Of), Str(f.Field)),
-            Syntax.Proj p => E("RawProj", X(p.Of), I64(p.Index)),
-            Syntax.RecordConstruct r => E("RawRecordConstruct", X(r.Type), Fields(r.Fields)),
-            Syntax.Struct s => E("RawStruct", List(s.Bindings, ReflectDecl)),
-            Syntax.Module m => E("RawModule", List(m.Bindings, ReflectDecl)),
-            Syntax.Sig s => E("RawSig", List(s.Bindings, ReflectDecl)),
-            Syntax.Enum e => E("RawEnum", _none.Build(),
-                List(e.Constructors, c => Con(_ctor, "MkCtor", ReflectId(new Id(c.Name, SourceSpan.Synthetic)), List(c.Payloads, X)))),
-            Syntax.Import i => E("RawImport", Str(i.Path), new Value.VAtom(new Atom.Scopes(i.Scope, null))),
-            Syntax.Open o => E("RawOpen", X(o.Of), X(o.Body), Str(o.Label)),
-            Syntax.OpenChoice c => E("RawOpenChoice", ReflectId(c.Name), List(c.Opens, Str), Option(c.Fallback, Str)),
-            Syntax.EffectDef d => E("RawEffectDef", ReflectId(d.Name), List(d.Params, ReflectId), List(d.Ops, EffectOpVal), X(d.Body)),
-            Syntax.TraitDef t => E("RawTraitDef", ReflectId(t.Name), List([t.Param], ReflectId), Fields(t.Fields), X(t.Body)),
-            Syntax.ImplDef i => E("RawImplDef", Option(i.Name, ReflectId), Path(i.TraitPath), List([i.Arg], X), Fields(i.Fields), X(i.Body)),
-            Syntax.Perform p => E("RawPerform", Path(p.Operation), X(p.Arg)),
-            Syntax.Resume r => E("RawResume", X(r.Arg)),
-            Syntax.RefNew n => E("RawRefNew", X(n.Arg)),
-            Syntax.RefGet g => E("RawRefGet", X(g.Ref)),
-            Syntax.RefSet s => E("RawRefSet", X(s.Ref), X(s.Value)),
-            Syntax.Match m => E("RawMatch", X(m.Scrutinee), List(m.Branches, BranchVal)),
-            Syntax.Stx s => E("RawStx", X(s.Inner)),
+            Syntax.Var v => E(PreludeAbi.Tags.Expr.RawVar, ReflectId(v.Id)),
+            Syntax.Atom a => E(PreludeAbi.Tags.Expr.RawAtom, AtomVal(a.Value)),
+            Syntax.Self => E(PreludeAbi.Tags.Expr.RawSelf),
+            Syntax.SelfType => E(PreludeAbi.Tags.Expr.RawSelfType),
+            Syntax.Ap a => E(PreludeAbi.Tags.Expr.RawAp, X(a.Fn), Explicitness(a.Explicitness), X(a.Arg)),
+            Syntax.Lam l => E(PreludeAbi.Tags.Expr.RawLam, ParamVal(l.Param), X(l.Body)),
+            Syntax.Let l => E(PreludeAbi.Tags.Expr.RawLet, ReflectId(l.Name), OptionOf(XOpt(l.Type)), X(l.Value), X(l.Body), Bool(l.Recursive)),
+            Syntax.LetRecGroup g => E(PreludeAbi.Tags.Expr.RawLetRecGroup, List(g.Members, m => ReflectId(m.Name)), List(g.Members, m => X(m.Value)), X(g.Body)),
+            Syntax.Annotated a => E(PreludeAbi.Tags.Expr.RawAnnotated, X(a.Inner), X(a.Type)),
+            Syntax.Prod p => E(PreludeAbi.Tags.Expr.RawProd, List(p.Items, X)),
+            Syntax.ProdTy p => E(PreludeAbi.Tags.Expr.RawProdTy, List(p.Items, X)),
+            Syntax.TraitBoundSet b => E(PreludeAbi.Tags.Expr.RawTraitBoundSet, List(b.Traits, X)),
+            Syntax.Arrow a => E(PreludeAbi.Tags.Expr.RawArrow, Explicitness(a.Explicitness), Option(a.Name, ReflectId), X(a.Domain), Option(a.Row, EffectRowVal), X(a.Codomain)),
+            Syntax.FieldAccess f => E(PreludeAbi.Tags.Expr.RawFieldAccess, X(f.Of), Str(f.Field)),
+            Syntax.Proj p => E(PreludeAbi.Tags.Expr.RawProj, X(p.Of), I64(p.Index)),
+            Syntax.RecordConstruct r => E(PreludeAbi.Tags.Expr.RawRecordConstruct, X(r.Type), Fields(r.Fields)),
+            Syntax.Struct s => E(PreludeAbi.Tags.Expr.RawStruct, List(s.Bindings, ReflectDecl)),
+            Syntax.Module m => E(PreludeAbi.Tags.Expr.RawModule, List(m.Bindings, ReflectDecl)),
+            Syntax.Sig s => E(PreludeAbi.Tags.Expr.RawSig, List(s.Bindings, ReflectDecl)),
+            Syntax.Enum e => E(PreludeAbi.Tags.Expr.RawEnum, _none.Build(),
+                List(e.Constructors, c => Con(_ctor, PreludeAbi.Tags.Ctor.MkCtor, ReflectId(new Id(c.Name, SourceSpan.Synthetic)), List(c.Payloads, X)))),
+            Syntax.Import i => E(PreludeAbi.Tags.Expr.RawImport, Str(i.Path), new Value.VAtom(new Atom.Scopes(i.Scope, null))),
+            Syntax.Open o => E(PreludeAbi.Tags.Expr.RawOpen, X(o.Of), X(o.Body), Str(o.Label)),
+            Syntax.OpenChoice c => E(PreludeAbi.Tags.Expr.RawOpenChoice, ReflectId(c.Name), List(c.Opens, Str), Option(c.Fallback, Str)),
+            Syntax.EffectDef d => E(PreludeAbi.Tags.Expr.RawEffectDef, ReflectId(d.Name), List(d.Params, ReflectId), List(d.Ops, EffectOpVal), X(d.Body)),
+            Syntax.TraitDef t => E(PreludeAbi.Tags.Expr.RawTraitDef, ReflectId(t.Name), List([t.Param], ReflectId), Fields(t.Fields), X(t.Body)),
+            Syntax.ImplDef i => E(PreludeAbi.Tags.Expr.RawImplDef, Option(i.Name, ReflectId), Path(i.TraitPath), List([i.Arg], X), Fields(i.Fields), X(i.Body)),
+            Syntax.Perform p => E(PreludeAbi.Tags.Expr.RawPerform, Path(p.Operation), X(p.Arg)),
+            Syntax.Resume r => E(PreludeAbi.Tags.Expr.RawResume, X(r.Arg)),
+            Syntax.RefNew n => E(PreludeAbi.Tags.Expr.RawRefNew, X(n.Arg)),
+            Syntax.RefGet g => E(PreludeAbi.Tags.Expr.RawRefGet, X(g.Ref)),
+            Syntax.RefSet s => E(PreludeAbi.Tags.Expr.RawRefSet, X(s.Ref), X(s.Value)),
+            Syntax.Match m => E(PreludeAbi.Tags.Expr.RawMatch, X(m.Scrutinee), List(m.Branches, BranchVal)),
+            Syntax.Stx s => E(PreludeAbi.Tags.Expr.RawStx, X(s.Inner)),
             // A macro sees the argument, not the elaborator's note that it is done.
             Syntax.Elaborated el => X(el.Form),
-            Syntax.Quote q => E("RawQuote", X(q.Template), QuoteHoles(q.Holes)),
-            Syntax.QuoteDecls q => E("RawQuoteDecls", List(q.Items, ReflectDecl), QuoteHoles(q.Holes)),
-            Syntax.MacroDef d => E("RawMacroDef", ReflectId(d.Name), X(d.Value), X(d.Body), OptionOf(d.Kind is { } k ? Ann(k) : null), OptionOf(XOpt(d.Output))),
-            Syntax.SyntaxDef d => E("RawSyntaxDef", ReflectId(d.Name), RoleVal(d.Role), X(d.Body)),
-            Syntax.Block b => E("RawBlock", ReflectTokens(b.Terms)),
-            Syntax.Instantiate i => E("RawInstantiate", ReflectId(i.Instantiation.Form), RuleVal(i.Instantiation.Rule),
+            Syntax.Quote q => E(PreludeAbi.Tags.Expr.RawQuote, X(q.Template), QuoteHoles(q.Holes)),
+            Syntax.QuoteDecls q => E(PreludeAbi.Tags.Expr.RawQuoteDecls, List(q.Items, ReflectDecl), QuoteHoles(q.Holes)),
+            Syntax.MacroDef d => E(PreludeAbi.Tags.Expr.RawMacroDef, ReflectId(d.Name), X(d.Value), X(d.Body), OptionOf(d.Kind is { } k ? Ann(k) : null), OptionOf(XOpt(d.Output))),
+            Syntax.SyntaxDef d => E(PreludeAbi.Tags.Expr.RawSyntaxDef, ReflectId(d.Name), RoleVal(d.Role), X(d.Body)),
+            Syntax.Block b => E(PreludeAbi.Tags.Expr.RawBlock, ReflectTokens(b.Terms)),
+            Syntax.Instantiate i => E(PreludeAbi.Tags.Expr.RawInstantiate, ReflectId(i.Instantiation.Form), RuleVal(i.Instantiation.Rule),
                 Captures(i.Instantiation.Captures), Option(i.Instantiation.FromUnit, Str)),
-            Syntax.MacroCall c => E("RawMacroCall", X(c.Head), List(c.Args, ReflectCaptured)),
-            Syntax.OperatorUse u => E("RawOperatorUse", ReflectId(u.Operator), FixityVal(u.Fixity), List(u.Operands, X),
+            Syntax.MacroCall c => E(PreludeAbi.Tags.Expr.RawMacroCall, X(c.Head), List(c.Args, ReflectCaptured)),
+            Syntax.OperatorUse u => E(PreludeAbi.Tags.Expr.RawOperatorUse, ReflectId(u.Operator), FixityVal(u.Fixity), List(u.Operands, X),
                 Span(u.DeclaredAt), Span(u.Span), Option(u.FromUnit, Str)),
             _ => throw new InvalidOperationException($"unhandled syntax form {stx.GetType().Name}"),
         };
@@ -339,89 +352,89 @@ public sealed class Reflection
     {
         var meaning = r.Meaning switch
         {
-            RoleMeaning.ApplyValue => Con(_roleMeaning, "ApplyValue"),
-            RoleMeaning.AssignRef => Con(_roleMeaning, "AssignRef"),
-            RoleMeaning.CallMacro => Con(_roleMeaning, "CallMacro"),
-            RoleMeaning.Rules rules => Con(_roleMeaning, "Rules", Ann(rules.Kind), List(rules.Items, RuleVal)),
-            RoleMeaning.OrderGroup => Con(_roleMeaning, "OrderGroup"),
-            RoleMeaning.PolyArrow => Con(_roleMeaning, "PolyArrow"),
+            RoleMeaning.ApplyValue => Con(_roleMeaning, PreludeAbi.Tags.RoleMeaning.ApplyValue),
+            RoleMeaning.AssignRef => Con(_roleMeaning, PreludeAbi.Tags.RoleMeaning.AssignRef),
+            RoleMeaning.CallMacro => Con(_roleMeaning, PreludeAbi.Tags.RoleMeaning.CallMacro),
+            RoleMeaning.Rules rules => Con(_roleMeaning, PreludeAbi.Tags.RoleMeaning.Rules, Ann(rules.Kind), List(rules.Items, RuleVal)),
+            RoleMeaning.OrderGroup => Con(_roleMeaning, PreludeAbi.Tags.RoleMeaning.OrderGroup),
+            RoleMeaning.PolyArrow => Con(_roleMeaning, PreludeAbi.Tags.RoleMeaning.PolyArrow),
             _ => throw new InvalidOperationException($"unhandled role meaning {r.Meaning.GetType().Name}"),
         };
-        return Con(_role, "MkRole", FixityVal(r.Fixity), Option(r.Order, OrderVal), meaning, Span(r.DeclaredAt), Option(r.FromUnit, Str));
+        return Con(_role, PreludeAbi.Tags.Role.MkRole, FixityVal(r.Fixity), Option(r.Order, OrderVal), meaning, Span(r.DeclaredAt), Option(r.FromUnit, Str));
     }
 
-    private Value OrderVal(Order o) => Con(_order, "MkOrder", Str(o.Group), Str(o.Name), AssocVal(o.Assoc), Bool(o.Weakest),
+    private Value OrderVal(Order o) => Con(_order, PreludeAbi.Tags.Order.MkOrder, Str(o.Group), Str(o.Name), AssocVal(o.Assoc), Bool(o.Weakest),
         List(o.StrongerThan, OrderVal), List(o.WeakerThan, OrderVal));
 
-    private Value RuleVal(Rule r) => Con(_rule, "MkRule", List(r.Pattern, RulePartVal),
+    private Value RuleVal(Rule r) => Con(_rule, PreludeAbi.Tags.Rule.MkRule, List(r.Pattern, RulePartVal),
         r.Replacement switch
         {
-            Replacement.Expr e => Con(_replacement, "ReplaceExpr", ReflectExpr(e.Syntax)),
-            Replacement.Decls d => Con(_replacement, "ReplaceDecls", List(d.Bindings, ReflectDecl)),
+            Replacement.Expr e => Con(_replacement, PreludeAbi.Tags.Replacement.ReplaceExpr, ReflectExpr(e.Syntax)),
+            Replacement.Decls d => Con(_replacement, PreludeAbi.Tags.Replacement.ReplaceDecls, List(d.Bindings, ReflectDecl)),
             _ => throw new InvalidOperationException($"unhandled replacement {r.Replacement.GetType().Name}"),
         },
         Span(r.Span));
 
     private Value RulePartVal(RulePart p) => p switch
     {
-        RulePart.Literal l => Con(_rulePart, "PartToken", ReflectTokenTree(l.Term)),
-        RulePart.Group g => Con(_rulePart, "PartGroup", Delim(g.Delimiter), List(g.Parts, RulePartVal), Span(g.Span)),
-        RulePart.Hole h => Con(_rulePart, "PartHole", Str(h.Name), HoleKindVal(h.Kind), Span(h.Span)),
+        RulePart.Literal l => Con(_rulePart, PreludeAbi.Tags.RulePart.PartToken, ReflectTokenTree(l.Term)),
+        RulePart.Group g => Con(_rulePart, PreludeAbi.Tags.RulePart.PartGroup, Delim(g.Delimiter), List(g.Parts, RulePartVal), Span(g.Span)),
+        RulePart.Hole h => Con(_rulePart, PreludeAbi.Tags.RulePart.PartHole, Str(h.Name), HoleKindVal(h.Kind), Span(h.Span)),
         _ => throw new InvalidOperationException($"unhandled rule part {p.GetType().Name}"),
     };
 
     private Value ReflectCaptured(Capture c) => c switch
     {
-        Capture.Expr e => Con(_captured, "CapExpr", ReflectExpr(e.Syntax)),
-        Capture.Block b => Con(_captured, "CapBlock", ReflectTokens(b.Terms)),
-        Capture.Id i => Con(_captured, "CapId", ReflectTokenTree(new Fun.Kernel.TokenTree.Leaf(i.Token))),
-        Capture.Pattern p => Con(_captured, "CapPattern", ReflectPattern(p.Value)),
-        Capture.Decls d => Con(_captured, "CapDecls", List(d.Bindings, ReflectDecl)),
-        Capture.Decl d => Con(_captured, "CapDecl", ReflectDecl(d.Binding)),
-        Capture.Tokens t => Con(_captured, "CapTokens", ReflectTokens(t.Terms)),
+        Capture.Expr e => Con(_captured, PreludeAbi.Tags.Captured.CapExpr, ReflectExpr(e.Syntax)),
+        Capture.Block b => Con(_captured, PreludeAbi.Tags.Captured.CapBlock, ReflectTokens(b.Terms)),
+        Capture.Id i => Con(_captured, PreludeAbi.Tags.Captured.CapId, ReflectTokenTree(new Fun.Kernel.TokenTree.Leaf(i.Token))),
+        Capture.Pattern p => Con(_captured, PreludeAbi.Tags.Captured.CapPattern, ReflectPattern(p.Value)),
+        Capture.Decls d => Con(_captured, PreludeAbi.Tags.Captured.CapDecls, List(d.Bindings, ReflectDecl)),
+        Capture.Decl d => Con(_captured, PreludeAbi.Tags.Captured.CapDecl, ReflectDecl(d.Binding)),
+        Capture.Tokens t => Con(_captured, PreludeAbi.Tags.Captured.CapTokens, ReflectTokens(t.Terms)),
         _ => throw new InvalidOperationException($"unhandled capture {c.GetType().Name}"),
     };
 
     private Value Captures(EquatableArray<(string Hole, Capture Capture)> captures) =>
-        List(captures, c => Con(_capture, "MkCapture", Str(c.Hole), ReflectCaptured(c.Capture)));
+        List(captures, c => Con(_capture, PreludeAbi.Tags.Capture.MkCapture, Str(c.Hole), ReflectCaptured(c.Capture)));
 
     private Value QuoteHoles(EquatableArray<(string Hole, Syntax Value)> holes) =>
-        List(holes, h => Con(_quoteHole, "MkQuoteHole", Str(h.Hole), ReflectExpr(h.Value)));
+        List(holes, h => Con(_quoteHole, PreludeAbi.Tags.QuoteHole.MkQuoteHole, Str(h.Hole), ReflectExpr(h.Value)));
 
     private Value Fields(EquatableArray<(string Name, Syntax Value)> fields) =>
-        List(fields, f => Con(_field, "MkField", Str(f.Name), ReflectExpr(f.Value)));
+        List(fields, f => Con(_field, PreludeAbi.Tags.Field.MkField, Str(f.Name), ReflectExpr(f.Value)));
 
     // A source binder's trait bounds are written in its type (a TraitBoundSet); the
     // reflected bound paths carry what a macro put there.
     private Value ParamVal(Param p) =>
-        Con(_param, "MkParam", ReflectId(p.Name), OptionOf(p.Type is null ? null : ReflectExpr(p.Type)),
+        Con(_param, PreludeAbi.Tags.Param.MkParam, ReflectId(p.Name), OptionOf(p.Type is null ? null : ReflectExpr(p.Type)),
             List(p.Bounds, Path), Explicitness(p.Explicitness));
 
     private Value EffectRowVal(EffectRow row) =>
-        Con(_effectRow, "MkEffectRow", List(row.Effects, ReflectExpr), List(row.Tails, ReflectExpr), Bool(row.Inferred), Bool(row.Polymorphic));
+        Con(_effectRow, PreludeAbi.Tags.EffectRow.MkEffectRow, List(row.Effects, ReflectExpr), List(row.Tails, ReflectExpr), Bool(row.Inferred), Bool(row.Polymorphic));
 
-    private Value EffectOpVal(EffectOp op) => Con(_effectOp, "MkEffectOp", Str(op.Name), ReflectExpr(op.Input), ReflectExpr(op.Output));
+    private Value EffectOpVal(EffectOp op) => Con(_effectOp, PreludeAbi.Tags.EffectOp.MkEffectOp, Str(op.Name), ReflectExpr(op.Input), ReflectExpr(op.Output));
 
     private Value BranchVal(MatchBranch b) => b.Operation is { } op
-        ? Con(_branch, "EffectBranch", Path(op), ReflectPattern(b.Pattern), ReflectExpr(b.Body))
-        : Con(_branch, "ValueBranch", ReflectPattern(b.Pattern), ReflectExpr(b.Body));
+        ? Con(_branch, PreludeAbi.Tags.Branch.EffectBranch, Path(op), ReflectPattern(b.Pattern), ReflectExpr(b.Body))
+        : Con(_branch, PreludeAbi.Tags.Branch.ValueBranch, ReflectPattern(b.Pattern), ReflectExpr(b.Body));
 
     public Value ReflectPattern(Fun.Kernel.Pattern p)
     {
         // Patterns carry no span: the reflected span is always None.
         Value P(string name, params Value[] args) => Con(PatternType, name, [_none.Build(), .. args]);
-        Value PatField((string Name, Fun.Kernel.Pattern Pattern) f) => Con(_patField, "MkPatField", Str(f.Name), _some.Build(ReflectPattern(f.Pattern)));
+        Value PatField((string Name, Fun.Kernel.Pattern Pattern) f) => Con(_patField, PreludeAbi.Tags.PatField.MkPatField, Str(f.Name), _some.Build(ReflectPattern(f.Pattern)));
         return p switch
         {
             Fun.Kernel.Pattern.Wild => _patWild.Build(_none.Build()),
             Fun.Kernel.Pattern.Bind b => _patBind.Build(_none.Build(), ReflectId(b.Name)),
-            Fun.Kernel.Pattern.Con c => P("RawPatCon", Path(c.Head), List(c.Args, ReflectPattern)),
+            Fun.Kernel.Pattern.Con c => P(PreludeAbi.Tags.Pattern.RawPatCon, Path(c.Head), List(c.Args, ReflectPattern)),
             Fun.Kernel.Pattern.Atom a => _patAtom.Build(_none.Build(), AtomVal(a.Value)),
             Fun.Kernel.Pattern.Prod pr => _patProd.Build(_none.Build(), List(pr.Items, ReflectPattern)),
             Fun.Kernel.Pattern.Or o => _patOr.Build(_none.Build(), ReflectPattern(o.Left), ReflectPattern(o.Right)),
-            Fun.Kernel.Pattern.Record r => P("RawPatRecord", Path(r.Type), List(r.Fields, PatField), Bool(r.Partial)),
-            Fun.Kernel.Pattern.StructType s => P("RawPatStructType", List(s.Fields, PatField), Bool(s.Partial)),
-            Fun.Kernel.Pattern.AtomType t => P("RawPatType", AtomTyVal(t.Ty)),
+            Fun.Kernel.Pattern.Record r => P(PreludeAbi.Tags.Pattern.RawPatRecord, Path(r.Type), List(r.Fields, PatField), Bool(r.Partial)),
+            Fun.Kernel.Pattern.StructType s => P(PreludeAbi.Tags.Pattern.RawPatStructType, List(s.Fields, PatField), Bool(s.Partial)),
+            Fun.Kernel.Pattern.AtomType t => P(PreludeAbi.Tags.Pattern.RawPatType, AtomTyVal(t.Ty)),
             _ => throw new InvalidOperationException($"unhandled pattern {p.GetType().Name}"),
         };
     }
@@ -431,23 +444,23 @@ public sealed class Reflection
         Value D(string name, params Value[] args) => Con(DeclType, name, args);
         return b switch
         {
-            Binding.Let { Value: Syntax.PatternSynonym s } l => D("DeclPatternSyn", ReflectId(l.Name), List(s.Params, ReflectId), ReflectPattern(s.Rhs), Bool(l.Public)),
-            Binding.Let l => D("DeclLet", ReflectId(l.Name), ReflectExpr(l.Value), Bool(l.Public), Bool(l.Recursive)),
-            Binding.RecGroup g => D("DeclRecGroup", List(g.Members, m => ReflectId(m.Name)), List(g.Members, m => ReflectExpr(m.Value)), Bool(g.Public)),
-            Binding.Method m => D("DeclMethod", ReflectId(m.Name), List(m.Params, ParamVal), Option(m.Row, EffectRowVal), ReflectExpr(m.Body), Bool(m.Public)),
-            Binding.Effect e => D("DeclEffect", ReflectId(e.Name), List(e.Params, ReflectId), List(e.Ops, EffectOpVal), Bool(e.Public)),
-            Binding.Trait t => D("DeclTrait", ReflectId(t.Name), List([t.Param], ReflectId), Fields(t.Fields), Bool(t.Public)),
+            Binding.Let { Value: Syntax.PatternSynonym s } l => D(PreludeAbi.Tags.Decl.DeclPatternSyn, ReflectId(l.Name), List(s.Params, ReflectId), ReflectPattern(s.Rhs), Bool(l.Public)),
+            Binding.Let l => D(PreludeAbi.Tags.Decl.DeclLet, ReflectId(l.Name), ReflectExpr(l.Value), Bool(l.Public), Bool(l.Recursive)),
+            Binding.RecGroup g => D(PreludeAbi.Tags.Decl.DeclRecGroup, List(g.Members, m => ReflectId(m.Name)), List(g.Members, m => ReflectExpr(m.Value)), Bool(g.Public)),
+            Binding.Method m => D(PreludeAbi.Tags.Decl.DeclMethod, ReflectId(m.Name), List(m.Params, ParamVal), Option(m.Row, EffectRowVal), ReflectExpr(m.Body), Bool(m.Public)),
+            Binding.Effect e => D(PreludeAbi.Tags.Decl.DeclEffect, ReflectId(e.Name), List(e.Params, ReflectId), List(e.Ops, EffectOpVal), Bool(e.Public)),
+            Binding.Trait t => D(PreludeAbi.Tags.Decl.DeclTrait, ReflectId(t.Name), List([t.Param], ReflectId), Fields(t.Fields), Bool(t.Public)),
             // A signature's impl has no fields; reflected, it is an impl with none.
-            Binding.Impl i => D("DeclImpl", Option(i.Name, ReflectId), Path(i.TraitPath), List([i.Arg], ReflectExpr), Fields(i.Fields ?? []), Bool(i.Public)),
-            Binding.Macro m => D("DeclMacro", ReflectId(m.Name), ReflectExpr(m.Value), Bool(m.Public), OptionOf(m.Kind is { } k ? Ann(k) : null), OptionOf(m.Output is null ? null : ReflectExpr(m.Output))),
-            Binding.MacroCall c => D("DeclMacroCall", ReflectExpr(c.Head), List(c.Args, ReflectCaptured), Bool(c.Public)),
-            Binding.Field f => D("DeclField", Str(f.Name), ReflectExpr(f.Type)),
-            Binding.Open o => D("DeclOpen", ReflectExpr(o.Of), Str(o.Label)),
-            Binding.Export e => D("DeclExport", ReflectExpr(e.Of), Option(e.Names is { } names ? (object)names : null, n => List((EquatableArray<string>)n, Str)), Bool(e.Public)),
-            Binding.Hole h => D("DeclHole", ReflectId(h.Name)),
-            Binding.SyntaxDecl s => D("DeclSyntax", ReflectId(s.Name), RoleVal(s.Role), Bool(s.Public)),
-            Binding.Items i => D("DeclItems", ReflectTokens(i.Terms)),
-            Binding.Instantiate i => D("DeclInstantiate", ReflectId(i.Instantiation.Form), RuleVal(i.Instantiation.Rule),
+            Binding.Impl i => D(PreludeAbi.Tags.Decl.DeclImpl, Option(i.Name, ReflectId), Path(i.TraitPath), List([i.Arg], ReflectExpr), Fields(i.Fields ?? []), Bool(i.Public)),
+            Binding.Macro m => D(PreludeAbi.Tags.Decl.DeclMacro, ReflectId(m.Name), ReflectExpr(m.Value), Bool(m.Public), OptionOf(m.Kind is { } k ? Ann(k) : null), OptionOf(m.Output is null ? null : ReflectExpr(m.Output))),
+            Binding.MacroCall c => D(PreludeAbi.Tags.Decl.DeclMacroCall, ReflectExpr(c.Head), List(c.Args, ReflectCaptured), Bool(c.Public)),
+            Binding.Field f => D(PreludeAbi.Tags.Decl.DeclField, Str(f.Name), ReflectExpr(f.Type)),
+            Binding.Open o => D(PreludeAbi.Tags.Decl.DeclOpen, ReflectExpr(o.Of), Str(o.Label)),
+            Binding.Export e => D(PreludeAbi.Tags.Decl.DeclExport, ReflectExpr(e.Of), Option(e.Names is { } names ? (object)names : null, n => List((EquatableArray<string>)n, Str)), Bool(e.Public)),
+            Binding.Hole h => D(PreludeAbi.Tags.Decl.DeclHole, ReflectId(h.Name)),
+            Binding.SyntaxDecl s => D(PreludeAbi.Tags.Decl.DeclSyntax, ReflectId(s.Name), RoleVal(s.Role), Bool(s.Public)),
+            Binding.Items i => D(PreludeAbi.Tags.Decl.DeclItems, ReflectTokens(i.Terms)),
+            Binding.Instantiate i => D(PreludeAbi.Tags.Decl.DeclInstantiate, ReflectId(i.Instantiation.Form), RuleVal(i.Instantiation.Rule),
                 Captures(i.Instantiation.Captures), Option(i.Instantiation.FromUnit, Str), Bool(i.Public)),
             _ => throw new InvalidOperationException($"unhandled binding {b.GetType().Name}"),
         };
@@ -475,7 +488,7 @@ public sealed class Reflection
         terms.IsEmpty ? SourceSpan.Synthetic : SourceSpan.Between(terms[0].Span, terms[^1].Span);
 
     /// <summary>A type binder's solution as the macro receives it: <c>RExpr(T)</c>.</summary>
-    public Value ReflectType(Value type) => Con(RType, "RExpr", type);
+    public Value ReflectType(Value type) => Con(RType, PreludeAbi.Tags.R.RExpr, type);
 
     // ---- reading values back -------------------------------------------------
 
@@ -596,11 +609,11 @@ public sealed class Reflection
 
     private Atom? ReadAtom(Value v) => Payload(_atomVal, v) switch
     {
-        ("I64Atom", [Value.VAtom { Atom: Atom.I64 n }]) => n,
-        ("CharAtom", [Value.VAtom { Atom: Atom.Char c }]) => c,
-        ("StringAtom", [Value.VAtom { Atom: Atom.Str s }]) => s,
-        ("UnitAtom", { IsEmpty: true }) => Atom.Unit.Instance,
-        ("ScopesAtom", [Value.VAtom { Atom: Atom.Scopes s }]) => s,
+        (PreludeAbi.Tags.AtomVal.I64Atom, [Value.VAtom { Atom: Atom.I64 n }]) => n,
+        (PreludeAbi.Tags.AtomVal.CharAtom, [Value.VAtom { Atom: Atom.Char c }]) => c,
+        (PreludeAbi.Tags.AtomVal.StringAtom, [Value.VAtom { Atom: Atom.Str s }]) => s,
+        (PreludeAbi.Tags.AtomVal.UnitAtom, { IsEmpty: true }) => Atom.Unit.Instance,
+        (PreludeAbi.Tags.AtomVal.ScopesAtom, [Value.VAtom { Atom: Atom.Scopes s }]) => s,
         _ => null,
     };
 
@@ -641,13 +654,13 @@ public sealed class Reflection
 
     private TokenKind? ReadTokenKind(Value v) => Payload(_tokenKind, v) switch
     {
-        ("IdentTok", [var s]) when ReadStr(s) is { } name => new TokenKind.Ident(name),
-        ("OperatorTok", [var s]) when ReadStr(s) is { } op => new TokenKind.Operator(op),
-        ("IntTok", [Value.VAtom { Atom: Atom.I64 n }]) => new TokenKind.Int(n.Value),
-        ("CharTok", [Value.VAtom { Atom: Atom.Char c }]) => new TokenKind.Char(c.Value),
-        ("StringTok", [var s]) when ReadStr(s) is { } str => new TokenKind.Str(str),
-        ("KeywordTok", [var s]) when ReadStr(s) is { } kw && TokenKind.Keywords.TryGetValue(kw, out var word) => word,
-        ("PunctTok", [var s]) when ReadStr(s) is { } p => Punctuation.FirstOrDefault(w => w.Spelling == p),
+        (PreludeAbi.Tags.TokenKind.IdentTok, [var s]) when ReadStr(s) is { } name => new TokenKind.Ident(name),
+        (PreludeAbi.Tags.TokenKind.OperatorTok, [var s]) when ReadStr(s) is { } op => new TokenKind.Operator(op),
+        (PreludeAbi.Tags.TokenKind.IntTok, [Value.VAtom { Atom: Atom.I64 n }]) => new TokenKind.Int(n.Value),
+        (PreludeAbi.Tags.TokenKind.CharTok, [Value.VAtom { Atom: Atom.Char c }]) => new TokenKind.Char(c.Value),
+        (PreludeAbi.Tags.TokenKind.StringTok, [var s]) when ReadStr(s) is { } str => new TokenKind.Str(str),
+        (PreludeAbi.Tags.TokenKind.KeywordTok, [var s]) when ReadStr(s) is { } kw && TokenKind.Keywords.TryGetValue(kw, out var word) => word,
+        (PreludeAbi.Tags.TokenKind.PunctTok, [var s]) when ReadStr(s) is { } p => Punctuation.FirstOrDefault(w => w.Spelling == p),
         _ => null,
     };
 
@@ -656,14 +669,14 @@ public sealed class Reflection
         // A reflected `UnitTok` is `()`: the port's tree has no unit token kind, but
         // the same source reads as the empty paren group it is here, and the
         // enforester reads that as unit (the prototype's Token_tree.Unit).
-        ("Tok", [var unitSpan, var unitKind, _])
-            when ReadSpan(unitSpan) is { } unitSp && Payload(_tokenKind, unitKind) is ("UnitTok", { IsEmpty: true })
+        (PreludeAbi.Tags.TokenTree.Tok, [var unitSpan, var unitKind, _])
+            when ReadSpan(unitSpan) is { } unitSp && Payload(_tokenKind, unitKind) is (PreludeAbi.Tags.TokenKind.UnitTok, { IsEmpty: true })
             => new Fun.Kernel.TokenTree.Group(Delimiter.Paren, [], unitSp),
-        ("Tok", [var span, var kind, Value.VAtom { Atom: Atom.Scopes scopes }])
+        (PreludeAbi.Tags.TokenTree.Tok, [var span, var kind, Value.VAtom { Atom: Atom.Scopes scopes }])
             when ReadSpan(span) is { } sp && ReadTokenKind(kind) is { } k
                  && (k is not TokenKind.Ident i || Certified(i.Name, scopes.ResolvedName))
             => new Fun.Kernel.TokenTree.Leaf(new Token(k, sp, scopes.Set)),
-        ("TokGroup", [var span, var d, var items])
+        (PreludeAbi.Tags.TokenTree.TokGroup, [var span, var d, var items])
             when ReadSpan(span) is { } sp && ReadDelim(d) is { } delim && ReadList(items, ReadTokenTree) is { } ts
             => new Fun.Kernel.TokenTree.Group(delim, ts, sp),
         _ => null,
@@ -683,70 +696,70 @@ public sealed class Reflection
 
         switch (name, args.Length)
         {
-            case ("RawVar", 1): return ReadId(args[0]) is { } id ? new Syntax.Var(id) : null;
-            case ("RawAtom", 1): return ReadAtom(args[0]) is { } a ? new Syntax.Atom(a, span) : null;
-            case ("RawSelf", 0): return new Syntax.Self(span);
-            case ("RawSelfType", 0): return new Syntax.SelfType(span);
-            case ("RawAp", 3):
+            case (PreludeAbi.Tags.Expr.RawVar, 1): return ReadId(args[0]) is { } id ? new Syntax.Var(id) : null;
+            case (PreludeAbi.Tags.Expr.RawAtom, 1): return ReadAtom(args[0]) is { } a ? new Syntax.Atom(a, span) : null;
+            case (PreludeAbi.Tags.Expr.RawSelf, 0): return new Syntax.Self(span);
+            case (PreludeAbi.Tags.Expr.RawSelfType, 0): return new Syntax.SelfType(span);
+            case (PreludeAbi.Tags.Expr.RawAp, 3):
                 return X(args[0]) is { } f && ReadExplicitness(args[1]) is { } apEx && X(args[2]) is { } arg
                     ? new Syntax.Ap(f, apEx, arg, span) : null;
-            case ("RawLam", 2):
+            case (PreludeAbi.Tags.Expr.RawLam, 2):
                 return ReadParam(args[0]) is { } p && X(args[1]) is { } lamBody ? new Syntax.Lam(p, lamBody, span) : null;
-            case ("RawLet", 5):
+            case (PreludeAbi.Tags.Expr.RawLet, 5):
             {
                 if (ReadId(args[0]) is not { } n || ReadOption(args[1], X) is not (true, var type)) return null;
                 return X(args[2]) is { } value && X(args[3]) is { } body && ReadBool(args[4]) is { } rec
                     ? new Syntax.Let(n, type, value, body, rec, span) : null;
             }
-            case ("RawLetRecGroup", 3):
+            case (PreludeAbi.Tags.Expr.RawLetRecGroup, 3):
             {
                 if (ReadList(args[0], ReadId) is not { } names || ReadList(args[1], X) is not { } values || X(args[2]) is not { } body) return null;
                 return names.Length == values.Length
                     ? new Syntax.LetRecGroup([.. names.Zip(values, (n, x) => new RecMember(n, x))], body, span) : null;
             }
-            case ("RawAnnotated", 2):
+            case (PreludeAbi.Tags.Expr.RawAnnotated, 2):
                 return X(args[0]) is { } inner && X(args[1]) is { } typ ? new Syntax.Annotated(inner, typ, span) : null;
-            case ("RawProd", 1): return ReadList(args[0], X) is { } items ? new Syntax.Prod(items, span) : null;
-            case ("RawProdTy", 1): return ReadList(args[0], X) is { } tys ? new Syntax.ProdTy(tys, span) : null;
-            case ("RawTraitBoundSet", 1): return ReadList(args[0], X) is { } traits ? new Syntax.TraitBoundSet(traits, span) : null;
-            case ("RawArrow", 5):
+            case (PreludeAbi.Tags.Expr.RawProd, 1): return ReadList(args[0], X) is { } items ? new Syntax.Prod(items, span) : null;
+            case (PreludeAbi.Tags.Expr.RawProdTy, 1): return ReadList(args[0], X) is { } tys ? new Syntax.ProdTy(tys, span) : null;
+            case (PreludeAbi.Tags.Expr.RawTraitBoundSet, 1): return ReadList(args[0], X) is { } traits ? new Syntax.TraitBoundSet(traits, span) : null;
+            case (PreludeAbi.Tags.Expr.RawArrow, 5):
             {
                 if (ReadExplicitness(args[0]) is not { } ex || ReadOption(args[1], ReadId) is not (true, var aname)) return null;
                 if (X(args[2]) is not { } dom || ReadOption(args[3], ReadEffectRow) is not (true, var row) || X(args[4]) is not { } cod) return null;
                 return new Syntax.Arrow(ex, aname, dom, row, cod, span);
             }
-            case ("RawFieldAccess", 2):
+            case (PreludeAbi.Tags.Expr.RawFieldAccess, 2):
                 return X(args[0]) is { } of && ReadStr(args[1]) is { } field ? new Syntax.FieldAccess(of, field, span) : null;
-            case ("RawProj", 2):
+            case (PreludeAbi.Tags.Expr.RawProj, 2):
                 return X(args[0]) is { } pOf && ReadI64(args[1]) is long idx ? new Syntax.Proj(pOf, (int)idx, span) : null;
-            case ("RawRecordConstruct", 2):
+            case (PreludeAbi.Tags.Expr.RawRecordConstruct, 2):
                 return X(args[0]) is { } rtyp && ReadFields(args[1]) is { } fields ? new Syntax.RecordConstruct(rtyp, fields, span) : null;
-            case ("RawStruct", 1): return ReadDecls(args[0]) is { } sb ? new Syntax.Struct(sb, span) : null;
-            case ("RawModule", 1): return ReadDecls(args[0]) is { } mb ? new Syntax.Module(mb, span) : null;
-            case ("RawSig", 1): return ReadDecls(args[0]) is { } gb ? new Syntax.Sig(gb, span) : null;
-            case ("RawEnum", 2):
+            case (PreludeAbi.Tags.Expr.RawStruct, 1): return ReadDecls(args[0]) is { } sb ? new Syntax.Struct(sb, span) : null;
+            case (PreludeAbi.Tags.Expr.RawModule, 1): return ReadDecls(args[0]) is { } mb ? new Syntax.Module(mb, span) : null;
+            case (PreludeAbi.Tags.Expr.RawSig, 1): return ReadDecls(args[0]) is { } gb ? new Syntax.Sig(gb, span) : null;
+            case (PreludeAbi.Tags.Expr.RawEnum, 2):
             {
                 if (ReadOption(args[0], ReadStr) is not (true, _)) return null;
-                var ctors = ReadList(args[1], c => Payload(_ctor, c) is ("MkCtor", [var cid, var payloads])
+                var ctors = ReadList(args[1], c => Payload(_ctor, c) is (PreludeAbi.Tags.Ctor.MkCtor, [var cid, var payloads])
                     && ReadId(cid) is { } ci && ReadList(payloads, X) is { } ps ? new EnumConstructor(ci.Name, ps) : null);
                 return ctors is { } cs ? new Syntax.Enum(cs, span) : null;
             }
-            case ("RawImport", 2):
+            case (PreludeAbi.Tags.Expr.RawImport, 2):
                 return ReadStr(args[0]) is { } path && args[1] is Value.VAtom { Atom: Atom.Scopes sc }
                     ? new Syntax.Import(path, span) { Scope = sc.Set } : null;
-            case ("RawOpen", 3):
+            case (PreludeAbi.Tags.Expr.RawOpen, 3):
                 return X(args[0]) is { } m && X(args[1]) is { } obody && ReadStr(args[2]) is { } label
                     ? new Syntax.Open(m, obody, label, span) : null;
-            case ("RawOpenChoice", 3):
+            case (PreludeAbi.Tags.Expr.RawOpenChoice, 3):
             {
                 if (ReadId(args[0]) is not { } cname || ReadList(args[1], ReadStr) is not { } opens) return null;
                 return ReadOption(args[2], ReadStr) is (true, var fallback) ? new Syntax.OpenChoice(cname, opens, fallback) : null;
             }
-            case ("RawEffectDef", 4):
+            case (PreludeAbi.Tags.Expr.RawEffectDef, 4):
                 return ReadId(args[0]) is { } ename && ReadList(args[1], ReadId) is { } eps
                        && ReadList(args[2], ReadEffectOp) is { } ops && X(args[3]) is { } ebody
                     ? new Syntax.EffectDef(ename, eps, ops, ebody, span) : null;
-            case ("RawTraitDef", 4):
+            case (PreludeAbi.Tags.Expr.RawTraitDef, 4):
             {
                 if (ReadId(args[0]) is not { } tname || ReadList(args[1], ReadId) is not { } tps
                     || ReadFields(args[2]) is not { } tfields || X(args[3]) is not { } tbody) return null;
@@ -754,7 +767,7 @@ public sealed class Reflection
                     ? new Syntax.TraitDef(tname, tps[0], tfields, tbody, span)
                     : throw new FunException("trait declaration accepts exactly one parameter");
             }
-            case ("RawImplDef", 5):
+            case (PreludeAbi.Tags.Expr.RawImplDef, 5):
             {
                 if (ReadOption(args[0], ReadId) is not (true, var iname) || ReadPath(args[1]) is not { } trait
                     || ReadList(args[2], X) is not { } iargs || ReadFields(args[3]) is not { } ifields || X(args[4]) is not { } ibody) return null;
@@ -762,40 +775,40 @@ public sealed class Reflection
                     ? new Syntax.ImplDef(iname, trait, iargs[0], ifields, ibody, span)
                     : throw new FunException("impl declaration accepts exactly one trait argument");
             }
-            case ("RawPerform", 2):
+            case (PreludeAbi.Tags.Expr.RawPerform, 2):
                 return ReadPath(args[0]) is Syntax.FieldAccess op && X(args[1]) is { } parg ? new Syntax.Perform(op, parg, span) : null;
-            case ("RawResume", 1): return X(args[0]) is { } ra ? new Syntax.Resume(ra, span) : null;
-            case ("RawRefNew", 1): return X(args[0]) is { } na ? new Syntax.RefNew(na, span) : null;
-            case ("RawRefGet", 1): return X(args[0]) is { } ga ? new Syntax.RefGet(ga, span) : null;
-            case ("RawRefSet", 2): return X(args[0]) is { } sr && X(args[1]) is { } sv ? new Syntax.RefSet(sr, sv, span) : null;
-            case ("RawMatch", 2):
+            case (PreludeAbi.Tags.Expr.RawResume, 1): return X(args[0]) is { } ra ? new Syntax.Resume(ra, span) : null;
+            case (PreludeAbi.Tags.Expr.RawRefNew, 1): return X(args[0]) is { } na ? new Syntax.RefNew(na, span) : null;
+            case (PreludeAbi.Tags.Expr.RawRefGet, 1): return X(args[0]) is { } ga ? new Syntax.RefGet(ga, span) : null;
+            case (PreludeAbi.Tags.Expr.RawRefSet, 2): return X(args[0]) is { } sr && X(args[1]) is { } sv ? new Syntax.RefSet(sr, sv, span) : null;
+            case (PreludeAbi.Tags.Expr.RawMatch, 2):
                 return X(args[0]) is { } scrut && ReadList(args[1], ReadBranch) is { } branches ? new Syntax.Match(scrut, branches, span) : null;
-            case ("RawStx", 1): return X(args[0]) is { } inner2 ? new Syntax.Stx(inner2, span) : null;
-            case ("RawQuote", 2):
+            case (PreludeAbi.Tags.Expr.RawStx, 1): return X(args[0]) is { } inner2 ? new Syntax.Stx(inner2, span) : null;
+            case (PreludeAbi.Tags.Expr.RawQuote, 2):
                 return X(args[0]) is { } template && ReadQuoteHoles(args[1]) is { } holes ? new Syntax.Quote(template, holes, span) : null;
-            case ("RawQuoteDecls", 2):
+            case (PreludeAbi.Tags.Expr.RawQuoteDecls, 2):
                 return ReadDecls(args[0]) is { } qitems && ReadQuoteHoles(args[1]) is { } qholes ? new Syntax.QuoteDecls(qitems, qholes, span) : null;
-            case ("RawMacroDef", 5):
+            case (PreludeAbi.Tags.Expr.RawMacroDef, 5):
             {
                 if (ReadId(args[0]) is not { } mname || X(args[1]) is not { } mvalue || X(args[2]) is not { } mbody) return null;
                 if (ReadOptionS(args[3], ReadAnn) is not (true, var kind) || ReadOption(args[4], X) is not (true, var output)) return null;
                 return new Syntax.MacroDef(mname, mvalue, mbody, kind, output, span);
             }
-            case ("RawSyntaxDef", 3):
+            case (PreludeAbi.Tags.Expr.RawSyntaxDef, 3):
                 return ReadId(args[0]) is { } sname && ReadRole(args[1]) is { } role && X(args[2]) is { } sbody
                     ? new Syntax.SyntaxDef(sname, role, sbody, span) : null;
-            case ("RawBlock", 1): return ReadTokens(args[0]) is { } ts ? new Syntax.Block(ts, span) : null;
-            case ("RawInstantiate", 4):
+            case (PreludeAbi.Tags.Expr.RawBlock, 1): return ReadTokens(args[0]) is { } ts ? new Syntax.Block(ts, span) : null;
+            case (PreludeAbi.Tags.Expr.RawInstantiate, 4):
                 return ReadInstantiation(args[0], args[1], args[2], args[3]) is { } inst ? new Syntax.Instantiate(inst, span) : null;
-            case ("RawMacroCall", 2):
+            case (PreludeAbi.Tags.Expr.RawMacroCall, 2):
                 return X(args[0]) is { } head && ReadList(args[1], ReadCaptured) is { } cargs ? new Syntax.MacroCall(head, cargs, span) : null;
-            case ("RawOperatorUse", 6):
+            case (PreludeAbi.Tags.Expr.RawOperatorUse, 6):
             {
                 if (ReadId(args[0]) is not { } operatorId || ReadFixity(args[1]) is not { } fx || ReadList(args[2], X) is not { } operands) return null;
                 if (ReadSpan(args[3]) is not { } declared || ReadSpan(args[4]) is not { } used || ReadOption(args[5], ReadStr) is not (true, var unit)) return null;
                 return new Syntax.OperatorUse(operatorId, fx, operands, declared, unit, used);
             }
-            case ("RawTypeDef", _):
+            case (PreludeAbi.Tags.Expr.RawTypeDef, _):
                 throw new FunException("type is a macro: the reflected syntax has no type definition");
             default:
                 return null;
@@ -810,23 +823,23 @@ public sealed class Reflection
 
     private Role? ReadRole(Value v)
     {
-        if (Payload(_role, v) is not ("MkRole", [var fixity, var order, var meaning, var declared, var fromUnit])) return null;
+        if (Payload(_role, v) is not (PreludeAbi.Tags.Role.MkRole, [var fixity, var order, var meaning, var declared, var fromUnit])) return null;
         if (ReadFixity(fixity) is not { } fx || ReadOption(order, ReadOrder) is not (true, var ord)) return null;
         RoleMeaning? m = Payload(_roleMeaning, meaning) switch
         {
-            ("ApplyValue", { IsEmpty: true }) => RoleMeaning.ApplyValue.Instance,
-            ("AssignRef", { IsEmpty: true }) => RoleMeaning.AssignRef.Instance,
-            ("CallMacro", { IsEmpty: true }) => RoleMeaning.CallMacro.Instance,
-            ("Rules", [var kind, var rules]) when ReadAnn(kind) is { } k && ReadList(rules, ReadRule) is { } rs => new RoleMeaning.Rules(k, rs),
-            ("OrderGroup", { IsEmpty: true }) => RoleMeaning.OrderGroup.Instance,
-            ("PolyArrow", { IsEmpty: true }) => RoleMeaning.PolyArrow.Instance,
+            (PreludeAbi.Tags.RoleMeaning.ApplyValue, { IsEmpty: true }) => RoleMeaning.ApplyValue.Instance,
+            (PreludeAbi.Tags.RoleMeaning.AssignRef, { IsEmpty: true }) => RoleMeaning.AssignRef.Instance,
+            (PreludeAbi.Tags.RoleMeaning.CallMacro, { IsEmpty: true }) => RoleMeaning.CallMacro.Instance,
+            (PreludeAbi.Tags.RoleMeaning.Rules, [var kind, var rules]) when ReadAnn(kind) is { } k && ReadList(rules, ReadRule) is { } rs => new RoleMeaning.Rules(k, rs),
+            (PreludeAbi.Tags.RoleMeaning.OrderGroup, { IsEmpty: true }) => RoleMeaning.OrderGroup.Instance,
+            (PreludeAbi.Tags.RoleMeaning.PolyArrow, { IsEmpty: true }) => RoleMeaning.PolyArrow.Instance,
             _ => null,
         };
         if (m is null || ReadSpan(declared) is not { } at) return null;
         return ReadOption(fromUnit, ReadStr) is (true, var unit) ? new Role(fx, ord, m, at, unit) : null;
     }
 
-    private Order? ReadOrder(Value v) => Payload(_order, v) is ("MkOrder", [var g, var n, var a, var w, var st, var wk])
+    private Order? ReadOrder(Value v) => Payload(_order, v) is (PreludeAbi.Tags.Order.MkOrder, [var g, var n, var a, var w, var st, var wk])
         && ReadStr(g) is { } group && ReadStr(n) is { } name && ReadAssoc(a) is { } assoc && ReadBool(w) is { } weakest
         && ReadList(st, ReadOrder) is { } stronger && ReadList(wk, ReadOrder) is { } weaker
             ? new Order(group, name, assoc, weakest, stronger, weaker)
@@ -834,12 +847,12 @@ public sealed class Reflection
 
     private Rule? ReadRule(Value v)
     {
-        if (Payload(_rule, v) is not ("MkRule", [var pattern, var replacement, var span])) return null;
+        if (Payload(_rule, v) is not (PreludeAbi.Tags.Rule.MkRule, [var pattern, var replacement, var span])) return null;
         if (ReadList(pattern, ReadRulePart) is not { } parts || ReadSpan(span) is not { } sp) return null;
         Replacement? r = Payload(_replacement, replacement) switch
         {
-            ("ReplaceExpr", [var e]) when ReadExpr(e) is { } x => new Replacement.Expr(x),
-            ("ReplaceDecls", [var ds]) when ReadDecls(ds) is { } bs => new Replacement.Decls(bs),
+            (PreludeAbi.Tags.Replacement.ReplaceExpr, [var e]) when ReadExpr(e) is { } x => new Replacement.Expr(x),
+            (PreludeAbi.Tags.Replacement.ReplaceDecls, [var ds]) when ReadDecls(ds) is { } bs => new Replacement.Decls(bs),
             _ => null,
         };
         return r is null ? null : new Rule(parts, r, sp);
@@ -847,60 +860,60 @@ public sealed class Reflection
 
     private RulePart? ReadRulePart(Value v) => Payload(_rulePart, v) switch
     {
-        ("PartToken", [var t]) when ReadTokenTree(t) is { } tree => new RulePart.Literal(tree),
-        ("PartGroup", [var d, var parts, var span]) when ReadDelim(d) is { } delim && ReadList(parts, ReadRulePart) is { } ps && ReadSpan(span) is { } sp
+        (PreludeAbi.Tags.RulePart.PartToken, [var t]) when ReadTokenTree(t) is { } tree => new RulePart.Literal(tree),
+        (PreludeAbi.Tags.RulePart.PartGroup, [var d, var parts, var span]) when ReadDelim(d) is { } delim && ReadList(parts, ReadRulePart) is { } ps && ReadSpan(span) is { } sp
             => new RulePart.Group(delim, ps, sp),
-        ("PartHole", [var hole, var kind, var span]) when ReadStr(hole) is { } h && ReadHoleKind(kind) is { } k && ReadSpan(span) is { } sp
+        (PreludeAbi.Tags.RulePart.PartHole, [var hole, var kind, var span]) when ReadStr(hole) is { } h && ReadHoleKind(kind) is { } k && ReadSpan(span) is { } sp
             => new RulePart.Hole(h, k, sp),
         _ => null,
     };
 
     private Capture? ReadCaptured(Value v) => Payload(_captured, v) switch
     {
-        ("CapExpr", [var e]) when ReadExpr(e) is { } x => new Capture.Expr(x),
-        ("CapBlock", [var ts]) when ReadTokens(ts) is { } terms => new Capture.Block(terms),
-        ("CapId", [var t]) when ReadTokenTree(t) is Fun.Kernel.TokenTree.Leaf leaf => new Capture.Id(leaf.Token),
-        ("CapPattern", [var p]) when ReadPattern(p) is { } pat => new Capture.Pattern(pat),
-        ("CapDecls", [var ds]) when ReadDecls(ds) is { } bs => new Capture.Decls(bs),
-        ("CapDecl", [var d]) when ReadDecl(d) is { } b => new Capture.Decl(b),
-        ("CapTokens", [var ts]) when ReadTokens(ts) is { } terms => new Capture.Tokens(terms),
+        (PreludeAbi.Tags.Captured.CapExpr, [var e]) when ReadExpr(e) is { } x => new Capture.Expr(x),
+        (PreludeAbi.Tags.Captured.CapBlock, [var ts]) when ReadTokens(ts) is { } terms => new Capture.Block(terms),
+        (PreludeAbi.Tags.Captured.CapId, [var t]) when ReadTokenTree(t) is Fun.Kernel.TokenTree.Leaf leaf => new Capture.Id(leaf.Token),
+        (PreludeAbi.Tags.Captured.CapPattern, [var p]) when ReadPattern(p) is { } pat => new Capture.Pattern(pat),
+        (PreludeAbi.Tags.Captured.CapDecls, [var ds]) when ReadDecls(ds) is { } bs => new Capture.Decls(bs),
+        (PreludeAbi.Tags.Captured.CapDecl, [var d]) when ReadDecl(d) is { } b => new Capture.Decl(b),
+        (PreludeAbi.Tags.Captured.CapTokens, [var ts]) when ReadTokens(ts) is { } terms => new Capture.Tokens(terms),
         _ => null,
     };
 
     private EquatableArray<(string Hole, Capture Capture)>? ReadCaptures(Value v) =>
-        ReadListS(v, c => Payload(_capture, c) is ("MkCapture", [var n, var captured]) && ReadStr(n) is { } name && ReadCaptured(captured) is { } cap
+        ReadListS(v, c => Payload(_capture, c) is (PreludeAbi.Tags.Capture.MkCapture, [var n, var captured]) && ReadStr(n) is { } name && ReadCaptured(captured) is { } cap
             ? (name, cap) : ((string, Capture)?)null);
 
     private EquatableArray<(string Hole, Syntax Value)>? ReadQuoteHoles(Value v) =>
-        ReadListS(v, h => Payload(_quoteHole, h) is ("MkQuoteHole", [var n, var e]) && ReadStr(n) is { } name && ReadExpr(e) is { } x
+        ReadListS(v, h => Payload(_quoteHole, h) is (PreludeAbi.Tags.QuoteHole.MkQuoteHole, [var n, var e]) && ReadStr(n) is { } name && ReadExpr(e) is { } x
             ? (name, x) : ((string, Syntax)?)null);
 
     private EquatableArray<(string Name, Syntax Value)>? ReadFields(Value v) =>
-        ReadListS(v, f => Payload(_field, f) is ("MkField", [var n, var e]) && ReadStr(n) is { } name && ReadExpr(e) is { } x
+        ReadListS(v, f => Payload(_field, f) is (PreludeAbi.Tags.Field.MkField, [var n, var e]) && ReadStr(n) is { } name && ReadExpr(e) is { } x
             ? (name, x) : ((string, Syntax)?)null);
 
     private Param? ReadParam(Value v)
     {
-        if (Payload(_param, v) is not ("MkParam", [var n, var ty, var bounds, var ex])) return null;
+        if (Payload(_param, v) is not (PreludeAbi.Tags.Param.MkParam, [var n, var ty, var bounds, var ex])) return null;
         if (ReadId(n) is not { } name || ReadOption(ty, ReadExpr) is not (true, var type) || ReadExplicitness(ex) is not { } e) return null;
         if (ReadList(bounds, ReadPath) is not { } bs) return null;
         return new Param(name, type, e, bs);
     }
 
-    private EffectRow? ReadEffectRow(Value v) => Payload(_effectRow, v) is ("MkEffectRow", [var effects, var tails, var inferred, var poly])
+    private EffectRow? ReadEffectRow(Value v) => Payload(_effectRow, v) is (PreludeAbi.Tags.EffectRow.MkEffectRow, [var effects, var tails, var inferred, var poly])
         && ReadList(effects, ReadExpr) is { } es && ReadList(tails, ReadExpr) is { } ts && ReadBool(inferred) is { } inf && ReadBool(poly) is { } p
             ? new EffectRow(es, ts, inf, p)
             : null;
 
-    private EffectOp? ReadEffectOp(Value v) => Payload(_effectOp, v) is ("MkEffectOp", [var n, var input, var output])
+    private EffectOp? ReadEffectOp(Value v) => Payload(_effectOp, v) is (PreludeAbi.Tags.EffectOp.MkEffectOp, [var n, var input, var output])
         && ReadStr(n) is { } name && ReadExpr(input) is { } i && ReadExpr(output) is { } o
             ? new EffectOp(name, i, o)
             : null;
 
     private MatchBranch? ReadBranch(Value v) => Payload(_branch, v) switch
     {
-        ("ValueBranch", [var p, var body]) when ReadPattern(p) is { } pat && ReadExpr(body) is { } b => new MatchBranch(pat, b),
-        ("EffectBranch", [var op, var p, var body]) when ReadPath(op) is Syntax.FieldAccess path && ReadPattern(p) is { } pat && ReadExpr(body) is { } b
+        (PreludeAbi.Tags.Branch.ValueBranch, [var p, var body]) when ReadPattern(p) is { } pat && ReadExpr(body) is { } b => new MatchBranch(pat, b),
+        (PreludeAbi.Tags.Branch.EffectBranch, [var op, var p, var body]) when ReadPath(op) is Syntax.FieldAccess path && ReadPattern(p) is { } pat && ReadExpr(body) is { } b
             => new MatchBranch(pat, b) { Operation = path },
         _ => null,
     };
@@ -908,24 +921,24 @@ public sealed class Reflection
     public Fun.Kernel.Pattern? ReadPattern(Value v)
     {
         if (Payload(PatternType, v) is not (var name, [var spanV, .. var args]) || ReadOption(spanV, x => Nbe.Force(_metas, x)) is not (true, _)) return null;
-        (string, Fun.Kernel.Pattern)? PatField(Value f) => Payload(_patField, f) is ("MkPatField", [var n, var p]) && ReadStr(n) is { } fname
+        (string, Fun.Kernel.Pattern)? PatField(Value f) => Payload(_patField, f) is (PreludeAbi.Tags.PatField.MkPatField, [var n, var p]) && ReadStr(n) is { } fname
             && ReadOption(p, ReadPattern) is (true, var fp)
                 // `{y}` is `{y = y}`: a binder written by the label.
                 ? (fname, fp ?? new Fun.Kernel.Pattern.Bind(new Id(fname, SourceSpan.Synthetic)))
                 : null;
         return (name, args.Length) switch
         {
-            ("RawPatWild", 0) => Fun.Kernel.Pattern.Wild.Instance,
-            ("RawPatBind", 1) => ReadId(args[0]) is { } id ? new Fun.Kernel.Pattern.Bind(id) : null,
-            ("RawPatCon", 2) => ReadPath(args[0]) is { } head && ReadList(args[1], ReadPattern) is { } ps ? new Fun.Kernel.Pattern.Con(head, ps) : null,
-            ("RawPatAtom", 1) => ReadAtom(args[0]) is { } a ? new Fun.Kernel.Pattern.Atom(a) : null,
-            ("RawPatProd", 1) => ReadList(args[0], ReadPattern) is { } items ? new Fun.Kernel.Pattern.Prod(items) : null,
-            ("RawPatOr", 2) => ReadPattern(args[0]) is { } l && ReadPattern(args[1]) is { } r ? new Fun.Kernel.Pattern.Or(l, r) : null,
-            ("RawPatRecord", 3) => ReadPath(args[0]) is { } typ && ReadListS(args[1], PatField) is { } fs && ReadBool(args[2]) is { } partial
+            (PreludeAbi.Tags.Pattern.RawPatWild, 0) => Fun.Kernel.Pattern.Wild.Instance,
+            (PreludeAbi.Tags.Pattern.RawPatBind, 1) => ReadId(args[0]) is { } id ? new Fun.Kernel.Pattern.Bind(id) : null,
+            (PreludeAbi.Tags.Pattern.RawPatCon, 2) => ReadPath(args[0]) is { } head && ReadList(args[1], ReadPattern) is { } ps ? new Fun.Kernel.Pattern.Con(head, ps) : null,
+            (PreludeAbi.Tags.Pattern.RawPatAtom, 1) => ReadAtom(args[0]) is { } a ? new Fun.Kernel.Pattern.Atom(a) : null,
+            (PreludeAbi.Tags.Pattern.RawPatProd, 1) => ReadList(args[0], ReadPattern) is { } items ? new Fun.Kernel.Pattern.Prod(items) : null,
+            (PreludeAbi.Tags.Pattern.RawPatOr, 2) => ReadPattern(args[0]) is { } l && ReadPattern(args[1]) is { } r ? new Fun.Kernel.Pattern.Or(l, r) : null,
+            (PreludeAbi.Tags.Pattern.RawPatRecord, 3) => ReadPath(args[0]) is { } typ && ReadListS(args[1], PatField) is { } fs && ReadBool(args[2]) is { } partial
                 ? new Fun.Kernel.Pattern.Record(typ, fs, partial) : null,
-            ("RawPatStructType", 2) => ReadListS(args[0], PatField) is { } sfs && ReadBool(args[1]) is { } spartial
+            (PreludeAbi.Tags.Pattern.RawPatStructType, 2) => ReadListS(args[0], PatField) is { } sfs && ReadBool(args[1]) is { } spartial
                 ? new Fun.Kernel.Pattern.StructType(sfs, spartial) : null,
-            ("RawPatType", 1) => ReadAtomTy(args[0]) is { } t ? new Fun.Kernel.Pattern.AtomType(t) : null,
+            (PreludeAbi.Tags.Pattern.RawPatType, 1) => ReadAtomTy(args[0]) is { } t ? new Fun.Kernel.Pattern.AtomType(t) : null,
             _ => null,
         };
     }
@@ -936,62 +949,62 @@ public sealed class Reflection
         Syntax? X(Value x) => ReadExpr(x);
         switch (name, args.Length)
         {
-            case ("DeclLet", 4):
+            case (PreludeAbi.Tags.Decl.DeclLet, 4):
                 return ReadId(args[0]) is { } n && X(args[1]) is { } value && ReadBool(args[2]) is { } pub && ReadBool(args[3]) is { } rec
                     ? new Binding.Let(n, value, pub, rec) : null;
-            case ("DeclRecGroup", 3):
+            case (PreludeAbi.Tags.Decl.DeclRecGroup, 3):
             {
                 if (ReadList(args[0], ReadId) is not { } names || ReadList(args[1], X) is not { } values || ReadBool(args[2]) is not { } gpub) return null;
                 return names.Length == values.Length ? new Binding.RecGroup([.. names.Zip(values, (a, b) => new RecMember(a, b))], gpub) : null;
             }
-            case ("DeclMethod", 5):
+            case (PreludeAbi.Tags.Decl.DeclMethod, 5):
             {
                 if (ReadId(args[0]) is not { } mn || ReadList(args[1], ReadParam) is not { } ps) return null;
                 if (ReadOption(args[2], ReadEffectRow) is not (true, var row) || X(args[3]) is not { } body || ReadBool(args[4]) is not { } mpub) return null;
                 return new Binding.Method(mn, ps, body, mpub, row);
             }
-            case ("DeclEffect", 4):
+            case (PreludeAbi.Tags.Decl.DeclEffect, 4):
                 return ReadId(args[0]) is { } en && ReadList(args[1], ReadId) is { } eps && ReadList(args[2], ReadEffectOp) is { } ops && ReadBool(args[3]) is { } epub
                     ? new Binding.Effect(en, eps, ops, epub) : null;
-            case ("DeclTrait", 4):
+            case (PreludeAbi.Tags.Decl.DeclTrait, 4):
             {
                 if (ReadId(args[0]) is not { } tn || ReadList(args[1], ReadId) is not { } tps || ReadFields(args[2]) is not { } tf || ReadBool(args[3]) is not { } tpub) return null;
                 return tps.Length == 1 ? new Binding.Trait(tn, tps[0], tf, tpub) : throw new FunException("trait declaration accepts exactly one parameter");
             }
-            case ("DeclImpl", 5):
+            case (PreludeAbi.Tags.Decl.DeclImpl, 5):
             {
                 if (ReadOption(args[0], ReadId) is not (true, var iname) || ReadPath(args[1]) is not { } trait || ReadList(args[2], X) is not { } iargs
                     || ReadFields(args[3]) is not { } ifields || ReadBool(args[4]) is not { } ipub) return null;
                 return iargs.Length == 1 ? new Binding.Impl(iname, trait, iargs[0], ifields, ipub) : throw new FunException("impl declaration accepts exactly one trait argument");
             }
-            case ("DeclMacro", 5):
+            case (PreludeAbi.Tags.Decl.DeclMacro, 5):
             {
                 if (ReadId(args[0]) is not { } man || X(args[1]) is not { } mvalue || ReadBool(args[2]) is not { } mapub) return null;
                 if (ReadOptionS(args[3], ReadAnn) is not (true, var kind) || ReadOption(args[4], X) is not (true, var output)) return null;
                 return new Binding.Macro(man, mvalue, mapub, kind, output);
             }
-            case ("DeclMacroCall", 3):
+            case (PreludeAbi.Tags.Decl.DeclMacroCall, 3):
                 return X(args[0]) is { } head && ReadList(args[1], ReadCaptured) is { } cargs && ReadBool(args[2]) is { } cpub
                     ? new Binding.MacroCall(head, cargs, cpub) : null;
-            case ("DeclPatternSyn", 4):
+            case (PreludeAbi.Tags.Decl.DeclPatternSyn, 4):
                 return ReadId(args[0]) is { } sn && ReadList(args[1], ReadId) is { } sps && ReadPattern(args[2]) is { } rhs && ReadBool(args[3]) is { } spub
                     ? new Binding.Let(sn, new Syntax.PatternSynonym(sps, rhs, sn.Span), spub, false) : null;
-            case ("DeclField", 2):
+            case (PreludeAbi.Tags.Decl.DeclField, 2):
                 return ReadStr(args[0]) is { } fname && X(args[1]) is { } ftype ? new Binding.Field(fname, ftype) : null;
-            case ("DeclOpen", 2):
+            case (PreludeAbi.Tags.Decl.DeclOpen, 2):
                 return X(args[0]) is { } of && ReadStr(args[1]) is { } label ? new Binding.Open(of, label) : null;
-            case ("DeclExport", 3):
+            case (PreludeAbi.Tags.Decl.DeclExport, 3):
             {
                 if (X(args[0]) is not { } eof) return null;
                 var (namesOk, exported) = ReadOption(args[1], n => ReadList(n, ReadStr) is { } list ? new Boxed<EquatableArray<string>>(list) : null);
                 return namesOk && ReadBool(args[2]) is { } xpub ? new Binding.Export(eof, exported?.Value, xpub) : null;
             }
-            case ("DeclHole", 1): return ReadId(args[0]) is { } hid ? new Binding.Hole(hid) : null;
-            case ("DeclSyntax", 3):
+            case (PreludeAbi.Tags.Decl.DeclHole, 1): return ReadId(args[0]) is { } hid ? new Binding.Hole(hid) : null;
+            case (PreludeAbi.Tags.Decl.DeclSyntax, 3):
                 return ReadId(args[0]) is { } sname && ReadRole(args[1]) is { } role && ReadBool(args[2]) is { } sypub
                     ? new Binding.SyntaxDecl(sname, role, sypub) : null;
-            case ("DeclItems", 1): return ReadTokens(args[0]) is { } ts ? new Binding.Items(ts) : null;
-            case ("DeclInstantiate", 5):
+            case (PreludeAbi.Tags.Decl.DeclItems, 1): return ReadTokens(args[0]) is { } ts ? new Binding.Items(ts) : null;
+            case (PreludeAbi.Tags.Decl.DeclInstantiate, 5):
                 return ReadInstantiation(args[0], args[1], args[2], args[3]) is { } inst && ReadBool(args[4]) is { } ipub2
                     ? new Binding.Instantiate(inst, ipub2) : null;
             default:

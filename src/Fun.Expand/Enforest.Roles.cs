@@ -269,7 +269,7 @@ public sealed partial class Enforest(EnforestEnv env)
                 var name = new Id(head.Name, stmt[1].Span, token.Scope);
                 var after = DropSeparators(stmt.Drop(2));
                 var kind = FormKind.Expr;
-                if (IsToken(after.Head, TokenKind.Colon) && after.Drop(1).Head is TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "Decl" } })
+                if (IsToken(after.Head, TokenKind.Colon) && after.Drop(1).Head is TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.Decl } })
                     (kind, after) = (FormKind.Decl, after.Drop(2));
                 var (order, rest) = ParseJoinedOrder(after);
                 rest = DropSeparators(rest);
@@ -554,20 +554,20 @@ public sealed partial class Enforest(EnforestEnv env)
                 case [TokenTree.Leaf { Token.Kind: TokenKind.Ident kind }]:
                     return new RulePart.Hole(name.Name, kind.Name switch
                     {
-                        "Expr" => HoleKind.Expr,
+                        PreludeAbi.Types.Syntax.Expr => HoleKind.Expr,
                         "Block" => HoleKind.Block,
-                        "Id" => HoleKind.Id,
-                        "Decl" => HoleKind.Decl,
-                        "Pattern" => HoleKind.Pattern,
+                        PreludeAbi.Types.Syntax.Id => HoleKind.Id,
+                        PreludeAbi.Types.Syntax.Decl => HoleKind.Decl,
+                        PreludeAbi.Types.Syntax.Pattern => HoleKind.Pattern,
                         "expr" or "block" or "binder" or "ident" or "decl" =>
                             throw new ExpandException($"hole kinds are written as types (Expr, Block, Id, Decl, Pattern), not {kind.Name}"),
                         _ => throw new ExpandException($"unknown syntax template hole kind: {kind.Name}"),
                     }, group.Span);
-                case [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "List" } }, TokenTree.Group { Delimiter: Delimiter.Paren } arg]:
+                case [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Builtins.List } }, TokenTree.Group { Delimiter: Delimiter.Paren } arg]:
                     return new RulePart.Hole(name.Name, DropSeparators(new Terms(arg.Items)) switch
                     {
-                        [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "Decl" } }] => HoleKind.Decls,
-                        [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "TokenTree" } }] => HoleKind.Tokens,
+                        [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.Decl } }] => HoleKind.Decls,
+                        [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.TokenTree } }] => HoleKind.Tokens,
                         _ => throw new ExpandException("a list hole is $(name : List(Decl)) or $(name : List(TokenTree))"),
                     }, group.Span);
             }

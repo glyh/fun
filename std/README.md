@@ -12,8 +12,7 @@ std/bootstrap.fun   Bool, Option, List, Syntax — the ABI, and the whole of it.
                     Elaborated with no elaborator (Prelude.Load, std: null).
 std/list.fun        the first cut of the library's public surface: rev, append,
                     map, fold, and Option's option_map / option_bind.
-std/lib.fun         if, i64_to_bool's users, the operators with their fixity,
-                    the Eq trait and its impls.
+std/lib.fun         if, the operators with their fixity, the Eq trait and impls.
 std/type.fun        the `type` macro and its token helpers.
 std/stage2.fun      the `std` unit a program imports: it re-exports the library.
 std/README.md       this file.
@@ -36,16 +35,16 @@ consumer of `if` finds them through `std/lib`'s members. `export M` re-exports
 
 | What | Names | Where C# spells it |
 | --- | --- | --- |
-| `Syntax` nominals | `Expr`, `Decl`, `Pattern`, `TokenTree`, `R` | `Reflection.cs` |
-| | `Explicitness`, `AtomVal`, `AtomTy`, `Fixity`, `MacroAnn` | `Reflection.cs` |
-| | `TokenKind`, `Delim`, `Assoc`, `Role`, `Order`, `RoleMeaning` | `Reflection.cs` |
-| | `Rule`, `RulePart`, `HoleKind`, `Replacement` | `Reflection.cs` |
-| | `Capture`, `Captured`, `Field`, `QuoteHole`, `Param` | `Reflection.cs` |
-| | `EffectRow`, `EffectOp`, `Ctor`, `Branch`, `PatField` | `Reflection.cs` |
-| `Syntax` structures | `Id`, `Span`, `Path`, `PathChoice`, `Decls` | `Reflection.cs` |
-| Three prelude nominals | `Bool`, `Option`, `List` | `Reflection.cs` |
+| `Syntax` nominals | `Expr`, `Decl`, `Pattern`, `TokenTree`, `R` | `PreludeAbi.Types` |
+| | `Explicitness`, `AtomVal`, `AtomTy`, `Fixity`, `MacroAnn` | `PreludeAbi.Types` |
+| | `TokenKind`, `Delim`, `Assoc`, `Role`, `Order`, `RoleMeaning` | `PreludeAbi.Types` |
+| | `Rule`, `RulePart`, `HoleKind`, `Replacement` | `PreludeAbi.Types` |
+| | `Capture`, `Captured`, `Field`, `QuoteHole`, `Param` | `PreludeAbi.Types` |
+| | `EffectRow`, `EffectOp`, `Ctor`, `Branch`, `PatField` | `PreludeAbi.Types` |
+| `Syntax` structures | `Id`, `Span`, `Path`, `PathChoice`, `Decls` | `PreludeAbi.Types` |
+| Three prelude nominals | `Bool`, `Option`, `List` | `PreludeAbi.Types` |
 | Constructors read by name | `Tok`, `IdentTok`, `RawVar`, `RawPatBind` | `QuoteHoles.cs` |
-| Syntax C# spells | `List`, `Decl`, `TokenTree`, `Type` | `Expander.Macros.cs` |
+| Syntax C# spells | `List`, `Decl`, `TokenTree`, `Type` | `PreludeAbi` / `Elaborator` |
 | Unit paths and the binding | `std`, `std/bootstrap`, `stdlib` | `Prelude.cs` |
 
 The compiler reaches the prelude's shapes through the builders
@@ -56,10 +55,29 @@ The compiler reaches the prelude's shapes through the builders
 spelled in C#. `i64_to_bool` stays in the bootstrap for that reason, even though
 it is otherwise a library function.
 
-Making the table an executable declaration, instead of prose, is
-[Declare the bootstrap↔compiler interface once][decl] on the design map.
+## The interface is declared on the compiler side
 
-[decl]: ../docs/wayfinder/tickets/declare-bootstrap-compiler-interface-once.md
+`src/Fun.Kernel/PreludeAbi.cs` **is** the bootstrap↔compiler interface: the builders
+the prelude publishes, the type and module names the compiler names, and the
+constructor tags it writes and reads back. The compiler spells a prelude name **only
+there**; every consumer references the declaration. `Prelude.Verify` resolves the
+whole declaration when the bootstrap loads, so a rename here is a load error naming
+the member and the file it was looked for in, not a silent drift discovered at first
+use.
+
+The declaration mirrors the prelude's shape, and that is the accepted cost of the
+chosen route: the interface is a fact about the compiler's *usage* — which names
+matter, in which role — which the prelude source alone cannot supply. Generating the
+C# names from `bootstrap.fun` was deferred for that reason, and because a
+`netstandard2.0` Roslyn generator cannot reference `Fun.Expand`; it would have to be
+an MSBuild `Exec` of a console tool.
+
+Two things are deliberately not in the declaration:
+
+- **`Type`** — the compiler spells it, and it belongs to the elaborator
+  (`src/Fun.Compiler/Elaborator.cs`), not to `std`.
+- **The unit paths** — `Prelude.Path`, `Prelude.BootstrapPath` and `Prelude.Binding`
+  are their single source; the declaration references them, it does not restate them.
 
 ## Why the `Syntax` ADT is one `rec … and …` chain
 

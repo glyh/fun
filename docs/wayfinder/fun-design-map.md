@@ -399,7 +399,8 @@ port's `Kont` frames are the fix that ticket named), and
 [brackets decide grouping](tickets/brackets-decide-grouping.md) — all five of its named branches
 are merged, its two `Open` bullets are explicitly deferred with no case needing either, and the
 rules that were implemented but never pinned are now
-[pin the grouping rules with cases](tickets/pin-grouping-rules-with-cases.md).
+[pin the grouping rules with cases](tickets/pin-grouping-rules-with-cases.md) — opened and **closed
+the same day** (`792 cases, 0 failed`).
 [The bootstrap↔compiler interface](tickets/declare-bootstrap-compiler-interface-once.md) landed the
 measurement its ruling asked for (a fork's parked branch, integrated 2026-09-27 as `71ce629`), so
 its two routes are now a choice against a table rather than against an estimate — **that choice is

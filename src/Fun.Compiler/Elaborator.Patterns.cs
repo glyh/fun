@@ -62,6 +62,10 @@ public static partial class Elaborator
     /// </summary>
     private static (Term, Value) InferPatternSynonym(Context ctx, Syntax.PatternSynonym synonym)
     {
+        // A synonym use nested in this right-hand side instantiates type parameters
+        // that this declaration generalizes in turn; they are its own parameters, not
+        // uses that must resolve here, so they are not reported.
+        var registeredBefore = ctx.Metas.SynonymTypeParams.Count;
         var names = synonym.Params.Select(p => p.Name).ToList();
         if (names.Distinct().Count() != names.Count) throw new FunException("a pattern synonym names a parameter twice");
 
@@ -98,11 +102,13 @@ public static partial class Elaborator
         CollectSynonymMetas(ctx, ctx.Force(scrutineeType), generalized);
         foreach (var (_, type) in parameters) CollectSynonymMetas(ctx, type, generalized);
 
-        return (new Term.PatternSynonym(new Value.VPatternSynonym(
+        (Term, Value) value = (new Term.PatternSynonym(new Value.VPatternSynonym(
                     names.Count, generalized.Count, [.. generalized],
                     core, ctx.Force(scrutineeType), [.. parameters],
                     ctx.Environment, ctx.Width)),
                 Value.VU.Instance);
+        ctx.Metas.SynonymTypeParams.RemoveRange(registeredBefore, ctx.Metas.SynonymTypeParams.Count - registeredBefore);
+        return value;
     }
 
     private const string SynonymParamPrefix = "synonym-param#";
@@ -122,33 +128,64 @@ public static partial class Elaborator
     };
 
     /// <summary>
+    /// The path a synonym use's head names, with the implicit applications that
+    /// supply its type parameters peeled off.
+    /// </summary>
+    private static Syntax SynonymBaseHead(Syntax head) =>
+        head is Syntax.Ap { Explicitness: Explicitness.Implicit, Fn: var fn } ? SynonymBaseHead(fn) : head;
+
+    /// <summary>The types a synonym use supplies for its type parameters, in the order written.</summary>
+    private static List<Syntax> SynonymSupply(Syntax head) => head switch
+    {
+        Syntax.Ap { Explicitness: Explicitness.Implicit, Fn: var fn, Arg: var arg } => [.. SynonymSupply(fn), arg],
+        _ => [],
+    };
+
+    /// <summary>
     /// The pattern synonym a pattern head resolves to - through its binder, an
     /// open, or a member path, like any other name - or null when it resolves
     /// to something else.
     /// </summary>
-    private static Value.VPatternSynonym? SynonymAt(Context ctx, Syntax head) => head switch
+    private static Value.VPatternSynonym? SynonymAt(Context ctx, Syntax head)
     {
-        Syntax.Var v => ctx.Force(ctx.Environment[ctx.Locate(v.Id.Name).Index]) as Value.VPatternSynonym,
-        Syntax.OpenChoice c => ctx.Force(ctx.Environment[ctx.LocateChoice(c.Name.Name, c.Opens, c.Fallback).Index]) as Value.VPatternSynonym,
-        Syntax.FieldAccess => ctx.Force(ctx.Eval(Infer(ctx, head).Item1)) as Value.VPatternSynonym,
-        _ => null,
-    };
+        head = SynonymBaseHead(head);
+        return head switch
+        {
+            Syntax.Var v => ctx.Force(ctx.Environment[ctx.Locate(v.Id.Name).Index]) as Value.VPatternSynonym,
+            Syntax.OpenChoice c => ctx.Force(ctx.Environment[ctx.LocateChoice(c.Name.Name, c.Opens, c.Fallback).Index]) as Value.VPatternSynonym,
+            Syntax.FieldAccess => ctx.Force(ctx.Eval(Infer(ctx, head).Item1)) as Value.VPatternSynonym,
+            _ => null,
+        };
+    }
 
     /// <summary>
     /// A synonym's generalized type parameters as this use's fresh metas: each
     /// stored meta becomes a fresh meta here, so one declaration is instantiated
     /// once per use. The template is read back and evaluated under the
     /// definition's environment, so the names it captures stay the definition's
-    /// (hygiene); only the generalized types come from the use.
+    /// (hygiene); only the generalized types come from the use. A use may supply
+    /// the leading ones, as it supplies a call's implicit arguments; each supplied
+    /// type solves its fresh meta, and each parameter the use leaves out - and
+    /// nothing else determines - is reported where the use's scope ends.
     /// </summary>
     private static (Value ScrutineeType, List<(int Index, Value Type)> Params) InstantiateSynonym(
-        Context ctx, Value.VPatternSynonym synonym)
+        Context ctx, Value.VPatternSynonym synonym, List<Syntax>? supply = null)
     {
+        supply ??= [];
+        if (supply.Count > synonym.TypeParams)
+            throw new FunException($"this pattern synonym takes {synonym.TypeParams} type parameters, the pattern supplies {supply.Count}");
+
         if (synonym.TypeParams == 0)
             return (synonym.ScrutineeType, [.. synonym.Params.Select(p => (p.Index, p.Type))]);
 
         var fresh = new Dictionary<int, int>();
-        for (var i = 0; i < synonym.TypeParams; i++) fresh[synonym.Generalized[i]] = ctx.Metas.Fresh();
+        for (var i = 0; i < synonym.TypeParams; i++)
+        {
+            var id = ctx.Metas.Fresh();
+            fresh[synonym.Generalized[i]] = id;
+            ctx.Metas.SynonymTypeParams.Add(id);
+            if (i < supply.Count) ctx.Metas.Solve(id, ctx.Eval(Check(ctx, supply[i], Value.VU.Instance)));
+        }
 
         Term Instantiate(Term term) => term.Map((t, _) =>
             t is Term.Meta m && fresh.TryGetValue(m.Id, out var replacement)
@@ -163,16 +200,18 @@ public static partial class Elaborator
     }
 
     /// <summary>
-    /// <c>Flip(first, second)</c>: each argument matched against its parameter's
-    /// type and put where that parameter sits. Binders come out in the order the
-    /// parameters sit in the scrutinee, as the arm's context needs.
+    /// <c>Flip(first, second)</c>: the synonym's generalized types instantiate as
+    /// its implicit type parameters - a use may supply them, as it supplies a call's
+    /// (<c>M.Two[I64, Bool](x, b)</c>) - and each argument is matched against its
+    /// parameter's type and put where that parameter sits. Binders come out in the
+    /// order the parameters sit in the scrutinee, as the arm's context needs.
     /// </summary>
     private static (CorePattern, List<(string Name, Value Type)>) ElaborateSynonymUse(
         Context ctx, Pattern.Con use, Value.VPatternSynonym synonym, Value type)
     {
         if (use.Args.Length != synonym.Arity)
             throw new FunException($"this pattern synonym takes {synonym.Arity} arguments, the pattern gives {use.Args.Length}");
-        var (scrutineeType, parameters) = InstantiateSynonym(ctx, synonym);
+        var (scrutineeType, parameters) = InstantiateSynonym(ctx, synonym, SynonymSupply(use.Head));
         ctx.Unify(type, scrutineeType);
 
         var args = new CorePattern[synonym.Arity];
@@ -194,7 +233,10 @@ public static partial class Elaborator
         switch (pattern)
         {
             case Pattern.Con c:
-                if (TypeHead(ctx, c.Head) is { } && SealedDecl(ctx, c.Head) is null)
+                // A use of another synonym is not a type former; one that supplied its
+                // type parameters reads as an application, which this must not see.
+                if (c.Head is not Syntax.Ap { Explicitness: Explicitness.Implicit }
+                    && TypeHead(ctx, c.Head) is { } && SealedDecl(ctx, c.Head) is null)
                     throw new FunException($"unknown constructor `{HeadLabel(c.Head)}`");
                 foreach (var arg in c.Args) RejectFormerHeads(ctx, arg);
                 break;
@@ -215,7 +257,7 @@ public static partial class Elaborator
     }
 
     /// <summary>The written name a pattern head was spelled with, for error messages.</summary>
-    private static string HeadLabel(Syntax head) => head switch
+    private static string HeadLabel(Syntax head) => SynonymBaseHead(head) switch
     {
         Syntax.Var v => v.Id.Name,
         Syntax.OpenChoice c => c.Name.Name,
@@ -415,7 +457,8 @@ public static partial class Elaborator
     {
         Pattern.AtomType t => new Value.VAtomTy(t.Ty),
         Pattern.Or o => RefinementOf(ctx, o.Left) ?? RefinementOf(ctx, o.Right),
-        Pattern.Con c => TypeHead(ctx, c.Head)?.Value,
+        // A synonym use is not a type head, whether or not it supplies its types.
+        Pattern.Con c when SynonymAt(ctx, c.Head) is null => TypeHead(ctx, c.Head)?.Value,
         _ => null,
     };
 

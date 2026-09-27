@@ -46,6 +46,13 @@ public sealed class MetaContext
     /// <summary>The metas standing for rows written <c>_</c>: one nothing solves is an error, never a default.</summary>
     public List<int> WrittenRows { get; } = [];
 
+    /// <summary>
+    /// The metas instantiated for a pattern synonym's generalized types at a use:
+    /// they are the synonym's implicit type parameters, so one nothing solves where
+    /// its scope ends is an error, never left stuck.
+    /// </summary>
+    public List<int> SynonymTypeParams { get; } = [];
+
     /// <summary>The solutions as they stand, to undo a trial unification with <see cref="Restore"/>.</summary>
     public Value?[] Snapshot() => [.. _solutions];
 

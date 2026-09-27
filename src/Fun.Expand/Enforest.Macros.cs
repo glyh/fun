@@ -22,7 +22,7 @@ public sealed partial class Enforest
         if (kind == FormKind.Decl && parameters.Any(p => p.Explicitness == Explicitness.Implicit))
             throw new ExpandException("a Decl macro binds no type parameter");
         parameters = [.. parameters.Select(p => p.Explicitness == Explicitness.Implicit && p.Type is null
-            ? p with { Type = new Syntax.FieldAccess(new Syntax.Var(new Id("Syntax", p.Name.Span, p.Name.Scope)), "R", p.Name.Span) }
+            ? p with { Type = new Syntax.FieldAccess(new Syntax.Var(new Id(PreludeAbi.Syntax, p.Name.Span, p.Name.Scope)), PreludeAbi.Types.Syntax.R, p.Name.Span) }
             : p)];
 
         var (body, rest, bodySpan) = ParseBody(afterAnnotation);
@@ -43,23 +43,23 @@ public sealed partial class Enforest
         terms = DropSeparators(terms);
         if (!IsToken(terms.Head, TokenKind.Colon)) return (null, null, terms);
         Syntax DeclType(TokenTree decl) =>
-            new Syntax.FieldAccess(new Syntax.Var(new Id("Syntax", decl.Span, ((TokenTree.Leaf)decl).Token.Scope)), "Decl", decl.Span);
+            new Syntax.FieldAccess(new Syntax.Var(new Id(PreludeAbi.Syntax, decl.Span, ((TokenTree.Leaf)decl).Token.Scope)), PreludeAbi.Types.Syntax.Decl, decl.Span);
 
         switch (terms.Tail)
         {
-            case [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "Expr" } }, TokenTree.Group { Delimiter: Delimiter.Paren } group, ..]:
+            case [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.Expr } }, TokenTree.Group { Delimiter: Delimiter.Paren } group, ..]:
             {
                 var rest = terms.Drop(3);
                 var items = DropSeparators(new Terms(group.Items));
                 if (items is [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "_" } }]) return (FormKind.Expr, null, rest);
                 return (FormKind.Expr, ParseAll(items), rest);
             }
-            case [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "Decl" } } decl, ..]:
+            case [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.Decl } } decl, ..]:
                 return (FormKind.Decl, DeclType(decl), terms.Drop(2));
-            case [TokenTree.Leaf { Token: { Kind: TokenKind.Ident { Name: "List" } } listToken } list, TokenTree.Group { Delimiter: Delimiter.Paren } group, ..]
-                when DropSeparators(new Terms(group.Items)) is [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "Decl" } } decl]:
+            case [TokenTree.Leaf { Token: { Kind: TokenKind.Ident { Name: PreludeAbi.Types.Builtins.List } } listToken } list, TokenTree.Group { Delimiter: Delimiter.Paren } group, ..]
+                when DropSeparators(new Terms(group.Items)) is [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.Decl } } decl]:
                 return (FormKind.Decl,
-                    new Syntax.Ap(new Syntax.Var(new Id("List", list.Span, listToken.Scope)), Explicitness.Explicit, DeclType(decl), group.Span),
+                    new Syntax.Ap(new Syntax.Var(new Id(PreludeAbi.Types.Builtins.List, list.Span, listToken.Scope)), Explicitness.Explicit, DeclType(decl), group.Span),
                     terms.Drop(3));
             default:
                 throw new ExpandException("a macro annotation is : Expr(T), : Expr(_), : Decl or : List(Decl)");

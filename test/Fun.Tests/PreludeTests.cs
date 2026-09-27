@@ -1,4 +1,5 @@
 using Fun.Compiler;
+using Fun.Kernel;
 
 namespace Fun.Tests;
 
@@ -23,6 +24,14 @@ public class PreludeTests
     public void TheBootstrapIsNotImportableAsStd() =>
         Assert.Equal("import not found: \"std/bootstrap\"",
             Assert.IsType<FunException>(Failure("{ S = import \"std/bootstrap\"; 1 }")).Message);
+
+    /// <summary>
+    /// Every name the compiler spells for the prelude is declared once
+    /// (<see cref="PreludeAbi"/>) and resolves against the loaded prelude. The same
+    /// check runs as the bootstrap loads; this is the half <c>dotnet test</c> reaches.
+    /// </summary>
+    [Fact]
+    public void TheDeclaredBootstrapInterfaceResolves() => Prelude.VerifyAbi();
 
     [Theory]
     [InlineData("{ x = 1; y }", "unbound variable: y")]

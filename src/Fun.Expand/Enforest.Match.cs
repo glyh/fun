@@ -136,7 +136,8 @@ public sealed partial class Enforest
     }
 
     /// <summary>
-    /// A constructor's dotted path, its argument list, or - unless the pattern
+    /// A constructor's dotted path, the implicit type arguments a use supplies
+    /// (<c>M.Two[I64, Bool](x, b)</c>), its argument list, or - unless the pattern
     /// began with a group - juxtaposed arguments.
     /// </summary>
     private (Pattern, Terms) ParsePatternPostfix(Pattern lhs, Terms terms, bool juxtapose)
@@ -157,6 +158,19 @@ public sealed partial class Enforest
                     _ => throw new ExpandException("only constructor patterns can be qualified"),
                 };
                 terms = terms.Drop(2);
+                continue;
+            }
+
+            if (term is TokenTree.Group { Delimiter: Delimiter.Bracket } supplied)
+            {
+                if (lhs is not Pattern.Con c)
+                    throw new ExpandException("only a constructor pattern can take supplied type arguments");
+                var items = DropSeparators(new Terms(supplied.Items));
+                var types = items.IsEmpty ? [] : SplitCommas(items).Select(ParseAll).ToEquatableArray();
+                foreach (var type in types)
+                    c = c with { Head = new Syntax.Ap(c.Head, Explicitness.Implicit, type, SourceSpan.Between(c.Head.Span, type.Span)) };
+                lhs = c;
+                terms = terms.Tail;
                 continue;
             }
 
