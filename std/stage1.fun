@@ -11,21 +11,39 @@ open List;
 export List;
 # The compiler's Option and List builders: it reflects these shapes far too often
 # to spell their constructors, so it probes the tag and nominal off these once.
-pub mk_option = fn[A : Type](n : I64, x : A) : Option(A) { match (n) { 0 => Some(x), _ => None } };
-pub mk_list = fn[A : Type](n : I64, h : A, t : List(A)) : List(A) { match (n) { 0 => Nil, _ => Cons(h, t) } };
+pub mk_option = fn[A : Type](n : I64, x : A) : Option(A) {
+  match (n) { 0 => Some(x), _ => None }
+};
+pub mk_list = fn[A : Type](n : I64, h : A, t : List(A)) : List(A) {
+  match (n) { 0 => Nil, _ => Cons(h, t) }
+};
 pub Syntax = module {
   pub rec Explicitness = enum { Explicit, Implicit };
   export Explicitness;
   pub rec Assoc = enum { Left, Right, NonAssoc };
   export Assoc;
 
-  pub Span = struct {file: Option(String); start_byte: I64; end_byte: I64; start_line: Option(I64); start_col: Option(I64); end_line: Option(I64); end_col: Option(I64)};
+  pub Span = struct {
+    file: Option(String);
+    start_byte: I64;
+    end_byte: I64;
+    start_line: Option(I64);
+    start_col: Option(I64);
+    end_line: Option(I64);
+    end_col: Option(I64)
+  };
 
   pub Id = struct {name: String; span: Option(Span); scope: Scopes};
 
   pub PathChoice = struct {opens: List(String); fallback: Option(String)};
   pub Path = struct {head: Id; members: List(String); head_choice: Option(PathChoice)};
-  pub rec AtomVal = enum { I64Atom(I64), CharAtom(Char), StringAtom(String), UnitAtom, ScopesAtom(Scopes) };
+  pub rec AtomVal = enum {
+    I64Atom(I64),
+    CharAtom(Char),
+    StringAtom(String),
+    UnitAtom,
+    ScopesAtom(Scopes)
+  };
   export AtomVal;
   pub rec AtomTy = enum { TyI64, TyUnit, TyChar, TyString, TyScopes, TyAbsurd };
   export AtomTy;
@@ -33,7 +51,150 @@ pub Syntax = module {
   export Fixity;
   pub rec MacroAnn = enum { AnnExpr, AnnDecl };
   export MacroAnn;
-  pub rec Expr = enum { RawVar(Option(Span), Id), RawAtom(Option(Span), AtomVal), RawSelf(Option(Span)), RawSelfType(Option(Span)), RawAp(Option(Span), Expr, Explicitness, Expr), RawLam(Option(Span), Param, Expr), RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool), RawLetRecGroup(Option(Span), List(Id), List(Expr), Expr), RawAnnotated(Option(Span), Expr, Expr), RawProd(Option(Span), List(Expr)), RawProdTy(Option(Span), List(Expr)), RawTraitBoundSet(Option(Span), List(Expr)), RawArrow(Option(Span), Explicitness, Option(Id), Expr, Option(EffectRow), Expr), RawFieldAccess(Option(Span), Expr, String), RawProj(Option(Span), Expr, I64), RawRecordConstruct(Option(Span), Expr, List(Field)), RawStruct(Option(Span), List(Decl)), RawModule(Option(Span), List(Decl)), RawSig(Option(Span), List(Decl)), RawEnum(Option(Span), Option(String), List(Ctor)), RawImport(Option(Span), String, Scopes), RawOpen(Option(Span), Expr, Expr, String), RawOpenChoice(Option(Span), Id, List(String), Option(String)), RawTypeDef(Option(Span), TypeDecl, Expr), RawEffectDef(Option(Span), Id, List(Id), List(EffectOp), Expr), RawTraitDef(Option(Span), Id, List(Id), List(Field), Expr), RawImplDef(Option(Span), Option(Id), Path, List(Expr), List(Field), Expr), RawPerform(Option(Span), Path, Expr), RawResume(Option(Span), Expr), RawRefNew(Option(Span), Expr), RawRefGet(Option(Span), Expr), RawRefSet(Option(Span), Expr, Expr), RawMatch(Option(Span), Expr, List(Branch)), RawStx(Option(Span), Expr), RawQuote(Option(Span), Expr, List(QuoteHole)), RawQuoteDecls(Option(Span), List(Decl), List(QuoteHole)), RawMacroDef(Option(Span), Id, Expr, Expr, Option(MacroAnn), Option(Expr)), RawSyntaxDef(Option(Span), Id, Role, Expr), RawBlock(Option(Span), List(TokenTree)), RawInstantiate(Option(Span), Id, Rule, List(Capture), Option(String)), RawMacroCall(Option(Span), Expr, List(Captured)), RawOperatorUse(Option(Span), Id, Fixity, List(Expr), Option(Span), Option(Span), Option(String)) } and TokenTree = enum { Tok(Option(Span), TokenKind, Scopes), TokGroup(Option(Span), Delim, List(TokenTree)) } and TokenKind = enum { IdentTok(String), OperatorTok(String), IntTok(I64), CharTok(Char), StringTok(String), UnitTok, KeywordTok(String), PunctTok(String) } and Delim = enum { ParenDelim, BracketDelim, BraceDelim } and Role = enum { MkRole(Fixity, Option(Order), RoleMeaning, Option(Span), Option(String)) } and Order = enum { MkOrder(String, String, Assoc, Bool, List(Order), List(Order)) } and RoleMeaning = enum { ApplyValue, AssignRef, CallMacro, Rules(MacroAnn, List(Rule)), OrderGroup, PolyArrow } and Rule = enum { MkRule(List(RulePart), Replacement, Option(Span)) } and RulePart = enum { PartToken(TokenTree), PartGroup(Delim, List(RulePart), Option(Span)), PartHole(String, HoleKind, Option(Span)) } and HoleKind = enum { HoleExpr, HoleBlock, HoleId, HoleDecl, HoleOneDecl, HolePattern, HoleTokens } and Replacement = enum { ReplaceExpr(Expr), ReplaceDecls(List(Decl)) } and Capture = enum { MkCapture(String, Captured) } and Captured = enum { CapExpr(Expr), CapBlock(List(TokenTree)), CapId(TokenTree), CapPattern(Pattern), CapDecls(List(Decl)), CapDecl(Decl), CapTokens(List(TokenTree)) } and Field = enum { MkField(String, Expr) } and QuoteHole = enum { MkQuoteHole(String, Expr) } and Param = enum { MkParam(Id, Option(Expr), List(Path), Explicitness) } and EffectRow = enum { MkEffectRow(List(Expr), List(Expr), Bool, Bool) } and EffectOp = enum { MkEffectOp(String, Expr, Expr) } and TypeDecl = enum { MkTypeDecl(Id, List(Id), List(Ctor)) } and Ctor = enum { MkCtor(Id, List(Expr)) } and Branch = enum { ValueBranch(Pattern, Expr), EffectBranch(Path, Pattern, Expr) } and Pattern = enum { RawPatWild(Option(Span)), RawPatBind(Option(Span), Id), RawPatCon(Option(Span), Path, List(Pattern)), RawPatAtom(Option(Span), AtomVal), RawPatProd(Option(Span), List(Pattern)), RawPatOr(Option(Span), Pattern, Pattern), RawPatRecord(Option(Span), Path, List(PatField), Bool), RawPatStructType(Option(Span), List(PatField), Bool), RawPatType(Option(Span), AtomTy) } and PatField = enum { MkPatField(String, Option(Pattern)) } and Decl = enum { DeclLet(Id, Expr, Bool, Bool), DeclRecGroup(List(Id), List(Expr), Bool), DeclMethod(Id, List(Param), Option(EffectRow), Expr, Bool), DeclEffect(Id, List(Id), List(EffectOp), Bool), DeclTrait(Id, List(Id), List(Field), Bool), DeclImpl(Option(Id), Path, List(Expr), List(Field), Bool), DeclMacro(Id, Expr, Bool, Option(MacroAnn), Option(Expr)), DeclMacroCall(Expr, List(Captured), Bool), DeclPatternSyn(Id, List(Id), Pattern, Bool), DeclField(String, Expr), DeclOpen(Expr, String), DeclExport(Expr, Option(List(String)), Bool), DeclHole(Id), DeclSyntax(Id, Role, Bool), DeclItems(List(TokenTree)), DeclInstantiate(Id, Rule, List(Capture), Option(String), Bool) };
+  pub rec Expr = enum {
+    RawVar(Option(Span), Id),
+    RawAtom(Option(Span), AtomVal),
+    RawSelf(Option(Span)),
+    RawSelfType(Option(Span)),
+    RawAp(Option(Span), Expr, Explicitness, Expr),
+    RawLam(Option(Span), Param, Expr),
+    RawLet(Option(Span), Id, Option(Expr), Expr, Expr, Bool),
+    RawLetRecGroup(Option(Span), List(Id), List(Expr), Expr),
+    RawAnnotated(Option(Span), Expr, Expr),
+    RawProd(Option(Span), List(Expr)),
+    RawProdTy(Option(Span), List(Expr)),
+    RawTraitBoundSet(Option(Span), List(Expr)),
+    RawArrow(Option(Span), Explicitness, Option(Id), Expr, Option(EffectRow), Expr),
+    RawFieldAccess(Option(Span), Expr, String),
+    RawProj(Option(Span), Expr, I64),
+    RawRecordConstruct(Option(Span), Expr, List(Field)),
+    RawStruct(Option(Span), List(Decl)),
+    RawModule(Option(Span), List(Decl)),
+    RawSig(Option(Span), List(Decl)),
+    RawEnum(Option(Span), Option(String), List(Ctor)),
+    RawImport(Option(Span), String, Scopes),
+    RawOpen(Option(Span), Expr, Expr, String),
+    RawOpenChoice(Option(Span), Id, List(String), Option(String)),
+    RawTypeDef(Option(Span), TypeDecl, Expr),
+    RawEffectDef(Option(Span), Id, List(Id), List(EffectOp), Expr),
+    RawTraitDef(Option(Span), Id, List(Id), List(Field), Expr),
+    RawImplDef(Option(Span), Option(Id), Path, List(Expr), List(Field), Expr),
+    RawPerform(Option(Span), Path, Expr),
+    RawResume(Option(Span), Expr),
+    RawRefNew(Option(Span), Expr),
+    RawRefGet(Option(Span), Expr),
+    RawRefSet(Option(Span), Expr, Expr),
+    RawMatch(Option(Span), Expr, List(Branch)),
+    RawStx(Option(Span), Expr),
+    RawQuote(Option(Span), Expr, List(QuoteHole)),
+    RawQuoteDecls(Option(Span), List(Decl), List(QuoteHole)),
+    RawMacroDef(Option(Span), Id, Expr, Expr, Option(MacroAnn), Option(Expr)),
+    RawSyntaxDef(Option(Span), Id, Role, Expr),
+    RawBlock(Option(Span), List(TokenTree)),
+    RawInstantiate(Option(Span), Id, Rule, List(Capture), Option(String)),
+    RawMacroCall(Option(Span), Expr, List(Captured)),
+    RawOperatorUse(Option(Span), Id, Fixity, List(Expr), Option(Span), Option(Span), Option(String))
+  } and TokenTree = enum {
+    Tok(Option(Span), TokenKind, Scopes),
+    TokGroup(Option(Span), Delim, List(TokenTree))
+  } and TokenKind = enum {
+    IdentTok(String),
+    OperatorTok(String),
+    IntTok(I64),
+    CharTok(Char),
+    StringTok(String),
+    UnitTok,
+    KeywordTok(String),
+    PunctTok(String)
+  } and Delim = enum {
+    ParenDelim,
+    BracketDelim,
+    BraceDelim
+  } and Role = enum {
+    MkRole(Fixity, Option(Order), RoleMeaning, Option(Span), Option(String))
+  } and Order = enum {
+    MkOrder(String, String, Assoc, Bool, List(Order), List(Order))
+  } and RoleMeaning = enum {
+    ApplyValue,
+    AssignRef,
+    CallMacro,
+    Rules(MacroAnn, List(Rule)),
+    OrderGroup,
+    PolyArrow
+  } and Rule = enum {
+    MkRule(List(RulePart), Replacement, Option(Span))
+  } and RulePart = enum {
+    PartToken(TokenTree),
+    PartGroup(Delim, List(RulePart), Option(Span)),
+    PartHole(String, HoleKind, Option(Span))
+  } and HoleKind = enum {
+    HoleExpr,
+    HoleBlock,
+    HoleId,
+    HoleDecl,
+    HoleOneDecl,
+    HolePattern,
+    HoleTokens
+  } and Replacement = enum {
+    ReplaceExpr(Expr),
+    ReplaceDecls(List(Decl))
+  } and Capture = enum {
+    MkCapture(String, Captured)
+  } and Captured = enum {
+    CapExpr(Expr),
+    CapBlock(List(TokenTree)),
+    CapId(TokenTree),
+    CapPattern(Pattern),
+    CapDecls(List(Decl)),
+    CapDecl(Decl),
+    CapTokens(List(TokenTree))
+  } and Field = enum {
+    MkField(String, Expr)
+  } and QuoteHole = enum {
+    MkQuoteHole(String, Expr)
+  } and Param = enum {
+    MkParam(Id, Option(Expr), List(Path), Explicitness)
+  } and EffectRow = enum {
+    MkEffectRow(List(Expr), List(Expr), Bool, Bool)
+  } and EffectOp = enum {
+    MkEffectOp(String, Expr, Expr)
+  } and TypeDecl = enum {
+    MkTypeDecl(Id, List(Id), List(Ctor))
+  } and Ctor = enum {
+    MkCtor(Id, List(Expr))
+  } and Branch = enum {
+    ValueBranch(Pattern, Expr),
+    EffectBranch(Path, Pattern, Expr)
+  } and Pattern = enum {
+    RawPatWild(Option(Span)),
+    RawPatBind(Option(Span), Id),
+    RawPatCon(Option(Span), Path, List(Pattern)),
+    RawPatAtom(Option(Span), AtomVal),
+    RawPatProd(Option(Span), List(Pattern)),
+    RawPatOr(Option(Span), Pattern, Pattern),
+    RawPatRecord(Option(Span), Path, List(PatField), Bool),
+    RawPatStructType(Option(Span), List(PatField), Bool),
+    RawPatType(Option(Span), AtomTy)
+  } and PatField = enum {
+    MkPatField(String, Option(Pattern))
+  } and Decl = enum {
+    DeclLet(Id, Expr, Bool, Bool),
+    DeclRecGroup(List(Id), List(Expr), Bool),
+    DeclMethod(Id, List(Param), Option(EffectRow), Expr, Bool),
+    DeclEffect(Id, List(Id), List(EffectOp), Bool),
+    DeclTrait(Id, List(Id), List(Field), Bool),
+    DeclImpl(Option(Id), Path, List(Expr), List(Field), Bool),
+    DeclMacro(Id, Expr, Bool, Option(MacroAnn), Option(Expr)),
+    DeclMacroCall(Expr, List(Captured), Bool),
+    DeclPatternSyn(Id, List(Id), Pattern, Bool),
+    DeclField(String, Expr),
+    DeclOpen(Expr, String),
+    DeclExport(Expr, Option(List(String)), Bool),
+    DeclHole(Id),
+    DeclSyntax(Id, Role, Bool),
+    DeclItems(List(TokenTree)),
+    DeclInstantiate(Id, Rule, List(Capture), Option(String), Bool)
+  };
   export Expr;
   export TokenTree;
   export TokenKind;
@@ -66,7 +227,9 @@ pub Syntax = module {
   pub TypeExpr : Type = Type;
   pub pat_wild = Pattern.RawPatWild(None);
   pub pat_var = fn(id) { Pattern.RawPatBind(None, id) };
-  pub pat_con = fn(name, args) { Pattern.RawPatCon(None, Path{head = name; members = Nil; head_choice = None}, args) };
+  pub pat_con = fn(name, args) {
+    Pattern.RawPatCon(None, Path{head = name; members = Nil; head_choice = None}, args)
+  };
   pub pat_atom = fn(val) { Pattern.RawPatAtom(None, val) };
   pub pat_prod = fn(pats) { Pattern.RawPatProd(None, pats) };
   pub pat_or = fn(l, r) { Pattern.RawPatOr(None, l, r) };
@@ -80,22 +243,56 @@ pub Syntax = module {
   pub decl_let = fn(name, val, is_pub) { Decl.DeclLet(name, val, is_pub, False) };
   # The compiler's record builders: the reflection boundary reads each record's
   # type and field names off one probe of these, so no field is spelled in C#.
-  pub mk_span = fn(file, start_byte, end_byte, start_line, start_col, end_line, end_col) { Span{file = file; start_byte = start_byte; end_byte = end_byte; start_line = start_line; start_col = start_col; end_line = end_line; end_col = end_col} };
+  pub mk_span = fn(file, start_byte, end_byte, start_line, start_col, end_line, end_col) {
+    Span{file = file; start_byte = start_byte; end_byte = end_byte;
+         start_line = start_line; start_col = start_col; end_line = end_line; end_col = end_col}
+  };
   pub mk_id = fn(name, span, scope) { Id{name = name; span = span; scope = scope} };
   pub mk_path_choice = fn(opens, fallback) { PathChoice{opens = opens; fallback = fallback} };
-  pub mk_path = fn(head, members, head_choice) { Path{head = head; members = members; head_choice = head_choice} };
+  pub mk_path = fn(head, members, head_choice) {
+    Path{head = head; members = members; head_choice = head_choice}
+  };
   # The compiler's leaf-enum builders, one code per constructor. The codes are the
   # C# enums' own orders (Explicitness: Implicit, Explicit; Fixity: Prefix, Infix;
   # Delim: Paren, Bracket, Brace; Assoc: Left, Right, NonAssoc; HoleKind: Expr,
   # Block, Id, Decls, Decl, Pattern, Tokens; AtomTy: I64, Unit, Char, String,
   # Scopes, Absurd; MacroAnn: Expr, Decl).
-  pub explicitness = fn(n : I64) : Explicitness { match (n) { 0 => Explicitness.Implicit, _ => Explicitness.Explicit } };
-  pub fixity = fn(n : I64) : Fixity { match (n) { 0 => Fixity.PrefixFixity, _ => Fixity.InfixFixity } };
-  pub delim = fn(n : I64) : Delim { match (n) { 0 => Delim.ParenDelim, 1 => Delim.BracketDelim, _ => Delim.BraceDelim } };
-  pub assoc = fn(n : I64) : Assoc { match (n) { 0 => Assoc.Left, 1 => Assoc.Right, _ => Assoc.NonAssoc } };
-  pub hole_kind = fn(n : I64) : HoleKind { match (n) { 0 => HoleKind.HoleExpr, 1 => HoleKind.HoleBlock, 2 => HoleKind.HoleId, 3 => HoleKind.HoleDecl, 4 => HoleKind.HoleOneDecl, 5 => HoleKind.HolePattern, _ => HoleKind.HoleTokens } };
-  pub atom_ty = fn(n : I64) : AtomTy { match (n) { 0 => AtomTy.TyI64, 1 => AtomTy.TyUnit, 2 => AtomTy.TyChar, 3 => AtomTy.TyString, 4 => AtomTy.TyScopes, _ => AtomTy.TyAbsurd } };
-  pub macro_ann = fn(n : I64) : MacroAnn { match (n) { 0 => MacroAnn.AnnExpr, _ => MacroAnn.AnnDecl } };
+  pub explicitness = fn(n : I64) : Explicitness {
+    match (n) { 0 => Explicitness.Implicit, _ => Explicitness.Explicit }
+  };
+  pub fixity = fn(n : I64) : Fixity {
+    match (n) { 0 => Fixity.PrefixFixity, _ => Fixity.InfixFixity }
+  };
+  pub delim = fn(n : I64) : Delim {
+    match (n) { 0 => Delim.ParenDelim, 1 => Delim.BracketDelim, _ => Delim.BraceDelim }
+  };
+  pub assoc = fn(n : I64) : Assoc {
+    match (n) { 0 => Assoc.Left, 1 => Assoc.Right, _ => Assoc.NonAssoc }
+  };
+  pub hole_kind = fn(n : I64) : HoleKind {
+    match (n) {
+      0 => HoleKind.HoleExpr,
+      1 => HoleKind.HoleBlock,
+      2 => HoleKind.HoleId,
+      3 => HoleKind.HoleDecl,
+      4 => HoleKind.HoleOneDecl,
+      5 => HoleKind.HolePattern,
+      _ => HoleKind.HoleTokens
+    }
+  };
+  pub atom_ty = fn(n : I64) : AtomTy {
+    match (n) {
+      0 => AtomTy.TyI64,
+      1 => AtomTy.TyUnit,
+      2 => AtomTy.TyChar,
+      3 => AtomTy.TyString,
+      4 => AtomTy.TyScopes,
+      _ => AtomTy.TyAbsurd
+    }
+  };
+  pub macro_ann = fn(n : I64) : MacroAnn {
+    match (n) { 0 => MacroAnn.AnnExpr, _ => MacroAnn.AnnDecl }
+  };
   pub rec R = enum { RExpr(Type), RDecls, RPat };
   export R;
   pub atom_val = fn(val) { Expr.RawAtom(None, val) };
@@ -104,10 +301,9 @@ pub Syntax = module {
   pub string = fn(s) { atom_val(AtomVal.StringAtom(s)) };
   pub char = fn(c) { atom_val(AtomVal.CharAtom(c)) };
   pub unit = fn(_) { atom_val(AtomVal.UnitAtom) };
-  pub tokens = fn(b : Expr) { match (b) { Expr.RawBlock(_, ts) => ts, _ => panic[List(TokenTree)]("tokens: not a block") } };
+  pub tokens = fn(b : Expr) {
+    match (b) { Expr.RawBlock(_, ts) => ts, _ => panic[List(TokenTree)]("tokens: not a block") }
+  };
   pub expand_block = fn(b : Expr) { expand_block[Expr](b) };
   pub expand_decls = fn(d : Decls) { expand_decls[Decls](d) };
-  pub id_name = fn(stx) { match (stx) { Expr.RawVar(_, id) => id.name, _ => panic[String]("expected identifier") } };
-  pub id_eq = fn(a, b) { match (a) { Expr.RawVar(_, ida) => match (b) { Expr.RawVar(_, idb) => i64_to_bool(eq_string(ida.name, idb.name)), _ => panic[Bool]("expected identifier") }, _ => panic[Bool]("expected identifier") } }
-
 }
