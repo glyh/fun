@@ -3,7 +3,9 @@ title: A closure capture gives two answers — conversion says equal, type-case 
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Closed 2026-09-27 - implemented by a fork (Oracle, commits 7b8d0b5 arm and 0f3d156 cases) and verified by the integrator. The type-case now answers 1 for the ruled pair while both negative controls stay 0. Conformance 783 cases 0 failed, xUnit 185/185. The arm compares the eta-applied results with Nbe.Convertible rather than recursing SameInstance, which cannot work (the applied results are stuck neutrals and SameInstance has no neutral arm); the residual that difference could leave was probed and is not reachable. Details below.
 assignee:
 blocked_by:
 ---
@@ -118,6 +120,49 @@ should have the same shape rather than a new mechanism).
   and record both answers in the ticket. **A conformance case cannot encode this option**: two cases
   asserting `1` and `0` for one pair of types would enshrine the inconsistency, and the suite's rule
   is that `.expect` states the model's behaviour, not the implementation's.
+
+## Closed 2026-09-27 — the type-case now answers `1`
+
+Implemented by a fork (Oracle, running on deepseek-flash because the GLM provider 429'd mid-session;
+`7b8d0b5` the arm, `0f3d156` the cases) and verified by the integrator: **conformance 783 cases,
+0 failed**, xUnit **185/185**.
+
+| program | before | after |
+| --- | --- | --- |
+| `g(b.Leaf)` — conversion | `1` | `1` |
+| `f(b.T)` — the type-case, the ruled one | `0` | **`1`** |
+| bodies differ (`x <= y` vs `x < y`) | `0` | `0` |
+| same body, differing captures (`n = 0` vs `n = 1`) | — | `0` |
+
+Cases: `values/core-320` (conversion), `core-321` (the ruling), `core-322` and `core-323` (the two
+negative controls). `SameInstance` now threads the context `width` so it can mint the fresh
+variable, and its doc comment was retired as the ruling asked.
+
+**The arm is not literally what this ticket sketched, and the difference is worth knowing.** The
+sketch was "apply both closures to one fresh variable and compare the results". Comparing them by
+recursing `SameInstance` **does not work**: for a stuck body the applied results are **neutrals**,
+and `SameInstance` has no neutral arm, so it answers `false` and the fix would never fire. The arm
+therefore compares the eta-applied results with `Nbe.Convertible` (`Nbe.Rec.cs:102`, readback
+equality — the comparison effect instances already use), which is also closer to the ruling's own
+wording: *compared the way conversion compares it*.
+
+Two consequences of that choice, both measured rather than assumed:
+
+- **Its one visible weakness is not reachable from a program.** `Convertible` is documented as able
+to say "not convertible" where full conversion would not (no eta, no unfolding), so I probed the
+shape where that could bite — two capture lambdas whose bodies differ only by an unfoldable
+definition, `x <= y` against `le(x, y)`. Type-case and conversion **both answer `1`**: application
+*evaluates* the body, so `le(x, y)` reduces to the same stuck primitive before readback sees it.
+- **The neutral-capture case was already fine without the arm.** A capture that is a *variable*
+  (`f(Set(I64, cmp).T)` inside `fn(cmp) { … }`) answers `1` on the merged tree and answered `1`
+  before it, by physical sharing — which is why the missing neutral arm has never bitten.
+
+Two limits the fork could not clear, recorded as it reported them: no case exists where an eta
+result is a `VRef` (`Convertible` throws on those, but a nominal's capture cannot have a ref
+result); and the literal "λ capturing a ref created per call" control **cannot be written at all** —
+a nominal's capture cannot mention a ref heap, so no typeable program has one, and `core-323` (same
+body, different captured values) is the nearest typeable form. Over-application was checked by
+replacing the arm with `return true`: both controls then answer `1`, so they genuinely catch it.
 
 ## Reading
 
