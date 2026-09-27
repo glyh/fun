@@ -105,13 +105,16 @@ public static partial class Elaborator
     /// <summary>
     /// A method's type before its body is read: <c>Self -> params -> result</c>,
     /// each parameter and the result at its written type, else a meta the body
-    /// solves, and its declared row on the innermost arrow.
+    /// solves, and its declared row on the innermost arrow. A written type's
+    /// metas read <c>self</c> as defined, so they abstract over no self entry and
+    /// a call substitutes only variables (method-signature-metas-capture-self).
     /// </summary>
     private static Value MethodType(Context ctx, Value.VStruct self, Binding.Method method)
     {
         var (selfCtx, _) = (ctx with { SelfType = self }).BindAnonymous(self);
-        Value Result(Context at) => method.Body is Syntax.Annotated { Type: var written } ? TypeValue(at, written) : at.RawMeta();
-        var (type, row) = Params(selfCtx, method.Params, Result, method.Row);
+        var selfLevel = ctx.Width;
+        Value Result(Context at) => method.Body is Syntax.Annotated { Type: var written } ? TypeValue(at.WithoutSelfInMetas(selfLevel), written) : at.RawMeta();
+        var (type, row) = Params(selfCtx, selfLevel, method.Params, Result, method.Row);
         return new Value.VPi(Explicitness.Explicit, self, new Closure(ctx.Environment, selfCtx.Quote(type)))
         {
             Row = InnermostRow(ctx, method.Params, row),
@@ -136,10 +139,13 @@ public static partial class Elaborator
         {
             Row = InnermostRow(withSelf, method.Params, row),
         };
-        if (methodTypes.TryGetValue(Label(method.Name.Name), out var promised)) ctx.Unify(promised, type);
+        // The body's side solves first: its metas abstract over everything the
+        // promised type's do, while the promise's signature metas read no self.
+        if (methodTypes.TryGetValue(Label(method.Name.Name), out var promised)) ctx.Unify(type, promised);
         return (new Term.Lam(body), type);
     }
 
+    /// <summary>A method's parameters and body: each written parameter type's metas read <c>self</c> as defined, as the promised type's do, so the two agree.</summary>
     private static (Term, Value, RowTerm) MethodBody(Context ctx, EquatableArray<Param> parameters, Syntax body, EffectRow? rowSyntax)
     {
         if (parameters.IsEmpty)
@@ -150,7 +156,8 @@ public static partial class Elaborator
             return (term, type, row);
         }
         var param = parameters[0];
-        var domain = param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
+        var selfLevel = ctx.SelfEntry?.Level ?? throw new InvalidOperationException("a method's body without self");
+        var domain = param.Type is { } written ? TypeValue(ctx.WithoutSelfInMetas(selfLevel), written) : ctx.RawMeta();
         var inner = ctx.Bind(param.Name.Name, domain);
         var rest = parameters.RemoveAt(0);
         var (bodyTerm, bodyType, bodyRow) = MethodBody(inner, rest, body, rowSyntax);
@@ -160,15 +167,15 @@ public static partial class Elaborator
         }, bodyRow);
     }
 
-    /// <summary>The function type over <paramref name="parameters"/>, ending in the type <paramref name="result"/> gives, with the row on its innermost arrow.</summary>
-    private static (Value Type, RowTerm Row) Params(Context ctx, EquatableArray<Param> parameters, Func<Context, Value> result, EffectRow? rowSyntax)
+    /// <summary>The function type over <paramref name="parameters"/>, ending in the type <paramref name="result"/> gives, with the row on its innermost arrow. <paramref name="selfLevel"/> is <c>self</c>'s entry, which a written parameter type's metas read as defined.</summary>
+    private static (Value Type, RowTerm Row) Params(Context ctx, int selfLevel, EquatableArray<Param> parameters, Func<Context, Value> result, EffectRow? rowSyntax)
     {
         if (parameters.IsEmpty) return (result(ctx), MethodRow(ctx, rowSyntax));
         var param = parameters[0];
-        var domain = param.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
+        var domain = param.Type is { } written ? TypeValue(ctx.WithoutSelfInMetas(selfLevel), written) : ctx.RawMeta();
         var inner = ctx.Bind(param.Name.Name, domain);
         var rest = parameters.RemoveAt(0);
-        var (type, row) = Params(inner, rest, result, rowSyntax);
+        var (type, row) = Params(inner, selfLevel, rest, result, rowSyntax);
         return (new Value.VPi(param.Explicitness, domain, new Closure(ctx.Environment, inner.Quote(type)))
         {
             Row = InnermostRow(ctx, rest, row),
@@ -399,4 +406,16 @@ public sealed partial record Context
         SelfEntry is { } entry
             ? (new Term.Var(Nbe.LevelToIndex(Width, entry.Level)), entry.Type)
             : throw new FunException("unbound variable: self");
+
+    /// <summary>
+    /// This context with the entry at <paramref name="level"/> (a method's
+    /// <c>self</c>) as defined: a meta a written type inserts skips it, so the
+    /// method's signature does not capture the binder a call substitutes a value for.
+    /// </summary>
+    public Context WithoutSelfInMetas(int level)
+    {
+        var kinds = EntryKinds.ToList();
+        kinds[Width - 1 - level] = EntryKind.Defined;
+        return this with { EntryKinds = kinds.ToEquatableArray() };
+    }
 }
