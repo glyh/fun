@@ -5,8 +5,9 @@ namespace Fun.Compiler;
 /// <summary>
 /// E11's run-time half: whether a type is the instance a type-case head names.
 /// A nominal is the same type when it is the same declaration over the same
-/// captures. Captures are compared by identity where they have no structural
-/// reading - a stamp is a cell, a capture may be a function - which is what
+/// captures. Captures are compared by identity where they have a fixed reading
+/// - a stamp is a cell - and a capture that is a function is compared the way
+/// conversion compares it (eta-applied to a fresh variable), which is what
 /// separates two evaluations of a generative module (each mints its own cell)
 /// while sharing one evaluation's type with itself.
 /// </summary>
@@ -32,7 +33,7 @@ public static partial class Nbe
         var rooted = head.HeadWidth is 0 ? head.Head : head.Head.Shift(env.Count - head.HeadWidth);
         var written = metas.Aggregate(Eval(mc, env, rooted), (f, id) => Apply(mc, f, new Value.VMeta(id, [])));
         var solved = new Dictionary<int, Value>();
-        if (!SameInstance(mc, written, type, metas, solved)) return new MatchResult.NoMatch();
+        if (!SameInstance(mc, env.Count, written, type, metas, solved)) return new MatchResult.NoMatch();
 
         for (var i = 0; i < head.Arity; i++)
         {
@@ -46,10 +47,10 @@ public static partial class Nbe
     /// <summary>
     /// Structural equality of run-time type values, a pattern's own metas matching
     /// anything once and the same thing every time after. Equal when the same
-    /// object (a capture need not have a structural reading), a cell by identity
-    /// (a stamp), else shape by shape.
+    /// object, a cell by identity (a stamp), a function the way conversion compares
+    /// it (eta-applied to a fresh variable), else shape by shape.
     /// </summary>
-    private static bool SameInstance(MetaContext mc, Value written, Value actual, List<int> metas, Dictionary<int, Value> solved)
+    private static bool SameInstance(MetaContext mc, int width, Value written, Value actual, List<int> metas, Dictionary<int, Value> solved)
     {
         if (ReferenceEquals(written, actual)) return true;
         written = Force(mc, written);
@@ -58,9 +59,20 @@ public static partial class Nbe
         switch (written, actual)
         {
             case (Value.VMeta { Spine.IsEmpty: true } m, _) when metas.Contains(m.Id):
-                if (solved.TryGetValue(m.Id, out var previous)) return SameInstance(mc, previous, actual, [], solved);
+                if (solved.TryGetValue(m.Id, out var previous)) return SameInstance(mc, width, previous, actual, [], solved);
                 solved[m.Id] = actual;
                 return true;
+            // A closure capture is compared the way conversion compares it (Unify's
+            // eta arm): apply the candidate's body and the written side to one fresh
+            // variable and compare the results, so two capture lambdas agree when they
+            // agree on every argument. The results are neutrals for a stuck body, so
+            // they are compared by readback (Convertible), the same comparison effect
+            // instances use, rather than by SameInstance, which has no neutral arm.
+            case (_, Value.VLam b):
+            {
+                var probe = new Value.VVar(width, []);
+                return Convertible(mc, width + 1, Apply(mc, written, probe), ApplyClosure(mc, b.Body, probe));
+            }
             case (Value.VNominal a, Value.VNominal b):
                 return ReferenceEquals(a.Decl, b.Decl) && Pairwise(a.Captures, b.Captures);
             case (Value.VRef a, Value.VRef b):
@@ -82,6 +94,6 @@ public static partial class Nbe
         }
 
         bool Pairwise(EquatableArray<Value> a, EquatableArray<Value> b) =>
-            a.Length == b.Length && a.Zip(b).All(p => SameInstance(mc, p.First, p.Second, metas, solved));
+            a.Length == b.Length && a.Zip(b).All(p => SameInstance(mc, width, p.First, p.Second, metas, solved));
     }
 }
