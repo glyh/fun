@@ -11,11 +11,38 @@ entries that describe the prototype's own implementation are its record, and its
 `git log`. Paths written in a dated entry are the paths of that date — the port was lifted from
 `dotnet/` to the repo root on 2026-09-26.
 
-Last updated: the std library's public surface, 2026-09-27.
+Last updated: a generic impl's head variable takes its bound, 2026-09-27.
 
 ---
 
 ## Completed
+
+### A generic impl's head variable takes its bound (2026-09-27)
+
+- The head half landed first as `trait-op-takes-innermost-impl` (2026-09-27): an impl
+  whose head is a pattern over types registers and serves its instances, its free
+  names bound as its own type variables. The **bound** was missing: a free name in an
+  impl head is a parameter of the impl, and the evidence its body uses for that
+  parameter is now an implicit argument of the impl, resolved from scope when the impl
+  is selected — exactly as a call to a bounded function resolves its hidden
+  dictionaries (`traits.md`, "Resolution").
+- `impl Size(Option(A))` with a body that calls `Size.size` on its element therefore
+  works: the impl's dictionary is a function of the `Size(A)` dictionary, and
+  `Size.size(Some(5))` resolves `Size(I64)` at the use. A demand on anything but a bare
+  head variable (the impl's own container, or another trait at a structured type) is
+  left where it was made, so it fails at the impl's **definition** naming the missing
+  evidence — never as a misleading use-site error. This is what `derive` rests on.
+- Measured on the gate: `std/list.fun` carrying a non-recursive
+  `pub impl probe : Eq(List(A))`, `export Lists.{probe}` in `std/stage2.fun`, a
+  no-import program comparing two lists answers `VALUE True`, and `{ 1 }` stays
+  `VALUE 1`. Both `std/` edits were reverted; `std/` is unchanged. The recursive body
+  a real structural equality needs is still blocked by
+  [a recursive helper matching two lists cores](wayfinder/tickets/recursive-match-on-two-lists-cores.md),
+  so [Eq for List and Option](wayfinder/tickets/std-eq-for-list-and-option.md) waits on
+  that one alone.
+- 7 conformance cases added (the bound used in the body, through `open`, `export` and
+  an import, and two definition-site errors) — **`conformance: 864 cases, 0 failed`** —
+  and one xUnit test pinning the missing-evidence message, **`188/188`**.
 
 ### The std library's public surface (2026-09-27)
 
