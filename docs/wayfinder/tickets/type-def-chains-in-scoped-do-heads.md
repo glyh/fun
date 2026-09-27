@@ -1,7 +1,9 @@
 ---
 title: Mutual type chains in scoped do-heads (TypeDef)
 parent: ../fun-design-map.md
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Closed 2026-09-27 without work, by the integrator. Chains in scoped heads work on the port, and the suite already covers the shape (`values/elab-014` is the ticket's own program, plus `elab-107`, `elab-163`) - so there is no case to add and nothing to build. The re-measure note's one open neighbour is closed too: `elaborate/elab-109` does not "pass" a mixed group, its `.expect` is `error`, and the refusal is uniform across four spellings at block and module scope (probed).
 assignee:
 blocked_by:
 ---
@@ -28,8 +30,13 @@ blocked_by:
 >
 > One neighbour measured on the way, **not** this ticket's question: a **mixed** group is refused —
 > `rec A = enum { MkA(B) } and B = struct { a : A }` → *"a rec … and … group holds enums, struct
-> types or functions, not a mix"*, at block scope and in a module alike. Where exactly that
-> boundary sits is unprobed (`elaborate/elab-109` mixes a struct type with a function and passes).
+> types or functions, not a mix"*, at block scope and in a module alike.
+>
+> **Correction 2026-09-27** — that boundary is not unprobed, and the example given for it was read
+> wrong. `elaborate/elab-109` (struct type + function) has `.expect` = `error`; it is a case *for*
+> this refusal, not a counterexample. Probed at four spellings — enum+struct, struct+fn in both
+> orders, and enum+struct inside a module — every one gives the same refusal, so there is no
+> separate boundary question here.
 >
 > The original text is kept below; its mechanism names the deleted prototype.
 
@@ -59,4 +66,20 @@ module items, struct items, and scoped heads (`scoped_binding_to_expr`, enforest
 
 ## Resolution
 
-_Unresolved._
+**Closed 2026-09-27 — nothing to build.** Measured, not inferred:
+
+| probe | result |
+| --- | --- |
+| `{ type A = MkA \| MkB and B = MkC; (MkA : A) }` | `VALUE MkA` |
+| `{ rec A = enum { MkA } and B = enum { MkB(A) }; (B.MkB(A.MkA) : B) }` | `VALUE MkB` |
+
+and the shape is already in the suite: `values/elab-014` is the first probe verbatim, with
+`elab-107` (structs, block scope) and `elab-163` (enums, block scope) alongside. The "Cost of full
+support" section above prices work against the deleted prototype's mechanism names;
+`TypeDefGroup` in Syntax and Surface is not needed, because the port's `TypeBinding` carries one
+node per chain through the whole pipeline (see
+[mutually-recursive nominal types](mutually-recursive-nominal-types.md)).
+
+What was *not* built is the prose: the ticket's own `## Question` asked for a kind of head the
+port already accepts. The only residue was the mixed-group boundary named in the note above, and
+that is settled there.

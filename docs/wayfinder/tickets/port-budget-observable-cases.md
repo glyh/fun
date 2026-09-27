@@ -3,7 +3,9 @@ title: "Port: the observable budget cases the ruling named"
 parent: port-core-tt-to-dotnet.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: Closed 2026-09-27 by the integrator, with no new code. All three observable budget behaviours are now asserted and green (`BudgetTests` 2/2): the macro-body case, the operator case, and the `expand_decls` case - which the ticket recorded as "deliberately not landed" and which the call-stack ruling closed instead (`ANestOfApplicationsNamesTheCallStack` asserts both `keep` and `spin`, outermost first, each with its site). The "two landed, one blocked" state below is the state before that ruling landed.
 assignee:
 blocked_by:
 ---
@@ -61,3 +63,21 @@ Two of the three behaviours are now asserted, which is what the ruling asked for
 
 So the ruling's three observable budget cases stand at **two landed, one blocked on a real
 message divergence** — not on nobody having written the test.
+
+## Closed 2026-09-27 — the third behaviour landed after all
+
+[a budget error names the outermost request](port-budget-attribution.md) is **closed**
+(2026-09-25), and it did not land the divergence as a divergence: it ruled one stack,
+outermost → innermost, and with it the third behaviour became assertable. Re-measured rather
+than re-read:
+
+- `dotnet test test/Fun.Tests --nologo --filter "FullyQualifiedName~BudgetTests"` → **2 passed,
+  0 failed**.
+- `BudgetTests.ANestOfApplicationsNamesTheCallStack` (`BudgetTests.cs:44`) is the `expand_decls`
+  case: a macro `keep` whose body calls `Syntax.expand_decls` over a `spin(0)` that overruns. It
+  asserts the message names **both** macros, `keep` before `spin`.
+- The two stale claims in the tables above: the port's budget errors **do** now carry a site
+  (`Budget.cs:99`, `FrameOf` reads `application.Site`, elided only when synthetic), and the third
+  row's "deliberately not landed" no longer holds.
+
+Nothing left to write here.
