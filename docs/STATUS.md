@@ -40,9 +40,10 @@ Last updated: a generic impl's head variable takes its bound, 2026-09-27.
   [a recursive helper matching two lists cores](wayfinder/tickets/recursive-match-on-two-lists-cores.md),
   so [Eq for List and Option](wayfinder/tickets/std-eq-for-list-and-option.md) waits on
   that one alone.
-- 7 conformance cases added (the bound used in the body, through `open`, `export` and
-  an import, and two definition-site errors) — **`conformance: 864 cases, 0 failed`** —
-  and one xUnit test pinning the missing-evidence message, **`188/188`**.
+- 8 conformance cases added (the bound used in the body, with two head variables,
+  through `open`, `export` and an import, and two definition-site errors) —
+  **`conformance: 865 cases, 0 failed`** — and one xUnit test pinning the
+  missing-evidence message, **`188/188`**.
 
 ### The std library's public surface (2026-09-27)
 
