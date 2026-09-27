@@ -95,6 +95,14 @@ public sealed class Reflection
     /// <summary><c>Syntax.Id</c>, the record type of an identifier.</summary>
     public Value IdType { get; }
 
+    /// <summary>The probed field names of <c>Syntax.Id</c>, in order: name, span, scope.</summary>
+    public (string Name, string Span, string Scope) IdFields => (_id.Fields[0], _id.Fields[1], _id.Fields[2]);
+
+    /// <summary>The probed tags of the prelude's list constructors, for consumers building no layout of their own.</summary>
+    public string ListNil => _nil.Tag;
+
+    public string ListCons => _cons.Tag;
+
     private readonly Value.VNominal _atomVal, _tokenKind, _role, _order, _roleMeaning, _rule, _rulePart,
         _replacement, _capture, _captured, _field, _quoteHole, _param, _effectRow, _effectOp, _ctor, _branch, _patField;
 

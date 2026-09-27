@@ -18,27 +18,37 @@ public static class QuoteHoles
     private static string? Spelling(Value v) => v is Value.VAtom { Atom: Atom.Str { Value: ['$', _, ..] name } } ? name : null;
 
     /// <summary>The hole an <c>Id</c> record spells, if it spells one.</summary>
-    private static string? HoleName(Value v) =>
-        v is Value.VRecord r && r.Fields.Any(f => f.Name == "scope") && r.Fields.FirstOrDefault(f => f.Name == "name").Value is { } name
+    private static string? HoleName(Value v)
+    {
+        var fields = Reflection.OfPrelude.IdFields;
+        return v is Value.VRecord r && r.Fields.Any(f => f.Name == fields.Scope)
+            && r.Fields.FirstOrDefault(f => f.Name == fields.Name).Value is { } name
+                ? Spelling(name)
+                : null;
+    }
+
+    private static string? TokenHoleName(Value v) =>
+        v is Value.VCon { Name: PreludeAbi.Tags.TokenTree.Tok, Args: [_, Value.VCon { Name: PreludeAbi.Tags.TokenKind.IdentTok, Args: [var name] }, _] }
             ? Spelling(name)
             : null;
 
-    private static string? TokenHoleName(Value v) =>
-        v is Value.VCon { Name: "Tok", Args: [_, Value.VCon { Name: "IdentTok", Args: [var name] }, _] } ? Spelling(name) : null;
-
     /// <summary>The identifier token <paramref name="token"/> was written as, spelling the <c>Id</c> <paramref name="id"/> instead.</summary>
-    private static Value TokenOfId(Value token, Value id) =>
-        (token, id) is (Value.VCon { Args: [var span, Value.VCon kind, _] } tok, Value.VRecord record)
-            ? tok with { Args = [span, kind with { Args = [Field(record, "name")] }, Field(record, "scope")] }
+    private static Value TokenOfId(Value token, Value id)
+    {
+        var fields = Reflection.OfPrelude.IdFields;
+        return (token, id) is (Value.VCon { Args: [var span, Value.VCon kind, _] } tok, Value.VRecord record)
+            ? tok with { Args = [span, kind with { Args = [Field(record, fields.Name)] }, Field(record, fields.Scope)] }
             : throw new FunException("a token hole filled with a value that is not an Id");
+    }
 
     private static Value Field(Value.VRecord record, string name) => record.Fields.First(f => f.Name == name).Value;
 
     /// <summary>The list <paramref name="items"/> followed by <paramref name="tail"/>.</summary>
     private static Value Append(Value items, Value tail) => items switch
     {
-        Value.VCon { Name: "Nil" } => tail,
-        Value.VCon { Name: "Cons", Args: [var head, var rest] } cell => cell with { Args = [head, Append(rest, tail)] },
+        Value.VCon { Name: var nilName } when nilName == Reflection.OfPrelude.ListNil => tail,
+        Value.VCon { Name: var consName, Args: [var head, var rest] } cell when consName == Reflection.OfPrelude.ListCons
+            => cell with { Args = [head, Append(rest, tail)] },
         _ => throw new FunException("a declaration hole filled with a value that is not a list"),
     };
 
@@ -47,15 +57,16 @@ public static class QuoteHoles
         switch (v)
         {
             // A declaration hole splices its declarations in place of its item.
-            case Value.VCon { Name: "Cons", Args: [Value.VCon { Name: "DeclHole", Args: [var id] } head, var tail] } cell when HoleName(id) is { } hole:
+            case Value.VCon { Name: var cellName, Args: [Value.VCon { Name: PreludeAbi.Tags.Decl.DeclHole, Args: [var id] } head, var tail] } cell
+                when cellName == Reflection.OfPrelude.ListCons && HoleName(id) is { } hole:
             {
                 var filled = onHole(Kind.Decl, hole, head);
                 var rest = MapHoles(onHole, tail);
                 return ReferenceEquals(filled, head) ? cell with { Args = [head, rest] } : Append(filled, rest);
             }
-            case Value.VCon { Name: "RawVar" or "RawPatBind", Args: [_, var id] } con when HoleName(id) is { } hole:
-                return onHole(con.Name == "RawVar" ? Kind.Expr : Kind.Pattern, hole, v);
-            case Value.VCon { Name: "DeclHole", Args: [var id] } when HoleName(id) is { } hole:
+            case Value.VCon { Name: PreludeAbi.Tags.Expr.RawVar or PreludeAbi.Tags.Pattern.RawPatBind, Args: [_, var id] } con when HoleName(id) is { } hole:
+                return onHole(con.Name == PreludeAbi.Tags.Expr.RawVar ? Kind.Expr : Kind.Pattern, hole, v);
+            case Value.VCon { Name: PreludeAbi.Tags.Decl.DeclHole, Args: [var id] } when HoleName(id) is { } hole:
                 return onHole(Kind.Decl, hole, v);
             case Value.VCon when TokenHoleName(v) is { } hole:
                 return onHole(Kind.Id, hole, v);

@@ -75,7 +75,7 @@ public sealed partial class Expander
 
     /// <summary>The <c>T</c> of a parameter written <c>(x : Expr(T))</c>.</summary>
     private static Syntax? TypedExprParam(Param p) =>
-        p.Type is Syntax.Ap { Fn: Syntax.Var { Id.Name: "Expr" }, Explicitness: Explicitness.Explicit, Arg: var t } ? t : null;
+        p.Type is Syntax.Ap { Fn: Syntax.Var { Id.Name: PreludeAbi.Types.Syntax.Expr }, Explicitness: Explicitness.Explicit, Arg: var t } ? t : null;
 
     /// <summary>
     /// A macro's signature (macro-annotation-constraints-mean-nothing): its type binders,
@@ -119,24 +119,24 @@ public sealed partial class Expander
     private static (EquatableArray<HoleKind>, Syntax) ParameterKinds(Syntax value)
     {
         Syntax SyntaxMember(Id written, string member, SourceSpan span) =>
-            new Syntax.FieldAccess(new Syntax.Var(written with { Name = "Syntax" }), member, span);
+            new Syntax.FieldAccess(new Syntax.Var(written with { Name = PreludeAbi.Syntax }), member, span);
 
         (HoleKind, Syntax?) KindType(Param p) => p.Type switch
         {
             // (x : Expr(T)): an Expr whose type the macro's signature promises.
-            Syntax.Ap { Fn: Syntax.Var { Id: { Name: "Expr" } written }, Explicitness: Explicitness.Explicit } ty
-                => (HoleKind.Expr, SyntaxMember(written, "Expr", ty.Span)),
-            Syntax.Ap { Fn: Syntax.Var { Id.Name: "List" }, Explicitness: Explicitness.Explicit, Arg: Syntax.Var { Id: { Name: "Decl" } decl } } ty
-                => (HoleKind.Decls, SyntaxMember(decl, "Decls", ty.Span)),
-            Syntax.Ap { Fn: Syntax.Var { Id.Name: "List" } list, Explicitness: Explicitness.Explicit, Arg: Syntax.Var { Id: { Name: "TokenTree" } tree } } ty
-                => (HoleKind.Tokens, ty with { Arg = SyntaxMember(tree, "TokenTree", tree.Span) }),
+            Syntax.Ap { Fn: Syntax.Var { Id: { Name: PreludeAbi.Types.Syntax.Expr } written }, Explicitness: Explicitness.Explicit } ty
+                => (HoleKind.Expr, SyntaxMember(written, PreludeAbi.Types.Syntax.Expr, ty.Span)),
+            Syntax.Ap { Fn: Syntax.Var { Id.Name: PreludeAbi.Types.Builtins.List }, Explicitness: Explicitness.Explicit, Arg: Syntax.Var { Id: { Name: PreludeAbi.Types.Syntax.Decl } decl } } ty
+                => (HoleKind.Decls, SyntaxMember(decl, PreludeAbi.Types.Syntax.Decls, ty.Span)),
+            Syntax.Ap { Fn: Syntax.Var { Id.Name: PreludeAbi.Types.Builtins.List } list, Explicitness: Explicitness.Explicit, Arg: Syntax.Var { Id: { Name: PreludeAbi.Types.Syntax.TokenTree } tree } } ty
+                => (HoleKind.Tokens, ty with { Arg = SyntaxMember(tree, PreludeAbi.Types.Syntax.TokenTree, tree.Span) }),
             Syntax.Var { Id: var written } ty when KindOfName(written.Name) is { } kind
                 => (kind, SyntaxMember(written, kind switch
                 {
-                    HoleKind.Block or HoleKind.Expr => "Expr",
-                    HoleKind.Id => "Id",
-                    HoleKind.Decl => "Decl",
-                    _ => "Pattern",
+                    HoleKind.Block or HoleKind.Expr => PreludeAbi.Types.Syntax.Expr,
+                    HoleKind.Id => PreludeAbi.Types.Syntax.Id,
+                    HoleKind.Decl => PreludeAbi.Types.Syntax.Decl,
+                    _ => PreludeAbi.Types.Syntax.Pattern,
                 }, ty.Span)),
             _ => (HoleKind.Expr, p.Type),
         };
@@ -156,11 +156,11 @@ public sealed partial class Expander
 
     private static HoleKind? KindOfName(string name) => name switch
     {
-        "Expr" => HoleKind.Expr,
+        PreludeAbi.Types.Syntax.Expr => HoleKind.Expr,
         "Block" => HoleKind.Block,
-        "Id" => HoleKind.Id,
-        "Decl" => HoleKind.Decl,
-        "Pattern" => HoleKind.Pattern,
+        PreludeAbi.Types.Syntax.Id => HoleKind.Id,
+        PreludeAbi.Types.Syntax.Decl => HoleKind.Decl,
+        PreludeAbi.Types.Syntax.Pattern => HoleKind.Pattern,
         _ => null,
     };
 
