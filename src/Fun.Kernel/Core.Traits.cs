@@ -61,7 +61,7 @@ public abstract partial record ModuleEntry
     /// fields. As a module value it holds the dictionary; as a signature's
     /// instance, the dictionary type in both places.
     /// </summary>
-    public sealed record Impl(string? Name, MemberKind Kind, Value DictType, Value Value) : ModuleEntry;
+    public sealed record Impl(string? Name, MemberKind Kind, Value DictType, Value Value, EquatableArray<int> Vars = default) : ModuleEntry;
 }
 
 public abstract partial record OpenMember
