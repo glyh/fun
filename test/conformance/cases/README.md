@@ -1,10 +1,10 @@
 # Conformance cases
 
 Language-behaviour tests as data: 775 programs and their expected results (the runner prints the
-current count), run by
-the C# port. They were written to be implementation-independent, so the earlier OCaml
-prototype ran the same files — that is why the suite lives in its own tree, apart from the
-implementation, and why `../prototype-divergences.txt` exists as a historical record.
+current count), all run by the C# port. They were written to be implementation-independent, so
+the earlier OCaml prototype ran the same files — that is why the suite lives in its own tree,
+apart from the implementation, and why `../prototype-divergences.txt` exists as a historical
+record.
 
 A case may only depend on what a program produces — never on compiler internals.
 
