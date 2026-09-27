@@ -79,3 +79,81 @@ signature before choosing.
   `Context.WithoutSelfInMetas`
 - `src/Fun.Compiler/Unify.cs:144` (`Invert`) — where a non-variable spine entry is refused
 - `src/Fun.Compiler/Nbe.cs` — `InsertedMeta`, which reads the `EntryKinds` spine
+
+## Recon (base `f177993`, 2026-09-27; measured, not fixed)
+
+Scratch programs under `/tmp/param-meta-recon/`, run as
+`dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file <p>.fun` after
+`dotnet build`. Baseline on this base: **conformance 865/0, xUnit 188/188**.
+
+### 1. The ticket's five probes — all five still fail, unchanged
+
+| program | result | message |
+| --- | --- | --- |
+| `f = fn(a : I64, r : Ref(I64)) : I64 { a }; x = ref(40); f(0, x)` (literal) | fail | `ELAB type mismatch: a meta's spine argument is not a variable` |
+| same, `n = 0` then `f(n, x)` (let-bound) | fail | same message |
+| same called from a λ: `g = fn(y : I64) { x = ref(40); f(y, x) }; g(0)` | **`VALUE 0`** | — |
+| `Box[I64]{ v = 1 }.get(x)`, `Box = fn[A : Type] { struct { v : A; pub method get(r : Ref(I64)) : I64 { 3 } } }` | fail | spine message |
+| `f[I64](1, x)`, `f = fn[A : Type](a : A, r : Ref(I64)) : A { a }` | fail | spine message |
+| `g(b, x)`, `g = fn(o : Box[I64], r : Ref(I64)) : I64 { o.v }`, `b = Box[I64]{ v = 1 }` | fail | spine message |
+
+The literal/let-bound/λ split and the message are byte-identical to the ticket's numbers.
+
+### 2. A genuinely dependent signature
+
+- **Works today:** `f = fn[A : Type](a : A, r : Ref(A)) : A { a }`,
+  `g = fn[B : Type](y : B) { q = ref(y); f[B](y, q) }; g[I64](7)` → **`VALUE 7`**. The later
+  parameter's element type `A` depends on the earlier type parameter, the meta's spine holds the
+  variables `[B, y]`, and `Invert` succeeds. Same function with a monomorphic call
+  `q = ref(7); f[I64](7, q)` → **spine failure** (`dep10`), so the dependence is abstract-generic
+  only.
+- **Value-indexed dependence:** `F = fn(n : I64) { if (n == 0) { I64 } else { Bool } }`,
+  `f = fn(a : I64, r : Ref(F(a))) : I64 { a }`. The declaration elaborates; the call
+  `x = ref(0); f(0, x)` → **spine failure** (`dep4`). It is the only well-typed call (a generic
+  caller cannot build the `Ref(F(y))`), so the genuine value-indexed case is *unreachable today*.
+- **Blocked (separate bug, not this ticket):** `Ref(Id[A])` with `Id = fn[A : Type] { struct { v : A } }`
+  fails at **declaration** with `cannot unify VStruct with VU` (`d14`), while `Ref(Id[I64])` works
+  (`d12`) and `Ref(Pair[I64, Bool])` works (`d11`). So a struct-former applied to a *bound type
+  variable* inside a written type is a distinct pre-existing failure; it could not be used for the
+  dependent probe.
+
+**What must stay true:** marking an entry `Defined` edits only `EntryKinds`; `Environment` and
+`Names` are untouched (`WithoutSelfInMetas` proves this). The element/result dependence of `dep4`
+and `dep9` is an ordinary environment lookup, so it survives every shape. The only hidden meta in a
+written type here is `Ref`'s implicit heap (`Ref : [h : Type] -> Type -> Type`) plus trait evidence;
+no measured program needs that heap meta to abstract over an earlier *value* binder.
+
+### 3. Candidate shapes, measured
+
+The two shapes below were each implemented in the worktree, built, run over the probes and the
+suite, then reverted. Sites changed, common to both: `Elaborator.cs` `InferLam` (the written-domain
+elaboration and the Lam-against-Pi check) and `Elaborator.Structs.cs` `Params`, `MethodBody` and
+`MethodType`'s `Result`.
+
+| shape | change | probes fixed | probes / cases it leaves failing | suite |
+| --- | --- | --- | --- | --- |
+| **S0** status quo | — | none | p1 p2 p4 p5 p6 p8 p10 dep10 | 865/0, 188/188 |
+| **S1** skip *every* bound entry | helper maps all `EntryKind`s to `Defined` | p1 p2 p4 p5 p6 p8 p10 dep4 dep10 | none measured | **865/0, 188/188** |
+| **S2** skip only non-`Type` bound entries | helper keeps `Bound` iff the entry's type forces to `Value.VU` (the `FreshRowMeta` pattern, `Elaborator.Effects.cs:424`) | p1 p2 p6 p8 p10 dep4 | **p4, p5, dep10** (an ambient/instantiated `A : Type` still non-variable) | 865/0 |
+| **S3** skip only non-dependent entries | thread the written type's mentioned levels into meta insertion; `Defined` unless the elaborated type mentions the entry | unmeasured | unmeasured | unmeasured |
+| **S4** tolerate non-variable spine at solve | in `Unify.Solve`/`Invert`, partition the spine: variable entries abstracted, non-variable entries substituted (meta becomes a constant in them) | unmeasured | unmeasured | unmeasured |
+
+Exact S1 result: p1 `VALUE 0`, p2 `VALUE 0`, p4 `VALUE 3`, p5 `VALUE 1`, p6 `VALUE 1`, dep4
+`VALUE 0`, dep10 `VALUE 7`; p3 `VALUE 0`, p7 `VALUE 41`, p9 `VALUE 41`, dep9 `VALUE 7` all keep
+working. Exact S2 result: p1/p2/p6/p10/dep4/dep9 pass; **p4 and p5 still fail with the spine
+message**, dep10 too. S2's failures are the explicit-instantiation shapes: `A` is a `VU` binder,
+stays `Bound`, and `f[I64]` / `Box[I64]` substitute a non-variable.
+
+`S3` and `S4` are **unmeasured**; the descriptions are the change each would need, not a predicted
+outcome. `S3` also has to be threaded to the `InsertImplicitArgs` site (`Elaborator.Implicits.cs:11`)
+that actually inserts the meta, which is one call below the written-type site. `S4` changes
+`Invert`'s contract and is a different mechanism (substitution, not spine masking).
+
+### 4. Structural finding for whichever shape is chosen
+
+`Syntax.Lam` is **single-parameter** (`src/Fun.Kernel/Syntax.cs:44`); `fn(a, r)` is nested `Lam`s, so
+`InferLam` cannot distinguish "earlier parameters of this same `fn`" from enclosing binders. The
+method fix could key on `selfLevel` because `Params` walks a parameter *list*; the plain-`fn` site
+has no such marker. Any "skip earlier parameters only" shape therefore needs either a new notion of
+signature start or a signature-level traversal replacing `InferLam`, not a one-line change there.
+
