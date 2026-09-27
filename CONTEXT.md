@@ -196,6 +196,14 @@ An unknown term the elaborator solves by unification, standing for a function of
 the bound entries in scope where it was created.
 _Avoid_: hole, unification variable, flex
 
+**Spine**:
+The ordered chain of arguments something is applied to. A meta's spine is what it
+abstracts over, and solving reads it as a renaming, so every argument must be a
+distinct bound entry. The same word names the application chain a macro's
+arguments are taken from, and the Pi chain ending in `Type` that decides whether a
+lambda makes a type.
+_Avoid_: argument list, args, application chain
+
 **Defined entry**:
 An entry whose value is known. A meta skips over these rather than abstracting
 over them.
