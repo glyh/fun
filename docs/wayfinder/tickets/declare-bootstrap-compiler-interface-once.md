@@ -120,4 +120,19 @@ already declared and guarded, and because the unit paths stay single-sourced in
 
 ## Answer
 
-Unresolved — the fork above is the decision.
+**Ruled by the user, 2026-09-27 — measure before shaping.** The two routes above are not
+decided yet, and the reason is that both were estimated rather than measured (~200 names, ~200
+call sites). So the next step is the *investigation* the recommendation (2) already needs, and
+nothing else: rewrite the reflection boundary so the compiler reaches the prelude through
+published builders and accessors instead of hand-building `VCon`/`VRecord` by name and field,
+and report **how many of the ~201 names actually survive** — per tier (constructor / type and
+module / struct field), with the rewritten call sites on disk, compiled, and the suite green.
+
+Explicitly out of scope until that number exists: no `PreludeAbi.cs`, no eager verification in
+`Prelude.Load`, no rewiring of the five consumers to a declaration. Route (1) — declare all of
+it — and route (2) — declare the reduced surface — are both still live, and the choice between
+them is taken against the measured count, not against the estimate that produced this ticket.
+
+Consequence to keep in mind while measuring: the number that matters is not "how many names can
+be moved into a helper" but how many must remain **spelled in C#** at all. A name the compiler
+still has to write down is a name the declaration must carry, whichever route follows.
