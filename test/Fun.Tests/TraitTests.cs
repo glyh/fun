@@ -69,4 +69,13 @@ public class TraitTests
     public void AnArgumentTypeNeverKnownIsAnError() =>
         Assert.Equal("cannot choose an implementation of `Size`: its argument type is never known",
             Elaborate("{ " + Size + TwoImpls + "(fn(x) { Size.size(x) }) }"));
+
+    /// <summary>A generic impl's own variables order the candidates: neither of two incomparable heads is chosen.</summary>
+    [Fact]
+    public void IncomparableGenericImplsAreAmbiguous() =>
+        Assert.Equal("ambiguous implementation of `Conv`",
+            Elaborate("{ trait Conv(A) = sig { conv : A -> I64 }; "
+                + "impl Conv(I64 -> A) = module { conv = fn(p) { 1 } }; "
+                + "impl Conv(B -> Bool) = module { conv = fn(p) { 2 } }; "
+                + "Conv.conv(fn(x : I64) { True }) }"));
 }
