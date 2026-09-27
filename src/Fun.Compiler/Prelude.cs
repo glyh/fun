@@ -10,7 +10,7 @@ namespace Fun.Compiler;
 /// once per process against the units below it: the bootstrap against the builtins
 /// alone, every library unit against the builtins with the units below it served to
 /// its imports, and <c>std</c> against the whole library. The base context binds the
-/// topmost unit as <c>stdlib</c> (glossary: Base context, Prelude; bound, not opened).
+/// topmost unit as <c>Std</c> (glossary: Base context, Prelude; bound, not opened).
 /// </summary>
 public static class Prelude
 {
@@ -22,11 +22,11 @@ public static class Prelude
     /// </summary>
     public const string BootstrapPath = "std/bootstrap";
 
-    public const string Binding = "stdlib";
+    public const string Binding = "Std";
 
     /// <summary>The prelude's units, lowest first. Each is elaborated against the ones
     /// before it, and <see cref="Path"/> is the one a program imports.</summary>
-    private static readonly string[] Order = [BootstrapPath, "std/list", "std/lib", "std/type", Path];
+    private static readonly string[] Order = [BootstrapPath, "std/lib", "std/list", "std/option", "std/type", Path];
 
     private static readonly Dictionary<string, int> Index =
         Order.Select((path, i) => (path, i)).ToDictionary(x => x.path, x => x.i);

@@ -123,9 +123,9 @@ public static partial class Elaborator
 {
     /// <summary>
     /// The base context every compilation unit elaborates against: the builtins and
-    /// the prelude bound as <c>stdlib</c> - bound, not opened. A program's indices
+    /// the prelude bound as <c>Std</c> - bound, not opened. A program's indices
     /// count these entries, so it runs in this context's environment.
-    /// <paramref name="prelude"/> is the prelude unit that <c>stdlib</c> names:
+    /// <paramref name="prelude"/> is the prelude unit that <c>Std</c> names:
     /// <c>"std"</c> for everything but the prelude's own units, the unit below for
     /// each of those, and null for the bootstrap, which has only the builtins).
     /// </summary>

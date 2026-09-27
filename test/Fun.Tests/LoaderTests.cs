@@ -36,16 +36,17 @@ public class LoaderTests
 
     /// <summary>
     /// <c>import "std"</c> is the one prelude every loader shares, elaborated once per
-    /// process, and the base context binds that same value as <c>stdlib</c>.
+    /// process, and the base context binds that same value as <c>Std</c> (the unit, the
+    /// path and the handle agree: <c>Std.Lists.map</c>).
     /// </summary>
     [Fact]
-    public void ThePreludeIsElaboratedOnceAndBoundAsStdlib()
+    public void ThePreludeIsElaboratedOnceAndBoundAsStd()
     {
         var first = With().Load("std", new MetaContext());
         Assert.Same(first.Value, With().Load("std", new MetaContext()).Value);
 
         var ctx = Elaborator.BaseContext(new MetaContext());
-        var (index, _) = ctx.Locate("stdlib");
+        var (index, _) = ctx.Locate("Std");
         Assert.Same(first.Value, ctx.Environment[index]);
     }
 

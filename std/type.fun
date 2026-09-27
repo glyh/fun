@@ -23,9 +23,9 @@ tok_split = fn(l : List(Syntax.TokenTree), sep : Syntax.TokenKind)
   rec go = fn(l : List(Syntax.TokenTree), cur : List(Syntax.TokenTree),
               acc : List(List(Syntax.TokenTree))) {
     match (l) {
-      Nil => rev(Cons(rev(cur), acc)),
+      Nil => reverse(Cons(reverse(cur), acc)),
       Cons(h, t) =>
-        if (tok_is(h, sep)) { go(t, Nil, Cons(rev(cur), acc)) }
+        if (tok_is(h, sep)) { go(t, Nil, Cons(reverse(cur), acc)) }
         else { go(t, Cons(h, cur), acc) }
     }
   };

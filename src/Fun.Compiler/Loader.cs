@@ -13,7 +13,7 @@ namespace Fun.Compiler;
 /// <param name="prelude">
 /// The prelude units this loader serves to its imports, lowest first: a program's
 /// loader serves only <see cref="Prelude.Path"/>, and for the prelude's own units the
-/// units below. The topmost is the unit the base context binds as <c>stdlib</c>.
+/// units below. The topmost is the unit the base context binds as <c>Std</c>.
 /// </param>
 /// <param name="macroMetas">
 /// The metas macros are compiled and run with; the prelude passes its own so that a
@@ -25,7 +25,7 @@ public sealed class Loader(
     MetaContext? macroMetas = null) : IMacroRuntime
 {
     private readonly IReadOnlyList<string> _prelude = prelude ?? [Prelude.Path];
-    /// <summary>The unit the base context binds as <c>stdlib</c>, or none for the bootstrap.</summary>
+    /// <summary>The unit the base context binds as <c>Std</c>, or none for the bootstrap.</summary>
     private string? Stdlib => _prelude.Count > 0 ? _prelude[^1] : null;
 
     private readonly Dictionary<string, (Syntax Unit, UnitSyntax Syntax, Expander Expander)> _expanded = [];

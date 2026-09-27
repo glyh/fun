@@ -1,12 +1,16 @@
-# The language's own surface: `if`, the operators and their fixity, and Eq.
+# The language's own surface: `if`, the operators and their fixity, the bare
+# one-per-language helpers (not, and, or, min, max, abs), and Eq. What belongs here is
+# what a program uses with no qualification, whatever type it is about.
 # The bootstrap is re-exported, not just imported: a syntax form's rule resolves
-# the names it writes against the unit that exports the form, and `if` writes
-# True and False.
+# the names it writes against the unit that exports the form, and `if` writes True and
+# False.
 Core = import "std/bootstrap";
 export Core;
 open Core;
 
+# not(b) inverts b.
 pub not = fn(b) { match (b) { True => False, False => True } };
+
 pub syntax if { if ($c) $(t : Block) else $(e : Block) => match ($c) { True => $t, False => $e } };
 
 pub order disjunction;
@@ -46,3 +50,25 @@ pub infix (*) multiplicative;
 pub infix (/) multiplicative;
 pub infix (%) multiplicative;
 pub prefix (not) negation;
+
+# and(a, b) is b when a is True, and False otherwise; `&&` is the same as a form.
+pub and = fn(a : Bool, b : Bool) : Bool { match (a) { True => b, False => False } };
+
+# or(a, b) is True when a is True, and b otherwise; `||` is the same as a form.
+pub or = fn(a : Bool, b : Bool) : Bool { match (a) { True => True, False => b } };
+
+# min(x, y) is the smaller of x and y (y when they are equal).
+pub min = fn(x : I64, y : I64) : I64 {
+  match (i64_to_bool(le_i64(x, y))) { True => x, False => y }
+};
+
+# max(x, y) is the larger of x and y (y when they are equal).
+pub max = fn(x : I64, y : I64) : I64 {
+  match (i64_to_bool(ge_i64(x, y))) { True => x, False => y }
+};
+
+# abs(x) is x's distance from 0; it overflows only for the least I64, which has no
+# positive counterpart.
+pub abs = fn(x : I64) : I64 {
+  match (i64_to_bool(lt_i64(x, 0))) { True => 0 - x, False => x }
+};
