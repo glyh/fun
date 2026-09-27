@@ -6,6 +6,7 @@ labels:
 status: open
 assignee:
 blocked_by:
+decided: 2026-09-27
 ---
 
 # A parameter's type meta captures the earlier binders
@@ -58,6 +59,73 @@ be inserted inside `Ref(…)` is a separate question from this ticket's, and the
 fixed together.
 
 ## Direction
+
+**Ruled 2026-09-27: a written parameter type captures nothing bound before it.** An
+annotation is a term read in scope, not a function of what is bound around it, so every
+entry is `Defined` while a written parameter type is elaborated and the placeholder a `Ref`
+type inserts has no spine to invert.
+
+### The evidence (measured, and on disk)
+
+Every program below is in `/tmp/param-meta-examples/` (`README.md` maps them, `run.sh` runs
+them against any build, `option-a.patch` is the 37-line change). The table is raw output
+from base `001fd42` against that patch applied:
+
+| probe | today | with the ruling applied |
+| --- | --- | --- |
+| `f(0, x)`, `f = fn(a : I64, r : Ref(I64)) : I64 { a }` | `ELAB type mismatch: a meta's spine argument is not a variable` | `VALUE 0` |
+| the same with `n = 0; f(n, x)` | same error | `VALUE 0` |
+| `f[I64](1, x)` | same error | `VALUE 1` |
+| `Box[I64]{ v = 1 }.get(x)` (the method path) | same error | `VALUE 3` |
+| `f = fn(b : Bool, r : Ref(F(b)))` — a written type mentioning an earlier **value** | same error | `VALUE 0` |
+| `f = fn(b, v : F(b)) : F(b) { v }` called `f(True, 5)` | `VALUE 5` | `VALUE 5` |
+| … called `f(False, True)` | `VALUE True` | `VALUE True` |
+| … called `f(True, True)` — **must stay refused** | `cannot unify VAtomTy(I64) with enum#35` | the same refusal |
+| `f = fn[A](a : A, r : Ref(A)) : A { a }`, `g[I64](7)` | `VALUE 7` | `VALUE 7` |
+
+Suite `conformance: 865 cases, 0 failed`, xUnit 188/188. **The refusal row is the one that
+mattered**: the blunt rule does not weaken the checker — `f(True, True)` is refused
+identically before and after — which is the risk that had to be measured before this could
+be chosen. The value-mentioning row was the other risk, and the ruling fixes it rather than
+breaking it.
+
+### Three edits
+
+`WithoutSelfInMetas` (`Elaborator.Structs.cs:415`) makes every entry `Defined`, and the two
+sites that never called it are brought in — `InferLam`'s written-domain elaboration
+(`Elaborator.cs:594`) and the `Lam`-against-`Pi` check (`Elaborator.cs:360`). The helper
+alone fixes only the method shape; the `fn` half is reachable only from those two sites,
+which is §4's structural finding made concrete. The helper's `level` parameter becomes
+dead, so renaming it to what the rule says (`WithoutMetas`, `NoCapture`) is part of the
+work.
+
+### Rejected, with the reason
+
+- **Capture only the binders the written type mentions** (this file's `S3`) — the precise
+  rule, and **not** interchangeable with the ruling, which is where I misread it first:
+  `Ref(F(b))` *mentions* `b`, so this keeps `b` recorded, and at a call with a literal that
+  recorded entry holds `True` — exactly what inversion refuses. It would fix the four shapes
+  whose written types mention nothing, and **leave the measured value-mentioning row
+  failing**. That expectation is derived from the mechanism, not measured: `S3` has no
+  implementation, and the obvious control (the same call with the argument coming from a
+  lambda) fails for an unrelated reason — `F(y)` is stuck, so the `ref(1)` site cannot check
+  `Ref(F(y))` against `Ref(I64)`. If someone measures `S3` and it *does* fix that row, this
+  reason is wrong and the rule should be revisited.
+- **Substitute at the call site instead of refusing** (this file's `S4`) — fixes the same
+  rows by a different route, and with wider reach: it would also cover placeholders inserted
+  outside written types (implicit arguments, heaps in bodies). That reach is **unprobed**,
+  and the change lands in `Invert`, the riskiest place in the compiler to be wrong.
+- **`p6` (`g(b, x)`) is not evidence for any of them** — see §5; it is
+  [a struct former in a written parameter type](struct-former-in-written-parameter-type.md),
+  unmoved by every shape here.
+
+### Left unreconciled
+
+The one thing no probe in this set tests: whether a *placeholder* — as opposed to the type
+— ever has to be instantiated differently per binder. Under the ruling it never is; the
+type still varies with the argument because the type's own expression is evaluated in the
+environment, which is why the value-mentioning row passes. If a future feature needs a
+meta to differ per instantiation, this rule is the thing to revisit.
 
 The fix is the method ticket's, generalised: a parameter's written type should insert its metas so
 they abstract over no *earlier parameter* either, and let unification discover any real dependency
