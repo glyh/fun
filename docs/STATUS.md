@@ -11,11 +11,53 @@ entries that describe the prototype's own implementation are its record, and its
 `git log`. Paths written in a dated entry are the paths of that date — the port was lifted from
 `dotnet/` to the repo root on 2026-09-26.
 
-Last updated: the port lifted to the repo root, 2026-09-26.
+Last updated: the std library's public surface, 2026-09-27.
 
 ---
 
 ## Completed
+
+### The std library's public surface (2026-09-27)
+
+- `std`'s library layer is the surface a program just uses, reached by qualification:
+  `Std.Lists` (length, reverse, append, concat, map, filter, fold, find, head, tail,
+  nth, head_or, nth_or, take, drop, zip, zip_with, any, all, range) and
+  `Std.Options` (map, bind, get_or, or_else, filter, is_some), with the bare
+  one-per-language helpers `and`/`or`/`min`/`max`/`abs` beside `not`. `std/list.fun`
+  **is** the `Lists` module, `std/option.fun` is new and **is** `Options`, and
+  `std/stage2.fun` publishes both as members (`pub Lists = import "std/list"`)
+  instead of flattening them — so a bare `map`/`length` is reachable only through a
+  program's own `open Std.Lists`, and `Std.Lists.map` is the one spelling. The
+  prelude's binding is `Std` (was `stdlib`), so the unit, the path and the handle
+  agree. The prelude order now puts `std/lib` below `std/list`/`std/option`, so a
+  library binding is written in the language's surface (operators, `Bool`) rather
+  than around it.
+- Every operation is total: `head`/`tail`/`nth`/`find` answer an `Option`,
+  `head_or`/`nth_or`/`get_or`/`or_else` take the default first, `take`/`drop`
+  saturate, `zip`/`zip_with` truncate to the shorter list, indices are 0-based, and
+  `range(n)` is `[0, n)` — `Nil` for `n <= 0`. Policy comes first and the subject
+  last (`map(f, xs)`, `fold(f, z, xs)`, `nth(i, xs)`).
+- **Breaking, and intended**: the old bare `rev`/`map`/`fold`/`append`/`option_map`/
+  `option_bind` stop existing. The seven `test/conformance/cases/std/` pairs were
+  rewritten to the qualified spelling and 51 added — **`conformance: 857 cases, 0
+  failed`**, xUnit **`187/187`** (the rename touched `LoaderTests`).
+  The new cases pin every behaviour above plus the two namespace decisions: `open
+  Std.Lists` makes a bare name reachable, a bare `map` stays out of scope, and
+  `Std.Strings` does not exist.
+- Documentation: `std/README.md` carries the seam, the layout, the surface and the
+  module table; every `pub` binding carries one comment line saying what it returns
+  and what it does on the empty/out-of-range case, and each module one line naming
+  what belongs in it.
+- **Not landed, and the reason**: the surface's two conditional impls
+  (`Eq(List(A))`, `Eq(Option(A))`) have no spelling in the language yet. An impl
+  head's free name binds as the impl's own type variable, with no bound written and
+  no hidden dictionary threaded for it, so `Eq.eq` on an element of that variable
+  has no evidence; the probe in the ticket's implementation report fails
+  `ELAB missing implementation of Eq`. `Lists`/`Options` therefore ship without an
+  `Eq` impl and `std` re-exports no impl from them, which also leaves "an impl
+  selectively re-exported by a prelude unit reaches a *program's* base scope"
+  unmeasured. Also out by decision: `Options.map2`, `Show`, `Ord`, a `Strings`
+  module, `fold_right`, `slice`/`range(lo, hi)`, and every new surface syntax.
 
 ### Repo layout — the port lifted to the root (2026-09-26)
 
