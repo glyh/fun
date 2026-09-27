@@ -373,6 +373,22 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
 
 ### Frontier (2026-09-26)
 
+**2026-09-27, last thing — the library surface is designed; one ticket out of it.**
+[Design the user-facing library surface](tickets/design-std-library-surface.md) was
+grilled to an empty frontier and its answer is recorded (19 decisions: plural
+`Lists`/`Options` modules reached through a renamed `Std` with `Strings` named but
+not yet declared, `Option`-returning
+accessors with saturating `take`/`drop`, policy-first-uniform argument order, a
+bounded primitive floor, truncating `zip`, commented bindings, and a 31-binding
+first cut). It stays
+open until implemented. It opened one ticket of its own —
+[a selective open, `open M.{a, b}`](tickets/selective-open.md), the mirror of the
+working `export M.{a, b}`, which closes the measured
+[impl visibility](../topics/impl-visibility.md) gap ("there is no selective open")
+without flipping impl resolution to B; and it recorded that
+[`M.(e)`](tickets/local-open-expression.md) is not to be reopened as-is, since it
+buys nothing selective-open does not.
+
 **The port's parity work is closed.** Every item the 2026-09-25 re-sweep listed landed, and the
 OCaml prototype was deleted the same day; [`docs/STATUS.md`](../STATUS.md) is authoritative for
 what is built. The rewrite wrapper `dotnet/` was lifted to the repository root on 2026-09-26.
