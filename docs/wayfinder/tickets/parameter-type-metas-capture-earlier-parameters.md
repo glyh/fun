@@ -112,9 +112,26 @@ work.
   `Ref(F(y))` against `Ref(I64)`. If someone measures `S3` and it *does* fix that row, this
   reason is wrong and the rule should be revisited.
 - **Substitute at the call site instead of refusing** (this file's `S4`) — fixes the same
-  rows by a different route, and with wider reach: it would also cover placeholders inserted
-  outside written types (implicit arguments, heaps in bodies). That reach is **unprobed**,
-  and the change lands in `Invert`, the riskiest place in the compiler to be wrong.
+  rows by a different route, and claims wider reach: it would also cover placeholders
+  inserted outside written types (implicit arguments, heaps in bodies). **The reach has no
+  witness.** Two measurements, 2026-09-27:
+  - **17 candidate shapes** (in `/tmp/param-meta-examples/hunt/`, with its own README):
+    written types on lets, on results, on struct fields; implicit type parameters mentioned
+    by a written type; two `Ref` parameters; a `Ref` nested inside `Option`; heaps made in a
+    *body* and then unified, passed, or left alone. Every program that fails does so through
+    a written parameter type — and the chosen rule fixes all of them. Nothing fails for a
+    reason the chosen rule leaves alone.
+  - **The refusal instrumented** (`Invert`'s `a meta's spine argument is not a variable`,
+    logging before the throw) and the whole suite run on the *unpatched* compiler:
+    `SPINE-REFUSAL ×1` for `01-ref-parameter-literal.fun` and **×0 across all 865 cases**.
+    So on today's tree, no placeholder from any source reaches that path except the
+    written-parameter-type shapes.
+
+  Consequence: the two rules are indistinguishable on every program anyone has written, so
+  the wider reach is an argument from the code rather than a behaviour. It would widen what
+  `Invert` accepts for a class of placeholder that does not exist yet, and it lands in the
+  unifier. If a future insertion site produces one, this reason returns — until then it is a
+  future, not a program.
 - **`p6` (`g(b, x)`) is not evidence for any of them** — see §5; it is
   [a struct former in a written parameter type](struct-former-in-written-parameter-type.md),
   unmoved by every shape here.
