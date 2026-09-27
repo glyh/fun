@@ -380,8 +380,17 @@ grilled to an empty frontier and its answer is recorded (19 decisions: plural
 not yet declared, `Option`-returning
 accessors with saturating `take`/`drop`, policy-first-uniform argument order, a
 bounded primitive floor, truncating `zip`, commented bindings, and a 31-binding
-first cut). It stays
-open until implemented. It opened one ticket of its own —
+first cut).
+**Implemented 2026-09-27 as `d70567d`** (31 bindings, `conformance: 857 cases, 0 failed`)
+with two deviations on the record: its two `Eq` impls did not ship because each half is
+blocked by a compiler gap the fork found and the integrator reproduced —
+[a generic impl's head variable carries no bound](tickets/generic-impl-head-var-has-no-bound.md)
+(a failing shape that takes the whole prelude load down) and
+[a recursive helper matching two lists cores](tickets/recursive-match-on-two-lists-cores.md)
+— so the work is parked as
+[Eq for List and Option](tickets/std-eq-for-list-and-option.md), blocked on both; and
+`std/lib` moved below the new units in `Prelude.Order`, since the library uses the
+operators. It opened one ticket of its own —
 [a selective open, `open M.{a, b}`](tickets/selective-open.md), the mirror of the
 working `export M.{a, b}`, which closes the measured
 [impl visibility](../topics/impl-visibility.md) gap ("there is no selective open")

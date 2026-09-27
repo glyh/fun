@@ -294,3 +294,38 @@ which is when the primitives land.
   `export Lists.{list_eq}` puts the impl in a *program's* base scope (measured only
   with local modules so far); that a program can write `open Std.Lists;`; and that
   nothing outside `std/` referenced the old bare names.
+
+### As landed (2026-09-27, merged `d70567d`)
+
+Implemented as `e64b900` (the surface, with the 7 existing `cases/std/` pairs rewritten
+and 51 added) and `d70567d` (README + STATUS). **31 bindings** ship exactly as §16
+lists them; `conformance: 857 cases, 0 failed`, xUnit 187/187. Three deviations and
+results to record:
+
+1. **The two impls did not ship.** §12's and §16's `list_eq`/`option_eq` are blocked by
+   two compiler gaps, each found by the fork and reproduced by the integrator:
+   [a generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md)
+   (a generic `Eq(List(A))` head *does* register — a body-trivial one serves `List(I64)`
+   — but `Eq.eq(h, h)` on its own variable has no dictionary, and the failing shape
+   takes the whole **prelude load** down, so it cannot be stubbed) and
+   [a recursive helper matching two lists cores](recursive-match-on-two-lists-cores.md)
+   (the recursive two-list body a real equality needs dumps core; the same match without
+   the recursive call is `VALUE 2`, and `Lists.length` recurses over one list fine).
+   The work is [Eq for List and Option](std-eq-for-list-and-option.md), blocked on both.
+   So the library ships without `Std.Lists`/`Std.Options` equality, and stage2
+   re-exports no impl — correct, since there is none to re-export.
+2. **§12's mechanism is verified but unexercised by real code.** With a body-trivial
+   probe impl, `export Lists.{probe}` does put `Eq(List(I64))` in a *program's* base
+   scope and leaves every other member out (no-import program, `xs == xs` →
+   `VALUE True`). The first real use is the blocked ticket.
+3. **The prelude order changed, which the design did not anticipate.** `Prelude.Order`
+   is now bootstrap, `std/lib`, `std/list`, `std/option`, `std/type`, `std` — `std/lib`
+   had to move *below* the two new units because a list binding uses the operators (and
+   would need `Eq`). §4's floor is untouched; this is the library depending on the
+   language surface rather than the other way round, and it is the one structural
+   addition to §12.
+
+Of the three things the fork was told to verify: (3) held clean
+(`\b(rev|option_map|option_bind)\b` outside `std/` → empty), (2) held
+(`open Std.Lists; length(…)` → `VALUE 2`, case `open-lists-brings-bare-names`), and (1)
+held only via the substitute probe above, since the real impl is the blocked one.
