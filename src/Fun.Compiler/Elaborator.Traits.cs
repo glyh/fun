@@ -8,7 +8,7 @@ namespace Fun.Compiler;
 /// sits at <see cref="Level"/>, at dictionary type <see cref="Type"/>. <see cref="Vars"/>
 /// are the impl's own type variables, the metas its head's free names bound.
 /// </summary>
-public sealed record TraitEvidence(TraitDecl Trait, EquatableArray<Value> Args, int Level, Value Type, EquatableArray<int> Vars = default);
+public sealed record TraitEvidence(TraitDecl Trait, EquatableArray<Value> Args, int Level, Value Type, EquatableArray<int> Vars = default, EquatableArray<ImplBound> Bounds = default);
 
 /// <summary>
 /// A dictionary chosen later: <see cref="Meta"/> stands for the impl of
@@ -31,7 +31,7 @@ public sealed partial record Context
 public static partial class Elaborator
 {
     /// <summary>What an impl contributes: its trait and argument, dictionary type, and dictionary term and value.</summary>
-    private sealed record ImplContribution(TraitDecl Trait, Value Arg, Value.VTraitDict DictType, Term Core, Value Value, EquatableArray<int> Vars);
+    private sealed record ImplContribution(TraitDecl Trait, Value Arg, Value DictType, Term Core, Value Value, EquatableArray<int> Vars, EquatableArray<ImplBound> Bounds);
 
     /// <summary>
     /// A trait: its one parameter is a defined entry standing for itself, and each
@@ -161,18 +161,92 @@ public static partial class Elaborator
         foreach (var (name, _) in dictType.Operations)
             if (!seen.Contains(name)) throw new FunException($"missing trait field `{name}`");
 
+        var pendingMark = ctx.Metas.PendingEvidence.Count;
         var bindings = fields.Select((f, i) => (BindingTerm)new BindingTerm.Let(f.Name, MemberKind.Public,
-            Check(ctx, f.Value, dictType.Operations.Last(o => o.Name == f.Name).Type).Shift(i)));
-        var core = new Term.Struct([], [.. bindings], Partial: false);
-        return new ImplContribution(trait, arg, dictType, core, ctx.Eval(core), vars);
+            Check(ctx, f.Value, dictType.Operations.Last(o => o.Name == f.Name).Type).Shift(i))).ToList();
+
+        // The evidence the body demanded for the impl's own variables is the impl's
+        // bound: one implicit dictionary argument per (trait, variable), resolved at a
+        // use exactly as a bounded function's is (traits.md, "Resolution"). A demand
+        // for anything else is left where it was made, so a missing one is reported
+        // at the impl's definition, not through a misleading use site.
+        var bounds = new List<(ImplBound Bound, Value Arg)>();
+        // The body's inference may have solved a head variable to the fresh meta a trait
+        // method's own type parameter introduced (unifying a value's type with it); the
+        // variable that matters is the variable that is left, so both the demand and the
+        // matching name it.
+        vars = [.. vars.Select(v => ResolveVar(ctx, v))];
+        var promoted = new Dictionary<int, int>();
+        foreach (var pending in ctx.Metas.PendingEvidence.Skip(pendingMark).ToList())
+        {
+            if (pending.Args.Length != 1 || ctx.Force(pending.Args[0]) is not Value.VMeta meta) continue;
+            var variable = IndexOf(vars, meta.Id);
+            if (variable < 0) continue;
+            var at = bounds.FindIndex(b => ReferenceEquals(b.Bound.Trait, pending.Trait) && b.Bound.Var == variable);
+            if (at < 0) { at = bounds.Count; bounds.Add((new ImplBound(pending.Trait, variable), meta)); }
+            promoted[pending.Meta] = at;
+            ctx.Metas.PendingEvidence.Remove(pending);
+        }
+
+        // The impl is its dictionary as a function of those dictionaries: the leading
+        // implicit binders whose occurrences each promoted choice becomes.
+        var core = Rebounded(new Term.Struct([], [.. bindings], Partial: false), bounds.Count, promoted);
+        for (var i = 0; i < bounds.Count; i++) core = new Term.Lam(core);
+        var type = ctx.Quote(dictType);
+        for (var i = bounds.Count - 1; i >= 0; i--)
+        {
+            var domain = new Value.VTraitDict(bounds[i].Bound.Trait, [bounds[i].Arg],
+                Nbe.OperationTypes(ctx.Metas, bounds[i].Bound.Trait, bounds[i].Arg));
+            type = new Term.Pi(Explicitness.Implicit, ctx.Quote(domain), type.Shift(1));
+        }
+        return new ImplContribution(trait, arg, ctx.Eval(type), core, ctx.Eval(core), vars, [.. bounds.Select(b => b.Bound)]);
     }
+
+    /// <summary>
+    /// The impl's own body under its <paramref name="lambdas"/> bound dictionaries: an
+    /// inserted meta a promoted choice stands for becomes that binder, and every other
+    /// index moves out past the binders.
+    /// </summary>
+    private static Term Rebounded(Term body, int lambdas, Dictionary<int, int> promoted)
+    {
+        var shifted = body.Shift(lambdas);
+        return shifted.Map((term, under) => term is Term.InsertedMeta m && promoted.TryGetValue(m.Id, out var at)
+            ? new Term.Var(under + lambdas - at - 1)
+            : null);
+    }
+
+    /// <summary>The variable <paramref name="id"/> stands for when it was solved to another meta, else itself.</summary>
+    private static int ResolveVar(Context ctx, int id)
+    {
+        while (ctx.Metas.Solution(id) is Value.VMeta { Spine.Length: 0 } meta && meta.Id != id) id = meta.Id;
+        return id;
+    }
+
+    /// <summary>The position of <paramref name="id"/> in <paramref name="vars"/>, or -1.</summary>
+    private static int IndexOf(EquatableArray<int> vars, int id)
+    {
+        for (var i = 0; i < vars.Length; i++) if (vars[i] == id) return i;
+        return -1;
+    }
+
+    /// <summary>
+    /// The dictionary an impl offers at its head, past the implicit binders its own
+    /// variables' bounds added. Null when the type is no impl's dictionary at all.
+    /// </summary>
+    private static Value.VTraitDict? OfferedDict(Context ctx, Value type) => ctx.Force(type) switch
+    {
+        Value.VTraitDict dict => dict,
+        Value.VPi { Explicitness: Explicitness.Implicit } pi =>
+            OfferedDict(ctx, Nbe.ApplyClosure(ctx.Metas, pi.Codomain, new Value.VVar(ctx.Width, []))),
+        _ => null,
+    };
 
     /// <summary><c>impl Trait(Arg) = module { … }; body</c>: the dictionary is an entry, and evidence, for the body.</summary>
     private static (Term, Value) InferImplDef(Context ctx, Syntax.ImplDef i)
     {
         var c = Contribute(ctx, i.TraitPath, i.Arg, i.Fields);
         var (inner, entry) = ctx.DefineAnonymous(c.DictType, c.Value);
-        inner = inner.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType, c.Vars));
+        inner = inner.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType, c.Vars, c.Bounds));
         var (body, bodyType) = Infer(inner, i.Body);
         return (new Term.Let(ctx.Quote(c.DictType), c.Core, body), bodyType);
     }
@@ -194,8 +268,8 @@ public static partial class Elaborator
             throw new InvalidOperationException("an impl contributes one entry");
         var value = ctx.Eval(def.Term);
         var (after, entry) = ctx.DefineAnonymous(c.DictType, value);
-        after = after.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType, c.Vars));
-        return (after, term, new ModuleEntry.Impl(name, kind, c.DictType, value, c.Vars));
+        after = after.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType, c.Vars, c.Bounds));
+        return (after, term, new ModuleEntry.Impl(name, kind, c.DictType, value, c.Vars, c.Bounds));
     }
 
     private static Context InferImplBinding(Context ctx, Binding.Impl impl, List<BindingTerm> terms, List<ModuleEntry> entries)
@@ -290,8 +364,8 @@ public static partial class Elaborator
         return (ctx, type, count);
     }
 
-    /// <summary>A candidate impl for a use: its head arguments, its own variables, and the dictionary it offers.</summary>
-    private sealed record EvidenceCandidate(EquatableArray<Value> Args, EquatableArray<int> Vars, Term Term, Value Type);
+    /// <summary>A candidate impl for a use: its head arguments, its own variables, the dictionary it offers, and its bounds.</summary>
+    private sealed record EvidenceCandidate(EquatableArray<Value> Args, EquatableArray<int> Vars, Term Term, Value Type, EquatableArray<ImplBound> Bounds);
 
     /// <summary>
     /// The impl in scope for <paramref name="trait"/> at <paramref name="args"/>
@@ -308,26 +382,46 @@ public static partial class Elaborator
 
         // P is more precise than Q when P's arguments are an instance of Q's: Q's own
         // variables are filled in to give P's (rule 2).
-        bool Instance(EvidenceCandidate p, EvidenceCandidate q) => Matches(ctx, q.Args, p.Args, q.Vars);
+        bool Instance(EvidenceCandidate p, EvidenceCandidate q) => Matches(ctx, q.Args, p.Args, q.Vars, out _);
 
         var candidates = ctx.Evidence
-            .Where(e => ReferenceEquals(e.Trait, trait) && Matches(ctx, e.Args, args, e.Vars))
+            .Where(e => ReferenceEquals(e.Trait, trait) && Matches(ctx, e.Args, args, e.Vars, out _))
             .Select(e => new EvidenceCandidate(e.Args, e.Vars,
-                new Term.Var(Nbe.LevelToIndex(ctx.Width, e.Level)), e.Type))
+                new Term.Var(Nbe.LevelToIndex(ctx.Width, e.Level)), e.Type, e.Bounds))
             .ToList();
 
         if (args.Length == 1 && ctx.Force(args[0]) is Value.VStruct st)
             candidates.AddRange(st.Entries.OfType<ModuleEntry.Impl>()
-                .Where(i => i.Kind == MemberKind.Public && ctx.Force(i.DictType) is Value.VTraitDict d
-                            && ReferenceEquals(d.Decl, trait) && Matches(ctx, d.Args, args, i.Vars))
+                .Where(i => i.Kind == MemberKind.Public && OfferedDict(ctx, i.DictType) is { } d
+                            && ReferenceEquals(d.Decl, trait) && Matches(ctx, d.Args, args, i.Vars, out _))
                 .Select(i => new EvidenceCandidate(
-                    ((Value.VTraitDict)ctx.Force(i.DictType)).Args, i.Vars, ctx.Quote(i.Value), i.DictType)));
+                    OfferedDict(ctx, i.DictType)!.Args, i.Vars, ctx.Quote(i.Value), i.DictType, i.Bounds)));
 
         if (candidates.Count == 0) return null;
         var best = candidates.Where(p => candidates.All(q => ReferenceEquals(p, q) || Instance(p, q))).ToList();
         return best.Count == 1
-            ? (best[0].Term, best[0].Type)
+            ? (Instantiate(ctx, best[0], args), best[0].Type)
             : throw new FunException($"ambiguous implementation of `{trait.Name}`");
+    }
+
+    /// <summary>
+    /// The candidate's dictionary: the impl's term, applied to one dictionary per bound
+    /// its own variables carry - each read from the use's scope at the value the match
+    /// gave that variable, exactly as a bounded function's hidden arguments are.
+    /// </summary>
+    private static Term Instantiate(Context ctx, EvidenceCandidate candidate, EquatableArray<Value> args)
+    {
+        if (candidate.Bounds.Length == 0) return candidate.Term;
+        if (!Matches(ctx, candidate.Args, args, candidate.Vars, out var solved))
+            throw new InvalidOperationException("the chosen impl no longer matches");
+        var term = candidate.Term;
+        foreach (var bound in candidate.Bounds)
+        {
+            var arg = solved[bound.Var]
+                ?? throw new FunException($"missing implementation of `{bound.Trait.Name}`");
+            term = new Term.Ap(term, Explicitness.Implicit, Evidence(ctx, bound.Trait, [arg]));
+        }
+        return term;
     }
 
     /// <summary>
@@ -382,8 +476,9 @@ public static partial class Elaborator
     /// eta, but never commits to the use's unknowns, so a choice still waits on an
     /// unknown argument type (traits.md, "Resolution", rule 4).
     /// </summary>
-    private static bool Matches(Context ctx, EquatableArray<Value> pattern, EquatableArray<Value> target, EquatableArray<int> vars)
+    private static bool Matches(Context ctx, EquatableArray<Value> pattern, EquatableArray<Value> target, EquatableArray<int> vars, out Value?[] solved)
     {
+        solved = [];
         if (pattern.Length != target.Length) return false;
         var before = ctx.Metas.Snapshot();
         var ok = true;
@@ -397,6 +492,10 @@ public static partial class Elaborator
                 var after = ctx.Metas.Snapshot();
                 for (var i = 0; i < before.Length && ok; i++)
                     if (before[i] is null && after[i] is not null && !vars.Contains(i)) ok = false;
+                // Read the impl's own variables out before the trial is undone: the values
+                // are stable, and an unsolved one stays the use's meta after the restore.
+                if (ok)
+                    solved = [.. vars.Select(v => ctx.Metas.Solution(v) is { } s ? ctx.Force(s) : null)];
             }
         }
         catch (FunException) { ok = false; }
@@ -461,15 +560,15 @@ public static partial class Elaborator
     {
         var member = new OpenMember.Impl(index, impl.Name);
         var value = Nbe.OpenedImpl(module, member);
-        var duplicate = ctx.Force(impl.DictType) is Value.VTraitDict dict && ctx.Evidence.Any(e =>
+        var duplicate = OfferedDict(ctx, impl.DictType) is { } dict && ctx.Evidence.Any(e =>
             ReferenceEquals(e.Trait, dict.Decl)
             && e.Args.Length == dict.Args.Length
             && e.Args.Zip(dict.Args).All(p => Nbe.Convertible(ctx.Metas, ctx.Width, p.First, p.Second))
             && Nbe.Convertible(ctx.Metas, ctx.Width, ctx.Environment[Nbe.LevelToIndex(ctx.Width, e.Level)], value));
         var (after, entry) = ctx.DefineAnonymous(impl.DictType, value);
         opened.Add(member);
-        return !duplicate && after.Force(impl.DictType) is Value.VTraitDict d
-            ? after.AddEvidence(new TraitEvidence(d.Decl, d.Args, entry.Level, impl.DictType, impl.Vars))
+        return !duplicate && OfferedDict(after, impl.DictType) is { } d
+            ? after.AddEvidence(new TraitEvidence(d.Decl, d.Args, entry.Level, impl.DictType, impl.Vars, impl.Bounds))
             : after;
     }
 }

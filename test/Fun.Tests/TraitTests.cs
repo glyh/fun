@@ -78,4 +78,15 @@ public class TraitTests
                 + "impl Conv(I64 -> A) = module { conv = fn(p) { 1 } }; "
                 + "impl Conv(B -> Bool) = module { conv = fn(p) { 2 } }; "
                 + "Conv.conv(fn(x : I64) { True }) }"));
+
+    /// <summary>
+    /// A generic impl's own variable is a parameter: evidence the body uses for it is a
+    /// hidden dictionary, and evidence the head does not bind fails at the definition -
+    /// never through the use site whose argument type is unrelated.
+    /// </summary>
+    [Fact]
+    public void AnImplCannotUseEvidenceItsHeadDoesNotBind() =>
+        Assert.Equal("missing implementation of `Size`",
+            Elaborate("{ " + Size + "impl Size(I64) = module { size = fn(n) { 1 } }; "
+                + "impl Size(Option(A)) = module { size = fn(o) { Size.size(o) } }; 0 }"));
 }

@@ -61,8 +61,15 @@ public abstract partial record ModuleEntry
     /// fields. As a module value it holds the dictionary; as a signature's
     /// instance, the dictionary type in both places.
     /// </summary>
-    public sealed record Impl(string? Name, MemberKind Kind, Value DictType, Value Value, EquatableArray<int> Vars = default) : ModuleEntry;
+    public sealed record Impl(string? Name, MemberKind Kind, Value DictType, Value Value, EquatableArray<int> Vars = default, EquatableArray<ImplBound> Bounds = default) : ModuleEntry;
 }
+
+/// <summary>
+/// A trait an impl's own head variable is bound by: <see cref="Var"/> is the index of
+/// that variable in the impl's <c>Vars</c>. The impl takes the dictionary for it as an
+/// implicit argument, so the impl is a function of its bound dictionaries.
+/// </summary>
+public sealed record ImplBound(TraitDecl Trait, int Var);
 
 public abstract partial record OpenMember
 {
