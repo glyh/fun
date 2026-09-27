@@ -10,6 +10,26 @@ blocked_by:
 
 # A closure capture gives two answers
 
+> ## Resolution (user, 2026-09-27): the type-case is the wrong one — closures compare as conversion does
+>
+> `a.T` and `b.T` are the **same type**. `SameInstance` gains the λ arm `Unify` already has — apply
+> both closures to one fresh variable and compare the results — so both paths answer "one type".
+> `Unify.cs:48` is the shape to match, including which side it fires on.
+>
+> | program | before | after |
+> | --- | --- | --- |
+> | `g = fn(x : a.T) { 1 }; g(b.Leaf)` | `1` | `1` (unchanged) |
+> | `f = fn(t : Type) { match (t) { a.T => 1, _ => 0 } }; f(b.T)` | `0` | **`1`** |
+>
+> **The negative control the arm must not break**: two closures whose bodies differ, or whose
+> captured cells differ, are still **different** types. A rule that makes every pair of closures
+> equal is not this ruling — it is a worse bug than the one being fixed.
+>
+> `SameInstance`'s doc comment — *"a capture need not have a structural reading"* — is the sentence
+> this ruling retires; it becomes "a capture is compared the way conversion compares it".
+>
+> The cases land with the implementation; this ticket closes when they are green.
+
 Found by the [identity audit](port-identity-survives-reevaluation.md) fork (2026-09-27) as the one
 place the ruled property did not hold, and **confirmed by the integrator by re-running both
 programs** on `ae7ff62`. Every other site that audit probed came back innocent; this is the residue.
@@ -75,7 +95,17 @@ type-case answer is the bug and `SameInstance` needs a λ arm. Read as **no** �
 opaque value identified by its object — then conversion's eta rule is what over-equalizes in a
 capture position, and the *typing* answer is the bug.
 
-## Options
+## Options (all three answered 2026-09-27)
+
+- **A. Give `SameInstance` a λ arm, comparing as conversion does.** **Taken.** One rule for both
+  paths.
+- **B. Keep closures opaque and stop eta-applying a capture.** Not taken.
+- **C. Rule it a documented limit.** Not taken.
+
+The cost A pays, on the record: identity now reads λ bodies, so the doc comment's "a capture need
+not have a structural reading" is retired, and a comparison that recurses into bodies shares the
+termination question `Unify` already answers (and `Unify` answers it under the budget — the arm
+should have the same shape rather than a new mechanism).
 
 - **A. Give `SameInstance` a λ arm, comparing as conversion does.** One rule for both paths; the
   cost is deciding how far the comparison goes (bodies as written, or after eta-expansion), and it
