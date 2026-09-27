@@ -1,5 +1,5 @@
 ---
-title: A recursive helper matching two lists cores the compiler
+title: A deferred arity-2 recursive call cores the compiler on quoted impl evidence
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
@@ -8,11 +8,24 @@ assignee:
 blocked_by: []
 ---
 
-# A recursive helper matching two lists cores the compiler
+# A deferred arity-2 recursive call cores the compiler on quoted impl evidence
 
 Found 2026-09-27 by the [library surface](design-std-library-surface.md) fork and
 reproduced by the integrator. Any structural comparison of two lists has this shape, so
 [Eq for List and Option](std-eq-for-list-and-option.md) cannot be written without it.
+
+> **The title and premise were wrong, and the reconnaissance below corrected them.**
+> It is not two lists: the trigger is a recursive call **applied more than once**
+> (arity ≥ 2) whose fixpoint is deferred under the checker, plus a **second**
+> ingredient — the impl's evidence must be quoted, which today happens only on the
+> duplicate check a **second `open`** of the same unit reaches. The original two-list
+> reproducer is one instance, not the rule: arity-2 over *one* list cores too, arity-1
+> does not, a non-recursive two-list match does not, and one `open` answers
+> `VALUE True`. Reproduced by the integrator: `exit=134` (SIGABRT), with the stack
+> running `OpenImpl` → `Convertible` → `QuoteStruct` → `QuoteEntry` → `Quote` →
+> `QuoteStuckMatch`, and the single-`open` control `VALUE 1`. The previous fork's
+> "cyclic closure environment" attribution is **refuted** — the chain is infinite and
+> acyclic, each level a distinct `VVar` at a rising level.
 
 ## The reproducer
 

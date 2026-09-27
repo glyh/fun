@@ -23,8 +23,13 @@ ship. One of its two blockers is closed and the other is not:
   now elaborates: the demand becomes a hidden dictionary argument, and selecting the
   impl for `List(I64)` resolves `Eq(I64)` from scope.
 - [A recursive helper matching two lists cores](recursive-match-on-two-lists-cores.md)
-  — still open, and still the reason a real structural equality cannot be written:
-  the body dumps core.
+  — still open, and still the reason a real structural equality cannot be written: the
+  body dumps core. The reconnaissance corrected its premise: what cores is a recursive
+  call **applied more than once** whose fixpoint is deferred, reached only when an impl's
+  evidence is quoted — and comparing two lists is exactly that shape, so this still
+  blocks. It also fixed the *diagnosis* of the failure mode: `StackOverflowException` is
+  uncatchable, so the runner dies outright (`exit=134`) rather than reporting a hang or
+  an `ELAB` line.
 
 ## What to do when the last blocker closes
 

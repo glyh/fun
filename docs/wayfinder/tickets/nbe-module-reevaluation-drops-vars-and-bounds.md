@@ -12,10 +12,17 @@ blocked_by: []
 
 Reported 2026-09-27 by the fork that implemented
 [a generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md),
-as a pre-existing hazard it met while working. **Not independently reproduced by the
-integrator** — recorded because an impl's bounds now travel as data
-(`TraitEvidence.Bounds`, `ModuleEntry.Impl.Bounds`), so anything that rebuilds a module
-value has to carry them.
+as a pre-existing hazard it met while working, and **confirmed the same evening by
+reconnaissance and by the integrator** — the claim was recorded here as hearsay for a few
+hours and is now a measurement with a **verified fix attached**, reverted but tested. See
+§Findings below for the probe, the two sites that drop the fields, and the change set that
+makes the probe answer `VALUE 3`.
+
+In short: a generic impl inside a module that goes through a **function return** and is
+`open`ed loses its `Vars`; the impl stops matching, and the failure is a plain
+`ELAB missing implementation` at the use site, with no hint that the module's build route
+is the cause. See *Measured 2026-09-27* below for the probe, the two sites that drop the
+fields, and the change set that was built, measured and reverted.
 
 ## The claim
 
