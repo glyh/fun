@@ -411,6 +411,16 @@ forkable as written. **Forkable as they stand**:
 [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md), whose precondition
 is now on `main`.
 
+**Landed the same evening — 18 open** (19, less the two closes and the one new ticket). [A pattern synonym's generalized types](tickets/pattern-synonym-type-parameters.md)
+is implemented and cased (its six new pairs took the suite to 798), and closed **with a recorded
+deviation from its ruling's route** — the three ruled answers all hold, the mechanism sentence was
+not followed; see the ticket. [The bootstrap↔compiler interface](tickets/declare-bootstrap-compiler-interface-once.md)
+is declared and verified at load (merged `9f60619`), its name count corrected on the way to
+**160 = 114 tags + 26 types + 19 builders**, and what it deliberately left is
+[the spellings the declaration leaves behind](tickets/prelude-abi-remaining-spellings.md) — `Id`'s
+double life as a declared type and a hole-kind keyword, and the `std`-split sequence. Still in
+flight: [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md).
+
 **27 open, 25 unblocked** was the count at
 2026-09-26, and the rest of this section is that state. By where the tickets live:
 

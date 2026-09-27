@@ -3,7 +3,9 @@ title: Declare the bootstrap↔compiler interface once
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: "Closed 2026-09-27: route (1) implemented and merged (`9f60619`), gate 0 build errors / xUnit 187/187 / `conformance: 798 cases, 0 failed`. `src/Fun.Kernel/PreludeAbi.cs` holds 160 names in three groups, `Prelude.Load` verifies them eagerly against the bootstrap stage, and no bare prelude name is spelled outside the declaration. The tag count in the table below was wrong a second time — the corrected split is in `Landed`."
 assignee:
 blocked_by: []
 ---
@@ -233,3 +235,52 @@ history — `.fun` cannot be the sole source, because the interface is a fact ab
 **For whoever measures next:** the first version of the table above was wrong by a factor of forty
 on the tag tier. Count the build side, the readback side and the type names separately — a `Con(`
 grep sees one of the three.
+
+## Landed (2026-09-27) — `9f60619`
+
+Merged from `declare-bootstrap-interface` (`ad0e826` declaration + eager `Verify` + xUnit,
+`a3a597e` `Reflection.cs`'s 267 sites, `0c234b4` the other four consumers). Gate on the merge:
+`dotnet build` 0 errors, xUnit **187/187** (the one new test is the declaration resolving),
+`conformance: 798 cases, 0 failed`.
+
+- **`src/Fun.Kernel/PreludeAbi.cs`, 339 lines, 160 names** — 19 builders, 26 type and module names,
+  114 tags — as `const string`, so the readback `case` labels stay compile-time constants.
+- **Placement, with the reason:** the *data* is in `Fun.Kernel`, because three of the five
+  consumers (`Expander.Macros.cs`, `Enforest.Macros.cs`, `Enforest.Roles.cs`) are inside
+  `Fun.Expand`, which cannot reference `Fun.Compiler`. The *check* is in
+  `Fun.Compiler/Prelude.cs`, which owns the loaded stage.
+- **Verified eagerly at load**: `Prelude.cs:69` (`if (std is null) Verify(stage);`), so the
+  check runs while the bootstrap stage loads and not on first reflection use. Demonstrated by
+  breaking one constant on purpose and reading the message:
+  `PreludeAbi declares Syntax.Expr.RawVarX, which the prelude std/stage1 does not define`.
+  The constant was reverted.
+- **The sweep, re-run by the integrator:** zero bare `Nominal("Syntax", …)` / `Member("Syntax", …)`
+  outside the declaration; and of all 160 declared names, the only ones still appearing as string
+  literals anywhere else are the compiler builtin `EffectRow` (`Elaborator.cs:152`,
+  `Elaborator.PolyArrows.cs:21` — a sibling of `Type`, which is also not in the interface by
+  ruling), the `assoc` clause keyword (`Enforest.Roles.cs:399`, the `order … : assoc(left)`
+  spelling, not the `Syntax.assoc` builder), and doc comments.
+
+### The count, corrected a second time
+
+**Tags are 114, not the 158 this ticket's table claimed.** The build side is **107**, not 45: the
+`Con(`-only grep behind that row missed `E(` (41), `P(` (4) and `D(` (16), the file's other local
+value-builders. 106 of the 107 build names are also readback names, so the union over both sides is
+114 (113 readback + `RExpr`, with 7 readback-only — `Tok`, `IdentTok`, `RawVar`, `RawPatBind`, …).
+The declaration's 160 is right; the split that produced it was not, and it was reached by accident.
+**The lesson is the one this ticket already recorded once:** count every helper that spells a name,
+not the one whose name you guessed.
+
+### Not done, and where it goes
+
+- **`Id` and `Block`.** `Id` is declared but is also a hole-kind keyword, and `Block` (hole-kind
+  only, mapping to `Syntax.Expr`) stays spelled. Whether either should move is a ruling, not a
+  measurement — [the spellings this declaration leaves](prelude-abi-remaining-spellings.md).
+- **Not verified against the restructured `std`.** The `std` split was in flight while this landed,
+  so the declaration has never been exercised against `std/bootstrap.fun` and its renamed unit
+  paths. The integrator's gate on that merge covers it; note that **both branches create
+  `std/README.md`**, so that file will need both sides kept.
+- **`Nil`/`Cons`/`Id`'s fields** go through probed accessors (`Reflection.ListNil`, `ListCons`,
+  `IdFields`) rather than the declaration — deliberate, and the reason the tag tier is 114 and not
+  fewer.
+- **The enforester's/order's own keywords were not rewired** — out of scope by the ruling.

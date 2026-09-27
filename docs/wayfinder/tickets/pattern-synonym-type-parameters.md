@@ -3,7 +3,9 @@ title: "Should a pattern synonym's generalized types be supplyable?"
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-27
+resolution: "Closed 2026-09-27: ruled 2026-09-25, implemented and merged (`9b0d2b5`), gate 0 build errors / xUnit 186/186 / `conformance: 798 cases, 0 failed` (792 + its 6 new pairs). All three ruled answers are cased. **One deviation from the ruling's route, recorded below and flagged to the user**: the ruling said to reuse `InsertImplicitArgs`/`CheckUnderImplicit` *in place of* the rigid `CollectSynonymMetas`/`InstantiateSynonym` path; what landed keeps that path and adds supply plus scope-end reporting to it, reusing the `WrittenRows` idiom instead."
 assignee:
 blocked_by:
 ---
@@ -92,3 +94,60 @@ be reported unsolved" corner.
   `InstantiateSynonym`), `dotnet/src/Fun.Kernel/Core.Patterns.cs` (`VPatternSynonym`)
 - the implicit machinery the other reading would reuse: `InsertImplicitArgs` /
   `CheckUnderImplicit` in `dotnet/src/Fun.Compiler/Elaborator.Implicits.cs`
+  (paths in this section are stale — `dotnet/` was lifted to the repository root on 2026-09-26)
+
+## Closed 2026-09-27
+
+Merged as `9b0d2b5` (fast-forward). Gate on the merge: `dotnet build` 0 errors, xUnit 186/186,
+`conformance: 798 cases, 0 failed` — 792 before it, plus the six case pairs below.
+
+**What landed.** `MetaContext.SynonymTypeParams` collects the metas minted for a synonym's
+generalized types at each use, documented the way its neighbour `WrittenRows` is; the scope-end
+check sits in `Elaborator.Effects.cs`, a few lines below the `_`-row check and in the same idiom:
+
+```
+a pattern synonym's type parameter is never solved: supply it, as in M.Two[I64, Bool](x, y)
+```
+
+`SynonymBaseHead`/`SynonymSupply` peel the implicit applications off a synonym's head, so
+`M.Two[I64, Bool]` resolves like `M.Two`; `InstantiateSynonym` takes the supply, rejects more
+supplied types than the synonym has parameters, and **solves** each fresh meta with the type
+written for it — the way `f[I64]` supplies an implicit. Two places that would misread the
+application as a type former are guarded (`RejectFormerHeads`, `RefinementOf`), `HeadLabel`
+reports the base head so a message names `Two` rather than the application, and `Enforest.Match.cs`
+reads the supplied type arguments to begin with. Reflecting such a use is refused as an unported
+path (`Reflection.cs`, `Path`), because the reflected `Path` ADT has no slot for them yet.
+
+**The three ruled answers, each cased:** supplied (`pattern-synonym-supplies-type-params`,
+`-leading-type-params`, `-through-open`), reported unsolved where its scope ends
+(`pattern-synonym-unsolved-type-param` — the ticket's own negative case, whose scrutinee type is a
+bare meta — and `-after-partial-supply`), and an over-supply rejected
+(`pattern-synonym-supplies-too-many-type-params`). One rule everywhere follows structurally: a
+`match` arm and a lambda parameter both go through `ElaborateSynonymUse`.
+
+### Deviation from the ruling's route — for the user, not buried
+
+The ruling's implementation sentence said to reuse the implicit machinery *in place of* the rigid
+`CollectSynonymMetas`/`InstantiateSynonym` path, and that the rigid reading is **not** kept as a
+compatibility mode. **What landed keeps that path** and adds two things to it: the supply of
+leading parameters, and the scope-end report. The `WrittenRows` idiom is reused for the report
+rather than `CheckUnderImplicit`.
+
+The three *answers* are unaffected — they are what the ruling is about, and each has a case. But
+the route is not the one written down, so it is recorded here rather than passed over. The case for
+the landed route, from reading it: collecting which types a synonym's right-hand side leaves
+generalized is a different job from inserting implicits at a *call* site — the first decides what a
+declaration's parameters are, the second supplies arguments to a use — and the synonym keeps
+needing the first. No semantic difference was found in the ruled cases.
+
+### What the author did not report, and what the integrator checked instead
+
+**There is no fork report for this ticket.** Its first run was aborted mid-diagnosis (it had
+committed nothing, so that run was discarded); the resumed run committed the two green steps and
+the merge and then stopped responding, so no "what I did not do" exists for it. What was checked
+here instead: the diff of all five touched source files, the six cases' `.fun`/`.expect`, and the
+gate above. **Not verified by me:** the semantics of a synonym use nested inside another
+synonym's right-hand side. The code carries deliberate bookkeeping for it — the declaration saves
+and restores `SynonymTypeParams.Count` so a nested use's parameters are not reported as unsolved
+at the inner declaration — but no case exercises that path, and nobody has written down what it
+should do.
