@@ -382,9 +382,12 @@ tickets in this same repo on the same day, so the count is not one session's led
 this entry. `docs/STATUS.md` carries them in one entry, and the suite grew to **947 cases, 0 failed**
 (three byte-identical files deleted, five coverage-gap cases added, each proven by flipping it).
 
-**Next session's queue, in the order the tickets argue it:** the two specified case fixes on
-[the suite investigation](tickets/suite-redundancy-measured.md) — `core-279`'s hole-free spelling and
-`core-022` as the module-as-type refusal — then the remaining rows on
+**Next session's queue, in the order the tickets argue it:** ~~the two specified case fixes on
+[the suite investigation](tickets/suite-redundancy-measured.md)~~ **landed `0abdf5f` (2026-09-29,
+947 cases, 0 failed)** — `core-279` on a spelling the ticket got wrong (the fork's
+`two tokens => 42` does not parse in the port; what landed is `two_tokens 7 7`, hole-free and
+multi-token) and `core-022` as the refusal case with `.expect` `error`, message verified by hand;
+then the remaining rows on
 [the coverage gaps](tickets/coverage-gaps-from-the-mutation-sweep.md), and after those the design
 work, which is grilling rather than building:
 [trait deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md),
