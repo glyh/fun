@@ -67,3 +67,27 @@ cases.
 - **Not exhaustive.** The sweep could not mutate `Driver`, `Loader`, `Reflection`, `PreludeAbi`, the
   `Core.*` traversals, deeper `Unify`, `Nbe.Structs`/`Nbe.Rec`, `Expander.Imports`, `Reader` beyond a
   caret flip, or `Syntax.Map` beyond one flip, so their cases are unmeasured rather than safe.
+
+## Landed 2026-09-28, and two findings from the writing
+
+Two cases, both proven by removing their guard and showing the case fail:
+
+- `elaborate/refs-nonreference` — `{ fn() { deref(5) }; 1 }` → `error` → `Elaborator.Refs.cs:80`.
+  **The brief's own program would not have earned its place:** `{ deref(5) }` survives the
+  mutation, because a *second* guard (`Nbe.Refs.cs:61`, the runtime refusal) refuses the same input
+  and the case still sees `error`. Deferring the `deref` inside an *uncalled* lambda makes the
+  mutant succeed (`VALUE 1`) and the case fail. **A case only earns its place if removing the guard
+  it names flips it** — a sibling guard on the same input can mask the one you wrote for.
+- `macros/macro-arity` — `{ macro m(x) { quote(x) }; m(1, 2) }` → `error`, which pins the
+  **enforester**'s arity check (`Enforest.Macros.cs:102`), *not* the expander's the sweep named.
+
+**The sweep's `macro-arity` target is not reachable by a conformance case.** Disabling
+`Expander.Macros.cs`'s arity guard leaves the output byte-identical, so it is either dead or
+answered earlier; a three-parameter operator macro (`infix (+++) (a,b,c) { a }; 1 +++ 2`) does reach
+it, but removing the guard only changes the **message** (to `macro +++ did not return syntax`) and
+the program still `error`s — unflippable, and `CLAUDE.md` puts message assertions in xUnit. So that
+guard's target is an **xUnit** test, not a case here.
+
+Still to write from the list: `macro-position`, `enforest-empty-block`, `nbe-effects-row-dedup`
+(whose proof is done: `knownEffects.Add(e)` re-inserted → `type mismatch: effect rows do not agree`),
+and `ref-budget-limit` (prove it by *lowering* the threshold, not by hunting a huge `N`).
