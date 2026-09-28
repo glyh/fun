@@ -131,6 +131,34 @@ Premise corrections:
    top-level-only alternative would need a positional check for the one form in a head that
    is not admitted at depth.
 
+   **Decided 2026-09-27 (user): matching compares a record's *fields*; a method never hides
+   it.** Every cell measured against `impl Size(struct { a : I64 })` and a use
+   `U{a = 1}` where `U = struct { a : I64; <one extra member> }`: a **private** binding member
+   is invisible (matched → 1); a **public** binding is not (→ 0); a **public method** is not
+   (→ 0, `mm5`); a `pub impl` member is invisible (→ 1). So today a public method silently
+   removes a record type from the range of every head naming its fields — which would have
+   made the width form useless on exactly the records it is wanted for (a record with
+   behaviour).
+   The rule: **matching and coverage compare field sets and ignore everything else**, while
+   **types stay distinct** — equality still compares all shown members, so
+   `x : P = U{a = 1}` remains `structs with different members` (measured, `ex1`), and an
+   extra *field* still needs the opt-in `struct { a : p; _ }` (measured today: an extra field
+   with no `_` does not match, `ex2`). Access goes by the type as written. That is the same
+   "resolution more permissive than typing" licence the width form already takes.
+
+   An earlier note here said *"a record type IS its fields"* and read that as the two being
+   the **same type**. That was wrong and is retracted: the precedents (PureScript, Elm,
+   TypeScript) do **directed subtyping** — a wider record is usable where a narrower type is
+   expected, one direction, and member access uses the declared type (`x: P; x.m()` errors).
+   `fun` keeps its types closed by measurement, so subtyping would be a language feature
+   (its own ticket if ever wanted); what is ruled here is a matching rule only. A consequence
+   of the retraction: the sibling question *"is `x.m()` reachable through a field-only
+   annotation"* **dissolves**, because no legal `x : P = U{a = 1}` exists to ask it of.
+
+   Behaviour change the fork must gate and case: today a public method (or public binding)
+   hides a record from a field-naming head; after this it does not. The suite decides whether
+   anything cased depended on the old behaviour.
+
    Measured 2026-09-27, the facts that settle the surrounding questions: a
    structural-record head **does** match a use (`impl Size(struct { a : I64 })` wins
    over `impl Size(_)` at `P{a = 1}`, = 1) because type values are compared
