@@ -121,6 +121,16 @@ Premise corrections:
    the body to use (`type-case-struct-field-type`). Refusing field-type binders would add the
    first pattern position in the language where a binder is not allowed.
 
+   **Decided 2026-09-27 (user): the rest form is admitted at any depth.** Measured first, so
+   the choice is against facts, not taste: a nested structural head with *exact* fields
+   already works (`impl Size(Option(struct { a : I64 }))` matched `Some(P{a = 1})` and did
+   not match `Some(R{a = 1; b = True})`, which has an extra field), and a nested pin is cased
+   (`impl Size(Option(^z))` in `pattern-pin-impl-head.fun`). So `_` at depth is the
+   consistent rule, not an exception: `impl Size(Option(struct { a : p; _ }))` means *a
+   container of any record having field `a`, delegating to that field's evidence*. The
+   top-level-only alternative would need a positional check for the one form in a head that
+   is not admitted at depth.
+
    Measured 2026-09-27, the facts that settle the surrounding questions: a
    structural-record head **does** match a use (`impl Size(struct { a : I64 })` wins
    over `impl Size(_)` at `P{a = 1}`, = 1) because type values are compared

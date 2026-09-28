@@ -41,6 +41,16 @@ end
 
 The struct value is the record type descriptor. `Point{...}` constructs a record instance whose fields are checked against the struct's declared fields.
 
+**A struct descriptor's members are not only fields** — the same member syntax a module
+uses is accepted here, which is what "they share member syntax for ordinary bindings" means
+in practice. Measured 2026-09-27: a plain binding is a **private member** of the descriptor
+and is usable by the struct's own methods (`S = struct { k : I64; helper = fn(n) { n + 1 };
+pub method m() : I64 { helper(self.k) } }`, `S{k = 1}.m()` → 2; a constant member behaves the
+same → 8). So `struct { a = 1 }` is not a stray form: it is a descriptor whose only member
+is a private binding, it has no *fields*, and therefore no record value inhabits it — which
+is why `x : struct { a : I64 } = struct { a = 1 }` fails. The failure is reported as
+`structs with different members`, which does not say that (a Stage-12 message nit).
+
 Record instance fields are accessed with dot syntax:
 
 ```fun
