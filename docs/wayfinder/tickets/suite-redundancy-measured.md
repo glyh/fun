@@ -96,3 +96,45 @@ check, so both are corrected here rather than in a commit message.
 
 **So the decision becomes: delete three files, fix one case (`core-279`), and turn `core-022` into
 the refusal case.** `re-export-selective-unit-macro` was never in scope.
+
+## Round two: the wide sweep, 2026-09-28
+
+73 mutations attempted, 70 recorded (26 behavioural flips, 47 refusal-removals, 3 lost), 7 of them
+prelude-wide collapses; **63 discriminating** (19 flips + 44 refusals). Artifacts: `/tmp/mut/table.tsv`,
+`/tmp/mut/fails/<idx>-<tag>.txt`.
+
+| view (collapses excluded) | caught by 0 | 1 | 2–5 | 6+ |
+|---|---|---|---|---|
+| everything | **848 / 942** | 83 | 11 | 0 |
+| flips only | 880 | 53 | 9 | 0 |
+| refusals only | 910 | 30 | 2 | 0 |
+
+**The deletion question is answered in the negative, and the reason is methodological:** a case
+caught by zero of *my* mutations is invisible to a mutation I never wrote — a different refusal, a
+lexer spelling, an invariant case such as the 67 `ok` cases (of which exactly one was caught). The
+sample is 19 discriminating flips deep, so "90% caught by nothing" is a statement about the mutation
+set, not about the cases. **No further deletions are proposed**, and the three byte-identical files
+removed earlier stay the only safe deletions this investigation found.
+
+**Two findings that do matter — both the opposite of the hypothesis:**
+
+1. **Refusal-removals buy ~16× the error-case coverage of flips.** Error cases caught: 2/231 by flips
+   versus 34/231 by refusals, and refusals alone rescued 32 cases from zero-caught (29 `elaborate`,
+   3 `values`, all `error`). So round one's "227 inert `error` cases" was *partly* an artifact of its
+   own mutation set — and still mostly true, because 44 refusals is thin: 23 of them caught nothing.
+2. **The 32 zero-catch mutations are the interesting result** — 9 flips and 23 refusals. About a third
+   look like genuinely *untested behaviour*: a duplicate effect surviving normalisation, two
+   same-shape distinct declarers, pattern-synonym arity and tuple-arity variants (only type-parameter
+   over-supply has a case), most of the expander's macro-position and arity checks, the enforester's
+   empty-block and block-export checks, reference arity, and **the evaluator budget, which has no
+   conformance case at all**. The rest look *redundant* — another check already refuses the same
+   input (`ref-export-clash`, `ref-selopen-unknown-member`, `ref-effects-poly-arrow`, several
+   reflection and effect checks). Candidates for *new* cases, not for deletion.
+
+Also worth its own look: **removing the match non-exhaustiveness check and the rec-group mix check
+made the suite crash** rather than report a failing case — the runner has an invariant-failure path
+for four exception types, and something escapes it.
+
+**Areas the sweep could not mutate**, so their cases remain unmeasured: `Driver`, `Loader`,
+`Reflection`, `PreludeAbi`, the `Core.*` traversals, deeper `Unify`, `Nbe.Structs`/`Nbe.Rec`,
+`Expander.Imports`, `Reader` beyond a caret flip, `Syntax.Map` beyond one flip.
