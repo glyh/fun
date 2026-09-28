@@ -6,8 +6,8 @@ labels:
 status: open
 assignee:
 blocked_by:
-  - generic-impl-head-var-has-no-bound.md
-  - recursive-match-on-two-lists-cores.md
+# Both blockers closed 2026-09-28: generic-impl-head-var-has-no-bound.md (cb52e96) and
+# recursive-match-on-two-lists-cores.md (b6ca5ff). Nothing blocks this now.
 # unblocked 2026-09-27: generic-impl-head-var-has-no-bound.md closed (cb52e96) — a
 # generic impl's body can now use its head variable's evidence. Only the recursion
 # crash below blocks this now.

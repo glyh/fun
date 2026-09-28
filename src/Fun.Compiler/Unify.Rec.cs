@@ -5,13 +5,14 @@ namespace Fun.Compiler;
 public static partial class Unify
 {
     /// <summary>
-    /// Lazy delta: two deferred calls of the same fixpoint on convertible arguments
-    /// are equal without unfolding either. Arguments are compared by conversion, so
-    /// a failed shortcut solves no meta; unification then unfolds both.
+    /// Lazy delta: two deferred calls of the same fixpoint on convertible argument
+    /// spines are equal without unfolding either. Arguments are compared by
+    /// conversion, so a failed shortcut solves no meta; unification then unfolds both.
     /// </summary>
     private static bool SameDeferredCall(MetaContext mc, int width, Value left, Value right) =>
         left is Value.VGlued a && right is Value.VGlued b
-        && a.Fix.IsSame(b.Fix) && Nbe.Convertible(mc, width, a.Arg, b.Arg);
+        && a.Fix.IsSame(b.Fix) && a.Args.Length == b.Args.Length
+        && a.Args.Zip(b.Args).All(p => Nbe.Convertible(mc, width, p.First, p.Second));
 
     /// <summary>Two members of recursive groups: the same member of groups whose bodies unify.</summary>
     private static void FixBodies(MetaContext mc, int width, Value.VFix a, Value.VFix b)

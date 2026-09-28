@@ -211,7 +211,7 @@ public static partial class Nbe
                         value = glued.Unfolded.Value;
                         continue;
                     }
-                    (env, term) = Unfold(mc, stack, glued.Fix, glued.Arg);
+                    (env, term) = Unfold(mc, stack, glued.Fix, glued.Args);
                     goto evaluate;
                 }
                 switch (stack.Pop())
@@ -548,7 +548,9 @@ public static partial class Nbe
         var fresh = new Value.VVar(width, []);
         // A deferred call reads back as the call, not its unfolding.
         if (value is Value.VGlued glued)
-            return new Term.Ap(Quote(mc, width, glued.Fix), Explicitness.Explicit, Quote(mc, width, glued.Arg));
+            return glued.Args.Aggregate(
+                Quote(mc, width, glued.Fix),
+                (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Quote(mc, width, a)));
         return Force(mc, value) switch
         {
             Value.VFix fix => QuoteFix(mc, width, fix),

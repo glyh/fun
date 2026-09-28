@@ -3,9 +3,11 @@ title: A deferred arity-2 recursive call cores the compiler on quoted impl evide
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: Closed 2026-09-28 (`b6ca5ff`, merged as `fork/deferred-call-spine`). The crash is gone: the smallest reproducer went from `exit=134` (SIGABRT, a 22,619-line `Quote → QuoteStuckMatch → OpenArm → Eval` chain) to `VALUE 1`, and the original two-list form answers `VALUE 108` (equal) / `VALUE 109` (unequal) with the impl opened twice — the same as the single-`open` controls. The fix is the design this ticket's recon pointed at: `Value.VGlued` carries the whole argument **spine**, so a deferred call applied a *second* time stays deferred instead of unfolding — supplying an argument is not an inspection — it extends under exactly the conditions it was glued under, `Unfold`/`UnfoldCall` apply the spine (first argument charged, the rest ordinary applications, the `Kont.ApplyArg` frames the evaluator already used), `Quote`/`NeedsShape` fold the spine back as one call, and `SameDeferredCall` compares spines pairwise. **No ceiling, no refusal, no native recursion added, and no `Kont` frame removed.** Suite `907` → **`908` cases, 0 failed**; xUnit `206`; case `imports/eq-list-recursive-helper-open-twice` with its own unit. This **unblocks [Eq for List and Option](std-eq-for-list-and-option.md)**, the two conditional impls the std library surface had to park.
 assignee:
-blocked_by: []
+blocked_by:
 ---
 
 # A deferred arity-2 recursive call cores the compiler on quoted impl evidence
