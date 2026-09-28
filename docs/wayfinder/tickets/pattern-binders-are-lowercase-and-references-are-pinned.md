@@ -168,8 +168,8 @@ spellings that now mean something else.
    | 44 trait declarations `trait Size(A) = sig { size : A -> I64 }` | parameter must be lowercase | → `Size(a)` / `a -> I64` |
    | `std/lib.fun:32` `pub trait Eq(A) = sig { eq : A -> A -> Bool }` | same | → `Eq(a)` / `a -> a -> Bool` (`std` has **no** generic impls) |
    | `test/Fun.Tests/TraitTests.cs` head strings | same | → lowercase |
-   | live docs (`CLAUDE.md`, `CONTEXT.md`, `docs/STATUS.md`, open tickets/topics) | 21 occurrences | → lowercase |
-   | closed tickets, `macro-system/` | historical record | untouched |
+   | live docs: `CLAUDE.md`, `CONTEXT.md`, `docs/STATUS.md`, `docs/wayfinder/topics/**` | 21 occurrences | → lowercase |
+   | `docs/wayfinder/tickets/**` (including this one), `macro-system/` | dated records | untouched — a ticket keeps the spelling it was written with, the same way closed tickets keep the old `do … end` syntax |
 
    A lowercase *type* binding referenced from a pattern is **pinned, not
    renamed** — `impl Size(Option(^z))` with `z = I64`. The sweep found no such
@@ -198,9 +198,11 @@ spellings that now mean something else.
 
 ## Not in scope
 
-- **An or-pattern in a head** (`impl Size(Option(A) | List(A))`) and whether it is
-  one pattern with alternatives or an abbreviation for N declarations — still
-  undecided; belongs to [pattern-headed impls](pattern-headed-impls.md).
+- **An or-pattern in a head** (`impl Size(Option(a) | List(a))`) — decided
+  2026-09-27 as *one declaration with or-pattern rules* (every alternative binds
+  the same names), **not** an abbreviation for N declarations; the ruling and its
+  reasoning are recorded on [pattern-headed impls](pattern-headed-impls.md), which
+  is where it is built.
 - **Width-tolerant heads** (`impl Size(struct { a : I64; _ })`), likewise — now
   cheap, since `StructType` is already a `NeedsDirectMatch` pattern and
   `Sequential` exists.

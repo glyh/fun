@@ -56,12 +56,19 @@ Premise corrections:
 
 **What is left is two things:**
 
-1. **An or-pattern in a head** — `impl Size(Option(A) | List(A))` is today
-   `expression has trailing terms`. Undecided: one pattern with alternatives
-   (branches bind the same names; overlapping arms resolved by precision) or an
-   abbreviation for N declarations (independent binders; a duplicate is the cased
-   ambiguity error). The abbreviation half needs no matcher change at all — the
-   enforester splits, and each branch is the expression head it already is.
+1. **An or-pattern in a head — decided 2026-09-27: one declaration, `match`'s
+   or-pattern rules.** `impl Size(Option(a) | List(a))` (today `expression has
+   trailing terms`) is **one impl with N alternatives**: every alternative must
+   bind the same names, each alternative is a resolution candidate, and whichever
+   matches supplies the body — evaluated once, in one binder context. Mechanism:
+   `Binding.Impl`'s single `Arg` becomes a list of alternative type expressions,
+   which the reflected `DeclImpl` already carries (`Reflection.cs:454` reflects
+   `List([i.Arg], ReflectExpr)`, `:978` unwraps exactly one), so the reflection
+   side gets simpler rather than bigger. **Rejected: an abbreviation for N
+   declarations.** It needs no syntax at all, but it elaborates the same body
+   text once per alternative under *different* binders — the head-shaped version
+   of the site-adapts-behind-your-back mechanism this project deleted from the
+   macro system (`macro-owns-its-output`'s ruling that `Syntax.publish` goes).
 2. **A width-tolerant head** — `impl Size(struct { a : I64; _ })` is today
    `unsupported module item: _`. Now cheap: `StructType` is already a
    `NeedsDirectMatch` pattern (`Core.Patterns.cs:61`) and any such pattern swaps the
