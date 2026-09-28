@@ -1,5 +1,5 @@
 # syntax with no holes
 {
-       syntax answer { answer => 42 };
-       answer
+       syntax two_tokens { two_tokens 7 7 => 42 };
+       two_tokens 7 7
      }
