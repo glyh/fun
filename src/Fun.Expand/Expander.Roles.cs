@@ -249,7 +249,7 @@ public sealed partial class Expander
         Binding.Effect { Public: false } e => new Syntax.EffectDef(e.Name, e.Params, e.Ops, body, body.Span),
         Binding.Trait { Public: false } t => new Syntax.TraitDef(t.Name, t.Param, t.Fields, body, body.Span),
         Binding.Impl { Public: false, Fields: { } fields } i => new Syntax.ImplDef(i.Name, i.TraitPath, i.Arg, fields, body, body.Span),
-        Binding.Open o => new Syntax.Open(o.Of, body, o.Label, body.Span),
+        Binding.Open o => new Syntax.Open(o.Of, body, o.Label, body.Span) { Names = o.Names },
         // A generated export is dropped: the site decides what each item a
         // declaration macro emits means there, and a block exports nothing. A
         // written one never reaches here -- the block statement parser rejects it.

@@ -109,18 +109,20 @@ public sealed partial class Expander
     /// that imported it (M7). The unit's scopes mean nothing here, so they are dropped;
     /// the ids a role's replacement introduces mean the unit's names instead.
     /// </summary>
-    private void ImportRoles(Syntax of, ScopeSet written, ScopeSet region, bool opened = false)
+    private void ImportRoles(Syntax of, ScopeSet written, ScopeSet region, bool opened = false, EquatableArray<string>? names = null)
     {
         if (of is not Syntax.Import import) return;
         var roles = _runtime.LoadSyntax(import.Path).Roles;
         CheckDuplicateExports(roles);
         var unscoped = SyntaxMapper.OfIds(id => id with { Scope = ScopeSet.Empty });
         foreach (var (name, role) in roles)
-            BindRoleAt(name, written, region, UnitOpenLabel(import.Path), unscoped.MapRole(role) with { FromUnit = import.Path });
+            if (names is null || names.Contains(name))
+                BindRoleAt(name, written, region, UnitOpenLabel(import.Path), unscoped.MapRole(role) with { FromUnit = import.Path });
         // A unit's macros are members of it: an open binds them bare in its region, a handle reaches them as M.m.
         if (opened)
             foreach (var (name, macro) in _runtime.LoadSyntax(import.Path).Macros)
-                _bindings.Extend(name, written.Union(region), UnitMacroKey(import.Path, name), BinderMeaning.Macro, macroParams: macro.Params);
+                if (names is null || names.Contains(name))
+                    _bindings.Extend(name, written.Union(region), UnitMacroKey(import.Path, name), BinderMeaning.Macro, macroParams: macro.Params);
     }
 
     /// <summary>

@@ -68,6 +68,12 @@ public abstract partial record Syntax(SourceSpan Span)
     public sealed record Open(Syntax Of, Syntax Body, string Label, SourceSpan Span) : Syntax(Span)
     {
         /// <summary>
+        /// The names a selective <c>open M.{a, b}</c> lists; null is a wholesale
+        /// open. Shared with <c>export</c>'s selection (decided 2026-09-28).
+        /// </summary>
+        public EquatableArray<string>? Names { get; init; }
+
+        /// <summary>
         /// The syntactic roles visible in this open's region, set by expansion: an
         /// open may not supply a member of one of these names (M7).
         /// </summary>
@@ -108,6 +114,9 @@ public abstract partial record Binding
     /// <summary><c>open m</c>: scopes over the bindings after it. It adds no member.</summary>
     public sealed record Open(Syntax Of, string Label) : Binding
     {
+        /// <summary>The names a selective open lists; null is a wholesale open.</summary>
+        public EquatableArray<string>? Names { get; init; }
+
         /// <summary>The syntactic roles visible in this open's region (see <see cref="Syntax.Open.RolesInRegion"/>).</summary>
         public EquatableArray<string> RolesInRegion { get; init; } = [];
     }

@@ -38,6 +38,9 @@ public class ReflectionTests
     [InlineData("fn[A : Type](a : A) : A { a }")]
     [InlineData("{ rec f = fn(n : I64) : I64 { f(n) } and g = fn(n : I64) : I64 { g(n) }; f }")]
     [InlineData("{ M = module { pub x = 1; y = 2; pub T = enum { A, B(I64) } }; open M; x }")]
+    // A selection list is part of the grammar reflection carries (2026-09-28).
+    [InlineData("{ M = module { pub x = 1; y = 2 }; open M.{x}; x }")]
+    [InlineData("{ M = module { pub x = 1 }; N = module { open M.{x}; pub y = x }; N.y }")]
     [InlineData("{ P = struct { x : I64; pub method get() : I64 { self.x } }; P{x = 1}.x }")]
     [InlineData("{ S = sig { x : I64 }; S }")]
     [InlineData("{ C = enum { Red, Green(I64, I64) }; open C; match (Red) { Red | Green(_, _) => 1, _ => 2 } }")]

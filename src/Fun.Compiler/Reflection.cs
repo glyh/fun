@@ -197,6 +197,10 @@ public sealed class Reflection
 
     private Value OptionOf(Value? x) => x is null ? _none.Build() : _some.Build(x);
 
+    /// <summary>A selection's names, as open and export both reflect them: none is a wholesale form.</summary>
+    private Value NamesOpt(EquatableArray<string>? names) =>
+        Option(names is { } list ? (object)list : null, n => List((EquatableArray<string>)n, Str));
+
     private Value List<T>(IEnumerable<T> items, Func<T, Value> f) =>
         items.Reverse().Aggregate(_nil.Build(), (tail, head) => _cons.Build(f(head), tail));
 
@@ -324,7 +328,7 @@ public sealed class Reflection
             Syntax.Enum e => E(PreludeAbi.Tags.Expr.RawEnum, _none.Build(),
                 List(e.Constructors, c => Con(_ctor, PreludeAbi.Tags.Ctor.MkCtor, ReflectId(new Id(c.Name, SourceSpan.Synthetic)), List(c.Payloads, X)))),
             Syntax.Import i => E(PreludeAbi.Tags.Expr.RawImport, Str(i.Path), new Value.VAtom(new Atom.Scopes(i.Scope, null))),
-            Syntax.Open o => E(PreludeAbi.Tags.Expr.RawOpen, X(o.Of), X(o.Body), Str(o.Label)),
+            Syntax.Open o => E(PreludeAbi.Tags.Expr.RawOpen, X(o.Of), X(o.Body), Str(o.Label), NamesOpt(o.Names)),
             Syntax.OpenChoice c => E(PreludeAbi.Tags.Expr.RawOpenChoice, ReflectId(c.Name), List(c.Opens, Str), Option(c.Fallback, Str)),
             Syntax.EffectDef d => E(PreludeAbi.Tags.Expr.RawEffectDef, ReflectId(d.Name), List(d.Params, ReflectId), List(d.Ops, EffectOpVal), X(d.Body)),
             Syntax.TraitDef t => E(PreludeAbi.Tags.Expr.RawTraitDef, ReflectId(t.Name), List([t.Param], ReflectId), Fields(t.Fields), X(t.Body)),
@@ -463,7 +467,7 @@ public sealed class Reflection
             Binding.Macro m => D(PreludeAbi.Tags.Decl.DeclMacro, ReflectId(m.Name), ReflectExpr(m.Value), Bool(m.Public), OptionOf(m.Kind is { } k ? Ann(k) : null), OptionOf(m.Output is null ? null : ReflectExpr(m.Output))),
             Binding.MacroCall c => D(PreludeAbi.Tags.Decl.DeclMacroCall, ReflectExpr(c.Head), List(c.Args, ReflectCaptured), Bool(c.Public)),
             Binding.Field f => D(PreludeAbi.Tags.Decl.DeclField, Str(f.Name), ReflectExpr(f.Type)),
-            Binding.Open o => D(PreludeAbi.Tags.Decl.DeclOpen, ReflectExpr(o.Of), Str(o.Label)),
+            Binding.Open o => D(PreludeAbi.Tags.Decl.DeclOpen, ReflectExpr(o.Of), Str(o.Label), NamesOpt(o.Names)),
             Binding.Export e => D(PreludeAbi.Tags.Decl.DeclExport, ReflectExpr(e.Of), Option(e.Names is { } names ? (object)names : null, n => List((EquatableArray<string>)n, Str)), Bool(e.Public)),
             Binding.Hole h => D(PreludeAbi.Tags.Decl.DeclHole, ReflectId(h.Name)),
             Binding.SyntaxDecl s => D(PreludeAbi.Tags.Decl.DeclSyntax, ReflectId(s.Name), RoleVal(s.Role), Bool(s.Public)),
@@ -573,6 +577,10 @@ public sealed class Reflection
     }
 
     private sealed record Boxed<T>(T Value);
+
+    /// <summary>A selection's names read back, as open and export both read them.</summary>
+    private Boxed<EquatableArray<string>>? ReadNames(Value v) =>
+        ReadList(v, ReadStr) is { } list ? new Boxed<EquatableArray<string>>(list) : null;
 
     private SourceSpan? ReadSpan(Value v)
     {
@@ -756,9 +764,12 @@ public sealed class Reflection
             case (PreludeAbi.Tags.Expr.RawImport, 2):
                 return ReadStr(args[0]) is { } path && args[1] is Value.VAtom { Atom: Atom.Scopes sc }
                     ? new Syntax.Import(path, span) { Scope = sc.Set } : null;
-            case (PreludeAbi.Tags.Expr.RawOpen, 3):
-                return X(args[0]) is { } m && X(args[1]) is { } obody && ReadStr(args[2]) is { } label
-                    ? new Syntax.Open(m, obody, label, span) : null;
+            case (PreludeAbi.Tags.Expr.RawOpen, 4):
+            {
+                if (X(args[0]) is not { } m || X(args[1]) is not { } obody || ReadStr(args[2]) is not { } label) return null;
+                var (namesOk, names) = ReadOption(args[3], ReadNames);
+                return namesOk ? new Syntax.Open(m, obody, label, span) { Names = names?.Value } : null;
+            }
             case (PreludeAbi.Tags.Expr.RawOpenChoice, 3):
             {
                 if (ReadId(args[0]) is not { } cname || ReadList(args[1], ReadStr) is not { } opens) return null;
@@ -1006,8 +1017,12 @@ public sealed class Reflection
                     ? new Binding.Let(sn, new Syntax.PatternSynonym(sps, rhs, sn.Span), spub, false) : null;
             case (PreludeAbi.Tags.Decl.DeclField, 2):
                 return ReadStr(args[0]) is { } fname && X(args[1]) is { } ftype ? new Binding.Field(fname, ftype) : null;
-            case (PreludeAbi.Tags.Decl.DeclOpen, 2):
-                return X(args[0]) is { } of && ReadStr(args[1]) is { } label ? new Binding.Open(of, label) : null;
+            case (PreludeAbi.Tags.Decl.DeclOpen, 3):
+            {
+                if (X(args[0]) is not { } of || ReadStr(args[1]) is not { } label) return null;
+                var (namesOk, names) = ReadOption(args[2], ReadNames);
+                return namesOk ? new Binding.Open(of, label) { Names = names?.Value } : null;
+            }
             case (PreludeAbi.Tags.Decl.DeclExport, 3):
             {
                 if (X(args[0]) is not { } eof) return null;
