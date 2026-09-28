@@ -8,7 +8,7 @@ namespace Fun.Tests;
 /// </summary>
 public class TraitTests
 {
-    private const string Size = "trait Size(A) = sig { size : A -> I64 }; ";
+    private const string Size = "trait Size(a) = sig { size : a -> I64 }; ";
     private const string Bounded = "f : [A : Size] -> A -> I64 = fn[A : Type](x) { Size.size(x) }; f(3) }";
 
     private static string Elaborate(string source) =>
@@ -45,6 +45,21 @@ public class TraitTests
     public void AnImplMustGiveEveryOperation() =>
         Assert.Equal("missing trait field `size`", Elaborate("{ " + Size + "impl Size(I64) = module { }; 0 }"));
 
+    /// <summary>A trait's parameter binds, so it must be lowercase.</summary>
+    [Fact]
+    public void ATraitParameterMustBeLowercase() =>
+        Assert.Equal("a trait parameter `A` must be lowercase; write `a` to bind",
+            Elaborate("{ trait Size(A) = sig { size : A -> I64 }; 0 }"));
+
+    /// <summary>
+    /// An uppercase free name in an impl head is a reference, not a binder, so an
+    /// unresolved one is an error rather than a silent fresh variable.
+    /// </summary>
+    [Fact]
+    public void AnImplHeadBinderMustBeLowercase() =>
+        Assert.Equal("`A` in an impl head is a reference, not a binder; an impl head binder must be lowercase; write `a` to bind",
+            Elaborate("{ trait Size(a) = sig { size : a -> I64 }; impl Size(Option(A)) = module { size = fn(o) { 0 } }; 0 }"));
+
     private const string TwoImpls = "impl Size(I64) = module { size = fn(n) { 1 } }; impl Size(Char) = module { size = fn(c) { 2 } }; ";
 
     /// <summary><c>Trait.op</c> chooses by the argument's type, not by which impl is nearest.</summary>
@@ -74,9 +89,9 @@ public class TraitTests
     [Fact]
     public void IncomparableGenericImplsAreAmbiguous() =>
         Assert.Equal("ambiguous implementation of `Conv`",
-            Elaborate("{ trait Conv(A) = sig { conv : A -> I64 }; "
-                + "impl Conv(I64 -> A) = module { conv = fn(p) { 1 } }; "
-                + "impl Conv(B -> Bool) = module { conv = fn(p) { 2 } }; "
+            Elaborate("{ trait Conv(a) = sig { conv : a -> I64 }; "
+                + "impl Conv(I64 -> a) = module { conv = fn(p) { 1 } }; "
+                + "impl Conv(b -> Bool) = module { conv = fn(p) { 2 } }; "
                 + "Conv.conv(fn(x : I64) { True }) }"));
 
     /// <summary>
@@ -88,5 +103,5 @@ public class TraitTests
     public void AnImplCannotUseEvidenceItsHeadDoesNotBind() =>
         Assert.Equal("missing implementation of `Size`",
             Elaborate("{ " + Size + "impl Size(I64) = module { size = fn(n) { 1 } }; "
-                + "impl Size(Option(A)) = module { size = fn(o) { Size.size(o) } }; 0 }"));
+                + "impl Size(Option(a)) = module { size = fn(o) { Size.size(o) } }; 0 }"));
 }

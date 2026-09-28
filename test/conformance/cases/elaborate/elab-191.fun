@@ -1,1 +1,1 @@
-{ trait Eq(A) = sig { eq : A -> A -> Bool }; Eq }
+{ trait Eq(a) = sig { eq : a -> a -> Bool }; Eq }

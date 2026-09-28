@@ -29,7 +29,7 @@ pub (>=) = fn(x, y) { i64_to_bool(ge_i64(x, y)) };
 
 # The impls are named because a unit re-exporting this one may only take named
 # public impls; the names are handles, not the evidence programs use.
-pub trait Eq(A) = sig { eq : A -> A -> Bool };
+pub trait Eq(a) = sig { eq : a -> a -> Bool };
 pub impl i64_eq : Eq(I64) = module { fn eq(x, y) { i64_to_bool(eq_i64(x, y)) } };
 pub impl bool_eq : Eq(Bool) = module { fn eq(x, y) { match (x) { True => y, False => not(y) } } };
 pub impl char_eq : Eq(Char) = module { fn eq(x, y) { i64_to_bool(eq_char(x, y)) } };

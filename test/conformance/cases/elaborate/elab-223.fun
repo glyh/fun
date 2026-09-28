@@ -1,1 +1,1 @@
-{ trait Apply(A) = sig { apply : (A ~> A) ~> A }; 1 }
+{ trait Apply(a) = sig { apply : (a ~> a) ~> a }; 1 }

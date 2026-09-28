@@ -48,8 +48,8 @@ Last updated: a written parameter type captures nothing, 2026-09-27.
   parameter is now an implicit argument of the impl, resolved from scope when the impl
   is selected — exactly as a call to a bounded function resolves its hidden
   dictionaries (`traits.md`, "Resolution").
-- `impl Size(Option(A))` with a body that calls `Size.size` on its element therefore
-  works: the impl's dictionary is a function of the `Size(A)` dictionary, and
+- `impl Size(Option(a))` with a body that calls `Size.size` on its element therefore
+  works: the impl's dictionary is a function of the `Size(a)` dictionary, and
   `Size.size(Some(5))` resolves `Size(I64)` at the use. A demand on anything but a bare
   head variable (the impl's own container, or another trait at a structured type) is
   left where it was made, so it fails at the impl's **definition** naming the missing
@@ -99,7 +99,7 @@ Last updated: a written parameter type captures nothing, 2026-09-27.
   and what it does on the empty/out-of-range case, and each module one line naming
   what belongs in it.
 - **Not landed, and the reason**: the surface's two conditional impls
-  (`Eq(List(A))`, `Eq(Option(A))`) have no spelling in the language yet. An impl
+  (`Eq(List(a))`, `Eq(Option(a))`) have no spelling in the language yet. An impl
   head's free name binds as the impl's own type variable, with no bound written and
   no hidden dictionary threaded for it, so `Eq.eq` on an element of that variable
   has no evidence; the probe in the ticket's implementation report fails

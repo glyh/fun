@@ -268,6 +268,37 @@ spellings that now mean something else.
    `impl-head-uppercase-is-a-reference`, `unreachable-arm-subsumed`), and an
    xUnit assertion for each new message.
 
+## Stage 2 — landed 2026-09-27 (`abbc3fb`, `4aad218`, `131c027`; merged as `pi-agent-7e5b728e-5842-45f`)
+
+Suite `888 cases, 0 failed` / xUnit `202` on the stage-1 base → **`892, 0 failed` / `204`**.
+The migration-only commit was green *under the old rule* (876/188), so the rename is
+behaviour-free and the rule is what changes meaning.
+
+The rule lives in `RequireLowercase`, called from `ElaborateTrait` and `BindHeadNames` — the
+impl head's binder-introduction site — and it checks only names that would *bind*: a resolved
+uppercase name stays a reference (`impl Eq(C)`, `impl Eq(T)` unchanged) and keywords never
+reach it (`pub impl Eq(Self)` still resolves). Rejections, measured: `trait Size(A)` →
+`` a trait parameter `A` must be lowercase; write `a` to bind ``; `impl Size(A)` and
+`impl Size(Option(A))` → ``` `A` in an impl head is a reference, not a binder; an impl head
+binder must be lowercase; write `a` to bind ```; `pattern Two(A, B)` → `unbound variable: A`
+(already the rule, no code).
+
+Migrated: 41 `.fun`/`.unit-lib.fun` files, `std/lib.fun:32`, the `TraitTests.cs` /
+`ReflectionTests.cs` strings, doc comments in `Elaborator.Traits.cs` / `Enforest.Traits.cs`,
+and live docs (`STATUS.md`, `topics/traits.md`, `topics/trait-module-stdlib.md`); tickets and
+`macro-system/` untouched. Added 4 case pairs and 2 xUnit tests.
+
+**One question it raised, resolved by the integrator:** item 1 above names one impl-head
+message while item 5 names two refusals. They are the two *spellings* of that one message —
+bare `impl Size(A)` and nested `impl Size(Option(A))` — kept under those two case names.
+Override if they were meant to read differently.
+
+**One fix the merge needed, because the two stages ran in parallel:** stage 1's
+`pattern-pin-impl-head.fun` was written before the rule existed and spelled
+`trait Size(A) = sig { size : A -> I64 }`; the merge lowercased it. The two other uppercase
+`trait Size(A)` occurrences in the tree are the *negative* cases that assert the error
+(`trait-parameter-must-be-lowercase.fun` and its xUnit sibling) and must stay as they are.
+
 ## What this settles, and the boundary
 
 - The rule governs **pattern positions only**. A type *expression* — an

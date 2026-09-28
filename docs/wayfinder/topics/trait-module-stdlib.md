@@ -11,8 +11,8 @@ This also exposes a broader issue: module-level `pub` semantics need to apply to
 - Module files are parsed through `Parse_expand.parse_module`, backed by reader/enforestation.
 - `Surface` already has `TraitBinding` and `ImplBinding` variants for struct/module bindings.
 - The parser already accepts:
-  - `pub trait Eq(A) = sig ... end`
-  - private `trait Eq(A) = sig ... end`
+  - `pub trait Eq(a) = sig ... end`
+  - private `trait Eq(a) = sig ... end`
   - `pub impl Eq(I64) = module ... end`
   - private `impl Eq(I64) = module ... end`
 - Expression-level `TraitDef` / `ImplDef` are `do ... end` scoped forms and currently work by modifying the elaboration context for subsequent expressions in the block.
@@ -83,8 +83,8 @@ If not, keep the existing rejection but add tests that document the current limi
 Define stdlib as a module source in tests, for example:
 
 ```fun
-pub trait Eq(A) = sig
-  eq : A -> A -> Bool
+pub trait Eq(a) = sig
+  eq : a -> a -> Bool
 end
 
 pub impl Eq(I64) = module fn eq(x, y) -> eq_i64(x, y) end
