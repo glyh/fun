@@ -24,8 +24,15 @@ public static partial class Elaborator
             var (typeBody, typeBodyType) = Infer(ctx.Define(member.Key, member.Type, member.Value), let.Body);
             return (new Term.Let(ctx.Quote(member.Type), member.Term, typeBody), typeBodyType);
         }
-        var type = let.Type is { } written ? TypeValue(ctx, written) : ctx.RawMeta();
-        var body = Check(ctx.Bind(let.Name.Name, type), let.Value, type);
+        // A written type reaches here two ways: on the let itself, or as an annotation
+        // wrapping the value (a lambda with a written result type). Either way the
+        // body's own name is bound at it, so the body's self-calls may insert what it
+        // hides (a trait bound's dictionaries), which a meta cannot offer.
+        var type = let.Type is { } written ? TypeValue(ctx, written)
+            : let.Value is Syntax.Annotated annotated ? TypeValue(ctx, annotated.Type)
+            : ctx.RawMeta();
+        var value = let.Value is Syntax.Annotated a ? a.Inner : let.Value;
+        var body = Check(ctx.Bind(let.Name.Name, type), value, type);
         var fix = new Term.Fix([new FixMember(Label(let.Name.Name), PureCall(ctx, type), body)], 0);
         var after = ctx.Define(let.Name.Name, type, ctx.Eval(fix));
         var (bodyTerm, bodyType) = Infer(after, let.Body);
@@ -34,7 +41,9 @@ public static partial class Elaborator
 
     /// <summary>
     /// A module's <c>rec name = value</c>: the value is inferred seeing its own name
-    /// at a meta, which its inferred type then solves.
+    /// at a meta, which its inferred type then solves. A written type is bound at the
+    /// name instead, exactly as a block's rec: the body's own calls may then insert
+    /// what that type hides (a trait bound's dictionaries), which a meta cannot offer.
     /// </summary>
     private static (Term, Value) InferRecMember(Context ctx, Binding.Let let)
     {
@@ -42,6 +51,12 @@ public static partial class Elaborator
         {
             var member = InferFixpointGroup(ctx, [new RecMember(let.Name, let.Value)])[0];
             return (member.Term, member.Type);
+        }
+        if (let.Value is Syntax.Annotated annotated)
+        {
+            var written = TypeValue(ctx, annotated.Type);
+            var checkedBody = Check(ctx.Bind(let.Name.Name, written), annotated.Inner, written);
+            return (new Term.Fix([new FixMember(Label(let.Name.Name), PureCall(ctx, written), checkedBody)], 0), written);
         }
         var type = ctx.RawMeta();
         var (body, bodyType) = Infer(ctx.Bind(let.Name.Name, type), let.Value);
