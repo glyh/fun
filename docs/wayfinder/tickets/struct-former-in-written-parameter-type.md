@@ -156,3 +156,18 @@ eta crash (`applying non-function: VPi`). Suite `911` cases (four added:
 The next probe — `fn(o : Box)` with the argument unsupplied — still refuses, cleanly:
 `ELAB type mismatch: cannot unify VPi with VU`. A type former is not a type until applied; that
 is a property of the language, not an open bug.
+
+## Integrator's verification 2026-09-28 — and a provenance note
+
+**The merge was a fast-forward, and that is why no merge commit carries this.** The fork had
+rebased onto `4e75e44` before reporting, so `git merge` moved `main` straight to its tip
+(`d63f8b2`) rather than creating a merge commit; nothing was lost — `4e75e44` is an ancestor —
+and the tree gated below is the one that landed. House rule for next time: ask for
+`--no-commit --no-ff` when a merge commit is wanted, because `--no-commit` alone still
+fast-forwards.
+
+Gated on the committed tree: build clean; xUnit `206/206`; **`920 cases, 0 failed`** (916 + this
+fork's four); the two acceptance programs answer `VALUE 1` and `VALUE 2` (re-run by the
+integrator, not taken from the report); and the three constraints still `error` —
+`elaborate/elab-133`, `values/struct-equality-sees-extra-member`, and this fork's own guard
+`struct-written-parameter-type-signatures-differ`.
