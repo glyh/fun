@@ -188,9 +188,40 @@ in a type-case ``, `unexpected terms after the pattern: Bool`.
    | `[k : Type] -> k -> k` | ✅ `(Type, Type -> Type)` | ❌ no match |
 
    So `a -> b` now means *a plain function type*: an arrow whose result does not vary with
-   its argument. A term-indexed family was already unreachable as a scrutinee
-   (`(n : I64) -> List(n)` is `cannot unify VAtomTy(I64) with VU`). Binding the *family*
-   rather than one instance is the follow-up this defers, and it needs its own pattern form.
+   its argument.
+
+   **Two more decisions, same day (user).**
+
+   - **`a -> b` matches an *explicit* Pi only.** A polymorphic type is an implicit Pi, and the
+     explicit arrow pattern stops matching it: `[k : Type] -> Bool` matched before
+     (`(Type, Bool)` measured) and does not after. Each pattern form names one Pi kind; none
+     matches both.
+   - **A new pattern form `[a] -> b` matches an implicit Pi and names its binder.** The shape
+     that motivated it:
+     ```fun
+     match (T) { [k] -> k -> k => … }    # against [k : Type] -> k -> k
+     ```
+     `k` is the Pi's own binder and the `k` inside the codomain pattern **refers** to it —
+     which is what makes a *dependent* pattern expressible, and why the explicit form's
+     restriction costs no coverage: what the explicit form cannot name, this one can.
+     Mechanism: bind the Pi's binder to a fresh **rigid variable**, then match the codomain
+     pattern with it in scope, the pattern's mention of the name being the `Pin` node stage 1
+     already built. The codomain is matched *as a pattern* — not read at the domain.
+     - **The local rule this needs:** a name the pattern itself binds (an explicit binder
+       position) is a **reference** in the rest of that pattern; the case rule decides only
+       otherwise-unbound names. Without it, `[k] -> k -> k`'s second `k` would bind a second
+       variable.
+   - **Unmeasured:** arrows carrying effect annotations (`->{E}`) — which side of the
+     explicit/implicit split they fall on is a probe, not a guess.
+
+   Stage 1's own case (`pattern-arrow-type-case.fun`) uses only explicit, non-dependent
+   arrows (`I64 -> Bool`, `I64 -> I64`, expect 3), so neither restriction is covered by it:
+   both need new cases — the implicit form against a polymorphic type, and the explicit form
+   *failing* to match one — plus the `[k] -> k -> k` dependently-matched case.
+
+   A term-indexed family was already unreachable as a scrutinee (`(n : I64) -> List(n)` is
+   `cannot unify VAtomTy(I64) with VU`); `[a] -> b` is what makes the type-indexed dependent
+   case expressible.
 3. **It is four forms and three keys, not two and two.** `Pin`, `Arrow`, `Universe`,
    `TupleType` in `Syntax.Pattern`/`CorePattern`, and `TypeKey.Pi` + `TypeKey.U` +
    `TypeKey.Tuple(arity)` — the last because the plain `Prod` route throws at runtime for a
