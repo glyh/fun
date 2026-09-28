@@ -3,13 +3,15 @@ title: An impl head is a pattern over types
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: **Delivered.** The ticket's thesis was that an impl head *is* a pattern over types, and the grammar now is one: the pin (`^`), arrows (`a -> b` explicit and non-dependent, `[a] -> b` for an implicit Pi), `Type`, tuple type patterns, and **the width head** — `impl Size(struct { a : p; _ })`, built 2026-09-28 (`db7bd9e`, `b3f6906`, `51fde0a`, merged as `fork/pattern-head-struct-width`). Suite `939` → **`945` cases, 0 failed**; xUnit `208`. The width head accepts the rest form **at any depth** (`Option(struct { a : q; _ })`), its field-type binder **is the impl's own variable** usable in the body, an incomparable pair is `ambiguous implementation` (rule 3 unchanged), a more specific width head wins by rule 2 (`impl-head-struct-width-precision` → `21`, which is only true with the fork's `WidthRequires`), and the *negative* holds: a head with no `_` still does not match an extra field. The boundary is exact — `fn(x : struct { a : I64; _ })` as an **annotation** stays `unsupported module item: _`; the form is a head's pattern, not a type.
+
+**What is still not built, and why:** an **or-pattern in a head** (`impl Size(Option(a) | List(a))`) is *ruled* (one declaration, `match`'s or-pattern rules — every alternative binds the same names — because the abbreviation reading would elaborate one body under different binders) and **held by the user** on 2026-09-27: nothing needs it, and a macro can emit two declarations, so it buys brevity only. Build it when a call site appears.
+
+**Residues recorded rather than chased, from the fork that built the width head:** (1) the macro-reflection **round trip of a width head is uncased** — the next probe for whoever touches reflection; (2) rule 2 could **not** share `MatchCompile`'s `Covers`, and that is measured — `Covers({a;_}, {a;p b;q _})` is `False` while the reverse is `True`, so neither direction serves both the matcher and the order, and pins refuse the value reasoning rule 2 uses; `PatternSubsumes` (delegating to rule 2's unification) is what shipped; (3) the rest is read by the **parser**, so the work needed three `Enforest` files and one `Elaborator.cs` dispatch line beyond the brief's list; (4) `let`-bound lambdas over an unknown argument type fail for *every* head, at the base commit too — pre-existing, not introduced here.
 assignee:
 blocked_by:
-  # trait-op-takes-innermost-impl.md closed 2026-09-27, and
-  # type-case-patterns-cannot-express-impl-heads.md closed the same day as
-  # superseded; both edges were replaced by this one.
-  - pattern-binders-are-lowercase-and-references-are-pinned.md
 ---
 
 # An impl head is a pattern over types

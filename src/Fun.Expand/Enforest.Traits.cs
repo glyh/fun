@@ -113,7 +113,36 @@ public sealed partial class Enforest
         if (items.IsEmpty) throw new ExpandException("impl argument list cannot be empty");
         var parts = SplitCommas(items);
         if (parts.Count != 1) throw new ExpandException("impl declaration accepts exactly one trait argument");
-        return (name, ParseAll(TakeTerms(terms, terms.Count - 1)), ParseAll(parts[0]));
+        return (name, ParseAll(TakeTerms(terms, terms.Count - 1)), ParseImplHeadArg(parts[0]));
+    }
+
+    /// <summary>
+    /// An impl head's argument: an ordinary expression, except that a struct in
+    /// it may name a rest (<c>struct { a : p; _ }</c>), which is a type pattern
+    /// rather than a type. Only this position reads the rest; anywhere else a
+    /// lone <c>_</c> item is still the error it was.
+    /// </summary>
+    private Syntax ParseImplHeadArg(Terms terms)
+    {
+        var outer = _allowStructRest;
+        _allowStructRest = true;
+        try { return ParseAll(terms); }
+        finally { _allowStructRest = outer; }
+    }
+
+    /// <summary>
+    /// A lone <c>_</c> item of a struct being read as an impl head's type
+    /// pattern: the pattern's rest, marking the struct partial. A constructor
+    /// field, the one binding a label rather than a binder, so expansion leaves
+    /// it as written where a `let _` would have been renamed; its type is the
+    /// unit, a syntax nothing rewrites, and what the elaborator reads it by.
+    /// </summary>
+    private Binding? ParseStructRest(Terms stmt)
+    {
+        if (!_allowStructRest) return null;
+        stmt = DropSeparators(stmt);
+        if (stmt is not [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "_" } } leaf]) return null;
+        return new Binding.Field("_", new Syntax.Atom(Atom.Unit.Instance, leaf.Span));
     }
 
     /// <summary>A block statement declaring a trait or an impl, scoped over the rest of the block.</summary>

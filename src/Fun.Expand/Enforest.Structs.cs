@@ -12,9 +12,12 @@ public sealed partial class Enforest
     {
         var (body, rest) = BraceBody("struct", terms);
         // Read together, each item seeing the roles declared before it.
-        var items = new Enforest(_env.RegisteringItems());
+        // A nested struct is read by another enforester; whether this one is
+        // reading a head's type pattern is part of how, so it reads it too.
+        var items = new Enforest(_env.RegisteringItems()) { _allowStructRest = _allowStructRest };
         var bindings = items.ReadContext(new Terms(body.Items), (stmt, _) =>
-            (items.ParseStructField(stmt) ?? items.ParseMethod(stmt)) is { } item ? [item] : items.ParseModuleStatement(stmt)).SelectMany(b => b);
+            (items.ParseStructField(stmt) ?? items.ParseMethod(stmt) ?? items.ParseStructRest(stmt)) is { } item
+                ? [item] : items.ParseModuleStatement(stmt)).SelectMany(b => b);
         return (new Syntax.Struct([.. bindings], SourceSpan.Between(startSpan, body.Span)), rest);
     }
 

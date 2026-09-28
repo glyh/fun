@@ -50,6 +50,13 @@ public sealed partial class Enforest(EnforestEnv env)
 {
     private readonly EnforestEnv _env = env;
 
+    /// <summary>
+    /// Whether the expression being read is an impl head's argument, where a
+    /// lone `_` item of a struct is the type pattern's rest. Nowhere else reads
+    /// it, so <c>fn(x : struct { a : I64; _ })</c> stays the error it was.
+    /// </summary>
+    private bool _allowStructRest;
+
     /// <summary>An enforester reading with the roles of <paramref name="roles"/>, as expansion reaches each form.</summary>
     public static Enforest Lazy(BinderTable roles, Func<Syntax, EquatableArray<(string Name, Role Role)>?> unitRoles) =>
         new(EnforestEnv.Lazy(roles, unitRoles));
