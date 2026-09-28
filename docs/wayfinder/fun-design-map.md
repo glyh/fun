@@ -409,6 +409,21 @@ keeps its reproducer unchanged under the new rule: its head references an enclos
 binder by an uppercase name, which is exactly what the rule now says such a name
 means.
 
+**Landed the same night.** Both stages of
+[a pattern binder is lowercase; naming an existing term takes
+`^`](tickets/pattern-binders-are-lowercase-and-references-are-pinned.md) are merged and
+green: stage 1 is `665b8e3` (888 cases, **no existing expected value changed** — that was the
+additivity proof) and stage 2 is `997b57c` (892 cases, xUnit 204; its migration-only commit
+was green *under the old rule*, so the rule is what changes meaning, not the rename). Two
+forks now run on the follow-ups, split so their files do not overlap: the **arrow rules**
+plus wiring the unreachable-arm check (`a -> b` explicit and non-dependent only, a new
+`[a] -> b` that names an implicit Pi's binder so `[k] -> k -> k` matches `[k : Type] -> k ->
+k`, and the check wired full — which flips the two cased expectations the ruling accepted,
+`values/core-133` and `values/stuck-match-pruned-arm`), and **record matching by fields**
+([an impl head is a pattern over types](tickets/pattern-headed-impls.md): a public method no
+longer hides a record from a head naming its fields, while equality and the width opt-in
+`struct { a : p; _ }` are unchanged). Still **25 open**.
+
 **2026-09-27, last thing — the library surface is designed; one ticket out of it.**
 [Design the user-facing library surface](tickets/design-std-library-surface.md) was
 grilled to an empty frontier and its answer is recorded (19 decisions: plural
