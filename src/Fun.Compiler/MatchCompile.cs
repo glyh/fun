@@ -70,13 +70,10 @@ public static class MatchCompile
     /// as that literal; an unkeyable pin covers nothing, so its arm is tried in order
     /// and never reported (the asymmetry with the tree, which keys the keyable ones).
     ///
-    /// <para><b>Not wired into elaboration yet.</b> Enforcing it as a hard error
-    /// (rule 8) would reject two conformance cases that deliberately pin behaviour
-    /// stage 1 must not change - <c>values/stuck-match-pruned-arm</c> (an arm a
-    /// binder at a position subsumes, whose body carries the match's type) and
-    /// <c>values/core-133</c> (<c>match (1) { _ => 0, 1 => 1 }</c>, "first branch
-    /// wins") - so it is available and unit-tested but left off until those cases'
-    /// intent is re-decided.</para>
+    /// <para>Wired into elaboration (rule 8): a non-null result is a hard error.
+    /// Stage 12 turns that error into a warning, at which point the two cased
+    /// behaviours it deliberately rejects (<c>values/core-133</c>'s "first branch
+    /// wins" and a shadowed arm) become legal again with a warning.</para>
     /// </summary>
     public static int? UnreachableArm(IReadOnlyList<CorePattern> patterns)
     {
@@ -100,6 +97,7 @@ public static class MatchCompile
         (CorePattern.Prod a, CorePattern.Prod b) => Pairwise(a.Items, b.Items),
         (CorePattern.TupleType a, CorePattern.TupleType b) => Pairwise(a.Items, b.Items),
         (CorePattern.Arrow a, CorePattern.Arrow b) => Covers(a.Domain, b.Domain) && Covers(a.Codomain, b.Codomain),
+        (CorePattern.ImplicitArrow a, CorePattern.ImplicitArrow b) => Covers(a.Codomain, b.Codomain),
         (CorePattern.Con a, CorePattern.Con b) => a.Name == b.Name && Pairwise(a.Args, b.Args),
         (CorePattern.NominalHead a, CorePattern.NominalHead b) => ReferenceEquals(a.Decl, b.Decl)
             && a.Arity == b.Arity && Pairwise(a.Params, b.Params),
@@ -152,7 +150,7 @@ public static class MatchCompile
                 return Go(SpecializeRecord(m, domainOf(occurrence)), source, domainOf);
 
             case CorePattern.AtomType or CorePattern.NominalHead or CorePattern.Arrow or CorePattern.Universe
-                or CorePattern.TupleType or CorePattern.Pin:
+                or CorePattern.TupleType or CorePattern.Pin or CorePattern.ImplicitArrow:
                 // A pin is unkeyable: the case list is empty for it, its row drops out
                 // of the fallback matrix, and the arms are tried in order (it needs a
                 // direct match). A keyable pin to a known atom is an Atom by

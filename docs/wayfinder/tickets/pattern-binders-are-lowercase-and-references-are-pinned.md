@@ -227,6 +227,39 @@ in a type-case ``, `unexpected terms after the pattern: Bool`.
    `TypeKey.Tuple(arity)` — the last because the plain `Prod` route throws at runtime for a
    non-tuple scrutinee. Factual correction to the prose above.
 
+## The follow-ups landed 2026-09-27 (`f705101`, merged as `pi-agent-14e3c216-arrow-implicit`)
+
+Base `997b57c`; on the merged tree `898` → **`903` cases, 0 failed**, xUnit `205` → `206`.
+**Exactly one expected value changed** — `values/core-133.expect` `0` → `error`, the cost rule 8
+accepted — and every other `.expect` in that diff is a *new* file.
+`values/stuck-match-pruned-arm` was rewritten to stay a *stuck* match without the now-illegal
+shadowed arm (subject kept, `None => I64` added, deliberately not a byte duplicate of
+`stuck-match-sub-occurrence`) rather than deleted.
+
+- **Rule 8 is wired**: coverage by a variable or wildcard now reports — an error until
+  Stage 12's channel turns it into the warning the ruling asked for.
+- **`a -> b` is explicit-only**: `[k : Type] -> Bool` no longer matches; it falls to a later arm.
+- **`a -> b` is non-dependent**: the codomain closure is applied to a fresh variable and
+  occurs-checked, so `(k : Type) -> List(k)` falls through instead of binding
+  `b := List(Type)`. `I64 -> Bool`, `I64 -> I64 -> Bool` and
+  `((k : Type) -> List(k)) -> Bool` still match, and an effect-annotated arrow
+  (`I64 ->{E} Bool`) matches with `b := Bool` — pinned by a case.
+- **`[a] -> b` exists** for an implicit Pi and names its binder: `[k] -> k -> k` matches
+  `[k : Type] -> k -> k`, the codomain matched *as a pattern* (the binder bound to a fresh
+  rigid variable, mentioned through `Pin`). It paid the reflection ripple — prelude ADT,
+  registry, wrap/unwrap, every construction site, rule templates — and a macro round trip is
+  cased.
+
+**Two judgement calls it reported, recorded rather than buried:**
+
+1. **`[a]` binds the Pi's domain as `Type` only** — the form writes no domain constraint, so
+   the elaboration had to choose one. Consequence: an implicit Pi whose binder is not over
+   `Type` (`[n : I64] -> …`) will not match `[a] -> b`. Nothing needs it today; if something
+   does, the choice to revisit is a wildcard domain.
+2. **The pin matcher now matches when the scrutinee *is* the pinned rigid variable**, where it
+   previously parked on any `VVar`. That is what lets the binder's reference resolve, and it
+   is sound because two distinct rigid variables cannot share a level.
+
 ## Stage 2 — the case rule, the trait parameter, the migration (fork 2)
 
 One atomic change: the rule and its call sites cannot land apart, or `main` has

@@ -60,6 +60,10 @@ public abstract partial record Pattern
                 case Or o: Go(o.Left); Go(o.Right); break;
                 case Con c: foreach (var a in c.Args) Go(a); break;
                 case Arrow a: Go(a.Domain); Go(a.Codomain); break;
+                case ImplicitArrow a:
+                    if (found.All(f => f.Name != a.Binder.Name)) found.Add(a.Binder);
+                    Go(a.Codomain);
+                    break;
                 case Record r: foreach (var f in r.Fields) Go(f.Pattern); break;
                 case StructType s: foreach (var f in s.Fields) Go(f.Pattern); break;
             }

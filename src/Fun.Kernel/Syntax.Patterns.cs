@@ -38,6 +38,14 @@ public abstract partial record Pattern
     /// <summary><c>A -&gt; B</c> in a type-case: a function type, its domain and codomain each a type pattern.</summary>
     public sealed record Arrow(Pattern Domain, Pattern Codomain) : Pattern;
 
+    /// <summary>
+    /// <c>[a] -&gt; b</c> in a type-case: an implicit Pi. <paramref name="Binder"/> names
+    /// the Pi's binder; a mention of that name in <paramref name="Codomain"/> is a
+    /// reference to it (the local rule), which is what makes a dependent codomain
+    /// expressible.
+    /// </summary>
+    public sealed record ImplicitArrow(Id Binder, Pattern Codomain) : Pattern;
+
     /// <summary><c>Type</c> in a type-case: the universe, which is no <see cref="AtomTy"/>.</summary>
     public sealed record Universe : Pattern
     {

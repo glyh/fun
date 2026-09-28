@@ -17,6 +17,45 @@ Last updated: a written parameter type captures nothing, 2026-09-27.
 
 ## Completed
 
+### The pattern grammar's two rules, and five pattern forms (2026-09-28)
+
+Decided in one grilling session on 2026-09-27 and landed as four changes the next day, each
+measured against the suite before the next was merged. The rulings, the probes and the check
+sites live in
+[a pattern binder is lowercase; naming an existing term takes `^`](wayfinder/tickets/pattern-binders-are-lowercase-and-references-are-pinned.md).
+
+- **Case decides a pattern name's role.** A bare lowercase name binds, a bare uppercase name
+  refers, and an uppercase name that resolves to nothing is an error — scope no longer decides.
+  A trait declaration takes an explicit lowercase parameter
+  (`trait Eq(a) = sig { eq : a -> a -> Bool }`) and an impl head's free name must be lowercase
+  (`impl Size(Option(a))`); function and type-former binders stay uppercase, because they
+  *declare* and referencing them is what makes an enclosing-binder pattern writable. Retires a
+  silent typo: `impl Size(Optoin(A))` used to become a generic impl over fresh variables.
+- **`^name` pins an existing term.** Surface syntax only — a resolved uppercase reference and a
+  pin are the same internal thing (a term in a pattern position, tested by convertibility) — and
+  it is *required* where the case rule would otherwise bind a lowercase name or read an uppercase
+  *value* binding as a constructor. A pin to a compile-time-known atom contributes that value to
+  exhaustiveness; otherwise it covers nothing. New capability: `match (v) { Some(^x) => … }`
+  matches an outer value, which was impossible before.
+- **Type patterns gained arrows, universes and tuple types.** `I64 -> Bool` matches an
+  *explicit, non-dependent* Pi only — a dependent codomain is refused rather than bound to one
+  arbitrary instance — while `[a] -> b` matches an implicit Pi with its binder nameable, so
+  `[k] -> k -> k` matches `[k : Type] -> k -> k` with the codomain matched as a pattern. `Type`
+  and `(a, b)` / `Tuple(2, a, b)` are patterns too. `a -> b` deliberately does not match a
+  polymorphic type.
+- **An unreachable arm is an error** (rule 8: coverage by a variable or wildcard reports, with no
+  value reasoning). `values/core-133` moved from `0` to `error`, the cost the ruling accepted;
+  Stage 12's non-fatal channel turns this into a warning, and `values/stuck-match-pruned-arm` was
+  rewritten to keep its subject — a stuck match reading back — without the arm that is now
+  illegal.
+- **Matching compares a record's *fields*, not its members.** `impl Size(struct { a : I64 })` now
+  serves a record that also carries a public method or a public binding; previously such a member
+  silently hid the type from every head naming its fields. Equality is unchanged
+  (`x : P = U{a = 1}` is still refused) and an extra *field* still needs the opt-in
+  `struct { a : p; _ }`, which is decided but not built yet.
+
+Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
+
 ### A written parameter type captures nothing (2026-09-27)
 
 - A meta inserted while elaborating a written parameter type listed every binder in
@@ -153,8 +192,9 @@ Last updated: a written parameter type captures nothing, 2026-09-27.
   [the generative former's identity residue](wayfinder/tickets/port-generative-former-identity-residue.md)
   (already fixed the day it was written, `1f70e82`). So the remaining port work is no longer
   three waves but the handful of sites above.
-- **Landed:** a stuck match reads back an arm its tree pruned (`Term.Match` carries its arms'
-  `Patterns`; `values/stuck-match-pruned-arm`); a budget error names the **call stack**
+- **Landed:** a stuck match reads back its arms (`Term.Match` carries its arms'
+  `Patterns`; `values/stuck-match-pruned-arm`, rewritten 2026-09-28 — the arm it used to shadow
+  is now an unreachable-arm error); a budget error names the **call stack**
   (outermost → innermost, `<request> at <site>`, one stack across macro applications and checker
   demands, outermost 3 / `… N more …` / innermost 3) — the last of the ruling's three observable
   budget behaviours, xUnit 183 → 184.

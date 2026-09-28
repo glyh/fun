@@ -178,6 +178,7 @@ pub Syntax = module {
     RawPatType(Option(Span), AtomTy),
     RawPatPin(Option(Span), Expr),
     RawPatArrow(Option(Span), Pattern, Pattern),
+    RawPatImplicitArrow(Option(Span), Id, Pattern),
     RawPatUniverse(Option(Span))
   } and PatField = enum {
     MkPatField(String, Option(Pattern))
@@ -239,6 +240,7 @@ pub Syntax = module {
   pub pat_or = fn(l, r) { Pattern.RawPatOr(None, l, r) };
   pub pat_pin = fn(term) { Pattern.RawPatPin(None, term) };
   pub pat_arrow = fn(domain, codomain) { Pattern.RawPatArrow(None, domain, codomain) };
+  pub pat_implicit_arrow = fn(name, codomain) { Pattern.RawPatImplicitArrow(None, name, codomain) };
   pub pat_universe = Pattern.RawPatUniverse(None);
   pub pattern PatWild = Pattern.RawPatWild(_);
   pub pattern PatBind(name) = Pattern.RawPatBind(_, name);
@@ -248,6 +250,7 @@ pub Syntax = module {
   pub pattern PatOr(l, r) = Pattern.RawPatOr(_, l, r);
   pub pattern PatPin(term) = Pattern.RawPatPin(_, term);
   pub pattern PatArrow(domain, codomain) = Pattern.RawPatArrow(_, domain, codomain);
+  pub pattern PatImplicitArrow(name, codomain) = Pattern.RawPatImplicitArrow(_, name, codomain);
   pub pattern PatUniverse = Pattern.RawPatUniverse(_);
   pub Decls = List(Decl);
   pub decl_let = fn(name, val, is_pub) { Decl.DeclLet(name, val, is_pub, False) };

@@ -36,6 +36,11 @@ public sealed partial class Expander
         Pattern.AtomType or Pattern.Universe => pattern,
         Pattern.Pin p => p with { Term = Expand(p.Term) },
         Pattern.Arrow a => a with { Domain = ExpandPattern(a.Domain), Codomain = ExpandPattern(a.Codomain) },
+        // An implicit arrow's binder is a binder like any other: it is resolved to
+        // its unique name, which the codomain's mentions of it then share.
+        Pattern.ImplicitArrow a => _bindings.Resolve(a.Binder) is { } binder
+            ? a with { Binder = a.Binder with { Name = binder.ResolvedName }, Codomain = ExpandPattern(a.Codomain) }
+            : throw new InvalidOperationException($"a pattern binder `{a.Binder.Name}` resolves to no binder"),
         Pattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, ExpandPattern(f.Pattern)))] },
         Pattern.SynonymParam => pattern,
         _ => throw new InvalidOperationException($"unhandled pattern {pattern.GetType().Name}"),

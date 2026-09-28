@@ -437,6 +437,7 @@ public sealed class Reflection
             Fun.Kernel.Pattern.AtomType t => P(PreludeAbi.Tags.Pattern.RawPatType, AtomTyVal(t.Ty)),
             Fun.Kernel.Pattern.Pin pin => P(PreludeAbi.Tags.Pattern.RawPatPin, ReflectExpr(pin.Term)),
             Fun.Kernel.Pattern.Arrow a => P(PreludeAbi.Tags.Pattern.RawPatArrow, ReflectPattern(a.Domain), ReflectPattern(a.Codomain)),
+            Fun.Kernel.Pattern.ImplicitArrow a => P(PreludeAbi.Tags.Pattern.RawPatImplicitArrow, ReflectId(a.Binder), ReflectPattern(a.Codomain)),
             Fun.Kernel.Pattern.Universe => P(PreludeAbi.Tags.Pattern.RawPatUniverse),
             _ => throw new InvalidOperationException($"unhandled pattern {p.GetType().Name}"),
         };
@@ -945,6 +946,8 @@ public sealed class Reflection
             (PreludeAbi.Tags.Pattern.RawPatPin, 1) => ReadExpr(args[0]) is { } pinned ? new Fun.Kernel.Pattern.Pin(pinned) : null,
             (PreludeAbi.Tags.Pattern.RawPatArrow, 2) => ReadPattern(args[0]) is { } ad && ReadPattern(args[1]) is { } ac
                 ? new Fun.Kernel.Pattern.Arrow(ad, ac) : null,
+            (PreludeAbi.Tags.Pattern.RawPatImplicitArrow, 2) => ReadId(args[0]) is { } ab && ReadPattern(args[1]) is { } acod
+                ? new Fun.Kernel.Pattern.ImplicitArrow(ab, acod) : null,
             (PreludeAbi.Tags.Pattern.RawPatUniverse, 0) => Fun.Kernel.Pattern.Universe.Instance,
             _ => null,
         };

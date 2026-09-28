@@ -30,4 +30,10 @@ public class PatternDiagnosticTests
     public void UnexpectedTermsAfterAPatternNameTheToken() =>
         Assert.Contains("unexpected terms after the pattern: Bool", Failure(
             "{ classify = fn(T : Type) { match (T) { I64 Bool => 1, _ => 0 } }; classify(I64) }"));
+
+    /// <summary>An arm an earlier arm subsumes is an unreachable-arm error.</summary>
+    [Fact]
+    public void AnArmAnEarlierArmSubsumesIsAnError() =>
+        Assert.Contains("unreachable match arm 2: an earlier arm covers it", Failure(
+            "{ classify = fn(v : Option(I64)) { match (v) { Some(a) => 1, Some(1) => 2, _ => 0 } }; classify(Some(1)) }"));
 }

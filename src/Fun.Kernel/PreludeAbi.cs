@@ -91,6 +91,7 @@ public static class PreludeAbi
             public const string PatOr = "pat_or";
             public const string PatPin = "pat_pin";
             public const string PatArrow = "pat_arrow";
+            public const string PatImplicitArrow = "pat_implicit_arrow";
             public const string PatUniverse = "pat_universe";
         }
 
@@ -192,6 +193,7 @@ public static class PreludeAbi
             public const string RawPatWild = "RawPatWild";
             public const string RawPatPin = "RawPatPin";
             public const string RawPatArrow = "RawPatArrow";
+            public const string RawPatImplicitArrow = "RawPatImplicitArrow";
             public const string RawPatUniverse = "RawPatUniverse";
         }
 

@@ -84,20 +84,44 @@ public static partial class Nbe
                 return AllMatch(p.Items.Select((item, i) => Matches(mc, env, item, v.Items[i], new Occurrence.Child(at, i), binds)));
             case (CorePattern.Universe, Value.VU):
                 return new MatchResult.Matched();
-            case (CorePattern.Arrow a, Value.VPi pi):
+            // An explicit arrow matches an explicit Pi only, and only a codomain that
+            // does not depend on its domain: `a -> b` is a plain function type. A
+            // polymorphic type is an implicit Pi and does not match here.
+            case (CorePattern.Arrow a, Value.VPi { Explicitness: Explicitness.Explicit } pi):
             {
                 var domain = Matches(mc, env, a.Domain, pi.Domain, new Occurrence.Child(at, 0), binds);
                 if (domain is not MatchResult.Matched) return domain;
-                // A pattern arrow writes no binder, so the codomain is read at the
-                // domain: a dependent arrow matches at its own domain.
-                return Matches(mc, env, a.Codomain, ApplyClosure(mc, pi.Codomain, pi.Domain), new Occurrence.Child(at, 1), binds);
+                // The codomain is read at a fresh rigid variable, not at the domain.
+                // No solving, nothing to restore; dependence on it means the arm does
+                // not match and a later arm is tried, with no error (the scrutinee is
+                // a run-time value).
+                var binder = new Value.VVar(FreshBinderLevel(env.Count, pi.Codomain), []);
+                var codomain = ApplyClosure(mc, pi.Codomain, binder);
+                if (MentionsLevel(mc, binder.Level, codomain)) return new MatchResult.NoMatch();
+                return Matches(mc, env, a.Codomain, codomain, new Occurrence.Child(at, 1), binds);
+            }
+
+            // `[a] -> b` matches an implicit Pi: the Pi's binder is bound to a fresh
+            // rigid variable, and the codomain is matched as a pattern with it in
+            // scope, so a mention of the name is a Pin to the binder.
+            case (CorePattern.ImplicitArrow ia, Value.VPi { Explicitness: Explicitness.Implicit } pi):
+            {
+                var binder = new Value.VVar(FreshBinderLevel(env.Count, pi.Codomain), []);
+                var codomain = ApplyClosure(mc, pi.Codomain, binder);
+                binds.Add((new Occurrence.Child(at, 0), binder));
+                return Matches(mc, env.Push(binder), ia.Codomain, codomain, new Occurrence.Child(at, 1), binds);
             }
             case (CorePattern.Pin p, var scrutinee):
             {
-                // A pinned test against a not-yet-known scrutinee parks (FMatch).
-                if (scrutinee is Value.VNeutral or Value.VVar or Value.VMeta) return new MatchResult.Stuck(scrutinee);
                 var rooted = p.Width is 0 ? p.Term : p.Term.Shift(env.Count - p.Width);
-                return Convertible(mc, env.Count, scrutinee, Eval(mc, env, rooted))
+                var pinned = Eval(mc, env, rooted);
+                // A pinned test against a not-yet-known scrutinee parks (FMatch) -
+                // unless the scrutinee IS the pinned value, which matches: the
+                // implicit-arrow binder's own variable is a rigid variable known to
+                // the pattern, not an unknown to wait on.
+                if (scrutinee is Value.VNeutral or Value.VVar or Value.VMeta)
+                    return scrutinee.Equals(pinned) ? new MatchResult.Matched() : new MatchResult.Stuck(scrutinee);
+                return Convertible(mc, env.Count, scrutinee, pinned)
                     ? new MatchResult.Matched() : new MatchResult.NoMatch();
             }
             case (_, (Value.VNeutral or Value.VVar or Value.VMeta) and var stuck):
@@ -105,6 +129,52 @@ public static partial class Nbe
             default:
                 return new MatchResult.NoMatch();
         }
+    }
+
+    /// <summary>
+    /// The level of a fresh rigid variable standing for a Pi's binder: above every
+    /// variable the environment or the codomain's closure can hold, so nothing else
+    /// matches it.
+    /// </summary>
+    private static int FreshBinderLevel(int envCount, Closure codomain) => Math.Max(envCount, codomain.Environment.Count);
+
+    /// <summary>Whether <paramref name="value"/> mentions the rigid variable at <paramref name="level"/> (the occurs check, over levels).</summary>
+    private static bool MentionsLevel(MetaContext mc, int level, Value value)
+    {
+        bool Go(Value v) => MentionsLevel(mc, level, v);
+        return Force(mc, value) switch
+        {
+            Value.VVar r => r.Level == level || r.Spine.Any(Go),
+            Value.VMeta m => m.Spine.Any(Go),
+            Value.VPi pi => Go(pi.Domain) || Go(ApplyClosure(mc, pi.Codomain, new Value.VVar(level + 1, [])))
+                            || Go(EvalRowClosure(mc, pi.Row, new Value.VVar(level + 1, []))),
+            Value.VProd p => p.Items.Any(Go),
+            Value.VProdTy p => p.Items.Any(Go),
+            Value.VNominal n => n.Captures.Any(Go),
+            Value.VEffectRow row => row.Effects.Concat(row.Tails).Any(Go),
+            Value.VEffect e => e.Params.Any(Go),
+            Value.VRefTy r => Go(r.Heap) || Go(r.Element),
+            Value.VRecursiveOccurrence o => o.Captures.Concat(o.Args).Any(Go),
+            Value.VNeutral n => n.Frames.Any(frame => frame switch
+            {
+                Frame.FApp app => Go(app.Arg),
+                Frame.FRefSet set => Go(set.Value),
+                _ => false,
+            }),
+            Value.VModule m => m.Entries.Any(e => Go(EntryValue(e))),
+            Value.VStruct st => st.Entries.Any(e => Go(EntryValue(e))),
+            Value.VRecord r => Go(r.Type) || r.Fields.Any(f => Go(f.Value)),
+            Value.VSig sig => Go(ApplyClosure(mc, sig.Body, new Value.VVar(level + 1, []))),
+            Value.VTraitDict d => d.Args.Concat(d.Operations.Select(o => o.Type)).Any(Go),
+            _ => false,
+        };
+
+        static Value EntryValue(ModuleEntry entry) => entry switch
+        {
+            ModuleEntry.Field f => f.Value,
+            ModuleEntry.Impl i => i.DictType,
+            _ => Value.VU.Instance,
+        };
     }
 
     /// <summary>Every sub-pattern matched; the first that did not is returned (a no-match, or a stuck value).</summary>
