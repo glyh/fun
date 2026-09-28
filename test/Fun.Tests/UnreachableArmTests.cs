@@ -5,8 +5,8 @@ namespace Fun.Tests;
 
 /// <summary>
 /// The unreachable-arm check (rule 8 of a-pattern-binder-is-lowercase): structural
-/// subsumption, no value reasoning. Not yet wired into elaboration, so it is pinned
-/// here rather than by a conformance case.
+/// subsumption, no value reasoning. Wired into elaboration as a hard error; the
+/// relation is pinned here, and the error message by <see cref="PatternDiagnosticTests"/>.
 /// </summary>
 public class UnreachableArmTests
 {

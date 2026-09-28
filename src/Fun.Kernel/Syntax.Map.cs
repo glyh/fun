@@ -253,6 +253,7 @@ public abstract partial record Pattern
             AtomType or Universe or SynonymParam => this,
             Pin p => p with { Term = p.Term.Map(m) },
             Arrow a => a with { Domain = a.Domain.Map(m), Codomain = a.Codomain.Map(m) },
+            ImplicitArrow a => a with { Binder = m.Id(a.Binder), Codomain = a.Codomain.Map(m) },
             Record r => r with { Type = r.Type.Map(m), Fields = [.. r.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
             StructType st => st with { Fields = [.. st.Fields.Select(f => (f.Name, f.Pattern.Map(m)))] },
             _ => throw new InvalidOperationException($"unhandled pattern {GetType().Name}"),

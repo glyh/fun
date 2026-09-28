@@ -22,8 +22,16 @@ public abstract partial record CorePattern
         public int Width { get; init; }
     }
 
-    /// <summary>A function type in a type-case: a <see cref="TypeKey.Pi"/>.</summary>
+    /// <summary>A function type in a type-case: an <em>explicit</em> Pi, and one whose codomain does not depend on its domain.</summary>
     public sealed record Arrow(CorePattern Domain, CorePattern Codomain) : CorePattern;
+
+    /// <summary>
+    /// <c>[a] -&gt; b</c> in a type-case: an <em>implicit</em> Pi. The binder the
+    /// pattern names is bound to a fresh rigid variable and the codomain matched
+    /// at that variable; <paramref name="Codomain"/>'s mentions of the name are
+    /// <see cref="Pin"/>s to it.
+    /// </summary>
+    public sealed record ImplicitArrow(CorePattern Codomain) : CorePattern;
 
     /// <summary>The universe in a type-case: a <see cref="TypeKey.U"/>.</summary>
     public sealed record Universe : CorePattern
@@ -74,6 +82,7 @@ public abstract partial record CorePattern
         Or o => o.Left.Binders(),
         Prod p => p.Items.Sum(i => i.Binders()),
         Arrow a => a.Domain.Binders() + a.Codomain.Binders(),
+        ImplicitArrow a => 1 + a.Codomain.Binders(),
         TupleType t => t.Items.Sum(i => i.Binders()),
         Con c => c.Args.Sum(a => a.Binders()),
         Record r => r.Fields.Sum(f => f.Pattern.Binders()),
@@ -89,9 +98,11 @@ public abstract partial record CorePattern
     public bool NeedsDirectMatch() => this switch
     {
         StructType or NominalHead or Pin => true,
+        // An arrow is read off a Pi by dependence and explicitness, not by shape
+        // alone, so both arrow forms take the ordered walk rather than the tree.
+        Arrow or ImplicitArrow => true,
         Prod p => p.Items.Any(i => i.NeedsDirectMatch()),
         Or o => o.Left.NeedsDirectMatch() || o.Right.NeedsDirectMatch(),
-        Arrow a => a.Domain.NeedsDirectMatch() || a.Codomain.NeedsDirectMatch(),
         Con c => c.Args.Any(a => a.NeedsDirectMatch()),
         Record r => r.Fields.Any(f => f.Pattern.NeedsDirectMatch()),
         _ => false,

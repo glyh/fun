@@ -63,6 +63,11 @@ public static partial class Elaborator
         CheckEscape(ctx, [.. effectBranches.Select(b => (Value)b.Instance)], resultType);
         CheckStoredEscape(ctx, [.. effectBranches.Select(b => (Value)b.Instance)], storedBefore, since);
 
+        // Rule 8: an arm an earlier arm subsumes structurally is unreachable. Hard
+        // error now; a warning once Stage 12 ships a non-fatal channel.
+        if (MatchCompile.UnreachableArm(patterns) is { } unreachable)
+            throw new FunException($"unreachable match arm {unreachable + 1}: an earlier arm covers it");
+
         var (tree, missing) = MatchCompile.Compile(patterns, occurrence => DomainOf(ctx, TypeAt(ctx, scrutineeType, occurrence)));
         if (missing is not null) throw new FunException($"non-exhaustive match: {missing} is not matched");        // A struct type's exact field set and a nominal type's instance are more
         // than a tree tests: such a match runs its arms in order, once the tree
@@ -100,7 +105,7 @@ public static partial class Elaborator
                 // (the type/nominal wording); the constructor lookup is for values.
                 : ctx.Force(type) is Value.VU ? null : ResolveConstructorHead(ctx, c.Head)?.Nominal,
             Pattern.Record r => RecordPatternType(ctx, r),
-            Pattern.AtomType or Pattern.Arrow or Pattern.Universe => Value.VU.Instance,
+            Pattern.AtomType or Pattern.Arrow or Pattern.ImplicitArrow or Pattern.Universe => Value.VU.Instance,
             Pattern.StructType => type is Value.VStruct ? type : Value.VU.Instance,
             _ => null,
         };
@@ -172,6 +177,18 @@ public static partial class Elaborator
                 var (domain, domainBinders) = ElaboratePattern(ctx, a.Domain, Value.VU.Instance);
                 var (codomain, codomainBinders) = ElaboratePattern(ctx, a.Codomain, Value.VU.Instance);
                 return (new CorePattern.Arrow(domain, codomain), [.. domainBinders, .. codomainBinders]);
+            }
+
+            case Pattern.ImplicitArrow a:
+            {
+                ctx.Unify(type, Value.VU.Instance);
+                // The binder is the Pi's domain, a type. Its name is bound here so
+                // the codomain's mentions elaborate as references (the local rule):
+                // a name the pattern itself binds is a reference in the rest of the
+                // pattern, and a bare lowercase name only otherwise binds.
+                var inner = ctx.Bind(a.Binder.Name, Value.VU.Instance);
+                var (codomain, codomainBinders) = ElaboratePattern(inner, ReferenceBound(a.Codomain, a.Binder.Name), Value.VU.Instance);
+                return (new CorePattern.ImplicitArrow(codomain), [(a.Binder.Name, Value.VU.Instance), .. codomainBinders]);
             }
 
             case Pattern.Universe:

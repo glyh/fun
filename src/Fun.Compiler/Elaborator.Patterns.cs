@@ -111,6 +111,26 @@ public static partial class Elaborator
         return value;
     }
 
+    /// <summary>
+    /// The local rule: a name the pattern itself binds (an explicit binder
+    /// position) is a reference in the rest of that pattern, so each bare mention
+    /// of it in <paramref name="pattern"/> becomes a <see cref="Pattern.Pin"/> to
+    /// the binder the case rule would otherwise re-bind. A nested boundary that
+    /// rebinds the name stops the walk.
+    /// </summary>
+    private static Pattern ReferenceBound(Pattern pattern, string name) => pattern switch
+    {
+        Pattern.Bind b when b.Name.Name == name => new Pattern.Pin(new Syntax.Var(b.Name)),
+        Pattern.Prod p => p with { Items = [.. p.Items.Select(i => ReferenceBound(i, name))] },
+        Pattern.Or o => o with { Left = ReferenceBound(o.Left, name), Right = ReferenceBound(o.Right, name) },
+        Pattern.Con c => c with { Args = [.. c.Args.Select(i => ReferenceBound(i, name))] },
+        Pattern.Record r => r with { Fields = [.. r.Fields.Select(f => (f.Name, ReferenceBound(f.Pattern, name)))] },
+        Pattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, ReferenceBound(f.Pattern, name)))] },
+        Pattern.Arrow a => a with { Domain = ReferenceBound(a.Domain, name), Codomain = ReferenceBound(a.Codomain, name) },
+        Pattern.ImplicitArrow a when a.Binder.Name != name => a with { Codomain = ReferenceBound(a.Codomain, name) },
+        _ => pattern,
+    };
+
     private const string SynonymParamPrefix = "synonym-param#";
 
     /// <summary>A synonym's right-hand side with each parameter's binder marked by its position; any other binder is an error.</summary>
@@ -125,6 +145,7 @@ public static partial class Elaborator
         Pattern.Record r => r with { Fields = [.. r.Fields.Select(f => (f.Name, MarkSynonymParams(f.Pattern, names)))] },
         Pattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, MarkSynonymParams(f.Pattern, names)))] },
         Pattern.Arrow a => a with { Domain = MarkSynonymParams(a.Domain, names), Codomain = MarkSynonymParams(a.Codomain, names) },
+        Pattern.ImplicitArrow a => a with { Codomain = MarkSynonymParams(a.Codomain, names) },
         _ => pattern,
     };
 
@@ -258,6 +279,9 @@ public static partial class Elaborator
                 RejectFormerHeads(ctx, a.Domain);
                 RejectFormerHeads(ctx, a.Codomain);
                 break;
+            case Pattern.ImplicitArrow a:
+                RejectFormerHeads(ctx, a.Codomain);
+                break;
         }
     }
 
@@ -280,6 +304,7 @@ public static partial class Elaborator
         CorePattern.Record r => r with { Fields = [.. r.Fields.Select(f => (f.Name, FillSynonymParams(f.Pattern, args)))] },
         CorePattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, FillSynonymParams(f.Pattern, args)))] },
         CorePattern.Arrow a => a with { Domain = FillSynonymParams(a.Domain, args), Codomain = FillSynonymParams(a.Codomain, args) },
+        CorePattern.ImplicitArrow a => a with { Codomain = FillSynonymParams(a.Codomain, args) },
         _ => pattern,
     };
 

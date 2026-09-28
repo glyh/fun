@@ -93,6 +93,10 @@ public sealed partial class Enforest
         if (bar >= 0)
             return new Pattern.Or(ParsePattern(Slice(terms, 0, bar)), ParsePattern(terms.Drop(bar + 1)));
 
+        var lead = DropSeparators(terms);
+        if (lead.Head is TokenTree.Group { Delimiter: Delimiter.Bracket } bracket)
+            return ParseImplicitArrowPattern(bracket, lead.Tail);
+
         var juxtapose = DropSeparators(terms).Head is not TokenTree.Group;
         var (head, rest) = ParsePatternAtom(terms);
         (head, rest) = ParsePatternPostfix(head, rest, juxtapose);
@@ -102,6 +106,21 @@ public sealed partial class Enforest
         if (!rest.IsEmpty)
             throw new ExpandException($"unexpected terms after the pattern: {TokenText(rest.Head!) ?? "a group"}");
         return head;
+    }
+
+    /// <summary>
+    /// <c>[a] -&gt; b</c>: an implicit Pi pattern. The bracket names the Pi's binder;
+    /// a mention of that name in the codomain refers to it.
+    /// </summary>
+    private Pattern ParseImplicitArrowPattern(TokenTree.Group bracket, Terms after)
+    {
+        var items = DropSeparators(new Terms(bracket.Items));
+        if (items.Count != 1 || items.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident i } token })
+            throw new ExpandException("an implicit arrow pattern is written [a] -> b");
+        var rest = DropSeparators(after);
+        if (rest.Head is not TokenTree.Leaf { Token.Kind: var arrow } || arrow != TokenKind.ThinArrow)
+            throw new ExpandException("an implicit arrow pattern is written [a] -> b");
+        return new Pattern.ImplicitArrow(new Id(i.Name, token.Span, token.Scope), ParsePattern(rest.Tail));
     }
 
     private (Pattern, Terms) ParsePatternAtom(Terms terms)
