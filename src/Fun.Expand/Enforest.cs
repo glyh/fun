@@ -81,7 +81,7 @@ public sealed partial class Enforest
             return new Syntax.Let(name, type, value, body, recursive, span);
 
         if (ParseOpenStatement(stmt) is { } opened)
-            return new Syntax.Open(opened, body, "", span);
+            return new Syntax.Open(opened.Of, body, "", span) { Names = opened.Names };
 
         // A block exports nothing, so a written `export` is nobody's intent. (A
         // generated one is dropped at the block site instead; Expander.DeclOver.)
@@ -161,12 +161,14 @@ public sealed partial class Enforest
         return (new Syntax.Module(items, SourceSpan.Between(startSpan, body.Span)), terms.Tail);
     }
 
-    /// <summary><c>open e</c>: the module expression, or null when the statement is not an open.</summary>
-    private Syntax? ParseOpenStatement(Terms stmt)
+    /// <summary><c>open e</c> or <c>open e.{a, b}</c>: the module expression and
+    /// the selection it may carry. Null when the statement is not an open.</summary>
+    private (Syntax Of, EquatableArray<string>? Names)? ParseOpenStatement(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Open)) return null;
-        return ParseAll(stmt.Tail);
+        var (rest, names) = TakeSelection(DropSeparators(stmt.Tail));
+        return (ParseAll(rest), names);
     }
 
     /// <summary>
@@ -199,7 +201,7 @@ public sealed partial class Enforest
         if (ParseOpenStatement(unprefixed) is { } opened)
         {
             if (isPublic) throw new ExpandException("open is not a public item");
-            return [new Binding.Open(opened, "")];
+            return [new Binding.Open(opened.Of, "") { Names = opened.Names }];
         }
 
         if (ParseRecGroup(unprefixed) is { } group) return [new Binding.RecGroup(group, isPublic)];

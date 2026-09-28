@@ -234,7 +234,7 @@ public static partial class Elaborator
 
             case Syntax.Open open:
             {
-                var (body, of, members) = OpenModule(ctx, open.Of, open.Label, open.RolesInRegion);
+                var (body, of, members) = OpenModule(ctx, open.Of, open.Label, open.Names, open.RolesInRegion);
                 var (bodyTerm, bodyType) = Infer(body, open.Body);
                 return (new Term.Open(of, members, bodyTerm), bodyType);
             }
@@ -467,7 +467,7 @@ public static partial class Elaborator
 
             case Binding.Open open:
             {
-                var (after, of, members) = OpenModule(inner, open.Of, open.Label, open.RolesInRegion);
+                var (after, of, members) = OpenModule(inner, open.Of, open.Label, open.Names, open.RolesInRegion);
                 terms.Add(new BindingTerm.Open(of, members));
                 return after;
             }
@@ -529,10 +529,10 @@ public static partial class Elaborator
     /// the region is an error: the role would read that name, never the member (M7).
     /// </summary>
     private static (Context, Term, EquatableArray<OpenMember>) OpenModule(
-        Context ctx, Syntax of, string label, EquatableArray<string> rolesInRegion)
+        Context ctx, Syntax of, string label, EquatableArray<string>? names, EquatableArray<string> rolesInRegion)
     {
         var (term, inferred) = Infer(ctx, of);
-        if (OpenNominal(ctx, term, inferred, label) is { } nominal) return nominal;
+        if (OpenNominal(ctx, term, inferred, label, names) is { } nominal) return nominal;
         // A signature-typed module (a parameter) opens as the signature gives it.
         var type = ModuleTypeOf(ctx, inferred, term);
         if (ctx.Force(type) is not Value.VModule moduleType)
@@ -546,16 +546,22 @@ public static partial class Elaborator
         {
             if (member is ModuleEntry.Impl { Kind: MemberKind.Public } impl)
             {
-                ctx = OpenImpl(ctx, impl, value, impls++, opened);
+                // The index counts every public impl, named or not: OpenedImpl reads
+                // the Index-th public impl of the whole module, not of this width.
+                if (Selects(names, impl.Name))
+                    ctx = OpenImpl(ctx, impl, value, impls, opened);
+                impls++;
                 continue;
             }
             if (member is not ModuleEntry.Field { Kind: MemberKind.Public } field) continue;
+            if (!Selects(names, field.Name)) continue;
             (ctx, var entry) = ctx.DefineAnonymous(field.Value, Nbe.DotValue(value, field.Name));
             if (field.Constructor is { } mark)
                 ctx = ctx with { ConstructorEntries = ctx.ConstructorEntries.SetItem(entry.Level, (mark.Type, mark.TypeType, mark.Constructor)) };
             members = members.SetItem(field.Name, entry);
             opened.Add(new OpenMember.Field(field.Name));
         }
+        CheckOpenNames(ctx, of, names, PublicMemberNames(moduleType.Entries));
         if (rolesInRegion.FirstOrDefault(members.ContainsKey) is { } supplied)
             throw new FunException($"the open supplies `{supplied}`, which a syntactic role names in its region");
         return (ctx with { Opened = ctx.Opened.SetItem(label, members) }, term, [.. opened]);

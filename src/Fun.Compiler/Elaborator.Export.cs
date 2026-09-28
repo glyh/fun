@@ -16,9 +16,14 @@ public static partial class Elaborator
 
         var members = ExportedMembers(ctx, export.Of);
         if (export.Names is { } names)
-            members = [.. names.Select(n => members.Any(m => m.Name == n)
+        {
+            // A unit's roles and macros leave through its surface, not as value
+            // members; a selection may name them (the expander re-exports them).
+            var surface = UnitSurfaceNames(ctx, export.Of);
+            members = [.. names.Where(n => !surface.Contains(n)).Select(n => members.Any(m => m.Name == n)
                 ? members.Last(m => m.Name == n)
                 : throw new FunException($"export of unknown member `{n}`"))];
+        }
 
         for (var i = 0; i < members.Count; i++)
         {
