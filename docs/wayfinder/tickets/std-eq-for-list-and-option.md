@@ -3,11 +3,11 @@ title: Eq for List and Option — the library's two impls
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: Closed 2026-09-28 (`8da5054` impls, `c651996` exports, `9ecfd08` cases). Both impls ship: `pub impl list_eq : Eq(List(a))` in `std/list.fun` and `pub impl option_eq : Eq(Option(a))` in `std/option.fun`, with `export Lists.{list_eq};` and `export Options.{option_eq};` — and nothing else from those units. Suite `908` → **`916` cases, 0 failed**; xUnit `206`; no expected value changed. **The export mechanism's first real use behaved**: a no-import program resolves `Eq(List(I64))`/`Eq(Option(I64))` from base scope while bare `map`/`get_or`/`length` stay unbound and `Std.Lists.length` works — the integrator re-measured the headline (`Cons(1, Cons(2, Nil)) == Cons(1, Cons(2, Nil))` → `True`). Two surface notes and two compiler limitations were recorded on this ticket instead of hidden: there is no list-literal syntax (cases spell `Cons`/`Nil`), `Nil == Nil`/`None == None` are ambiguous ("element type never known") so the empty cases pin `I64`, an impl body cannot demand its own trait at the head's type (hence the `list_eq_aux` wrapper with a nested `rec go`), and a unit-level `rec` with a type parameter fails ([filed](unit-rec-helper-with-written-implicit-binders.md)). This was the library surface's last unshipped piece.
 assignee:
 blocked_by:
-# Both blockers closed 2026-09-28: generic-impl-head-var-has-no-bound.md (cb52e96) and
-# recursive-match-on-two-lists-cores.md (b6ca5ff). Nothing blocks this now.
 # unblocked 2026-09-27: generic-impl-head-var-has-no-bound.md closed (cb52e96) — a
 # generic impl's body can now use its head variable's evidence. Only the recursion
 # crash below blocks this now.

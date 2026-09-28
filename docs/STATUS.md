@@ -137,7 +137,11 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   module table; every `pub` binding carries one comment line saying what it returns
   and what it does on the empty/out-of-range case, and each module one line naming
   what belongs in it.
-- **Not landed, and the reason**: the surface's two conditional impls
+- **Landed 2026-09-28 — this bullet was "Not landed, and the reason" until then**: the
+  surface's two conditional impls now ship (`Eq(List(a))`, `Eq(Option(a))`, reached through
+  `export Lists.{list_eq}` / `export Options.{option_eq}`; suite 916 cases, and the export's
+  first real use measured to leak nothing else). The paragraph below is the original reason,
+  kept because it names the two compiler gaps that had to close first: the surface's two conditional impls
   (`Eq(List(a))`, `Eq(Option(a))`) have no spelling in the language yet. An impl
   head's free name binds as the impl's own type variable, with no bound written and
   no hidden dictionary threaded for it, so `Eq.eq` on an element of that variable

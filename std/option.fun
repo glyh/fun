@@ -40,3 +40,15 @@ pub filter = fn[A : Type](p : A -> Bool, o : Option(A)) : Option(A) {
 pub is_some = fn[A : Type](o : Option(A)) : Bool {
   match (o) { Some(_) => True, None => False }
 };
+
+# option_eq compares two options' contents with the element type's Eq; it is True for
+# two Nones and False when one side is None and the other is Some.
+pub impl option_eq : Eq(Option(a)) = module {
+  fn eq(xs, ys) {
+    match (xs) {
+      Some(h) => match (ys) { Some(h2) => Eq.eq(h, h2), None => False },
+      None => match (ys) { Some(_) => False, None => True }
+    }
+  }
+};
+
