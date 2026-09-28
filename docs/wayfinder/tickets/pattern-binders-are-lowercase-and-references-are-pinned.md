@@ -151,19 +151,30 @@ in a type-case ``, `unexpected terms after the pattern: Bool`.
 
 **Three things stage 1 opened, none of them silent:**
 
-1. **The unreachable-arm check is implemented and unit-tested but NOT wired.** Wiring it as
-   an error turns two *deliberate, cased* behaviours into errors: `values/core-133` —
-   `match (1) { _ => 0, 1 => 1 }`, commented "match first branch wins", expect `0` — and
-   `values/stuck-match-pruned-arm` — "a stuck match whose tree prunes a shadowed arm still
-   reads back: it waits, arm 0 wins", expect `5`. The fork stopped rather than change them.
-   Open: narrow `Covers` so coverage by a *variable or wildcard* is not reported (leaving
-   first-branch-wins) and only a later arm of the **same shape** as an earlier one is; or
-   accept the two changes; or drop the check.
-2. **A dependent Pi's codomain is read at the domain.** `Nbe.Match.cs`: *"A pattern arrow
-   writes no binder, so the codomain is read at the domain"* — a `VPi` occurrence resolves
-   `c.Index == 0 ? pi.Domain : ApplyClosure(…, pi.Domain)`. So `A -> B` against
-   `(x : A) -> B x` instantiates the codomain at the domain rather than keeping `x` rigid.
-   Documented rather than guessed; a decision is owed.
+1. **The unreachable-arm check is implemented but not wired — decided 2026-09-27: wire it
+   FULL (user).** Coverage by a variable or wildcard counts, so the check reports the two
+   shapes it was written for, and the two *deliberate, cased* behaviours it contradicts are
+   the accepted cost:
+   - `values/core-133` — `match (1) { _ => 0, 1 => 1 }`, commented "match first branch wins" —
+     its expect `0` becomes `error`. **Stage 12 flips it back**: this error becomes the
+     warning the ticket already asks for, so the idiom becomes legal again, with a warning.
+   - `values/stuck-match-pruned-arm` — "a stuck match whose tree prunes a shadowed arm still
+     reads back: it waits, arm 0 wins" — its *subject* disappears, because the pruning it
+     exercises becomes illegal. The stuck readback needs another home (a legal stuck match
+     with no pruned arm), unless another case already covers it.
+2. **A dependent Pi's codomain is read at the domain — measured 2026-09-27, no defect found.**
+   `Nbe.Match.cs`: *"A pattern arrow writes no binder, so the codomain is read at the
+   domain"* — a `VPi` occurrence resolves `c.Index == 0 ? pi.Domain : ApplyClosure(…,
+   pi.Domain)`. So a pattern `a -> b` binds `a` to the Pi's **domain** and `b` to the
+   codomain **instantiated at that domain** — the family's instance at the domain, not the
+   family itself. Measured: `I64 -> Bool` gives `a := I64`, `b := Bool` (the non-dependent
+   case, and the common one); `[k : Type] -> k -> k` gives `a := Type`, `b := Type -> Type`;
+   `(k : Type) -> List(k)` gives `a := Type`, `b := List(Type)`. A *term*-indexed family is
+   unreachable anyway — `(n : I64) -> List(n)` as a scrutinee is `cannot unify
+   VAtomTy(I64) with VU` — so the reachable case is type-indexed, where instantiating at the
+   domain yields a legitimate instance. No soundness question, deterministic; the alternative
+   (bind the family and keep the binder rigid) would leave `b` holding a closure that no
+   later pattern could inspect.
 3. **It is four forms and three keys, not two and two.** `Pin`, `Arrow`, `Universe`,
    `TupleType` in `Syntax.Pattern`/`CorePattern`, and `TypeKey.Pi` + `TypeKey.U` +
    `TypeKey.Tuple(arity)` — the last because the plain `Prod` route throws at runtime for a

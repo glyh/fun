@@ -111,6 +111,16 @@ Premise corrections:
      question: `struct { a : I64; b : Bool; _ }` is more precise than
      `struct { a : I64; _ }` (an instance of it), so it wins wherever both match.
 
+   **Decided 2026-09-27 (user): a head pattern's field-type binder IS the impl's own
+   variable, usable in the body.** `impl Size(struct { a : p; _ }) = module { size = fn(x) {
+   Size.size(x.a) } }` works, and the body's demand on `p` becomes a hidden dictionary
+   argument through machinery that already exists (`cb52e96`). Two *cased* behaviours compose
+   to give this, which is why the alternative is the worse one: a head's own variables already
+   bind and become hidden arguments (`trait-generic-impl-two-bounds`: `impl Size(Tuple(2, a,
+   b))` with `Size.size((1, 'c'))` → 3), and a struct pattern already binds a field's type for
+   the body to use (`type-case-struct-field-type`). Refusing field-type binders would add the
+   first pattern position in the language where a binder is not allowed.
+
    Measured 2026-09-27, the facts that settle the surrounding questions: a
    structural-record head **does** match a use (`impl Size(struct { a : I64 })` wins
    over `impl Size(_)` at `P{a = 1}`, = 1) because type values are compared
