@@ -73,3 +73,26 @@ A case whose name overstates it is worse than a missing case.
    nothing", and it must filter any further deletion list before one is proposed.
 3. **The xUnit → `cases/` migration** for tests that are only "source → value or error": follows the
    repo's rule and costs ~10× less per test. Not yet sized.
+
+## Corrections 2026-09-28, from the fork that ran the deletions
+
+Two of the three "fix the spelling" items were wrong, and one of them was wrong because of *my*
+check, so both are corrected here rather than in a commit message.
+
+1. **`imports/re-export-selective-unit-macro` is not a duplicate at all — leave it.** Its wrapper
+   unit already writes `export (import "mac").{same};` while its twin writes the wholesale
+   `M = import "mac"; export M;`, and that difference arrived with `71bd812` (the selective-open
+   work). My byte-check compared only the *first* unit file of each pair (`ls … | head -1`) and so
+   reported "UNITS IDENTICAL" for a pair whose difference lives in the **second** unit. The four
+   deliberate pairs stay deliberate, and this is a fifth one.
+2. **`values/core-022` cannot be fixed as intended: its spelling is gone by design.** The original
+   pair distinguished `sig x : I64 end` from `module { pub x = I64 }` — the prototype let a *module*
+   stand in for a signature. The port refuses that as a parameter type
+   (`a module is not a type; only a signature is`), which is a deliberate divergence. So the case
+   should **pin that refusal**, not re-write a sugar the language no longer has.
+3. **`macros/core-279` is fixable**, and the fork found the spelling: a hole-free multi-token
+   template — `{ syntax two_tokens { two tokens => 42 }; two tokens }` → `42` — against
+   `core-189`'s single-token operator prefix. Its probe confirmed the value.
+
+**So the decision becomes: delete three files, fix one case (`core-279`), and turn `core-022` into
+the refusal case.** `re-export-selective-unit-macro` was never in scope.
