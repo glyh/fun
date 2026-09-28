@@ -9,3 +9,8 @@ export Types;
 open Types;
 pub Lists = import "std/list";
 pub Options = import "std/option";
+
+# Only the equality impls reach a program's base scope; the modules themselves stay
+# behind `Std.Lists`/`Std.Options`, so nothing flattens.
+export Lists.{list_eq};
+export Options.{option_eq};
