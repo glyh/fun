@@ -200,7 +200,27 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
 
 **Still open on this ticket — not code:**
 1. The `d`/`e` ruling (branch-local types see the matched variable as the matched head?) —
-   grilling, owed to the user.
+   grilling, owed to the user. Both reproducers, preserved here because `/tmp` is ephemeral:
+
+   ```fun
+   // d.fun — y : T written inside the branch
+   ({ f : [T : Type] -> T -> I64 = fn[T](x) {
+        match (T) { I64 => { y : T = x; y + 1 }, _ => 0 } };
+      f(7) })
+   ```
+
+   ```fun
+   // e.fun — U = T, then y : U inside the branch
+   ({ f : [T : Type] -> T -> I64 = fn[T](x) {
+        U = T;
+        match (T) { I64 => { y : U = x; y + 1 }, _ => 0 } };
+      f(7) })
+   ```
+
+   Both fail `ELAB type mismatch: cannot unify VVar with VAtomTy(I64)` on `main` after the fix
+   (expected `8`). Replacing `T`'s value slot fixes `d` but breaks `core-072`–`077` ("a meta's
+   spine must be distinct variables"); `e` fails either way. `type-case-generic-programming.md:88`
+   grants permission ("may treat the matched type variable as equal"), not a decision.
 2. Whether rewriting `Evidence` is the *right* mechanism versus resolving bounds differently —
    green suite only shows it works.
 3. `Opened` vs `ConstructorEntries` are still rewritten together; which needs which is not

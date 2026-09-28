@@ -373,6 +373,39 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
 
 ### Frontier (2026-09-26)
 
+**2026-09-29, session close — 18 open (frontmatter count, the three port umbrellas among them),
+suite 954 cases, 0 failed, xUnit 208.** Three things this session, all landed and re-measured by
+the closer rather than reported:
+
+- **[Type-case refinement](tickets/type-case-refinement-walks-whole-context.md) closed its code
+  half.** An oracle pass re-scoped the recon (it had found `Opened` only — there are seven entry
+  channels, `ResumeEntry` among them a port regression the prototype did handle, `SelfMethods`
+  provable after all), re-measured the performance half the recon had called noise (refining a
+  *builtin* scrutinee costs 37.8 s where a bound variable costs nothing), and the fix landed as
+  `63df1df`: seven channels rewritten, `RefinementTarget` takes the variable the scrutinee
+  evaluates to, seven new cases each proven red first. Timing `b_200_r.fun`: **37.8 s → 1.02 s**.
+  The ticket stays **open on three things that are not code**: the `d`/`e` ruling (reproducers now
+  embedded in the ticket — should a type written inside a branch see the matched variable as the
+  matched head? `core-072`–`077` move with it), whether rewriting `Evidence` is the right
+  mechanism rather than a green-suite coincidence, and `Opened` vs `ConstructorEntries` never
+  isolated from each other. The mention index stays deferred — no number asks for it.
+- **Queue item 1 is done** — [the suite investigation](tickets/suite-redundancy-measured.md)'s two
+  specified cases (`0abdf5f`), with two corrections written back onto the ticket: its item 3
+  spelling (`two tokens => 42`) **does not parse in the port** (a branch pattern's head must be
+  the declared-head atom) and was never re-run against this build, and `.expect` can only be
+  `error` for the refusal (`cases/README.md:35-37` — message-pinning belongs in xUnit).
+- **Two non-work findings worth not re-learning.** [macro-owns-its-output](tickets/macro-owns-its-output.md)
+  was checked and needs no new ruling: the user's 2026-09-18 answers (M1 ships with `publish`'s
+  removal; take the shape from Klister's `which-problem`) both stand, and the ticket reopens only
+  on its trigger — a second declaration macro, or a change to what `publish` distributes. And the
+  three port umbrellas sitting at `status: open` in frontmatter are **deliberate living nodes**
+  (their bodies say so, and the map keeps their children) — do not "fix" them to `closed`; the
+  18-vs-20 count difference between frontmatter and the entry below is that, not a missed edit.
+
+`/tmp/orc` (the oracle's probes and experiment repo) is ephemeral: the seven landed probes are
+conformance cases now; `d`/`e` are in the ticket; the rest is reconstructible from the ticket's
+brief.
+
 **2026-09-28, session close — 20 open.** The session's second half closed twelve tickets and landed
 thirteen changes: the pattern grammar (its own entry below), the arity-2 deferred-call **crash**,
 `Eq(List(a))`/`Eq(Option(a))` with the selective re-exports they needed, `open M.{a, b}`, a
