@@ -97,7 +97,7 @@ public static partial class Elaborator
     /// resolves to nothing is an error rather than a fresh variable - which is
     /// where the old silent `impl Size(Optoin(a))` typo used to hide.
     /// </summary>
-    private static (Context Head, Syntax HeadSyntax, EquatableArray<int> Vars) BindHeadNames(Context ctx, Syntax head)
+    private static (Context Head, Syntax HeadSyntax, EquatableArray<Value> Vars) BindHeadNames(Context ctx, Syntax head)
     {
         var free = new List<string>();
         head.Map(new SyntaxMapper
@@ -121,12 +121,13 @@ public static partial class Elaborator
         free = [.. free.Distinct()];
         if (free.Count == 0) return (ctx, head, []);
 
-        var vars = EquatableArray<int>.Empty;
+        var vars = EquatableArray<Value>.Empty;
         foreach (var name in free)
         {
             var id = ctx.Metas.Fresh();
-            ctx = ctx.Define(name, Value.VU.Instance, ctx.Eval(new Term.InsertedMeta(id, ctx.EntryKinds)));
-            vars = vars.Add(id);
+            var value = ctx.Eval(new Term.InsertedMeta(id, ctx.EntryKinds));
+            ctx = ctx.Define(name, Value.VU.Instance, value);
+            vars = vars.Add(value);
         }
         var bound = free.ToHashSet();
         var rewritten = head.Map(new SyntaxMapper
@@ -170,7 +171,7 @@ public static partial class Elaborator
     /// </summary>
     private static ImplContribution Contribute(Context ctx, Syntax traitPath, Syntax argSyntax, EquatableArray<(string Name, Syntax Value)> fields)
     {
-        var (headCtx, head, vars) = BindHeadNames(ctx, argSyntax);
+        var (headCtx, head, declared) = BindHeadNames(ctx, argSyntax);
         var (trait, arg, dictType) = ImplDictType(headCtx, traitPath, head);
         var seen = new HashSet<string>();
         foreach (var (name, _) in fields)
@@ -185,17 +186,22 @@ public static partial class Elaborator
         var bindings = fields.Select((f, i) => (BindingTerm)new BindingTerm.Let(f.Name, MemberKind.Public,
             Check(ctx, f.Value, dictType.Operations.Last(o => o.Name == f.Name).Type).Shift(i))).ToList();
 
-        // The evidence the body demanded for the impl's own variables is the impl's
-        // bound: one implicit dictionary argument per (trait, variable), resolved at a
-        // use exactly as a bounded function's is (traits.md, "Resolution"). A demand
-        // for anything else is left where it was made, so a missing one is reported
-        // at the impl's definition, not through a misleading use site.
+        // The impl is generic over the variables its head names. The head is elaborated
+        // now, so each name stands for the variable it was left as: the meta the head's
+        // own binder made, once inference has solved it on to the fresh meta a type
+        // constructor's parameter introduced (the variable that is left, which both the
+        // demand and the matching name).
+        var vars = EquatableArray<int>.Empty;
+        foreach (var value in declared)
+            if (ctx.Force(value) is Value.VMeta meta && IndexOf(vars, meta.Id) < 0)
+                vars = vars.Add(meta.Id);
+
+        // The evidence the body demanded for those variables is the impl's bound: one
+        // implicit dictionary argument per (trait, variable), resolved at a use exactly
+        // as a bounded function's is (traits.md, "Resolution"). A demand for anything
+        // else is left where it was made, so a missing one is reported at the impl's
+        // definition, not through a misleading use site.
         var bounds = new List<(ImplBound Bound, Value Arg)>();
-        // The body's inference may have solved a head variable to the fresh meta a trait
-        // method's own type parameter introduced (unifying a value's type with it); the
-        // variable that matters is the variable that is left, so both the demand and the
-        // matching name it.
-        vars = [.. vars.Select(v => ResolveVar(ctx, v))];
         var promoted = new Dictionary<int, int>();
         foreach (var pending in ctx.Metas.PendingEvidence.Skip(pendingMark).ToList())
         {
@@ -233,13 +239,6 @@ public static partial class Elaborator
         return shifted.Map((term, under) => term is Term.InsertedMeta m && promoted.TryGetValue(m.Id, out var at)
             ? new Term.Var(under + lambdas - at - 1)
             : null);
-    }
-
-    /// <summary>The variable <paramref name="id"/> stands for when it was solved to another meta, else itself.</summary>
-    private static int ResolveVar(Context ctx, int id)
-    {
-        while (ctx.Metas.Solution(id) is Value.VMeta { Spine.Length: 0 } meta && meta.Id != id) id = meta.Id;
-        return id;
     }
 
     /// <summary>The position of <paramref name="id"/> in <paramref name="vars"/>, or -1.</summary>
