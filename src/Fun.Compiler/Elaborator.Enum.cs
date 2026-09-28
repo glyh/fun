@@ -161,7 +161,7 @@ public static partial class Elaborator
     /// <c>open T</c> of a nominal type: its constructors, in declaration order,
     /// as entries marked with the constructor each is. Null when <c>T</c> is not one.
     /// </summary>
-    private static (Context, Term, EquatableArray<OpenMember>)? OpenNominal(Context ctx, Term of, Value ofType, string label)
+    private static (Context, Term, EquatableArray<OpenMember>)? OpenNominal(Context ctx, Term of, Value ofType, string label, EquatableArray<string>? names)
     {
         var typeValue = ctx.Eval(of);
         if (PeelFormer(ctx, typeValue, ofType) is not var (nominal, domains)) return null;
@@ -177,11 +177,13 @@ public static partial class Elaborator
         var opened = new List<OpenMember>();
         foreach (var (constructor, value, type) in constructors)
         {
+            if (!Selects(names, constructor.Name)) continue;
             (ctx, var entry) = ctx.DefineAnonymous(type, value);
             members = members.SetItem(constructor.Name, entry);
             ctx = ctx with { ConstructorEntries = ctx.ConstructorEntries.SetItem(entry.Level, (typeValue, ctx.Force(ofType), constructor)) };
             opened.Add(new OpenMember.Constructor(constructor.Name, domains.Count));
         }
+        CheckOpenNames(ctx, null, names, constructors.Select(x => x.Constructor.Name));
         return (ctx with { Opened = ctx.Opened.SetItem(label, members) }, of, [.. opened]);
     }
 

@@ -61,7 +61,7 @@ public static partial class Elaborator
 
                 case Binding.Open open:
                 {
-                    var (after, of, opened) = OpenModule(ctx, open.Of, open.Label, open.RolesInRegion);
+                    var (after, of, opened) = OpenModule(ctx, open.Of, open.Label, open.Names, open.RolesInRegion);
                     ctx = after;
                     bindings.Add(new BindingTerm.Open(of, opened));
                     break;
