@@ -194,3 +194,24 @@ pub range = fn(n : I64) : List(I64) {
   };
   go(0)
 };
+
+# list_eq_aux is the element-wise Eq for two lists, generic in the element type; it is
+# True for two Nils and False when one side is Nil and the other is not. The recursion
+# is a nested `rec` because a unit-level `rec` cannot carry a type parameter.
+list_eq_aux : [B : Eq] -> List(B) -> List(B) -> Bool = fn[B : Type](xs, ys) {
+  rec go = fn(xs : List(B), ys : List(B)) : Bool {
+    match (xs) {
+      Nil => match (ys) { Nil => True, Cons(_, _) => False },
+      Cons(h, t) => match (ys) {
+        Nil => False,
+        Cons(h2, t2) => match (Eq.eq(h, h2)) { True => go(t, t2), False => False }
+      }
+    }
+  };
+  go(xs, ys)
+};
+
+# list_eq compares two lists with the element type's Eq; it is True for two Nils.
+pub impl list_eq : Eq(List(a)) = module {
+  fn eq(xs, ys) { list_eq_aux(xs, ys) }
+};
