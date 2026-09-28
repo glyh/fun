@@ -74,27 +74,60 @@ Premise corrections:
    declarations with the same body. Build it when a call site appears, which is
    the instruction this ticket already carried ("drive this from a real call
    site").
-2. **A width-tolerant head** — `impl Size(struct { a : I64; _ })` is today
-   `unsupported module item: _`. **Not cheap, and the premise stated here does not
-   hold** (probed 2026-09-27, one day after this note was written). A head's test is
-   `Matches` — unification of *type* values — not the decision tree, so
-   `StructType`'s `NeedsDirectMatch`/`Sequential` machinery (which serves `match`)
-   does not make a width head cheap: the form needs partial record *types*, and it
-   would grant at *resolution* a width subsumption the *type system* denies. It is also the only form that creates a new
-   *kind* of ambiguity — `struct { a : I64; _ }` and `struct { b : Bool; _ }` both
-   match `struct { a = 1; b = True }` — so it needs rule 3's answer for width, not
-   just the syntax.
+2. **A width-tolerant head — decided 2026-09-27: build it, as a pattern-valued head.**
+   `impl Size(struct { a : I64; _ })` is today `unsupported module item: _`. The
+   ruling: a head's argument may be a *pattern*, and a struct pattern with a rest is
+   the first form that needs it (the pin already put pattern syntax inside a head,
+   stage 1 of [the binder rule](pattern-binders-are-lowercase-and-references-are-pinned.md);
+   this is the same door, opened wider).
 
-   Measured 2026-09-27, three facts that settle the surrounding questions: a
+   **Correcting the framing this ticket carried while it was being probed.** The
+   earlier notes here called the cost "partial record types" and the effect "width
+   subsumption the type system denies". Both are wrong. A head is not a type
+   annotation — it is a condition on a type, which is this ticket's own thesis — so
+   `impl Size(struct { a : I64; _ })` adds no type to the language: nothing changes
+   for `fn(x : struct { a : I64; _ })`, which stays an error, and the dictionary it
+   supplies is still an ordinary `Size(R)` verdict for each `R` the pattern matches.
+   Nothing about typing is loosened and no soundness question is raised. What the
+   form *does* buy is the thing this ticket was always about: **a head that
+   decomposes a record type**, so `impl Size(struct { a : p; _ }) = …` can bind the
+   field's *type* `p` and use it in the body — structural reflection at resolution
+   time, which is `derive`-by-structure for the first time.
+
+   Costs, all real, none of them "cheap":
+   - **`ResolveEvidence` gains a pattern test.** Today a candidate is a list of type
+     *values* compared by `Matches` (unification). A pattern-valued head is tested
+     against the use's argument types instead — one new path, not a new matcher:
+     `CorePattern.StructType` already carries `Partial` and already matches a
+     `VStruct` (cased in `type-case-struct-field-type.fun`).
+   - **Rule 2 needs pattern subsumption.** `Instance(p, q)` currently asks whether
+     one *value* is an instance of another; with a partial head it must ask it of
+     two *patterns*. That relation is the one the new unreachable-arm check needs
+     anyway — build it once, use it twice.
+   - **Rule 3's ambiguity becomes reachable in a new way**, which is the *existing*
+     answer, not a new rule: `struct { a : I64; _ }` and `struct { b : Bool; _ }` are
+     incomparable, so a use matching both is `ambiguous implementation`.
+   - **Ordering is by precision, not by width**, and the two are not the same
+     question: `struct { a : I64; b : Bool; _ }` is more precise than
+     `struct { a : I64; _ }` (an instance of it), so it wins wherever both match.
+
+   Measured 2026-09-27, the facts that settle the surrounding questions: a
    structural-record head **does** match a use (`impl Size(struct { a : I64 })` wins
    over `impl Size(_)` at `P{a = 1}`, = 1) because type values are compared
-   structurally; record types are **closed** (`x : struct { a : I64 } =
-   R{a = 1; b = True}` fails `structs with different members`); and a structural
-   record type **is** inhabited, via a name-equal literal (`P = struct { a : I64 };
-   x : struct { a : I64 } = P{a = 1}`, = 1). Separately: `struct { a = 1 }` is not a
-   record literal at all — it is a struct *type descriptor* whose `a` is a member
-   binding (private by default, hence `no public member `a``), which is why it never
-   inhabits `struct { a : I64 }`.
+   structurally; record *types* are **closed** (`x : struct { a : I64 } =
+   R{a = 1; b = True}` fails `structs with different members`), which is why the
+   width must come from the head being a pattern rather than from a type; and a
+   structural record type **is** inhabited, via a name-equal literal
+   (`P = struct { a : I64 }; x : struct { a : I64 } = P{a = 1}`, = 1). Separately:
+   `struct { a = 1 }` is not a record literal at all — it is a struct *type
+   descriptor* whose `a` is a member binding (private by default, hence
+   `no public member `a``), which is why it never inhabits `struct { a : I64 }`.
+
+   **Blocked on stage 1** of the binder-rule ticket for its plumbing (pattern syntax
+   in a head's argument), and it carries two open questions now recorded on this
+   ticket: whether a head admits the *whole* pattern grammar or only a struct pattern
+   with a rest, and whether field-type binders (`struct { a : p; _ }`) are usable in
+   the impl's body.
 
 ## The idea
 
