@@ -47,6 +47,13 @@ blocked the library, and both are recorded because the workarounds hide them.
    (`cannot unify VPi with VPi`) while the same declaration works at program and block level —
    [its own ticket](unit-rec-helper-with-written-implicit-binders.md).
 
+**Follow-up 2026-09-28, from that ticket's fix (`88f862f`): the wrapper is no longer needed.** A
+module member `rec` with written implicit binders now binds its own name at its written type, so
+the direct helper under `impl Eq(List(I64))` evaluates correctly — measured by the fork that fixed
+it. That also makes the comment in `std/list.fun` ("a unit-level `rec` cannot carry a type
+parameter") **stale**. Inlining the wrapper is a library simplification whose cases already exist;
+it is a small fork, not a decision.
+
 ## What to do when the last blocker closes
 
 1. `std/list.fun`: `pub impl list_eq : Eq(List(A)) = module { fn eq(xs, ys) { … } };`
