@@ -501,6 +501,11 @@ public static partial class Elaborator
         solved = [];
         if (pattern.Length != target.Length) return false;
         var before = ctx.Metas.Snapshot();
+        // The match relation is more permissive than equality: under it a struct is
+        // compared by its fields alone (MetaContext.Matching). The trial is undone
+        // either way, and the unifier proper runs with it false.
+        var wasMatching = ctx.Metas.Matching;
+        ctx.Metas.Matching = true;
         var ok = true;
         try
         {
@@ -519,7 +524,7 @@ public static partial class Elaborator
             }
         }
         catch (FunException) { ok = false; }
-        finally { ctx.Metas.Restore(before); }
+        finally { ctx.Metas.Restore(before); ctx.Metas.Matching = wasMatching; }
         return ok;
     }
 

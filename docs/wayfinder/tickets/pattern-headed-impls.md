@@ -159,6 +159,24 @@ Premise corrections:
    hides a record from a field-naming head; after this it does not. The suite decides whether
    anything cased depended on the old behaviour.
 
+   **Landed 2026-09-27** (`d29e437`, merged as `fork/pattern-head-fields-match`; base
+   `997b57c`): conformance `892` → **`898`** cases, 0 failed; xUnit `204` → `205`; **no
+   existing case moved** — which a pre-merge sweep predicted (no case in the suite combines a
+   public-method or public-binding record with a field-naming head). The four table rows above
+   re-measured: private binding `1 → 1`, `pub helper` `0 → 1`, `pub method` `0 → 1`,
+   `pub impl` `1 → 1`; equality (`x : P = U{a = 1}`) still refused, an extra *field* still
+   unmatched without `_`.
+
+   **Implementation, and the one reviewable call.** A `Matching` mode on `MetaContext`,
+   set only for the trial in `Elaborator.Matches` and restored in `finally`;
+   `Unify.Structs` keeps only `MemberKind.Field` entries while it is set, and the equality
+   path never sets it, so unification and member access still see every shown member.
+   Coverage (`MatchCompile.Covers`) was already field-only by construction and is untouched.
+   The call worth reviewing: a mutable context flag rather than a threaded parameter — it
+   reaches every nesting depth without signature churn across eight `Unify.*` partials, at
+   the price that anything the trial itself triggers runs in matching mode (undone by the
+   trial's `Restore`).
+
    Measured 2026-09-27, the facts that settle the surrounding questions: a
    structural-record head **does** match a use (`impl Size(struct { a : I64 })` wins
    over `impl Size(_)` at `P{a = 1}`, = 1) because type values are compared
