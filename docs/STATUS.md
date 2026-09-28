@@ -385,7 +385,12 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   roles and macros; clashes are errors.
 - Blocks apply declaration macro calls and read unread items; a block's
   `rec … and …` enum group elaborates; type-case refinement skips names bound
-  before its target.
+  before its target, and reaches every channel an entry can live in - the names,
+  the self entry, the resume entry, the members an `open` introduced, the self
+  methods, the constructor entries and the trait evidence. Its target is the
+  variable the scrutinee *evaluates to*, so a type-case on an alias of a bound
+  type variable refines it, and a scrutinee evaluating to anything else refines
+  nothing.
 - Known: in a recursive function, `match (l) { …, Cons(m, Nil) => …, Cons(m, rest) => … f(rest) }`
   fails at run time with "match on non-constructor value" (pre-existing; the
   prelude's macro avoids the shape).
