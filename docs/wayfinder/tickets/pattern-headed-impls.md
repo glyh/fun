@@ -75,13 +75,26 @@ Premise corrections:
    the instruction this ticket already carried ("drive this from a real call
    site").
 2. **A width-tolerant head** — `impl Size(struct { a : I64; _ })` is today
-   `unsupported module item: _`. Now cheap: `StructType` is already a
-   `NeedsDirectMatch` pattern (`Core.Patterns.cs:61`) and any such pattern swaps the
-   whole match to `Sequential` (`Elaborator.Match.cs:71`), so a `struct { …; _ }`
-   head rides machinery that exists. It is also the only form that creates a new
+   `unsupported module item: _`. **Not cheap, and the premise stated here does not
+   hold** (probed 2026-09-27, one day after this note was written). A head's test is
+   `Matches` — unification of *type* values — not the decision tree, so
+   `StructType`'s `NeedsDirectMatch`/`Sequential` machinery (which serves `match`)
+   does not make a width head cheap: the form needs partial record *types*, and it
+   would grant at *resolution* a width subsumption the *type system* denies. It is also the only form that creates a new
    *kind* of ambiguity — `struct { a : I64; _ }` and `struct { b : Bool; _ }` both
    match `struct { a = 1; b = True }` — so it needs rule 3's answer for width, not
    just the syntax.
+
+   Measured 2026-09-27, three facts that settle the surrounding questions: a
+   structural-record head **does** match a use (`impl Size(struct { a : I64 })` wins
+   over `impl Size(_)` at `P{a = 1}`, = 1) because type values are compared
+   structurally; record types are **closed** (`x : struct { a : I64 } =
+   R{a = 1; b = True}` fails `structs with different members`); and a structural
+   record type **is** inhabited, via a name-equal literal (`P = struct { a : I64 };
+   x : struct { a : I64 } = P{a = 1}`, = 1). Separately: `struct { a = 1 }` is not a
+   record literal at all — it is a struct *type descriptor* whose `a` is a member
+   binding (private by default, hence `no public member `a``), which is why it never
+   inhabits `struct { a : I64 }`.
 
 ## The idea
 
