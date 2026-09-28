@@ -3,7 +3,9 @@ title: Nbe's module re-evaluation drops Vars and Bounds
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: Closed 2026-09-28. Both sites the ticket named now carry the fields: `BindingTerm.Impl` gained `Vars`/`Bounds` (defaulted, so no other construction site broke), `Slots()` puts them on `Slot`, `Nbe.cs`'s `Kont.ModuleSlot` restores them into `ModuleEntry.Impl`, and `Nbe.Traits.cs`'s `QuoteEntry` passes them through. The probe answers `VALUE 3` and is cased (`values/trait-generic-impl-through-function-return`); the suite went 903 → 904 cases, 0 failed, xUnit 206. Two of this ticket's own items were stale: its probe still spelled uppercase `A` (the case rule now rejects that, so the landed case is lowercase), and the recorded change set also threaded `ElaborateImplItem`, `InferExport` and `Unify.RenameEntry` — three sites the re-derivation did not need. Those three still rebuild impl terms without `Vars`/`Bounds`: the same defect class, unexercised, filed as [three more impl-term construction sites](impl-term-construction-sites-drop-vars-and-bounds.md).
 assignee:
 blocked_by: []
 ---
@@ -151,3 +153,19 @@ and for solved metas; not attempted, since carrying is demonstrated working.
 - `src/Fun.Kernel/Core.Traits.cs` — `ModuleEntry` and what a re-evaluation can reconstruct
 - [port: identity must survive re-evaluation](port-identity-survives-reevaluation.md) —
   closed, and the closest earlier encounter with this family of problems
+
+## Landed 2026-09-28
+
+`65c1e39` (carry) + `1d26f7a` (case), merged into main as one commit. The fix is six lines
+across four files, and both sites the ticket named are in it: `BindingTerm.Impl` gained
+`EquatableArray<int> Vars` and `EquatableArray<ImplBound> Bounds` **defaulted** (so every other
+construction site still compiles unchanged, which is also why the three below stayed invisible);
+`BindingTerm.Slots()` copies them onto `Slot`; `Nbe.cs`'s `Kont.ModuleSlot` puts them back on the
+`ModuleEntry.Impl` it rebuilds; `Nbe.Traits.cs`'s `QuoteEntry` passes them out of the entry it
+quotes. `InferLam` needed no edit — `QuoteEntry` is where its codomain reads back.
+
+The probe and its control both answer `VALUE 3`; the case is
+`values/trait-generic-impl-through-function-return` (suite `904 cases, 0 failed`, xUnit 206).
+
+**Still open in the same family, filed separately:** the three construction sites a
+defaulted field leaves unpatched — `Unify.RenameEntry`, `ElaborateImplItem`, `InferExport`.
