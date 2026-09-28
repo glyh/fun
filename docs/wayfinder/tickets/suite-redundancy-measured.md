@@ -1,0 +1,75 @@
+---
+title: The conformance suite's redundancy, measured
+parent: ../fun-design-map.md
+labels:
+  - wayfinder:task
+status: open
+assignee:
+blocked_by: []
+---
+
+# The conformance suite's redundancy, measured
+
+Asked 2026-09-28 — "the tests are slow, and a lot of them catch nothing; we can remove those" — and
+the measurements say something different from the premise, so they are recorded before any
+deletion. A reading pass over the 945 cases built a per-case signature (constructs used, `.expect`
+class, program normalised by abstracting identifiers, constructors and literals); a byte-level pass
+then verified its findings independently, which is how three of them were caught.
+
+## The speed question is not the suite
+
+| measured | |
+|---|---|
+| the suite, 945 cases in one process | **5.58 s** ≈ **5.8 ms/case** |
+| xUnit's slowest single test | **75 ms**; most `< 1 ms` |
+| xUnit *run* wall clock | **11 s** — VSTest's per-test overhead (~50 ms × 208), not the tests |
+| `dotnet test` with a rebuild / `--no-build` | 16.8 s / 13.2 s |
+| `dotnet run --project test/Fun.Conformance` | 11.7 s for 5.6 s of work — a 6 s build |
+| one case in its own process | 0.60–0.85 s, all host + JIT (`DOTNET_TieredCompilation=0` is *slower*) |
+
+Deleting cases is therefore a weak lever: **all 367 `core-*` cases together are ≈ 2 s.** The costs
+are (a) **rebuilds** — build once and then invoke the built DLLs (`dotnet test --no-build`, and
+`Fun.Conformance.dll` directly instead of `dotnet run --project`); (b) **VSTest's ~10 s** for 208
+tests against 5.8 ms/case in the conformance runner — which is the repo's own rule anyway: *a test
+that is only "source → value or error" belongs in `cases/` and only there*; (c) **0.6 s per probe
+process**, which a REPL session amortises.
+
+## The redundancy, measured
+
+- **10 program texts (comments stripped) are shared by 2+ cases.**
+  - **4 pairs are deliberate**: their programs are identical but their `.unit-*.fun` differ (2–3
+    lines), so the *unit* is the subject —
+    `trait-generic-impl-bound-in-imported-module`, `unit-macro-sees-earlier-binding`,
+    `port-macro-private`, `trait-generic-impl-bound-through-import`. **These stay**; a text-level
+    dedup would have deleted real coverage.
+  - **6 are genuine duplicates**, three of them cases whose *name* claims a distinction their files
+    do not contain.
+- **231 cases pin `error`** (24%). Large groups: exhaustiveness/match coverage (47), record/struct
+  shape (19). Small and distinct: missing impl (21), refusal naming the offending term (10),
+  unification (8), parse (6), ambiguity (4) — each member pins a different rule.
+- **`core-NNN` is not the filler.** Of 338 ported cases, **0** are textually subsumed by a named
+  case, and only 1 of 2 core error cases shares a signature with a named one. The redundant mass is
+  the **newer `elab-NNN` port**: 54 of 115 `elab` error cases share a signature with a named case,
+  in spelling-only clusters — `is_zeroish` ×4, sig-arg ×3, field shape 6→3 (differing by a stray
+  `;`), match-coverage pairs, generative symbol-table 6, `std` empties ×3.
+
+## Decision 2026-09-28: fix three, delete three
+
+Delete `macros/core-201` (identical to `core-200` including its comment), `elaborate/elab-009`
+(identical to `elab-008`), `elaborate/elab-092` (its `ok` is subsumed by `values/core-141`'s
+`True`). For the other three, **write the spelling the name claims** rather than deleting the pair:
+`macros/core-279` ("syntax with no holes" against `core-189`'s "operator prefix"),
+`values/core-022` ("signature sugar argument" against `core-020`'s "module signature argument"),
+and `imports/re-export-selective-unit-macro` (whose unit is byte-identical to
+`re-exported-unit-macro`'s, so the *selective* re-export its name promises is nowhere in the case).
+A case whose name overstates it is worse than a missing case.
+
+## Still open, deliberately
+
+1. **The `elab-NNN` spelling clusters** (~15–20 files) — each group needs its own call, because
+   `cases/README.md`'s rule is that a *spelling* can be the subject. Not decided here.
+2. **The mutation experiment** (running when this was written): break one small thing in `src/` at a
+   time and record which cases fail. That is the only honest measure of "a case that catches
+   nothing", and it must filter any further deletion list before one is proposed.
+3. **The xUnit → `cases/` migration** for tests that are only "source → value or error": follows the
+   repo's rule and costs ~10× less per test. Not yet sized.
