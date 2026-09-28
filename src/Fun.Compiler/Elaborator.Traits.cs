@@ -40,6 +40,8 @@ public static partial class Elaborator
     /// </summary>
     private static TraitDecl ElaborateTrait(Context ctx, string name, string param, EquatableArray<(string Name, Syntax Type)> fields)
     {
+        RequireLowercase(Label(param), $"a trait parameter `{Label(param)}` must be lowercase");
+
         var seen = new HashSet<string>();
         foreach (var (field, _) in fields)
             if (!seen.Add(field)) throw new FunException($"duplicate trait field `{field}`");
@@ -48,7 +50,7 @@ public static partial class Elaborator
         return new TraitDecl(name, [.. fields.Select(f => (f.Name, new Closure(ctx.Environment, TypeTerm(paramCtx, f.Type))))]);
     }
 
-    /// <summary><c>trait T(A) = sig { … }; body</c>: the trait is a definition the body sees.</summary>
+    /// <summary><c>trait T(a) = sig { … }; body</c>: the trait is a definition the body sees.</summary>
     private static (Term, Value) InferTraitDef(Context ctx, Syntax.TraitDef t)
     {
         var decl = ElaborateTrait(ctx, Label(t.Name.Name), t.Param.Name, t.Fields);
@@ -56,7 +58,7 @@ public static partial class Elaborator
         return (new Term.Let(Term.U.Instance, new Term.TraitRef(decl), body), bodyType);
     }
 
-    /// <summary>A module item <c>[pub] trait T(A) = …</c>: a member whose value is the trait.</summary>
+    /// <summary>A module item <c>[pub] trait T(a) = …</c>: a member whose value is the trait.</summary>
     private static Context InferTraitBinding(Context ctx, Binding.Trait t, List<BindingTerm> terms, List<ModuleEntry> entries)
     {
         var decl = ElaborateTrait(ctx, Label(t.Name.Name), t.Param.Name, t.Fields);
@@ -87,14 +89,14 @@ public static partial class Elaborator
     }
 
     /// <summary>
-    /// An impl head's free names are the impl's own type variables, bindable with
-    /// no declaration: <c>impl Size(Option(A))</c> makes <c>A</c> its own. Each is
-    /// pushed as a definition of a fresh meta around the head's own inference (not
-    /// the body's), and the head's free occurrences are rewritten to it.
+    /// An impl head's free lowercase names are the impl's own type variables,
+    /// bindable with no declaration: <c>impl Size(Option(a))</c> makes <c>a</c> its
+    /// own. Each is pushed as a definition of a fresh meta around the head's own
+    /// inference (not the body's), and the head's free occurrences are rewritten
+    /// to it. A free uppercase name is a reference, not a binder, so one that
+    /// resolves to nothing is an error rather than a fresh variable - which is
+    /// where the old silent `impl Size(Optoin(a))` typo used to hide.
     /// </summary>
-    // The cost is accepted: `impl Size(Optoin(A))` is a typo that silently becomes a
-    // generic impl over two fresh variables; it never matches and surfaces at the use.
-    // No scan, warning or validation for it.
     private static (Context Head, Syntax HeadSyntax, EquatableArray<int> Vars) BindHeadNames(Context ctx, Syntax head)
     {
         var free = new List<string>();
@@ -104,8 +106,14 @@ public static partial class Elaborator
             {
                 switch (form)
                 {
-                    case Syntax.Var v when !Resolves(ctx, v.Id.Name): free.Add(v.Id.Name); break;
-                    case Syntax.OpenChoice c when !Resolves(ctx, c.Name.Name, c.Opens, c.Fallback): free.Add(c.Name.Name); break;
+                    case Syntax.Var v when !Resolves(ctx, v.Id.Name):
+                        RequireLowercase(v.Id.Name, $"`{v.Id.Name}` in an impl head is a reference, not a binder; an impl head binder must be lowercase");
+                        free.Add(v.Id.Name);
+                        break;
+                    case Syntax.OpenChoice c when !Resolves(ctx, c.Name.Name, c.Opens, c.Fallback):
+                        RequireLowercase(c.Name.Name, $"`{c.Name.Name}` in an impl head is a reference, not a binder; an impl head binder must be lowercase");
+                        free.Add(c.Name.Name);
+                        break;
                 }
                 return form;
             },
@@ -126,6 +134,18 @@ public static partial class Elaborator
             Form = form => form is Syntax.OpenChoice c && bound.Contains(c.Name.Name) ? new Syntax.Var(c.Name) : form,
         });
         return (ctx, rewritten, vars);
+    }
+
+    /// <summary>
+    /// A name that would bind must be lowercase: a bare uppercase name refers, so
+    /// an uppercase one that resolves to nothing is an error rather than a silent
+    /// fresh variable. Keywords are their own syntax nodes and never reach here,
+    /// so <c>Self</c> keeps referring.
+    /// </summary>
+    private static void RequireLowercase(string name, string message)
+    {
+        if (name.Length > 0 && char.IsAsciiLetterUpper(name[0]))
+            throw new FunException($"{message}; write `{char.ToLowerInvariant(name[0])}{name[1..]}` to bind");
     }
 
     /// <summary>Whether a name is supplied by the context, as <see cref="Context.Locate"/> would.</summary>
