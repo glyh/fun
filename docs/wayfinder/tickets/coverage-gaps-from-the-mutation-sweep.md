@@ -91,3 +91,35 @@ guard's target is an **xUnit** test, not a case here.
 Still to write from the list: `macro-position`, `enforest-empty-block`, `nbe-effects-row-dedup`
 (whose proof is done: `knownEffects.Add(e)` re-inserted → `type mismatch: effect rows do not agree`),
 and `ref-budget-limit` (prove it by *lowering* the threshold, not by hunting a huge `N`).
+
+## The six are resolved, 2026-09-28 (base `13ebfbd` → `059d15a`)
+
+Five landed as cases, each **proven by removing its guard and showing the case fail**; the sixth
+resolved as already-covered elsewhere. Suite `944` → **`947` cases, 0 failed**; xUnit `208`; no
+commit touched `src/`.
+
+| case | program | `.expect` | guard | the flip |
+|---|---|---|---|---|
+| `elaborate/ref-budget-limit` | `{ rec loop : I64 -> Type = …; g = fn(y : loop(200000)) { 1 }; 2 }` | `error` | `Budget.cs:113` (`_remaining <= 0`) | guard disabled → `VALUE 2`; restored → the budget error. Cross-checked by lowering `DefaultLimit` to 1000, where `N = 70` errors. |
+| `macros/macro-position` | `{ macro e(_) : Expr(_) { quote { pub x = 1 } }; M = module { e(0) }; M.x }` | `error` | `Expander.Macros.cs:239` (`entry.Position != position`) | guard disabled → `VALUE 1`; restored → the refusal. |
+| `values/nbe-effects-row-dedup` | the effect-row program above | `0` | `Nbe.Effects.cs:166` | dedup removed → `type mismatch: effect rows do not agree`; restored → `VALUE 0`. |
+| `macros/macro-arity` | `{ macro m(x) { quote(x) }; m(1, 2) }` | `error` | the **enforester**'s check (`Enforest.Macros.cs:102`) | pins the enforester, not the expander the sweep named. |
+| `elaborate/refs-nonreference` | `{ fn() { deref(5) }; 1 }` | `error` | `Elaborator.Refs.cs:80` | deferred inside an uncalled lambda so the mutant can succeed. |
+
+**Two findings, one of them closing a "gap" as false:**
+
+1. **`enforest-empty-block` is not a gap.** Disabling `Enforest.cs:55` falls through to the sibling
+   `ParseAll` refusal (`expected expression`), so only the *message* changes and no conformance case
+   can be flipped — and the message is **already** pinned in xUnit
+   (`ExpandTests.cs:93`, `[InlineData("{ }", "empty block")]`). The sweep's zero-catch row measured
+   the runner's `.expect` weakness, not missing coverage.
+2. **`macro-position` had to reverse its program.** The brief's Decl-in-Expr case was masked — only
+   the refusal's *message* changed — so the case was written the other way round (an `Expr` macro
+   used where declarations go), mirroring what `refs-nonreference` needed. **A sibling guard on the
+   same input is the standard trap here**: a case is only real if removing the guard it names flips
+   it, and the first thing to check is whether another guard refuses the same program.
+
+**Still unwritten from the list** (the sweep's other "untested" rows, none of them attempted): the
+reflection arity helpers (`ref-pattern-syn-arity`, `ref-type-arity`, `ref-tuple-arity`,
+`ref-tuple-negative`), `ref-refs-nonreference`'s siblings `export-last-member`,
+`syntaxmap-operator-scope`, `expander-roles-attaches`, and `ref-nbe-continuation-used`.
