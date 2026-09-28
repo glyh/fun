@@ -539,11 +539,18 @@ public static partial class Elaborator
     // ---- refinement -----------------------------------------------------------
 
     /// <summary>
-    /// The level of the type variable a match refines: a scrutinee that is a
-    /// variable of type <c>Type</c>. Null for anything else.
+    /// The level of the type variable a match refines: a scrutinee of type
+    /// <c>Type</c> that evaluates to a bare variable. Null for anything else.
     /// </summary>
+    // The target is the variable the scrutinee *evaluates to*, not a name that
+    // merely denotes one: an alias (`U = T`) evaluates to its variable, and only then
+    // can a branch see through it. A scrutinee evaluating to anything else - a
+    // constructor type, a stuck neutral - refines nothing.
     private static int? RefinementTarget(Context ctx, Term scrutinee, Value scrutineeType) =>
-        scrutinee is Term.Var v && ctx.Force(scrutineeType) is Value.VU ? ctx.Width - 1 - v.Index : null;
+        ctx.Force(scrutineeType) is Value.VU
+        && ctx.Force(ctx.Eval(scrutinee)) is Value.VVar { Spine.Length: 0 } target
+            ? target.Level
+            : null;
 
     /// <summary>The type a branch's pattern pins the matched type to, or null when it pins none.</summary>
     private static Value? RefinementOf(Context ctx, Pattern pattern) => pattern switch
@@ -564,15 +571,31 @@ public static partial class Elaborator
     /// </summary>
     // Only the entries that can mention the variable are rewritten, each once
     // per branch - the rule, not the prototype's walk over every value.
+    // `BaseNames` is left alone: its entries' types are closed, so nothing in them
+    // can mention the variable. Every other channel an entry can live in is rewritten
+    // - the opened members, the resume entry, the self methods, the constructor
+    // entries, and each evidence entry - so a branch sees the matched type the same
+    // way however the name it reads reaches its entry.
     private static Context RefineContext(Context ctx, int level, Value replacement) => ctx with
     {
-        Names = ctx.Names.ToImmutableDictionary(n => n.Key, n => n.Value.Level < level
-            ? n.Value
-            : n.Value with { Type = Substitute(ctx, level, replacement, n.Value.Type) }),
-        SelfEntry = ctx.SelfEntry is { } self && self.Level >= level
-            ? self with { Type = Substitute(ctx, level, replacement, self.Type) }
-            : ctx.SelfEntry,
+        Names = ctx.Names.ToImmutableDictionary(n => n.Key, n => Refined(ctx, level, replacement, n.Value)),
+        SelfEntry = ctx.SelfEntry is { } self ? Refined(ctx, level, replacement, self) : null,
+        ResumeEntry = ctx.ResumeEntry is { } resume ? Refined(ctx, level, replacement, resume) : null,
+        Opened = ctx.Opened.ToImmutableDictionary(o => o.Key, o => o.Value.ToImmutableDictionary(m => m.Key, m => Refined(ctx, level, replacement, m.Value))),
+        SelfMethods = ctx.SelfMethods.ToImmutableDictionary(m => m.Key, m => Substitute(ctx, level, replacement, m.Value)),
+        ConstructorEntries = ctx.ConstructorEntries.ToImmutableDictionary(c => c.Key, c => c.Key < level
+            ? c.Value
+            : (Substitute(ctx, level, replacement, c.Value.Type), Substitute(ctx, level, replacement, c.Value.TypeType), c.Value.Constructor)),
+        Evidence = ctx.Evidence.Select(e => e with
+        {
+            Args = [.. e.Args.Select(a => Substitute(ctx, level, replacement, a))],
+            Type = Substitute(ctx, level, replacement, e.Type),
+        }).ToImmutableList(),
     };
+
+    /// <summary>The entry with the bound variable at <paramref name="level"/> read as <paramref name="replacement"/>.</summary>
+    private static Entry Refined(Context ctx, int level, Value replacement, Entry entry) =>
+        entry.Level < level ? entry : entry with { Type = Substitute(ctx, level, replacement, entry.Type) };
 
     /// <summary>A value with the bound variable at <paramref name="level"/> read as <paramref name="replacement"/>.</summary>
     private static Value Substitute(Context ctx, int level, Value replacement, Value value) =>
