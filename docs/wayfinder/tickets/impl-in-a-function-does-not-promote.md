@@ -64,3 +64,33 @@ lands wherever the macro is invoked.
   shape that works, to be extended rather than replaced
 - [A generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md)
   — the fix this is the missing half of
+
+## Findings 2026-09-28, from the fork that ran out of turns before landing (measured)
+
+**There are two shapes here, not one, and only the first is promotable.**
+
+- **Shape "b" — `impl Size(List(b))` with a lowercase `b` (the impl's own variable).** Fails
+  because `ResolveVar` follows only bare `VMeta` solutions, while inside a function the head
+  meta's solution is a lambda-wrapped constant (`987 -> VLam(…) -> VMeta 988 -> VMeta 989`) and
+  the body's demand forces to meta `989`. Deriving each head variable's identity by **forcing its
+  recorded value after the head is elaborated** — a one-line widening of `Contribute` — fixes it:
+  the fork's `/tmp/probe_b.fun` printed `VALUE 1`. This is the shape the *case rule* asks for,
+  since a lowercase head name is the impl's own.
+- **This ticket's own reproducer spells `impl Size(List(B))` with an uppercase `B`**, written
+  before the case rule landed. Under that rule an uppercase free name is a **reference to the
+  enclosing binder**, so the head has **no meta at all** (`Vars = []`) and its demand forces to
+  the rigid `VVar(B)`.
+
+**Ruling: a rigid `VVar` cannot be promoted, and the attempt must not be repeated.**
+`Vars` indexes the impl's *own* metas — `ImplBound(Trait, int Var)` is a meta index, and a rigid
+variable has none — so a demand on an enclosing binding is evidence the *enclosing scope* must
+supply, not something the impl can carry. The fork's attempt (a fresh meta solved to the rigid
+`VVar`, appended to `Vars`) also walked into an unrelated refusal —
+`not ported yet: reflecting the type arguments a pattern synonym use supplies` — which
+[reflect-pattern-synonym-type-arguments](reflect-pattern-synonym-type-arguments.md) is closing
+independently; a green run there would have been luck, not soundness.
+
+**So the work is:** land shape "b" (the `Contribute` widening plus a case), then *measure* what
+the uppercase reproducer does — if it still reports `missing implementation`, that message is
+misleading (the evidence was never in scope) and the residue is a clearer diagnostic, recorded
+rather than chased.
