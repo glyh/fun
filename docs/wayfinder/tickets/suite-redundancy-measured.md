@@ -97,6 +97,25 @@ check, so both are corrected here rather than in a commit message.
 **So the decision becomes: delete three files, fix one case (`core-279`), and turn `core-022` into
 the refusal case.** `re-export-selective-unit-macro` was never in scope.
 
+### Landed 2026-09-29 — `0abdf5f`, and two corrections to the above
+
+Both edits are on `main`, suite re-run by the integrator: **947 cases, 0 failed**. The deletions
+had already landed; this commit is only the two case fixes.
+
+1. **Item 3's spelling does not work in the port.** `{ syntax two_tokens { two tokens => 42 };
+   two tokens }` fails here with `ELAB syntax branch pattern must start with declared head:
+   two_tokens` — a branch pattern's head must be the declared-head *atom*, not the first token of
+   a multi-word spelling (the port's other multi-token headless forms agree:
+   `bind $name $value in $body`, `extract { $body }`). The claim "its probe confirmed the value"
+   was never re-run against this build. What landed is the nearest form that does work and still
+   meets the name — hole-free, multi-token, distinct from `core-189`'s single-token prefix:
+   `syntax two_tokens { two_tokens 7 7 => 42 }; two_tokens 7 7` → `42`.
+2. **Item 2 landed with `.expect` = `error`, not the message.** The refusal itself is verified
+   (`ELAB a module is not a type; only a signature is` through the single-file runner), but
+   `cases/README.md:35-37` makes `error` deliberately coarse — a case pinning a *particular*
+   message belongs in xUnit, and no case in the repo string-matches one. The program is now the
+   module-in-type-position shape: `(fn(m : module { pub x : I64 }) { m.x })(module { pub x = 42 })`.
+
 ## Round two: the wide sweep, 2026-09-28
 
 73 mutations attempted, 70 recorded (26 behavioural flips, 47 refusal-removals, 3 lost), 7 of them
