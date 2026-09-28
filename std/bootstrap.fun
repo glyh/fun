@@ -175,7 +175,10 @@ pub Syntax = module {
     RawPatOr(Option(Span), Pattern, Pattern),
     RawPatRecord(Option(Span), Path, List(PatField), Bool),
     RawPatStructType(Option(Span), List(PatField), Bool),
-    RawPatType(Option(Span), AtomTy)
+    RawPatType(Option(Span), AtomTy),
+    RawPatPin(Option(Span), Expr),
+    RawPatArrow(Option(Span), Pattern, Pattern),
+    RawPatUniverse(Option(Span))
   } and PatField = enum {
     MkPatField(String, Option(Pattern))
   } and Decl = enum {
@@ -234,12 +237,18 @@ pub Syntax = module {
   pub pat_atom = fn(val) { Pattern.RawPatAtom(None, val) };
   pub pat_prod = fn(pats) { Pattern.RawPatProd(None, pats) };
   pub pat_or = fn(l, r) { Pattern.RawPatOr(None, l, r) };
+  pub pat_pin = fn(term) { Pattern.RawPatPin(None, term) };
+  pub pat_arrow = fn(domain, codomain) { Pattern.RawPatArrow(None, domain, codomain) };
+  pub pat_universe = Pattern.RawPatUniverse(None);
   pub pattern PatWild = Pattern.RawPatWild(_);
   pub pattern PatBind(name) = Pattern.RawPatBind(_, name);
   pub pattern PatCon(path, args) = Pattern.RawPatCon(_, path, args);
   pub pattern PatAtom(val) = Pattern.RawPatAtom(_, val);
   pub pattern PatProd(pats) = Pattern.RawPatProd(_, pats);
   pub pattern PatOr(l, r) = Pattern.RawPatOr(_, l, r);
+  pub pattern PatPin(term) = Pattern.RawPatPin(_, term);
+  pub pattern PatArrow(domain, codomain) = Pattern.RawPatArrow(_, domain, codomain);
+  pub pattern PatUniverse = Pattern.RawPatUniverse(_);
   pub Decls = List(Decl);
   pub decl_let = fn(name, val, is_pub) { Decl.DeclLet(name, val, is_pub, False) };
   # The compiler's record builders: the reflection boundary reads each record's

@@ -135,6 +135,7 @@ public static class Reader
             if (Cur == '\'') return ReadChar();
             if (IdStart.Contains(Cur)) return ReadIdent();
             if (Cur == '$') { Bump(); return new TokenKind.Operator("$"); }
+            if (Cur == '^') { Bump(); return TokenKind.Caret; }
             if (OperatorChars.Contains(Cur)) return ReadOperator();
 
             throw new ReaderException($"unexpected character: {Cur}");

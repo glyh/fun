@@ -90,7 +90,12 @@ public static class MatchCompile
             case CorePattern.Record or CorePattern.StructType:
                 return Go(SpecializeRecord(m, domainOf(occurrence)), source, domainOf);
 
-            case CorePattern.AtomType or CorePattern.NominalHead:
+            case CorePattern.AtomType or CorePattern.NominalHead or CorePattern.Arrow or CorePattern.Universe
+                or CorePattern.TupleType or CorePattern.Pin:
+                // A pin is unkeyable: the case list is empty for it, its row drops out
+                // of the fallback matrix, and the arms are tried in order (it needs a
+                // direct match). A keyable pin to a known atom is an Atom by
+                // elaboration and takes the CompileSwitch route instead.
                 return CompileTypeSwitch(m, occurrence, source, domainOf);
 
             default:
@@ -255,6 +260,9 @@ public static class MatchCompile
         {
             CorePattern.AtomType t => new TypeKey.Atom(t.Ty),
             CorePattern.NominalHead n => new TypeKey.Nominal(n.Decl),
+            CorePattern.Arrow => new TypeKey.Pi(),
+            CorePattern.Universe => new TypeKey.U(),
+            CorePattern.TupleType t => new TypeKey.Tuple(t.Items.Length),
             _ => null,
         };
         var keys = m.Rows.Select(r => KeyOf(r.Patterns[0])).OfType<TypeKey>().Distinct().ToList();
@@ -262,11 +270,23 @@ public static class MatchCompile
         var cases = new List<TypeCase>();
         foreach (var key in keys)
         {
-            var arity = key is TypeKey.Nominal
-                ? m.Rows.Select(r => r.Patterns[0]).OfType<CorePattern.NominalHead>().First(n => new TypeKey.Nominal(n.Decl) == key).Arity
-                : 0;
+            var arity = key switch
+            {
+                TypeKey.Nominal => m.Rows.Select(r => r.Patterns[0]).OfType<CorePattern.NominalHead>().First(n => new TypeKey.Nominal(n.Decl) == key).Arity,
+                TypeKey.Pi => 2,
+                TypeKey.Tuple tuple => tuple.Arity,
+                _ => 0,
+            };
             var sub = SpecializeAt(m, arity, i => new Occurrence.Child(occurrence, i),
-                p => KeyOf(p) == key ? (p is CorePattern.NominalHead n ? n.Params : []) : null);
+                p => KeyOf(p) == key
+                    ? p switch
+                    {
+                        CorePattern.NominalHead n => n.Params,
+                        CorePattern.Arrow a => [a.Domain, a.Codomain],
+                        CorePattern.TupleType t => t.Items,
+                        _ => [],
+                    }
+                    : null);
             var (tree, missing) = Go(sub, source, domainOf);
             if (missing is not null) return (null, missing);
             cases.Add(new TypeCase(key, tree!));

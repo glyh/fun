@@ -86,7 +86,7 @@ public sealed partial class Enforest
 
     // ---- patterns ---------------------------------------------------------
 
-    /// <summary>A whole pattern: alternatives separated by <c>|</c>.</summary>
+    /// <summary>A whole pattern: alternatives separated by <c>|</c>, then an arrow (<c>A -&gt; B</c>, right-associative).</summary>
     public Pattern ParsePattern(Terms terms)
     {
         var bar = IndexOf(terms, t => IsToken(t, TokenKind.Bar));
@@ -96,7 +96,10 @@ public sealed partial class Enforest
         var juxtapose = DropSeparators(terms).Head is not TokenTree.Group;
         var (head, rest) = ParsePatternAtom(terms);
         (head, rest) = ParsePatternPostfix(head, rest, juxtapose);
-        if (!DropSeparators(rest).IsEmpty) throw new ExpandException("unconsumed terms after pattern");
+        rest = DropSeparators(rest);
+        if (rest.Head is TokenTree.Leaf { Token.Kind: var arrow } && arrow == TokenKind.ThinArrow)
+            return new Pattern.Arrow(head, ParsePattern(rest.Tail));
+        if (!rest.IsEmpty) throw new ExpandException("unconsumed terms after pattern");
         return head;
     }
 
@@ -112,8 +115,11 @@ public sealed partial class Enforest
                 return (new Pattern.Atom(new Atom.I64(n.Value)), rest);
             case TokenTree.Leaf { Token.Kind: TokenKind.Char c }:
                 return (new Pattern.Atom(new Atom.Char(c.Value)), rest);
+            case TokenTree.Leaf { Token.Kind: var caret } when caret == TokenKind.Caret:
+                return ParsePinPattern(term.Span, rest);
             case TokenTree.Leaf { Token: { Kind: TokenKind.Ident i } token }:
                 if (i.Name == "_") return (Pattern.Wild.Instance, rest);
+                if (i.Name == "Type") return (Pattern.Universe.Instance, rest);
                 if (PrimitiveTypeHead(i.Name) is { } primitive) return (new Pattern.AtomType(primitive), rest);
                 // A capitalised name is a constructor, anything else a binder:
                 // the prototype's syntactic rule.
@@ -133,6 +139,15 @@ public sealed partial class Enforest
             default:
                 throw new ExpandException("unsupported pattern");
         }
+    }
+
+    /// <summary><c>^name</c>: the `^` and the name it pins. `^` names an existing term.</summary>
+    private (Pattern, Terms) ParsePinPattern(SourceSpan span, Terms rest)
+    {
+        var after = DropSeparators(rest);
+        if (after.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident i } token })
+            throw new ExpandException("a pin is written ^name");
+        return (new Pattern.Pin(new Syntax.Var(new Id(i.Name, SourceSpan.Between(span, token.Span), token.Scope))), after.Tail);
     }
 
     /// <summary>

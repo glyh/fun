@@ -59,6 +59,7 @@ public abstract partial record Pattern
                 case Prod pr: foreach (var i in pr.Items) Go(i); break;
                 case Or o: Go(o.Left); Go(o.Right); break;
                 case Con c: foreach (var a in c.Args) Go(a); break;
+                case Arrow a: Go(a.Domain); Go(a.Codomain); break;
                 case Record r: foreach (var f in r.Fields) Go(f.Pattern); break;
                 case StructType s: foreach (var f in s.Fields) Go(f.Pattern); break;
             }

@@ -124,6 +124,7 @@ public static partial class Elaborator
         Pattern.Con c => c with { Args = [.. c.Args.Select(x => MarkSynonymParams(x, names))] },
         Pattern.Record r => r with { Fields = [.. r.Fields.Select(f => (f.Name, MarkSynonymParams(f.Pattern, names)))] },
         Pattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, MarkSynonymParams(f.Pattern, names)))] },
+        Pattern.Arrow a => a with { Domain = MarkSynonymParams(a.Domain, names), Codomain = MarkSynonymParams(a.Codomain, names) },
         _ => pattern,
     };
 
@@ -253,6 +254,10 @@ public static partial class Elaborator
             case Pattern.StructType s:
                 foreach (var (_, field) in s.Fields) RejectFormerHeads(ctx, field);
                 break;
+            case Pattern.Arrow a:
+                RejectFormerHeads(ctx, a.Domain);
+                RejectFormerHeads(ctx, a.Codomain);
+                break;
         }
     }
 
@@ -274,6 +279,7 @@ public static partial class Elaborator
         CorePattern.Con c => c with { Args = [.. c.Args.Select(x => FillSynonymParams(x, args))] },
         CorePattern.Record r => r with { Fields = [.. r.Fields.Select(f => (f.Name, FillSynonymParams(f.Pattern, args)))] },
         CorePattern.StructType s => s with { Fields = [.. s.Fields.Select(f => (f.Name, FillSynonymParams(f.Pattern, args)))] },
+        CorePattern.Arrow a => a with { Domain = FillSynonymParams(a.Domain, args), Codomain = FillSynonymParams(a.Codomain, args) },
         _ => pattern,
     };
 
@@ -373,10 +379,10 @@ public static partial class Elaborator
     /// or a type former applied to one type per parameter - each parameter
     /// matched by its pattern.
     /// </summary>
-    private static (CorePattern, List<(string Name, Value Type)>) ElaborateNominalHeadPattern(Context ctx, Pattern.Con pattern)
+    private static (CorePattern, List<(string Name, Value Type)>) ElaborateNominalHeadPattern(
+        Context ctx, Pattern.Con pattern, (Term Head, Value Value, NominalDecl Decl, int Arity) head)
     {
-        var (head, _, decl, arity) = TypeHead(ctx, pattern.Head)
-            ?? throw new FunException("a type-case head must name a type");
+        var (term, _, decl, arity) = head;
         if (pattern.Args.Length != arity)
             throw new FunException($"this type takes {arity} parameters, the pattern gives {pattern.Args.Length}");
 
@@ -388,7 +394,64 @@ public static partial class Elaborator
             parameters.Add(core);
             binders.AddRange(argBinders);
         }
-        return (new CorePattern.NominalHead(decl, head, arity, [.. parameters]) { HeadWidth = ctx.Width }, binders);
+        return (new CorePattern.NominalHead(decl, term, arity, [.. parameters]) { HeadWidth = ctx.Width }, binders);
+    }
+
+    /// <summary>
+    /// A pattern head in a type-case: the tuple former (<c>Tuple(2, a, b)</c>), a
+    /// nominal type, an existing term of type <c>Type</c> (a reference, the same
+    /// thing as a pin), or a refusal naming the offending term.
+    /// </summary>
+    private static (CorePattern, List<(string Name, Value Type)>) ElaborateTypeCaseHead(Context ctx, Pattern.Con pattern)
+    {
+        if (TupleFormerArity(ctx, pattern) is int arity)
+            return ElaborateTupleTypePattern(ctx, pattern.Args.Skip(1), arity);
+
+        if (TypeHead(ctx, pattern.Head) is { } head)
+            return ElaborateNominalHeadPattern(ctx, pattern, head);
+
+        // A head naming an existing term of type `Type` is a reference - the same
+        // internal thing as `^name` (a pattern-binders-are-lowercase ruling), and
+        // what makes `Option(A)` with an enclosing `A` writable.
+        var (term, headType) = Infer(ctx, pattern.Head);
+        if (pattern.Args.IsEmpty && ctx.Force(headType) is Value.VU)
+            return (new CorePattern.Pin(term) { Width = ctx.Width }, []);
+
+        throw new FunException($"`{HeadLabel(pattern.Head)}` must name a type in a type-case");
+    }
+
+    /// <summary>A tuple type pattern: <c>(a, b)</c> and <c>Tuple(2, a, b)</c> are one form, each component a type pattern.</summary>
+    private static (CorePattern, List<(string Name, Value Type)>) ElaborateTupleTypePattern(
+        Context ctx, IEnumerable<Pattern> items, int? expected)
+    {
+        var patterns = new List<CorePattern>();
+        var binders = new List<(string, Value)>();
+        foreach (var item in items)
+        {
+            var (core, itemBinders) = ElaboratePattern(ctx, item, Value.VU.Instance);
+            patterns.Add(core);
+            binders.AddRange(itemBinders);
+        }
+        if (expected is int n && patterns.Count != n)
+            throw new FunException($"Tuple({n}, …) takes {n} component types, the pattern gives {patterns.Count}");
+        return (new CorePattern.TupleType([.. patterns]), binders);
+    }
+
+    /// <summary>The component count of a <c>Tuple(n, …)</c> head pattern, or null when the head is no tuple former.</summary>
+    private static int? TupleFormerArity(Context ctx, Pattern.Con pattern)
+    {
+        if (pattern.Args.Length == 0 || pattern.Args[0] is not Pattern.Atom { Value: Atom.I64 n }) return null;
+        if (!NamesTupleFormer(ctx, pattern.Head)) return null;
+        if (n.Value < 0) throw new FunException("Tuple: the number of components is negative");
+        return (int)n.Value;
+    }
+
+    /// <summary>Whether a bare head names the <c>Tuple</c> primitive, by the value it resolves to.</summary>
+    private static bool NamesTupleFormer(Context ctx, Syntax head)
+    {
+        if (head is not (Syntax.Var or Syntax.OpenChoice)) return false;
+        try { return ctx.Force(ctx.Eval(Infer(ctx, head).Item1)) is Value.VNeutral { Head: Head.HPrim { Name: "Tuple" } }; }
+        catch (FunException) { return false; }
     }
 
     /// <summary>
@@ -456,6 +519,8 @@ public static partial class Elaborator
     private static Value? RefinementOf(Context ctx, Pattern pattern) => pattern switch
     {
         Pattern.AtomType t => new Value.VAtomTy(t.Ty),
+        // A universe branch refines the matched type variable to `Type`.
+        Pattern.Universe => Value.VU.Instance,
         Pattern.Or o => RefinementOf(ctx, o.Left) ?? RefinementOf(ctx, o.Right),
         // A synonym use is not a type head, whether or not it supplies its types.
         Pattern.Con c when SynonymAt(ctx, c.Head) is null => TypeHead(ctx, c.Head)?.Value,

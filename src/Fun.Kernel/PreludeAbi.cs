@@ -89,6 +89,9 @@ public static class PreludeAbi
             public const string PatAtom = "pat_atom";
             public const string PatProd = "pat_prod";
             public const string PatOr = "pat_or";
+            public const string PatPin = "pat_pin";
+            public const string PatArrow = "pat_arrow";
+            public const string PatUniverse = "pat_universe";
         }
 
         /// <summary>Resolved at the prelude top level.</summary>
@@ -187,6 +190,9 @@ public static class PreludeAbi
             public const string RawPatStructType = "RawPatStructType";
             public const string RawPatType = "RawPatType";
             public const string RawPatWild = "RawPatWild";
+            public const string RawPatPin = "RawPatPin";
+            public const string RawPatArrow = "RawPatArrow";
+            public const string RawPatUniverse = "RawPatUniverse";
         }
 
         /// <summary>The <c>Syntax.TokenTree</c> constructors the compiler names.</summary>

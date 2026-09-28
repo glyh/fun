@@ -78,6 +78,28 @@ public static partial class Nbe
             }
             case (CorePattern.NominalHead h, Value.VNominal v):
                 return MatchesNominalHead(mc, env, h, v, at, binds);
+            case (CorePattern.TupleType t, Value.VProdTy v) when t.Items.Length == v.Items.Length:
+                return AllMatch(t.Items.Select((item, i) => Matches(mc, env, item, v.Items[i], new Occurrence.Child(at, i), binds)));
+            case (CorePattern.Prod p, Value.VProdTy v) when p.Items.Length == v.Items.Length:
+                return AllMatch(p.Items.Select((item, i) => Matches(mc, env, item, v.Items[i], new Occurrence.Child(at, i), binds)));
+            case (CorePattern.Universe, Value.VU):
+                return new MatchResult.Matched();
+            case (CorePattern.Arrow a, Value.VPi pi):
+            {
+                var domain = Matches(mc, env, a.Domain, pi.Domain, new Occurrence.Child(at, 0), binds);
+                if (domain is not MatchResult.Matched) return domain;
+                // A pattern arrow writes no binder, so the codomain is read at the
+                // domain: a dependent arrow matches at its own domain.
+                return Matches(mc, env, a.Codomain, ApplyClosure(mc, pi.Codomain, pi.Domain), new Occurrence.Child(at, 1), binds);
+            }
+            case (CorePattern.Pin p, var scrutinee):
+            {
+                // A pinned test against a not-yet-known scrutinee parks (FMatch).
+                if (scrutinee is Value.VNeutral or Value.VVar or Value.VMeta) return new MatchResult.Stuck(scrutinee);
+                var rooted = p.Width is 0 ? p.Term : p.Term.Shift(env.Count - p.Width);
+                return Convertible(mc, env.Count, scrutinee, Eval(mc, env, rooted))
+                    ? new MatchResult.Matched() : new MatchResult.NoMatch();
+            }
             case (_, (Value.VNeutral or Value.VVar or Value.VMeta) and var stuck):
                 return new MatchResult.Stuck(stuck);
             default:

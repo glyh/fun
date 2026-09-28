@@ -435,6 +435,9 @@ public sealed class Reflection
             Fun.Kernel.Pattern.Record r => P(PreludeAbi.Tags.Pattern.RawPatRecord, Path(r.Type), List(r.Fields, PatField), Bool(r.Partial)),
             Fun.Kernel.Pattern.StructType s => P(PreludeAbi.Tags.Pattern.RawPatStructType, List(s.Fields, PatField), Bool(s.Partial)),
             Fun.Kernel.Pattern.AtomType t => P(PreludeAbi.Tags.Pattern.RawPatType, AtomTyVal(t.Ty)),
+            Fun.Kernel.Pattern.Pin pin => P(PreludeAbi.Tags.Pattern.RawPatPin, ReflectExpr(pin.Term)),
+            Fun.Kernel.Pattern.Arrow a => P(PreludeAbi.Tags.Pattern.RawPatArrow, ReflectPattern(a.Domain), ReflectPattern(a.Codomain)),
+            Fun.Kernel.Pattern.Universe => P(PreludeAbi.Tags.Pattern.RawPatUniverse),
             _ => throw new InvalidOperationException($"unhandled pattern {p.GetType().Name}"),
         };
     }
@@ -939,6 +942,10 @@ public sealed class Reflection
             (PreludeAbi.Tags.Pattern.RawPatStructType, 2) => ReadListS(args[0], PatField) is { } sfs && ReadBool(args[1]) is { } spartial
                 ? new Fun.Kernel.Pattern.StructType(sfs, spartial) : null,
             (PreludeAbi.Tags.Pattern.RawPatType, 1) => ReadAtomTy(args[0]) is { } t ? new Fun.Kernel.Pattern.AtomType(t) : null,
+            (PreludeAbi.Tags.Pattern.RawPatPin, 1) => ReadExpr(args[0]) is { } pinned ? new Fun.Kernel.Pattern.Pin(pinned) : null,
+            (PreludeAbi.Tags.Pattern.RawPatArrow, 2) => ReadPattern(args[0]) is { } ad && ReadPattern(args[1]) is { } ac
+                ? new Fun.Kernel.Pattern.Arrow(ad, ac) : null,
+            (PreludeAbi.Tags.Pattern.RawPatUniverse, 0) => Fun.Kernel.Pattern.Universe.Instance,
             _ => null,
         };
     }

@@ -84,18 +84,22 @@ public static partial class Elaborator
         Value? Implied(Pattern p) => p switch
         {
             Pattern.Atom a => new Value.VAtomTy(AtomTypeOf(a.Value)),
-            Pattern.Prod prod => new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
+            // A parenthesized pattern under a type scrutinee is a tuple *type*
+            // pattern, not a value product.
+            Pattern.Prod prod => type is Value.VU
+                ? Value.VU.Instance
+                : new Value.VProdTy([.. prod.Items.Select(i => Implied(i) ?? ctx.RawMeta())]),
             Pattern.Or o => Implied(o.Left) ?? Implied(o.Right),
             Pattern.Con c when SynonymAt(ctx, c.Head) is { } synonym => InstantiateSynonym(ctx, synonym).ScrutineeType,
             // A head naming a type makes this a type-case: the scrutinee is a type.
             // Otherwise the nominal the head resolves to refines the scrutinee; a
             // head resolving to nothing refines nothing, and pattern elaboration
             // says what is wrong with it (as the prototype's find_pat does).
-            Pattern.Con c => TypeHead(ctx, c.Head) is not null
+            Pattern.Con c => TupleFormerArity(ctx, c) is not null || TypeHead(ctx, c.Head) is not null
                 ? Value.VU.Instance
                 : ResolveConstructorHead(ctx, c.Head)?.Nominal,
             Pattern.Record r => RecordPatternType(ctx, r),
-            Pattern.AtomType => Value.VU.Instance,
+            Pattern.AtomType or Pattern.Arrow or Pattern.Universe => Value.VU.Instance,
             Pattern.StructType => type is Value.VStruct ? type : Value.VU.Instance,
             _ => null,
         };
@@ -136,6 +140,8 @@ public static partial class Elaborator
 
             case Pattern.Prod prod:
             {
+                // Under a type scrutinee a parenthesized pattern is a tuple type pattern.
+                if (ctx.Force(type) is Value.VU) return ElaborateTupleTypePattern(ctx, prod.Items, null);
                 if (ctx.Force(type) is not Value.VProdTy tuple || tuple.Items.Length != prod.Items.Length)
                     throw new FunException("tuple length mismatch");
                 var items = new List<CorePattern>();
@@ -149,6 +155,28 @@ public static partial class Elaborator
                 return (new CorePattern.Prod([.. items]), binders);
             }
 
+            case Pattern.Pin p:
+            {
+                var (core, pinType) = Infer(ctx, p.Term);
+                ctx.Unify(type, pinType);
+                // Rule 6: a pin to a compile-time-known atom covers what that literal
+                // covers, so it takes the literal's own route into the tree.
+                if (ctx.Force(ctx.Eval(core)) is Value.VAtom atom) return (new CorePattern.Atom(atom.Atom), []);
+                return (new CorePattern.Pin(core) { Width = ctx.Width }, []);
+            }
+
+            case Pattern.Arrow a:
+            {
+                ctx.Unify(type, Value.VU.Instance);
+                var (domain, domainBinders) = ElaboratePattern(ctx, a.Domain, Value.VU.Instance);
+                var (codomain, codomainBinders) = ElaboratePattern(ctx, a.Codomain, Value.VU.Instance);
+                return (new CorePattern.Arrow(domain, codomain), [.. domainBinders, .. codomainBinders]);
+            }
+
+            case Pattern.Universe:
+                ctx.Unify(type, Value.VU.Instance);
+                return (CorePattern.Universe.Instance, []);
+
             case Pattern.Con c when SynonymAt(ctx, c.Head) is { } synonym:
                 return ElaborateSynonymUse(ctx, c, synonym, type);
 
@@ -156,7 +184,7 @@ public static partial class Elaborator
                 return (new CorePattern.SynonymParam(p.Index), [($"{SynonymParamPrefix}{p.Index}", type)]);
 
             case Pattern.Con c when ctx.Force(type) is Value.VU:
-                return ElaborateNominalHeadPattern(ctx, c);
+                return ElaborateTypeCaseHead(ctx, c);
 
             case Pattern.Con c:
             {
