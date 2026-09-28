@@ -364,8 +364,10 @@ public static partial class Elaborator
             MemberKind.Private => true,
             _ => false,
         }),
+        // A struct's type is its constructor fields; a method is a member but
+        // not part of the type, so only Field entries are asked to be type-like.
         Value.VStruct st => st.Entries.OfType<ModuleEntry.Field>().All(f =>
-            f.Kind is MemberKind.Private or MemberKind.PrivateMethod || IsTypeLike(ctx, f.Value)),
+            f.Kind is not MemberKind.Field || IsTypeLike(ctx, f.Value)),
         _ => false,
     };
 

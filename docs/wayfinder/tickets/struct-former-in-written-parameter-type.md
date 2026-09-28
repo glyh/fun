@@ -95,3 +95,31 @@ established, and what reading it changed:
   member *types*, while `Nbe`'s `Term.Struct` evaluation stores the evaluated *definition* — two
   construction sites that disagree on the payload's kind. Nothing probed needs that reworked
   today; the predicate above does not depend on it.
+
+## Landed the predicate 2026-09-28 (`bf03e95`) — necessary, not sufficient
+
+`IsTypeLike`'s `VStruct` branch now asks only `Kind == Field` entries to be type-like:
+`f.Kind is not MemberKind.Field || IsTypeLike(ctx, f.Value)`. Measured: a struct with only fields
+passes (`VALUE 7`), a **private** method already passed, and only a `pub` method
+(`MemberKind.Method`, whose payload is its definition `VLam`) tripped the predicate. Suite `907`
+cases, 0 failed; xUnit `206`; no case added.
+
+**It is the prerequisite, not the fix.** With the predicate in, the ticket's reproducer moves to
+`ELAB applying non-function: VPi` — the representation hazard above, now **unmasked**: the method
+member is compared as `VLam` (Nbe evaluating `Term.Struct`'s definition bindings) on one side and
+`VPi` (the member *type* from `InferStruct`) on the other. The direct reproducer
+(`S = struct { k : I64; pub method m() : I64 { self.k } }` used as `fn(o : S)`) fails the same way
+(`applying non-function`), and the next probe — `fn(o : Box)` with the argument unsupplied — is
+`cannot unify VPi with VU`.
+
+**A naive second half was refuted with cased evidence, and it is worth keeping that evidence:**
+making `Unify.Structs` always compare `Kind == Field` entries only
+(`Keep => k == MemberKind.Field`) does answer those programs (`VALUE 1`, `VALUE 7`) but breaks two
+existing cases that `expect error` — `elaborate/elab-133` and
+`values/struct-equality-sees-extra-member` — giving `907 cases, 2 failed`. So **equality must keep
+seeing non-field members**, which is exactly why the landed matching rule lives in a `Matching`
+*mode* on the resolver's trial (`MetaContext.Matching`) instead of in equality. The second half
+has to reconcile the two payloads, not ignore the members.
+
+Candidate cases for the second half were prepared in `/tmp/cases/elaborate/` by that fork; nothing
+was added to the suite because nothing passes on the predicate alone.
