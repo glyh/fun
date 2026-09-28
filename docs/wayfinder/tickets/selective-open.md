@@ -107,3 +107,10 @@ help but live in the defining module.
   mirror, implemented, with the selection-list grammar to reuse
 - [design the user-facing library surface](design-std-library-surface.md) — the
   ticket that opened this one, and why impl reach was left alone
+
+## Decisions 2026-09-28 (grilling)
+
+1. **The list carries everything `export` does** — values, an enum's constructors, a named impl, a
+   role, a macro. One parse shared with export, no asymmetry inside one syntax, and nothing needs a
+   second spelling later. The cost is accepted: the selection must carry every member kind, not
+   just impls, which is the bulk of this ticket's work.
