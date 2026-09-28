@@ -114,3 +114,18 @@ help but live in the defining module.
    role, a macro. One parse shared with export, no asymmetry inside one syntax, and nothing needs a
    second spelling later. The cost is accepted: the selection must carry every member kind, not
    just impls, which is the bulk of this ticket's work.
+
+2. **A selective open supplies only what it names** (user, 2026-09-28: "any unnamed item shouldn't be
+   brought into scope"). Listing an impl does **not** supply its trait — `open M.{i64_size}` leaves
+   `Size` unbound — so the call site either names it too (`open M.{Size, i64_size}`) or qualifies it
+   (`M.Size.size(5)`), which works either way.
+3. **Duplicates and idempotence are inherited, not new.** `open` is already idempotent and deduped by
+   impl identity (the named-impl work, landed 2026-09-27), and a selective open is an open with a
+   width: opening the same list twice changes nothing, and `open M.{a}; open M` leaves `a` once.
+4. **An unknown name is an error, in the export form's shape.** `export M.{nope}` already reports
+   "export of unknown member"; decision 1 makes the list the same list, so the open side answers the
+   same way rather than inventing a second behaviour.
+5. **Statement-only, as `open` is today.** The local form `M.(e)` is its own ticket and is explicitly
+   not reopened here.
+
+With 1–5 recorded, this ticket is forkable: nothing is left undecided.
