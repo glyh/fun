@@ -108,3 +108,78 @@ correctness fix is forkable.
 
 The suite was not run end-to-end (no source touched); probes are single-file `--file` runs.
 `SelfMethods` was not settled. No source or test file was edited — this ticket is the diff.
+
+## Oracle second opinion (2026-09-28) — recon confirmed but too narrow; forkable now
+
+An oracle run (research only; real repo untouched, experiment at `/tmp/orc/repo`, probes at
+`/tmp/orc/*.fun`) verified the recon against the code and the runner.
+
+**Q1 confirmed, line numbers corrected.** The reproducer fails as reported; both controls return
+7. `RefineContext` is at `Elaborator.Patterns.cs:567`, `RefinementTarget` at `:545`, `Substitute`
+at `:578` — the recon's numbers had drifted.
+
+**Q2: `Opened` is one of five missed channels, not the only one.** Each probed, failing on `main`,
+passing once rewritten; all five together keep the suite at **947 cases, 0 failed**:
+
+| Channel | Probe | On `main` | Rewritten |
+|---|---|---|---|
+| `Opened` (the recon's case) | `a.fun` | `VVar` vs `I64` | 7 |
+| `ConstructorEntries` (`open Opt(T)`, then `Some2(x)` / a `Some2(n)` pattern) | `ce1`, `ce2` | mismatch | 1, 8 |
+| `ResumeEntry` (`resume(1) + 1` in a refined branch) | `rs.fun` | mismatch | 8 |
+| `SelfMethods` | `sm.fun` | mismatch | 8 |
+| `Evidence` (bound `[A : Size]` used in the `Char` branch, impl after `f`) | `ev4.fun` | `missing implementation of Size` | 9 |
+
+- **`SelfMethods` is settled, not unsettled.** The recon's probe failed only because its type
+  parameter appeared solely in method types; a field `v : T` routes it through `SelfEntry`.
+- **`ResumeEntry` is a port regression**: the prototype's `refine_context_type_var` rewrote
+  `resume_entry` (`git show 46c4a1d:lib/semantic/typecheck/elab_refine.ml`, ~line 153); the port
+  dropped it.
+- **`BaseNames` needs no change, but the recon's reason is wrong.** Base levels are *not* always
+  below the refined variable — `match (I64)` refines level 0. It is a no-op because base entry
+  types are closed.
+- **`Opened` and `ConstructorEntries` were rewritten together**, so which needs which is not
+  isolated; probably both (patterns resolve through `ConstructorEntries`, `Elaborator.Enum.cs:230`).
+
+**Q3: the recon measured the cheap half.** It refined a bound `T`; the expensive case is a
+matched name *with a value* (a builtin, or `U = T`), which rewrites every later entry:
+
+| Program | Refined | Not refined (`match (id(T))`) |
+|---|---|---|
+| 200 entries × 50 `match (T)` | 2.46 s | 2.42 s |
+| 200 × 50 `match (I64) { I64, Char, String, Unit, _ }` | **37.8 s** | 0.67 s |
+| 100 × `match (I64)` inside a generic function | 4.0 s | 0.8 s |
+
+The fix and the alias hole are one change: in `RefinementTarget`, refine only when the scrutinee
+forces to a bare variable — `ctx.Force(ctx.Eval(scrutinee)) is Value.VVar { Spine.Length: 0 } v ?
+v.Level : null`. That takes 37.8 s → 0.67 s and 4.0 s → 0.85 s with the suite green. The M9
+sharing trick indeed did not survive (`Substitute` always `Quote`s then `Eval`s), and a mention
+index is not justified by any measured number — **defer it; do not close the performance half on
+the recon's evidence.**
+
+**New hole the recon missed — aliases.** Only the matched variable is refined, never the one it
+stands for: `U = T; match (U) { I64 => x + 1 }` fails (`al.fun`), and passes with the bare-variable
+target above (suite still green).
+
+**One ruling owed to the user, not to a fork.** `d.fun` (`y : T` written in the branch) and
+`e.fun` (`y : U`): *should a type written inside a branch see the matched variable as the matched
+head?* Replacing `T`'s value slot fixes `d` but breaks `core-072`–`077` ("a meta's spine must be
+distinct variables"); `e` fails either way.
+`docs/wayfinder/topics/type-case-generic-programming.md:88` says the checker "may treat the matched
+type variable as equal" — permission, not a decision. Take it to grilling; keep it out of the fix.
+
+**Fork brief (recommended order):**
+1. Factor one per-entry rewrite; apply it to `Names`, `SelfEntry`, `ResumeEntry`, every `Opened`
+   member; `Substitute` over `SelfMethods` values, both `ConstructorEntries` types, and each
+   `Evidence` entry's arguments and type.
+2. Bare-variable target in `RefinementTarget` (fixes aliases + the 37.8 s case).
+3. One case per probe (`a`, `ce1`, `ce2`, `rs`, `sm`, `ev4`, `al`) in
+   `test/conformance/cases/values/`, each proven to fail on `main` first.
+4. `d`/`e` go to a design ruling, not into this fix.
+
+Verify: `dotnet run --project test/Fun.Conformance` (947+ cases, 0 failed) and time
+`/tmp/orc/b_200_r.fun` (≈38 s now, expected <1 s).
+
+**Oracle could not verify:** whether the prototype had the `d`/`e`/alias holes too (it rewrote only
+entry types, so probably); whether rewriting `Evidence` is the *right* fix versus resolving bounds
+differently (only that it works); the 5-channel patch was a one-off experiment, not a reviewed
+implementation.

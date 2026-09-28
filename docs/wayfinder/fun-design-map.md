@@ -518,7 +518,11 @@ measurement its ruling asked for (a fork's parked branch, integrated 2026-09-27 
 its two routes are now a choice against a table rather than against an estimate — **that choice is
 open, and it is the next ruling due**. [Type-case refinement](tickets/type-case-refinement-walks-whole-context.md)
 turned out to be half done in the port and to have no benchmark left to measure with, so it is not
-forkable as written. **Forkable as they stand**:
+forkable as written — **re-scoped 2026-09-28 by an oracle pass**: it is forkable now as a
+correctness fix (five refinement side channels, one of them a port regression, one conformance
+case each), the performance half waits on a re-measured 37.8 s case the recon's evidence missed,
+and one question is owed to a grilling — should a type written *inside* a branch see the matched
+variable as the matched head. **Forkable as they stand**:
 [a pattern synonym's generalized types](tickets/pattern-synonym-type-parameters.md), and
 [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md), whose precondition
 is now on `main`.
