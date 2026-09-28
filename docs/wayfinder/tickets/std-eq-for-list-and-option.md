@@ -31,6 +31,22 @@ ship. One of its two blockers is closed and the other is not:
   uncatchable, so the runner dies outright (`exit=134`) rather than reporting a hang or
   an `ELAB` line.
 
+## What the library work found in the compiler, 2026-09-28
+
+Two limitations, both reported by the fork rather than worked into the library silently. Neither
+blocked the library, and both are recorded because the workarounds hide them.
+
+1. **An impl body cannot demand its own trait at the head's type.** `Eq.eq(t, t2)` where
+   `t : List(a)` inside `impl … : Eq(List(a))` demands `Eq(List(a))` — the impl itself — and that
+   is not resolved: `missing implementation of 'Eq'`, reproduced standalone by the fork. The
+   generic-impl fix (`cb52e96`) covers a demand for the head **variable's** evidence; a demand for
+   the impl's **own** trait at the head's type is a different case. What shipped instead is a
+   non-recursive wrapper, `list_eq_aux : [B : Eq] -> List(B) -> List(B) -> Bool`, holding a nested
+   `rec go`, called from the impl body (`std/list.fun:201`) — **required, not stylistic**.
+2. **A recursive helper with written implicit binders fails at a unit's top level**
+   (`cannot unify VPi with VPi`) while the same declaration works at program and block level —
+   [its own ticket](unit-rec-helper-with-written-implicit-binders.md).
+
 ## What to do when the last blocker closes
 
 1. `std/list.fun`: `pub impl list_eq : Eq(List(A)) = module { fn eq(xs, ys) { … } };`
