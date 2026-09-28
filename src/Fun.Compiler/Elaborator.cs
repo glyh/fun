@@ -252,6 +252,7 @@ public static partial class Elaborator
                 return member;
             }
 
+            case Syntax.Struct st when HasStructRest(st): return InferImplHeadStruct(ctx, st);
             case Syntax.Struct st: return InferStruct(ctx, st);
             case Syntax.RecordConstruct record: return InferRecordConstruct(ctx, record);
             case Syntax.Sig sig: return InferSig(ctx, sig);

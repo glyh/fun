@@ -88,6 +88,43 @@ public static partial class Elaborator
         return (trait, arg, new Value.VTraitDict(trait, [arg], Nbe.OperationTypes(ctx.Metas, trait, arg)));
     }
 
+    /// <summary><c>struct { a : p; _ }</c> as a head's type pattern: the rest marker a lone <c>_</c> item was read as.</summary>
+    private static bool IsStructRest(Binding binding) =>
+        binding is Binding.Field { Name: "_", Type: Syntax.Atom { Value: Atom.Unit } };
+
+    /// <summary>A struct type's constructor fields, by label - the members matching and coverage compare.</summary>
+    private static List<ModuleEntry.Field> ConFields(Value.VStruct s) =>
+        [.. s.Entries.OfType<ModuleEntry.Field>().Where(f => f.Kind == MemberKind.Field)];
+
+    /// <summary>Whether a struct syntax is a head's type pattern: it names a rest.</summary>
+    private static bool HasStructRest(Syntax syntax) => syntax is Syntax.Struct st && st.Bindings.Any(IsStructRest);
+
+    /// <summary>
+    /// A struct read as an impl head's type pattern - <c>struct { a : p; _ }</c>:
+    /// its constructor fields' types, and partial when the rest is written. It is
+    /// a condition on a type, not a type of its own: matching is the unification
+    /// that already compares a partial struct's fields against a struct holding
+    /// them (a width), so a partial head matches every record with those fields
+    /// and an exact one matches none with more. Each field's type is the pattern's
+    /// own binder where it names one, and the body's demand on it is the hidden
+    /// dictionary argument the head's other variables already provide.
+    /// </summary>
+    private static (Term, Value) InferImplHeadStruct(Context ctx, Syntax.Struct st)
+    {
+        var fields = new List<ModuleEntry.Field>();
+        var partial = false;
+        foreach (var item in st.Bindings)
+        {
+            if (IsStructRest(item)) { partial = true; continue; }
+            if (item is not Binding.Field field)
+                throw new FunException("an impl head's struct names fields and a rest `_`, nothing else");
+            fields.Add(new ModuleEntry.Field(field.Name, MemberKind.Field, TypeValue(ctx, field.Type)));
+        }
+        RejectDuplicates(fields.Select(f => f.Name));
+        var value = new Value.VStruct([.. fields], partial);
+        return (ctx.Quote(value), Value.VU.Instance);
+    }
+
     /// <summary>
     /// An impl head's free lowercase names are the impl's own type variables,
     /// bindable with no declaration: <c>impl Size(Option(a))</c> makes <c>a</c> its
