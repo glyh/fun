@@ -95,6 +95,23 @@ public class TraitTests
                 + "Conv.conv(fn(x : I64) { True }) }"));
 
     /// <summary>
+    /// Resolution's match ignores a record's non-field members; equality does not. A
+    /// head naming `a` serves a record with a public method, but that record does not
+    /// take a plain-struct annotation, and the refusal is the member-count mismatch.
+    /// </summary>
+    [Fact]
+    public void MatchingIgnoresNonFieldMembersWhereEqualityDoesNot()
+    {
+        Assert.Equal("1", Run("{ " + Size
+            + "U = struct { a : I64; pub method m() : I64 { self.a } }; "
+            + "impl Size(struct { a : I64 }) = module { size = fn(x) { 1 } }; "
+            + "impl Size(_) = module { size = fn(x) { 0 } }; Size.size(U{a = 1}) }"));
+        Assert.Equal("type mismatch: structs with different members",
+            Elaborate("{ P = struct { a : I64 }; U = struct { a : I64; pub method m() : I64 { self.a } }; "
+                + "x : P = U{a = 1}; x.a }"));
+    }
+
+    /// <summary>
     /// A generic impl's own variable is a parameter: evidence the body uses for it is a
     /// hidden dictionary, and evidence the head does not bind fails at the definition -
     /// never through the use site whose argument type is unrelated.

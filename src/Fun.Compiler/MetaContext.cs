@@ -17,6 +17,15 @@ public sealed class MetaContext
     /// <summary>The evaluation budget every evaluation under these metas spends from.</summary>
     public Budget Budget { get; } = new();
 
+    /// <summary>
+    /// True only while a candidate impl's head is tested against a use (resolution's
+    /// match relation, <c>Elaborator.Matches</c>). Under it a struct is compared by its
+    /// field members alone, so a public binding or method is invisible exactly as a
+    /// private one is; the unifier proper leaves it false, so equality and member
+    /// access still see every shown member and the types stay distinct.
+    /// </summary>
+    public bool Matching { get; set; }
+
     public int Fresh()
     {
         _solutions.Add(null);

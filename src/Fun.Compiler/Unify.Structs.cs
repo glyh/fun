@@ -44,8 +44,12 @@ public static partial class Unify
     private static void Structs(MetaContext mc, int width, Value.VStruct a, Value.VStruct b)
     {
         static bool Shown(MemberKind k) => k is not (MemberKind.Private or MemberKind.PrivateMethod);
-        var va = Members(a.Entries, Shown);
-        var vb = Members(b.Entries, Shown);
+        // Resolution's match relation ignores everything that is not a field, so a
+        // public binding or method never hides a record from a field-naming head;
+        // equality (Matching false) keeps comparing every shown member.
+        bool Keep(MemberKind k) => mc.Matching ? k == MemberKind.Field : Shown(k);
+        var va = Members(a.Entries, Keep);
+        var vb = Members(b.Entries, Keep);
 
         if (!a.Partial && !b.Partial)
         {
