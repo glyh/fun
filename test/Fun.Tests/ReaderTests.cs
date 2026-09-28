@@ -50,6 +50,8 @@ public class ReaderTests
     [InlineData("1 #_ 2 3", "int:1 int:3")]
     // The three conformance cases slice 1 targets.
     [InlineData("42", "int:42")]
+    // `^` is a dedicated prefix token, never part of the operator set.
+    [InlineData("^x ^Self ^ y", "^ id:x ^ Self ^ id:y")]
     [InlineData("(fn(x) { x })(7)", "(fn (id:x) {id:x}) (int:7)")]
     [InlineData("{ x : I64 = 5; x }", "{id:x : id:I64 = int:5 ; id:x}")]
     public void Reads(string source, string expected) => Assert.Equal(expected, Render(source));

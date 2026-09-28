@@ -47,6 +47,11 @@ public class ReflectionTests
     [InlineData("{ trait Size(A) = sig { size : A -> I64 }; impl Size(I64) = module { size = fn(x) { 8 } }; f : [A : Size] -> A -> I64 = fn[A : Type](x) { Size.size(x) }; f(3) }")]
     [InlineData("{ P = struct { x : I64 }; fn(t : Type) { match (t) { I64 => 1, struct { x : _; _ } => 2, _ => 3 } } }")]
     [InlineData("{ M = module { pub pattern Two(a, b) = (a, b) }; 1 }")]
+    // Stage 1 of a-pattern-binder-is-lowercase: the additive pattern forms reflect.
+    [InlineData("{ v = Some(5); x = 5; match (v) { Some(^x) => 1, _ => 0 } }")]
+    [InlineData("{ f = fn(T : Type) { match (T) { I64 -> Bool => 1, I64 -> a => 2, _ => 0 } }; 1 }")]
+    [InlineData("{ f = fn(T : Type) { match (T) { Type => 1, _ => 0 } }; 1 }")]
+    [InlineData("{ f = fn(T : Type) { match (T) { (a, b) => 1, Tuple(2, c, d) => 2, _ => 0 } }; 1 }")]
     public void AnExpandedProgramRoundTrips(string source)
     {
         var program = Expanded(source);
