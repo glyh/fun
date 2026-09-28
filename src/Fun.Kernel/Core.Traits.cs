@@ -51,7 +51,7 @@ public abstract partial record BindingTerm
     /// anonymous one arrives only through <c>open</c>. In a signature,
     /// <paramref name="Def"/> is the dictionary type the module must provide.
     /// </summary>
-    public sealed record Impl(string? Name, MemberKind Kind, Term Def, Value DictType) : BindingTerm;
+    public sealed record Impl(string? Name, MemberKind Kind, Term Def, Value DictType, EquatableArray<int> Vars = default, EquatableArray<ImplBound> Bounds = default) : BindingTerm;
 }
 
 public abstract partial record ModuleEntry

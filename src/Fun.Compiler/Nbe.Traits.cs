@@ -58,8 +58,8 @@ public static partial class Nbe
     {
         ModuleEntry.Field f => new BindingTerm.Let(f.Name, f.Kind, Quote(mc, width, f.Value)),
         ModuleEntry.Impl i => partial
-            ? new BindingTerm.Impl(i.Name, i.Kind, Quote(mc, width, i.DictType), Value.VU.Instance)
-            : new BindingTerm.Impl(i.Name, i.Kind, Quote(mc, width, i.Value), i.DictType),
+            ? new BindingTerm.Impl(i.Name, i.Kind, Quote(mc, width, i.DictType), Value.VU.Instance, i.Vars, i.Bounds)
+            : new BindingTerm.Impl(i.Name, i.Kind, Quote(mc, width, i.Value), i.DictType, i.Vars, i.Bounds),
         _ => throw new InvalidOperationException($"unhandled module entry {entry.GetType().Name}"),
     };
 }

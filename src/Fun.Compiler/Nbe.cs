@@ -344,7 +344,7 @@ public static partial class Nbe
                     {
                         var pushed = f.Env.Push(value);
                         var entries = f.Slot.ImplType is { } implType
-                            ? f.Entries.Add(new ModuleEntry.Impl(f.Slot.Name, f.Slot.Kind, implType, value))
+                            ? f.Entries.Add(new ModuleEntry.Impl(f.Slot.Name, f.Slot.Kind, implType, value, f.Slot.Vars, f.Slot.Bounds))
                             : f.Slot.Name is { } name
                             ? f.Entries.Add(new ModuleEntry.Field(name, f.Slot.Kind, value))
                             : f.Entries;
