@@ -436,12 +436,73 @@ public static partial class Elaborator
         // be beaten by a later, more precise one, so resolving now would be a guess.
         if (args.Any(a => ctx.Force(a) is Value.VMeta or Value.VNeutral)) return null;
 
+        // Whether a head's arguments answer a use's: rule 4's match, and the direction a
+        // width pattern adds. Unification alone cannot say the second - its partial-struct
+        // rule satisfies whichever side has fewer members, so a head naming more fields
+        // than the use's type would match it, and the width is the other direction only.
+        bool HeadMatches(EquatableArray<Value> head, EquatableArray<int> vars, EquatableArray<Value> use) =>
+            Matches(ctx, head, use, vars, out _) && head.Zip(use).All(pair => WidthRequires(pair.First, pair.Second));
+
+        // Every field a width pattern names is one the type at the use has, at any depth
+        // (`Option(struct { a : q; _ })`). A shape it cannot see into defers to
+        // unification, so a width never refuses what unification would accept.
+        bool WidthRequires(Value pattern, Value target)
+        {
+            switch (ctx.Force(pattern), ctx.Force(target))
+            {
+                case (Value.VStruct p, Value.VStruct t):
+                    return (!p.Partial || ConFields(p).All(f => ConFields(t).Any(x => x.Name == f.Name)))
+                        && ConFields(p).All(f => ConFields(t).LastOrDefault(x => x.Name == f.Name) is { } match
+                            ? WidthRequires(f.Value, match.Value) : true);
+                case (Value.VNominal p, Value.VNominal t)
+                    when ReferenceEquals(p.Decl, t.Decl) && p.Captures.Length == t.Captures.Length:
+                    return p.Captures.Zip(t.Captures).All(c => WidthRequires(c.First, c.Second));
+                default:
+                    return true;
+            }
+        }
+
         // P is more precise than Q when P's arguments are an instance of Q's: Q's own
-        // variables are filled in to give P's (rule 2).
-        bool Instance(EvidenceCandidate p, EvidenceCandidate q) => Matches(ctx, q.Args, p.Args, q.Vars, out _);
+        // variables are filled in to give P's (rule 2). Two width patterns are ordered
+        // structurally instead (PatternSubsumes), since unification cannot order them -
+        // each holds the other's fields - and unmatched shapes fall back to it.
+        bool Instance(EvidenceCandidate p, EvidenceCandidate q) =>
+            (p.Args.Length == 1 && q.Args.Length == 1
+                ? PatternSubsumes(ctx.Force(p.Args[0]), ctx.Force(q.Args[0]), q)
+                : null)
+            ?? Matches(ctx, q.Args, p.Args, q.Vars, out _);
+
+        // Whether every use matching the pattern P also matches Q, structurally, when
+        // the two heads are the same shape: Q's fields are P's (a partial pattern
+        // requires no field P does not), each pair is an instance in turn - or unifies
+        // with Q's own variables solvable, the direction rule 2 gives a value head - and
+        // only a partial P is subsumed by the open width a partial Q leaves. Null where
+        // the relation has no opinion (two exact structs), which is where rule 2 answers.
+        bool? PatternSubsumes(Value pattern, Value other, EvidenceCandidate q)
+        {
+            switch (pattern, other)
+            {
+                case (Value.VStruct p, Value.VStruct o):
+                    if (!p.Partial && !o.Partial) return null;
+                    var mine = ConFields(p);
+                    return (!p.Partial || o.Partial) && ConFields(o).All(field =>
+                        mine.LastOrDefault(f => f.Name == field.Name) is { } both
+                        && (PatternSubsumes(both.Value, field.Value, q)
+                            ?? Matches(ctx, [field.Value], [both.Value], q.Vars, out _)));
+                // A container of patterns compares its captures the same way, so a width
+                // nests (`Option(struct { a : q; _ })`); a capture it has no opinion on
+                // falls back to unification.
+                case (Value.VNominal p, Value.VNominal o)
+                    when ReferenceEquals(p.Decl, o.Decl) && p.Captures.Length == o.Captures.Length:
+                    return p.Captures.Zip(o.Captures).All(c =>
+                        PatternSubsumes(c.First, c.Second, q) ?? Matches(ctx, [c.Second], [c.First], q.Vars, out _));
+                default:
+                    return null;
+            }
+        }
 
         var candidates = ctx.Evidence
-            .Where(e => ReferenceEquals(e.Trait, trait) && Matches(ctx, e.Args, args, e.Vars, out _))
+            .Where(e => ReferenceEquals(e.Trait, trait) && HeadMatches(e.Args, e.Vars, args))
             .Select(e => new EvidenceCandidate(e.Args, e.Vars,
                 new Term.Var(Nbe.LevelToIndex(ctx.Width, e.Level)), e.Type, e.Bounds))
             .ToList();
@@ -449,7 +510,7 @@ public static partial class Elaborator
         if (args.Length == 1 && ctx.Force(args[0]) is Value.VStruct st)
             candidates.AddRange(st.Entries.OfType<ModuleEntry.Impl>()
                 .Where(i => i.Kind == MemberKind.Public && OfferedDict(ctx, i.DictType) is { } d
-                            && ReferenceEquals(d.Decl, trait) && Matches(ctx, d.Args, args, i.Vars, out _))
+                            && ReferenceEquals(d.Decl, trait) && HeadMatches(d.Args, i.Vars, args))
                 .Select(i => new EvidenceCandidate(
                     OfferedDict(ctx, i.DictType)!.Args, i.Vars, ctx.Quote(i.Value), i.DictType, i.Bounds)));
 
