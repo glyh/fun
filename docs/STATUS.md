@@ -11,7 +11,8 @@ entries that describe the prototype's own implementation are its record, and its
 `git log`. Paths written in a dated entry are the paths of that date — the port was lifted from
 `dotnet/` to the repo root on 2026-09-26.
 
-Last updated: a written parameter type captures nothing, 2026-09-27.
+Last updated: type-case refinement covers every entry channel and targets the evaluated variable,
+2026-09-29 (954 cases, 0 failed).
 
 ---
 

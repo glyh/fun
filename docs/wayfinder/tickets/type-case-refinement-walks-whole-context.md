@@ -183,3 +183,26 @@ Verify: `dotnet run --project test/Fun.Conformance` (947+ cases, 0 failed) and t
 entry types, so probably); whether rewriting `Evidence` is the *right* fix versus resolving bounds
 differently (only that it works); the 5-channel patch was a one-off experiment, not a reviewed
 implementation.
+
+### Landed 2026-09-29 — merged to `main`, and what the ticket still owes
+
+Steps 1–3 of the brief are done, in one source file (`src/Fun.Compiler/Elaborator.Patterns.cs`):
+`Refined` factored out of `RefineContext` and applied to all seven channels, and
+`RefinementTarget` now takes the level of the variable the scrutinee *evaluates to* (`VVar` with
+an empty spine), null otherwise. Seven new cases, each proven on the unpatched tree first:
+`type-case-{opened-entry, constructor-entries, constructor-entries-pattern, resume-entry,
+self-methods, evidence, alias-scrutinee}`.
+
+Integrator's own run on `main` after the merge: **954 cases, 0 failed** (947 + 7), xUnit
+**208/208**, `dotnet build` 0 errors. Timing `/tmp/orc/b_200_r.fun` through the single-file
+runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration budget outright).
+`d.fun` and `e.fun` still fail with the same mismatch — untouched, no cases, as specified.
+
+**Still open on this ticket — not code:**
+1. The `d`/`e` ruling (branch-local types see the matched variable as the matched head?) —
+   grilling, owed to the user.
+2. Whether rewriting `Evidence` is the *right* mechanism versus resolving bounds differently —
+   green suite only shows it works.
+3. `Opened` vs `ConstructorEntries` are still rewritten together; which needs which is not
+   isolated (probably both — patterns resolve through `ConstructorEntries`).
+4. The mention index stays deferred: no measurement asks for it.
