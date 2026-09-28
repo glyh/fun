@@ -67,3 +67,31 @@ constructors.
 `fn(o : Box[I64]) : I64 { o.v }` applied to `Box[I64]{ v = 1 }` in
 `test/conformance/cases/elaborate/`, which today cannot even be written. Once it passes,
 the same shape with the argument left implicit is the next probe.
+
+## Diagnosis 2026-09-28 (from a fork that could not be resumed; its branch held only the probes)
+
+The fork that found this located the cause by instrumentation, and its branch
+(`pi-agent-1b517b3f-ca18-468`) was **instrumentation only** — never merged, now deleted. What it
+established, and what reading it changed:
+
+- **The trigger is *any non-field member*, not the lambda former.** A plain
+  `S = struct { k : I64; pub method m() : I64 { self.k } }` used as `fn(o : S)` fails the same
+  way, so `Box[I64]` was one instance.
+- Stack: `TypeValue` → `TypeOfExpr` → `CheckTypeLike` (`Elaborator.Structs.cs:354`) →
+  `ctx.Unify(type = VStruct, VU)` → `Unify.Values`' default branch.
+- Its debug line: `IsTypeLike false: forced=VStruct entries=v:Field:VAtomTy,get:Method:VLam`.
+- **The precise cause — and the reason the obvious fix is already there:** `IsTypeLike`'s
+  `VStruct` branch already filters to `OfType<ModuleEntry.Field>()`, but a struct's **method is
+  itself a `ModuleEntry.Field` with `Kind == Method`** (`Elaborator.Structs.cs:58` routes it
+  through `AddMember`, and `:102` puts it in the same list as the field entries). The predicate
+  skips only `Private`/`PrivateMethod` and then requires the entry's payload to be type-like —
+  and a method's payload is its **definition** (`VLam`), so the test fails on a member that is
+  not part of the record's *type* at all.
+- **So the fix is the predicate, and it is the rule that landed yesterday**: require
+  type-likeness only of entries whose kind is `Field`, and skip every other kind — `Field` is
+  what a record type is made of. (An earlier framing of mine, "ignore entries that are not
+  `ModuleEntry.Field`s", was wrong for exactly this reason: methods *are* `ModuleEntry.Field`s.)
+- **A latent hazard to record, not to fix here:** `InferStruct` builds a struct's entries with
+  member *types*, while `Nbe`'s `Term.Struct` evaluation stores the evaluated *definition* — two
+  construction sites that disagree on the payload's kind. Nothing probed needs that reworked
+  today; the predicate above does not depend on it.
