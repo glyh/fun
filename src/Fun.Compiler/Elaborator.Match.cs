@@ -64,8 +64,7 @@ public static partial class Elaborator
         CheckStoredEscape(ctx, [.. effectBranches.Select(b => (Value)b.Instance)], storedBefore, since);
 
         var (tree, missing) = MatchCompile.Compile(patterns, occurrence => DomainOf(ctx, TypeAt(ctx, scrutineeType, occurrence)));
-        if (missing is not null) throw new FunException($"non-exhaustive match: {missing} is not matched");
-        // A struct type's exact field set and a nominal type's instance are more
+        if (missing is not null) throw new FunException($"non-exhaustive match: {missing} is not matched");        // A struct type's exact field set and a nominal type's instance are more
         // than a tree tests: such a match runs its arms in order, once the tree
         // has shown them exhaustive.
         var run = patterns.Any(p => p.NeedsDirectMatch()) ? new DecisionTree.Sequential([.. patterns]) : tree!;
@@ -97,7 +96,9 @@ public static partial class Elaborator
             // says what is wrong with it (as the prototype's find_pat does).
             Pattern.Con c => TupleFormerArity(ctx, c) is not null || TypeHead(ctx, c.Head) is not null
                 ? Value.VU.Instance
-                : ResolveConstructorHead(ctx, c.Head)?.Nominal,
+                // A type-case head that names no type is the elaborator's to report
+                // (the type/nominal wording); the constructor lookup is for values.
+                : ctx.Force(type) is Value.VU ? null : ResolveConstructorHead(ctx, c.Head)?.Nominal,
             Pattern.Record r => RecordPatternType(ctx, r),
             Pattern.AtomType or Pattern.Arrow or Pattern.Universe => Value.VU.Instance,
             Pattern.StructType => type is Value.VStruct ? type : Value.VU.Instance,

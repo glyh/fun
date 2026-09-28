@@ -99,7 +99,8 @@ public sealed partial class Enforest
         rest = DropSeparators(rest);
         if (rest.Head is TokenTree.Leaf { Token.Kind: var arrow } && arrow == TokenKind.ThinArrow)
             return new Pattern.Arrow(head, ParsePattern(rest.Tail));
-        if (!rest.IsEmpty) throw new ExpandException("unconsumed terms after pattern");
+        if (!rest.IsEmpty)
+            throw new ExpandException($"unexpected terms after the pattern: {TokenText(rest.Head!) ?? "a group"}");
         return head;
     }
 

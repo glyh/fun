@@ -62,6 +62,67 @@ public static class MatchCompile
         return Go(initial, patterns, domainOf);
     }
 
+    /// <summary>
+    /// The index of the first arm an earlier arm subsumes, or null. Structural only -
+    /// a binder or <c>_</c> at a position, <c>_</c> wholesale, or-patterns split, the
+    /// same head with every position covered - and no value reasoning. A pin to a
+    /// known atom is an <see cref="CorePattern.Atom"/> by elaboration and is checked
+    /// as that literal; an unkeyable pin covers nothing, so its arm is tried in order
+    /// and never reported (the asymmetry with the tree, which keys the keyable ones).
+    ///
+    /// <para><b>Not wired into elaboration yet.</b> Enforcing it as a hard error
+    /// (rule 8) would reject two conformance cases that deliberately pin behaviour
+    /// stage 1 must not change - <c>values/stuck-match-pruned-arm</c> (an arm a
+    /// binder at a position subsumes, whose body carries the match's type) and
+    /// <c>values/core-133</c> (<c>match (1) { _ => 0, 1 => 1 }</c>, "first branch
+    /// wins") - so it is available and unit-tested but left off until those cases'
+    /// intent is re-decided.</para>
+    /// </summary>
+    public static int? UnreachableArm(IReadOnlyList<CorePattern> patterns)
+    {
+        for (var i = 1; i < patterns.Count; i++)
+            if (Alternatives(patterns[i]).All(later => patterns.Take(i).Any(earlier => Covers(earlier, later))))
+                return i;
+        return null;
+    }
+
+    /// <summary>Whether an earlier arm's pattern covers a later one's, structurally.</summary>
+    private static bool Covers(CorePattern earlier, CorePattern later) => (earlier, later) switch
+    {
+        (CorePattern.Wild, _) or (CorePattern.Bind, _) => true,
+        (CorePattern.Or o, _) => Covers(o.Left, later) || Covers(o.Right, later),
+        (_, CorePattern.Or l) => Covers(earlier, l.Left) && Covers(earlier, l.Right),
+        (CorePattern.Atom a, CorePattern.Atom b) => a.Value == b.Value,
+        (CorePattern.AtomType a, CorePattern.AtomType b) => a.Ty == b.Ty,
+        (CorePattern.Universe, CorePattern.Universe) => true,
+        // An unkeyable pin: no value reasoning, so it covers nothing (the ticket's asymmetry).
+        (CorePattern.Pin, _) => false,
+        (CorePattern.Prod a, CorePattern.Prod b) => Pairwise(a.Items, b.Items),
+        (CorePattern.TupleType a, CorePattern.TupleType b) => Pairwise(a.Items, b.Items),
+        (CorePattern.Arrow a, CorePattern.Arrow b) => Covers(a.Domain, b.Domain) && Covers(a.Codomain, b.Codomain),
+        (CorePattern.Con a, CorePattern.Con b) => a.Name == b.Name && Pairwise(a.Args, b.Args),
+        (CorePattern.NominalHead a, CorePattern.NominalHead b) => ReferenceEquals(a.Decl, b.Decl)
+            && a.Arity == b.Arity && Pairwise(a.Params, b.Params),
+        (CorePattern.Record a, CorePattern.Record b) => FieldsCover(a.Fields, a.Partial, b.Fields, b.Partial),
+        (CorePattern.StructType a, CorePattern.StructType b) => FieldsCover(a.Fields, a.Partial, b.Fields, b.Partial),
+        _ => false,
+    };
+
+    private static bool Pairwise(EquatableArray<CorePattern> a, EquatableArray<CorePattern> b) =>
+        a.Length == b.Length && a.Zip(b).All(p => Covers(p.First, p.Second));
+
+    /// <summary>
+    /// Every field the later pattern names is covered by the earlier one, and a closed
+    /// earlier pattern covers only an equally closed later one (a partial later pattern
+    /// matches more, so a closed earlier one cannot cover it).
+    /// </summary>
+    private static bool FieldsCover(EquatableArray<(string Name, CorePattern Pattern)> earlier, bool earlierPartial,
+        EquatableArray<(string Name, CorePattern Pattern)> later, bool laterPartial) =>
+        (earlierPartial || !laterPartial)
+        && later.All(l => earlier.LastOrDefault(e => e.Name == l.Name) is { Pattern: var pattern }
+            ? Covers(pattern, l.Pattern)
+            : earlierPartial);
+
     private static (DecisionTree?, MissingPattern?) Go(Matrix m, IReadOnlyList<CorePattern> source, Func<Occurrence, MatchDomain> domainOf)
     {
         if (m.Rows.IsEmpty) return (null, MissingPattern.Wild.Instance);

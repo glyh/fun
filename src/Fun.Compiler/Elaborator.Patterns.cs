@@ -264,8 +264,8 @@ public static partial class Elaborator
     /// <summary>The written name a pattern head was spelled with, for error messages.</summary>
     private static string HeadLabel(Syntax head) => SynonymBaseHead(head) switch
     {
-        Syntax.Var v => v.Id.Name,
-        Syntax.OpenChoice c => c.Name.Name,
+        Syntax.Var v => Label(v.Id.Name),
+        Syntax.OpenChoice c => Label(c.Name.Name),
         Syntax.FieldAccess f => f.Field,
         _ => "type",
     };
@@ -417,7 +417,12 @@ public static partial class Elaborator
         if (pattern.Args.IsEmpty && ctx.Force(headType) is Value.VU)
             return (new CorePattern.Pin(term) { Width = ctx.Width }, []);
 
-        throw new FunException($"`{HeadLabel(pattern.Head)}` must name a type in a type-case");
+        // An applied head that names no type former is the argument fault (`Option(Foo(1))`),
+        // and the message says which term; a bare head that names no type is the other fault.
+        var label = HeadLabel(pattern.Head);
+        throw new FunException(pattern.Args.IsEmpty
+            ? $"`{label}` is not a type or nominal in scope"
+            : $"`{label}` must name a type in a type-case");
     }
 
     /// <summary>A tuple type pattern: <c>(a, b)</c> and <c>Tuple(2, a, b)</c> are one form, each component a type pattern.</summary>
