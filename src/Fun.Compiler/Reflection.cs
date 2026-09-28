@@ -65,7 +65,7 @@ public sealed class Reflection
         _span = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkSpan), 7);
         _id = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkId), 3);
         _pathChoice = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkPathChoice), 2);
-        _path = LayoutOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.MkPath), 3);
+        _path = Nominal(PreludeAbi.Syntax, PreludeAbi.Types.Syntax.Path);
         _patWild = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatWild));
         _patBind = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatVar), Probe);
         _patAtom = CtorOf(SyntaxBuilder(PreludeAbi.Builders.Syntax.PatAtom), Probe);
@@ -104,11 +104,11 @@ public sealed class Reflection
     public string ListCons => _cons.Tag;
 
     private readonly Value.VNominal _atomVal, _tokenKind, _role, _order, _roleMeaning, _rule, _rulePart,
-        _replacement, _capture, _captured, _field, _quoteHole, _param, _effectRow, _effectOp, _ctor, _branch, _patField;
+        _replacement, _capture, _captured, _field, _quoteHole, _param, _effectRow, _effectOp, _ctor, _branch, _patField, _path;
 
     private readonly Leafs _bool, _explicitness, _fixity, _delim, _assoc, _holeKind, _atomTy, _macroAnn;
     private readonly Ctor _some, _none, _nil, _cons, _patWild, _patBind, _patAtom, _patProd, _patOr;
-    private readonly Layout _span, _id, _pathChoice, _path;
+    private readonly Layout _span, _id, _pathChoice;
 
     // ---- reaching the prelude's published builders, once ----------------------
 
@@ -239,10 +239,14 @@ public sealed class Reflection
     private Value Path(Syntax form)
     {
         // A pattern synonym use may supply its implicit type parameters
-        // (M.Two[I64, Bool](x, b)); the Path ADT has no slot for them yet, so
-        // reflecting such a use is an unported path rather than silent loss.
-        if (form is Syntax.Ap { Explicitness: Fun.Kernel.Explicitness.Implicit })
-            throw new NotImplementedException("not ported yet: reflecting the type arguments a pattern synonym use supplies");
+        // (M.Two[I64, Bool](x, b)): those applications are the path's `type_args`,
+        // in the order written, as `DeclImpl` carries its argument.
+        var typeArgs = new List<Syntax>();
+        while (form is Syntax.Ap { Explicitness: Fun.Kernel.Explicitness.Implicit, Fn: var fn, Arg: var arg })
+        {
+            typeArgs.Insert(0, arg);
+            form = fn;
+        }
         var members = new List<string>();
         while (form is Syntax.FieldAccess f)
         {
@@ -255,7 +259,7 @@ public sealed class Reflection
             Syntax.OpenChoice c => (c.Name, (Value?)_pathChoice.Build(List(c.Opens, Str), Option(c.Fallback, Str))),
             _ => throw new InvalidOperationException($"unhandled path form {form.GetType().Name}"),
         };
-        return _path.Build(ReflectId(head), List(members, Str), OptionOf(choice));
+        return Con(_path, PreludeAbi.Tags.Path.MkPath, ReflectId(head), List(members, Str), OptionOf(choice), List(typeArgs, ReflectExpr));
     }
 
     private Value Ann(FormKind k) => _macroAnn.At((int)k);
@@ -623,14 +627,12 @@ public sealed class Reflection
 
     private AtomTy? ReadAtomTy(Value v) => ReadLeaf<AtomTy>(_atomTy, v);
 
-    /// <summary>A <c>Syntax.Path</c> as the form it names: its head, an open choice when it has one, then each member.</summary>
+    /// <summary>A <c>Syntax.Path</c> as the form it names: its head, an open choice when it has one, then each member, then the type arguments it supplied.</summary>
     private Syntax? ReadPath(Value v)
     {
-        // The probe's field order is the struct's own: head, members, head_choice.
-        var (headField, membersField, choiceField) = (_path.Fields[0], _path.Fields[1], _path.Fields[2]);
-        if (RecordField(v, headField) is not { } h || ReadId(h) is not { } head) return null;
-        if (RecordField(v, membersField) is not { } m || ReadList(m, x => ReadStr(x)) is not { } members) return null;
-        if (RecordField(v, choiceField) is not { } c) return null;
+        if (Payload(_path, v) is not (PreludeAbi.Tags.Path.MkPath, [var h, var m, var c, var ts])) return null;
+        if (ReadId(h) is not { } head) return null;
+        if (ReadList(m, x => ReadStr(x)) is not { } members) return null;
         // The choice probe's field order is the struct's own: opens, fallback.
         var (opensField, fallbackField) = (_pathChoice.Fields[0], _pathChoice.Fields[1]);
         var (choiceOk, choice) = ReadOption(c, x =>
@@ -639,8 +641,11 @@ public sealed class Reflection
                 ? new Boxed<(EquatableArray<string>, string?)>((opens, fallback))
                 : null);
         if (!choiceOk) return null;
+        if (ReadList(ts, ReadExpr) is not { } typeArgs) return null;
         Syntax form = choice is null ? new Syntax.Var(head) : new Syntax.OpenChoice(head, choice.Value.Item1, choice.Value.Item2);
-        return members.Aggregate(form, (acc, member) => new Syntax.FieldAccess(acc, member, head.Span));
+        form = members.Aggregate(form, (acc, member) => new Syntax.FieldAccess(acc, member, head.Span));
+        // Each supplied type is the implicit application the use wrote, in order.
+        return typeArgs.Aggregate(form, (acc, arg) => new Syntax.Ap(acc, Fun.Kernel.Explicitness.Implicit, arg, head.Span));
     }
 
     private FormKind? ReadAnn(Value v) => ReadLeaf<FormKind>(_macroAnn, v);

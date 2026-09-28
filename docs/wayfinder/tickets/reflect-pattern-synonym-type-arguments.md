@@ -3,7 +3,9 @@ title: Reflecting a pattern-synonym use that supplies its type arguments
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: Closed 2026-09-28. The refusal is gone: `Path` carries the supplied types and the round trip is the identity. Landed as `f69ed8f` — a turn-limited fork's tree, saved by pi's cleanup and gated by the integrator, because the fork never ran the full suite. Suite `904` → **`905` cases, 0 failed**; xUnit `206`; no expectation changed. **This was the last live unported path in `src/`** — the only one a macro author could reach.
 assignee:
 blocked_by: []
 ---
@@ -90,3 +92,24 @@ operator macro (`Expander.Macros.cs:306`) is a different site, ruled not-a-gap i
 - `std/bootstrap.fun:39-40` — `PathChoice` and `Path`
 - `CLAUDE.md` — "Adding a new reflected Syntax ADT" and "Reflection and scope-addition:
   preserve ALL fields", which are this ticket's method
+
+## Landed 2026-09-28 (`f69ed8f`)
+
+`Path` gained `type_args : List(Expr)`, mirroring the convention `DeclImpl` already uses (its
+argument is reflected as a one-element `List(Expr)`). It could not stay a `struct`: a rec group
+cannot mix structs and enums (measured — `a rec … and … group holds enums, struct types or
+functions, not a mix`; a forward reference fails too, `unbound variable: B`), so `Path` became a
+one-constructor enum `MkPath(Id, List(String), Option(PathChoice), List(Expr))` inside the `Expr`
+rec group. **Ruled acceptable by the integrator**: the enum form is forced by the language's own
+rec-group rule, `Reflection.cs` peels the implicit `Ap`s into the new field and re-applies them
+on read-back, and the gate shows nothing observable moved — `905` cases, 0 failed, xUnit `206`,
+no expectation changed.
+
+Files: `std/bootstrap.fun`, `src/Fun.Kernel/PreludeAbi.cs`, `src/Fun.Compiler/Reflection.cs`, and
+the case `test/conformance/cases/macros/pattern-synonym-type-args-round-trip.{fun,expect}`.
+
+The fork ran out of turns before running the suite, so its tree was **uncommitted** when it
+stopped; pi's cleanup saved it (`pi-agent: Reflect synonym type arguments`) and the counts above
+were taken at the merge. Its own evidence — the ticket's program now `VALUE 1`, a load-bearing
+program `VALUE 7`, and a control that errors if reflection drops the arguments — is in its
+report.

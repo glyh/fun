@@ -30,10 +30,24 @@ entry's route caused it. That is exactly the shape the parent ticket spent a day
 **Not a live regression:** the full suite passes with them untouched (`904 cases, 0 failed`), so
 nothing exercises them today.
 
-## How to work it
+## The probe, run 2026-09-28 by a read-only fork (its report is the evidence)
 
-Write the probe that shows a loss at a use site *first* — for one of the three, build the entry
-through it, then use the impl and watch it fail — and only then carry the fields the way the
-parent fix did (`Slots()` → `Slot` → the rebuild; `QuoteEntry` → the term). A carry with no
-failing probe is unverifiable, which is this family's recorded lesson: the parent ticket's fix
-was applied, tested and reverted before it was understood.
+One program per route, with controls. Verdicts:
+
+| route | verdict | evidence |
+|---|---|---|
+| `Unify.RenameEntry` | **reachable and observable** | a generic impl inside a module returned through a lambda-plus-binder spine, `open`ed and then used, fails `ELAB missing implementation of \`Size\``. `Unify.cs:271-272` builds `BindingTerm.Impl` without the fields; reached via `:118` → `:191` → `:255`. Controls rule out the lambda/quote machinery: the same spine with a *non-generic* impl works, the same module at top level works, and opening it directly works. |
+| `ElaborateImplItem` | reachable but **invisible** | the term drops at `Elaborator.Traits.cs:284` while the entry carries at `:292`; masked because an application's result is re-evaluated from the quoted closure type (`Elaborator.cs:601`, `:620`). |
+| `InferExport` | reachable but **invisible** | the term drops at `Elaborator.Export.cs:37`, the entry carries at `:38` from `:74`; same masking. `trait-generic-impl-bound-through-export.fun` passes (`VALUE 5`). |
+
+**So the work is one site and one line:** add `i.Vars, i.Bounds` to both `BindingTerm.Impl`
+constructions at `Unify.cs:271-272`. Acceptance: the probe's `a.fun` and `ab.fun` answer `3`,
+while `aprime` (the same route, non-generic), `a2` (top level) and `af_direct` stay green —
+`aprime` is what proves the route still runs.
+
+**Do not carry the fields at the other two sites**: nothing evaluates a raw module or struct term
+and then reads its entry's variables, so a carry there is unverifiable — the mistake this ticket
+exists to prevent. That is now measured rather than assumed.
+
+**Blocked on [`Unify.cs`](struct-former-in-written-parameter-type.md)** — that file is owned by a
+running fork. Queue behind it.
