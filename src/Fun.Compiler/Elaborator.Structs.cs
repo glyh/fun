@@ -345,7 +345,13 @@ public static partial class Elaborator
         if (ctx.Force(value) is Value.VModule { Partial: false })
             throw new FunException("a module is not a type; only a signature is");
         CheckTypeLike(ctx, type, value);
-        return term;
+        // One entry, two roles: a struct read in type position is a type, whose
+        // members are signatures -- the struct InferStruct reports, and every
+        // TypeTerm consumer (arrow domains, trait fields, payloads) wants. The
+        // elaborated term instead evaluates to the struct as a value, whose
+        // members are definitions, so a written type takes the signatures,
+        // re-quoted as the term that evaluates to them.
+        return ctx.Force(value) is Value.VStruct && ctx.Force(type) is Value.VStruct ? ctx.Quote(type) : term;
     }
 
     /// <summary>A value of type <paramref name="type"/> is a type when its type is a universe or it is type-like.</summary>
