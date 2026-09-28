@@ -74,9 +74,11 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   `f(True, True)` for `f = fn(b : Bool, v : F(b)) : F(b) { v }` is refused at the same
   type mismatch as before. 11 conformance cases added (ten values, one `error`) —
   **`conformance: 876 cases, 0 failed`** — xUnit **`188/188`**.
-- Not fixed (separate ticket): a struct former with its type argument supplied in a
-  written parameter type, `fn(o : Box[I64]) : I64 { o.v }`, still fails
-  `cannot unify VStruct with VU` (`struct-former-in-written-parameter-type.md`).
+- Fixed 2026-09-28 (was a separate ticket): a struct former with its type argument supplied
+  in a written parameter type, `fn(o : Box[I64]) : I64 { o.v }`, elaborates — a struct read
+  in type position now takes its signatures (`TypeOfExpr` re-quotes the struct `InferStruct`
+  reports), while the evaluated struct keeps member *definitions* for the runtime
+  (`struct-former-in-written-parameter-type.md`).
 
 ### A generic impl's head variable takes its bound (2026-09-27)
 

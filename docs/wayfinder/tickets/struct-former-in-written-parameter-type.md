@@ -3,7 +3,7 @@ title: A struct former in a written parameter type is refused
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
 assignee:
 blocked_by: []
 ---
@@ -123,3 +123,36 @@ has to reconcile the two payloads, not ignore the members.
 
 Candidate cases for the second half were prepared in `/tmp/cases/elaborate/` by that fork; nothing
 was added to the suite because nothing passes on the predicate alone.
+
+## Resolution 2026-09-28 (the second half, decided by measurement)
+
+Two candidates were measured, plus the construction-site question the predicate's commit queued:
+
+- **Compare by name and kind in `Unify.Structs`** (the softer naive second half: keep the count,
+  name and kind checks, compare only `Field` payloads) — fixes `Box[I64]` (`VALUE 1`) but **not**
+  the direct `S` reproducer: `InferMember` still hands `MethodCall` the domain struct's `VLam`,
+  and a lambda carries no signature to elaborate `o.m()` against (`ELAB applying non-function`).
+  Insufficient alone — and it would let two structs whose methods differ in *signature* compare
+  equal. Not landed.
+- **Reconcile the construction sites** — dead as stated, and provably so from the code: the
+  runtime's `DotOf` (Nbe.cs) projects a method from `record.Type` and *applies* it, so the
+  value-side struct must carry definitions, while the type side needs signatures. **One payload
+  cannot serve both roles**; storing signatures in the evaluated struct would break every
+  runtime method call, and changing what the evaluator's binding loop stores is an `Nbe` edit.
+
+What landed is the role separation at the seam that decides it: **a struct read in type position
+takes its signatures** — `TypeOfExpr` returns the struct `InferStruct` reports (member types),
+re-quoted as the term that evaluates to it, instead of re-evaluating the elaborated term (whose
+members are definitions). Every `TypeTerm` consumer — arrow domains, trait fields, payloads —
+wants signatures; the value side is untouched, so runtime method calls and namespace projection
+still read definitions. Measured: both programs answer (`VALUE 1`, `VALUE 2`); a pub-let sibling
+the baseline refused (`VAtom(2)` vs `VAtomTy(I64)`) answers `1`; structs whose methods differ in
+signature are still refused, now with a type mismatch (`VAtomTy(I64)` vs `VPi`) instead of the
+eta crash (`applying non-function: VPi`). Suite `911` cases (four added:
+`struct-former-in-written-parameter-type`, `struct-with-method-as-parameter-type`,
+`struct-method-call-through-written-parameter-type`, and the guard
+`struct-written-parameter-type-signatures-differ`), `0` failed; xUnit `206`.
+
+The next probe — `fn(o : Box)` with the argument unsupplied — still refuses, cleanly:
+`ELAB type mismatch: cannot unify VPi with VU`. A type former is not a type until applied; that
+is a property of the language, not an open bug.
