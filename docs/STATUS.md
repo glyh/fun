@@ -17,6 +17,43 @@ Last updated: a written parameter type captures nothing, 2026-09-27.
 
 ## Completed
 
+### The rest of the session's landings (2026-09-28)
+
+After the pattern-grammar work in the entry below, same day:
+
+- **The arity-2 deferred-call crash is gone** (`b6ca5ff`). A recursive call applied more than once
+  whose fixpoint was deferred cored the compiler — `exit=134`, a 22,619-line
+  `Quote → QuoteStuckMatch → OpenArm → Eval` chain — whenever an impl's evidence was quoted, which
+  is every structural list comparison. `Value.VGlued` now carries the whole argument **spine**, so a
+  deferred call applied again stays deferred (supplying an argument is not an *inspection*), with no
+  ceiling, no refusal, and no `Kont` frame removed. It was the last blocker on the two impls below.
+- **`Eq(List(a))` and `Eq(Option(a))` ship**, with `export Lists.{list_eq}` and
+  `export Options.{option_eq}` and nothing else from those units: a no-import program resolves
+  `Eq(List(I64))` from base scope while a sibling name (`map`, `get_or`) stays unbound. That was the
+  selective export's first real use.
+- **`open M.{a, b}`** (`ab95ccb`) — the mirror of the selective `export`. It carries every member
+  kind (value, constructor, named impl, role, macro) and supplies **only** what is named, which
+  means listing an impl does not drag its trait's name in. `Syntax.Open`/`Binding.Open` gained the
+  selection field, so the two forms are symmetric in the AST, and `export M.{…}` stopped rejecting a
+  unit's role or macro along the way.
+- **A unit-level `rec` with written implicit binders works** (`88f862f`), so the non-recursive
+  wrapper `std/list.fun` had been forced to write around it is gone. Two carries in the same family
+  followed: an impl's `Vars`/`Bounds` now survive readback and rebuild (`65c1e39`), including the
+  renaming route (`51ae973`).
+- **A struct's type is its fields.** `IsTypeLike` asks only `Kind == Field` entries to be type-like
+  — a `pub` method's payload is its *definition*, which was the whole refusal (`bf03e95`) — and a
+  type position takes the *signature* side of a struct while a value position keeps definitions
+  (`46b7212`). Matching compares fields, so a public method no longer hides a record from a
+  field-naming head, while equality still sees every shown member.
+- **The last live unported path is closed** (`f69ed8f`): reflecting a pattern-synonym use that
+  supplies its type arguments. What the unported-path audit still lists are paths no program reaches.
+- **The suite**: three byte-identical case files deleted, and five coverage-gap cases added — each
+  one proven by removing the guard it names and showing the case fail. 947 cases, 0 failed. The
+  measurements behind that live in
+  [the suite investigation](wayfinder/tickets/suite-redundancy-measured.md); the short version is
+  that 947 cases take 5.6 s, so slowness is the harness: build once, then `--no-build` and the built
+  DLLs, and the CLI REPL for ad-hoc programs instead of a process each.
+
 ### The pattern grammar's two rules, and five pattern forms (2026-09-28)
 
 Decided in one grilling session on 2026-09-27 and landed as four changes the next day, each

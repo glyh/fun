@@ -373,6 +373,27 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
 
 ### Frontier (2026-09-26)
 
+**2026-09-28, session close — 20 open.** The session's second half closed twelve tickets and landed
+thirteen changes: the pattern grammar (its own entry below), the arity-2 deferred-call **crash**,
+`Eq(List(a))`/`Eq(Option(a))` with the selective re-exports they needed, `open M.{a, b}`, a
+unit-level `rec` with written implicit binders, two `Vars`/`Bounds` carries, the struct-former
+refusal with its role-separation fix, and **the last live unported path**. Other sessions closed
+tickets in this same repo on the same day, so the count is not one session's ledger — it is 20 as of
+this entry. `docs/STATUS.md` carries them in one entry, and the suite grew to **947 cases, 0 failed**
+(three byte-identical files deleted, five coverage-gap cases added, each proven by flipping it).
+
+**Next session's queue, in the order the tickets argue it:** the two specified case fixes on
+[the suite investigation](tickets/suite-redundancy-measured.md) — `core-279`'s hole-free spelling and
+`core-022` as the module-as-type refusal — then the remaining rows on
+[the coverage gaps](tickets/coverage-gaps-from-the-mutation-sweep.md), and after those the design
+work, which is grilling rather than building:
+[trait deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md),
+[private type visibility](tickets/design-private-type-visibility-model.md), and the
+[Stage 11](tickets/specify-stage-11-macro-powered-language-features.md) and
+[Stage 12](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md) specs. One grammar item
+is ruled and **held** by the user: [an or-pattern in a head](tickets/pattern-headed-impls.md) waits
+for a call site.
+
 **2026-09-27, last thing — the pattern grammar is ruled; 25 open again.** (The
 counts further down are as-of their own timestamps.) A grilling session starting
 from [an impl head is a pattern over types](tickets/pattern-headed-impls.md)

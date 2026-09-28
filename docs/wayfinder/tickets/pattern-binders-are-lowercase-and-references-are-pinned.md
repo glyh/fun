@@ -3,7 +3,9 @@ title: A pattern binder is lowercase; naming an existing term takes `^`
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: Closed 2026-09-28 — both stages and every follow-up landed. Stage 1 (`665b8e3`) added the pin `^`, arrows, universes and tuple type patterns **additively**: 876 → 888 cases with *no* existing expected value changed, which was the proof it was designed around. Stage 2 (`997b57c`) made case decide a pattern name's role — lowercase binds, uppercase refers, an unresolved uppercase is an error — with `trait Eq(a)` and `impl Size(Option(a))` as the enforced spellings, migrating 41 `.fun` files, `std/lib.fun` and the live docs (892 cases). The follow-ups (`f705101`) then wired the unreachable-arm check as an error, restricted `a -> b` to an explicit and non-dependent Pi, and added `[a] -> b` for an implicit Pi with its binder nameable, so `[k] -> k -> k` matches `[k : Type] -> k -> k` (903 cases). The merge had to lowercase one line of stage 1's own new case, which the two parallel forks could not see. Residues recorded rather than chased: `[a]` binds the Pi's domain as `Type` only (nothing needs a non-`Type` domain yet); the pin matcher now matches when the scrutinee *is* the pinned rigid variable, which is what lets a binder's reference resolve; and a dependency check on an arrow applies the codomain closure to a *variable*, never a meta. The one form held by the user — an or-pattern in a head — is ruled on [an impl head is a pattern over types](pattern-headed-impls.md) and unbuilt until a call site appears.
 assignee:
 blocked_by: []
 ---

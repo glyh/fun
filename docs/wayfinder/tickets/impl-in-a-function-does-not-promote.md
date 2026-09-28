@@ -3,7 +3,9 @@ title: An impl declared inside a function does not promote its bound
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: Closed 2026-09-28 (`44583e0`, merged as `impl-in-a-function-promotes-its-bound`). The promotable shape is fixed: `BindHeadNames` now returns the head's variable *values* and `Contribute` forces each after the head elaborates, so the impl's variable is the meta inference actually left — inside a function a constructor's parameter meta whose solution is a lambda over the enclosing bound entries, which `ResolveVar` could not follow. **`ResolveVar` is deleted**, which is what the fix bought. Probes: the lowercase shape with an unused body went from `cannot choose an implementation … never known` to `VALUE 1`; used at run time, from `missing implementation of Size` to `VALUE 7` (case `values/trait-local-impl-bound-in-body`); the top-level case unchanged. Suite 905 → **906 cases, 0 failed**; xUnit 206. **The uppercase reproducer this ticket was filed with is a different shape and stays unfixed by ruling:** under the case rule an uppercase free name in a head is a *reference* to the enclosing binder, so the head has no meta at all (`Vars = []`) and its demand forces to the rigid `VVar(B)` — evidence the *enclosing scope* must supply, not something an impl can carry, since `Vars` indexes the impl's own metas. It still reports a plain `missing implementation of Size`, which is misleading rather than wrong; that wording belongs with the other diagnostics work (Stage 12).
 assignee:
 blocked_by: []
 ---
