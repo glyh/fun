@@ -114,7 +114,15 @@ diagnostics:
    reaches the elaborator as `CorePattern.Prod` and fails `cannot unify VU with
    VProdTy`. Likewise let a pattern head name the tuple former (`Tuple(2, a, b)`
    is cased as an *impl head*, `trait-generic-impl-two-bounds`).
-5. **Diagnostics** (see the three in the table): `a type-case head must name a
+5. **Unreachable arms** (rule 8): a new structural-subsumption check, hard error.
+   A later arm is an error when an earlier arm covers it syntactically — the same
+   head with a binder/`_` at a position, `_` wholesale, or-patterns split — with no
+   value reasoning. Keyable pins are checked by the tree for free (a pin to a known
+   atom is a literal pattern); unkeyable ones are ordered trial and unchecked —
+   document that asymmetry where the check lives. **This belongs to stage 1, not
+   stage 2**: it is pattern semantics, and it shares `MatchCompile.cs` with the new
+   keys, which is where it lives.
+6. **Diagnostics** (see the three in the table): `a type-case head must name a
    type` fires when the *argument* is at fault and the head did name a type —
    name the offending term and position; `… is not a constructor in scope` is the
    wrong word at the type level (the rule is `TypeHead`'s `VNominal` requirement)
@@ -122,11 +130,11 @@ diagnostics:
    check on the wording. Pin each with an **xUnit** assertion: conformance
    `.expect` files hold only a value or the literal `error` and cannot pin text,
    while `BudgetTests`/`LoaderTests` already assert message substrings.
-6. The **reflection ripple** (`CLAUDE.md`'s six steps: prelude ADT + builders +
+7. The **reflection ripple** (`CLAUDE.md`'s six steps: prelude ADT + builders +
    wrap/unwrap + the syntax-nominals registry + **every** construction site +
    rule templates). The round trip must stay the identity, so a macro can now
    emit `^a`, `A -> B`, `Type`, and a tuple type pattern.
-7. **Reader**: `^` is currently `unexpected character` and is not in
+8. **Reader**: `^` is currently `unexpected character` and is not in
    `OperatorChars` (`+-*/%=!<>@~&|`, `Reader.cs:28-29`). It becomes a **dedicated
    prefix token**, matching the project's existing decision that structural
    punctuation keeps dedicated tokens rather than joining the operator set.
@@ -167,11 +175,7 @@ spellings that now mean something else.
    renamed** — `impl Size(Option(^z))` with `z = I64`. The sweep found no such
    spelling in the repo (every in-scope head reference is uppercase), so this is
    a rule statement rather than a migration item.
-5. **Unreachable arms** (rule 8): a new structural-subsumption check, hard error.
-   Keyable pins are checked by the tree for free (a pin to a known atom is a
-   literal pattern), unkeyable ones are ordered trial and unchecked — document
-   that asymmetry where the check lives.
-6. Cases: one per migrated spelling class, plus the new refusals
+5. Cases: one per migrated spelling class, plus the new refusals
    (`trait-parameter-must-be-lowercase`, `impl-head-binder-must-be-lowercase`,
    `impl-head-uppercase-is-a-reference`, `unreachable-arm-subsumed`), and an
    xUnit assertion for each new message.
