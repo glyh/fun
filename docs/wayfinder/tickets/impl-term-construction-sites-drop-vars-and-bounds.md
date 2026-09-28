@@ -3,7 +3,9 @@ title: Three more impl-term construction sites drop Vars and Bounds
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-09-28
+resolution: Closed 2026-09-28. The one route the probe found reachable *and* observable is fixed: both `BindingTerm.Impl` constructions in `Unify.RenameEntry` (`Unify.cs:271-272`) now carry `i.Vars, i.Bounds` — two lines. Probes: `a` and `ab` went from `missing implementation of \`Size\`` to `VALUE 3` / `VALUE 5`, `af` from failing to `VALUE 3`, and the controls `aprime` (the same route, non-generic), `a2` and `af_direct` stayed green — `aprime` is what proves the route still runs. Suite `906` → **`907` cases, 0 failed**; xUnit `206`; case `values/trait-generic-impl-through-function-application`. The other two sites (`ElaborateImplItem`, `InferExport`) were **not** touched, as the probe's verdict requires: they are reachable but their loss is masked, so a carry there is unverifiable. Two residues recorded rather than chased — this ticket's acceptance text said `ab` answers `3` when it answers `5` (its `impl Size(I64)` body returns 5 and `Some(5)` routes through it), and `a3.fun` (an explicit `Pick[Unit]`) still errors, unmeasured as to whether it is another site or an intended error.
 assignee:
 blocked_by: []
 ---
@@ -51,3 +53,32 @@ exists to prevent. That is now measured rather than assumed.
 
 **Blocked on [`Unify.cs`](struct-former-in-written-parameter-type.md)** — that file is owned by a
 running fork. Queue behind it.
+
+## Landed 2026-09-28 (`51ae973`, `65abcb2`)
+
+Two lines at `Unify.cs:271-272`: both constructions of `BindingTerm.Impl` in `RenameEntry` now
+carry `i.Vars, i.Bounds`. The parent fix made those fields **defaulted**, which is what let this
+sit unnoticed — and what makes the fix this small.
+
+Probe table, re-run by the integrator on the merged tree (`/tmp/probe/*.fun`):
+
+| probe | before | after |
+|---|---|---|
+| `a` | `ELAB missing implementation of \`Size\`` | `VALUE 3` |
+| `ab` | same error | `VALUE 5` (not the `3` this ticket's prose claimed) |
+| `af` | same error | `VALUE 3` |
+| `aprime` — the same route, non-generic | `VALUE 3` | `VALUE 3` |
+| `a2` — top level | `VALUE 3` | `VALUE 3` |
+| `af_direct` — opened directly | `VALUE 3` | `VALUE 3` |
+
+Suite `906` → **`907` cases, 0 failed**; xUnit `206`; the case is
+`values/trait-generic-impl-through-function-application`.
+
+**Two residues, recorded rather than chased:**
+
+1. The acceptance text here said `ab.fun` answers `3`. It answers `5`: that probe's `impl
+   Size(I64)` body returns `5` and its `Some(5)` routes through it. The number in the prose was
+   stale, not the program.
+2. `a3.fun` — an explicit `Pick[Unit]` — still errors. It was not in the acceptance list, and
+   whether it is a third site or an intended error is **unmeasured**. A probe comes before any
+   fix, which is this ticket's own rule.
