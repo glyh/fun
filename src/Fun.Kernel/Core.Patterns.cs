@@ -11,6 +11,32 @@ public abstract partial record CorePattern
     /// <summary>A primitive type head.</summary>
     public sealed record AtomType(AtomTy Ty) : CorePattern;
 
+    /// <summary>
+    /// A pin: the scrutinee must be convertible to <paramref name="Term"/>, a term
+    /// of the match's scope. Its indices are rooted at <paramref name="Width"/>,
+    /// the context width where it was elaborated (see <see cref="NominalHead.HeadWidth"/>),
+    /// so the matcher re-roots it onto the run-time environment.
+    /// </summary>
+    public sealed record Pin(Term Term) : CorePattern
+    {
+        public int Width { get; init; }
+    }
+
+    /// <summary>A function type in a type-case: a <see cref="TypeKey.Pi"/>.</summary>
+    public sealed record Arrow(CorePattern Domain, CorePattern Codomain) : CorePattern;
+
+    /// <summary>The universe in a type-case: a <see cref="TypeKey.U"/>.</summary>
+    public sealed record Universe : CorePattern
+    {
+        public static readonly Universe Instance = new();
+    }
+
+    /// <summary>
+    /// A tuple type pattern in a type-case - <c>(a, b)</c> and <c>Tuple(2, a, b)</c>
+    /// are one form: <see cref="TypeKey.Tuple"/>, one component per item.
+    /// </summary>
+    public sealed record TupleType(EquatableArray<CorePattern> Items) : CorePattern;
+
     /// <summary>A struct type's constructor fields, by label; exactly these unless <paramref name="Partial"/>.</summary>
     public sealed record StructType(EquatableArray<(string Name, CorePattern Pattern)> Fields, bool Partial) : CorePattern;
 
@@ -44,9 +70,11 @@ public abstract partial record CorePattern
     public int Binders() => this switch
     {
         Bind => 1,
-        Wild or Atom or AtomType => 0,
+        Wild or Atom or AtomType or Universe or Pin => 0,
         Or o => o.Left.Binders(),
         Prod p => p.Items.Sum(i => i.Binders()),
+        Arrow a => a.Domain.Binders() + a.Codomain.Binders(),
+        TupleType t => t.Items.Sum(i => i.Binders()),
         Con c => c.Args.Sum(a => a.Binders()),
         Record r => r.Fields.Sum(f => f.Pattern.Binders()),
         StructType s => s.Fields.Sum(f => f.Pattern.Binders()),
@@ -60,9 +88,10 @@ public abstract partial record CorePattern
     /// <summary>Whether matching this pattern needs more than a decision tree can test: a struct type's exact field set, or a nominal's instance.</summary>
     public bool NeedsDirectMatch() => this switch
     {
-        StructType or NominalHead => true,
+        StructType or NominalHead or Pin => true,
         Prod p => p.Items.Any(i => i.NeedsDirectMatch()),
         Or o => o.Left.NeedsDirectMatch() || o.Right.NeedsDirectMatch(),
+        Arrow a => a.Domain.NeedsDirectMatch() || a.Codomain.NeedsDirectMatch(),
         Con c => c.Args.Any(a => a.NeedsDirectMatch()),
         Record r => r.Fields.Any(f => f.Pattern.NeedsDirectMatch()),
         _ => false,
@@ -99,12 +128,21 @@ public abstract partial record Value
     }
 }
 
-/// <summary>A type-case key: a primitive type, or a nominal declaration.</summary>
+/// <summary>A type-case key: a primitive type, a nominal declaration, a function type, the universe, or a tuple type.</summary>
 public abstract record TypeKey
 {
     public sealed record Atom(AtomTy Ty) : TypeKey;
 
     public sealed record Nominal(NominalDecl Decl) : TypeKey;
+
+    /// <summary>A function type, <c>A -&gt; B</c>: always two components.</summary>
+    public sealed record Pi : TypeKey;
+
+    /// <summary>The universe <c>Type</c>: no components.</summary>
+    public sealed record U : TypeKey;
+
+    /// <summary>A tuple type of <paramref name="Arity"/> components.</summary>
+    public sealed record Tuple(int Arity) : TypeKey;
 }
 
 public sealed record TypeCase(TypeKey Key, DecisionTree Tree);

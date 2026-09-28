@@ -139,6 +139,36 @@ diagnostics:
    prefix token**, matching the project's existing decision that structural
    punctuation keeps dedicated tokens rather than joining the operator set.
 
+## Stage 1 — landed 2026-09-27 (`8c7b029`, `e275530`, `21a1f98`; merged as `pi-agent-8f63245a-a2d0-431`)
+
+Suite `876 cases, 0 failed` → `888 cases, 0 failed`; xUnit `188` → `202`; **no existing
+expected value changed** — the additivity proof this stage was designed around. Working:
+`match (v) { Some(^x) => … }` against an outer value (impossible before); `Option(A)` with
+an enclosing `A` and `Option(^A)` both as references; `Option(^z)` against a lowercase
+alias; `I64 -> Bool`; `Type`; `(a, b)` and `Tuple(2, a, b)`. Diagnostics reworded to name
+the offending term: `` `C` is not a type or nominal in scope ``, `` `Some` must name a type
+in a type-case ``, `unexpected terms after the pattern: Bool`.
+
+**Three things stage 1 opened, none of them silent:**
+
+1. **The unreachable-arm check is implemented and unit-tested but NOT wired.** Wiring it as
+   an error turns two *deliberate, cased* behaviours into errors: `values/core-133` —
+   `match (1) { _ => 0, 1 => 1 }`, commented "match first branch wins", expect `0` — and
+   `values/stuck-match-pruned-arm` — "a stuck match whose tree prunes a shadowed arm still
+   reads back: it waits, arm 0 wins", expect `5`. The fork stopped rather than change them.
+   Open: narrow `Covers` so coverage by a *variable or wildcard* is not reported (leaving
+   first-branch-wins) and only a later arm of the **same shape** as an earlier one is; or
+   accept the two changes; or drop the check.
+2. **A dependent Pi's codomain is read at the domain.** `Nbe.Match.cs`: *"A pattern arrow
+   writes no binder, so the codomain is read at the domain"* — a `VPi` occurrence resolves
+   `c.Index == 0 ? pi.Domain : ApplyClosure(…, pi.Domain)`. So `A -> B` against
+   `(x : A) -> B x` instantiates the codomain at the domain rather than keeping `x` rigid.
+   Documented rather than guessed; a decision is owed.
+3. **It is four forms and three keys, not two and two.** `Pin`, `Arrow`, `Universe`,
+   `TupleType` in `Syntax.Pattern`/`CorePattern`, and `TypeKey.Pi` + `TypeKey.U` +
+   `TypeKey.Tuple(arity)` — the last because the plain `Prod` route throws at runtime for a
+   non-tuple scrutinee. Factual correction to the prose above.
+
 ## Stage 2 — the case rule, the trait parameter, the migration (fork 2)
 
 One atomic change: the rule and its call sites cannot land apart, or `main` has

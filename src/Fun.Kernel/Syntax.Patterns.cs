@@ -28,6 +28,23 @@ public abstract partial record Pattern
     public sealed record AtomType(AtomTy Ty) : Pattern;
 
     /// <summary>
+    /// <c>^name</c>: a pin. It names an existing term, which the scrutinee is
+    /// tested against by convertibility. A resolved uppercase reference and a pin
+    /// are the same internal thing; the pin is required where the case rule would
+    /// otherwise read a lowercase name as a binder.
+    /// </summary>
+    public sealed record Pin(Syntax Term) : Pattern;
+
+    /// <summary><c>A -&gt; B</c> in a type-case: a function type, its domain and codomain each a type pattern.</summary>
+    public sealed record Arrow(Pattern Domain, Pattern Codomain) : Pattern;
+
+    /// <summary><c>Type</c> in a type-case: the universe, which is no <see cref="AtomTy"/>.</summary>
+    public sealed record Universe : Pattern
+    {
+        public static readonly Universe Instance = new();
+    }
+
+    /// <summary>
     /// <c>struct { x : p; _ }</c> in a type-case: a struct type whose constructor
     /// fields' types match their patterns. Without <c>_</c> it has exactly these fields.
     /// </summary>

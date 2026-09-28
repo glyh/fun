@@ -287,6 +287,15 @@ public sealed partial class Enforest
                     case TokenKind.Word w when w == TokenKind.Resume: return ParseResume(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Ref: return ParseRef(term.Span, rest);
                     case TokenKind.Word w when w == TokenKind.Deref: return ParseDeref(term.Span, rest);
+                    // `^name` in a type expression names an existing term (a pin is
+                    // surface pattern syntax; here the name already resolves by scope).
+                    case TokenKind.Word w when w == TokenKind.Caret:
+                    {
+                        var after = DropSeparators(rest);
+                        if (after.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident name } pinned })
+                            throw new ExpandException("a pin is written ^name");
+                        return (new Syntax.Var(new Id(name.Name, SourceSpan.Between(term.Span, pinned.Span), pinned.Scope)), after.Tail);
+                    }
                     case TokenKind.Word w:
                         throw new ExpandException($"unsupported Phase 7A keyword: {w.Spelling}");
                     case TokenKind.Operator o:

@@ -98,6 +98,16 @@ public static partial class Nbe
                         case Value.VAtomTy a:
                             tree = typeSwitch.Cases.FirstOrDefault(c => c.Key is TypeKey.Atom k && k.Ty == a.Ty)?.Tree ?? typeSwitch.Default;
                             break;
+                        case Value.VU:
+                            tree = typeSwitch.Cases.FirstOrDefault(c => c.Key is TypeKey.U)?.Tree ?? typeSwitch.Default;
+                            break;
+                        case Value.VPi:
+                            tree = typeSwitch.Cases.FirstOrDefault(c => c.Key is TypeKey.Pi)?.Tree ?? typeSwitch.Default;
+                            break;
+                        case Value.VProdTy prodTy:
+                            tree = typeSwitch.Cases.FirstOrDefault(c => c.Key is TypeKey.Tuple tuple && tuple.Arity == prodTy.Items.Length)?.Tree
+                                ?? typeSwitch.Default;
+                            break;
                         case Value.VNeutral or Value.VVar or Value.VMeta:
                             return new MatchStep.Stuck(ty);
                         default:
@@ -142,6 +152,9 @@ public static partial class Nbe
             Occurrence.Child c => parentValue switch
             {
                 Value.VProd p => new AtValue.Resolved(p.Items[c.Index]),
+                Value.VProdTy p => new AtValue.Resolved(p.Items[c.Index]),
+                // A pattern arrow writes no binder, so the codomain is read at the domain.
+                Value.VPi pi => new AtValue.Resolved(c.Index == 0 ? pi.Domain : ApplyClosure(mc, pi.Codomain, pi.Domain)),
                 var other => StuckOrResolved(other),
             },
             Occurrence.Payload p => parentValue switch

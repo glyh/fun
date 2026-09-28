@@ -35,7 +35,11 @@ public abstract partial record TokenKind
         LBracket = new("["), RBracket = new("]"), LBrace = new("{"), RBrace = new("}"),
         Comma = new(","), Dot = new("."), Colon = new(":"), Eq = new("="),
         Semi = new(";"), Bar = new("|"), ThinArrow = new("->"),
-        DatumComment = new("#_"), Eof = new("EOF");
+        DatumComment = new("#_"), Eof = new("EOF"),
+        // `^` is a dedicated prefix token, never an operator: it pins a name in a
+        // pattern (a pattern-binders-are-lowercase ruling), and structural
+        // punctuation keeps dedicated tokens rather than joining the operator set.
+        Caret = new("^");
 
     /// <summary>The keywords, by spelling. Punctuation is matched by the reader directly.</summary>
     public static readonly ImmutableDictionary<string, Word> Keywords =
