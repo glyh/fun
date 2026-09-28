@@ -37,7 +37,6 @@ pub Syntax = module {
   pub Id = struct {name: String; span: Option(Span); scope: Scopes};
 
   pub PathChoice = struct {opens: List(String); fallback: Option(String)};
-  pub Path = struct {head: Id; members: List(String); head_choice: Option(PathChoice)};
   pub rec AtomVal = enum {
     I64Atom(I64),
     CharAtom(Char),
@@ -52,7 +51,13 @@ pub Syntax = module {
   export Fixity;
   pub rec MacroAnn = enum { AnnExpr, AnnDecl };
   export MacroAnn;
-  pub rec Expr = enum {
+  # `Path` is an `enum` member of the `Expr` group, not a struct outside it, because
+  # its `type_args` are `Expr`s: a struct cannot be mutually recursive with an `enum`
+  # (a rec group holds enums, struct types or functions, never a mix), and the
+  # reflected grammar needs `Path` to carry the types a synonym use supplies.
+  pub rec Path = enum {
+    MkPath(Id, List(String), Option(PathChoice), List(Expr))
+  } and Expr = enum {
     RawVar(Option(Span), Id),
     RawAtom(Option(Span), AtomVal),
     RawSelf(Option(Span)),
@@ -233,7 +238,7 @@ pub Syntax = module {
   pub pat_wild = Pattern.RawPatWild(None);
   pub pat_var = fn(id) { Pattern.RawPatBind(None, id) };
   pub pat_con = fn(name, args) {
-    Pattern.RawPatCon(None, Path{head = name; members = Nil; head_choice = None}, args)
+    Pattern.RawPatCon(None, Path.MkPath(name, Nil, None, Nil), args)
   };
   pub pat_atom = fn(val) { Pattern.RawPatAtom(None, val) };
   pub pat_prod = fn(pats) { Pattern.RawPatProd(None, pats) };
@@ -262,8 +267,8 @@ pub Syntax = module {
   };
   pub mk_id = fn(name, span, scope) { Id{name = name; span = span; scope = scope} };
   pub mk_path_choice = fn(opens, fallback) { PathChoice{opens = opens; fallback = fallback} };
-  pub mk_path = fn(head, members, head_choice) {
-    Path{head = head; members = members; head_choice = head_choice}
+  pub mk_path = fn(head, members, head_choice, type_args) {
+    Path.MkPath(head, members, head_choice, type_args)
   };
   # The compiler's leaf-enum builders, one code per constructor. The codes are the
   # C# enums' own orders (Explicitness: Implicit, Explicit; Fixity: Prefix, Infix;

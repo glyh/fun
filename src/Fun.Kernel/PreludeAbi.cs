@@ -58,6 +58,7 @@ public static class PreludeAbi
             public const string PatField = "PatField";
             public const string Decls = "Decls";
             public const string Id = "Id";
+            public const string Path = "Path";
         }
 
         /// <summary>Resolved at the prelude top level.</summary>
@@ -336,6 +337,12 @@ public static class PreludeAbi
         public static class PatField
         {
             public const string MkPatField = "MkPatField";
+        }
+
+        /// <summary>The <c>Syntax.Path</c> constructors the compiler names.</summary>
+        public static class Path
+        {
+            public const string MkPath = "MkPath";
         }
 
         /// <summary>The <c>Syntax.R</c> constructors the compiler names.</summary>
