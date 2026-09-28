@@ -6,7 +6,10 @@ labels:
 status: open
 assignee:
 blocked_by:
-  - trait-op-takes-innermost-impl.md
+  # trait-op-takes-innermost-impl.md closed 2026-09-27, and
+  # type-case-patterns-cannot-express-impl-heads.md closed the same day as
+  # superseded; both edges were replaced by this one.
+  - pattern-binders-are-lowercase-and-references-are-pinned.md
 ---
 
 # An impl head is a pattern over types
@@ -15,6 +18,58 @@ Split off from [trait-op-takes-innermost-impl](trait-op-takes-innermost-impl.md)
 (2026-09-18). That ticket lands generic impls whose head binds its free names. This
 one is the rest of the idea: the head is a **pattern**, matched by the mechanism the
 language already has, rather than a trait application with variables in it.
+
+## Re-measured 2026-09-27 — the premise, corrected
+
+Probed on the Debug runner while grilling this ticket (everything below is
+measured, not inferred). **Its "one ADT change, touched in six places" estimate is
+wrong in both directions, and its "Not blocking: nothing needs a synonym head yet"
+is the accurate part.**
+
+Already available today, no ADT change: `impl Trait(_)` is a blanket head at any
+depth (`impl Size(Option(_))` served `Option(I64)` *and* `Option(Bool)`, and loses
+to a specific `impl Size(I64)` — by precision, not declaration order); nested and
+aliased heads (`Option(Option(A))`, `Seq = fn(A : Type) { Option(A) }` with
+`impl Size(Seq(A))`); generic heads (`impl Size(Option(A))`, cased
+`trait-generic-impl`).
+
+Premise corrections:
+
+- **`Arg` is one `Syntax`, not `List(Expr)`.** `Binding.Impl(Id? Name, Syntax
+  TraitPath, Syntax Arg, …)` (`Syntax.Traits.cs:36`); reflection already reflects it
+  as a one-element list (`Reflection.cs:454`) and unwraps exactly one (`:978`). The
+  proposed `List(Expr) → List(Pattern)` is a one-slot change.
+- **"`Core_match_compile` has no stuck case" is prototype prose.** The port has
+  `StuckNeutral` (`Nbe.StuckMatch.cs`: *"a match waits as the unknown value's last
+  frame"*). One of the ticket's two cost items is gone.
+- **A head has no implicit width subtyping to lose.** `impl Size(struct { a : I64 })`
+  does not match a use at `struct { a = 1; b = True }` — nor even at
+  `struct { a = 1 }`: `missing implementation`. (The `Matches` doc comment's "width
+  subtyping" concerns struct *modules*, not record types.) Adjacent unknown worth
+  probing before designing on it: `x : struct { a : I64 } = struct { a = 1 }` is
+  refused with `structs with different members`, so the failure may be about struct
+  *member kinds* rather than width.
+- **A name in a head, and what it means, is settled elsewhere** — [A pattern binder
+  is lowercase; naming an existing term takes
+  `^`](pattern-binders-are-lowercase-and-references-are-pinned.md). So this ticket
+  does not need its ADT change to resolve a head.
+
+**What is left is two things:**
+
+1. **An or-pattern in a head** — `impl Size(Option(A) | List(A))` is today
+   `expression has trailing terms`. Undecided: one pattern with alternatives
+   (branches bind the same names; overlapping arms resolved by precision) or an
+   abbreviation for N declarations (independent binders; a duplicate is the cased
+   ambiguity error). The abbreviation half needs no matcher change at all — the
+   enforester splits, and each branch is the expression head it already is.
+2. **A width-tolerant head** — `impl Size(struct { a : I64; _ })` is today
+   `unsupported module item: _`. Now cheap: `StructType` is already a
+   `NeedsDirectMatch` pattern (`Core.Patterns.cs:61`) and any such pattern swaps the
+   whole match to `Sequential` (`Elaborator.Match.cs:71`), so a `struct { …; _ }`
+   head rides machinery that exists. It is also the only form that creates a new
+   *kind* of ambiguity — `struct { a : I64; _ }` and `struct { b : Bool; _ }` both
+   match `struct { a = 1; b = True }` — so it needs rule 3's answer for width, not
+   just the syntax.
 
 ## The idea
 

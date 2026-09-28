@@ -373,6 +373,42 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
 
 ### Frontier (2026-09-26)
 
+**2026-09-27, last thing — the pattern grammar is ruled; 25 open again.** (The
+counts further down are as-of their own timestamps.) A grilling session starting
+from [an impl head is a pattern over types](tickets/pattern-headed-impls.md)
+settled the two rules that grammar needed and filed one ticket to build them:
+[a pattern binder is lowercase; naming an existing term takes
+`^`](tickets/pattern-binders-are-lowercase-and-references-are-pinned.md). Case
+decides a name's role in every **pattern** position — lowercase binds, uppercase
+refers, unresolved uppercase is an error, scope no longer decides; a trait
+declaration takes an explicit lowercase parameter; `^name` pins an existing term
+and is surface-only (internally a reference and a pin are one thing: a term in a
+pattern position, tested by convertibility). One ticket, two ordered stages: the
+**additive** forms (pin, arrows, universes, tuple routing) land first with the
+suite green *unchanged* — that is the proof of additivity — then the rule and its
+call-site migration (44 trait declarations, ~20 head spellings, 1 line in `std/`,
+21 live-doc occurrences; closed tickets stay as the record). It **supersedes** the
+same-day [type-case patterns cannot express what an impl head
+can](tickets/type-case-patterns-cannot-express-impl-heads.md), whose "bug" reading
+was wrong (the refusals *were* the decided rule — `type-case-generic-programming.md:88`
+and `Enforest.Match.cs:118`) and half of whose "missing" forms already worked, and
+it **retires** the "Cost accepted" paragraph of [trait-op-takes-innermost-impl](tickets/trait-op-takes-innermost-impl.md)
+(a typo silently becoming a generic impl). The map's own warning about prose older
+than its commit applies to the paragraphs below: their counts are history, these
+are the state.
+
+**Also re-measured in the same session, and cheaper than they read:**
+[pattern-headed impls](tickets/pattern-headed-impls.md) — its premise is corrected
+on the ticket. `impl Trait(_)` is already a blanket head at any depth, nested and
+aliased heads already work, the port already has the stuck case its prose says is
+missing (`Nbe.StuckMatch.cs`), and a head has no implicit record width to lose.
+What is left there is an or-pattern in a head and a width-tolerant
+`struct { …; _ }` head, both of which ride machinery that exists.
+[An impl declared inside a function does not promote its bound](tickets/impl-in-a-function-does-not-promote.md)
+keeps its reproducer unchanged under the new rule: its head references an enclosing
+binder by an uppercase name, which is exactly what the rule now says such a name
+means.
+
 **2026-09-27, last thing — the library surface is designed; one ticket out of it.**
 [Design the user-facing library surface](tickets/design-std-library-surface.md) was
 grilled to an empty frontier and its answer is recorded (19 decisions: plural
