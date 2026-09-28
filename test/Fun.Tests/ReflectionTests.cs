@@ -44,7 +44,7 @@ public class ReflectionTests
     [InlineData("{ effect E = sig { op : I64 -> I64 }; f : I64 ->{E} I64 = fn(x) { perform E.op(x) }; match (f(1)) { v => v, effect E.op n => resume(n) } }")]
     [InlineData("{ r = ref(1); r <- deref(r); r }")]
     [InlineData("fn(f : I64 ->{_} I64) ~> I64 { f(1) }")]
-    [InlineData("{ trait Size(A) = sig { size : A -> I64 }; impl Size(I64) = module { size = fn(x) { 8 } }; f : [A : Size] -> A -> I64 = fn[A : Type](x) { Size.size(x) }; f(3) }")]
+    [InlineData("{ trait Size(a) = sig { size : a -> I64 }; impl Size(I64) = module { size = fn(x) { 8 } }; f : [A : Size] -> A -> I64 = fn[A : Type](x) { Size.size(x) }; f(3) }")]
     [InlineData("{ P = struct { x : I64 }; fn(t : Type) { match (t) { I64 => 1, struct { x : _; _ } => 2, _ => 3 } } }")]
     [InlineData("{ M = module { pub pattern Two(a, b) = (a, b) }; 1 }")]
     public void AnExpandedProgramRoundTrips(string source)

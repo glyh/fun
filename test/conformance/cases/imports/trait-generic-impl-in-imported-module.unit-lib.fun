@@ -1,3 +1,3 @@
 open (import "std");
-pub trait Size(A) = sig { size : A -> I64 };
-pub M = module { pub impl Size(Option(A)) = module { size = fn(o) { 6 } } };
+pub trait Size(a) = sig { size : a -> I64 };
+pub M = module { pub impl Size(Option(a)) = module { size = fn(o) { 6 } } };

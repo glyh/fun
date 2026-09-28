@@ -5,7 +5,7 @@ namespace Fun.Expand;
 public sealed partial class Enforest
 {
     /// <summary>
-    /// <c>trait Name(A) = sig { op : A -&gt; … }</c> (or <c>= module { op = A -&gt; … }</c>):
+    /// <c>trait Name(a) = sig { op : a -&gt; … }</c> (or <c>= module { op = a -&gt; … }</c>):
     /// its name, its one parameter and its operation types. Null when the
     /// statement is not a trait.
     /// </summary>

@@ -3,7 +3,7 @@ namespace Fun.Kernel;
 public abstract partial record Syntax
 {
     /// <summary>
-    /// <c>trait Eq(A) = sig { eq : A -&gt; A -&gt; Bool }; body</c>: a nominal trait with
+    /// <c>trait Eq(a) = sig { eq : a -&gt; a -&gt; Bool }; body</c>: a nominal trait with
     /// one parameter, whose fields are operation types over it.
     /// </summary>
     public sealed record TraitDef(Id Name, Id Param, EquatableArray<(string Name, Syntax Type)> Fields, Syntax Body, SourceSpan Span)
@@ -25,7 +25,7 @@ public abstract partial record Syntax
 
 public abstract partial record Binding
 {
-    /// <summary><c>[pub] trait Eq(A) = sig { … }</c> as a module item.</summary>
+    /// <summary><c>[pub] trait Eq(a) = sig { … }</c> as a module item.</summary>
     public sealed record Trait(Id Name, Id Param, EquatableArray<(string Name, Syntax Type)> Fields, bool Public) : Binding;
 
     /// <summary>

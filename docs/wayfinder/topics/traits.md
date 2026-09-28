@@ -7,8 +7,8 @@ Add nominal traits for ad-hoc polymorphism. Traits provide named operation sets 
 Target surface:
 
 ```fun
-trait Eq(A) = sig
-  eq : A -> A -> Bool
+trait Eq(a) = sig
+  eq : a -> a -> Bool
 end
 
 impl Eq(I64) = module
@@ -100,7 +100,7 @@ Parser targets:
 
 ```fun
 do
-  trait Eq(A) = sig eq : A -> A -> Bool end
+  trait Eq(a) = sig eq : a -> a -> Bool end
   impl Eq(I64) = module fn eq(x, y) -> eq_i64(x, y) end
   f : [A : Eq] -> A -> A -> Bool = ...
   g : [A : Eq + Jsonable] -> ... = ...
@@ -146,8 +146,8 @@ The exact core encoding can reuse implicit `Pi` initially if that is simpler, pl
 Elaborate:
 
 ```fun
-trait Eq(A) = sig
-  eq : A -> A -> Bool
+trait Eq(a) = sig
+  eq : a -> a -> Bool
 end
 ```
 
@@ -220,10 +220,10 @@ Resolution (decided 2026-09-17, replacing "multiple matching impls: ambiguity er
    alike.
 2. Impl P is **more precise** than impl Q when P's arguments are an instance of Q's:
    Q's own type variables can be filled in to give P's arguments, and not the
-   reverse. `Size(Option(I64))` is more precise than `Size(Option(A))`.
+   reverse. `Size(Option(I64))` is more precise than `Size(Option(a))`.
 3. The candidate more precise than every other is chosen. Zero candidates is an
    error; candidates with no unique most precise one
-   (`impl Pair(A, I64)` and `impl Pair(I64, B)` at `Pair(I64, I64)`) are an ambiguity
+   (`impl Pair(a, I64)` and `impl Pair(I64, b)` at `Pair(I64, I64)`) are an ambiguity
    error; two identical impls stay an ambiguity error.
 4. While the use's argument types are not yet known (unsolved metas), the choice
    waits; if they are still unknown when elaboration of the unit ends, it is an

@@ -1,1 +1,1 @@
-{ trait Bad(A) = sig { f : A -> A; f : A -> A }; Bad }
+{ trait Bad(a) = sig { f : a -> a; f : a -> a }; Bad }
