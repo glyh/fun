@@ -34,20 +34,27 @@ public static partial class Nbe
             // compares two such calls by their arguments before unfolding either.
             // A macro application runs its body like a program: its result is read at once.
             case Value.VFix fix when fix.Member.Pure && mc.Budget.Checking && mc.Budget.Application is null:
-                result = new Value.VGlued(fix, arg, new Lazy<Value>(() => UnfoldCall(mc, fix, arg)));
+                result = Glue(mc, fix, [arg]);
                 return null;
 
             case Value.VFix fix:
-                return Unfold(mc, stack, fix, arg);
+                return Unfold(mc, stack, fix, [arg]);
 
             case Value.VCont cont:
                 result = Resume(stack, cont, arg);
                 return null;
 
+            // The deferred call applied again stays deferred under the same conditions
+            // it was glued under: supplying an argument is not an inspection, so the
+            // whole spine reads back as one call and only Force/NeedsShape runs it.
+            case Value.VGlued glued when glued.Fix.Member.Pure && mc.Budget.Checking && mc.Budget.Application is null:
+                result = Glue(mc, glued.Fix, [.. glued.Args, arg]);
+                return null;
+
             case Value.VGlued glued:
                 // The deferred call is the function: unfold it, then apply its result.
                 stack.Push(new Kont.ApplyArg(arg, Charged: false));
-                return Unfold(mc, stack, glued.Fix, glued.Arg);
+                return Unfold(mc, stack, glued.Fix, glued.Args);
 
             default:
                 result = ApplyStuck(mc, fn, arg);
@@ -55,20 +62,26 @@ public static partial class Nbe
         }
     }
 
-    /// <summary>A fixpoint call: one charge, then the member's body applied to the argument.</summary>
-    private static (Environment, Term) Unfold(MetaContext mc, Stack<Kont> stack, Value.VFix fix, Value arg)
+    /// <summary>A deferred call: one value per argument, unfolded as one application.</summary>
+    private static Value.VGlued Glue(MetaContext mc, Value.VFix fix, EquatableArray<Value> args) =>
+        new(fix, args, new Lazy<Value>(() => UnfoldCall(mc, fix, args)));
+
+    /// <summary>A fixpoint call: one charge, then the member's body applied to the spine.</summary>
+    private static (Environment, Term) Unfold(MetaContext mc, Stack<Kont> stack, Value.VFix fix, EquatableArray<Value> args)
     {
         mc.Budget.Spend(fix.Member.Name, isFixpoint: true);
-        stack.Push(new Kont.ApplyArg(arg, Charged: true));
+        for (var i = args.Length - 1; i >= 1; i--)
+            stack.Push(new Kont.ApplyArg(args[i], Charged: false));
+        stack.Push(new Kont.ApplyArg(args[0], Charged: true));
         return (fix.BodyEnvironment(), fix.Member.Body);
     }
 
     /// <summary>A deferred call, unfolded when something first inspects it.</summary>
-    private static Value UnfoldCall(MetaContext mc, Value.VFix fix, Value arg) =>
+    private static Value UnfoldCall(MetaContext mc, Value.VFix fix, EquatableArray<Value> args) =>
         mc.Budget.Request("an evaluation", () =>
         {
             var stack = new Stack<Kont>();
-            var (env, term) = Unfold(mc, stack, fix, arg);
+            var (env, term) = Unfold(mc, stack, fix, args);
             return Machine(mc, env, term, stack);
         });
 

@@ -39,9 +39,11 @@ public abstract partial record Value
     }
 
     /// <summary>
-    /// A known-pure fixpoint applied to <paramref name="Arg"/> while type checking,
+    /// A known-pure fixpoint applied to <see cref="Args"/> while type checking,
     /// unfolded only when something inspects it: conversion compares two calls of
-    /// the same fixpoint by their arguments first (lazy delta).
+    /// the same fixpoint by their arguments first (lazy delta). Applying it to a
+    /// further argument extends <see cref="Args"/> rather than unfolding --
+    /// supplying an argument is not an inspection.
     /// </summary>
-    public sealed record VGlued(VFix Fix, Value Arg, Lazy<Value> Unfolded) : Value;
+    public sealed record VGlued(VFix Fix, EquatableArray<Value> Args, Lazy<Value> Unfolded) : Value;
 }

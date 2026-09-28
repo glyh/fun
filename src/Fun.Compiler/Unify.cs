@@ -169,7 +169,7 @@ public static partial class Unify
         // would solve the solution around a different value (the prototype's rename
         // keeps VGlued too).
         if (value is Value.VGlued deferred)
-            return new Term.Ap(Go(deferred.Fix), Explicitness.Explicit, Go(deferred.Arg));
+            return Spine(Go(deferred.Fix), deferred.Args);
 
         return Nbe.Force(mc, value) switch
         {
@@ -199,7 +199,7 @@ public static partial class Unify
             Value.VRecursiveOccurrence o => new Term.RecursiveOccurrence(o.Decl, [.. o.Captures.Select(Go)], [.. o.Args.Select(Go)]),
             Value.VCon c => c.Args.Aggregate((Term)new Term.Dot(Go(c.Nominal), c.Name), (acc, a) => new Term.Ap(acc, Explicitness.Explicit, Go(a))),
             Value.VFix fix => RenameFix(mc, id, ren, fix),
-            Value.VGlued glued => new Term.Ap(Go(glued.Fix), Explicitness.Explicit, Go(glued.Arg)),
+            Value.VGlued glued => Spine(Go(glued.Fix), glued.Args),
             // The prototype refuses to quote these during unification too (CannotUnify).
             Value.VRef or Value.VCont or Value.VPatternSynonym =>
                 throw new UnifyException($"cannot quote {value.GetType().Name} during unification"),
