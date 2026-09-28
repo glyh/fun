@@ -162,19 +162,35 @@ in a type-case ``, `unexpected terms after the pattern: Bool`.
      reads back: it waits, arm 0 wins" — its *subject* disappears, because the pruning it
      exercises becomes illegal. The stuck readback needs another home (a legal stuck match
      with no pruned arm), unless another case already covers it.
-2. **A dependent Pi's codomain is read at the domain — measured 2026-09-27, no defect found.**
-   `Nbe.Match.cs`: *"A pattern arrow writes no binder, so the codomain is read at the
-   domain"* — a `VPi` occurrence resolves `c.Index == 0 ? pi.Domain : ApplyClosure(…,
-   pi.Domain)`. So a pattern `a -> b` binds `a` to the Pi's **domain** and `b` to the
-   codomain **instantiated at that domain** — the family's instance at the domain, not the
-   family itself. Measured: `I64 -> Bool` gives `a := I64`, `b := Bool` (the non-dependent
-   case, and the common one); `[k : Type] -> k -> k` gives `a := Type`, `b := Type -> Type`;
-   `(k : Type) -> List(k)` gives `a := Type`, `b := List(Type)`. A *term*-indexed family is
-   unreachable anyway — `(n : I64) -> List(n)` as a scrutinee is `cannot unify
-   VAtomTy(I64) with VU` — so the reachable case is type-indexed, where instantiating at the
-   domain yields a legitimate instance. No soundness question, deterministic; the alternative
-   (bind the family and keep the binder rigid) would leave `b` holding a closure that no
-   later pattern could inspect.
+2. **A dependent Pi's codomain read at the domain — measured, then restricted (decided
+   2026-09-27, user: non-dependent arrows only, "for now").** What the arrow pattern did:
+   `Nbe.Match.cs` resolves a `VPi` occurrence as `c.Index == 0 ? pi.Domain :
+   ApplyClosure(…, pi.Domain)`, so `a -> b` bound `a` to the Pi's domain and `b` to the
+   codomain **instantiated at that domain** — one instance of the family, handed over as if
+   it were the result type. Measured: `I64 -> Bool` → `(I64, Bool)`; `I64 -> I64 -> Bool` →
+   `(I64, I64 -> Bool)`; `((k : Type) -> List(k)) -> Bool` → matches (a dependent *domain*,
+   constant codomain); `(k : Type) -> List(k)` → `(Type, List(Type))`; `[k : Type] -> k -> k`
+   → `(Type, Type -> Type)`; `[k : Type] -> Bool` → `(Type, Bool)`. The middle pair is the
+   trap.
+
+   **Decision: match only a non-dependent codomain.** Implementation: apply the codomain
+   closure to a fresh **variable** (not a meta — no solving, nothing to restore) and
+   occurs-check the result; depends on it ⇒ the arm does not match (falls through to a later
+   arm, and there is no error, because the scrutinee is a runtime value).
+
+   | scrutinee | before | after |
+   |---|---|---|
+   | `I64 -> Bool` | ✅ `(I64, Bool)` | ✅ same |
+   | `I64 -> I64 -> Bool` | ✅ `(I64, I64 -> Bool)` | ✅ same |
+   | `((k : Type) -> List(k)) -> Bool` | ✅ matches | ✅ same |
+   | `[k : Type] -> Bool` (implicit, constant codomain) | ✅ `(Type, Bool)` | ✅ same — the restriction is about *dependence*, not implicitness |
+   | `(k : Type) -> List(k)` | ✅ `(Type, List(Type))` | ❌ no match |
+   | `[k : Type] -> k -> k` | ✅ `(Type, Type -> Type)` | ❌ no match |
+
+   So `a -> b` now means *a plain function type*: an arrow whose result does not vary with
+   its argument. A term-indexed family was already unreachable as a scrutinee
+   (`(n : I64) -> List(n)` is `cannot unify VAtomTy(I64) with VU`). Binding the *family*
+   rather than one instance is the follow-up this defers, and it needs its own pattern form.
 3. **It is four forms and three keys, not two and two.** `Pin`, `Arrow`, `Universe`,
    `TupleType` in `Syntax.Pattern`/`CorePattern`, and `TypeKey.Pi` + `TypeKey.U` +
    `TypeKey.Tuple(arity)` — the last because the plain `Prod` route throws at runtime for a
