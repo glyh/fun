@@ -69,6 +69,11 @@ Premise corrections:
    text once per alternative under *different* binders — the head-shaped version
    of the site-adapts-behind-your-back mechanism this project deleted from the
    macro system (`macro-owns-its-output`'s ruling that `Syntax.publish` goes).
+   **Held, not built (user, 2026-09-27)** — no call site needs it, and unlike the
+   pin it adds no capability: a macro can emit `Option(a)` and `List(a)` as two
+   declarations with the same body. Build it when a call site appears, which is
+   the instruction this ticket already carried ("drive this from a real call
+   site").
 2. **A width-tolerant head** — `impl Size(struct { a : I64; _ })` is today
    `unsupported module item: _`. Now cheap: `StructType` is already a
    `NeedsDirectMatch` pattern (`Core.Patterns.cs:61`) and any such pattern swaps the
