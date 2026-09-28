@@ -94,3 +94,25 @@ independently; a green run there would have been luck, not soundness.
 the uppercase reproducer does — if it still reports `missing implementation`, that message is
 misleading (the evidence was never in scope) and the residue is a clearer diagnostic, recorded
 rather than chased.
+
+## Landed 2026-09-28 (`44583e0`, merged as `impl-in-a-function-promotes-its-bound`)
+
+Shape "b" only, as scoped. `BindHeadNames` now returns the head's variable **values** and
+`Contribute` forces each after the head is elaborated, so the impl's variable is the meta
+inference actually left — inside a function that is a constructor's parameter meta whose solution
+is a lambda over the enclosing bound entries, which `ResolveVar` could not follow. **`ResolveVar`
+is deleted**, which is what the fix bought: one walker fewer rather than one more.
+
+Probes: the lowercase shape with an unused body went from `cannot choose an implementation of
+Size: its argument type is never known` to `VALUE 1`; used at run time from `missing
+implementation of Size` to `VALUE 7` (new case `values/trait-local-impl-bound-in-body`); the
+top-level case unchanged at `VALUE 1`. Suite `905` → **`906` cases, 0 failed**; xUnit `206`.
+
+**The residue, re-measured by the integrator on the merged tree.** The fork measured it on a base
+that predates the reflection fix, where it failed with the reflection refusal; on today's tree
+the ticket's **uppercase** reproducer (`impl Size(List(B))`, `B` the enclosing binder) still
+fails, now with `ELAB missing implementation of \`Size\``, while its control answers `VALUE 1`.
+That is what the ruling predicts — the demand is on a rigid `B` and nothing in the enclosing scope
+supplies `Size(B)`, so the impl cannot carry it — so the only thing still wrong is the **message**:
+it reports a missing implementation without saying the evidence was never in scope where the impl
+was written. **Recorded, not chased.**
