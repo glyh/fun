@@ -268,8 +268,8 @@ public static partial class Unify
     {
         ModuleEntry.Field f => new BindingTerm.Let(f.Name, f.Kind, Rename(mc, id, ren, f.Value)),
         ModuleEntry.Impl i => partial
-            ? new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.DictType), Value.VU.Instance)
-            : new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.Value), i.DictType),
+            ? new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.DictType), Value.VU.Instance, i.Vars, i.Bounds)
+            : new BindingTerm.Impl(i.Name, i.Kind, Rename(mc, id, ren, i.Value), i.DictType, i.Vars, i.Bounds),
         _ => throw new InvalidOperationException($"unhandled module entry {entry.GetType().Name}"),
     };
 
