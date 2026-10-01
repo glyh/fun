@@ -226,3 +226,55 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
 3. `Opened` vs `ConstructorEntries` are still rewritten together; which needs which is not
    isolated (probably both — patterns resolve through `ConstructorEntries`).
 4. The mention index stays deferred: no measurement asks for it.
+
+## Ablation (fork, 2026-10-01) — every channel is pinned; `Opened` and `ConstructorEntries` are distinct paths (closes item 3)
+
+Method: for each of the seven channels in `RefineContext` (`src/Fun.Compiler/Elaborator.Patterns.cs`),
+replace that channel's rewrite with a pass-through of the untouched channel (one line per channel;
+the `ConstructorEntries` and `Evidence` blocks replaced whole — "skip that channel", the smaller
+honest edit), rebuild, run the full suite, record failures, revert. `git diff` empty after every
+run; nothing semantic is committed. Baseline and final: **954 cases, 0 failed** (xUnit 208/208),
+same run in each ablation's own build.
+
+| Channel | Ablating edit (in `RefineContext`) | Cases that failed | Verdict |
+|---|---|---|---|
+| `Names` | `Names = ctx.Names` | 11: `core-072`–`core-077`, `type-case-{refines-variable, alias-scrutinee, constructor-entries, constructor-entries-pattern, evidence}` | pinned (heavily) |
+| `SelfEntry` | `SelfEntry = ctx.SelfEntry` | 1: `type-case-self-methods` | pinned |
+| `ResumeEntry` | `ResumeEntry = ctx.ResumeEntry` | 1: `type-case-resume-entry` | pinned |
+| `Opened` | `Opened = ctx.Opened` | 2: `type-case-opened-entry`, `type-case-constructor-entries` | pinned |
+| `SelfMethods` | `SelfMethods = ctx.SelfMethods` | 1: `type-case-self-methods` | pinned |
+| `ConstructorEntries` | `ConstructorEntries = ctx.ConstructorEntries` | 1: `type-case-constructor-entries-pattern` | pinned |
+| `Evidence` | `Evidence = ctx.Evidence` | 1: `type-case-evidence` | pinned |
+
+Every ablation fails at least one case: **no channel is uncovered, no new cases needed.** The
+seven cases added by `63df1df` all earn their place, and `Names` is pinned ten times over beyond
+them.
+
+**Item 3 answered: `Opened` and `ConstructorEntries` are not redundant, and the two existing
+cases distinguish them.** `OpenNominal` (`Elaborator.Enum.cs:183,188`) writes each opened
+constructor into *both* channels, but the two consumers read different halves:
+
+- A **term** use (`Some2(x)`) resolves the name to its entry and reads the entry's *type* — the
+  `Opened` rewrite. Ablating `Opened` flips `type-case-constructor-entries` (and
+  `type-case-opened-entry`); ablating `ConstructorEntries` does not touch it.
+- A **pattern** head (`Some2(n)`) resolves through `LocateChoice` to the entry's *index* only —
+  which `Refined` never changes (it rewrites `Type`, not `Level`) — and takes its binder types
+  from `ConstructorEntries.Type` via `Instantiate` (`Elaborator.Enum.cs:229–233`). Ablating
+  `ConstructorEntries` flips `type-case-constructor-entries-pattern`; ablating `Opened` does not.
+
+So the ticket's guess is right that patterns resolve through `ConstructorEntries`, and wrong that
+the two might be one path: term uses pin `Opened`, patterns pin `ConstructorEntries`, and the
+distinguishing programs are the two cases themselves (`type-case-constructor-entries.fun` expect
+`1`, `type-case-constructor-entries-pattern.fun` expect `8`) — each flips under exactly one
+ablation, in opposite directions.
+
+**Observations, not chased:** one case can pin two channels — `type-case-self-methods` fails under
+both the `SelfEntry` and the `SelfMethods` ablation (mirror-image mismatches: `VVar` vs
+`VAtomTy(I64)` and back). Whether one of those two subsumes the other was not isolated; a probe
+would need a method whose type mentions `T` while `self`'s entry does not, which the enclosing
+struct former may reject (the same shape the recon's first `SelfMethods` probe hit). Every
+channel is already pinned, so nothing rides on it. `type-case-evidence` likewise fails under both
+`Names` (its `x : A`) and `Evidence` — consistent, not an overlap of channels. No case failed
+under an ablation it had no business depending on; nothing looked wrong with the `63df1df` fix.
+
+No probe programs were written and no conformance cases added — the ablation exposed no gap.
