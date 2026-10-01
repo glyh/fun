@@ -199,8 +199,16 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
 `d.fun` and `e.fun` still fail with the same mismatch — untouched, no cases, as specified.
 
 **Still open on this ticket — not code:**
-1. The `d`/`e` ruling (branch-local types see the matched variable as the matched head?) —
-   grilling, owed to the user. Both reproducers, preserved here because `/tmp` is ephemeral:
+1. ~~The `d`/`e` ruling (branch-local types see the matched variable as the matched head?)~~ —
+   **decided 2026-10-01: yes, they do.** A type written inside an `I64` branch reads the matched head,
+   so both reproducers return `8`. The permission it rests on is
+   `type-case-generic-programming.md:13` ("the checker "may" treat the matched type variable as
+   equal to the matched primitive type"), which granted the *choice* rather than making it. **The
+   consequence is implementation, not semantics:** `T`'s *value* slot must refine, which is exactly
+   what the ticket measured as breaking `core-072`–`077` ("a meta's spine must be distinct
+   variables") — so that constraint has to be understood and reworked before this ruling can be
+   implemented, and it is a new ticket rather than part of this one. The reproducers stay here
+   because `/tmp` is ephemeral:
 
    ```fun
    // d.fun — y : T written inside the branch
@@ -218,9 +226,9 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
    ```
 
    Both fail `ELAB type mismatch: cannot unify VVar with VAtomTy(I64)` on `main` after the fix
-   (expected `8`). Replacing `T`'s value slot fixes `d` but breaks `core-072`–`077` ("a meta's
-   spine must be distinct variables"); `e` fails either way. `type-case-generic-programming.md:88`
-   grants permission ("may treat the matched type variable as equal"), not a decision.
+   (expected `8` in both cases once the ruling above is implemented). Replacing `T`'s value slot
+   fixes `d` but breaks `core-072`–`077` ("a meta's spine must be distinct variables"); `e` fails
+   either way, under the same ruling.
 2. Whether rewriting `Evidence` is the *right* mechanism versus resolving bounds differently —
    green suite only shows it works.
 3. ~~`Opened` vs `ConstructorEntries` are still rewritten together; which needs which is not
