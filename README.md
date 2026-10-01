@@ -18,8 +18,9 @@ mutable references, and a hygienic enforestation-based macro system.
 dotnet build                                  # the compiler
 dotnet test test/Fun.Tests                    # xUnit: internals (shapes, unifier, machine, budget)
 dotnet run --project test/Fun.Conformance     # the shared language suite
-dotnet run --project src/Fun.Cli              # REPL
 ```
+
+`src/Fun.Cli` is a stub (no REPL yet); run a single program through the suite instead.
 
 ## Design philosophy
 

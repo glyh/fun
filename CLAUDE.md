@@ -22,8 +22,10 @@ Design philosophy: **Consistency > Flexibility > Correctness** — one construct
 dotnet build                                         # everything
 dotnet test test/Fun.Tests                           # xUnit (internals)
 dotnet run --project test/Fun.Conformance            # the shared language suite
-dotnet run --project src/Fun.Cli                     # REPL
 ```
+
+There is **no REPL**: `src/Fun.Cli` is a stub that prints `fun: the .NET port has no entry
+point yet` and exits 1. To run one program, use the suite's single-file mode (below).
 
 A single conformance program, the way the suite judges it:
 

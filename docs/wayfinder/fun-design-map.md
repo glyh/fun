@@ -222,9 +222,29 @@ as the frontier reaches them.
   pre-rewrite/​post-rewrite split that framed this is gone with the prototype: there
   is one implementation again, so the boundary is now "what a reaching test needs"
   vs "broad polish once the surface is stable".
-  Concrete input: elaborator errors carry **no source location at all**. `Elab_error`
+  Concrete input: ~~elaborator errors carry **no source location at all**. `Elab_error`
   has no span fields. Since delete-surface-ir the elaborator reads `Syntax.t`, so
-  every form it sees has a span; attaching them to errors is the remaining work.
+  every form it sees has a span; attaching them to errors is the remaining work.~~
+  **Re-measured 2026-10-01: that premise is wrong on all three counts.** (1) An elaborator
+  error *does* carry a position on the path that reaches it — `Budget._site`
+  (`Budget.cs:23`) is set by `Elaborator.At` (`Elaborator.cs:180`), `Budget.Where()`
+  (`Budget.cs:50`) prints it, and `BudgetTests.cs:56` asserts the text. (2) The prototype's
+  `elab_error` **did** carry `site : Eval_budget.site option` on exactly the two variants the
+  port carries one on (`EvaluationBudgetExceeded`, `EvaluationFailed`), and `Elaborator.cs:184`
+  reproduces its message shape verbatim — no regression. (3) "Every form it sees has a span"
+  is false: `Pattern` (all fourteen variants, `Syntax.Match.cs:21`) and `EffectRow`
+  (`Syntax.cs:24`) have none. The 130 `new FunException(` sites bucket 73 / 35 / 22
+  (span already in scope / must be threaded from a caller / no source form behind it).
+  **Sharpen to a ticket when a consumer needs a position** — today none does: the CLI is a
+  stub, the runner prints no message for `error` cases, and `--file` is the only path a suffix
+  would even show. When someone reaches for it the cheap move is **one line** (append
+  `Budget.Where()` to the catch already at `Elaborator.cs:183`) — and its real cost is not the
+  line but the nine xUnit assertions that compare an exact `Message` (`PrimitivesTests.cs:46,69,89`,
+  `EffectTests.cs:50`, `PreludeTests.cs:40`, `InterleavingTests.cs:19`, `RecTests.cs:57`,
+  `ReaderTests.cs:65`, `ExpandTests.cs:104`), each of which would have to grow the suffix — not a
+  field on the exception;
+  `Fun.Expand`'s 159 message-only exception sites are the cheaper population if expansion-side
+  positions are ever wanted, and `Driver.cs:38-46` is the funnel that discards those.
 - ~~**`Self` names two things**~~ — decided 2026-09-15: `Self` is the struct being defined; the recursion placeholder is an unwritable "recursive occurrence" (see mutually-recursive-record-types). — the record-recursion placeholder
   (`VSelfType args`, set by record declarations) and the partial struct type seen
   by struct method bodies (`elab_infer.ml`, `Struct` case). Both share
