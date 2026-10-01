@@ -53,21 +53,7 @@ static string? RunCase(string path)
     if (!elaborating.Wait(elabTimeout))
         return $"elaboration did not finish within {elabTimeout.TotalSeconds}s";
     var (elaboratedOrNull, elabError) = elaborating.Result;
-    if (elabError is NotImplementedException npe)
-    {
-        // A path still to be ported fails the case; it never passes one expecting `error`.
-        return npe.Message;
-    }
-    if (elabError is FunException fe)
-        return expect == "error" ? null : $"elaboration failed: {fe.Message}";
-    if (elabError is not null)
-    {
-        // An invariant failure reports as this case's failure, not as a crash of the run.
-        // One reachable path the port believes is unreachable must not hide the other
-        // results -- and it still never passes a case expecting `error`.
-        if (elabError is not (InvalidOperationException or IndexOutOfRangeException or ArgumentException or UnifyException)) throw elabError;
-        return $"invariant failure ({elabError.GetType().Name}): {elabError.Message}";
-    }
+    if (elabError is not null) return CaseJudge.Failure(elabError, expect, "elaboration");
     var elaborated = elaboratedOrNull!;
 
     if (expect == "ok") return null;
@@ -80,22 +66,16 @@ static string? RunCase(string path)
     var run = Task.Run(() =>
     {
         try { return (Value: (string?)Driver.Describe(Driver.Run(elaborated)), Error: (Exception?)null); }
-        catch (Exception x) when (x is FunException or NotImplementedException
-                                      or InvalidOperationException or UnifyException) { return (null, x); }
+        // Every exception becomes this case's result, classified below. A filtered
+        // catch here would fault the task and let `run.Wait` throw AggregateException:
+        // an unhandled crash taking the whole run, and every other case's result, with it.
+        catch (Exception x) { return (Value: (string?)null, Error: x); }
     });
     if (!run.Wait(timeout)) return $"did not finish within {timeout.TotalSeconds}s";
     var (got, error) = run.Result;
-
-    return (expect, error) switch
-    {
-        (_, NotImplementedException e) => e.Message,
-        (_, InvalidOperationException e) => $"invariant failure ({e.GetType().Name}): {e.Message}",
-        (_, UnifyException e) => $"invariant failure ({e.GetType().Name}): {e.Message}",
-        ("error", FunException) => null,
-        ("error", _) => "expected an error",
-        (_, FunException e) => $"evaluation failed: {e.Message}",
-        _ => got == expect ? null : $"expected {expect}, got {got}",
-    };
+    if (error is not null) return CaseJudge.Failure(error, expect, "evaluation");
+    // A case expecting `error` is never satisfied by a value.
+    return expect == "error" ? "expected an error" : got == expect ? null : $"expected {expect}, got {got}";
 }
 
 // A case's extra compilation units: <name>.unit-<unit>.fun beside it, each
@@ -206,3 +186,24 @@ static void PrintFile(string tag, string msg) =>
     Console.WriteLine(msg.Length == 0 ? tag : $"{tag} {OneLine(msg)}");
 
 static string OneLine(string s) => s.Replace('\r', ' ').Replace('\n', ' ');
+
+// The one honest classification of the exception a case threw, shared by the
+// elaboration and evaluation paths (their hand-kept lists had already drifted).
+// A language error judges against `error`; a path still to be ported always
+// fails; a known invariant failure fails as such. Anything else is a hard
+// failure naming its type and message: an engine invariant a mutated or
+// regressed engine broke. It must not abort the run -- the other cases' results
+// are the sweep's data -- and it must never pass any case, least of all one
+// expecting `error`. `null` passes the case.
+public static class CaseJudge
+{
+    public static string? Failure(Exception e, string expect, string phase) => e switch
+    {
+        NotImplementedException x => x.Message,
+        FunException x => expect == "error" ? null : $"{phase} failed: {x.Message}",
+        Exception x when x is InvalidOperationException or IndexOutOfRangeException
+            or ArgumentException or UnifyException =>
+            $"invariant failure ({x.GetType().Name}): {x.Message}",
+        _ => $"hard failure ({e.GetType().Name}): {e.Message}",
+    };
+}
