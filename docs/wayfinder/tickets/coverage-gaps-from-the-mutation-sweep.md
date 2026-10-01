@@ -144,3 +144,28 @@ Rows **not** written, and why:
 4. **`expander-roles-attaches` (`Expander.Roles.cs:46`) — two readings, neither confirmed at cutoff.** (a) Disabling the exemption itself trips the *prelude*: `std/lib.fun:41` attaches fixity-only roles (`==` …) to values, so **every** program dies with `` `==` is both a syntactic role and a value binder where both are visible `` — the sweep's zero-catch claim is impossible for this reading, so the sweep's mutation cannot have been it. (b) Dropping the `attaches &&` conjunct (so the refusal never fires over a value) is the reading a case could pin specifically; `elaborate/role-conflicts-with-value-binder.fun` was located right at cutoff and likely already pins that refusal — verify it under reading (b) before writing anything.
 
 Counts: suite `954 cases, 0 failed` measured before, `958 cases, 0 failed` after the four cases (clean-tree run; one intermediate run was against a stale mutated DLL and is discarded); xUnit not re-run at fork cutoff.
+
+### Integrator's verification (2026-10-01, merged `79ee1f1`)
+
+Re-measured on `main` rather than taken from the table above:
+
+- baseline `958 cases, 0 failed` exit 0; `dotnet test test/Fun.Tests` → **209/209**; after both
+  mutations were reverted, the same `958 cases, 0 failed`, tree clean.
+- `Elaborator.Export.cs:24`, `members.Last` → `members.First`: build exit 0 →
+  `values/export-last-member.fun` prints `ELAB applying non-function` → **`958 cases, 1 failed`**,
+  exit 1, and that case **alone**.
+- `Elaborator.Patterns.cs:466`, the arity check neutralised by appending `&& false`: build exit 0,
+  zero `error CS` → `ref-tuple-arity` prints **`VALUE 0`** → **`958 cases, 1 failed`**, that case
+  alone.
+- Under each mutation the *other* three cases kept their own refusals, so the four pin four
+  distinct guards rather than one guard four times.
+
+**A note on how a wrong "unflippable" verdict gets made.** My first attempt at the tuple row
+replaced the `if (expected is int n && …)` condition with `false`, which put `n` out of scope:
+`dotnet build` exited **1**, `dotnet run` printed "The build failed", and the run measured nothing.
+The honest verdict from that run would have been "the guard cannot be flipped" — the same shape as
+the discarded stale-DLL run above. Any ablation must print its build's exit code *before* its
+observation counts.
+
+Still open here: rows 2–4 above (their cases are the next thing to write), and row 1 stays closed as
+unflippable with the two probes recorded.
