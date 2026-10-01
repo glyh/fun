@@ -167,5 +167,56 @@ The honest verdict from that run would have been "the guard cannot be flipped" �
 the discarded stale-DLL run above. Any ablation must print its build's exit code *before* its
 observation counts.
 
-Still open here: rows 2–4 above (their cases are the next thing to write), and row 1 stays closed as
-unflippable with the two probes recorded.
+Rows 2–4 above were closed by a second pass on the same day — see
+[the section below](#the-four-rows-left-by-the-2026-10-01-fork--closed-2026-10-01-fork-wright-second-pass) —
+and row 1 stays closed as unflippable with the two probes recorded.
+
+## The four rows left by the 2026-10-01 fork — closed, 2026-10-01 (fork `wright`, second pass)
+
+Three cases landed, each proven the same way as the four above (named guard neutralised, `dotnet build`
+seen succeed, single-file run showing the flip, revert, rebuild). The branch touches no `src/` file.
+
+| case | program (abridged) | `.expect` | guard | the flip |
+|---|---|---|---|---|
+| `values/ref-nbe-continuation-used` | `match (perform Ask.ask(1)) { n => n, effect Ask.ask k => { resume(1); resume(2) } }` | `error` | `Nbe.Effects.cs:123` (`if (cont.Continuation.Used)`) | `EVAL continuation already used` → `VALUE 2` |
+| `macros/syntaxmap-operator-scope` | macro emits `quote { infix (+++) (x, y) { x }; pub y = 1 +++ 2 }` as one `List(Decl)`, splice used as `M.y` | `1` | `Syntax.Map.cs:168` (`Operator = m.Id(u.Operator)`) | `VALUE 1` → `` ELAB `+++` is an operator macro with no macro of its name `` |
+| `elaborate/expander-roles-attaches` | `{ answer = 5; syntax answer { answer => 42 }; answer }` (the twin case's two decls swapped) | `error` | `Expander.Roles.cs:46` (`attaches &&` conjunct dropped) | `…is both a syntactic role and a value binder…` → `VALUE 42` |
+
+Row by row:
+
+1. **`ref-nbe-continuation-used` — answered against the reachable sibling.** The sweep's *named* guard
+   `Nbe.cs:586` (`cannot quote continuation`) stays recorded **unreachable** on the previous fork's
+   evidence (its probes, and the code's own comment "no probe read one back"); this fork did not re-probe
+   it. The case pins the reachable one-shot refusal `Nbe.Effects.cs:123`, proven by folding its `if` to
+   `false`. The row is closed: the mechanism has one case on the guard that can actually fire.
+2. **`syntaxmap-operator-scope` — landed, but not in the shape the previous fork designed.** The designed
+   template-rule probe (`quote { infix (+++) ($a, $b) { $a + $b }; pub y = 1 +++ 2 }`) is **blocked at
+   template read**: `$a` lands in binder *and* expression position — `the quote hole $a stands in
+   positions of different kinds` — so a value-computing operator rule (whose operands must be `$`-spelled)
+   cannot be quoted at all. Two more dead ends before the working shape: plain-id operands
+   (`(x, y) { x + y }`) make the rule an *operator macro* whose body must return syntax
+   (`macro +++ did not return syntax` when it returns a value), and a constant body
+   (`($a, $b) { 42 }`) dies `unbound variable: a`. The shape that quotes cleanly is the operator macro
+   returning a syntax argument (`(x, y) { x }`), infix decl and use in one `List(Decl)` quote — the case
+   above. Two near-misses worth knowing: the same quote with a broken body flips only *message-to-message*
+   (`macro +++ did not return syntax` → `` operator macro with no macro of its name ``) — both `error` at
+   conformance granularity, so unflippable there; and a *rule-replacement* probe (template `$x +++ $x`
+   defined under `+++ = -`, used under `+++ = +`) does **not** flip under the mutation at all (stays
+   `VALUE 0` both ways) — that reacher of line 168 is unobservable through a value.
+3. **`expander-roles-attaches` — the twin case does not pin the reading; a new case does.**
+   `elaborate/role-conflicts-with-value-binder.fun` binds `syntax answer` *before* `answer = 5`, so its
+   refusal fires on the value binding over an existing role, where `attaches` is `false` either way
+   (`Expander.cs:39`) — dropping the `attaches &&` conjunct leaves it `error` (measured). What the
+   conjunct gates is the other order: a non-attaching role bound over an existing visible *value*
+   (`BindRoleAt` → `role.Attaches = false` for `syntax`). The new case is the twin with the two decls
+   swapped. Reading (a) (disabling the exemption itself, tripping the prelude at `std/lib.fun:41`) stands
+   as the previous fork measured it, not re-run.
+4. **`ref-tuple-negative` — settled unflippable, no probe spent.** Per the previous fork:
+   `Elaborator.Patterns.cs:475` is unreachable from written source and masked by sibling `:466`, and
+   `Primitives.cs:165`'s removal yields only `error` or a stack overflow. This fork found no
+   written-source spelling for a negative pattern arity (the enforester refuses `-` in patterns) and so
+   spent no probe, as instructed. No case.
+
+Counts: suite `958 cases, 0 failed` given as the baseline (not re-run before the three cases),
+`961 cases, 0 failed` measured clean after (the three cases also each run green through the single-file
+runner). Guards shown unreachable overall: `Nbe.cs:586` (per the previous fork, plus its own comment).
