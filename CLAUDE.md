@@ -55,12 +55,14 @@ source → reader → enforestation → expanded Syntax → elaboration → Core
 - `src/Fun.Kernel/` — `Atom`, `Core` (`Core.Shift`, `Core.Match`, `Core.Patterns`,
   `Core.Refs`), `Syntax`, the decision trees, `EquatableArray`
 - `src/Fun.Expand/` — the reader, `Enforest` (+ `Enforest.Roles`, `Enforest.Match`),
-  `Expander` (+ `.Macros`, `.Roles`, `.Imports`), `MacroRuntime`, `Reflection`
+  `Expander` (+ `.Macros`, `.Roles`, `.Imports`), `MacroRuntime`
 - `src/Fun.Compiler/` — `Elaborator` split across partial files (`Elaborator.Traits`,
   `.Patterns`, `.RecTypes`, `.Generative`, `.Implicits`, `.Effects`, `.Match`, …), `Unify`,
-  `Nbe` (+ `Nbe.Match`, `.StuckMatch`, `.Effects`, `.Generative`), `Budget`, `Driver`, `Loader`
-- `std/` — the prelude source, `stage1.fun` and `stage2.fun`, embedded into `Fun.Compiler`
-  as resources by its `.csproj`
+  `Nbe` (+ `Nbe.Match`, `.StuckMatch`, `.Effects`, `.Generative`), `Reflection`, `Budget`,
+  `Driver`, `Loader`
+- `std/` — the prelude source, split into a bootstrap layer (`bootstrap.fun`) and the library
+  (`lib.fun`, `list.fun`, `option.fun`, `type.fun`) with `stage2.fun` as the unit a program
+  imports, embedded into `Fun.Compiler` as resources by its `.csproj`
 - `test/conformance/cases/` — the language suite: `.fun` + `.expect` pairs, nothing to register
   (`cases/README.md`)
 - `test/Fun.Tests/` — xUnit, internals only
