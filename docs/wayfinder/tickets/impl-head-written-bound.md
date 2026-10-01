@@ -80,6 +80,40 @@ stops deciding who can use the impl.
    written bound has to be reconciled with the inferred set rather than becoming a second
    source of truth.
 
+## Decided 2026-10-01: the written bound is authoritative
+
+Ruled: **the declaration decides, not the body.** Written in the form the ruling was made against —
+
+```fun
+pub impl list_eq[a : Eq] : Eq(List(a)) = module { … };
+```
+
+whose type is therefore always `{a : Type} -> {Eq(a)} -> Eq(List(a))`, whether or not the body ever
+uses the dictionary. That answers the four open questions:
+
+1. **Where the binder goes** — in the head, bracketed after the impl's name, before the colon, as
+   above. The *surface spelling* still belongs to [the Stage 11 spec](specify-stage-11-macro-powered-language-features.md)
+   per "Not this ticket" below; what is decided here is that there is a written place for it and that
+   it is the impl's binding form rather than a `with` clause after the head.
+2. **Written set vs the body's demands** — the body may use **at most** what is written. A body that
+   demands more than its declaration wrote is an error **at the definition**, naming the head: the
+   declaration is not a hint to be widened by a method body.
+3. **Applicability** — writing a bound *does* narrow the impl, deliberately: `Eq(List(a))` demands
+   `Eq(a)` even for a body that never compares, which is the point of being able to say it.
+4. **`Vars`/bounds** — the written set is the single source of truth for the impl's bounds; inference
+   stops being one. (It was the shipped contract of
+   [a generic impl's head variable carries no bound](generic-impl-head-var-has-no-bound.md), so that
+   ticket's inference becomes the *fallback for an impl that writes nothing*, not the authority.)
+
+**Why:** measured on this ticket — the same head produced two different impl types depending on one
+line inside a method body (`{a} -> Eq(List(a))` versus `{a} -> {Eq(a)} -> Eq(List(a))`), so a refactor
+inside a body silently changed who could use the impl, and an impl that ignores its element silently
+claimed equality for element types that have none.
+
+**What it costs, counted:** `std` has **7** impls, of which **2** are generic and need the annotation
+(`list_eq` in `list.fun`, `option_eq` in `option.fun`); about **38** files in the suite use a generic
+impl head and need it only where they rely on the bound.
+
 ## Not this ticket
 
 Surface syntax generally. [The library surface](design-std-library-surface.md) §14 sent
