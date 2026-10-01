@@ -3,7 +3,9 @@ title: The prelude spellings the ABI declaration leaves behind
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-10-01
+resolution: "Closed 2026-10-01. All four items are answered: `Id` stays one entry (a macro signature writes the kind as the type's name — decided), `Block` is declared like its six siblings and is now verified at load (landed: prelude alias + `PreludeAbi.Types.Syntax.Block` + the mapping; renaming it fails the load naming the member), item 3's four spellings stay recorded as deliberate, and item 4 was already done with the `std` split. The stale `PreludeAbi.cs:22` doc comment had also been fixed before this was re-read."
 assignee:
 blocked_by: []
 ---
@@ -17,18 +19,26 @@ That ticket's mechanism landed: `src/Fun.Kernel/PreludeAbi.cs` holds 160 names a
 ticket is the residue — the handful of decisions the declaration deliberately did not take, each of
 which is a *ruling* rather than a measurement.
 
-## 1. `Id` is both a declared type and a hole-kind keyword
+## 1. `Id` is both a declared type and a hole-kind keyword — **decided 2026-10-01: one entry**
 
 The declaration carries `Id` as `Syntax.Id`. But the surface also spells `Id` as a **hole kind**
 (`HoleKind.HoleId`, alongside `HoleExpr`, `HoleBlock`, `HoleDecl`, `HoleOneDecl`, `HolePattern`,
-`HoleTokens`). Decide whether the type and the hole kind are one interface entry, two, or whether
-the hole-kind spelling belongs somewhere this declaration does not reach. The other six hole kinds
-arrive through the published builder (`hole_kind`, a `Leafs` probe), so `Id` is the odd one out.
+`HoleTokens`). **Ruled: they are one entry, and that is the design rather than an accident** — a
+macro signature writes the kind as a *type* (`macro m(x : Id)`), so the type's name is the only
+spelling the surface has. `Enforest.Roles.cs:564-570` resolves all of them that way, and the other
+six arrive through the same published builder (`std/bootstrap.fun`'s `hole_kind`, read positionally
+by `Reflection.cs:62`). No change follows.
 
-## 2. `Block` (hole-kind only) stays spelled
+## 2. `Block` stays spelled — **decided 2026-10-01: declared, and done the same day**
 
-`Block` is a hole-kind spelling only and maps to `Syntax.Expr`; it never reaches the declaration.
-Decide whether it should, or whether it is a surface keyword with no prelude name to declare.
+`Block` is a hole-kind spelling whose reflected value is an `Expr`, and it was the **one name the
+compiler hard-coded**: `Enforest.Roles.cs:565` matched the string `"Block"` while its six siblings
+matched ABI constants, so a rename of it in the prelude was silent. Ruled: declare it like the
+others. Landed in three places — `pub Block = Expr;` beside the prelude's other aliases
+(`std/bootstrap.fun`, the `Decls` precedent), `PreludeAbi.Types.Syntax.Block`, and the mapping
+using it. Verified: `macro m(b : Block) { quote($b) }; m({ 7 })` → `VALUE 7`; renaming the prelude's
+name fails the load with `PreludeAbi declares Syntax.Block, which the prelude std/bootstrap does not
+define`; suite `958 cases, 0 failed`, xUnit 209/209.
 
 ## 3. Recorded as deliberate, not gaps
 

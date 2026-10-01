@@ -562,7 +562,7 @@ public sealed partial class Enforest(EnforestEnv env)
                     return new RulePart.Hole(name.Name, kind.Name switch
                     {
                         PreludeAbi.Types.Syntax.Expr => HoleKind.Expr,
-                        "Block" => HoleKind.Block,
+                        PreludeAbi.Types.Syntax.Block => HoleKind.Block,
                         PreludeAbi.Types.Syntax.Id => HoleKind.Id,
                         PreludeAbi.Types.Syntax.Decl => HoleKind.Decl,
                         PreludeAbi.Types.Syntax.Pattern => HoleKind.Pattern,

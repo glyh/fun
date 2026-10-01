@@ -36,6 +36,8 @@ public static class PreludeAbi
             public const string Expr = "Expr";
             public const string Decl = "Decl";
             public const string Pattern = "Pattern";
+            /// <summary>A brace-delimited block: an <c>Expr</c> spelled for its hole kind.</summary>
+            public const string Block = "Block";
             public const string TokenTree = "TokenTree";
             public const string R = "R";
             public const string AtomVal = "AtomVal";

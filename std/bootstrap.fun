@@ -258,6 +258,9 @@ pub Syntax = module {
   pub pattern PatImplicitArrow(name, codomain) = Pattern.RawPatImplicitArrow(_, name, codomain);
   pub pattern PatUniverse = Pattern.RawPatUniverse(_);
   pub Decls = List(Decl);
+  # A brace-delimited block is an expression, but it is its own hole kind
+  # ($(b : Block)); declared so no spelling of it lives in C# (Enforest.Roles.cs).
+  pub Block = Expr;
   pub decl_let = fn(name, val, is_pub) { Decl.DeclLet(name, val, is_pub, False) };
   # The compiler's record builders: the reflection boundary reads each record's
   # type and field names off one probe of these, so no field is spelled in C#.

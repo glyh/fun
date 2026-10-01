@@ -41,6 +41,20 @@ The *untyped* form already works in both, which is why row 1 split in two:
 { infix (foo) (a, b) { Syntax.i64(9) }; macro foo(e) { Syntax.i64(1) }; 1 foo 2 }   -- 1 in both
 ```
 
+## Decided 2026-10-01: one typed parameter per operand
+
+The shape is ruled: **the macro's parameters describe the operands, one parameter each**, not the
+whole use. `macro foo(l : Expr(I64), r : Expr(I64)) : Expr(I64)` is the form; the prototype's
+"fold the whole operator use into one argument" is **not** adopted (it was the reading of
+`enforest.ml:681`, and it was the only competing candidate).
+
+The consequence is that the port's existing mechanism is the right one: `Expander.Macros.cs:306`
+already splits the operands by arity, so implementing the typed path means giving each split operand
+a declared type to be checked against — i.e. the operand types have to be available mid-expansion,
+which is the interleaving question that closed separately. **The deferral stands**: this rules the
+shape, it does not schedule the work, and the `NotImplementedException` refusal stays the honest
+answer until a macro actually needs it.
+
 ## What is known when it is picked up
 
 - The prototype's **intent is legible even though its execution loops**:
