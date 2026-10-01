@@ -57,13 +57,14 @@ which the prelude std/bootstrap does not define
 Restored, the prelude loads and the suite is 806 cases, 0 failed. So the declaration's purpose
 survives the rename, and the check names both the member and the unit it looked in.
 
-Two things the merge left, both one-liners:
+Two things the merge left, both one-liners — **the first was already fixed when this was
+checked on 2026-10-01**:
 
-- **`PreludeAbi.cs:22`'s doc comment is stale.** It names `Prelude.Path`,
-  `Prelude.Stage1Path` and `Prelude.Binding`, but the rename made that
-  `Prelude.BootstrapPath`. The comment is the only reference — the declaration holds names, not
-  paths — so nothing behaves wrongly, but the comment should be corrected rather than left to
-  mislead.
+- ~~**`PreludeAbi.cs:22`'s doc comment is stale.**~~ **Not stale any more** — the comment now reads
+  `Prelude.Path`, `Prelude.BootstrapPath` and `Prelude.Binding`, and `grep -rn Stage1Path src/`
+  returns nothing, so the rename's doc residue was cleaned up somewhere between this bullet being
+  written and 2026-10-01. Recorded here so a later sweep does not go looking for it: the paragraph
+  was older than its commit, which is the failure mode the map warns about in writing.
 - **The unit paths stayed single-sourced**, as the design intended: `Prelude.Path`,
   `Prelude.BootstrapPath` and the `Order` list are one place each, and the error message quotes
   `BootstrapPath` rather than spelling it. `std/README.md` was written by the split and the
