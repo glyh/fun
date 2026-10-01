@@ -229,8 +229,14 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
    (expected `8` in both cases once the ruling above is implemented). Replacing `T`'s value slot
    fixes `d` but breaks `core-072`–`077` ("a meta's spine must be distinct variables"); `e` fails
    either way, under the same ruling.
-2. Whether rewriting `Evidence` is the *right* mechanism versus resolving bounds differently —
-   green suite only shows it works.
+2. ~~Whether rewriting `Evidence` is the *right* mechanism versus resolving bounds differently —
+   green suite only shows it works.~~ **decided 2026-10-01: keep the rewrite; make its failure an
+   invariant.** Three probes failed to find any program that distinguishes the rewrite from a
+   binder-keyed lookup — the refined entry and the impl hold the *same* dictionary, so the two
+   mechanisms are observationally identical — which moved the question from semantics to failure
+   mode. Ablating the rewrite does not raise an internal error, it raises
+   `missing implementation of \`Size\``, blaming the user for the implementation's desync; the
+   implementation is [a desync is an invariant, not a language error](evidence-desync-is-an-invariant.md).
 3. ~~`Opened` vs `ConstructorEntries` are still rewritten together; which needs which is not
    isolated (probably both — patterns resolve through `ConstructorEntries`).~~ **Closed 2026-10-01** —
    ablated one channel at a time: term uses pin `Opened`, pattern heads pin `ConstructorEntries`,
