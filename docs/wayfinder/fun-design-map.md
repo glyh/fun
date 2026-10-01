@@ -393,6 +393,78 @@ and the older grilling tickets below (struct open, recursive records, `Self`).
 
 ### Frontier (2026-09-26)
 
+**2026-10-01, session close — 17 open** (frontmatter count, the three port umbrellas among them),
+**suite 961 cases, 0 failed, xUnit 209/209** — six forks plus one follow-up, every one merged and
+re-measured by the integrator rather than believed. One ticket closed, one filed *and* closed, and
+**five frontier claims turned out to be older than their commits.**
+
+- **[The coverage gaps are closed](tickets/coverage-gaps-from-the-mutation-sweep.md)**
+  (`8eb3df6`+`799b04e`, merged `79ee1f1`/`7868b73`). All eight rows the sweep left are resolved:
+  seven cases, each proven by neutralising the guard it names and watching the case flip **alone**
+  (`958 cases, 1 failed` / `961 cases, 1 failed`), plus `ref-tuple-negative` closed as unflippable at
+  both its candidate guards. Two findings about `src/` came with it: `Nbe.cs:586`'s guard is
+  unreachable by any program (its own comment says so; its reachable sibling is cased instead), and
+  `Primitives.cs:165`'s refusal is observable only as a **process-killing stack overflow** — the one
+  failure a conformance case cannot pin, and the one the runner cannot classify.
+- **[A mutation no longer aborts the suite](tickets/conformance-runner-aborts-a-mutation.md)**
+  (`008720b`, merged `6053ea3`) — filed closed, because the sweep had recorded it without a ticket.
+  Two mutations that killed the run at exit 134 now report per case: `hard failure (T): msg`, A →
+  `954 cases, 9 failed`, B → `1 failed`, run completes, exit 1. The runner's two hand-kept exception
+  lists had drifted, which is the real defect: a whitelist maintained twice stops being a whitelist.
+  This fix is what made the coverage fork's evidence standard possible at all.
+- **[`type-case-refinement`](tickets/type-case-refinement-walks-whole-context.md) lost its last
+  code-shaped item** (`4623a3b`+`d16caa7`). Ablating each of the seven `Refined` channels one at a
+  time shows **all seven pinned**, and answers the ticket's own item 3: `Opened` and
+  `ConstructorEntries` are distinct paths — a *term* use reads the entry's type from `Opened`, a
+  *pattern* head reads binder types from `ConstructorEntries`, and each flips only under its own
+  ablation. What the ticket still owes is two rulings and a deferred index.
+- **Two premises were wrong, and both were wrong in the direction that wastes work.** The fog item
+  "diagnostics polish boundary" (`86b4166`) claims elaborator errors carry no source location, that
+  `Elab_error` has no span fields, and that every form the elaborator sees has a span: **false on all
+  three** — `Budget._site` already records the form and `Budget.Where()` prints it (`BudgetTests.cs:56`
+  asserts the text), the deleted prototype's `elab_error` carried `site : Eval_budget.site option` on
+  exactly the two variants that still have one, and `Pattern` (14 variants) and `EffectRow` have no
+  span at all. It stays fog: no consumer needs a position today. And
+  [`prelude-abi-remaining-spellings`](tickets/prelude-abi-remaining-spellings.md)'s "stale doc comment"
+  item had already been fixed (`fdd7646`) — three tickets still asserted otherwise.
+- **The enforester ticket is forkable at last** (`d334221`).
+  [`scope-enforester-improvements`](tickets/scope-enforester-improvements.md)'s topic doc is pure
+  `enforest*.ml`, so every claim was re-derived against `src/Fun.Expand` with counted numbers
+  (`Enforest*.cs` 2804 lines, 173 throws, **0** carrying a span, 0 hits for spec/combinator/Pratt).
+  Pratt, incremental parsing and the rest bug are **dropped**; span-carrying expansion errors is the
+  one buildable item — and the framing fact is that spans already exist on every token while
+  `Driver.cs:38-46` throws them away. Error recovery has **no workload** and stays unruled, which is
+  the [type-case-refinement](tickets/type-case-refinement-walks-whole-context.md) failure mode caught
+  before it was repeated rather than after.
+- **[The suite ticket's two open calls](tickets/suite-redundancy-measured.md) are now cheap or dead**
+  (`6c13f28`). The `elab-NNN` clusters are larger and differently shaped than the ticket said (two
+  areas, 179+78 files) and **not one pair is byte- or whitespace-identical**, so ~19 semantic clusters
+  each need a human read (six files deletable); the xUnit → `cases/` migration is **8 of 123 methods
+  and not worth doing**, because its payoff is `ok` cases and round two measured that **1 of 67**
+  `ok` cases was caught by any of its 73 mutations.
+- **Five doc corrections, all measured.** `CLAUDE.md` listed `Reflection` under `Fun.Expand` (it is in
+  `Fun.Compiler`), described `std/` as `stage1.fun`+`stage2.fun` (gone since `16f9948`), and both it
+  and `README.md` advertised a **REPL that is a stub** — `src/Fun.Cli` prints "no entry point yet" and
+  exits 1. Also corrected: the `Prelude.Stage1Path` claim, the sweep's "something escapes it"
+  paragraph (now naming what escaped), and the coverage ticket's own "none of them attempted" index.
+
+**Rulings still owed, all the user's:** the `d`/`e` branch-local-type question and the `Evidence`
+mechanism ([type-case-refinement](tickets/type-case-refinement-walks-whole-context.md));
+[the typed operator macro](tickets/port-typed-operator-macro.md)'s shape;
+[a written bound on an impl head](tickets/impl-head-written-bound.md); `Id` as type vs hole-kind and
+`Block`'s placement ([prelude-abi](tickets/prelude-abi-remaining-spellings.md)); whether error
+recovery has a workload at all ([enforester improvements](tickets/scope-enforester-improvements.md));
+and two this session surfaced — delete the six `elab-NNN` twins, and whether one line of
+`Budget.Where()` is worth the nine xUnit message assertions it breaks.
+
+**Harness note (not a project artifact).** All three original forks died at once on
+`zai-coding-cn`'s weekly cap, at ~21 s with `0 tokens, 0 tool uses` — nothing was lost, and the
+lesson is that one provider per writer *and* reader is a single point of failure: `wright` now runs
+on `opencode-go/mimo-v2.6-pro`, and the read-only agents are on a separate bucket. Two forks were
+lost to procedural slips rather than to model error — a run against a **stale mutated DLL**, and my
+own ablation whose `dotnet build` exited 1 — so the rule this session earned is: **an ablation must
+print its build's exit code before its observation counts.**
+
 **2026-09-29, session close — 18 open (frontmatter count, the three port umbrellas among them),
 suite 954 cases, 0 failed, xUnit 208.** Three things this session, all landed and re-measured by
 the closer rather than reported:
