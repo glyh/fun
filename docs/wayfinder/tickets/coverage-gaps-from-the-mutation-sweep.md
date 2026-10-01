@@ -3,7 +3,9 @@ title: The coverage gaps the mutation sweep found
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-10-01
+resolution: "Closed 2026-10-01. All eight rows are resolved — seven cases landed across two forks (four then three, each proven by ablating the guard it names and seeing the case flip alone) and `ref-tuple-negative` closed as unflippable at both candidate guards with its probes recorded. Suite 954 → **961 cases, 0 failed**, xUnit 209/209, integrator-re-measured. Two findings about `src/` came out of it: `Nbe.cs:586`'s guard is unreachable by any program (its reachable sibling at `Nbe.Effects.cs:123` is cased instead), and `Primitives.cs:165`'s negative-arity refusal is only observable as a process-killing stack overflow."
 assignee:
 blocked_by: []
 ---
@@ -119,10 +121,9 @@ commit touched `src/`.
    same input is the standard trap here**: a case is only real if removing the guard it names flips
    it, and the first thing to check is whether another guard refuses the same program.
 
-**Still unwritten from the list** (the sweep's other "untested" rows, none of them attempted): the
-reflection arity helpers (`ref-pattern-syn-arity`, `ref-type-arity`, `ref-tuple-arity`,
-`ref-tuple-negative`), `ref-refs-nonreference`'s siblings `export-last-member`,
-`syntaxmap-operator-scope`, `expander-roles-attaches`, and `ref-nbe-continuation-used`.
+**Still unwritten from the list** (the sweep's other "untested" rows) — **all closed the same day: see the
+second pass below.** The four it left (`syntaxmap-operator-scope`, `expander-roles-attaches`,
+`ref-nbe-continuation-used`, `ref-tuple-negative`) landed as three cases plus one unflippable row.
 
 ## The remaining eight rows — fork `wright`, 2026-10-01
 Four cases landed, each **proven by disabling its guard, showing the case flip, and reverting** (the
@@ -220,3 +221,18 @@ Row by row:
 Counts: suite `958 cases, 0 failed` given as the baseline (not re-run before the three cases),
 `961 cases, 0 failed` measured clean after (the three cases also each run green through the single-file
 runner). Guards shown unreachable overall: `Nbe.cs:586` (per the previous fork, plus its own comment).
+
+### Integrator's verification of the second pass (2026-10-01, merged `7868b73`)
+
+Re-measured on `main`, each ablation with its build's exit code printed *before* the run counted
+(the discipline this ticket's own record earned the hard way):
+
+- baseline `961 cases, 0 failed` exit 0 → restore identical, tree clean → xUnit **209/209**.
+- `Nbe.Effects.cs:123` folded to `if (false)`: build exit 0 → `ref-nbe-continuation-used` gives
+  **`VALUE 2`**.
+- `Syntax.Map.cs:168`, `Operator = m.Id(u.Operator)` → `u.Operator`: build exit 0 →
+  `syntaxmap-operator-scope` gives `` ELAB `+++` is an operator macro with no macro of its name ``.
+- `Expander.Roles.cs:46`, the `attaches &&` conjunct dropped: build exit 0 → the **new** case gives
+  **`VALUE 42`** while the pre-existing `role-conflicts-with-value-binder.fun` **keeps refusing** →
+  `961 cases, 1 failed`, that case alone. That pair is the evidence the new case is not a duplicate
+  of the one already in the suite, which was the second pass's headline correction.
