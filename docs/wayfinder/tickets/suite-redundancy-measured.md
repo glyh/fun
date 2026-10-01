@@ -66,13 +66,22 @@ A case whose name overstates it is worse than a missing case.
 
 ## Still open, deliberately
 
-1. **The `elab-NNN` spelling clusters** (~15–20 files) — each group needs its own call, because
-   `cases/README.md`'s rule is that a *spelling* can be the subject. Not decided here.
+1. **The `elab-NNN` spelling clusters** — each group needs its own call, because
+   `cases/README.md`'s rule is that a *spelling* can be the subject. **Sized 2026-10-01**: the scope
+   is two areas (179 `elaborate/` + 78 `values/`), **zero** of them byte- or
+   whitespace-identical, so the call is a human read of ~19 semantic clusters — the table with a
+   recommendation each is under [Inventory](#inventory-fork-2026-10-01--both-open-items-sized).
+   Still not decided here.
 2. **The mutation experiment** (running when this was written): break one small thing in `src/` at a
    time and record which cases fail. That is the only honest measure of "a case that catches
-   nothing", and it must filter any further deletion list before one is proposed.
+   nothing", and it must filter any further deletion list before one is proposed. **Ran twice** —
+   round two below, and its two aborting mutations are fixed and filed
+   ([a mutation aborts the conformance run](conformance-runner-aborts-a-mutation.md), 2026-10-01).
 3. **The xUnit → `cases/` migration** for tests that are only "source → value or error": follows the
-   repo's rule and costs ~10× less per test. Not yet sized.
+   repo's rule and costs ~10× less per test. **Sized 2026-10-01: 8 of 123 methods (6.5%), and it is
+   not worth doing** — no file is mostly migratable, the target format's `ok` cases are the ones
+   round two measured as nearly invisible to a sweep (1 of 67 caught), and three tests cannot be
+   expressed as one value at all. See the same [Inventory](#inventory-fork-2026-10-01--both-open-items-sized).
 
 ## Corrections 2026-09-28, from the fork that ran the deletions
 
@@ -161,3 +170,100 @@ corrects this sweep's own table: the rec-group mutation caught `elab-164` alone,
 **Areas the sweep could not mutate**, so their cases remain unmeasured: `Driver`, `Loader`,
 `Reflection`, `PreludeAbi`, the `Core.*` traversals, deeper `Unify`, `Nbe.Structs`/`Nbe.Rec`,
 `Expander.Imports`, `Reader` beyond a caret flip, `Syntax.Map` beyond one flip.
+
+## Inventory (fork, 2026-10-01) — both open items, sized
+
+Read-only pass; no file, test or case was changed. Counts and the negative checks below were
+re-verified by the integrator on `86b4166` (the per-cluster *readings* are the fork's, spot-checked
+by hand for cluster 1 only — treat the others as a careful reading, not a measurement).
+
+**Item 1's scope is larger than the ticket says, and its shape is different.** The `elab-NNN`
+numbers live in **two** areas — `ls */elab-*.fun` gives **179** in `elaborate/` and **78** in
+`values/` — and several of the clusters named here (`is_zeroish`, `sig-arg`) are `values/` cases.
+More importantly, the premise that a byte-check can find them is **false**:
+
+```
+md5sum elaborate/elab-*.fun values/elab-*.fun | awk '{print $1}' | sort | uniq -d | wc -l   → 0
+# whitespace-collapsed, both areas, same result                                                    → 0
+find test/conformance/cases -name '*.unit-*.fun' | wc -l                                    → 69
+ls test/conformance/cases/elaborate/ | grep -c unit                                          → 0
+```
+
+So there are no byte-identical `elab-*` files anywhere, and no `elab-*` case has a unit sibling
+(the 69 unit files are all in `imports/`, where the `head -1` mistake happened and stands corrected).
+**Every cluster below is a *semantic* near-duplicate: the call has to be a human read.**
+
+| # | members | the precise difference | call |
+|---|---|---|---|
+| 1 | `elab-093`/`135` | identical rule (*missing field `y`*); 093 writes `struct {x: I64; y: I64}` and 135 `struct { x: I64; y: I64; }` | **delete one** (keep the `;`-terminated spelling, already canonical) |
+| 2 | `elab-094`/`136` | same (*extra field*), differs only by the trailing `;` | **delete one** |
+| 3 | `elab-095`/`137` | same (*duplicate field*), differs only by the trailing `;` | **delete one** |
+| 4 | `elab-096` | duplicate field **in the declaration** — alone, distinct rule | keep |
+| 5 | `elab-064,065,066,068,069` | five *different* cross-evaluation paths (symbol as arg / through `name` / a third fresh evaluation / a value's own type / a private member via re-export) | keep — each pins a path, and the payload type differs from the named twins |
+| 6 | `elab-088,089,090,091` | the **argument's** spelling is the subject: missing member / wrong type / not public / not a module | keep all four |
+| 7 | `values/core-020` + `values/elab-080` | `m.x` vs `open m; x` — two ways to reach a signature member | keep both |
+| 8 | `values/core-072…077` | type-case dispatch, one case per scrutinee type; zero/`False` are the controls | keep all six (the ticket says ×4; it is ×6) |
+| 9 | `elab-169,170,171` | non-exhaustiveness, once per literal type | keep |
+| 10 | `elab-167,168` | pattern/scrutinee mismatch, two directions | keep |
+| 11 | `elab-174`, `182` | or-pattern coverage vs missing third arm — different rules | keep |
+| 12 | `elab-183,184` | depth of the pattern spine | keep |
+| 13 | `elab-114,115,116` | parameter-type identity through a type synonym vs a direct nominal | keep (114 arguably subsumed by 116) |
+| 14 | `elab-077,078` | anonymous struct **type** vs one with a computed public member | keep |
+| 15 | `elab-075,076` | unknown member vs private member | keep |
+| 16 | `elab-054,198` | empty module **as a value** vs **as an impl body** | keep |
+| 17 | `elab-199,205` | effect-row order-insensitivity; 199 is the trivial control | keep 205, 199 is a control |
+| 18 | `elab-249,250` + `refs-nonreference` | three cases, one rule (`deref(1)` / `1 <- 2` / the named copy) | **delete one numbered twin**, keep the named case |
+| 19 | `elab-118,119` | bare `self` at top level vs `self` in a non-method binder | keep both |
+
+**The overstatement risk here is inverted.** No `elab-NNN` name can overstate anything (they are
+numeric); the risk is a numbered member silently **re-stating a named case**: `elab-064` ≡
+`values/nominal-generative-symbol-table-rejects-other`, `elab-065` ≡ `…-rejects-name-across`,
+`elab-068` ≡ the own-type half of `…-shares-own`, and `elab-249/250` ≡ `refs-nonreference`. By
+`values/core-022`'s precedent the call is *pin the refusal, don't restate it* — but each of these
+also pins the rule at a **second payload type** (`Sym(String)` vs `Sym(I64)`), which is a defence
+clusters 1–3 do not have.
+
+### Item 3 — the xUnit → `cases/` migration, sized
+
+```
+grep -h '\[Fact\]' *.cs | wc -l        → 108      (26 files; 15 [Theory] methods, 101 InlineData)
+grep -n 'Driver\.Describe\|Driver\.Run(' *.cs | wc -l → 16 call sites: 9 assert a value, 7 a message
+```
+
+123 test methods, 209 executed cases. Of the 16 sites that could even be a case:
+
+| bucket | methods | cases |
+|---|---|---|
+| **(a)** source → value or `ok`, nothing else | **8** | 8 |
+| **(b)** inspects internals (`CLAUDE.md` names them: token/syntax shapes, reflection round trips, decision trees, budget accounting, `Value`/`Term` identity, exact messages) | 112 | 196 |
+| **(c)** borderline — needs a decision | 3 | 5 |
+
+Bucket (a), complete: `InterleavingTests.AMacroBodySeesAnEarlierBinding` (needs a `.unit-u.fun`, the
+unit is inline in C# today), `MacroTests.AQuoteFillsItsHoles`, `MemberTests.
+AnOpenNameMayBeShadowedByAPublicMember`, `PreludeTests.StdIsTheUnitWhichReExportsTheBootstrap`,
+`TraitTests.{OpeningAModuleTwiceIsNotAnAmbiguity, TraitOpChoosesByArgumentType,
+AChoiceWaitsForItsArgumentType}`, `RecTests.LazyDeltaComparesCallsWithoutUnfolding` (no assert at
+all — it would become `.expect` = `ok`, which the format does support: it means "elaborates", the
+program is not run).
+
+**So the migration is 8 of 123 methods — 6.5%, and 8 of 209 executed cases, 3.8% — and no file is
+*mostly* (a)**: the heaviest is `TraitTests` at 3 of 14. Three reasons not to do even that much yet:
+
+1. **`TraitTests` should stay whole.** Its remaining 10 methods assert the exact `FunException`
+   string, and the file's own premise is that the *message* is the assertion. Migrating 3 and
+   leaving 10 fragments one argument.
+2. **It moves against this ticket's own measurement.** The migration's payoff is cheap `ok` cases —
+   and round two found that of **67 `ok` cases, exactly one** was caught by any of 73 mutations.
+   Adding more of them is adding cases the sweep cannot see.
+3. **What cannot express it is real**: two source programs in one test (`TraitTests.
+   MatchingIgnoresNonFieldMembersWhereEqualityDoesNot` — one program pins `1`, the other the
+   mismatch, and the juxtaposition *is* the test); a negative message assertion with no value
+   (`MemberTests.APrivateBindingMayShadowAPublicOne`); and multi-row `[Theory]` methods whose rows
+   would each become a file (`RecTests.DivergenceWhileCheckingIsABudgetError`, 3 rows).
+
+**Not checked by this pass** (stated so a later reader does not over-read it): neither the suite nor
+`dotnet test` was run, so every `error` claim is read from a sibling `.expect`; the mutation
+experiment was not re-run, so nothing here says whether any bucket-(a) method catches something no
+case catches; the prototype tree was not searched for a corresponding pin; and `values/elab-*` was
+clustered only against `elaborate/` — a dedicated pass over `values/` alone may find clusters this
+table merged away.
