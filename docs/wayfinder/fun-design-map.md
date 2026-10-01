@@ -439,7 +439,8 @@ re-measured by the integrator rather than believed. One ticket closed, one filed
 - **[The suite ticket's two open calls](tickets/suite-redundancy-measured.md) are now cheap or dead**
   (`6c13f28`). The `elab-NNN` clusters are larger and differently shaped than the ticket said (two
   areas, 179+78 files) and **not one pair is byte- or whitespace-identical**, so ~19 semantic clusters
-  each need a human read (six files deletable); the xUnit → `cases/` migration is **8 of 123 methods
+  each need a human read (four files deletable — one per pair in clusters 1–3, plus one of the
+  249/250 pair); the xUnit → `cases/` migration is **8 of 123 methods
   and not worth doing**, because its payoff is `ok` cases and round two measured that **1 of 67**
   `ok` cases was caught by any of its 73 mutations.
 - **Five doc corrections, all measured.** `CLAUDE.md` listed `Reflection` under `Fun.Expand` (it is in
@@ -454,7 +455,8 @@ mechanism ([type-case-refinement](tickets/type-case-refinement-walks-whole-conte
 [a written bound on an impl head](tickets/impl-head-written-bound.md); `Id` as type vs hole-kind and
 `Block`'s placement ([prelude-abi](tickets/prelude-abi-remaining-spellings.md)); whether error
 recovery has a workload at all ([enforester improvements](tickets/scope-enforester-improvements.md));
-and two this session surfaced — delete the six `elab-NNN` twins, and whether one line of
+and two this session surfaced — delete the four `elab-NNN` twins (one per pair: 093/135, 094/136,
+095/137, and one of 249/250), and whether one line of
 `Budget.Where()` is worth the nine xUnit message assertions it breaks.
 
 **Harness note (not a project artifact).** All three original forks died at once on
