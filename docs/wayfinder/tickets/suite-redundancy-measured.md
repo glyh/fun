@@ -212,7 +212,7 @@ So there are no byte-identical `elab-*` files anywhere, and no `elab-*` case has
 | 15 | `elab-075,076` | unknown member vs private member | keep |
 | 16 | `elab-054,198` | empty module **as a value** vs **as an impl body** | keep |
 | 17 | `elab-199,205` | effect-row order-insensitivity; 199 is the trivial control | keep 205, 199 is a control |
-| 18 | `elab-249,250` + `refs-nonreference` | three cases, one rule (`deref(1)` / `1 <- 2` / the named copy) | **delete one numbered twin**, keep the named case |
+| 18 | `elab-249,250` + `refs-nonreference` | **not one rule after re-reading the programs**: 249 is `deref(1)` (reading a non-reference), 250 is `1 <- 2` (writing to one). Only 249 resembles the named case, which is a `deref` deferred inside an uncalled lambda — the spelling that makes it discriminating | **keep both** — the read and the write are different refusals, and this cluster's original "one rule, three cases" was a mis-grouping |
 | 19 | `elab-118,119` | bare `self` at top level vs `self` in a non-method binder | keep both |
 
 **The overstatement risk here is inverted.** No `elab-NNN` name can overstate anything (they are
@@ -267,3 +267,28 @@ experiment was not re-run, so nothing here says whether any bucket-(a) method ca
 case catches; the prototype tree was not searched for a corresponding pin; and `values/elab-*` was
 clustered only against `elaborate/` — a dedicated pass over `values/` alone may find clusters this
 table merged away.
+
+## Decided 2026-10-01: three twins deleted, row 18 kept
+
+Ruled on and executed the same day. **Deleted `elaborate/elab-{093,094,095}.fun` + `.expect`** (six
+files): each was one of a pair pinning the same rule with only a cosmetic spelling difference, and
+the surviving members (`135`, `136`, `137`) keep the canonical `;`-terminated spelling. Suite
+`961 → 958 cases, 0 failed`.
+
+Two measurements settled it, neither of which the `.expect` can show:
+
+```
+# both members of the 093/135 pair, with the field error fixed:
+{ Point = struct {x: I64; y: I64}; Point{x = 1; y = 2} }    -> VALUE VRecord
+{ Point = struct { x: I64; y: I64; }; Point{x = 1; y = 2} } -> VALUE VRecord
+```
+
+So the trailing `;` is not the subject of either member — both spellings are legal — and the field
+spellings already have their own family: `struct-field-single` (`struct { f : I64 }` → `1`),
+`struct-field-semicolon` → `1`, `struct-field-comma` → `error`. Nothing lost coverage.
+
+**Row 18 was not a pair and nothing is deleted there.** Re-reading the two programs: `elab-249` is
+`deref(1)` and `elab-250` is `1 <- 2` — reading a non-reference versus writing to one, two different
+refusals, and the named `refs-nonreference` is a `deref` deferred inside an uncalled lambda (the
+spelling that makes *that* case discriminating, per this ticket's own earlier work). The other three
+clusters above stay as they are: each pins a rule at a second payload or a distinct path.
