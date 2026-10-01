@@ -223,8 +223,13 @@ runner: **37.8 s → 1.02 s** (it previously blew the runner's 60 s elaboration 
    grants permission ("may treat the matched type variable as equal"), not a decision.
 2. Whether rewriting `Evidence` is the *right* mechanism versus resolving bounds differently —
    green suite only shows it works.
-3. `Opened` vs `ConstructorEntries` are still rewritten together; which needs which is not
-   isolated (probably both — patterns resolve through `ConstructorEntries`).
+3. ~~`Opened` vs `ConstructorEntries` are still rewritten together; which needs which is not
+   isolated (probably both — patterns resolve through `ConstructorEntries`).~~ **Closed 2026-10-01** —
+   ablated one channel at a time: term uses pin `Opened`, pattern heads pin `ConstructorEntries`,
+   in opposite directions. See [Ablation](#ablation-fork-2026-10-01--every-channel-is-pinned-opened-and-constructorentries-are-distinct-paths-closes-item-3).
+   The same run found every other channel pinned too (`Names` eleven times over); `SelfEntry` and
+   `SelfMethods` both flip only `type-case-self-methods`, so whether one subsumes the other stays
+   unisolated — nothing rides on it.
 4. The mention index stays deferred: no measurement asks for it.
 
 ## Ablation (fork, 2026-10-01) — every channel is pinned; `Opened` and `ConstructorEntries` are distinct paths (closes item 3)
