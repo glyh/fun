@@ -152,7 +152,11 @@ removed earlier stay the only safe deletions this investigation found.
 
 Also worth its own look: **removing the match non-exhaustiveness check and the rec-group mix check
 made the suite crash** rather than report a failing case — the runner has an invariant-failure path
-for four exception types, and something escapes it.
+for four exception types, and something escapes it. **Answered 2026-10-01**: an NRE
+(`Nbe.Match.cs:126`) and an `InvalidCastException` (`Elaborator.RecTypes.cs:139`) escaped, both on
+paths no program reaches; the runner was the bug and now reports them per case as a `hard failure`.
+See [a mutation aborts the conformance run](conformance-runner-aborts-a-mutation.md) — which also
+corrects this sweep's own table: the rec-group mutation caught `elab-164` alone, not `elab-109`.
 
 **Areas the sweep could not mutate**, so their cases remain unmeasured: `Driver`, `Loader`,
 `Reflection`, `PreludeAbi`, the `Core.*` traversals, deeper `Unify`, `Nbe.Structs`/`Nbe.Rec`,
