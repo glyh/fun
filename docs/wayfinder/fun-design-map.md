@@ -246,6 +246,11 @@ as the frontier reaches them.
   field on the exception;
   `Fun.Expand`'s 159 message-only exception sites are the cheaper population if expansion-side
   positions are ever wanted, and `Driver.cs:38-46` is the funnel that discards those.
+  **Ruled 2026-10-01:** error *recovery* is out of scope — counted, 20 of 238 `error` cases are refused
+  inside `Fun.Expand` and every one is single-error, so nothing asks for a second message. The
+  expansion-side *span* stays live in
+  [enforester improvements](tickets/scope-enforester-improvements.md), where the starting point is that
+  two `struct-field-*` cases already print a position.
 - ~~**`Self` names two things**~~ — decided 2026-09-15: `Self` is the struct being defined; the recursion placeholder is an unwritable "recursive occurrence" (see mutually-recursive-record-types). — the record-recursion placeholder
   (`VSelfType args`, set by record declarations) and the partial struct type seen
   by struct method bodies (`elab_infer.ml`, `Struct` case). Both share

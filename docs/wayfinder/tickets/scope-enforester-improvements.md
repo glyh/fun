@@ -105,6 +105,15 @@ should start from what the messages already say.
 
 ## Resolution
 
-_Unresolved._ The re-derivation above narrows it to two candidates (span-carrying expansion
-errors, and whether error recovery has a workload at all) — both need the user's call, neither is
-blocked on anything else.
+**Ruled 2026-10-01:** error recovery is **out of scope** — the workload was counted (20 of 238 `error`
+cases are refused inside `Fun.Expand`, every one of them single-error) and no program asks for a second
+message, which is the only thing recovery buys. The remaining half stays live: **carrying the span on
+expansion errors**, whose starting point is that `struct-field-comma` and `-trailing-comma` already
+print `at <unknown>:2:22-2:23`, so what `Driver.cs:38-46` discards is the structured span rather than
+the text.
+
+That makes this ticket a one-item ticket, and it is forkable as it stands: an expansion error's span
+can be carried out through the driver's three catches (the same funnel the elaborator-side ruling
+touched) without inventing recovery. The boundary is worth stating: expanding from the first error
+and stopping is **decided**, not a backlog item — a later session should not re-open it without a
+program that reports two.
