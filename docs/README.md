@@ -11,6 +11,15 @@ This directory holds two kinds of documentation, split by purpose:
   navigation hub for the project's direction. Start at the
   [Fun compiler design map](wayfinder/fun-design-map.md).
 
+- **[`ideas/`](ideas/)** — a catalogue of programming-language design ideas
+  gathered from r/ProgrammingLanguages and r/Compilers, scoped by axis (syntax,
+  types and semantics, effects, modules, macros, compiler architecture, runtime
+  and memory, tooling, design philosophy). Each idea carries what it buys, what
+  it costs, how mature it is, and how it bears on this project. It is *not* a
+  specification and *not* the direction map — a promising idea here is still an
+  open question until a ticket in `wayfinder/` decides it. Start at the
+  [ideas index](ideas/README.md).
+
 Everything that used to live as loose numbered plan docs here now lives under
 `wayfinder/topics/` (design detail behind decisions and open
 tickets), and the macro reference library lives under
