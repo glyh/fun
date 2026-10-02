@@ -3,7 +3,9 @@ title: Every elaborator error names the form it was at
 parent: ../fun-design-map.md
 labels:
   - wayfinder:task
-status: open
+status: closed
+closed_date: 2026-10-01
+resolution: "Closed 2026-10-01. `Elaborator.At` now names the form for every language error, once and innermost: a `Located : FunException` marker (so `FunException` lost its `sealed`) is passed through by enclosing frames, which is the existing `EvaluationFailed` trick generalised. Landed by the `error-positions` fork (`bff4bbe`, merged `0fc5c06`), re-measured by the integrator: `958 cases, 0 failed`, xUnit 210/210 (209 + the anti-repetition check), and deleting the pass-through makes that check fail (`Expected: 1, Actual: 6`) with the suffix repeating eight times. 12 test files moved to `ThrowsAny<FunException>` (bounded -- still a language error, never an invariant) and 22 exact-message assertions grew the real suffix. The reader and the expander gain nothing, as ruled; the loader does.
 assignee:
 blocked_by: []
 ---
@@ -47,10 +49,21 @@ enclosing frames do not catch. Keep that trick:
    - `catch (FunException e) when (ctx.Metas.Budget.Where() is { Length: > 0 } where)` —
      `throw new Located(e.Message + where);`
 
-A `FunException` thrown where no `At` frame is active (the reader, the expander, the loader) gains
+A `FunException` thrown where no `At` frame is active — the reader and the expander — gains
 nothing, which is correct: those have no form to name, and their messages are already pinned
-(`ReaderTests.cs:65`, `ExpandTests.cs:104`). Expansion-side positions are a separate question — the
-funnel that discards them is `Driver.cs:38-46`, recorded in the map's fog.
+(`ReaderTests.cs:65`, `ExpandTests.cs:104`). **The loader is not in that list**, as the fork found:
+a unit's elaboration runs inside `At` frames, so `LoaderTests.AUnitIsStrict`'s error gains a position
+too, and that is the rule working rather than a surprise.
+
+**Integrator's run after the merge (`0fc5c06`):** suite `958 cases, 0 failed`, xUnit **210/210**, and
+the anti-repetition check proven the hard way — deleting the `catch (Located) { throw; }` pass-through
+makes it fail (`Expected: 1, Actual: 6`) and the observable message repeat the suffix eight times with
+escalating spans:
+
+```
+ELAB unbound variable: y while inferring the form at <unknown>:1:52-1:53 while inferring the form
+     at <unknown>:1:52-1:53 while checking the form at <unknown>:1:52-1:53 … (×8)
+```
 
 ## Acceptance
 
