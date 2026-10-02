@@ -235,9 +235,10 @@ as the frontier reaches them.
   is false: `Pattern` (all fourteen variants, `Syntax.Match.cs:21`) and `EffectRow`
   (`Syntax.cs:24`) have none. The 130 `new FunException(` sites bucket 73 / 35 / 22
   (span already in scope / must be threaded from a caller / no source form behind it).
-  **Sharpen to a ticket when a consumer needs a position** — today none does: the CLI is a
-  stub, the runner prints no message for `error` cases, and `--file` is the only path a suffix
-  would even show. When someone reaches for it the cheap move is **one line** (append
+  **Decided 2026-10-01 — the consumer is `--file`**, which is how a probe is read: every elaborator
+  error will name the form it was at. Work in
+  [every elaborator error names the form it was at](tickets/elaborator-errors-carry-their-position.md).
+  When someone reaches for it the cheap move is **one line** (append
   `Budget.Where()` to the catch already at `Elaborator.cs:183`) — and its real cost is not the
   line but the nine xUnit assertions that compare an exact `Message` (`PrimitivesTests.cs:46,69,89`,
   `EffectTests.cs:50`, `PreludeTests.cs:40`, `InterleavingTests.cs:19`, `RecTests.cs:57`,
