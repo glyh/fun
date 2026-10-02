@@ -78,12 +78,30 @@ Numbers measured this round, each reproducible: `wc -l src/Fun.Expand/Enforest*.
    grep-derived table, not a plan.
 
 **Not forkable yet, and this is the ruling's real content:** the accumulator and recovery phase has
-**no workload**. `test/conformance/cases/README.md` cannot express two errors from one program, and
-nothing has counted how many cases die inside `Fun.Expand` rather than `Elaborator` — the probe is
-`dotnet test/Fun.Conformance/bin/Debug/net10.0/Fun.Conformance.dll --file <case>` over every
-`error` case, tallied by which layer refused. Until that number exists, "fault tolerance is worth
-doing now" is the [type-case-refinement](type-case-refinement-walks-whole-context.md) failure mode:
-a claim carried over from the prototype **with no workload to measure it on**.
+**no demonstrated consumer**. `test/conformance/cases/README.md` cannot express two errors from one
+program. **The probe was run 2026-10-01** (instrumenting `Driver.cs`'s three catches with a marker and
+probing all 238 `error` cases through `--file`, then reverting): **20 of 238 are refused inside
+`Fun.Expand`**, in this shape:
+
+| category | cases |
+|---|---|
+| order-group refusals | 4 (`order-group-missing`, `order-through-binder`, `order-assoc-none-does-not-chain`, `order-groups-unrelated`) |
+| macro refusals | 3 (`macro-arity`, `macro-position`, `non-trailing-hole-matches-one-term`) |
+| "unsupported Phase 7A" enforester gaps | 3 (`keyword-in-expression-position`, `pub-impl-is-not-an-expression`, `bare-bracket-expression`) |
+| role/binder and module-item shapes | 5 |
+| pattern/term shapes and the `struct-field-*` spellings | 5 |
+
+**What the count settles and what it does not.** It settles that expander refusals are a real category
+(twenty cases pin them) and that the first-error path is exercised. It does **not** show a consumer for
+*recovery*: every one of those programs has exactly one error, so nothing asks for a second message
+from the same program. The decision is now the user's, made against this number rather than against
+the prototype's topic doc.
+
+**A finding the same probe produced, which the map's fog had half right.** `struct-field-comma` and
+`-trailing-comma` already print a position: `unexpected token in a definition context at
+<unknown>:2:22-2:23`. Expansion errors *can* carry a span in their text; what `Driver.cs:38-46`
+discards is the structured span, not the text — so anyone adding positions on the expansion side
+should start from what the messages already say.
 
 ## Resolution
 
