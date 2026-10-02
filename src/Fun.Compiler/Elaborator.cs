@@ -172,15 +172,27 @@ public static partial class Elaborator
     }
 
     /// <summary>
-    /// The form being elaborated, so an evaluation that fails while checking it names that form
+    /// An error already named with the form it was at. It <em>is</em> a <see cref="FunException"/>,
+    /// so the driver, the runner and every <c>catch (FunException)</c> keep working; enclosing
+    /// <see cref="At{T}"/> frames pass it through untouched, so the position appears exactly once
+    /// however deeply the error is nested.
+    /// </summary>
+    private sealed class Located(string message) : FunException(message);
+
+    /// <summary>
+    /// The form being elaborated, so an error while checking it names that form
     /// (the prototype's <c>at</c>): the innermost form converts the evaluator's
-    /// <see cref="EvaluationFailed"/> into the elaboration error at that form.
+    /// <see cref="EvaluationFailed"/> into the elaboration error at that form, and every other
+    /// language error gains the position as a <see cref="Located"/>, which the enclosing frames
+    /// do not catch and re-append.
     /// </summary>
     private static T At<T>(Context ctx, Syntax stx, string mode, Func<T> work) =>
         ctx.Metas.Budget.At(stx.Span, mode, () =>
         {
             try { return work(); }
-            catch (EvaluationFailed e) { throw new FunException(e.Message + ctx.Metas.Budget.Where() + " (while type checking)"); }
+            catch (Located) { throw; }
+            catch (EvaluationFailed e) { throw new Located(e.Message + ctx.Metas.Budget.Where() + " (while type checking)"); }
+            catch (FunException e) when (ctx.Metas.Budget.Where() is { Length: > 0 } where) { throw new Located(e.Message + where); }
         });
 
     public static (Term, Value) Infer(Context ctx, Syntax stx) =>

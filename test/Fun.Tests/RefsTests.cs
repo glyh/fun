@@ -8,7 +8,7 @@ public class RefsTests
     private static Elaborated Elaborate(string source) => Driver.Elaborate(source, new Dictionary<string, string>());
 
     private static string ErrorOf(string source) =>
-        Assert.Throws<FunException>(() => Elaborate(source)).Message;
+        Assert.ThrowsAny<FunException>(() => Elaborate(source)).Message;
 
     /// <summary>A heap allocated inside a function that neither its domain nor its result mentions is discharged: the function is pure.</summary>
     [Fact]
@@ -29,21 +29,21 @@ public class RefsTests
     }
 
     [Theory]
-    [InlineData("deref(1)")]
-    [InlineData("1 <- 2")]
-    public void OnlyAReferenceIsReadOrWritten(string source) =>
-        Assert.Equal("a reference operation on a value that is not a reference", ErrorOf(source));
+    [InlineData("deref(1)", "a reference operation on a value that is not a reference while inferring the form at <unknown>:1:0-1:8")]
+    [InlineData("1 <- 2", "a reference operation on a value that is not a reference while inferring the form at <unknown>:1:0-1:6")]
+    public void OnlyAReferenceIsReadOrWritten(string source, string message) =>
+        Assert.Equal(message, ErrorOf(source));
 
     /// <summary>An unhandled Mutate names the reference, never the hidden heap.</summary>
     [Fact]
     public void AnEscapingHeapInAPureResultNamesItsEffect() =>
-        Assert.Equal("effects in a pure result: Mutate; write ->{E} T or ~> T",
+        Assert.Equal("effects in a pure result: Mutate; write ->{E} T or ~> T while checking the form at <unknown>:1:25-1:48",
             ErrorOf("{ f : Unit -> Ref(I64) = fn(u : Unit) { ref(1) }; 1 }"));
 
     /// <summary>E6 through references: storing a closure that performs a handled effect into an outer reference escapes the handler.</summary>
     [Fact]
     public void AStoreIntoAnOuterReferenceEscapesTheHandler() =>
-        Assert.Equal("a function performing Exc escapes the handler that handles it",
+        Assert.Equal("a function performing Exc escapes the handler that handles it while inferring the form at <unknown>:1:84-1:193",
             ErrorOf("{ effect Exc = sig { raise : I64 -> I64 }; q = ref(fn(u : Unit) ->{Exc} I64 { 0 }); "
                     + "match (0) { x => { _ = q <- fn(u : Unit) ->{Exc} I64 { perform Exc.raise(x) }; 1 }, effect Exc.raise n => 2 } }"));
 

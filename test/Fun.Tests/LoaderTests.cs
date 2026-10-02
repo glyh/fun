@@ -30,7 +30,7 @@ public class LoaderTests
     [Fact]
     public void AUnitIsStrict()
     {
-        var error = Assert.Throws<FunException>(() => With(("u", "pub v = outer_val")).Load("u", new MetaContext()));
+        var error = Assert.ThrowsAny<FunException>(() => With(("u", "pub v = outer_val")).Load("u", new MetaContext()));
         Assert.Contains("unbound variable: outer_val", error.Message);
     }
 

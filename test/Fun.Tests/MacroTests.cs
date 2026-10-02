@@ -27,13 +27,13 @@ public class MacroTests
     [InlineData("{ macro m(_) : Expr(I64) { quote(True) }; m(0) }", "type mismatch in the output of macro m: ")]
     [InlineData("{ macro m(_) : Expr(I64) { Syntax.i64(1) }; x : Bool = m(0); x }", "type mismatch: ")]
     public void ACallIsCheckedBeforeTheMacroRuns(string source, string message) =>
-        Assert.StartsWith(message, Assert.IsType<FunException>(Failure(source)).Message);
+        Assert.StartsWith(message, Assert.IsAssignableFrom<FunException>(Failure(source)).Message);
 
     /// <summary>A macro application is a call under the one budget: a divergent body is an error naming it, not a hang.</summary>
     [Fact]
     public void ADivergentMacroRunsOutOfBudget()
     {
-        var message = Assert.IsType<FunException>(Failure(
+        var message = Assert.IsAssignableFrom<FunException>(Failure(
             "{ macro spin(_) { rec f = fn(n : I64) : I64 { f(n) }; _ = f(0); Syntax.i64(1) }; spin(0) }")).Message;
         Assert.Contains("exceeded the budget", message);
         Assert.Contains("macro 'spin'", message);
@@ -42,7 +42,7 @@ public class MacroTests
     /// <summary>expand_decls expands a declaration list as a context of its own: what it binds does not leak.</summary>
     [Fact]
     public void ExpandDeclsBindsNothingOutsideTheResult() =>
-        Assert.Equal("unbound variable: hidden", Assert.IsType<FunException>(Failure(
+        Assert.Equal("unbound variable: hidden while inferring the form at <unknown>:1:104-1:110", Assert.IsAssignableFrom<FunException>(Failure(
             "{ macro count(d : List(Decl)) { _ = Syntax.expand_decls(d); Syntax.i64(1) }; _ = count({ hidden = 1 }); hidden }")).Message);
 
     [Fact]

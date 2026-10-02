@@ -12,19 +12,19 @@ public class TraitTests
     private const string Bounded = "f : [A : Size] -> A -> I64 = fn[A : Type](x) { Size.size(x) }; f(3) }";
 
     private static string Elaborate(string source) =>
-        Assert.Throws<FunException>(() => Driver.Elaborate(source, new Dictionary<string, string>())).Message;
+        Assert.ThrowsAny<FunException>(() => Driver.Elaborate(source, new Dictionary<string, string>())).Message;
 
     private static string Run(string source) =>
         Driver.Describe(Driver.Run(Driver.Elaborate(source, new Dictionary<string, string>())));
 
     [Fact]
     public void AnImplInsideAModuleIsNotEvidenceUntilOpened() =>
-        Assert.Equal("missing implementation of `Size`",
+        Assert.Equal("missing implementation of `Size` while inferring the form at <unknown>:1:173-1:177",
             Elaborate("{ " + Size + "M = module { pub impl Size(I64) = module { size = fn(x) { 4 } } }; " + Bounded));
 
     [Fact]
     public void TwoDifferentImplsForOneArgumentAreAmbiguous() =>
-        Assert.Equal("ambiguous implementation of `Size`",
+        Assert.Equal("ambiguous implementation of `Size` while inferring the form at <unknown>:1:256-1:260",
             Elaborate("{ " + Size
                 + "M = module { pub impl Size(I64) = module { size = fn(x) { 1 } } }; "
                 + "N = module { pub impl Size(I64) = module { size = fn(x) { 2 } } }; open M; open N; " + Bounded));
@@ -38,17 +38,17 @@ public class TraitTests
     /// <summary>A dictionary is resolved by its argument: an impl for another type is not evidence.</summary>
     [Fact]
     public void AnImplForAnotherArgumentIsNotEvidence() =>
-        Assert.Equal("missing implementation of `Size`",
+        Assert.Equal("missing implementation of `Size` while inferring the form at <unknown>:1:155-1:159",
             Elaborate("{ " + Size + "impl Size(Char) = module { size = fn(x) { 1 } }; " + Bounded));
 
     [Fact]
     public void AnImplMustGiveEveryOperation() =>
-        Assert.Equal("missing trait field `size`", Elaborate("{ " + Size + "impl Size(I64) = module { }; 0 }"));
+        Assert.Equal("missing trait field `size` while inferring the form at <unknown>:1:43-1:73", Elaborate("{ " + Size + "impl Size(I64) = module { }; 0 }"));
 
     /// <summary>A trait's parameter binds, so it must be lowercase.</summary>
     [Fact]
     public void ATraitParameterMustBeLowercase() =>
-        Assert.Equal("a trait parameter `A` must be lowercase; write `a` to bind",
+        Assert.Equal("a trait parameter `A` must be lowercase; write `a` to bind while inferring the form at <unknown>:1:0-1:46",
             Elaborate("{ trait Size(A) = sig { size : A -> I64 }; 0 }"));
 
     /// <summary>
@@ -57,7 +57,7 @@ public class TraitTests
     /// </summary>
     [Fact]
     public void AnImplHeadBinderMustBeLowercase() =>
-        Assert.Equal("`A` in an impl head is a reference, not a binder; an impl head binder must be lowercase; write `a` to bind",
+        Assert.Equal("`A` in an impl head is a reference, not a binder; an impl head binder must be lowercase; write `a` to bind while inferring the form at <unknown>:1:43-1:98",
             Elaborate("{ trait Size(a) = sig { size : a -> I64 }; impl Size(Option(A)) = module { size = fn(o) { 0 } }; 0 }"));
 
     private const string TwoImpls = "impl Size(I64) = module { size = fn(n) { 1 } }; impl Size(Char) = module { size = fn(c) { 2 } }; ";
@@ -70,7 +70,7 @@ public class TraitTests
     /// <summary>Nearness never breaks a tie: <c>Trait.op</c> meets the same ambiguity a bound does.</summary>
     [Fact]
     public void NearnessDoesNotBreakATie() =>
-        Assert.Equal("ambiguous implementation of `Size`",
+        Assert.Equal("ambiguous implementation of `Size` while inferring the form at <unknown>:1:166-1:178",
             Elaborate("{ " + Size + "impl Size(I64) = module { size = fn(n) { 1 } }; "
                 + "M = module { pub impl Size(I64) = module { size = fn(n) { 2 } } }; open M; Size.size(5) }"));
 
@@ -88,7 +88,7 @@ public class TraitTests
     /// <summary>A generic impl's own variables order the candidates: neither of two incomparable heads is chosen.</summary>
     [Fact]
     public void IncomparableGenericImplsAreAmbiguous() =>
-        Assert.Equal("ambiguous implementation of `Conv`",
+        Assert.Equal("ambiguous implementation of `Conv` while inferring the form at <unknown>:1:150-1:181",
             Elaborate("{ trait Conv(a) = sig { conv : a -> I64 }; "
                 + "impl Conv(I64 -> a) = module { conv = fn(p) { 1 } }; "
                 + "impl Conv(b -> Bool) = module { conv = fn(p) { 2 } }; "
@@ -106,7 +106,7 @@ public class TraitTests
             + "U = struct { a : I64; pub method m() : I64 { self.a } }; "
             + "impl Size(struct { a : I64 }) = module { size = fn(x) { 1 } }; "
             + "impl Size(_) = module { size = fn(x) { 0 } }; Size.size(U{a = 1}) }"));
-        Assert.Equal("type mismatch: structs with different members",
+        Assert.Equal("type mismatch: structs with different members while checking the form at <unknown>:1:91-1:99",
             Elaborate("{ P = struct { a : I64 }; U = struct { a : I64; pub method m() : I64 { self.a } }; "
                 + "x : P = U{a = 1}; x.a }"));
     }
@@ -118,7 +118,7 @@ public class TraitTests
     /// </summary>
     [Fact]
     public void AnImplCannotUseEvidenceItsHeadDoesNotBind() =>
-        Assert.Equal("missing implementation of `Size`",
+        Assert.Equal("missing implementation of `Size` while inferring the form at <unknown>:1:138-1:150",
             Elaborate("{ " + Size + "impl Size(I64) = module { size = fn(n) { 1 } }; "
                 + "impl Size(Option(a)) = module { size = fn(o) { Size.size(o) } }; 0 }"));
 }

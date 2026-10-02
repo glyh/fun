@@ -11,7 +11,7 @@ namespace Fun.Tests;
 public class PatternDiagnosticTests
 {
     private static string Failure(string source) =>
-        Assert.Throws<FunException>(() => Driver.Run(Driver.Elaborate(source, new Dictionary<string, string>()))).Message;
+        Assert.ThrowsAny<FunException>(() => Driver.Run(Driver.Elaborate(source, new Dictionary<string, string>()))).Message;
 
     /// <summary>A bare type-case head that names no type says type/nominal, not constructor.</summary>
     [Fact]

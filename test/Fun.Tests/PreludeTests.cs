@@ -34,8 +34,8 @@ public class PreludeTests
     public void TheDeclaredBootstrapInterfaceResolves() => Prelude.VerifyAbi();
 
     [Theory]
-    [InlineData("{ x = 1; y }", "unbound variable: y")]
+    [InlineData("{ x = 1; y }", "unbound variable: y while inferring the form at <unknown>:1:9-1:10")]
     [InlineData("f (1)", "function call must be adjacent to the callee; whitespace application is not supported")]
     public void AFailureIsTheProgramsOwnError(string source, string message) =>
-        Assert.Equal(message, Assert.IsType<FunException>(Failure(source)).Message);
+        Assert.Equal(message, Assert.IsAssignableFrom<FunException>(Failure(source)).Message);
 }

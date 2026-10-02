@@ -3,7 +3,7 @@ using Fun.Kernel;
 namespace Fun.Compiler;
 
 /// <summary>An expansion, elaboration or evaluation failure.</summary>
-public sealed class FunException(string message) : Exception(message);
+public class FunException(string message) : Exception(message);
 
 /// <summary>
 /// The evaluator failed while the checker was evaluating: a language error (the prototype's
