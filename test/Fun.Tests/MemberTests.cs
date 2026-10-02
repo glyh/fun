@@ -13,16 +13,16 @@ public class MemberTests
     private static readonly Dictionary<string, string> NoUnits = [];
 
     private static string ErrorOf(string source) =>
-        Assert.Throws<FunException>(() => Driver.Elaborate(source, NoUnits)).Message;
+        Assert.ThrowsAny<FunException>(() => Driver.Elaborate(source, NoUnits)).Message;
 
     [Fact]
     public void ARepeatedPublicMemberIsRejected() =>
-        Assert.Equal("duplicate member: `x` is already public",
+        Assert.Equal("duplicate member: `x` is already public while inferring the form at <unknown>:1:6-1:37",
             ErrorOf("{ M = module { pub x = 1; pub x = 2 }; M.x }"));
 
     [Fact]
     public void ARepeatedConstructorIsRejected() =>
-        Assert.Equal("duplicate constructor `A`",
+        Assert.Equal("duplicate constructor `A` while inferring the form at <unknown>:1:27-1:45",
             ErrorOf("{ M = module { pub rec E = enum { A(I64), A } }; 0 }"));
 
     /// <summary>A private rebinding is not a member, so it shadows rather than clashes.</summary>

@@ -14,9 +14,9 @@ public class InterleavingTests
     [Fact]
     public void AMacroBodyDoesNotSeeALaterBinding()
     {
-        var error = Assert.Throws<FunException>(() => WithUnit("{ open (import \"u\"); five(0) }",
+        var error = Assert.ThrowsAny<FunException>(() => WithUnit("{ open (import \"u\"); five(0) }",
             "open (import \"std\"); pub macro five(_) { Syntax.i64(helper(5)) }; pub helper = fn(x : I64) { x };"));
-        Assert.Equal("unbound variable: helper", error.Message);
+        Assert.Equal("unbound variable: helper while inferring the form at u:1:52-1:58", error.Message);
     }
 
     [Fact]

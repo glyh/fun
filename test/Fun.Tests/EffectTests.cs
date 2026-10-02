@@ -64,7 +64,7 @@ public class EffectTests
               E = enum { C(f(())) };
               1 }
             """;
-        var message = Assert.Throws<FunException>(() => Driver.Elaborate(source, new Dictionary<string, string>())).Message;
+        var message = Assert.ThrowsAny<FunException>(() => Driver.Elaborate(source, new Dictionary<string, string>())).Message;
         Assert.StartsWith("unhandled effect Abort.stop: no handler for it is in scope while inferring the form at", message);
         Assert.EndsWith("(while type checking)", message);
     }

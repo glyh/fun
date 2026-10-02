@@ -41,7 +41,7 @@ public class NominalTests
     [Fact]
     public void AnUnmentionedParameterIsRefusedAtItsDeclaration()
     {
-        var ex = Assert.Throws<FunException>(() => Tuple("{ F = fn(n : I64) { enum { X } }; (F(0), F(1)) }"));
+        var ex = Assert.ThrowsAny<FunException>(() => Tuple("{ F = fn(n : I64) { enum { X } }; (F(0), F(1)) }"));
         Assert.Contains("does not occur in its body", ex.Message);
         Assert.Contains("'n#", ex.Message);
     }

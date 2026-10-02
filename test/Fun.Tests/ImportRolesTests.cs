@@ -9,17 +9,19 @@ public class ImportRolesTests
     private static readonly Dictionary<string, string> Ops = new() { ["ops"] = "pub syntax answer { answer => 42 }" };
 
     private static string ErrorOf(string source, Dictionary<string, string>? units = null) =>
-        Assert.Throws<FunException>(() => Driver.Elaborate(source, units ?? [])).Message;
+        Assert.ThrowsAny<FunException>(() => Driver.Elaborate(source, units ?? [])).Message;
 
     [Theory]
-    [InlineData("{ M = module { pub answer = 7 }; syntax answer { answer => 42 }; open M; 1 }")]
-    [InlineData("{ M = module { pub answer = 7 }; open M; syntax answer { answer => 42 }; 1 }")]
-    public void AnOpenMayNotSupplyARoleName(string source) =>
-        Assert.Equal("the open supplies `answer`, which a syntactic role names in its region", ErrorOf(source));
+    [InlineData("{ M = module { pub answer = 7 }; syntax answer { answer => 42 }; open M; 1 }",
+        "the open supplies `answer`, which a syntactic role names in its region while inferring the form at <unknown>:1:65-1:74")]
+    [InlineData("{ M = module { pub answer = 7 }; open M; syntax answer { answer => 42 }; 1 }",
+        "the open supplies `answer`, which a syntactic role names in its region while inferring the form at <unknown>:1:33-1:74")]
+    public void AnOpenMayNotSupplyARoleName(string source, string message) =>
+        Assert.Equal(message, ErrorOf(source));
 
     [Fact]
     public void AUnitsOpenMayNotSupplyItsOwnRoleName() =>
-        Assert.Equal("the open supplies `answer`, which a syntactic role names in its region",
+        Assert.Equal("the open supplies `answer`, which a syntactic role names in its region while inferring the form at user:1:0-3:9",
             ErrorOf("{ U = import \"user\"; U.r }", new()
             {
                 ["m_answer"] = "pub answer = 7",
