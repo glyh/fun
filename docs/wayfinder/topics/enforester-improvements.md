@@ -93,19 +93,62 @@ Each migration:
 
 ## Status
 
-- [x] Phase 1: Parse_error module, error accumulator, recovery helpers
-- [x] Phase 2: parse_spec.ml combinator library, generic driver
-- [x] Fix: parse_fn_parts -> arrow body rest handling (was hardcoded to [])
-- [x] Fix: unwrap_stx_decl DeclNil/DeclCons option return
-- [x] Phase 3: Migrate leaf parsers to specs (6 done)
-  - parse_macro_call_binding — seq4(ident, @, group, eof) with to_option
-  - parse_open_statement — seq(KwOpen, ident) with to_option
-  - parse_import_statement — punct(KwImport) with to_option
-  - parse_named_module_binding — seq3(KwModule, ident, KwDo) header
-  - parse_named_struct_binding — seq3(KwStruct, ident, KwDo) header
-  - parse_method_binding — seq(KwMethod, ident) header
-- [ ] Phase 4: Migrate remaining binding parsers (type, effect, trait, impl, value)
-- [ ] Phase 5: Migrate expression parser to Pratt driver
+Every checkbox below described the deleted prototype. Measured against
+`src/Fun.Expand` at `dfa519b` (2026-10-02), each claim's state is:
+
+| checkbox (prototype) | measured state in the port |
+| --- | --- |
+| Phase 1: `Parse_error` module | none — three message-only exception types (`ReaderException`, `ExpandException`, `RoleException`); see the inventory below |
+| Phase 1: error accumulator | **ruled out of scope** (2026-10-01, [scope-enforester-improvements](../tickets/scope-enforester-improvements.md)); no program in the suite reports two errors |
+| Phase 1: recovery helpers | **ruled out of scope**, same ruling; the only non-advance guard is `Enforest.RequireAdvance` |
+| Fix: `parse_fn_parts` arrow body rest handling | `Enforest.EnsureNoRest` refuses a leftover rather than returning one |
+| Fix: `unwrap_stx_decl` DeclNil/DeclCons option return | no such function; not applicable |
+| Phase 2: `parse_spec.ml` combinator library, generic driver | none — `grep -niE 'spec\|combinator\|pratt' src/Fun.Expand/*.cs` = **0 hits** |
+| Phase 3: leaf parsers migrated to specs (6 named) | no specs to migrate to; the six names are prototype parsers (`enforest*.ml`), deleted with it |
+| Phase 4/5: migrate binding parsers / Pratt driver | never started; expression reading is role-driven named order groups (`Enforest.cs`, `Enforest.Roles.cs`), a different shape |
+
+## Error-site inventory (2026-10-02)
+
+The error surface, measured — not a plan. Commands and their output:
+
+`grep -rn 'throw new' src/Fun.Expand/*.cs | wc -l` = **173**
+
+`grep -rhoE 'throw new [A-Za-z]+Exception' src/Fun.Expand/*.cs | sort | uniq -c`:
+
+| exception | sites | what it is |
+| --- | --- | --- |
+| `ExpandException` | 145 | a language error: source the enforester refuses |
+| `ReaderException` | 12 | a language error: source that does not read as tokens and groups |
+| `RoleException` | 2 | a language error: a role conflict genuine whatever the prelude binds |
+| `InvalidOperationException` | 12 | an internal invariant — never a language error |
+| `NotImplementedException` | 2 | an unported path, deliberately distinguishable |
+
+`grep -rc 'throw new' src/Fun.Expand/*.cs` (29 files; the six with 0 included):
+
+| file | sites | file | sites |
+| --- | --- | --- | --- |
+| `Enforest.Roles.cs` | 39 | `Expander.Roles.cs` | 5 |
+| `Enforest.cs` | 24 | `Enforest.Macros.cs` | 4 |
+| `Enforest.Match.cs` | 17 | `Expander.cs` | 4 |
+| `Enforest.Effects.cs` | 15 | `Expander.Match.cs` | 3 |
+| `Enforest.Traits.cs` | 14 | `Enforest.Enum.cs` | 2 |
+| `Reader.cs` | 12 | `Enforest.Export.cs` | 2 |
+| `Expander.Macros.cs` | 9 | `Enforest.Rec.cs` | 2 |
+| `Enforest.Patterns.cs` | 6 | `Enforest.Refs.cs` | 2 |
+| `Enforest.Structs.cs` | 6 | `Expander.Traits.cs` | 2 |
+| `BinderTable.cs` | 1 | `Enforest.Implicits.cs` | 1 |
+| `Enforest.Imports.cs` | 1 | `Expander.Imports.cs` | 1 |
+| `Expander.Patterns.cs` | 1 | `Expander.Effects.cs` | 0 |
+| `Expander.Export.cs` | 0 | `Expander.Rec.cs` | 0 |
+| `Expander.Structs.cs` | 0 | `MacroRuntime.cs` | 0 |
+| `Terms.cs` | 0 | | |
+
+Span coverage at this base: **0 of 173** sites pass a `SourceSpan` — the
+span-carrying work is not in this tree. It lands separately
+(`span-on-expansion-errors`): the three language-error types take an optional
+span and print ` at <span>`, the shape the elaborator's `Budget.Where()` already
+prints. Nothing here re-opens recovery or the accumulator: the ruling stands
+that expanding stops at the first error.
 
 ### Combinators available
 
