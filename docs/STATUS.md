@@ -229,11 +229,11 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   ticket. All three hide behind rows of the first audit marked *fixed*: a fixed row named a
   **route**, never the throw.
 - **Four tickets closed as stale**, every scope bullet verified in `dotnet/src` rather than by
-  prose: [procedural macros](wayfinder/tickets/port-procedural-macros.md) (including the
+  prose: procedural macros (including the
   per-binding interleaving it called "not done": `MacroRuntime.Advance` called by
-  `Expander.cs:244`), [syntactic roles](wayfinder/tickets/port-syntax-roles.md),
-  [effects](wayfinder/tickets/port-effects.md), and
-  [the generative former's identity residue](wayfinder/tickets/port-generative-former-identity-residue.md)
+  `Expander.cs:244`), syntactic roles,
+  effects, and
+  the generative former's identity residue
   (already fixed the day it was written, `1f70e82`). So the remaining port work is no longer
   three waves but the handful of sites above.
 - **Landed:** a stuck match reads back its arms (`Term.Match` carries its arms'

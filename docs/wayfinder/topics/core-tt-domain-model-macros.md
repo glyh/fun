@@ -146,7 +146,7 @@ adds. The arguments travel as syntax objects — transport, not opacity. The
 output, like every macro's output, **is expanded in place**, and a result that
 is not syntax is an error naming the macro
 ([macro-annotation-constraints-mean-nothing](../tickets/macro-annotation-constraints-mean-nothing.md),
-[type-aware-macro-output-is-not-expanded](../tickets/type-aware-macro-output-is-not-expanded.md),
+type-aware-macro-output-is-not-expanded,
 both closed). Distance: a deferred call inside syntax that effect collection
 walks aborts it
 ([effect-collection-rejects-deferred-macro-calls](../tickets/effect-collection-rejects-deferred-macro-calls.md)).

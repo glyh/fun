@@ -124,7 +124,7 @@ Each lives in its ticket, all closed:
   — scope sets died at the macro value boundary.
 - [template-literals-resolve-at-use-site](../tickets/template-literals-resolve-at-use-site.md)
   — `&&`/`||` were corruptible by a use-site binder.
-- [type-aware-macro-output-is-not-expanded](../tickets/type-aware-macro-output-is-not-expanded.md)
+- type-aware-macro-output-is-not-expanded
   and [block-local-macros-leak-by-written-name](../tickets/block-local-macros-leak-by-written-name.md).
 - [delete-surface-ir](../tickets/delete-surface-ir.md) — the lowering seam.
 

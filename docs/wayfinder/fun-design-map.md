@@ -81,7 +81,7 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
   — every divergence a defect ticket; `Surface.t` named as an erasure plus one
   escape hatch, not a language level. Vocabulary in the root
   [`CONTEXT.md`](../../CONTEXT.md).
-- [Constructor lookup matches the type name](tickets/constructor-lookup-matches-type-name.md)
+- Constructor lookup matches the type name
   (closed) — premise was stale; the symptom already passed. Pattern-head
   resolution tries the type name first and the constructor name second, and that
   order is now written down in one place instead of hand-inlined in two.
@@ -312,91 +312,6 @@ as the frontier reaches them.
 
 ## Open questions
 
-### Handover (2026-09-14, end of the M7/M9 run)
-
-State: `main` builds and `dune test` is green (920 tests; the four test binaries
-run in ~0.05 / 0.34 / 8.3 / 7.5 s). This run landed the checker evaluation
-budget, path heads without spelling, macro fuel into the budget, explicit macro
-type binders, NomRef/Con by id, binder counts in `Core.map_subterms`, the brace
-surface syntax, M7 (roles by scope set, no mixing) and most of M9 (templates as
-macros, expander-driven reading, `Block` token trees, `expand_block`,
-idempotent expansion, unwritable resolved names `x#n`) — see `docs/STATUS.md`.
-
-**Recommended next, in order:**
-
-1. **Finish M9** ([ticket](tickets/templates-desugar-to-macros.md), "Left"):
-   procedural macro parameter kinds `(n : Id)`, and token-position holes in
-   `quote { … }`. Fresh code; the ticket names the mechanism (enforester needs
-   parameter kinds while reading a call; loader macro caches carry them).
-2. **Small defects**: ~~[capture extents by exceptions](tickets/capture-extents-chosen-by-exceptions.md)~~ (closed),
-   [role visibility gaps](tickets/role-visibility-gaps-after-m7.md),
-   [term_mentions_var ignores inserted metas](tickets/term-mentions-var-ignores-inserted-metas.md),
-   [budget error names no source call](tickets/budget-error-names-no-source-call.md)
-   (pairs with attaching spans to elaborator errors, see Fog).
-3. **Effects** (decided, unimplemented): [a bare arrow is pure](tickets/bare-arrow-is-pure.md),
-   [refs in effect rows](tickets/refs-in-effect-rows.md) (then
-   [nominal identity by purity](tickets/nominal-identity-applicative-by-purity.md)),
-   [handlers tunnel callback effects](tickets/handlers-tunnel-callback-effects.md).
-   `bare-arrow-is-pure` flips every arrow's default — expect wide test churn.
-
-**Needs the user (grilling), do not implement without it:**
-[recursive definitions stuck on open arguments](tickets/recursive-definitions-stuck-on-open-arguments.md),
-[pattern heads accept type formers](tickets/pattern-head-accepts-type-formers.md),
-and the older grilling tickets below (struct open, recursive records, `Self`).
-
-**Research, no decision needed yet:**
-[deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
-(OCaml 5 stack scanning; an evaluator design question for the port),
-[type-case refinement walks the whole context](tickets/type-case-refinement-walks-whole-context.md).
-
-**Working notes for the next agent:**
-- **Bear in mind that a probe is only evidence if the program is valid.** On 2026-09-25 three
-  separate conclusions — a nested field pattern hangs, the reader is fine, a record pattern is
-  unsupported — were all wrong, because the probes used a comma in a struct field list and a bare
-  `{…}` record: the language spells those `;` and `R{…}`. A hang looks like a hang whether or not
-  the program parses, so check the shape against a *passing* conformance case first, and when a
-  result says "the language has a hole here", prefer the reading "my program is malformed".
-- **Valid is not enough — the pattern must also match the value.** A fourth wrong conclusion the
-  same day: an atom field pattern was reported as failing to unify, when the real defect was only
-  that the error named neither atom. The probe varied the *pattern* (binder → constructor → atom)
-  without varying the *argument*, so `f(5, 5)` stopped satisfying `g = 2` and the rejection was
-  correct. When changing a pattern, change what it matches; when a rejection says "cannot unify
-  X with Y", make the message name X and Y before believing anything about the semantics.
-- **Before a session ends, run `git worktree list`.** On 2026-09-25 a fork was cleaned up before it
-  committed, and its finished fix sat uncommitted in an orphaned `/tmp` worktree — it was recovered
-  by luck of the sweep, verified and merged. A dead fork's *uncommitted* work is still its
-  deliverable, and `/tmp` is not durable.
-- **Give each fork its own scratch directory.** Three forks ran in parallel on 2026-09-25 sharing
-  `/tmp`; one probe file was overwritten mid-run by another fork's probe of the same name, costing
-  a confusing `VALUE 0` and a re-run. Brief forks with `/tmp/<fork-name>/` — one fork switched to
-  `/tmp/fixer-scratch/` on its own after being bitten, which is the tell that the shared name is
-  the problem and not the fork.
-- **Measure a ticket's gap in the runners before spending a fork slot on it.** On 2026-09-25 a
-  fork was spawned against `port-generative-former-identity-residue`'s section 1, whose fix had
-  already been committed and merged the same day the ticket was written (`1f70e82`, merged
-  `5a685ba`). Its whole slot went on discovering that. A ticket's prose can be older than the
-  commit that closes it: run the program before briefing a fork.
-- **Read the model before asking the user a question.** The last question of the form "is this
-  behaviour right?" was already answered by footnote 6 of
-  [nominal identity](tickets/nominal-identity-applicative-by-purity.md); asking cost more than
-  reading.
-- Parallel agents in git worktrees worked well for independent tickets. A fresh worktree has no
-  build output, so run `dotnet build` once before anything — and tell a fork to say which
-  verifications it could not run, rather than inferring green. Worktrees may be created from a
-  stale commit — reset to `main` first. Since 2026-09-25 each fork must also get its own
-  `/tmp/<fork>/` scratch directory.
-- Use pi-lens LSP navigation (`lsp_navigation`) for C# go-to-definition, references and
-  diagnostics; the camlkit MCP tools went with the prototype.
-- Surface syntax changed wholesale: bodies are `{ … }`, arms use `=>`, `;` is
-  explicit and a trailing `;` discards. Docs under `macro-system/` and closed
-  tickets still show the old `do … end` / `->` syntax; trust the code, `CLAUDE.md`
-  and `docs/STATUS.md`.
-- Compare performance side by side against a baseline build — the machine may be
-  loaded; the M9 regression (125x) was only visible that way.
-- When an implementation hits an undecided semantic question, stop and grill
-  the user with concrete code examples; several decisions this run were revised
-  mid-implementation (generated syntax is hygienic, quotes parse at definition).
-
 ### Frontier (2026-09-26)
 
 **2026-10-01, session close — 17 open** (frontmatter count, the three port umbrellas among them),
@@ -412,7 +327,7 @@ re-measured by the integrator rather than believed. One ticket closed, one filed
   unreachable by any program (its own comment says so; its reachable sibling is cased instead), and
   `Primitives.cs:165`'s refusal is observable only as a **process-killing stack overflow** — the one
   failure a conformance case cannot pin, and the one the runner cannot classify.
-- **[A mutation no longer aborts the suite](tickets/conformance-runner-aborts-a-mutation.md)**
+- **A mutation no longer aborts the suite**
   (`008720b`, merged `6053ea3`) — filed closed, because the sweep had recorded it without a ticket.
   Two mutations that killed the run at exit 134 now report per case: `hard failure (T): msg`, A →
   `954 cases, 9 failed`, B → `1 failed`, run completes, exit 1. The runner's two hand-kept exception
@@ -473,364 +388,28 @@ lost to procedural slips rather than to model error — a run against a **stale 
 own ablation whose `dotnet build` exited 1 — so the rule this session earned is: **an ablation must
 print its build's exit code before its observation counts.**
 
-**2026-09-29, session close — 18 open (frontmatter count, the three port umbrellas among them),
-suite 954 cases, 0 failed, xUnit 208.** Three things this session, all landed and re-measured by
-the closer rather than reported:
+**Session history (2026-09-26 → 09-29).** The port's parity work closed: every item the
+2026-09-25 re-sweep listed landed, the OCaml prototype was deleted, and `dotnet/` was lifted to
+the repository root. The suite grew 857 → 961 cases, 0 failed. Four rulings from this period:
 
-- **[Type-case refinement](tickets/type-case-refinement-walks-whole-context.md) closed its code
-  half.** An oracle pass re-scoped the recon (it had found `Opened` only — there are seven entry
-  channels, `ResumeEntry` among them a port regression the prototype did handle, `SelfMethods`
-  provable after all), re-measured the performance half the recon had called noise (refining a
-  *builtin* scrutinee costs 37.8 s where a bound variable costs nothing), and the fix landed as
-  `63df1df`: seven channels rewritten, `RefinementTarget` takes the variable the scrutinee
-  evaluates to, seven new cases each proven red first. Timing `b_200_r.fun`: **37.8 s → 1.02 s**.
-  The ticket stays **open on three things that are not code**: the `d`/`e` ruling (reproducers now
-  embedded in the ticket — should a type written inside a branch see the matched variable as the
-  matched head? `core-072`–`077` move with it), whether rewriting `Evidence` is the right
-  mechanism rather than a green-suite coincidence, and `Opened` vs `ConstructorEntries` never
-  isolated from each other. The mention index stays deferred — no number asks for it.
-- **Queue item 1 is done** — [the suite investigation](tickets/suite-redundancy-measured.md)'s two
-  specified cases (`0abdf5f`), with two corrections written back onto the ticket: its item 3
-  spelling (`two tokens => 42`) **does not parse in the port** (a branch pattern's head must be
-  the declared-head atom) and was never re-run against this build, and `.expect` can only be
-  `error` for the refusal (`cases/README.md:35-37` — message-pinning belongs in xUnit).
-- **Two non-work findings worth not re-learning.** [macro-owns-its-output](tickets/macro-owns-its-output.md)
-  was checked and needs no new ruling: the user's 2026-09-18 answers (M1 ships with `publish`'s
-  removal; take the shape from Klister's `which-problem`) both stand, and the ticket reopens only
-  on its trigger — a second declaration macro, or a change to what `publish` distributes. And the
-  three port umbrellas sitting at `status: open` in frontmatter are **deliberate living nodes**
-  (their bodies say so, and the map keeps their children) — do not "fix" them to `closed`; the
-  18-vs-20 count difference between frontmatter and the entry below is that, not a missed edit.
-
-`/tmp/orc` (the oracle's probes and experiment repo) is ephemeral: the seven landed probes are
-conformance cases now; `d`/`e` are in the ticket; the rest is reconstructible from the ticket's
-brief.
-
-**2026-09-28, session close — 20 open.** The session's second half closed twelve tickets and landed
-thirteen changes: the pattern grammar (its own entry below), the arity-2 deferred-call **crash**,
-`Eq(List(a))`/`Eq(Option(a))` with the selective re-exports they needed, `open M.{a, b}`, a
-unit-level `rec` with written implicit binders, two `Vars`/`Bounds` carries, the struct-former
-refusal with its role-separation fix, and **the last live unported path**. Other sessions closed
-tickets in this same repo on the same day, so the count is not one session's ledger — it is 20 as of
-this entry. `docs/STATUS.md` carries them in one entry, and the suite grew to **947 cases, 0 failed**
-(three byte-identical files deleted, five coverage-gap cases added, each proven by flipping it).
-
-**Next session's queue, in the order the tickets argue it:** ~~the two specified case fixes on
-[the suite investigation](tickets/suite-redundancy-measured.md)~~ **landed `0abdf5f` (2026-09-29,
-947 cases, 0 failed)** — `core-279` on a spelling the ticket got wrong (the fork's
-`two tokens => 42` does not parse in the port; what landed is `two_tokens 7 7`, hole-free and
-multi-token) and `core-022` as the refusal case with `.expect` `error`, message verified by hand;
-then the remaining rows on
-[the coverage gaps](tickets/coverage-gaps-from-the-mutation-sweep.md), and after those the design
-work, which is grilling rather than building:
-[trait deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md),
-[private type visibility](tickets/design-private-type-visibility-model.md), and the
-[Stage 11](tickets/specify-stage-11-macro-powered-language-features.md) and
-[Stage 12](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md) specs. One grammar item
-is ruled and **held** by the user: [an or-pattern in a head](tickets/pattern-headed-impls.md) waits
-for a call site.
-
-**2026-09-27, last thing — the pattern grammar is ruled; 25 open again.** (The
-counts further down are as-of their own timestamps.) A grilling session starting
-from [an impl head is a pattern over types](tickets/pattern-headed-impls.md)
-settled the two rules that grammar needed and filed one ticket to build them:
-[a pattern binder is lowercase; naming an existing term takes
-`^`](tickets/pattern-binders-are-lowercase-and-references-are-pinned.md). Case
-decides a name's role in every **pattern** position — lowercase binds, uppercase
-refers, unresolved uppercase is an error, scope no longer decides; a trait
-declaration takes an explicit lowercase parameter; `^name` pins an existing term
-and is surface-only (internally a reference and a pin are one thing: a term in a
-pattern position, tested by convertibility). One ticket, two ordered stages: the
-**additive** forms (pin, arrows, universes, tuple routing) land first with the
-suite green *unchanged* — that is the proof of additivity — then the rule and its
-call-site migration (44 trait declarations, ~20 head spellings, 1 line in `std/`,
-21 live-doc occurrences; closed tickets stay as the record). It **supersedes** the
-same-day [type-case patterns cannot express what an impl head
-can](tickets/type-case-patterns-cannot-express-impl-heads.md), whose "bug" reading
-was wrong (the refusals *were* the decided rule — `type-case-generic-programming.md:88`
-and `Enforest.Match.cs:118`) and half of whose "missing" forms already worked, and
-it **retires** the "Cost accepted" paragraph of [trait-op-takes-innermost-impl](tickets/trait-op-takes-innermost-impl.md)
-(a typo silently becoming a generic impl). The map's own warning about prose older
-than its commit applies to the paragraphs below: their counts are history, these
-are the state.
-
-**Also re-measured in the same session, and cheaper than they read:**
-[pattern-headed impls](tickets/pattern-headed-impls.md) — its premise is corrected
-on the ticket. `impl Trait(_)` is already a blanket head at any depth, nested and
-aliased heads already work, the port already has the stuck case its prose says is
-missing (`Nbe.StuckMatch.cs`), and a head has no implicit record width to lose.
-What is left there is an or-pattern in a head and a width-tolerant
-`struct { …; _ }` head, both of which ride machinery that exists.
-[An impl declared inside a function does not promote its bound](tickets/impl-in-a-function-does-not-promote.md)
-keeps its reproducer unchanged under the new rule: its head references an enclosing
-binder by an uppercase name, which is exactly what the rule now says such a name
-means.
-
-**Landed the same night.** Both stages of
-[a pattern binder is lowercase; naming an existing term takes
-`^`](tickets/pattern-binders-are-lowercase-and-references-are-pinned.md) are merged and
-green: stage 1 is `665b8e3` (888 cases, **no existing expected value changed** — that was the
-additivity proof) and stage 2 is `997b57c` (892 cases, xUnit 204; its migration-only commit
-was green *under the old rule*, so the rule is what changes meaning, not the rename). Two
-forks now run on the follow-ups, split so their files do not overlap: the **arrow rules**
-plus wiring the unreachable-arm check (`a -> b` explicit and non-dependent only, a new
-`[a] -> b` that names an implicit Pi's binder so `[k] -> k -> k` matches `[k : Type] -> k ->
-k`, and the check wired full — which flips the two cased expectations the ruling accepted,
-`values/core-133` and `values/stuck-match-pruned-arm`), and **record matching by fields**
-([an impl head is a pattern over types](tickets/pattern-headed-impls.md): a public method no
-longer hides a record from a head naming its fields, while equality and the width opt-in
-`struct { a : p; _ }` are unchanged). Still **25 open**.
-
-**2026-09-27, last thing — the library surface is designed; one ticket out of it.**
-[Design the user-facing library surface](tickets/design-std-library-surface.md) was
-grilled to an empty frontier and its answer is recorded (19 decisions: plural
-`Lists`/`Options` modules reached through a renamed `Std` with `Strings` named but
-not yet declared, `Option`-returning
-accessors with saturating `take`/`drop`, policy-first-uniform argument order, a
-bounded primitive floor, truncating `zip`, commented bindings, and a 31-binding
-first cut).
-**Implemented 2026-09-27 as `d70567d`** (31 bindings, `conformance: 857 cases, 0 failed`)
-with two deviations on the record: its two `Eq` impls did not ship because each half is
-blocked by a compiler gap the fork found and the integrator reproduced —
-[a generic impl's head variable carries no bound](tickets/generic-impl-head-var-has-no-bound.md)
-(a failing shape that takes the whole prelude load down) and
-[a recursive helper matching two lists cores](tickets/recursive-match-on-two-lists-cores.md)
-— so the work is parked as
-[Eq for List and Option](tickets/std-eq-for-list-and-option.md), blocked on both; and
-`std/lib` moved below the new units in `Prelude.Order`, since the library uses the
-operators. It opened one ticket of its own —
-[a selective open, `open M.{a, b}`](tickets/selective-open.md), the mirror of the
-working `export M.{a, b}`, which closes the measured
-[impl visibility](../topics/impl-visibility.md) gap ("there is no selective open")
-without flipping impl resolution to B; and it recorded that
-[`M.(e)`](tickets/local-open-expression.md) is not to be reopened as-is, since it
-buys nothing selective-open does not.
-
-**One of those two gaps closed the same evening — `cb52e96`.**
-[A generic impl's head variable carries no bound](tickets/generic-impl-head-var-has-no-bound.md)
-is implemented and merged: a generic impl's method body can use evidence for its own
-head variable (the demand becomes a hidden dictionary argument, resolved from the use's
-scope), verified by the integrator on the `[1] == [1]` → `True`, `[1] == [2]` → `False`
-gate with `conformance: 865 cases, 0 failed`, xUnit 188/188. Its **bound is inferred
-from the body's demands, not written** — that is the shipped contract, and whether the
-head may state its bound is parked as
-[a written bound on an impl head](tickets/impl-head-written-bound.md). Two follow-ups came
-out of the same fix: [an impl declared inside a function does not promote](tickets/impl-in-a-function-does-not-promote.md)
-(reproduced) and the fork's unverified claim that
-[Nbe's module re-evaluation drops Vars and Bounds](tickets/nbe-module-reevaluation-drops-vars-and-bounds.md).
-So [Eq for List and Option](tickets/std-eq-for-list-and-option.md) now waits only on
-[the two-list recursion crash](tickets/recursive-match-on-two-lists-cores.md).
-
-**The port's parity work is closed.** Every item the 2026-09-25 re-sweep listed landed, and the
-OCaml prototype was deleted the same day; [`docs/STATUS.md`](../STATUS.md) is authoritative for
-what is built. The rewrite wrapper `dotnet/` was lifted to the repository root on 2026-09-26.
-So the frontier is no longer a port wedge — it is the open tickets below, and the two sections
-that used to lead this one are kept underneath as the record of how the port finished.
-
-**Re-measured 2026-09-27 — 21 open tickets, 20 unblocked.** Seven closed today on measured
-evidence ([mutual chains in scoped heads](tickets/type-def-chains-in-scoped-do-heads.md), which
-needed no work; [the observable budget cases](tickets/port-budget-observable-cases.md), whose third
-row had landed; [reflect `Match` in the `Expr` ADT](tickets/reflect-match-in-expr-macro-adt.md),
-whose ADT was built and untested; [identity must survive re-evaluation](tickets/port-identity-survives-reevaluation.md),
-audited innocent at every site but one; [a meta in a method signature captures `self`](tickets/method-signature-metas-capture-self.md);
-[a closure capture gives two answers](tickets/closure-capture-identity-two-answers.md), ruled and
-fixed in the same afternoon; and
-[the most precise impl wins](tickets/trait-op-takes-innermost-impl.md), whose generic-head half had
-waited since 2026-09-17), the runner grew a hang detector
-([the runner does not timebox elaboration](tickets/port-runner-does-not-timebox-elaboration.md)),
-and two of those closes opened a ticket of their own. `pattern-headed-impls` is now **unblocked** —
-the one ticket it was waiting on is the one that closed. **Re-measured again the same evening — 19 open, 18 unblocked, 17 of those neither assigned nor
-blocked.** Two closed on measurement, not on work:
-[deep non-tail recursion](tickets/deep-non-tail-recursion-is-superlinear.md) — the port is linear
-(2x per doubling; the quadratic belonged to the deleted prototype's native-stack scanning, and the
-port's `Kont` frames are the fix that ticket named), and
-[brackets decide grouping](tickets/brackets-decide-grouping.md) — all five of its named branches
-are merged, its two `Open` bullets are explicitly deferred with no case needing either, and the
-rules that were implemented but never pinned are now
-[pin the grouping rules with cases](tickets/pin-grouping-rules-with-cases.md) — opened and **closed
-the same day** (`792 cases, 0 failed`).
-[The bootstrap↔compiler interface](tickets/declare-bootstrap-compiler-interface-once.md) landed the
-measurement its ruling asked for (a fork's parked branch, integrated 2026-09-27 as `71ce629`), so
-its two routes are now a choice against a table rather than against an estimate — **that choice is
-open, and it is the next ruling due**. [Type-case refinement](tickets/type-case-refinement-walks-whole-context.md)
-turned out to be half done in the port and to have no benchmark left to measure with, so it is not
-forkable as written — **re-scoped 2026-09-28 by an oracle pass, landed 2026-09-29**: the
-correctness fix is in (seven entry channels covered, seven new cases, **954 cases, 0 failed**,
-the 37.8 s refinement case at 1.02 s), and what the ticket still owes is not code — the `d`/`e`
-grilling (should a type written *inside* a branch see the matched variable as the matched head?)
-and whether rewriting `Evidence` is the right mechanism. **Forkable as they stand**:
-[a pattern synonym's generalized types](tickets/pattern-synonym-type-parameters.md), and
-[the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md), whose precondition
-is now on `main`.
-
-**Landed the same evening — 18 open** (19, less the two closes and the one new ticket). [A pattern synonym's generalized types](tickets/pattern-synonym-type-parameters.md)
-is implemented and cased (its six new pairs took the suite to 798), and closed **with a recorded
-deviation from its ruling's route** — the three ruled answers all hold, the mechanism sentence was
-not followed; see the ticket. [The bootstrap↔compiler interface](tickets/declare-bootstrap-compiler-interface-once.md)
-is declared and verified at load (merged `9f60619`), its name count corrected on the way to
-**160 = 114 tags + 26 types + 19 builders**, and what it deliberately left is
-[the spellings the declaration leaves behind](tickets/prelude-abi-remaining-spellings.md) — `Id`'s
-double life as a declared type and a hole-kind keyword, and the `std`-split sequence. Still in
-flight: [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md).
-
-**All three forks landed — 17 open.** [The `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md)
-merged as `16f9948`: `std/bootstrap.fun` (the ABI) + `list.fun` + `lib.fun` + `type.fun`, with
-`stage2.fun` as the `std` a program imports and `stage1.fun` gone; `conformance: 806 cases, 0 failed`.
-It carried one compiler change — `export M` re-exports a unit's macros with its roles — which checks
-out as a **port gap, not a semantic change**: [`export-construct`](tickets/export-construct.md) ruled
-it on 2026-09-16 and the port never carried it. Four of that ticket's decisions were stale because
-the ABI declaration landed mid-flight; each reconciliation is recorded in the ticket. That closes
-the last blocked edge — [design the library surface](tickets/design-std-library-surface.md) is now
-unblocked, against real files and a real first cut, which is what the restructure existed to make
-possible.
-
-**27 open, 25 unblocked** was the count at
-2026-09-26, and the rest of this section is that state. By where the tickets live:
-
-- **Port follow-ups** (`port-core-tt-to-dotnet`'s children) — none is a known divergence:
-  [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md) (ruled 2026-09-17, its
-  generic-head half implemented nowhere — step 2 of the parity recipe; in flight 2026-09-27),
-  and the deferred [typed operator macro](tickets/port-typed-operator-macro.md) (its one open
-  question is the shape: one syntax argument for the whole use, or one per operand).
-- **Language and macro work** — the largest ready group:
-  [a synonym's generalized types are its implicits](tickets/pattern-synonym-type-parameters.md)
-  (ruled 2026-09-25, and its "E11 chain" is not a ticket — it is the stamp case family, all green),
-  [a parameter's type meta captures the earlier binders](tickets/parameter-type-metas-capture-earlier-parameters.md)
-  (new 2026-09-27 — the method fix's failure one layer out, measured pre-existing, and it needs a
-shape chosen before a fork can take it),
-  [does a macro own its output](tickets/macro-owns-its-output.md) (grilling),
-  the [Stage 11](tickets/specify-stage-11-macro-powered-language-features.md) and
-  [Stage 12](tickets/specify-stage-12-macro-diagnostics-and-expansion-ux.md) specs,
-  [deriving and protocols](tickets/design-trait-library-deriving-and-protocols.md),
-  [private type visibility](tickets/design-private-type-visibility-model.md),
-  [generated symbol cleanup](tickets/scope-generated-symbol-cleanup.md), and
-  [enforester improvements](tickets/scope-enforester-improvements.md).
-- **Ruled or researched, waiting on nobody**: [brackets decide grouping](tickets/brackets-decide-grouping.md)
-  (tail-returning forms, dotted group references), [one set literal](tickets/general-set-literals.md)
-  (later), [type-case refinement walks the context](tickets/type-case-refinement-walks-whole-context.md),
-  and [deep non-tail recursion is superlinear](tickets/deep-non-tail-recursion-is-superlinear.md)
-  (architectural, pre-existing).
-- **Stdlib and its compiler interface** — new 2026-09-26, the first direction aimed at `std/`
-  itself and the boundary to the compiler rather than at the compiler's language:
-  [declare the bootstrap↔compiler interface once](tickets/declare-bootstrap-compiler-interface-once.md)
-  (best landed first, so the split below happens with the interface already guarded; **ruled
-  2026-09-27: measured before it is shaped**, and the measuring fork is in flight),
-  [restructure `std` into a bootstrap layer and a library layer](tickets/restructure-std-into-bootstrap-and-library.md)
-  (the seam is exactly the names C# spells, and the library is everything else), and
-  [design the user-facing library surface](tickets/design-std-library-surface.md).
-- **Blocked**: [an impl head is a pattern over types](tickets/pattern-headed-impls.md) is now
-  **unblocked** — [the most precise impl wins](tickets/trait-op-takes-innermost-impl.md) landed
-  2026-09-27 — and only [the library surface design](tickets/design-std-library-surface.md) waits,
-  on [the `std` restructure](tickets/restructure-std-into-bootstrap-and-library.md).
+- **The pattern grammar** (2026-09-27): [a pattern binder is lowercase; naming an existing term
+  takes `^`](tickets/pattern-binders-are-lowercase-and-references-are-pinned.md) — case decides a
+  name's role in every pattern position. Two stages, additive first (no existing expected value
+  changed), then the rule and its call-site migration.
+- **The library surface** (2026-09-27): [design the user-facing library
+  surface](tickets/design-std-library-surface.md) — 19 decisions, 31 bindings, `d70567d`. Its two
+  `Eq` impls are parked as [Eq for List and Option](tickets/std-eq-for-list-and-option.md), blocked
+  on two compiler gaps.
+- **Type-case refinement** (2026-09-29): [the seven entry
+  channels](tickets/type-case-refinement-walks-whole-context.md) rewritten, `63df1df` — the 37.8 s
+  refinement case at 1.02 s. The ticket stays open on the `d`/`e` ruling and the `Evidence`
+  mechanism.
+- **The last live unported path** (2026-09-28): closed with the struct-former refusal and its
+  role-separation fix. The frontier is no longer a port wedge.
 
 Umbrellas keep their own children: [the port](tickets/port-core-tt-to-dotnet.md),
 [the parity recipe](tickets/port-parity-plan.md), and the
 [unported-path audit](tickets/port-unported-path-audit.md).
-
-### Waiting on the user (2026-09-25) — all three answered
-
-All three were settled 2026-09-25, and each answer was carried into its ticket:
-
-- [A generative former with an unused type parameter](tickets/port-generative-former-phantom-parameter.md)
-  — **decided**: an unused type parameter is an error at its declaration, in both
-  implementations; the stricter route, not the prototype's phantom reading. Landed in both.
-- [Should a pattern synonym's generalized types be supplyable?](tickets/pattern-synonym-type-parameters.md)
-  — **decided**: they are the synonym's implicit type parameters, so all three of the ticket's
-  questions answer from one reading. Ruled and queued.
-- [A budget error should name the call stack of requests](tickets/port-budget-attribution.md)
-  — **closed**: the call stack landed (outermost → innermost, one stack across macro and checker
-  requests), and with it the `expand_decls` assertion the ruling asked for. The
-  test it blocked now exists; the remaining gap is [the observable cases](tickets/port-budget-observable-cases.md).
-
-The nested text below is the state as it stood before those answers; the tickets are the record
-now.
-
-#### The three as they were written (2026-09-25)
-
-Three decisions are parked with tickets of their own. None blocks work in flight; the third
-blocks one *test*.
-
-- [A generative former with an unused type parameter](tickets/port-generative-former-phantom-parameter.md)
-  — mirror the prototype's phantom parameter (`Box(I64)` and `Box(Char)` become one type), or
-  keep the port's refusal as its documented limit. The prototype accepts it; the port refuses.
-- [Should a pattern synonym's generalized types be supplyable?](tickets/pattern-synonym-type-parameters.md)
-  — the port takes the rigid reading today (the scrutinee's type solves them, nothing can be
-  supplied, nothing is reported unsolved). The other reading makes them the synonym's implicit
-  type parameters, which answers all three of that ticket's questions with existing machinery.
-- [A budget error should name the call stack of requests](tickets/port-budget-attribution.md)
-  — the *shape* is already ruled (name the chain, since an overrun can come from a
-  combination); four sub-questions remain: order, frame content (the port's macro budget
-  errors carry no source position — the map's own fog item), scope across macro and checker
-  requests, and truncation. **Blocks a test**: the `expand_decls` assertion the budget ruling
-  asked for cannot be written until they are answered.
-
-The sections from here down are the record of how the macro model and the port got here. They
-were written as a running to-do list, and later sections are kept in the tense they were written
-in — closed items say `(closed)` in their bullet. The live list is at the top of this section,
-under [Frontier (2026-09-26)](#frontier-2026-09-26).
-
-### Blocking the .NET port — closed 2026-09-25
-
-> **Closed.** The port reached parity (`port-fails: 0`) and the prototype was deleted on
-> 2026-09-25; `dotnet/` was lifted to the repository root on 2026-09-26. The narrative below is
-> the record of the port's last mile, kept because each defect in it was an invariant whose
-> distance had to be found by probing. It is **not** a to-do list — for the live one see
-> [Frontier (2026-09-26)](#frontier-2026-09-26) and [`docs/STATUS.md`](../STATUS.md).
-
-[Port `core_tt` to .NET](tickets/port-core-tt-to-dotnet.md) is the destination.
-**In progress since 2026-09-16** — **695 of 695** conformance cases, **0 failed** (C#,
-`dotnet/`), 172/172 xUnit, `dune test` green (2026-09-20). **The shared suite is fully
-green, which is not yet feature parity:** 62 `not ported yet` paths in `dotnet/src` are
-only failures when a shared case reaches them, and
-[the audit of those paths](tickets/port-unported-path-audit.md) (2026-09-20) sorted
-them into 17 real gaps, 13 wrong-kind refusals, 17 unreachable and 8 undecided — none
-of the 17 is visible to the suite as it stands. **Start at the port ticket's
-"Handover (2026-09-17)"**, then work
-[reach feature parity with the prototype](tickets/port-parity-plan.md) — the recipe
-for what remains. Language: C#; the evaluator is
-an explicit frame-stack machine; the domain model is the spec and the OCaml
-prototype supporting material. History below. **Blockers extended 2026-09-14:** the decided
-effect semantics, the `Self`-identity soundness hole and record knot, the open
-semantic questions, and M9's last distance — plus a stability signal (runs that
-land without reopening decisions) and two decisions made at port start (no
-native-stack recursion in the evaluator; F# vs C#). A port carries code, not invariants — and
-every defect below is an invariant with no name in the source.
-
-- [Domain model for `core_tt` before the port](tickets/domain-model-core-tt.md)
-  (closed) — the port's specification, written in passes: **all four done** —
-  elaborate ↔ evaluate
-  ([pass 1](tickets/domain-model-core-tt.md)),
-  [surface and enforestation](tickets/domain-model-surface-enforestation.md),
-  [macro evaluation and hygiene](tickets/domain-model-macro-hygiene.md), and
-  [effects](topics/core-tt-domain-model-effects.md). The specification is
-  written; what remains between the prototype and the port are the defect
-  tickets below — each an invariant's distance, none an unnamed rule.
-- [Imported modules elaborate in the importer's context](tickets/imported-module-elaboration-context.md)
-  (closed) — a compilation unit now elaborates against the base context, so its
-  meaning no longer depends on what the importer happened to have in scope, and
-  the double-import crash is gone. Macros became members in the same change.
-- [Impls and traits extend the context outside the slot list](tickets/bring-impls-and-traits-into-the-slot-list.md)
-  (closed) — every binding kind now extends the context through one helper driven
-  by the slot list, so both width checks and the drift error are gone. An impl's
-  contribution is separated from the evidence that rides along with it.
-- [The elaborator's expander handle is named as a context](tickets/expander-handle-is-a-capability-not-a-context.md)
-  (closed) — it holds a `macro_runtime`, how to run a macro and how to run it as a
-  call under the evaluation budget, instead of a borrowed expander. One adapter is where the two libraries
-  meet.
-- [Elaborator and evaluator agree on binding-list env width only by parallel arithmetic](tickets/env-width-contract-is-unnamed.md)
-  (closed) — a binding's contribution is now one ordered slot list in
-  `Core.binding_slots`, pushed by the evaluator and zipped by the elaborator, so
-  order and count exist once instead of three times. Width is its length. The
-  evaluator's two binding folds became one. Remainder is its own ticket below.
-- [One declaration per primitive](tickets/unify-primitive-declaration.md)
-  (closed) — one table (`Nbe_prim.declarations`: name, type, reducer); I64
-  arithmetic is checked, overflow is a runtime error.
-- [Struct open does not scope over `con_fields`](tickets/struct-open-does-not-scope-over-con-fields.md)
-  (closed) — implemented 2026-09-15: struct items in source order (a field is an item), fields see earlier opens and bindings, methods checked after the last field, a field type mentioning a method is a cycle error.
-- [Block-local macros leak by written name](tickets/block-local-macros-leak-by-written-name.md)
-  (closed) — the written-name fallback now serves only context-less
-  (string-built) ids, so a source-written call resolves by scope set alone and a
-  block's macro is not reachable after it.
 
 ### Language and macro work
 
@@ -864,7 +443,7 @@ every defect below is an invariant with no name in the source.
   (closed) — an occurrence unfolds where a shape is needed, so `Some(l1)` fits.
 - [Self type has no identity, so unrelated recursive records unify](tickets/self-type-has-no-identity.md)
   (closed) — occurrences compare by identity.
-- [Mutual type chains in scoped do-heads](tickets/type-def-chains-in-scoped-do-heads.md)
+- Mutual type chains in scoped do-heads
   — deferred remainder of the nominal ticket: `and` chains rejected in scoped
   `do type … ; body` heads until expression-position group knots are designed.
 - [Reflect Match in the Expr macro ADT](tickets/reflect-match-in-expr-macro-adt.md)
@@ -886,7 +465,7 @@ every defect below is an invariant with no name in the source.
 
 ### IR layers (from [Syntax.t vs Surface.t](tickets/syntax-vs-surface-ir-layer.md))
 
-- [Type-aware macro output is not expanded](tickets/type-aware-macro-output-is-not-expanded.md)
+- Type-aware macro output is not expanded
   (closed) — both type-aware call sites share one helper that expands the output
   before lowering; a non-syntax result is an error naming the macro, not a hole.
 - [Procedural macros capture use-site variables](tickets/procedural-macros-capture-use-site-variables.md)
@@ -994,7 +573,7 @@ What remains, in the recommended order:
   application's error, so a `panic` in a macro body carries the operator span.
 - [Each core-term traversal counts binders on its own](tickets/core-traversals-count-binders-separately.md)
   (closed) — live in generalization's closedness check; every traversal now reads `Core.map_subterms`.
-- [term_mentions_var ignores inserted metas](tickets/term-mentions-var-ignores-inserted-metas.md)
+- term_mentions_var ignores inserted metas
   (closed) — it now mentions each slot its mask binds; dependent application no
   longer applies such a codomain to an out-of-scope variable.
 - [What a macro annotation constraint means](tickets/macro-annotation-constraints-mean-nothing.md)
@@ -1041,7 +620,7 @@ What remains, in the recommended order:
   (closed) — `resume` value branch, instance routing, E6 through refs and module
   members, the pure-branch shape, and a written `->{_}` nothing solves is an
   error naming what to write.
-- [Small follow-ups](tickets/small-followups-2026-09-15.md)
+- Small follow-ups
   (closed) — every item done: a method's row is expanded in its parameters'
   scopes (`->{Mutate(r)}` names `r`), bounds are the set `{Eq, Show}`, checking-time
   evaluation errors are elaboration errors, refs name the ref and discharge at a
@@ -1049,22 +628,22 @@ What remains, in the recommended order:
 - [A meta in a method's signature captures `self`](tickets/method-signature-metas-capture-self.md)
   — `s.keep(x)` with `keep(r : Ref(I64))` fails at the call; the hidden implicit
   is solved against a spine holding the struct value.
-- [Solving a meta applied to a spine fails on a dependent right-hand side](tickets/meta-solution-renaming-not-lifted-under-binders.md)
+- Solving a meta applied to a spine fails on a dependent right-hand side
   (closed) — `rename` never lifts its renaming under a binder, so a solution
   mentioning its own binders raises `VarNotInSpine`. Fixed in the C# port only.
 - [A bare constructor pattern resolves by name](tickets/bare-constructor-pattern-resolves-by-name.md)
   (closed) — `Red => …` finds the scrutinee's constructor with no `open`, even over
   a value named `Red`. Fixed in the C# port only.
-- [A recursive record whose field has the record's own type cannot be used](tickets/recursive-record-field-of-own-type-rejected.md)
+- A recursive record whose field has the record's own type cannot be used
   (closed) — `next : L` in `rec L = struct { … }` fails once `L` is a parameter
   type. Fixed in the C# port only.
-- [A type-case former head takes its arity from the template](tickets/type-case-former-head-arity-from-template.md)
+- A type-case former head takes its arity from the template
   (closed) — `Opt(x)` on a `fn(A) { enum … }` former is `PatternArityMismatch`.
   Fixed in the C# port only.
 - [Pattern synonym arguments bind by position](tickets/pattern-synonym-arguments-bind-by-position.md)
   (closed) — `Flip(a, b) = Pt(b, a)` binds its use by position; a synonym through
   `open` is unknown. Fixed in the C# port only.
-- [Checking a module against a signature takes the first member of a name](tickets/signature-check-takes-first-member.md)
+- Checking a module against a signature takes the first member of a name
   (closed) — `sig { x : I64 }` against `module { pub x = 'a'; pub x = 1 }` fails on
   the first `x`. Fixed in the C# port only.
 - [Checking against an implicit function type inserts metas first](tickets/check-against-implicit-type-inserts-first.md)
@@ -1083,12 +662,12 @@ What remains, in the recommended order:
   — **still open**: it now resolves by the argument's type, but the grilled
   2026-09-18 ruling (a free name in an impl head binds) is implemented nowhere yet.
   Step 2 of [the parity recipe](tickets/port-parity-plan.md).
-- [Opening a handle on a unit is not an open of that unit](tickets/unit-handle-open-not-a-unit-open.md)
+- Opening a handle on a unit is not an open of that unit
   (closed) — `V = import "v"; open V` does not deliver names `v`'s forms
   introduce. Fixed in the C# port only.
 
 The thirteen above were still listed as open long after the port was correct; the
-verification and closure is [close the recorded divergences](tickets/port-divergence-closure.md)
+verification and closure is close the recorded divergences
 (2026-09-20), which re-ran both runners against
 `test/conformance/prototype-divergences.txt`'s 19 case lines.
 
@@ -1104,21 +683,21 @@ verification and closure is [close the recorded divergences](tickets/port-diverg
   — decided 2026-09-21, **port-only**: a repeated `pub` name in one container and a
   repeated constructor name become errors in the C# port, while the prototype keeps the
   last-wins defect and `prototype-divergences.txt` records it.
-- Port wave 2 (parallel forks): [recursive types](tickets/port-recursive-types.md),
-  [patterns](tickets/port-patterns.md), [effects](tickets/port-effects.md),
-  [syntactic roles](tickets/port-syntax-roles.md), [traits](tickets/port-traits.md),
+- Port wave 2 (parallel forks): recursive types,
+  patterns, effects,
+  syntactic roles, [traits](tickets/port-traits.md),
   [export](tickets/port-export.md).
 - Port wave 1 (parallel forks): [structs, records, signatures](tickets/port-structs-records-signatures.md),
-  [match and enums](tickets/port-match-and-enums.md), [implicit parameters](tickets/port-implicit-parameters.md),
-  [recursive definitions](tickets/port-recursive-definitions.md), [imports](tickets/port-imports.md).
-- [Checking a lambda ignores its written parameter type](tickets/lambda-check-ignores-written-parameter-type.md)
+  [match and enums](tickets/port-match-and-enums.md), implicit parameters,
+  recursive definitions, imports.
+- Checking a lambda ignores its written parameter type
   (closed) — `fn(x : Char) { x }` checked against `I64 -> I64`. Fixed in the C# port
   only; `elab-049` diverges there.
 - [Methods follow the arrow rule](tickets/methods-follow-the-arrow-rule.md)
   (closed) — a method is pure unless it says `can`; trait signatures carry rows.
 - [Annotation types use a separate grammar](tickets/one-grammar-for-types.md)
   — (closed) one grammar for types; tuple types are `Tuple(n, T1, …, Tn)`, `*` is only multiplication.
-- [A `List(I64)` parameter infers a wrong type](tickets/let-bound-lambda-list-param-wrong-type.md)
+- A `List(I64)` parameter infers a wrong type
   — (closed) a NomRef took an applied instance (`Decls = List(Decl)`) for its template; `eval_nominal` now matches only the template.
 - [`expand_decls`](tickets/expand-decls-reader.md)
   (closed) — read a `List(Decl)` argument's items, parsed in order (counterpart of `expand_block`).
@@ -1131,7 +710,7 @@ verification and closure is [close the recorded divergences](tickets/port-diverg
 - [Unhandled effects pass the checker](tickets/unhandled-effects-pass-the-checker.md)
   (closed) — effects are computed in one pass during inference; an effect left
   unhandled at a program's entry or a unit's top is an elaboration error.
-- [The unhandled-effect error says handlers are not implemented](tickets/unhandled-effect-message-is-stale.md)
+- The unhandled-effect error says handlers are not implemented
   (closed) — the error names the operation with no handler in scope.
 - [A match on a closure crashes the evaluator](tickets/match-on-a-closure-crashes-the-evaluator.md)
   (closed) — only a value with an unknown head makes a match stuck; every other
@@ -1171,7 +750,7 @@ Invariant distances the audit found with no ticket (re-verified on `fa2f32d`).
   declared parameters (`ArgumentCount`) before running; no fabricated arguments.
   Open: a Decl macro's body has no output type, so a polymorphic result
   (`{ Nil }`) is instantiated with a type after the call.
-- [Refresh the domain-model docs' "today" sections](tickets/refresh-domain-model-today-sections.md)
+- Refresh the domain-model docs' "today" sections
   (closed) — all four topics refreshed against main; distances name their tickets.
 
 ### Effects (from the [domain-model pass](topics/core-tt-domain-model-effects.md))
