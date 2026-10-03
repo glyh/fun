@@ -96,7 +96,7 @@ public sealed partial class Expander
         var app = NewApplication(use.Instantiation.FromUnit);
         var captures = Receive(app, use.Instantiation);
         if (use.Instantiation.Rule.Replacement is not Replacement.Expr expr)
-            throw new ExpandException($"syntax form {use.Instantiation.Form.Name} returns declarations where an expression goes");
+            throw new ExpandException($"syntax form {use.Instantiation.Form.Name} returns declarations where an expression goes", use.Span);
         return Expand(expr.Syntax.Map(Fill(captures)).Map(app.Emit));
     }
 
@@ -106,7 +106,7 @@ public sealed partial class Expander
         var app = NewApplication(inst.FromUnit);
         var captures = Receive(app, inst);
         if (inst.Rule.Replacement is not Replacement.Decls decls)
-            throw new ExpandException($"syntax form {inst.Form.Name} returns an expression where declarations go");
+            throw new ExpandException($"syntax form {inst.Form.Name} returns an expression where declarations go", inst.Form.Span);
         var fill = Fill(captures);
         return [.. SpliceDeclHoles(captures, decls.Bindings.Select(b => b.Map(fill))).Select(b => EmitBinding(app, b))];
     }
@@ -194,7 +194,7 @@ public sealed partial class Expander
             {
                 Capture.Decls d => d.Bindings,
                 Capture.Decl d => [d.Binding],
-                _ => throw new ExpandException($"the hole {h.Name.Name} does not fit a declaration"),
+                _ => throw new ExpandException($"the hole {h.Name.Name} does not fit a declaration", h.Name.Span),
             }
             : [b])];
 
@@ -254,7 +254,7 @@ public sealed partial class Expander
         // declaration macro emits means there, and a block exports nothing. A
         // written one never reaches here -- the block statement parser rejects it.
         Binding.Export { Public: false } => body,
-        _ => throw new ExpandException("a declaration syntax form in a block writes only private lets, types, effects, traits, impls, opens, macros and syntax"),
+        _ => throw new ExpandException("a declaration syntax form in a block writes only private lets, types, effects, traits, impls, opens, macros and syntax", body.Span),
     };
 
     /// <summary><c>pub</c> on a declaration form's use publishes every declaration it returns.</summary>

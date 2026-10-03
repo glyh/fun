@@ -17,15 +17,27 @@ public sealed record Binder(ScopeSet Scope, string ResolvedName, BinderMeaning K
     public bool IsGroup => Role?.Meaning is RoleMeaning.OrderGroup;
 }
 
-/// <summary>Raised when source cannot be read as syntax.</summary>
-public sealed class ExpandException(string message) : Exception(message);
+/// <summary>
+/// Raised when source cannot be read as syntax, at <see cref="Span"/> when the
+/// throw site held a token or tree; the message prints it as the elaborator's
+/// positions do.
+/// </summary>
+public sealed class ExpandException(string message, SourceSpan? span = null)
+    : Exception(span is { IsSynthetic: false } s ? $"{message} at {s}" : message)
+{
+    public SourceSpan? Span { get; } = span;
+}
 
 /// <summary>
 /// A role error that is genuine whatever the prelude binds: every binder and
 /// group it names is already resolved (M7, order groups). Unlike an
 /// <see cref="ExpandException"/>, it never stems from a role not yet ported.
 /// </summary>
-public sealed class RoleException(string message) : Exception(message);
+public sealed class RoleException(string message, SourceSpan? span = null)
+    : Exception(span is { IsSynthetic: false } s ? $"{message} at {s}" : message)
+{
+    public SourceSpan? Span { get; } = span;
+}
 
 /// <summary>
 /// The binder table: every binder of a written name, with the
@@ -69,7 +81,7 @@ public sealed class BinderTable
     /// that is an error rather than a choice.
     /// </summary>
     public Binder? Resolve(Id id) =>
-        Best(id.Name, Candidates(id.Name).Where(b => b.Kind != BinderMeaning.Role && b.Scope.IsSubsetOf(id.Scope)));
+        Best(id.Name, Candidates(id.Name).Where(b => b.Kind != BinderMeaning.Role && b.Scope.IsSubsetOf(id.Scope)), id.Span);
 
     /// <summary>A syntactic role is resolved like any binder (M7), among the roles of that name and fixity.</summary>
     public Role? FindRole(string name, Fixity fixity, ScopeSet scope) =>
@@ -80,7 +92,7 @@ public sealed class BinderTable
     public Order? FindOrder(string name, ScopeSet scope) =>
         Best(name, Candidates(name).Where(b => b.IsGroup && b.Scope.IsSubsetOf(scope)))?.Role?.Order;
 
-    private static Binder? Best(string name, IEnumerable<Binder> candidates)
+    private static Binder? Best(string name, IEnumerable<Binder> candidates, SourceSpan? span = null)
     {
         Binder? best = null;
         foreach (var info in candidates)
@@ -90,7 +102,7 @@ public sealed class BinderTable
             if (info.Scope.IsSubsetOf(best.Scope)) continue;
             if (best.Scope.IsSubsetOf(info.Scope)) best = info;
             else if (!info.Scope.IsSubsetOf(best.Scope))
-                throw new ExpandException($"ambiguous binding for {name}: scopes {best.Scope} and {info.Scope}");
+                throw new ExpandException($"ambiguous binding for {name}: scopes {best.Scope} and {info.Scope}", span);
         }
         return best;
     }

@@ -2,8 +2,14 @@ using Fun.Kernel;
 
 namespace Fun.Compiler;
 
-/// <summary>An expansion, elaboration or evaluation failure.</summary>
-public class FunException(string message) : Exception(message);
+/// <summary>
+/// An expansion, elaboration or evaluation failure. <see cref="Span"/> is where
+/// it came from when the failing phase knew a position.
+/// </summary>
+public class FunException(string message, SourceSpan? span = null) : Exception(message)
+{
+    public SourceSpan? Span { get; } = span;
+}
 
 /// <summary>
 /// The evaluator failed while the checker was evaluating: a language error (the prototype's
@@ -38,15 +44,15 @@ public static class Driver
         // The runner sees one failure kind: where it happened is the implementation's business.
         catch (Fun.Expand.RoleException e)
         {
-            throw new FunException(e.Message);
+            throw new FunException(e.Message, e.Span);
         }
         catch (Fun.Expand.ReaderException e)
         {
-            throw new FunException(e.Message);
+            throw new FunException(e.Message, e.Span);
         }
         catch (Fun.Expand.ExpandException e)
         {
-            throw new FunException(e.Message);
+            throw new FunException(e.Message, e.Span);
         }
     }
 

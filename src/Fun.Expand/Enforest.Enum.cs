@@ -9,7 +9,7 @@ public sealed partial class Enforest
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
-            throw new ExpandException("enum is written enum { … }");
+            throw new ExpandException("enum is written enum { … }", terms.Span);
 
         var constructors = SplitCommas(DropSeparators(new Terms(body.Items)))
             .Select(DropSeparators)
@@ -24,7 +24,7 @@ public sealed partial class Enforest
                         .Where(p => !DropSeparators(p).IsEmpty)
                         .Select(ParseAll)
                         .ToEquatableArray()),
-                _ => throw new ExpandException("an enum constructor is written Name or Name(Type, …)"),
+                _ => throw new ExpandException("an enum constructor is written Name or Name(Type, …)", item.Span),
             })
             .ToEquatableArray();
 

@@ -15,12 +15,12 @@ public sealed partial class Enforest
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Macro)) return null;
-        if (NameOf(stmt.Drop(1).Head) is not Id name) throw new ExpandException("a macro is written macro name(params) { body }");
+        if (NameOf(stmt.Drop(1).Head) is not Id name) throw new ExpandException("a macro is written macro name(params) { body }", stmt.Span);
 
         var (parameters, afterParams) = ParseFnParams(name.Span, stmt.Drop(2));
         var (kind, output, afterAnnotation) = ParseMacroAnnotation(afterParams);
         if (kind == FormKind.Decl && parameters.Any(p => p.Explicitness == Explicitness.Implicit))
-            throw new ExpandException("a Decl macro binds no type parameter");
+            throw new ExpandException("a Decl macro binds no type parameter", name.Span);
         parameters = [.. parameters.Select(p => p.Explicitness == Explicitness.Implicit && p.Type is null
             ? p with { Type = new Syntax.FieldAccess(new Syntax.Var(new Id(PreludeAbi.Syntax, p.Name.Span, p.Name.Scope)), PreludeAbi.Types.Syntax.R, p.Name.Span) }
             : p)];
@@ -62,7 +62,7 @@ public sealed partial class Enforest
                     new Syntax.Ap(new Syntax.Var(new Id(PreludeAbi.Types.Builtins.List, list.Span, listToken.Scope)), Explicitness.Explicit, DeclType(decl), group.Span),
                     terms.Drop(3));
             default:
-                throw new ExpandException("a macro annotation is : Expr(T), : Expr(_), : Decl or : List(Decl)");
+                throw new ExpandException("a macro annotation is : Expr(T), : Expr(_), : Decl or : List(Decl)", terms.Span);
         }
     }
 
@@ -99,14 +99,14 @@ public sealed partial class Enforest
         var items = DropSeparators(new Terms(group.Items));
         var parts = items.IsEmpty ? [items] : SplitCommas(items);
         if (parts.Count != kinds.Length)
-            throw new ExpandException($"macro {id.Name} takes {kinds.Length} arguments, the call gives {parts.Count}");
+            throw new ExpandException($"macro {id.Name} takes {kinds.Length} arguments, the call gives {parts.Count}", group.Span);
 
         return [.. kinds.Zip(parts, (kind, part) => ReadMacroArg(id.Name, kind, DropSeparators(part), items.IsEmpty))];
     }
 
     private Capture ReadMacroArg(string macro, HoleKind kind, Terms part, bool noArguments)
     {
-        ExpandException Unfit() => new($"macro {macro} takes {kind} here, not what is written at {part.Span}");
+        ExpandException Unfit() => new($"macro {macro} takes {kind} here, not what is written", part.Span);
         switch (kind, part)
         {
             case (HoleKind.Expr, { IsEmpty: true }) when noArguments:

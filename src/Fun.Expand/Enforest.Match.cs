@@ -11,12 +11,12 @@ public sealed partial class Enforest
         if (terms.Count < 2
             || terms[0] is not TokenTree.Group { Delimiter: Delimiter.Paren } scrutinee
             || terms[1] is not TokenTree.Group { Delimiter: Delimiter.Brace } arms)
-            throw new ExpandException("match is written match (scrutinee) { pattern => result, … }");
+            throw new ExpandException("match is written match (scrutinee) { pattern => result, … }", terms.Span);
 
         var branches = SplitMatchBranches(new Terms(arms.Items)).Select(arm =>
         {
             var arrow = IndexOf(arm, IsFatArrow);
-            if (arrow < 0) throw new ExpandException("match arm requires => between pattern and result");
+            if (arrow < 0) throw new ExpandException("match arm requires => between pattern and result", arm.Span);
             var pattern = Slice(arm, 0, arrow);
             if (IsToken(DropSeparators(pattern).Head, TokenKind.Effect))
             {
@@ -25,7 +25,7 @@ public sealed partial class Enforest
             }
             return new MatchBranch(ParsePattern(pattern), ParseAll(arm.Drop(arrow + 1)));
         }).ToEquatableArray();
-        if (branches.IsEmpty) throw new ExpandException("match requires at least one arm");
+        if (branches.IsEmpty) throw new ExpandException("match requires at least one arm", arms.Span);
 
         return (new Syntax.Match(ParseAll(new Terms([scrutinee])), branches, SourceSpan.Between(startSpan, arms.Span)),
                 terms.Drop(2));
@@ -53,7 +53,7 @@ public sealed partial class Enforest
             terms = DropSeparators(terms);
             if (terms.IsEmpty) return arms;
             if (IsToken(terms.Head, TokenKind.Bar))
-                throw new ExpandException("an arm does not begin with |: write pattern => result, … (| is pattern union)");
+                throw new ExpandException("an arm does not begin with |: write pattern => result, … (| is pattern union)", terms.Span);
 
             var arrow = IndexOf(terms, IsFatArrow);
             if (arrow < 0)
@@ -69,7 +69,7 @@ public sealed partial class Enforest
                 if (IsToken(after.Head, TokenKind.Comma)) after = after.Tail;
                 if (!DropSeparators(after).IsEmpty && IndexOf(after, IsFatArrow) < 0)
                     throw new ExpandException(
-                        "an arm whose result is { … } ends at its }: parenthesise a longer result, pattern => ({ … } …)");
+                        "an arm whose result is { … } ends at its }: parenthesise a longer result, pattern => ({ … } …)", after.Span);
                 arms.Add(Slice(terms, 0, arrow + 2));
                 terms = after;
                 continue;
@@ -78,7 +78,7 @@ public sealed partial class Enforest
             var comma = IndexOf(result, t => IsToken(t, TokenKind.Comma));
             var armResult = comma < 0 ? result : Slice(result, 0, comma);
             if (IndexOf(armResult, IsFatArrow) >= 0)
-                throw new ExpandException("an arm's result ends at , before the next arm: pattern => result, pattern => …");
+                throw new ExpandException("an arm's result ends at , before the next arm: pattern => result, pattern => …", armResult.Span);
             arms.Add(Slice(terms, 0, arrow + 1 + armResult.Count));
             terms = comma < 0 ? Terms.Empty : result.Drop(comma + 1);
         }
@@ -104,7 +104,7 @@ public sealed partial class Enforest
         if (rest.Head is TokenTree.Leaf { Token.Kind: var arrow } && arrow == TokenKind.ThinArrow)
             return new Pattern.Arrow(head, ParsePattern(rest.Tail));
         if (!rest.IsEmpty)
-            throw new ExpandException($"unexpected terms after the pattern: {TokenText(rest.Head!) ?? "a group"}");
+            throw new ExpandException($"unexpected terms after the pattern: {TokenText(rest.Head!) ?? "a group"}", rest.Head!.Span);
         return head;
     }
 
@@ -116,17 +116,17 @@ public sealed partial class Enforest
     {
         var items = DropSeparators(new Terms(bracket.Items));
         if (items.Count != 1 || items.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident i } token })
-            throw new ExpandException("an implicit arrow pattern is written [a] -> b");
+            throw new ExpandException("an implicit arrow pattern is written [a] -> b", bracket.Span);
         var rest = DropSeparators(after);
         if (rest.Head is not TokenTree.Leaf { Token.Kind: var arrow } || arrow != TokenKind.ThinArrow)
-            throw new ExpandException("an implicit arrow pattern is written [a] -> b");
+            throw new ExpandException("an implicit arrow pattern is written [a] -> b", rest.Span);
         return new Pattern.ImplicitArrow(new Id(i.Name, token.Span, token.Scope), ParsePattern(rest.Tail));
     }
 
     private (Pattern, Terms) ParsePatternAtom(Terms terms)
     {
         terms = DropSeparators(terms);
-        if (terms.Head is not TokenTree term) throw new ExpandException("expected pattern");
+        if (terms.Head is not TokenTree term) throw new ExpandException("expected pattern", terms.Span);
         var rest = terms.Tail;
 
         switch (term)
@@ -157,7 +157,7 @@ public sealed partial class Enforest
             case TokenTree.Leaf { Token.Kind: var kind } when kind == TokenKind.Struct:
                 return ParseStructTypePattern(rest);
             default:
-                throw new ExpandException("unsupported pattern");
+                throw new ExpandException("unsupported pattern", term.Span);
         }
     }
 
@@ -166,7 +166,7 @@ public sealed partial class Enforest
     {
         var after = DropSeparators(rest);
         if (after.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident i } token })
-            throw new ExpandException("a pin is written ^name");
+            throw new ExpandException("a pin is written ^name", span);
         return (new Pattern.Pin(new Syntax.Var(new Id(i.Name, SourceSpan.Between(span, token.Span), token.Scope))), after.Tail);
     }
 
@@ -184,13 +184,13 @@ public sealed partial class Enforest
 
             if (IsToken(term, TokenKind.Dot) && terms.Count > 1)
             {
-                var field = TokenText(terms[1]) ?? throw new ExpandException("expected pattern name after '.'");
+                var field = TokenText(terms[1]) ?? throw new ExpandException("expected pattern name after '.'", terms[1].Span);
                 var span = SourceSpan.Between(term.Span, terms[1].Span);
                 lhs = lhs switch
                 {
                     Pattern.Con { Args.IsEmpty: true } c => c with { Head = new Syntax.FieldAccess(c.Head, field, SourceSpan.Between(c.Head.Span, span)) },
                     Pattern.Bind b => new Pattern.Con(new Syntax.FieldAccess(new Syntax.Var(b.Name), field, SourceSpan.Between(b.Name.Span, span)), []),
-                    _ => throw new ExpandException("only constructor patterns can be qualified"),
+                    _ => throw new ExpandException("only constructor patterns can be qualified", span),
                 };
                 terms = terms.Drop(2);
                 continue;
@@ -199,7 +199,7 @@ public sealed partial class Enforest
             if (term is TokenTree.Group { Delimiter: Delimiter.Bracket } supplied)
             {
                 if (lhs is not Pattern.Con c)
-                    throw new ExpandException("only a constructor pattern can take supplied type arguments");
+                    throw new ExpandException("only a constructor pattern can take supplied type arguments", supplied.Span);
                 var items = DropSeparators(new Terms(supplied.Items));
                 var types = items.IsEmpty ? [] : SplitCommas(items).Select(ParseAll).ToEquatableArray();
                 foreach (var type in types)
@@ -215,7 +215,7 @@ public sealed partial class Enforest
                 var parsed = items.IsEmpty ? [] : SplitCommas(items).Select(ParsePattern).ToEquatableArray();
                 lhs = lhs is Pattern.Con { Args.IsEmpty: true } c
                     ? c with { Args = parsed }
-                    : throw new ExpandException("only constructor patterns can take arguments");
+                    : throw new ExpandException("only constructor patterns can take arguments", args.Span);
                 terms = terms.Tail;
                 juxtapose = false;
                 continue;
@@ -225,7 +225,7 @@ public sealed partial class Enforest
             {
                 lhs = lhs is Pattern.Con { Args.IsEmpty: true } c
                     ? ParseRecordPattern(c.Head, fields)
-                    : throw new ExpandException("record pattern fields must follow a type name");
+                    : throw new ExpandException("record pattern fields must follow a type name", fields.Span);
                 terms = terms.Tail;
                 juxtapose = false;
                 continue;

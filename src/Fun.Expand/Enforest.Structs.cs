@@ -28,7 +28,7 @@ public sealed partial class Enforest
         if (stmt.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident name } || !IsToken(stmt.Drop(1).Head, TokenKind.Colon))
             return null;
         var type = stmt.Drop(2);
-        if (DropSeparators(type).IsEmpty) throw new ExpandException($"missing type for struct field: {name.Name}");
+        if (DropSeparators(type).IsEmpty) throw new ExpandException($"missing type for struct field: {name.Name}", stmt.Span);
         return IndexOfToken(type, TokenKind.Eq) >= 0 ? null : new Binding.Field(name.Name, ParseAll(type));
     }
 
@@ -43,9 +43,9 @@ public sealed partial class Enforest
         if (isPublic) stmt = stmt.Tail;
         if (!IsToken(stmt.Head, TokenKind.Method)) return null;
         if (NameOf(stmt.Drop(1).Head) is not Id name)
-            throw new ExpandException("method declaration requires a name");
+            throw new ExpandException("method declaration requires a name", stmt.Span);
         if (stmt.Drop(2).Head is not TokenTree.Group { Delimiter: Delimiter.Paren } group)
-            throw new ExpandException($"method declaration requires a parenthesized parameter list: {name.Name}");
+            throw new ExpandException($"method declaration requires a parenthesized parameter list: {name.Name}", name.Span);
         RequireAdjacent(name.Span, group.Span, "method parameter list");
 
         var items = DropSeparators(new Terms(group.Items));
@@ -70,7 +70,7 @@ public sealed partial class Enforest
                 continue;
             }
             if (NameOf(stmt.Head) is not Id name || !IsToken(stmt.Drop(1).Head, TokenKind.Colon))
-                throw new ExpandException("expected signature field name : type");
+                throw new ExpandException("expected signature field name : type", stmt.Span);
             bindings.Add(new Binding.Let(name, ParseAll(stmt.Drop(2)), Public: true, Recursive: false));
         }
         return (new Syntax.Sig([.. bindings], SourceSpan.Between(startSpan, body.Span)), rest);
@@ -84,7 +84,7 @@ public sealed partial class Enforest
         {
             var stmt = DropSeparators(raw);
             if (stmt.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident name } || !IsToken(stmt.Drop(1).Head, TokenKind.Eq))
-                throw new ExpandException("expected record field of the form name = expr");
+                throw new ExpandException("expected record field of the form name = expr", stmt.Span);
             fields.Add((name.Name, ParseAll(stmt.Drop(2))));
         }
         return new Syntax.RecordConstruct(type, [.. fields], SourceSpan.Between(type.Span, group.Span));
@@ -95,7 +95,7 @@ public sealed partial class Enforest
         terms = DropSeparators(terms);
         return terms.Head is TokenTree.Group { Delimiter: Delimiter.Brace } body
             ? (body, terms.Tail)
-            : throw new ExpandException($"{what} is written {what} {{ … }}");
+            : throw new ExpandException($"{what} is written {what} {{ … }}", terms.Span);
     }
 
     /// <summary>A body's statements, split at top-level <c>;</c> and <c>,</c>; empty ones dropped.</summary>

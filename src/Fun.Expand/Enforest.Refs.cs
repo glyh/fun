@@ -10,7 +10,7 @@ public sealed partial class Enforest
         terms = DropSeparators(terms);
         if (terms.Head is TokenTree.Group { Delimiter: Delimiter.Paren } group)
             return (new Syntax.RefNew(ParseRefArg(group), SourceSpan.Between(startSpan, group.Span)), terms.Tail);
-        if (terms.IsEmpty) throw new ExpandException("ref requires an argument");
+        if (terms.IsEmpty) throw new ExpandException("ref requires an argument", startSpan);
         var (tight, rest) = ParseExprPrec(terms, Prec.Tight);
         return (new Syntax.RefNew(tight, SourceSpan.Between(startSpan, tight.Span)), rest);
     }
@@ -20,7 +20,7 @@ public sealed partial class Enforest
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Paren } group)
-            throw new ExpandException("deref requires a parenthesized argument");
+            throw new ExpandException("deref requires a parenthesized argument", startSpan);
         return (new Syntax.RefGet(ParseRefArg(group), SourceSpan.Between(startSpan, group.Span)), terms.Tail);
     }
 

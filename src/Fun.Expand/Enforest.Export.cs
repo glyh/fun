@@ -12,7 +12,7 @@ public sealed partial class Enforest
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Export)) return null;
-        if (isPublic) throw new ExpandException("export is not a public item: an export already publishes");
+        if (isPublic) throw new ExpandException("export is not a public item: an export already publishes", stmt.Span);
 
         var (rest, names) = TakeSelection(DropSeparators(stmt.Tail));
         return new Binding.Export(ParseAll(rest), names, Public: true);
@@ -36,7 +36,7 @@ public sealed partial class Enforest
             .Where(item => !item.IsEmpty)
             .Select(item => item.Count == 1 && NameOf(item.Head) is { } name
                 ? name.Name
-                : throw new ExpandException("a selection .{a, b} names members"))
+                : throw new ExpandException("a selection .{a, b} names members", item.Span))
             .ToEquatableArray();
         return (TakeTerms(rest, rest.Count - 2), names);
     }
