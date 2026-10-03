@@ -33,7 +33,7 @@ public sealed partial class Enforest
                     fields.Add((named.Name, ParsePattern(part.Drop(2))));
                     break;
                 default:
-                    throw new ExpandException("expected record pattern field of the form name or name = pat");
+                    throw new ExpandException("expected record pattern field of the form name or name = pat", part.Span);
             }
         }
         return new Pattern.Record(type, [.. fields], partial);
@@ -48,7 +48,7 @@ public sealed partial class Enforest
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Pattern)) return null;
         if (NameOf(stmt.Drop(1).Head) is not Id name)
-            throw new ExpandException("a pattern synonym is written pattern Name(params) = pattern");
+            throw new ExpandException("a pattern synonym is written pattern Name(params) = pattern", stmt.Span);
 
         var rest = stmt.Drop(2);
         var parameters = new List<Id>();
@@ -59,11 +59,11 @@ public sealed partial class Enforest
                 foreach (var part in SplitCommas(items))
                     parameters.Add(DropSeparators(part) is [var only] && NameOf(only) is Id p
                         ? p
-                        : throw new ExpandException("a pattern synonym's parameters are names"));
+                        : throw new ExpandException("a pattern synonym's parameters are names", part.Span));
             rest = rest.Tail;
         }
         if (!IsToken(rest.Head, TokenKind.Eq))
-            throw new ExpandException("a pattern synonym is written pattern Name(params) = pattern");
+            throw new ExpandException("a pattern synonym is written pattern Name(params) = pattern", stmt.Span);
 
         var rhs = ParsePattern(rest.Tail);
         return (name, new Syntax.PatternSynonym([.. parameters], rhs, stmt.Span));
@@ -85,7 +85,7 @@ public sealed partial class Enforest
     {
         rest = DropSeparators(rest);
         if (rest.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
-            throw new ExpandException("struct type pattern is written struct { field: pattern; _ }");
+            throw new ExpandException("struct type pattern is written struct { field: pattern; _ }", rest.Span);
 
         var fields = new List<(string, Pattern)>();
         var partial = false;
@@ -107,7 +107,7 @@ public sealed partial class Enforest
                     fields.Add((field.Name, ParsePattern(part.Drop(2))));
                     break;
                 default:
-                    throw new ExpandException("expected struct type pattern field");
+                    throw new ExpandException("expected struct type pattern field", part.Span);
             }
         }
         return (new Pattern.StructType([.. fields], partial), rest.Tail);

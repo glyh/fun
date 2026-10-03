@@ -23,7 +23,7 @@ public sealed record Binder(ScopeSet Scope, string ResolvedName, BinderMeaning K
 /// positions do.
 /// </summary>
 public sealed class ExpandException(string message, SourceSpan? span = null)
-    : Exception(span is { } s ? $"{message} at {s}" : message)
+    : Exception(span is { IsSynthetic: false } s ? $"{message} at {s}" : message)
 {
     public SourceSpan? Span { get; } = span;
 }
@@ -34,7 +34,7 @@ public sealed class ExpandException(string message, SourceSpan? span = null)
 /// <see cref="ExpandException"/>, it never stems from a role not yet ported.
 /// </summary>
 public sealed class RoleException(string message, SourceSpan? span = null)
-    : Exception(span is { } s ? $"{message} at {s}" : message)
+    : Exception(span is { IsSynthetic: false } s ? $"{message} at {s}" : message)
 {
     public SourceSpan? Span { get; } = span;
 }

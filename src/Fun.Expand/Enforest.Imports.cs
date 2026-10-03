@@ -9,7 +9,7 @@ public sealed partial class Enforest
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Str path } leaf)
-            throw new ExpandException("import is written import \"path\"");
+            throw new ExpandException("import is written import \"path\"", terms.Span);
         return (new Syntax.Import(path.Value, SourceSpan.Between(startSpan, leaf.Span)) { Scope = startScope }, terms.Tail);
     }
 

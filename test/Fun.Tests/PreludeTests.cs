@@ -35,7 +35,7 @@ public class PreludeTests
 
     [Theory]
     [InlineData("{ x = 1; y }", "unbound variable: y while inferring the form at <unknown>:1:9-1:10")]
-    [InlineData("f (1)", "function call must be adjacent to the callee; whitespace application is not supported")]
+    [InlineData("f (1)", "function call must be adjacent to the callee; whitespace application is not supported at <unknown>:1:2-1:5")]
     public void AFailureIsTheProgramsOwnError(string source, string message) =>
         Assert.Equal(message, Assert.IsAssignableFrom<FunException>(Failure(source)).Message);
 }

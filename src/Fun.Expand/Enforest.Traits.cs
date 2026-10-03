@@ -13,22 +13,22 @@ public sealed partial class Enforest
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Trait)) return null;
-        if (NameOf(stmt.Drop(1).Head) is not Id name) throw new ExpandException("trait declaration requires a name");
+        if (NameOf(stmt.Drop(1).Head) is not Id name) throw new ExpandException("trait declaration requires a name", stmt.Span);
 
         var afterName = stmt.Drop(2);
         var eq = IndexOfToken(afterName, TokenKind.Eq);
-        if (eq < 0) throw new ExpandException("trait binding requires =");
+        if (eq < 0) throw new ExpandException("trait binding requires =", stmt.Span);
         var parameters = TakeTerms(afterName, eq);
         if (parameters.Count != 1 || parameters.Head is not TokenTree.Group { Delimiter: Delimiter.Paren } group)
             throw new ExpandException(parameters.IsEmpty
                 ? "trait declaration requires exactly one parameter"
-                : "trait parameters must be written as (A)");
+                : "trait parameters must be written as (A)", stmt.Span);
         RequireAdjacent(name.Span, group.Span, "trait parameter list");
         var items = DropSeparators(new Terms(group.Items));
         if (items.Count != 1 || NameOf(items.Head) is not Id param)
             throw new ExpandException(items.IsEmpty
                 ? "trait declaration requires exactly one parameter"
-                : "trait declaration accepts exactly one parameter");
+                : "trait declaration accepts exactly one parameter", group.Span);
 
         return (name, param, ParseOperationTypes("trait", afterName.Drop(eq + 1)));
     }
@@ -43,7 +43,7 @@ public sealed partial class Enforest
         var isModule = IsToken(terms.Head, TokenKind.Module);
         if (!(isModule || IsToken(terms.Head, TokenKind.Sig)) || terms.Count != 2
             || terms[1] is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
-            throw new ExpandException($"{what} requires a module {{ … }} or sig {{ … }} block");
+            throw new ExpandException($"{what} requires a module {{ … }} or sig {{ … }} block", terms.Span);
 
         var fields = new List<(string, Syntax)>();
         foreach (var raw in Statements(new Terms(body.Items)))
@@ -53,9 +53,9 @@ public sealed partial class Enforest
             if (stmt.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident field } || !IsToken(stmt.Drop(1).Head, separator))
                 throw new ExpandException(isModule
                     ? $"expected {what} module field of the form name = Type"
-                    : $"expected {what} sig field of the form name : Type");
+                    : $"expected {what} sig field of the form name : Type", stmt.Span);
             var type = ParseAll(stmt.Drop(2));
-            if (type is not Syntax.Arrow) throw new ExpandException($"{what} fields must be function types");
+            if (type is not Syntax.Arrow) throw new ExpandException($"{what} fields must be function types", type.Span);
             fields.Add((field.Name, type));
         }
         return [.. fields];
@@ -75,7 +75,7 @@ public sealed partial class Enforest
         var eq = IndexOfToken(afterImpl, TokenKind.Eq);
         var body = eq < 0 ? Terms.Empty : DropSeparators(afterImpl.Drop(eq + 1));
         if (eq < 0 || !IsToken(body.Head, TokenKind.Module))
-            throw new ExpandException("impl binding requires = module { … }");
+            throw new ExpandException("impl binding requires = module { … }", stmt.Span);
 
         var (name, trait, arg) = ParseImplHead(TakeTerms(afterImpl, eq));
         var (moduleBody, after) = BraceBody("module", body.Tail);
@@ -85,7 +85,7 @@ public sealed partial class Enforest
         foreach (var field in Statements(new Terms(moduleBody.Items)))
         {
             if (ParseValueDeclStatement(field) is not var (fieldName, type, value, _))
-                throw new ExpandException("expected impl let field");
+                throw new ExpandException("expected impl let field", field.Span);
             // A written type annotates the operation, as a module binding's does.
             fields.Add((fieldName.Name, type is null ? value : new Syntax.Annotated(value, type, value.Span)));
         }
@@ -102,17 +102,17 @@ public sealed partial class Enforest
         {
             var nameTerms = DropSeparators(TakeTerms(terms, colon));
             if (nameTerms.Count != 1 || NameOf(nameTerms.Head) is not Id written)
-                throw new ExpandException("impl name must be a single identifier");
+                throw new ExpandException("impl name must be a single identifier", nameTerms.Span);
             name = written;
             terms = DropSeparators(terms.Drop(colon + 1));
         }
 
         if (terms.Count < 2 || terms[terms.Count - 1] is not TokenTree.Group { Delimiter: Delimiter.Paren } args)
-            throw new ExpandException("impl declaration requires a parenthesized trait argument");
+            throw new ExpandException("impl declaration requires a parenthesized trait argument", terms.Span);
         var items = DropSeparators(new Terms(args.Items));
-        if (items.IsEmpty) throw new ExpandException("impl argument list cannot be empty");
+        if (items.IsEmpty) throw new ExpandException("impl argument list cannot be empty", args.Span);
         var parts = SplitCommas(items);
-        if (parts.Count != 1) throw new ExpandException("impl declaration accepts exactly one trait argument");
+        if (parts.Count != 1) throw new ExpandException("impl declaration accepts exactly one trait argument", items.Span);
         return (name, ParseAll(TakeTerms(terms, terms.Count - 1)), ParseImplHeadArg(parts[0]));
     }
 
@@ -169,7 +169,7 @@ public sealed partial class Enforest
     private Binding ParseSignatureImpl(Terms stmt)
     {
         if (NameOf(stmt.Head) is not Id name || !IsToken(stmt.Drop(1).Head, TokenKind.Colon) || !IsToken(stmt.Drop(2).Head, TokenKind.Impl))
-            throw new ExpandException("an impl in a signature must be named: write name : impl Trait(Type)");
+            throw new ExpandException("an impl in a signature must be named: write name : impl Trait(Type)", stmt.Span);
         var (_, trait, arg) = ParseImplHead(stmt.Drop(3));
         return new Binding.Impl(name, trait, arg, null, Public: true);
     }

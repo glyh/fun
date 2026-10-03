@@ -89,17 +89,17 @@ public class ExpandTests
 
     [Theory]
     // Whitespace application is not the language.
-    [InlineData("f (1)", "function call must be adjacent to the callee; whitespace application is not supported")]
+    [InlineData("f (1)", "function call must be adjacent to the callee; whitespace application is not supported at <unknown>:1:2-1:5")]
     [InlineData("{ }", "empty block")]
-    [InlineData("{ x = ; 1 }", "missing value for binding: x")]
-    [InlineData("fn { 1 }", "fn requires at least one parameter list")]
+    [InlineData("{ x = ; 1 }", "missing value for binding: x at <unknown>:1:2-1:3")]
+    [InlineData("fn { 1 }", "fn requires at least one parameter list at <unknown>:1:0-1:2")]
     [InlineData("fn[]() { 1 }", "empty implicit parameter list")]
-    [InlineData("f [I64]", "implicit argument list must be adjacent to the callee; whitespace application is not supported")]
-    [InlineData("fn [A : Type](a) { a }", "implicit fn parameter list must be adjacent to the callee; whitespace application is not supported")]
+    [InlineData("f [I64]", "implicit argument list must be adjacent to the callee; whitespace application is not supported at <unknown>:1:2-1:7")]
+    [InlineData("fn [A : Type](a) { a }", "implicit fn parameter list must be adjacent to the callee; whitespace application is not supported at <unknown>:1:3-1:13")]
     // A keyword with no expression form, and an operator token no role names,
     // are read as ordinary errors: the enforester refuses them, as the prototype.
-    [InlineData("macro m(x) { x }", "unsupported Phase 7A keyword: macro")]
-    [InlineData("1 + 2", "expression has trailing terms")]
+    [InlineData("macro m(x) { x }", "unsupported Phase 7A keyword: macro at <unknown>:1:0-1:5")]
+    [InlineData("1 + 2", "expression has trailing terms at <unknown>:1:2-1:5")]
     public void Rejects(string source, string message) =>
         Assert.Equal(message, Assert.Throws<ExpandException>(() => Expander.ExpandExpr(source, new Fun.Compiler.Loader(new Dictionary<string, string>()))).Message);
 }

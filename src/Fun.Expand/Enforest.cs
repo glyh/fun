@@ -52,7 +52,7 @@ public sealed partial class Enforest
     public Syntax ParseBlockHead(SourceSpan span, Terms terms)
     {
         var (stmt, rest) = TakeStatement(terms);
-        if (stmt.IsEmpty) throw new ExpandException("empty block");
+        if (stmt.IsEmpty) throw new ExpandException("empty block", stmt.Span);
         if (rest.IsEmpty) return ParseAll(stmt);
 
         rest = DropSeparators(rest);
@@ -86,7 +86,7 @@ public sealed partial class Enforest
         // A block exports nothing, so a written `export` is nobody's intent. (A
         // generated one is dropped at the block site instead; Expander.DeclOver.)
         if (IsToken(stmt.Head, TokenKind.Export))
-            throw new ExpandException("export is a module item; a block declares only private lets, opens and syntax");
+            throw new ExpandException("export is a module item; a block declares only private lets, opens and syntax", stmt.Span);
 
         if (ParseEffectDecl(stmt) is var (effectName, effectParams, ops))
             return new Syntax.EffectDef(effectName, effectParams, ops, body, span);
@@ -128,14 +128,14 @@ public sealed partial class Enforest
 
         var beforeEq = DropSeparators(TakeTerms(afterName, eq));
         var valueTerms = DropSeparators(afterName.Drop(eq + 1));
-        if (valueTerms.IsEmpty) throw new ExpandException($"missing value for binding: {name.Name}");
+        if (valueTerms.IsEmpty) throw new ExpandException($"missing value for binding: {name.Name}", name.Span);
 
         Syntax? type = null;
         if (!beforeEq.IsEmpty)
         {
             if (beforeEq.Head is not TokenTree.Leaf { Token.Kind: var colon } || colon != TokenKind.Colon)
                 throw new ExpandException(
-                    "binding parameters are not supported; use fn name(params) syntax");
+                    "binding parameters are not supported; use fn name(params) syntax", beforeEq.Span);
             type = ParseAll(beforeEq.Tail);
         }
 
@@ -156,7 +156,7 @@ public sealed partial class Enforest
             return (new Syntax.Module([new Binding.Items([hole])], SourceSpan.Between(startSpan, hole.Span)),
                 terms.Tail);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
-            throw new ExpandException("module is written module { … }");
+            throw new ExpandException("module is written module { … }", terms.Span);
         EquatableArray<Binding> items = _env.Eager ? ReadItemsNow(new Terms(body.Items)) : [new Binding.Items(body.Items)];
         return (new Syntax.Module(items, SourceSpan.Between(startSpan, body.Span)), terms.Tail);
     }
@@ -200,7 +200,7 @@ public sealed partial class Enforest
 
         if (ParseOpenStatement(unprefixed) is { } opened)
         {
-            if (isPublic) throw new ExpandException("open is not a public item");
+            if (isPublic) throw new ExpandException("open is not a public item", unprefixed.Span);
             return [new Binding.Open(opened.Of, "") { Names = opened.Names }];
         }
 
@@ -220,7 +220,7 @@ public sealed partial class Enforest
         if (ParseTraitOrImplItem(unprefixed, isPublic) is { } item) return [item];
 
         throw new ExpandException(
-            $"unsupported module item: {(unprefixed.Head is { } head ? Describe(head) : "(empty)")}");
+            $"unsupported module item: {(unprefixed.Head is { } head ? Describe(head) : "(empty)")}", unprefixed.Span);
     }
 
     private string Describe(TokenTree term) => term switch
@@ -250,7 +250,7 @@ public sealed partial class Enforest
     private (Syntax, Terms) ParsePrimary(Terms terms)
     {
         terms = DropSeparators(terms);
-        if (terms.Head is not TokenTree term) throw new ExpandException("expected expression");
+        if (terms.Head is not TokenTree term) throw new ExpandException("expected expression", terms.Span);
         var rest = terms.Tail;
 
         if (PrefixRoleUse(term, rest) is var (roleUse, afterRoleUse)) return (roleUse, afterRoleUse);
@@ -295,13 +295,13 @@ public sealed partial class Enforest
                     {
                         var after = DropSeparators(rest);
                         if (after.Head is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident name } pinned })
-                            throw new ExpandException("a pin is written ^name");
+                            throw new ExpandException("a pin is written ^name", term.Span);
                         return (new Syntax.Var(new Id(name.Name, SourceSpan.Between(term.Span, pinned.Span), pinned.Scope)), after.Tail);
                     }
                     case TokenKind.Word w:
-                        throw new ExpandException($"unsupported Phase 7A keyword: {w.Spelling}");
+                        throw new ExpandException($"unsupported Phase 7A keyword: {w.Spelling}", term.Span);
                     case TokenKind.Operator o:
-                        throw new ExpandException($"unsupported prefix operator: {o.Spelling}");
+                        throw new ExpandException($"unsupported prefix operator: {o.Spelling}", term.Span);
                 }
                 break;
 
@@ -311,7 +311,7 @@ public sealed partial class Enforest
             case TokenTree.Group g:
                 return (ParseGroupExpr(g), rest);
         }
-        throw new ExpandException("unexpected token in expression");
+        throw new ExpandException("unexpected token in expression", term.Span);
     }
 
     private (Syntax, Terms) ParsePostfix(Syntax lhs, Terms terms, Prec prec)
@@ -372,7 +372,7 @@ public sealed partial class Enforest
                 {
                     TokenTree.Leaf { Token.Kind: TokenKind.Int i } => new Syntax.Proj(lhs, (int)i.Value, span),
                     _ when TokenText(field) is string n => new Syntax.FieldAccess(lhs, n, span),
-                    _ => throw new ExpandException("expected field name or projection after '.'"),
+                    _ => throw new ExpandException("expected field name or projection after '.'", field.Span),
                 };
                 terms = terms.Drop(2);
                 continue;
@@ -424,7 +424,7 @@ public sealed partial class Enforest
                 return ReadBlock(group.Items, group.Span);
 
             case Delimiter.Bracket:
-                throw new ExpandException("bare bracket expression is not in Phase 7A");
+                throw new ExpandException("bare bracket expression is not in Phase 7A", group.Span);
 
             default:
                 if (items.IsEmpty) return Unit(group.Span);
@@ -490,7 +490,7 @@ public sealed partial class Enforest
             terms = terms.Tail;
         }
         else if (implicits.IsEmpty)
-            throw new ExpandException("fn requires at least one parameter list");
+            throw new ExpandException("fn requires at least one parameter list", startSpan);
 
         return ([.. implicits, .. explicits], terms);
     }
@@ -502,7 +502,7 @@ public sealed partial class Enforest
             // `fn() { … }` takes one unit parameter; `fn[]` binds nothing and is an error.
             return explicitness == Explicitness.Explicit
                 ? [new Param(new Id("_", items.Span), UnitType(items.Span), Explicitness.Explicit)]
-                : throw new ExpandException("empty implicit parameter list");
+                : throw new ExpandException("empty implicit parameter list", items.Span);
         return [.. SplitCommas(items).Select(item => ParseParamItem(item, explicitness))];
     }
 
@@ -510,11 +510,11 @@ public sealed partial class Enforest
     {
         terms = DropSeparators(terms);
         if (NameOf(terms.Head) is not Id name)
-            throw new ExpandException("expected parameter of the form name or name : Type");
+            throw new ExpandException("expected parameter of the form name or name : Type", terms.Span);
         var rest = DropSeparators(terms.Tail);
         if (rest.IsEmpty) return new Param(name, null, explicitness);
         if (rest.Head is not TokenTree.Leaf { Token.Kind: var colon } || colon != TokenKind.Colon)
-            throw new ExpandException("expected parameter of the form name or name : Type");
+            throw new ExpandException("expected parameter of the form name or name : Type", rest.Span);
         // `[A : {Eq, Show}]`: the traits an implicit binder must implement.
         if (explicitness == Explicitness.Implicit && rest.Count == 2
             && rest[1] is TokenTree.Group { Delimiter: Delimiter.Brace } bounds)
@@ -526,7 +526,7 @@ public sealed partial class Enforest
     {
         terms = DropSeparators(terms);
         if (terms.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } group)
-            throw new ExpandException("expected { body } after fn parameters");
+            throw new ExpandException("expected { body } after fn parameters", terms.Span);
         return (ReadBlock(group.Items, group.Span), terms.Tail, group.Span);
     }
 
@@ -536,14 +536,14 @@ public sealed partial class Enforest
     /// </summary>
     private Syntax FunctionType(SourceSpan span, EquatableArray<Param> parameters, Syntax result, EffectRow? row)
     {
-        if (parameters.IsEmpty) throw new ExpandException("a result type needs a parameter list");
+        if (parameters.IsEmpty) throw new ExpandException("a result type needs a parameter list", span);
         var type = result;
         // The innermost arrow - the one that runs the body - carries the row.
         var innermost = true;
         foreach (var p in parameters.Reverse())
         {
             var domain = p.Type
-                ?? throw new ExpandException($"a result type needs every parameter's type: {p.Name.Name}");
+                ?? throw new ExpandException($"a result type needs every parameter's type: {p.Name.Name}", p.Name.Span);
             type = new Syntax.Arrow(p.Explicitness, p.Name, domain, innermost ? row : null, type, span);
             innermost = false;
         }
@@ -585,7 +585,7 @@ public sealed partial class Enforest
     public static Terms RequireAdvance(Terms before, Terms after)
     {
         if (!after.IsEmpty && after.Count >= before.Count)
-            throw new ExpandException($"unexpected token in a definition context at {after.Head!.Span}");
+            throw new ExpandException("unexpected token in a definition context", after.Head!.Span);
         return after;
     }
 
@@ -654,11 +654,11 @@ public sealed partial class Enforest
     private void RequireAdjacent(SourceSpan lhs, SourceSpan rhs, string what)
     {
         if (!lhs.IsSynthetic && !rhs.IsSynthetic && lhs.End != rhs.Start)
-            throw new ExpandException($"{what} must be adjacent to the callee; whitespace application is not supported");
+            throw new ExpandException($"{what} must be adjacent to the callee; whitespace application is not supported", rhs);
     }
 
     private void EnsureNoRest(string what, Terms rest)
     {
-        if (!DropSeparators(rest).IsEmpty) throw new ExpandException($"{what} has trailing terms");
+        if (!DropSeparators(rest).IsEmpty) throw new ExpandException($"{what} has trailing terms", rest.Span);
     }
 }

@@ -11,7 +11,7 @@ namespace Fun.Expand;
 /// positions do.
 /// </summary>
 public sealed class ReaderException(string message, SourceSpan? span = null)
-    : Exception(span is { } s ? $"{message} at {s}" : message)
+    : Exception(span is { IsSynthetic: false } s ? $"{message} at {s}" : message)
 {
     public SourceSpan? Span { get; } = span;
 }

@@ -280,7 +280,7 @@ public sealed partial class Expander
                 }
 
                 case Binding.Hole hole:
-                    throw new ExpandException($"an unfilled declaration hole {hole.Name.Name}");
+                    throw new ExpandException($"an unfilled declaration hole {hole.Name.Name}", hole.Name.Span);
 
                 // A macro binds for the items after it; it contributes no member.
                 case Binding.Macro macro:

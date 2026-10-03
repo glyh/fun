@@ -20,10 +20,10 @@ public sealed partial class Enforest
         var members = segments.Select(segment =>
             ParseValueDeclStatement(segment) is var (name, type, value, _)
                 ? new RecMember(name, type is null ? value : new Syntax.Annotated(value, type, segment.Span))
-                : throw new ExpandException("expected name = value in a rec … and … group")).ToList();
+                : throw new ExpandException("expected name = value in a rec … and … group", segment.Span)).ToList();
 
         if (members.GroupBy(m => m.Name.Name).FirstOrDefault(g => g.Count() > 1) is { } duplicate)
-            throw new ExpandException($"duplicate name in a rec … and … group: {duplicate.Key}");
+            throw new ExpandException($"duplicate name in a rec … and … group: {duplicate.Key}", duplicate.First().Name.Span);
         return [.. members];
     }
 

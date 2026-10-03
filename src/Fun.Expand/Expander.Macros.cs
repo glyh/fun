@@ -236,13 +236,13 @@ public sealed partial class Expander
     private MacroEntry EntryFor(string key, Syntax head, FormKind position, int argumentCount)
     {
         var written = Label(key);
-        if (_provisional.Contains(key)) throw new ExpandException($"macro {written} is expanded during its own definition");
+        if (_provisional.Contains(key)) throw new ExpandException($"macro {written} is expanded during its own definition", head.Span);
         var entry = _macros.GetValueOrDefault(key) ?? throw new InvalidOperationException($"a macro binder with no compiled macro: {key}");
         // M8: a macro's kind must match the position it is used in; checked before it runs.
         if (entry.Position != position)
-            throw new ExpandException($"macro {written} returns {(entry.Position == FormKind.Decl ? "declarations" : "an expression")} but is used where {(position == FormKind.Decl ? "declarations go" : "an expression goes")}");
+            throw new ExpandException($"macro {written} returns {(entry.Position == FormKind.Decl ? "declarations" : "an expression")} but is used where {(position == FormKind.Decl ? "declarations go" : "an expression goes")}", head.Span);
         if (argumentCount != entry.Params.Length)
-            throw new ExpandException($"macro {written} takes {entry.Params.Length} arguments, the call gives {argumentCount}");
+            throw new ExpandException($"macro {written} takes {entry.Params.Length} arguments, the call gives {argumentCount}", head.Span);
         return entry;
     }
 
@@ -269,7 +269,7 @@ public sealed partial class Expander
     private Syntax ExpandMacroCall(Syntax.MacroCall call)
     {
         if (MacroKey(call.Head) is not { } key)
-            throw new ExpandException($"`{(call.Head as Syntax.Var)?.Id.Name}` is not a macro");
+            throw new ExpandException($"`{(call.Head as Syntax.Var)?.Id.Name}` is not a macro", call.Span);
         var entry = EntryFor(key, call.Head, FormKind.Expr, call.Args.Length);
         if (entry.Signature is not null)
             return call with
@@ -293,7 +293,7 @@ public sealed partial class Expander
     {
         var head = new Syntax.Var(use.Operator);
         if (MacroKey(head) is not { } key)
-            throw new ExpandException($"`{use.Operator.Name}` is an operator macro with no macro of its name");
+            throw new ExpandException($"`{use.Operator.Name}` is an operator macro with no macro of its name", use.Span);
         var arity = _macros.GetValueOrDefault(key)?.Params.Length ?? 0;
         EquatableArray<Syntax> operands = use.Operands switch
         {
@@ -337,7 +337,7 @@ public sealed partial class Expander
     private EquatableArray<Binding> ApplyDeclMacro(Binding.MacroCall call)
     {
         if (MacroKey(call.Head) is not { } key)
-            throw new ExpandException($"`{(call.Head as Syntax.Var)?.Id.Name}` is not a declaration macro");
+            throw new ExpandException($"`{(call.Head as Syntax.Var)?.Id.Name}` is not a declaration macro", call.Head.Span);
         var entry = EntryFor(key, call.Head, FormKind.Decl, call.Args.Length);
         var app = NewApplication(null);
         var output = _runtime.ApplyDecls(Label(key), entry, [.. call.Args.Select(app.Receive.MapCapture)], Expansion(), call.Head.Span);

@@ -77,13 +77,13 @@ public sealed partial class Enforest(EnforestEnv env)
     /// than the operator the operand belongs to -- by their groups' declared
     /// order, never a guess.
     /// </summary>
-    private bool Continues(Prec prec, string symbol, Role role)
+    private bool Continues(Prec prec, string symbol, Role role, SourceSpan span)
     {
         if (prec == Prec.Top || prec == Prec.ArrowRhs) return true;
         if (prec is not Prec.Operand(var outer, var outerRole)) return false;
 
         RoleException NoOrder() =>
-            new($"`{outer}` and `{symbol}` have no declared order; parenthesise one of them");
+            new($"`{outer}` and `{symbol}` have no declared order; parenthesise one of them", span);
 
         switch (outerRole.Order, role.Order)
         {
@@ -97,7 +97,7 @@ public sealed partial class Enforest(EnforestEnv env)
                         Assoc.Right => true,
                         Assoc.Left => false,
                         _ => throw new RoleException(
-                            $"`{outer}` and `{symbol}` do not chain: their group {o.Name} is assoc(none); parenthesise one of them"),
+                            $"`{outer}` and `{symbol}` do not chain: their group {o.Name} is assoc(none); parenthesise one of them", span),
                     },
                     _ => throw NoOrder(),
                 };
@@ -138,7 +138,7 @@ public sealed partial class Enforest(EnforestEnv env)
                 return (new Syntax.OperatorUse(id, Fixity.Prefix, [rhs], role.DeclaredAt, role.FromUnit, SourceSpan.Between(term.Span, rhs.Span)), after);
             }
             default:
-                throw new ExpandException($"not a prefix form: {name}");
+                throw new ExpandException($"not a prefix form: {name}", term.Span);
         }
     }
 
@@ -151,14 +151,14 @@ public sealed partial class Enforest(EnforestEnv env)
     {
         if (TokenText(term) is not string symbol || term is not TokenTree.Leaf leaf) return null;
         if (_env.Roles.FindRole(symbol, Fixity.Infix, leaf.Token.Scope) is not { } role) return null;
-        if (!Continues(prec, symbol, role)) return null;
+        if (!Continues(prec, symbol, role, term.Span)) return null;
         // A `~>` at an infix position is not an infix operator: the arrow is
         // read where a type is (Enforest.Effects), never as an expression
         // operator. The prototype's guard order matters -- `1 + 2 ~> 3` ends the
         // expression before `~>` (it does not continue `+`) and then reads `~>`
         // at the top level, where it errors (enforest.ml:684).
         if (role.Meaning is RoleMeaning.PolyArrow)
-            throw new ExpandException($"not an infix operator: {symbol}");
+            throw new ExpandException($"not an infix operator: {symbol}", term.Span);
 
         var (rhs, after) = ParseExprPrec(rest, new Prec.Operand(symbol, role));
         var span = SourceSpan.Between(lhs.Span, rhs.Span);
@@ -171,12 +171,12 @@ public sealed partial class Enforest(EnforestEnv env)
             {
                 [var l, var r] => new Syntax.Instantiate(
                     new Instantiation(id, rule, [(l, new Capture.Expr(lhs)), (r, new Capture.Expr(rhs))], role.FromUnit), span),
-                _ => throw new ExpandException($"an infix syntax form takes two operands: {symbol}"),
+                _ => throw new ExpandException($"an infix syntax form takes two operands: {symbol}", span),
             },
-            RoleMeaning.Rules => throw new ExpandException($"an infix syntax form has one rule: {symbol}"),
+            RoleMeaning.Rules => throw new ExpandException($"an infix syntax form has one rule: {symbol}", span),
             RoleMeaning.AssignRef => new Syntax.RefSet(lhs, rhs, span),
             RoleMeaning.CallMacro => new Syntax.OperatorUse(id, Fixity.Infix, [lhs, rhs], role.DeclaredAt, role.FromUnit, span),
-            _ => throw new ExpandException($"not an infix operator: {symbol}"),
+            _ => throw new ExpandException($"not an infix operator: {symbol}", span),
         };
         return (use, after);
     }
@@ -256,7 +256,7 @@ public sealed partial class Enforest(EnforestEnv env)
                 var (order, value) = ParseJoinedOrder(stmt.Drop(2));
                 if (DropSeparators(value).IsEmpty)
                     return DeclareRole(name, new Role(fixity, order, RoleMeaning.ApplyValue.Instance, name.Span, null));
-                if (fixity == Fixity.Prefix) throw new ExpandException("prefix operator with a body is not supported");
+                if (fixity == Fixity.Prefix) throw new ExpandException("prefix operator with a body is not supported", name.Span);
                 // A body that is not a template was read by ParseOperatorMacroDecl.
                 return DeclareRole(name, ParseOperatorTemplate(name, order, value));
             }
@@ -265,14 +265,14 @@ public sealed partial class Enforest(EnforestEnv env)
             {
                 var after = DropSeparators(stmt.Drop(2));
                 if (!after.IsEmpty && !IsToken(after.Head, TokenKind.Colon))
-                    throw new ExpandException("an order group is declared order name or order name : clauses");
+                    throw new ExpandException("an order group is declared order name or order name : clauses", after.Span);
                 return DeclareRole(groupName, ParseOrderDecl(groupName, after.IsEmpty ? after : after.Tail));
             }
 
             case "syntax" when stmt.Count > 1:
             {
                 if (stmt[1] is not TokenTree.Leaf { Token: { Kind: TokenKind.Ident head } token })
-                    throw new ExpandException("syntax declaration head must be an identifier");
+                    throw new ExpandException("syntax declaration head must be an identifier", stmt.Span);
                 var name = new Id(head.Name, stmt[1].Span, token.Scope);
                 var after = DropSeparators(stmt.Drop(2));
                 var kind = FormKind.Expr;
@@ -281,7 +281,7 @@ public sealed partial class Enforest(EnforestEnv env)
                 var (order, rest) = ParseJoinedOrder(after);
                 rest = DropSeparators(rest);
                 if (rest.Head is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
-                    throw new ExpandException("unsupported syntax declaration shape");
+                    throw new ExpandException("unsupported syntax declaration shape", rest.Span);
                 EnsureNoRest("syntax declaration", rest.Tail);
                 var rules = ParseRules(head.Name, kind, new Terms(body.Items));
                 CheckTokenHoles(kind, rules);
@@ -309,9 +309,9 @@ public sealed partial class Enforest(EnforestEnv env)
     {
         var items = DropSeparators(new Terms(group.Items));
         if (items.Count == 1 && TokenText(items[0]) is "=>")
-            throw new ExpandException("=> is reserved and cannot be declared as an operator");
+            throw new ExpandException("=> is reserved and cannot be declared as an operator", group.Span);
         if (items.Count != 1 || TokenText(items[0]) is not string symbol || items[0] is not TokenTree.Leaf leaf)
-            throw new ExpandException($"{keyword} requires a symbol in parens");
+            throw new ExpandException($"{keyword} requires a symbol in parens", group.Span);
         return new Id(symbol, group.Span, leaf.Token.Scope);
     }
 
@@ -320,7 +320,7 @@ public sealed partial class Enforest(EnforestEnv env)
     {
         terms = DropSeparators(terms);
         if (terms.Head is TokenTree.Leaf { Token.Kind: TokenKind.Int })
-            throw new ExpandException("numeric precedence was removed; declare an order group (order g : stronger_than(…)) and write infix (op) g");
+            throw new ExpandException("numeric precedence was removed; declare an order group (order g : stronger_than(…)) and write infix (op) g", terms.Span);
         if (terms.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident })
             return (null, terms);
         var (reference, rest) = TakeOrderRef(terms);
@@ -347,7 +347,7 @@ public sealed partial class Enforest(EnforestEnv env)
         var name = ((TokenKind.Ident)leaf.Token.Kind).Name;
         if (reference.Count == 1)
             return _env.Roles.FindOrder(name, leaf.Token.Scope)
-                ?? throw new ExpandException($"unknown order group: {name}");
+                ?? throw new ExpandException($"unknown order group: {name}", leaf.Span);
 
         // A dotted path: the head names a unit (or a binder bound to one), each
         // intermediate member a unit-valued member of the unit before it.
@@ -356,14 +356,14 @@ public sealed partial class Enforest(EnforestEnv env)
         for (var i = 2; i < reference.Count; i += 2)
         {
             if (reference[i] is not TokenTree.Leaf { Token.Kind: TokenKind.Ident part } partLeaf)
-                throw new ExpandException("an order group is named by an identifier or a dotted path M.g");
+                throw new ExpandException("an order group is named by an identifier or a dotted path M.g", reference[i].Span);
             path.Add(part.Name);
             if (i + 2 < reference.Count)
                 of = new Syntax.FieldAccess(of, part.Name, partLeaf.Span);
         }
         var group = path[^1];
         return (_env.UnitRoles(of) ?? []).FirstOrDefault(r => r.Name == group && r.Role.Meaning is RoleMeaning.OrderGroup).Role?.Order
-            ?? throw new ExpandException($"unknown order group: {string.Join(".", path.Prepend(name))}");
+            ?? throw new ExpandException($"unknown order group: {string.Join(".", path.Prepend(name))}", reference.Span);
     }
 
     /// <summary>
@@ -382,7 +382,7 @@ public sealed partial class Enforest(EnforestEnv env)
             ts = DropSeparators(ts);
             var (reference, rest) = TakeOrderRef(ts);
             if (ts.IsEmpty || ts.Head is not TokenTree.Leaf { Token.Kind: TokenKind.Ident } || !DropSeparators(rest).IsEmpty)
-                throw new ExpandException("expected an order group");
+                throw new ExpandException("expected an order group", ts.Span);
             return ResolveOrder(reference);
         }).ToList();
 
@@ -409,12 +409,12 @@ public sealed partial class Enforest(EnforestEnv env)
                         [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "left" } }] => Assoc.Left,
                         [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "right" } }] => Assoc.Right,
                         [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: "none" } }] => Assoc.None,
-                        _ => throw new ExpandException("assoc is written assoc(left), assoc(right) or assoc(none)"),
+                        _ => throw new ExpandException("assoc is written assoc(left), assoc(right) or assoc(none)", g.Span),
                     };
                     clauses = clauses.Drop(2);
                     break;
                 default:
-                    throw new ExpandException("an order clause is stronger_than(…), weaker_than(…), weakest or assoc(left|right|none)");
+                    throw new ExpandException("an order clause is stronger_than(…), weaker_than(…), weakest or assoc(left|right|none)", clauses.Span);
             }
             clauses = DropSeparators(clauses);
         }
@@ -423,7 +423,7 @@ public sealed partial class Enforest(EnforestEnv env)
             foreach (var wk in weaker)
                 if (Order.Relation(st, wk) is OrderRelation.Same or OrderRelation.Stronger)
                     throw new ExpandException(
-                        $"order {name.Name} would be both stronger than {st.Name} and weaker than {wk.Name}: the order would be cyclic");
+                        $"order {name.Name} would be both stronger than {st.Name} and weaker than {wk.Name}: the order would be cyclic", name.Span);
 
         var order = new Order($"{name.Name}@{Interlocked.Increment(ref _orderCounter)}", name.Name, assoc, weakest, [.. stronger], [.. weaker]);
         return new Role(Fixity.Prefix, order, RoleMeaning.OrderGroup.Instance, name.Span, null);
@@ -442,11 +442,11 @@ public sealed partial class Enforest(EnforestEnv env)
         var holes = SplitCommas(new Terms(paramsGroup.Items)).Select(ts => DropSeparators(ts) switch
         {
             [TokenTree.Leaf { Token.Kind: TokenKind.Operator { Spelling: "$" } }, TokenTree.Leaf { Token.Kind: TokenKind.Ident hole }] => hole.Name,
-            _ => throw new ExpandException("operator template params must be $hole names"),
+            _ => throw new ExpandException("operator template params must be $hole names", ts.Span),
         }).ToList();
         if (DropSeparators(value.Tail) is not [TokenTree.Group { Delimiter: Delimiter.Brace } body])
-            throw new ExpandException("expected { body } after operator template parameters");
-        if (holes.Count != 2) throw new ExpandException("operator template must have 2 holes");
+            throw new ExpandException("expected { body } after operator template parameters", value.Tail.Span);
+        if (holes.Count != 2) throw new ExpandException("operator template must have 2 holes", paramsGroup.Span);
 
         var replacementTerms = RewriteHoles(new Terms([body]));
         CheckReplacementHoles(holes, replacementTerms);
@@ -467,10 +467,10 @@ public sealed partial class Enforest(EnforestEnv env)
         foreach (var ruleTerms in SplitMatchBranches(body))
         {
             var arrow = IndexOf(ruleTerms, IsFatArrow);
-            if (arrow < 0) throw new ExpandException("syntax declaration rule requires => between pattern and replacement");
+            if (arrow < 0) throw new ExpandException("syntax declaration rule requires => between pattern and replacement", ruleTerms.Span);
             var pattern = ParseRulePattern(RewriteHoles(Slice(ruleTerms, 0, arrow)));
             if (pattern.FirstOrDefault() is not RulePart.Literal { Term: var first } || Spelling(first) != head)
-                throw new ExpandException($"syntax branch pattern must start with declared head: {head}");
+                throw new ExpandException($"syntax branch pattern must start with declared head: {head}", ruleTerms.Span);
             var replacement = RewriteHoles(ruleTerms.Drop(arrow + 1));
             var holes = PatternHoles(pattern);
             CheckReplacementHoles([.. holes, .. available], replacement);
@@ -485,7 +485,7 @@ public sealed partial class Enforest(EnforestEnv env)
         var quoted = new Enforest(_env.Quoted(holes));
         if (kind == FormKind.Expr) return new Replacement.Expr(quoted.ParseAll(terms));
         if (DropSeparators(terms) is not [TokenTree.Group { Delimiter: Delimiter.Brace } body])
-            throw new ExpandException("a Decl syntax form's replacement is written { declarations }");
+            throw new ExpandException("a Decl syntax form's replacement is written { declarations }", terms.Span);
         return new Replacement.Decls(quoted.ReadItemsNow(new Terms(body.Items)));
     }
 
@@ -567,19 +567,19 @@ public sealed partial class Enforest(EnforestEnv env)
                         PreludeAbi.Types.Syntax.Decl => HoleKind.Decl,
                         PreludeAbi.Types.Syntax.Pattern => HoleKind.Pattern,
                         "expr" or "block" or "binder" or "ident" or "decl" =>
-                            throw new ExpandException($"hole kinds are written as types (Expr, Block, Id, Decl, Pattern), not {kind.Name}"),
-                        _ => throw new ExpandException($"unknown syntax template hole kind: {kind.Name}"),
+                            throw new ExpandException($"hole kinds are written as types (Expr, Block, Id, Decl, Pattern), not {kind.Name}", group.Span),
+                        _ => throw new ExpandException($"unknown syntax template hole kind: {kind.Name}", group.Span),
                     }, group.Span);
                 case [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Builtins.List } }, TokenTree.Group { Delimiter: Delimiter.Paren } arg]:
                     return new RulePart.Hole(name.Name, DropSeparators(new Terms(arg.Items)) switch
                     {
                         [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.Decl } }] => HoleKind.Decls,
                         [TokenTree.Leaf { Token.Kind: TokenKind.Ident { Name: PreludeAbi.Types.Syntax.TokenTree } }] => HoleKind.Tokens,
-                        _ => throw new ExpandException("a list hole is $(name : List(Decl)) or $(name : List(TokenTree))"),
+                        _ => throw new ExpandException("a list hole is $(name : List(Decl)) or $(name : List(TokenTree))", group.Span),
                     }, group.Span);
             }
         }
-        throw new ExpandException("expected template hole annotation $(name : Kind)");
+        throw new ExpandException("expected template hole annotation $(name : Kind)", group.Span);
     }
 
     private EquatableArray<string> PatternHoles(EquatableArray<RulePart> parts)
@@ -591,7 +591,7 @@ public sealed partial class Enforest(EnforestEnv env)
                 switch (p)
                 {
                     case RulePart.Hole h:
-                        if (holes.Contains(h.Name)) throw new ExpandException($"duplicate syntax pattern hole: {h.Name}");
+                        if (holes.Contains(h.Name)) throw new ExpandException($"duplicate syntax pattern hole: {h.Name}", h.Span);
                         holes.Add(h.Name);
                         break;
                     case RulePart.Group g:
@@ -611,7 +611,7 @@ public sealed partial class Enforest(EnforestEnv env)
     {
         var boundSet = bound.ToHashSet();
         foreach (var hole in ReplacementHoles(boundSet, replacement))
-            throw new ExpandException($"unbound syntax template hole in replacement: {hole}");
+            throw new ExpandException($"unbound syntax template hole in replacement: {hole}", replacement.Span);
     }
 
     private IEnumerable<string> ReplacementHoles(HashSet<string> bound, Terms terms)
@@ -665,9 +665,9 @@ public sealed partial class Enforest(EnforestEnv env)
             var beforeLast = parts.Take(Math.Max(0, parts.Length - 1));
             var lastGroup = parts.Length > 0 && parts[^1] is RulePart.Group g ? [g] : Array.Empty<RulePart>();
             if (beforeLast.Concat(lastGroup).Select(Inside).FirstOrDefault(n => n is not null) is string hole)
-                throw new ExpandException($"the List(TokenTree) hole {hole} takes the rest of the use: it must be the rule's last part");
+                throw new ExpandException($"the List(TokenTree) hole {hole} takes the rest of the use: it must be the rule's last part", rule.Span);
             if (kind != FormKind.Decl && parts.Any(p => Inside(p) is not null))
-                throw new ExpandException("a List(TokenTree) hole takes the rest of a declaration: the form must be : Decl");
+                throw new ExpandException("a List(TokenTree) hole takes the rest of a declaration: the form must be : Decl", rule.Span);
         }
     }
 
@@ -696,11 +696,11 @@ public sealed partial class Enforest(EnforestEnv env)
     {
         // M8: a syntax form is used only where its kind's position is.
         if (kind != position)
-            throw new ExpandException($"syntax form '{form.Name}' has kind {kind} but was used in {position} context");
+            throw new ExpandException($"syntax form '{form.Name}' has kind {kind} but was used in {position} context", terms.Span);
         foreach (var rule in rules)
             if (MatchParts(rule.Pattern, 0, terms, [], whole: false, trailing) is var (captures, rest))
                 return (new Instantiation(form, rule, [.. captures], fromUnit), rest);
-        throw new ExpandException($"no matching branch for syntax {form.Name}");
+        throw new ExpandException($"no matching branch for syntax {form.Name}", terms.Span);
     }
 
     /// <summary>
@@ -854,7 +854,7 @@ public sealed partial class Enforest(EnforestEnv env)
         var statements = ReadContext(terms, (stmt, last) => last && !discards
             ? (Value: ParseAll(stmt), Wrapper: (Syntax?)null)
             : (Value: (Syntax?)null, Wrapper: DoStatement(span, stmt, EagerBodyPlaceholder)));
-        if (statements.Count == 0) throw new ExpandException("empty block");
+        if (statements.Count == 0) throw new ExpandException("empty block", span);
 
         var body = statements[^1].Value ?? Unit(span);
         for (var i = statements.Count - 1; i >= 0; i--)

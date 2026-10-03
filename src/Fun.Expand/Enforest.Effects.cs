@@ -12,23 +12,23 @@ public sealed partial class Enforest
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Effect)) return null;
-        if (NameOf(stmt.Drop(1).Head) is not Id name) throw new ExpandException("effect declaration requires a name");
+        if (NameOf(stmt.Drop(1).Head) is not Id name) throw new ExpandException("effect declaration requires a name", stmt.Span);
 
         var afterName = stmt.Drop(2);
         var eq = IndexOfToken(afterName, TokenKind.Eq);
-        if (eq < 0) throw new ExpandException("effect binding requires =");
+        if (eq < 0) throw new ExpandException("effect binding requires =", stmt.Span);
 
         EquatableArray<Id> parameters = [];
         var paramTerms = DropSeparators(TakeTerms(afterName, eq));
         if (!paramTerms.IsEmpty)
         {
             if (paramTerms.Count != 1 || paramTerms.Head is not TokenTree.Group { Delimiter: Delimiter.Paren } group)
-                throw new ExpandException("effect parameters must be written as (A, B)");
+                throw new ExpandException("effect parameters must be written as (A, B)", paramTerms.Span);
             RequireAdjacent(name.Span, group.Span, "effect parameter list");
             var items = DropSeparators(new Terms(group.Items));
-            if (items.IsEmpty) throw new ExpandException("effect parameter list cannot be empty");
+            if (items.IsEmpty) throw new ExpandException("effect parameter list cannot be empty", group.Span);
             parameters = [.. SplitCommas(items).Select(item => NameOf(DropSeparators(item) is { Count: 1 } one ? one.Head : null)
-                ?? throw new ExpandException("effect parameter list expects identifiers"))];
+                ?? throw new ExpandException("effect parameter list expects identifiers", item.Span))];
         }
 
         return (name, parameters, ParseEffectOps(afterName.Drop(eq + 1)));
@@ -41,7 +41,7 @@ public sealed partial class Enforest
         var signature = IsToken(terms.Head, TokenKind.Sig);
         if (terms.Count != 2 || !(signature || IsToken(terms.Head, TokenKind.Module))
             || terms[1] is not TokenTree.Group { Delimiter: Delimiter.Brace } body)
-            throw new ExpandException("effect requires a module { … } or sig { … } block");
+            throw new ExpandException("effect requires a module { … } or sig { … } block", terms.Span);
 
         var ops = new List<EffectOp>();
         var rest = new Terms(body.Items);
@@ -55,7 +55,7 @@ public sealed partial class Enforest
                 if (NameOf(stmt.Head) is not Id opName || !IsToken(stmt.Drop(1).Head, separator))
                     throw new ExpandException(signature
                         ? "expected effect sig field of the form name : Type"
-                        : "expected effect module field of the form name = Type");
+                        : "expected effect module field of the form name = Type", stmt.Span);
                 ops.Add(ParseEffectOp(opName.Name, ParseAll(stmt.Drop(2))));
             }
             if (rest.IsEmpty) return [.. ops];
@@ -64,10 +64,10 @@ public sealed partial class Enforest
 
     private EffectOp ParseEffectOp(string name, Syntax type) => type switch
     {
-        Syntax.Arrow { Row: not null } => throw new ExpandException("effect operation types cannot have latent effects"),
+        Syntax.Arrow { Row: not null } => throw new ExpandException("effect operation types cannot have latent effects", type.Span),
         Syntax.Arrow { Explicitness: Explicitness.Explicit } arrow => new EffectOp(name, arrow.Domain, arrow.Codomain),
-        Syntax.Arrow => throw new ExpandException("effect operation types must be explicit function types"),
-        _ => throw new ExpandException("effect operation requires a function type"),
+        Syntax.Arrow => throw new ExpandException("effect operation types must be explicit function types", type.Span),
+        _ => throw new ExpandException("effect operation requires a function type", type.Span),
     };
 
     /// <summary><c>perform E.op arg</c>: a dotted path, then the argument, read tightly.</summary>
@@ -85,7 +85,7 @@ public sealed partial class Enforest
     private (Syntax.FieldAccess, Terms) ParseOperationPath(Terms terms)
     {
         terms = DropSeparators(terms);
-        if (NameOf(terms.Head) is not Id head) throw new ExpandException("expected dotted identifier");
+        if (NameOf(terms.Head) is not Id head) throw new ExpandException("expected dotted identifier", terms.Span);
         Syntax path = new Syntax.Var(head);
         var rest = terms.Tail;
         while (IsToken(rest.Head, TokenKind.Dot) && NameOf(rest.Drop(1).Head) is Id member)
@@ -95,7 +95,7 @@ public sealed partial class Enforest
         }
         return path is Syntax.FieldAccess operation
             ? (operation, rest)
-            : throw new ExpandException("an effect operation is written E.op");
+            : throw new ExpandException("an effect operation is written E.op", path.Span);
     }
 
     /// <summary><c>resume(arg)</c> or <c>resume arg</c>.</summary>
@@ -108,7 +108,7 @@ public sealed partial class Enforest
             var arg = items.IsEmpty ? Unit(group.Span) : ParseAll(items);
             return (new Syntax.Resume(arg, SourceSpan.Between(startSpan, group.Span)), terms.Tail);
         }
-        if (terms.IsEmpty) throw new ExpandException("resume requires an argument");
+        if (terms.IsEmpty) throw new ExpandException("resume requires an argument", startSpan);
         var (tight, rest) = ParseExprPrec(terms, Prec.Tight);
         return (new Syntax.Resume(tight, SourceSpan.Between(startSpan, tight.Span)), rest);
     }
@@ -186,7 +186,7 @@ public sealed partial class Enforest
         else if (IsToken(start.Head, TokenKind.ThinArrow))
         {
             var (written, after) = ParseArrowRow(start.Head!, start.Tail);
-            if (written is null) throw new ExpandException("a pure result is written : T; ->{E} T is for an effectful one");
+            if (written is null) throw new ExpandException("a pure result is written : T; ->{E} T is for an effectful one", start.Head!.Span);
             (row, rest, what) = (written, after, "->{…}");
         }
         else return (null, null, terms);
@@ -194,7 +194,7 @@ public sealed partial class Enforest
         var end = 0;
         while (end < rest.Count && rest[end] is not TokenTree.Group { Delimiter: Delimiter.Brace }) end++;
         var typeTerms = TakeTerms(rest, end);
-        if (DropSeparators(typeTerms).IsEmpty) throw new ExpandException($"expected a result type after {what}");
+        if (DropSeparators(typeTerms).IsEmpty) throw new ExpandException($"expected a result type after {what}", rest.Span);
         return (ParseAll(typeTerms), row, rest.Drop(end));
     }
 }
