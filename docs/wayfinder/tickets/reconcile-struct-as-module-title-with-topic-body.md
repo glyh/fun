@@ -3,7 +3,7 @@ title: Reconcile the struct-as-module decision title with its topic body
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
 assignee:
 blocked_by: []
 ---
@@ -28,4 +28,9 @@ Which is the ruling?
 
 ## Resolution
 
-_Unresolved._
+**Reconciled 2026-10-04.** Both statements are true at different levels, and the map line
+now says so. The title records the original unification decision: one `struct` construct
+serves as record, module, and namespace. The topic body records the later refinement:
+`module` and `struct` are separate constructs sharing member syntax, not interchangeable
+at the type level — a module is never a type, and a record struct is not a module
+signature. No behavior changes either way; the map line was the drift.

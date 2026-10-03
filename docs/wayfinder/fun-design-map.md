@@ -52,7 +52,10 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
 
 ### Core type theory & foundations
 - [Struct-as-module unification](topics/struct-as-module.md) — one `struct`
-  construct serves as record, module, and namespace.
+  construct serves as record, module, and namespace. The refinement the topic body
+  records: `module` and `struct` are separate constructs sharing member syntax, not
+  interchangeable at the type level — a module is never a type, a record struct is not a
+  module signature.
 - [Dependent core (`core_tt`)](topics/dependent-types.md) — the old HM pipeline
   was replaced by a dependently-typed core with bidirectional elaboration + NbE.
 - [Record types](topics/records.md) — structural record types over constructor fields.
