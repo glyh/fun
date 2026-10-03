@@ -5,8 +5,16 @@ using Fun.Kernel;
 
 namespace Fun.Expand;
 
-/// <summary>Source that does not read as tokens and delimiter groups.</summary>
-public sealed class ReaderException(string message) : Exception(message);
+/// <summary>
+/// Source that does not read as tokens and delimiter groups. The span is where
+/// the reader gave up, when it knew; the message prints it as the elaborator's
+/// positions do.
+/// </summary>
+public sealed class ReaderException(string message, SourceSpan? span = null)
+    : Exception(span is { } s ? $"{message} at {s}" : message)
+{
+    public SourceSpan? Span { get; } = span;
+}
 
 /// <summary>
 /// The reader: source text to <see cref="TokenTree"/>. Two layers, as in the
@@ -56,6 +64,10 @@ public static class Reader
         private int _line = 1;
         private int _lineStart;
 
+        /// <summary>The span from a recorded lexeme start to where the scanner now stands.</summary>
+        private SourceSpan From(int start, int startLine, int startCol) =>
+            SourceSpan.Make(start, _pos, file, startLine, startCol, _line, _pos - _lineStart);
+
         private bool AtEnd => _pos >= source.Length;
         private char Cur => source[_pos];
         private bool Looking(string text) => source.AsSpan(_pos).StartsWith(text);
@@ -98,10 +110,11 @@ public static class Reader
 
         private void SkipBlockComment()
         {
+            var (start, startLine, startCol) = (_pos, _line, _pos - _lineStart);
             var width = 0;
             while (true)
             {
-                if (AtEnd) throw new ReaderException("unterminated block comment");
+                if (AtEnd) throw new ReaderException("unterminated block comment", From(start, startLine, startCol));
                 if (Looking("#|")) { width++; Bump(2); }
                 else if (Looking("|#")) { width--; Bump(2); if (width == 0) return; }
                 else Bump();
@@ -138,7 +151,8 @@ public static class Reader
             if (Cur == '^') { Bump(); return TokenKind.Caret; }
             if (OperatorChars.Contains(Cur)) return ReadOperator();
 
-            throw new ReaderException($"unexpected character: {Cur}");
+            throw new ReaderException($"unexpected character: {Cur}",
+                SourceSpan.Make(_pos, _pos + 1, file, _line, _pos - _lineStart, _line, _pos - _lineStart + 1));
         }
 
         private TokenKind ReadInt()
@@ -179,11 +193,12 @@ public static class Reader
 
         private TokenKind ReadString()
         {
+            var (start, startLine, startCol) = (_pos, _line, _pos - _lineStart);
             Bump(); // opening quote
             var acc = new StringBuilder();
             while (true)
             {
-                if (AtEnd) throw new ReaderException("unterminated string");
+                if (AtEnd) throw new ReaderException("unterminated string", From(start, startLine, startCol));
                 if (Cur == '"') { Bump(); return new TokenKind.Str(acc.ToString()); }
                 if (Cur == '\\' && _pos + 1 < source.Length)
                 {
@@ -197,6 +212,7 @@ public static class Reader
 
         private TokenKind ReadChar()
         {
+            var (start, startLine, startCol) = (_pos, _line, _pos - _lineStart);
             if (_pos + 1 < source.Length && source[_pos + 1] == '\\')
             {
                 if (_pos + 3 < source.Length && source[_pos + 3] == '\'' && Escape(source[_pos + 2]) is char c)
@@ -204,7 +220,7 @@ public static class Reader
                     Bump(4);
                     return new TokenKind.Char(c);
                 }
-                throw new ReaderException("unterminated character literal");
+                throw new ReaderException("unterminated character literal", From(start, startLine, startCol));
             }
             if (_pos + 2 < source.Length && source[_pos + 2] == '\'' && source[_pos + 1] is not ('\'' or '\n' or '\r'))
             {
@@ -212,7 +228,7 @@ public static class Reader
                 Bump(3);
                 return new TokenKind.Char(c);
             }
-            throw new ReaderException("unterminated character literal");
+            throw new ReaderException("unterminated character literal", From(start, startLine, startCol));
         }
 
         /// <summary>The escapes both string and character literals accept.</summary>
@@ -253,7 +269,7 @@ public static class Reader
             if (token.Kind == TokenKind.Eof)
             {
                 if (close is null) { closeSpan = null; return new EquatableArray<TokenTree>(acc.ToImmutable()); }
-                throw new ReaderException($"unterminated {close.Text()} group");
+                throw new ReaderException($"unterminated {close.Text()} group", token.Span);
             }
 
             if (close is not null && token.Kind == close)
@@ -273,7 +289,7 @@ public static class Reader
             if (Opening(token.Kind) is not null) { acc.Add(ReadGroup(tokens, ref pos)); continue; }
 
             if (Closing(token.Kind))
-                throw new ReaderException($"unexpected closing delimiter: {token.Kind.Text()}");
+                throw new ReaderException($"unexpected closing delimiter: {token.Kind.Text()}", token.Span);
 
             pos++;
             acc.Add(new TokenTree.Leaf(token));
@@ -284,7 +300,7 @@ public static class Reader
     {
         var opener = tokens[pos++];
         var (delimiter, close) = Opening(opener.Kind)
-            ?? throw new ReaderException("internal reader error: expected opening delimiter");
+            ?? throw new ReaderException("internal reader error: expected opening delimiter", opener.Span);
         var items = ReadSequence(tokens, ref pos, close, out var closeSpan);
         return new TokenTree.Group(delimiter, items, SourceSpan.Between(opener.Span, closeSpan ?? opener.Span));
     }
@@ -294,7 +310,7 @@ public static class Reader
     {
         if (pos >= tokens.Length) throw new ReaderException("expected term");
         var token = tokens[pos];
-        if (token.Kind == TokenKind.Eof) throw new ReaderException("expected term");
+        if (token.Kind == TokenKind.Eof) throw new ReaderException("expected term", token.Span);
         if (token.Kind == TokenKind.DatumComment)
         {
             pos++;
@@ -303,7 +319,7 @@ public static class Reader
         }
         if (Opening(token.Kind) is not null) return ReadGroup(tokens, ref pos);
         if (Closing(token.Kind))
-            throw new ReaderException($"unexpected closing delimiter: {token.Kind.Text()}");
+            throw new ReaderException($"unexpected closing delimiter: {token.Kind.Text()}", token.Span);
         pos++;
         return new TokenTree.Leaf(token);
     }

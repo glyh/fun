@@ -57,10 +57,10 @@ public class ReaderTests
     public void Reads(string source, string expected) => Assert.Equal(expected, Render(source));
 
     [Theory]
-    [InlineData("(1", "unterminated ) group")]  // named by the closer, as the prototype does
-    [InlineData("1)", "unexpected closing delimiter: )")]
-    [InlineData("#| a", "unterminated block comment")]
-    [InlineData("\"abc", "unterminated string")]
+    [InlineData("(1", "unterminated ) group at <unknown>:1:2-1:2")]  // named by the closer, as the prototype does
+    [InlineData("1)", "unexpected closing delimiter: ) at <unknown>:1:1-1:2")]
+    [InlineData("#| a", "unterminated block comment at <unknown>:1:0-1:4")]
+    [InlineData("\"abc", "unterminated string at <unknown>:1:0-1:4")]
     public void Rejects(string source, string message) =>
         Assert.Equal(message, Assert.Throws<ReaderException>(() => Reader.Read(source)).Message);
 
