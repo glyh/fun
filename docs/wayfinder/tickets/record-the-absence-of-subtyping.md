@@ -30,4 +30,20 @@ only equality, records are structural, and no subtype rule exists anywhere.
 
 ## Resolution
 
-_Unresolved._
+**Ruled 2026-10-04: recorded, with the exception named.** `fun` has no subtyping relation —
+NbE convertibility is the only equality, records are structural and exact, and there is no
+coercion term anywhere (`grep -rniE 'coerc' src/` = **0**). Checking is conversion-only:
+`Elaborator.Check` (`Elaborator.cs:342`) falls through to `AgreeWithExpected`
+(`Elaborator.Structs.cs:331`) → `Context.Unify` (`Elaborator.cs:100`) → `Unify.Values`
+(`Unify.cs:11`), and convertibility is quote-equality (`Nbe.Rec.cs:115`). `Ref(h, A)` and
+`Ref(h', A)` are different types related by nothing — `Unify.cs:84` requires heap
+convertibility.
+
+**The one exception, already landed:** module↔signature unification admits width.
+`Unify.Structs.Modules` (`Unify.Structs.cs:17`) lets a partial side — a signature's instance —
+need only its own members present in the other side: extra members tolerated, missing members
+refused, one-directional, no coercion. Pinned by `values/core-021.fun` and documented in
+`port-structs-records-signatures.md:56`. `grep -rniE 'subtyp' src/` = **3** hits, all comments
+naming this rule (`Core.Structs.cs:8`, `Unify.Structs.cs:17`, `Elaborator.Traits.cs:592`).
+
+Detail: [`topics/subtyping.md`](../topics/subtyping.md).

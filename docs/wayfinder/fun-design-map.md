@@ -56,6 +56,9 @@ detail. (Build-completion status lives in [`docs/STATUS.md`](../STATUS.md).)
 - [Dependent core (`core_tt`)](topics/dependent-types.md) — the old HM pipeline
   was replaced by a dependently-typed core with bidirectional elaboration + NbE.
 - [Record types](topics/records.md) — structural record types over constructor fields.
+- [No subtyping](topics/subtyping.md) — convertibility (NbE) is the only equality; records
+  are structural and exact. The one width rule is module↔signature unification, already
+  landed and pinned by `core-021`.
 - [Qualified paths](topics/qualified-paths.md) — `M.x` path resolution in the core.
 - [Type-specialized equality](topics/type-specialized-equality.md) — equality
   dispatched by type rather than a single generic operator.
