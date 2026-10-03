@@ -3,7 +3,7 @@ title: Enforester improvements scope
 parent: ../fun-design-map.md
 labels:
   - wayfinder:grilling
-status: open
+status: closed
 assignee:
 blocked_by:
 ---
@@ -117,3 +117,11 @@ can be carried out through the driver's three catches (the same funnel the elabo
 touched) without inventing recovery. The boundary is worth stating: expanding from the first error
 and stopping is **decided**, not a backlog item — a later session should not re-open it without a
 program that reports two.
+
+**Closed 2026-10-04 — both forkable items landed.** Item 1, the span: `8f14547` — the three
+language-error types take an optional `SourceSpan`, `FunException` holds one, `Driver.cs:38-46`
+stops discarding it; **155 of 173** throw sites carry one, the other 18 being invariants,
+unported markers, or sites with no position in scope. Item 2, the inventory: `enforest-inventory`
+— the prototype's `[x]` checkboxes in [enforester-improvements](../topics/enforester-improvements.md)
+are now a claim-vs-measured table plus a measured error-site inventory. The recovery/accumulator
+half stays ruled out, not deferred.

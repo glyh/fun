@@ -143,12 +143,12 @@ The error surface, measured — not a plan. Commands and their output:
 | `Expander.Structs.cs` | 0 | `MacroRuntime.cs` | 0 |
 | `Terms.cs` | 0 | | |
 
-Span coverage at this base: **0 of 173** sites pass a `SourceSpan` — the
-span-carrying work is not in this tree. It lands separately
-(`span-on-expansion-errors`): the three language-error types take an optional
-span and print ` at <span>`, the shape the elaborator's `Budget.Where()` already
-prints. Nothing here re-opens recovery or the accumulator: the ruling stands
-that expanding stops at the first error.
+Span coverage on `main` after `8f14547`: **155 of 173** sites pass a
+`SourceSpan` — the three language-error types take an optional span and print
+` at <span>`, the shape the elaborator's `Budget.Where()` already prints. The 18
+that do not are invariants, unported markers, or sites with no position in scope
+(left absent, not guessed). Nothing here re-opens recovery or the accumulator: the
+ruling stands that expanding stops at the first error.
 
 ### Combinators available
 
