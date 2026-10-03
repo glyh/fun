@@ -134,8 +134,9 @@ public static partial class Elaborator
     /// resolves to nothing is an error rather than a fresh variable - which is
     /// where the old silent `impl Size(Optoin(a))` typo used to hide.
     /// </summary>
-    private static (Context Head, Syntax HeadSyntax, EquatableArray<Value> Vars) BindHeadNames(Context ctx, Syntax head)
+    private static (Context Head, Syntax HeadSyntax, EquatableArray<(string Name, Value Value)> Vars) BindHeadNames(Context ctx, Syntax head, EquatableArray<Param> binders)
     {
+        var written = binders.Select(b => b.Name.Name).ToHashSet();
         var free = new List<string>();
         head.Map(new SyntaxMapper
         {
@@ -143,12 +144,17 @@ public static partial class Elaborator
             {
                 switch (form)
                 {
-                    case Syntax.Var v when !Resolves(ctx, v.Id.Name):
-                        RequireLowercase(v.Id.Name, $"`{v.Id.Name}` in an impl head is a reference, not a binder; an impl head binder must be lowercase");
+                    // A name the head's binders write is the impl's binding form: it
+                    // binds even where an outer binding of that name would make it a
+                    // reference.
+                    case Syntax.Var v when written.Contains(v.Id.Name) || !Resolves(ctx, v.Id.Name):
+                        if (!written.Contains(v.Id.Name))
+                            RequireLowercase(v.Id.Name, $"`{v.Id.Name}` in an impl head is a reference, not a binder; an impl head binder must be lowercase");
                         free.Add(v.Id.Name);
                         break;
-                    case Syntax.OpenChoice c when !Resolves(ctx, c.Name.Name, c.Opens, c.Fallback):
-                        RequireLowercase(c.Name.Name, $"`{c.Name.Name}` in an impl head is a reference, not a binder; an impl head binder must be lowercase");
+                    case Syntax.OpenChoice c when written.Contains(c.Name.Name) || !Resolves(ctx, c.Name.Name, c.Opens, c.Fallback):
+                        if (!written.Contains(c.Name.Name))
+                            RequireLowercase(c.Name.Name, $"`{c.Name.Name}` in an impl head is a reference, not a binder; an impl head binder must be lowercase");
                         free.Add(c.Name.Name);
                         break;
                 }
@@ -158,13 +164,13 @@ public static partial class Elaborator
         free = [.. free.Distinct()];
         if (free.Count == 0) return (ctx, head, []);
 
-        var vars = EquatableArray<Value>.Empty;
+        var vars = EquatableArray<(string Name, Value Value)>.Empty;
         foreach (var name in free)
         {
             var id = ctx.Metas.Fresh();
             var value = ctx.Eval(new Term.InsertedMeta(id, ctx.EntryKinds));
             ctx = ctx.Define(name, Value.VU.Instance, value);
-            vars = vars.Add(value);
+            vars = vars.Add((name, value));
         }
         var bound = free.ToHashSet();
         var rewritten = head.Map(new SyntaxMapper
@@ -206,18 +212,18 @@ public static partial class Elaborator
     /// operations; each is elaborated in the impl's context, so the ith is shifted
     /// past the i entries the struct pushes before it.
     /// </summary>
-    private static ImplContribution Contribute(Context ctx, Syntax traitPath, Syntax argSyntax, EquatableArray<(string Name, Syntax Value)> fields)
+    private static ImplContribution Contribute(Context ctx, Id? name, Syntax traitPath, Syntax argSyntax, EquatableArray<(string Name, Syntax Value)> fields, EquatableArray<Param> binders)
     {
-        var (headCtx, head, declared) = BindHeadNames(ctx, argSyntax);
+        var (headCtx, head, declared) = BindHeadNames(ctx, argSyntax, binders);
         var (trait, arg, dictType) = ImplDictType(headCtx, traitPath, head);
         var seen = new HashSet<string>();
-        foreach (var (name, _) in fields)
+        foreach (var (field, _) in fields)
         {
-            if (!seen.Add(name)) throw new FunException($"duplicate field `{name}`");
-            if (dictType.Operations.All(o => o.Name != name)) throw new FunException($"unknown trait method `{name}`");
+            if (!seen.Add(field)) throw new FunException($"duplicate field `{field}`");
+            if (dictType.Operations.All(o => o.Name != field)) throw new FunException($"unknown trait method `{field}`");
         }
-        foreach (var (name, _) in dictType.Operations)
-            if (!seen.Contains(name)) throw new FunException($"missing trait field `{name}`");
+        foreach (var (op, _) in dictType.Operations)
+            if (!seen.Contains(op)) throw new FunException($"missing trait field `{op}`");
 
         var pendingMark = ctx.Metas.PendingEvidence.Count;
         var bindings = fields.Select((f, i) => (BindingTerm)new BindingTerm.Let(f.Name, MemberKind.Public,
@@ -229,16 +235,48 @@ public static partial class Elaborator
         // constructor's parameter introduced (the variable that is left, which both the
         // demand and the matching name).
         var vars = EquatableArray<int>.Empty;
-        foreach (var value in declared)
+        foreach (var (_, value) in declared)
             if (ctx.Force(value) is Value.VMeta meta && IndexOf(vars, meta.Id) < 0)
                 vars = vars.Add(meta.Id);
 
-        // The evidence the body demanded for those variables is the impl's bound: one
-        // implicit dictionary argument per (trait, variable), resolved at a use exactly
-        // as a bounded function's is (traits.md, "Resolution"). A demand for anything
-        // else is left where it was made, so a missing one is reported at the impl's
-        // definition, not through a misleading use site.
+        int VarOf(string n)
+        {
+            foreach (var (d, v) in declared)
+                if (d == n) return ctx.Force(v) is Value.VMeta m ? IndexOf(vars, m.Id) : -1;
+            return -1;
+        }
+        string VarName(int variable)
+        {
+            foreach (var (d, v) in declared)
+                if (ctx.Force(v) is Value.VMeta m && IndexOf(vars, m.Id) == variable) return d;
+            return "?";
+        }
+        var who = name is null ? $"an impl of `{trait.Name}`" : $"impl `{name.Name}`";
+
+        // The bounds the head wrote - `impl name[a : Eq] : …` - are the whole truth
+        // about the impl's bounds: one implicit dictionary argument per (trait,
+        // variable), in the order written, whether or not the body ever uses it
+        // (writing a bound deliberately narrows the impl).
         var bounds = new List<(ImplBound Bound, Value Arg)>();
+        if (!binders.IsEmpty)
+        {
+            foreach (var binder in binders)
+            {
+                var variable = VarOf(binder.Name.Name);
+                if (variable < 0) throw new FunException($"{who}: the binder `{binder.Name.Name}` does not occur in its head");
+                if (binder.Type is null) continue;
+                foreach (var bound in TraitBounds(headCtx, binder.Type) ?? throw new FunException($"{who}: the bound on `{binder.Name.Name}` must name traits"))
+                    if (!bounds.Any(b => ReferenceEquals(b.Bound.Trait, bound) && b.Bound.Var == variable))
+                        bounds.Add((new ImplBound(bound, variable), new Value.VMeta(vars[variable], [])));
+            }
+        }
+
+        // The evidence the body demanded for the head's variables: with nothing
+        // written it is the impl's bound (the inference an unannotated impl keeps);
+        // with bounds written, each demand must be one the head wrote - the body may
+        // use at most what the declaration writes. A demand for anything else is left
+        // where it was made, so a missing one is reported at the impl's definition,
+        // not through a misleading use site.
         var promoted = new Dictionary<int, int>();
         foreach (var pending in ctx.Metas.PendingEvidence.Skip(pendingMark).ToList())
         {
@@ -246,7 +284,15 @@ public static partial class Elaborator
             var variable = IndexOf(vars, meta.Id);
             if (variable < 0) continue;
             var at = bounds.FindIndex(b => ReferenceEquals(b.Bound.Trait, pending.Trait) && b.Bound.Var == variable);
-            if (at < 0) { at = bounds.Count; bounds.Add((new ImplBound(pending.Trait, variable), meta)); }
+            if (at < 0)
+            {
+                if (binders.IsEmpty) { at = bounds.Count; bounds.Add((new ImplBound(pending.Trait, variable), meta)); }
+                else
+                {
+                    var wrote = string.Join(", ", bounds.Select(b => $"{VarName(b.Bound.Var)} : {b.Bound.Trait.Name}"));
+                    throw new FunException($"{who}: its body demands `{pending.Trait.Name}({VarName(variable)})`, which its head `[{wrote}]` does not write");
+                }
+            }
             promoted[pending.Meta] = at;
             ctx.Metas.PendingEvidence.Remove(pending);
         }
@@ -300,7 +346,7 @@ public static partial class Elaborator
     /// <summary><c>impl Trait(Arg) = module { … }; body</c>: the dictionary is an entry, and evidence, for the body.</summary>
     private static (Term, Value) InferImplDef(Context ctx, Syntax.ImplDef i)
     {
-        var c = Contribute(ctx, i.TraitPath, i.Arg, i.Fields);
+        var c = Contribute(ctx, i.Name, i.TraitPath, i.Arg, i.Fields, i.Binders);
         var (inner, entry) = ctx.DefineAnonymous(c.DictType, c.Value);
         inner = inner.AddEvidence(new TraitEvidence(c.Trait, [c.Arg], entry.Level, c.DictType, c.Vars, c.Bounds));
         var (body, bodyType) = Infer(inner, i.Body);
@@ -314,7 +360,7 @@ public static partial class Elaborator
     private static (Context, BindingTerm, ModuleEntry) ElaborateImplItem(Context ctx, Binding.Impl impl)
     {
         var fields = impl.Fields ?? throw new InvalidOperationException("an impl item without operations outside a signature");
-        var c = Contribute(ctx, impl.TraitPath, impl.Arg, fields);
+        var c = Contribute(ctx, impl.Name, impl.TraitPath, impl.Arg, fields, impl.Binders);
         var kind = impl.Public ? MemberKind.Public : MemberKind.Private;
         var name = impl.Name is { } written ? Label(written.Name) : null;
         var term = new BindingTerm.Impl(name, kind, c.Core, c.DictType);

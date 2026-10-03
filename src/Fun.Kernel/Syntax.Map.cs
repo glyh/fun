@@ -143,6 +143,7 @@ public abstract partial record Syntax
             ImplDef i => i with
             {
                 Name = i.Name is null ? null : m.Id(i.Name),
+                Binders = [.. i.Binders.Select(p => MapParam(p, m))],
                 TraitPath = Go(i.TraitPath),
                 Arg = Go(i.Arg),
                 Fields = [.. i.Fields.Select(f => (f.Name, Go(f.Value)))],
@@ -216,6 +217,7 @@ public abstract partial record Binding
             Impl i => i with
             {
                 Name = i.Name is null ? null : m.Id(i.Name),
+                Binders = [.. i.Binders.Select(p => p with { Name = m.Id(p.Name), Type = p.Type?.Map(m), Bounds = [.. p.Bounds.Select(b => b.Map(m))] })],
                 TraitPath = i.TraitPath.Map(m),
                 Arg = i.Arg.Map(m),
                 Fields = i.Fields is { } fields ? [.. fields.Select(f => (f.Name, f.Value.Map(m)))] : null,

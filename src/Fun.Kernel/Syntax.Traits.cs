@@ -10,12 +10,14 @@ public abstract partial record Syntax
         : Syntax(Span);
 
     /// <summary>
-    /// <c>impl [name :] Trait(Arg) = module { … }; body</c>: evidence that
-    /// <paramref name="Arg"/> implements <paramref name="Trait"/>, in scope for
-    /// <paramref name="Body"/>.
+    /// <c>impl [name] [binders] [:] Trait(Arg) = module { … }; body</c>: evidence
+    /// that <paramref name="Arg"/> implements <paramref name="Trait"/>, in scope for
+    /// <paramref name="Body"/>. <paramref name="Binders"/> are the head's written
+    /// bounds (<c>[a : Eq]</c>): when any is written they are the whole truth about
+    /// the impl's bounds; an impl writing none infers them from its body.
     /// </summary>
     public sealed record ImplDef(
-        Id? Name, Syntax TraitPath, Syntax Arg, EquatableArray<(string Name, Syntax Value)> Fields, Syntax Body, SourceSpan Span)
+        Id? Name, EquatableArray<Param> Binders, Syntax TraitPath, Syntax Arg, EquatableArray<(string Name, Syntax Value)> Fields, Syntax Body, SourceSpan Span)
         : Syntax(Span);
 
     /// <summary><c>{Eq, Show}</c> as an implicit binder's bound: the traits it must implement.</summary>
@@ -29,10 +31,10 @@ public abstract partial record Binding
     public sealed record Trait(Id Name, Id Param, EquatableArray<(string Name, Syntax Type)> Fields, bool Public) : Binding;
 
     /// <summary>
-    /// <c>[pub] impl [name :] Trait(Arg) = module { … }</c> as a module or struct item.
-    /// In a signature (<c>name : impl Trait(Arg)</c>) it has no fields: it is the
-    /// impl the described module must provide.
+    /// <c>[pub] impl [name] [binders] [:] Trait(Arg) = module { … }</c> as a module or
+    /// struct item. In a signature (<c>name : impl Trait(Arg)</c>) it has no fields and
+    /// no binders: it is the impl the described module must provide.
     /// </summary>
-    public sealed record Impl(Id? Name, Syntax TraitPath, Syntax Arg, EquatableArray<(string Name, Syntax Value)>? Fields, bool Public) : Binding;
+    public sealed record Impl(Id? Name, EquatableArray<Param> Binders, Syntax TraitPath, Syntax Arg, EquatableArray<(string Name, Syntax Value)>? Fields, bool Public) : Binding;
 
 }

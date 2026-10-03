@@ -114,6 +114,18 @@ claimed equality for element types that have none.
 (`list_eq` in `list.fun`, `option_eq` in `option.fun`); about **38** files in the suite use a generic
 impl head and need it only where they rely on the bound.
 
+## Edges the implementation rules (2026-10-04, landed)
+
+Three edges the ruling did not name, each handled in `Elaborator.Traits.Contribute`:
+
+1. **A written binder that does not occur in the head** is an error at the definition:
+   ``impl `probe`: the binder `x` does not occur in its head``.
+2. **Duplicate written bounds** dedupe — `[a : Eq, a : Eq]` contributes one dictionary argument.
+3. **Binders in a signature's impl** are refused at parse: a signature's impl has no fields and
+   no binders (`ParseSignatureImpl` writes `[]`).
+
+A binder with no bound (`[a]`) is accepted and contributes nothing.
+
 ## Not this ticket
 
 Surface syntax generally. [The library surface](design-std-library-surface.md) §14 sent

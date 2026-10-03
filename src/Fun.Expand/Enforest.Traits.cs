@@ -62,11 +62,11 @@ public sealed partial class Enforest
     }
 
     /// <summary>
-    /// <c>impl [name :] Trait(Arg) = module { op = …; fn op(…) { … } }</c>: its
-    /// optional name, the trait path, its one argument and its operations. Null
-    /// when the statement is not an impl.
+    /// <c>impl [name] [binders] [:] Trait(Arg) = module { op = …; fn op(…) { … } }</c>: its
+    /// optional name, its head binders, the trait path, its one argument and its
+    /// operations. Null when the statement is not an impl.
     /// </summary>
-    private (Id? Name, Syntax Trait, Syntax Arg, EquatableArray<(string Name, Syntax Value)> Fields)? ParseImplStatement(Terms stmt)
+    private (Id? Name, EquatableArray<Param> Binders, Syntax Trait, Syntax Arg, EquatableArray<(string Name, Syntax Value)> Fields)? ParseImplStatement(Terms stmt)
     {
         stmt = DropSeparators(stmt);
         if (!IsToken(stmt.Head, TokenKind.Impl)) return null;
@@ -77,7 +77,7 @@ public sealed partial class Enforest
         if (eq < 0 || !IsToken(body.Head, TokenKind.Module))
             throw new ExpandException("impl binding requires = module { … }");
 
-        var (name, trait, arg) = ParseImplHead(TakeTerms(afterImpl, eq));
+        var (name, binders, trait, arg) = ParseImplHead(TakeTerms(afterImpl, eq));
         var (moduleBody, after) = BraceBody("module", body.Tail);
         EnsureNoRest("impl binding", after);
 
@@ -89,21 +89,32 @@ public sealed partial class Enforest
             // A written type annotates the operation, as a module binding's does.
             fields.Add((fieldName.Name, type is null ? value : new Syntax.Annotated(value, type, value.Span)));
         }
-        return (name, trait, arg, [.. fields]);
+        return (name, binders, trait, arg, [.. fields]);
     }
 
-    /// <summary><c>[name :] Trait(Arg)</c>: an optional impl name, the trait's path and its one argument.</summary>
-    private (Id? Name, Syntax Trait, Syntax Arg) ParseImplHead(Terms terms)
+    /// <summary><c>[name] [binders] [:] Trait(Arg)</c>: an optional impl name, its head
+    /// binders (<c>[a : Eq]</c>), the trait's path and its one argument. The binders are
+    /// the impl's binding form for its head variables' bounds, written before the colon.</summary>
+    private (Id? Name, EquatableArray<Param> Binders, Syntax Trait, Syntax Arg) ParseImplHead(Terms terms)
     {
         terms = DropSeparators(terms);
         Id? name = null;
+        EquatableArray<Param> binders = [];
         var colon = IndexOfToken(terms, TokenKind.Colon);
         if (colon >= 0)
         {
-            var nameTerms = DropSeparators(TakeTerms(terms, colon));
-            if (nameTerms.Count != 1 || NameOf(nameTerms.Head) is not Id written)
-                throw new ExpandException("impl name must be a single identifier");
-            name = written;
+            var head = DropSeparators(TakeTerms(terms, colon));
+            if (!head.IsEmpty && NameOf(head.Head) is Id written)
+            {
+                name = written;
+                head = DropSeparators(head.Tail);
+            }
+            if (!head.IsEmpty && head.Head is TokenTree.Group { Delimiter: Delimiter.Bracket } binderGroup)
+            {
+                binders = ParseParamGroup(new Terms(binderGroup.Items), Explicitness.Implicit);
+                head = DropSeparators(head.Tail);
+            }
+            if (!head.IsEmpty) throw new ExpandException("impl head is `impl [name] [binders] : Trait(Arg)`");
             terms = DropSeparators(terms.Drop(colon + 1));
         }
 
@@ -113,7 +124,7 @@ public sealed partial class Enforest
         if (items.IsEmpty) throw new ExpandException("impl argument list cannot be empty");
         var parts = SplitCommas(items);
         if (parts.Count != 1) throw new ExpandException("impl declaration accepts exactly one trait argument");
-        return (name, ParseAll(TakeTerms(terms, terms.Count - 1)), ParseImplHeadArg(parts[0]));
+        return (name, binders, ParseAll(TakeTerms(terms, terms.Count - 1)), ParseImplHeadArg(parts[0]));
     }
 
     /// <summary>
@@ -150,8 +161,8 @@ public sealed partial class Enforest
     {
         if (ParseTraitStatement(stmt) is var (name, param, fields))
             return new Syntax.TraitDef(name, param, fields, body, span);
-        if (ParseImplStatement(stmt) is var (implName, trait, arg, implFields))
-            return new Syntax.ImplDef(implName, trait, arg, implFields, body, span);
+        if (ParseImplStatement(stmt) is var (implName, implBinders, trait, arg, implFields))
+            return new Syntax.ImplDef(implName, implBinders, trait, arg, implFields, body, span);
         return null;
     }
 
@@ -160,8 +171,8 @@ public sealed partial class Enforest
     {
         if (ParseTraitStatement(unprefixed) is var (name, param, fields))
             return new Binding.Trait(name, param, fields, isPublic);
-        if (ParseImplStatement(unprefixed) is var (implName, trait, arg, implFields))
-            return new Binding.Impl(implName, trait, arg, implFields, isPublic);
+        if (ParseImplStatement(unprefixed) is var (implName, implBinders, trait, arg, implFields))
+            return new Binding.Impl(implName, implBinders, trait, arg, implFields, isPublic);
         return null;
     }
 
@@ -170,8 +181,9 @@ public sealed partial class Enforest
     {
         if (NameOf(stmt.Head) is not Id name || !IsToken(stmt.Drop(1).Head, TokenKind.Colon) || !IsToken(stmt.Drop(2).Head, TokenKind.Impl))
             throw new ExpandException("an impl in a signature must be named: write name : impl Trait(Type)");
-        var (_, trait, arg) = ParseImplHead(stmt.Drop(3));
-        return new Binding.Impl(name, trait, arg, null, Public: true);
+        var (_, binders, trait, arg) = ParseImplHead(stmt.Drop(3));
+        if (!binders.IsEmpty) throw new ExpandException("an impl in a signature does not write head binders");
+        return new Binding.Impl(name, [], trait, arg, null, Public: true);
     }
 
     /// <summary><c>{Eq, Show}</c> after an implicit binder's colon: the traits it must implement.</summary>

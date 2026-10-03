@@ -7,7 +7,9 @@ public sealed partial class Expander
     /// <summary>
     /// A trait binds its name over the rest; its parameter binds over its operation
     /// types. An impl binds nothing: its trait path's head is an occurrence, its
-    /// operation names are labels, and an impl name is a member label.
+    /// operation names are labels, and an impl name is a member label. The head
+    /// binders' bound types are occurrences too (the elaborator reads their names
+    /// against the head), so only their types expand.
     /// </summary>
     private Syntax ExpandTraits(Syntax stx)
     {
@@ -23,6 +25,7 @@ public sealed partial class Expander
             case Syntax.ImplDef i:
                 return i with
                 {
+                    Binders = [.. i.Binders.Select(p => p with { Type = p.Type is null ? null : Expand(p.Type) })],
                     TraitPath = Expand(i.TraitPath),
                     Arg = Expand(i.Arg),
                     Fields = [.. i.Fields.Select(f => (f.Name, Expand(f.Value)))],
@@ -53,6 +56,7 @@ public sealed partial class Expander
             case Binding.Impl i:
                 expanded.Add(i with
                 {
+                    Binders = [.. i.Binders.Select(p => p with { Type = p.Type is null ? null : Expand(p.Type) })],
                     TraitPath = Expand(i.TraitPath),
                     Arg = Expand(i.Arg),
                     Fields = i.Fields is { } fields ? [.. fields.Select(f => (f.Name, Expand(f.Value)))] : null,

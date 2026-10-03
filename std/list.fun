@@ -294,6 +294,6 @@ rec list_eq_go : [B : Eq] -> List(B) -> List(B) -> Bool = fn[B : Type](xs, ys) {
 ## <example>
 ## <code>Cons(1, Cons(2, Nil)) == Cons(1, Cons(2, Nil)) // returns True</code>
 ## </example>
-pub impl list_eq : Eq(List(a)) = module {
+pub impl list_eq[a : Eq] : Eq(List(a)) = module {
   fn eq(xs, ys) { list_eq_go(xs, ys) }
 };

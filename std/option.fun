@@ -43,7 +43,7 @@ pub is_some = fn[A : Type](o : Option(A)) : Bool {
 
 # option_eq compares two options' contents with the element type's Eq; it is True for
 # two Nones and False when one side is None and the other is Some.
-pub impl option_eq : Eq(Option(a)) = module {
+pub impl option_eq[a : Eq] : Eq(Option(a)) = module {
   fn eq(xs, ys) {
     match (xs) {
       Some(h) => match (ys) { Some(h2) => Eq.eq(h, h2), None => False },

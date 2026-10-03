@@ -332,7 +332,7 @@ public sealed class Reflection
             Syntax.OpenChoice c => E(PreludeAbi.Tags.Expr.RawOpenChoice, ReflectId(c.Name), List(c.Opens, Str), Option(c.Fallback, Str)),
             Syntax.EffectDef d => E(PreludeAbi.Tags.Expr.RawEffectDef, ReflectId(d.Name), List(d.Params, ReflectId), List(d.Ops, EffectOpVal), X(d.Body)),
             Syntax.TraitDef t => E(PreludeAbi.Tags.Expr.RawTraitDef, ReflectId(t.Name), List([t.Param], ReflectId), Fields(t.Fields), X(t.Body)),
-            Syntax.ImplDef i => E(PreludeAbi.Tags.Expr.RawImplDef, Option(i.Name, ReflectId), Path(i.TraitPath), List([i.Arg], X), Fields(i.Fields), X(i.Body)),
+            Syntax.ImplDef i => E(PreludeAbi.Tags.Expr.RawImplDef, Option(i.Name, ReflectId), List(i.Binders, ParamVal), Path(i.TraitPath), List([i.Arg], X), Fields(i.Fields), X(i.Body)),
             Syntax.Perform p => E(PreludeAbi.Tags.Expr.RawPerform, Path(p.Operation), X(p.Arg)),
             Syntax.Resume r => E(PreludeAbi.Tags.Expr.RawResume, X(r.Arg)),
             Syntax.RefNew n => E(PreludeAbi.Tags.Expr.RawRefNew, X(n.Arg)),
@@ -463,7 +463,7 @@ public sealed class Reflection
             Binding.Effect e => D(PreludeAbi.Tags.Decl.DeclEffect, ReflectId(e.Name), List(e.Params, ReflectId), List(e.Ops, EffectOpVal), Bool(e.Public)),
             Binding.Trait t => D(PreludeAbi.Tags.Decl.DeclTrait, ReflectId(t.Name), List([t.Param], ReflectId), Fields(t.Fields), Bool(t.Public)),
             // A signature's impl has no fields; reflected, it is an impl with none.
-            Binding.Impl i => D(PreludeAbi.Tags.Decl.DeclImpl, Option(i.Name, ReflectId), Path(i.TraitPath), List([i.Arg], ReflectExpr), Fields(i.Fields ?? []), Bool(i.Public)),
+            Binding.Impl i => D(PreludeAbi.Tags.Decl.DeclImpl, Option(i.Name, ReflectId), List(i.Binders, ParamVal), Path(i.TraitPath), List([i.Arg], ReflectExpr), Fields(i.Fields ?? []), Bool(i.Public)),
             Binding.Macro m => D(PreludeAbi.Tags.Decl.DeclMacro, ReflectId(m.Name), ReflectExpr(m.Value), Bool(m.Public), OptionOf(m.Kind is { } k ? Ann(k) : null), OptionOf(m.Output is null ? null : ReflectExpr(m.Output))),
             Binding.MacroCall c => D(PreludeAbi.Tags.Decl.DeclMacroCall, ReflectExpr(c.Head), List(c.Args, ReflectCaptured), Bool(c.Public)),
             Binding.Field f => D(PreludeAbi.Tags.Decl.DeclField, Str(f.Name), ReflectExpr(f.Type)),
@@ -787,12 +787,12 @@ public sealed class Reflection
                     ? new Syntax.TraitDef(tname, tps[0], tfields, tbody, span)
                     : throw new FunException("trait declaration accepts exactly one parameter");
             }
-            case (PreludeAbi.Tags.Expr.RawImplDef, 5):
+            case (PreludeAbi.Tags.Expr.RawImplDef, 6):
             {
-                if (ReadOption(args[0], ReadId) is not (true, var iname) || ReadPath(args[1]) is not { } trait
-                    || ReadList(args[2], X) is not { } iargs || ReadFields(args[3]) is not { } ifields || X(args[4]) is not { } ibody) return null;
+                if (ReadOption(args[0], ReadId) is not (true, var iname) || ReadList(args[1], ReadParam) is not { } ibinders || ReadPath(args[2]) is not { } trait
+                    || ReadList(args[3], X) is not { } iargs || ReadFields(args[4]) is not { } ifields || X(args[5]) is not { } ibody) return null;
                 return iargs.Length == 1
-                    ? new Syntax.ImplDef(iname, trait, iargs[0], ifields, ibody, span)
+                    ? new Syntax.ImplDef(iname, ibinders, trait, iargs[0], ifields, ibody, span)
                     : throw new FunException("impl declaration accepts exactly one trait argument");
             }
             case (PreludeAbi.Tags.Expr.RawPerform, 2):
@@ -997,11 +997,11 @@ public sealed class Reflection
                 if (ReadId(args[0]) is not { } tn || ReadList(args[1], ReadId) is not { } tps || ReadFields(args[2]) is not { } tf || ReadBool(args[3]) is not { } tpub) return null;
                 return tps.Length == 1 ? new Binding.Trait(tn, tps[0], tf, tpub) : throw new FunException("trait declaration accepts exactly one parameter");
             }
-            case (PreludeAbi.Tags.Decl.DeclImpl, 5):
+            case (PreludeAbi.Tags.Decl.DeclImpl, 6):
             {
-                if (ReadOption(args[0], ReadId) is not (true, var iname) || ReadPath(args[1]) is not { } trait || ReadList(args[2], X) is not { } iargs
-                    || ReadFields(args[3]) is not { } ifields || ReadBool(args[4]) is not { } ipub) return null;
-                return iargs.Length == 1 ? new Binding.Impl(iname, trait, iargs[0], ifields, ipub) : throw new FunException("impl declaration accepts exactly one trait argument");
+                if (ReadOption(args[0], ReadId) is not (true, var iname) || ReadList(args[1], ReadParam) is not { } ibinders || ReadPath(args[2]) is not { } trait || ReadList(args[3], X) is not { } iargs
+                    || ReadFields(args[4]) is not { } ifields || ReadBool(args[5]) is not { } ipub) return null;
+                return iargs.Length == 1 ? new Binding.Impl(iname, ibinders, trait, iargs[0], ifields, ipub) : throw new FunException("impl declaration accepts exactly one trait argument");
             }
             case (PreludeAbi.Tags.Decl.DeclMacro, 5):
             {
