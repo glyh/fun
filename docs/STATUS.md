@@ -787,7 +787,9 @@ Suite at the end of it: **903 cases, 0 failed**; xUnit **206**.
   precedence is gone (an error names the new form). Operators with no declared
   order never mix ("no declared order; parenthesise"); a form or operator in no
   group is weaker than every grouped one. The prelude's operators are in
-  `disjunction < conjunction < comparison < additive < multiplicative < negation`.
+  `disjunction < conjunction < comparison < additive < multiplicative < negation`,
+  with `pipe` declared `stronger_than(comparison) weaker_than(additive)`: `|>` chains
+  left-to-right and binds tighter than comparison (`x |> f == y` is `(x |> f) == y`).
 - `assoc(none)`: members of a non-associative group do not chain ("do not chain;
   parenthesise"). `<-` is in the compiler-known group `assignment`, below
   `disjunction` and `assoc(none)`: `r <- x + 1` is `r <- (x + 1)`, `a <- b <- c`

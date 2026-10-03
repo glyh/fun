@@ -19,8 +19,10 @@ pub order comparison : stronger_than(conjunction);
 pub order additive : stronger_than(comparison);
 pub order multiplicative : stronger_than(additive);
 pub order negation : stronger_than(multiplicative);
+pub order pipe : stronger_than(comparison) weaker_than(additive);
 pub infix (&&) conjunction ($a, $b) { match ($a) { True => $b, False => False } };
 pub infix (||) disjunction ($a, $b) { match ($a) { True => True, False => $b } };
+pub infix (|>) pipe ($a, $b) { $b($a) };
 
 pub (<) = fn(x, y) { i64_to_bool(lt_i64(x, y)) };
 pub (>) = fn(x, y) { i64_to_bool(gt_i64(x, y)) };

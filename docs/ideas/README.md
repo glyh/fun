@@ -82,6 +82,9 @@ something is built and `STATUS.md` does not, believe `STATUS.md`.
 | `tooling-and-diagnostics.md` | Error messages, spans and provenance, REPL/LSP, compiler-as-a-library, diagnostic tests | you care about what a user sees when things go wrong, or about tools built on the compiler |
 | `design-philosophy-and-process.md` | Writability vs readability, feature selection and where a feature lives, adoption, design process, implementation strategy | you are weighing whether to add a feature at all, or deciding where it should live |
 
+A review of the catalogue against the current compiler (what is useful, what sharpens a decision, what
+confirms a rejection): [review-2026-10-01.md](review-2026-10-01.md).
+
 Beyond the entries themselves, each axis doc ends with two short sections worth
 jumping to directly: **Threads worth reading in full** (5-10 high-signal threads, one line
 on what each is good for) and **Gaps and disagreements** (what the corpus did not settle).

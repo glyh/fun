@@ -64,3 +64,12 @@ The review of the four "prototype-only bugs" found a rule that needs a diagnosti
 - Related, tracked separately: the same review's decision 3, that a container's public
   members are unique, is an *error* and needs no new channel
   ([a module's public members are unique](public-members-are-unique.md)).
+
+## Input from the ideas-catalogue review (2026-10-01)
+
+- **Stable error codes with a `--explain` lookup** (numbered diagnostics plus a maintained
+  explainer a user can query) is genuinely new to the project and lands on this ticket — it is
+  the first thing any LSP/REPL consumer needs. **Blocked on the same non-fatal diagnostic channel
+  the warning above needs**: `Elab_error` and `FunException` are errors only, so there is no
+  channel today for a code to link from. Record it as a prerequisite, not a now. Detail:
+  [review-2026-10-01.md](../../ideas/review-2026-10-01.md).
