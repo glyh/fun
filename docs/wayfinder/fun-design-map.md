@@ -251,6 +251,14 @@ as the frontier reaches them.
   expansion-side *span* stays live in
   [enforester improvements](tickets/scope-enforester-improvements.md), where the starting point is that
   two `struct-field-*` cases already print a position.
+- **Syntax highlighting** — the user wants to see proper highlighting soon, but tree-sitter (a
+  context-free parser) is a doubt given `fun`'s surface: enforestation means the token stream is not
+  the syntax tree, operator demotion means `+` is a library declaration not a keyword, and
+  scope-aware binding means a name's role depends on the binding table. A correct highlighter has to
+  elaborate bindings per unit, which makes it a client of the first-class API fog item. The existing
+  analysis is in `docs/ideas/tooling-and-diagnostics.md` §"The highlighting grammar is a second
+  artefact". Ticket: [syntax-highlighting](tickets/syntax-highlighting.md). Fog because the
+  first-class API is not built, the surface may still change, and no consumer exists yet.
 - ~~**`Self` names two things**~~ — decided 2026-09-15: `Self` is the struct being defined; the recursion placeholder is an unwritable "recursive occurrence" (see mutually-recursive-record-types). — the record-recursion placeholder
   (`VSelfType args`, set by record declarations) and the partial struct type seen
   by struct method bodies (`elab_infer.ml`, `Struct` case). Both share
@@ -314,10 +322,10 @@ as the frontier reaches them.
 
 ### Frontier (2026-09-26)
 
-**2026-10-01, session close — 17 open** (frontmatter count, the three port umbrellas among them),
-**suite 961 cases, 0 failed, xUnit 209/209** — six forks plus one follow-up, every one merged and
-re-measured by the integrator rather than believed. One ticket closed, one filed *and* closed, and
-**five frontier claims turned out to be older than their commits.**
+**2026-10-03 — 20 open** (frontmatter count, the three port umbrellas among them),
+**suite 961 cases, 0 failed, xUnit 210/210** — the 2026-10-01 session closed 17 open with six forks
+plus one follow-up, every one merged and re-measured by the integrator rather than believed; three
+more tickets have been filed since, and the elaborator-error position landed (`bff4bbe`).
 
 - **[The coverage gaps are closed](tickets/coverage-gaps-from-the-mutation-sweep.md)**
   (`8eb3df6`+`799b04e`, merged `79ee1f1`/`7868b73`). All eight rows the sweep left are resolved:
@@ -326,7 +334,10 @@ re-measured by the integrator rather than believed. One ticket closed, one filed
   both its candidate guards. Two findings about `src/` came with it: `Nbe.cs:586`'s guard is
   unreachable by any program (its own comment says so; its reachable sibling is cased instead), and
   `Primitives.cs:165`'s refusal is observable only as a **process-killing stack overflow** — the one
-  failure a conformance case cannot pin, and the one the runner cannot classify.
+  failure a conformance case cannot pin, and the one the runner cannot classify. **Measured
+  2026-10-03:** the refusal is a race between that overflow and the 60s elaboration timeout,
+  `elaborate/tuple-negative-arity.fun` pins it, and `--isolated` classifies both — see
+  [the negative-tuple-arity ticket](tickets/negative-tuple-arity-and-crash-class-mutants.md).
 - **A mutation no longer aborts the suite**
   (`008720b`, merged `6053ea3`) — filed closed, because the sweep had recorded it without a ticket.
   Two mutations that killed the run at exit 134 now report per case: `hard failure (T): msg`, A →
@@ -369,6 +380,12 @@ re-measured by the integrator rather than believed. One ticket closed, one filed
   and `README.md` advertised a **REPL that is a stub** — `src/Fun.Cli` prints "no entry point yet" and
   exits 1. Also corrected: the `Prelude.Stage1Path` claim, the sweep's "something escapes it"
   paragraph (now naming what escaped), and the coverage ticket's own "none of them attempted" index.
+- **[The negative-tuple-arity refusal, and crash-class mutants](tickets/negative-tuple-arity-and-crash-class-mutants.md)**
+  (filed 2026-10-03) — the guard at `Primitives.cs:165` is the assertion that `Tuple(n, …)`'s first
+  argument is positive, and it stays; `elaborate/tuple-negative-arity.fun` pins it (the mutant fails
+  by the 60s timeout or by a stack overflow in `Unify.Mentions` — a race), and the runner's
+  `--isolated` mode makes both one case's failure. Remains: the crash-class shape has no in-process
+  case, and the sweep should run with `--isolated`.
 
 **Rulings still owed, all the user's:** the `d`/`e` branch-local-type question and the `Evidence`
 mechanism ([type-case-refinement](tickets/type-case-refinement-walks-whole-context.md));

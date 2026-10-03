@@ -3,6 +3,7 @@
 // a language behaviour is tested, and it began life shared with the OCaml prototype (removed
 // 2026-09-25), which is why it lives beside the case files in test/ rather than under
 // src/, the implementation tree. See ../conformance/cases/README.md.
+using System.Diagnostics;
 using Fun.Compiler;
 
 const string UnitInfix = ".unit-";
@@ -13,24 +14,52 @@ const string UnitInfix = ".unit-";
 if (args is ["--file", var file])
     return RunFile(file);
 
+// --case <path>: run one conformance case in this process, print PASS/FAIL, exit 0/1.
+// The --isolated batch mode spawns it per case: a case that kills the process (a stack
+// overflow, which .NET does not let a catch intercept) then costs one result, not the
+// whole run -- the property a mutation sweep needs.
+if (args is ["--case", var casePath])
+{
+    var why = RunCase(casePath);
+    if (why is null) { Console.WriteLine("PASS"); return 0; }
+    Console.WriteLine($"FAIL {why}");
+    return 1;
+}
+
 // prototype-divergences.txt is historical now (the second implementation is gone); the
 // cases it lists are ordinary ones, and this runner passes every case in the directory.
 var root = CasesRoot(args);
-var cases = Directory.EnumerateDirectories(root)
-    .OrderBy(d => d, StringComparer.Ordinal)
-    .SelectMany(area => Directory.EnumerateFiles(area, "*.fun")
-        .Where(f => !Path.GetFileName(f).Contains(UnitInfix, StringComparison.Ordinal))
-        .OrderBy(f => f, StringComparer.Ordinal))
-    .ToList();
+var cases = EnumerateCases(root);
+var isolated = args.Contains("--isolated");
 
-var failures = cases
-    .Select(path => (path, why: RunCase(path)))
-    .Where(r => r.why is not null)
-    .ToList();
+// Isolated, every case is a child process and only its exit code and verdict line are
+// seen: a crash is one case's failure. In-process, a case's exception is classified
+// directly -- fast, but an uncatchable crash would take the run with it.
+List<(string Path, string Why)> failures;
+if (isolated)
+{
+    failures = new();
+    foreach (var path in cases)
+    {
+        var (line, exit) = RunChild(path);
+        if (exit != 0)
+            failures.Add((path, line.Length > 0 ? line : $"child exited {exit}"));
+    }
+}
+else
+{
+    failures = cases
+        .Select(path => (path, why: RunCase(path)))
+        .Where(r => r.why is not null)
+        .Select(r => (r.path, r.why!))
+        .ToList();
+}
 
 foreach (var (path, why) in failures)
     Console.WriteLine($"FAIL {Path.GetRelativePath(root, path)}: {why}");
-Console.WriteLine($"conformance: {cases.Count} cases, {failures.Count} failed");
+Console.WriteLine(isolated
+    ? $"conformance (isolated): {cases.Count} cases, {failures.Count} failed"
+    : $"conformance: {cases.Count} cases, {failures.Count} failed");
 return failures.Count == 0 ? 0 : 1;
 
 // null when the case passes, otherwise why it did not.
@@ -90,11 +119,45 @@ static Dictionary<string, string> UnitSources(string dir, string name)
             StringComparer.Ordinal);
 }
 
+// The cases under a root: every area directory, every .fun that is not a case's extra
+// unit (<name>.unit-<unit>.fun), in a stable order.
+static List<string> EnumerateCases(string root) =>
+    Directory.EnumerateDirectories(root)
+        .OrderBy(d => d, StringComparer.Ordinal)
+        .SelectMany(area => Directory.EnumerateFiles(area, "*.fun")
+            .Where(f => !Path.GetFileName(f).Contains(UnitInfix, StringComparison.Ordinal))
+            .OrderBy(f => f, StringComparer.Ordinal))
+        .ToList();
+
+// Run one case in a child process and report its verdict line and exit code. The child
+// is this same runner invoked with --case, launched the way this process was (dotnet
+// <dll>, or the apphost directly).
+static (string Line, int Exit) RunChild(string path)
+{
+    var dll = typeof(Program).Assembly.Location;
+    var host = System.Environment.ProcessPath;
+    var viaDotNet = host is not null && Path.GetFileNameWithoutExtension(host).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+    var start = new ProcessStartInfo(viaDotNet ? host! : dll,
+            viaDotNet ? $"\"{dll}\" --case \"{path}\"" : $"--case \"{path}\"")
+        { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+    using var child = Process.Start(start)!;
+    var line = child.StandardOutput.ReadLine()?.Trim();
+    if (!child.WaitForExit(120_000))
+    {
+        child.Kill();
+        return ("child did not finish within 120s", -1);
+    }
+    var exit = child.ExitCode;
+    if (line is null) line = child.StandardError.ReadToEnd().Trim();
+    return (line ?? "", exit);
+}
+
 // test/conformance/cases, found by walking up to the repo root, so the runner works from
-// anywhere. An argument overrides it.
+// anywhere. An argument overrides it; --isolated is a mode flag, not a directory.
 static string CasesRoot(string[] args)
 {
-    if (args.Length > 0) return args[0];
+    var dirArg = args.FirstOrDefault(a => a != "--isolated");
+    if (dirArg is not null) return dirArg;
     // Walk up to the repo root. The marker is the cases directory itself, not a build file:
     // the runner used to look for `dune-project`, which the prototype's removal took with it.
     for (var dir = AppContext.BaseDirectory; dir is not null; dir = Path.GetDirectoryName(dir))
